@@ -63,6 +63,7 @@
 	<string>Mithka needs permission to save images and videos to Photos.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
+		<string>ad.neko.mithka.chat</string>
 		<string>INSendMessageIntent</string>
 	</array>
 	<key>SentryDSNEncoded</key>

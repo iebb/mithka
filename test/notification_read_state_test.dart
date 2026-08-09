@@ -85,23 +85,26 @@ void main() {
     );
   });
 
-  test('a backlog message read on another device is dropped, not announced', () {
-    controller.holdBacklogMessageForTesting(
-      _newMessage(chatId: 42, messageId: 1000),
-    );
-    expect(controller.heldBacklogChatIdsForTesting(0), [42]);
+  test(
+    'a backlog message read on another device is dropped, not announced',
+    () {
+      controller.holdBacklogMessageForTesting(
+        _newMessage(chatId: 42, messageId: 1000),
+      );
+      expect(controller.heldBacklogChatIdsForTesting(0), [42]);
 
-    controller.applyChatReadInboxUpdateForTesting(
-      _readInbox(chatId: 42, lastReadMessageId: 1000),
-    );
-    expect(controller.heldBacklogChatIdsForTesting(0), isEmpty);
+      controller.applyChatReadInboxUpdateForTesting(
+        _readInbox(chatId: 42, lastReadMessageId: 1000),
+      );
+      expect(controller.heldBacklogChatIdsForTesting(0), isEmpty);
 
-    // Later replays of the same read stretch stay silent too.
-    controller.holdBacklogMessageForTesting(
-      _newMessage(chatId: 42, messageId: 900),
-    );
-    expect(controller.heldBacklogChatIdsForTesting(0), isEmpty);
-  });
+      // Later replays of the same read stretch stay silent too.
+      controller.holdBacklogMessageForTesting(
+        _newMessage(chatId: 42, messageId: 900),
+      );
+      expect(controller.heldBacklogChatIdsForTesting(0), isEmpty);
+    },
+  );
 
   test('an offline backlog collapses to one notification per chat', () {
     for (var messageId = 1000; messageId < 1010; messageId++) {

@@ -57,11 +57,22 @@ class TdFileCenter {
   final Map<String, List<Completer<String?>>> _playbackWaiters = {};
   final Map<String, StreamController<TdFileProgress>> _progressControllers = {};
   bool _started = false;
+  static const _cacheCapacity = 4096;
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
   static const _priorityChunkSize = 512 * 1024;
   static const _priorityParallelism = 4;
 
   String _key(int slot, int fileId) => '$slot:$fileId';
+
+  /// Records a resolved path, dropping the oldest entries past [_cacheCapacity].
+  ///
+  /// This map lives on a process-lifetime singleton and used to grow by one
+  /// entry for every media item ever scrolled past. Eviction costs nothing: a
+  /// miss re-issues downloadFile, exactly what [forget] already relies on.
+  void _remember(String key, String path) {
+    _cache[key] = path;
+    if (_cache.length > _cacheCapacity) _cache.remove(_cache.keys.first);
+  }
 
   /// Resolves a file reference without downloading it again when the source
   /// file used for an outgoing message is still available locally.
@@ -71,7 +82,7 @@ class TdFileCenter {
     if (localPath != null && localPath.isNotEmpty) {
       final source = File(localPath);
       if (await source.exists()) {
-        _cache[_key(slot, ref.id)] = localPath;
+        _remember(_key(slot, ref.id), localPath);
         return localPath;
       }
     }
@@ -159,7 +170,7 @@ class TdFileCenter {
     final finished = _progressControllers.remove(k);
     unawaited(finished?.close());
 
-    _cache[k] = path;
+    _remember(k, path);
     final pending = _waiters.remove(k) ?? [];
     for (final c in pending) {
       if (!c.isCompleted) c.complete(path);
@@ -456,7 +467,7 @@ class TdFileCenter {
       if (local?.boolean('is_downloading_completed') == true) {
         final path = local?.str('path');
         if (path != null && path.isNotEmpty) {
-          _cache[k] = path;
+          _remember(k, path);
           final pending = _waiters.remove(k) ?? [];
           for (final c in pending) {
             if (!c.isCompleted) c.complete(path);
@@ -516,7 +527,7 @@ class TdFileCenter {
           path != null &&
           path.isNotEmpty &&
           await File(path).exists()) {
-        _cache[k] = path;
+        _remember(k, path);
         return path;
       }
     } catch (_) {}

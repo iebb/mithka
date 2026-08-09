@@ -52,9 +52,18 @@ class ChatSessionCacheWriteGate {
 
 /// Small in-memory LRU used to paint previously opened chats immediately.
 class ChatSessionCache {
-  ChatSessionCache({this.capacity = 24}) : assert(capacity > 0);
+  ChatSessionCache({this.capacity = 24, this.messageCapacity = 8000})
+    : assert(capacity > 0);
 
   final int capacity;
+
+  /// Retention is bounded by total messages as well as by chat count: a chat
+  /// the user scrolled a couple of thousand messages back in is megabytes of
+  /// ChatMessage graph held for a screen that is no longer visible. Entries are
+  /// dropped whole, so every surviving one still restores its exact window.
+  final int messageCapacity;
+
+  int _totalMessages = 0;
   final LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>
   _states =
       LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>();
@@ -78,7 +87,8 @@ class ChatSessionCache {
     ChatFirstContactInfo? firstContactInfo,
   }) {
     final key = (accountSlot: accountSlot, chatId: chatId);
-    _states.remove(key);
+    final previous = _states.remove(key);
+    if (previous != null) _totalMessages -= previous.messages.length;
     if (messages.isEmpty) return;
     _states[key] = ChatSessionRenderState(
       messages: List<ChatMessage>.unmodifiable(messages),
@@ -86,10 +96,18 @@ class ChatSessionCache {
       olderHistoryExhausted: olderHistoryExhausted,
       firstContactInfo: firstContactInfo,
     );
-    while (_states.length > capacity) {
-      _states.remove(_states.keys.first);
+    _totalMessages += messages.length;
+    // The entry just stored is the one most likely to be reopened, so it is
+    // never the one evicted by the message bound.
+    while (_states.length > capacity ||
+        (_totalMessages > messageCapacity && _states.length > 1)) {
+      final evicted = _states.remove(_states.keys.first);
+      if (evicted != null) _totalMessages -= evicted.messages.length;
     }
   }
 
-  void clear() => _states.clear();
+  void clear() {
+    _states.clear();
+    _totalMessages = 0;
+  }
 }

@@ -22,10 +22,7 @@ void main() {
       'scripts/prepare-google-play-manifest.sh',
     ).readAsStringSync();
 
-    expect(
-      workflow,
-      contains('bash scripts/prepare-google-play-manifest.sh'),
-    );
+    expect(workflow, contains('bash scripts/prepare-google-play-manifest.sh'));
     expect(
       preparationScript,
       contains('android.permission.REQUEST_INSTALL_PACKAGES'),

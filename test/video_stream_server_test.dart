@@ -77,6 +77,24 @@ void main() {
     }
   });
 
+  test('the loopback source preserves the video container metadata', () async {
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      maxResponseBytes: 64,
+      fileName: 'sample.webm',
+      mimeType: 'video/webm',
+    );
+    try {
+      expect(fixture.uri.path, '/video/42.webm');
+      final response = await fixture.get();
+      expect(response.headers.contentType?.mimeType, 'video/webm');
+      await _readBody(response);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test(
     'prepareForPlayback waits for bounded head and tail bootstrap ranges',
     () async {
@@ -485,6 +503,8 @@ final class _VideoServerFixture {
     required int maxResponseBytes,
     int? expectedBytes,
     int? reportedReadableBytes,
+    String? fileName,
+    String? mimeType,
     TdVideoStreamQuery Function(File file)? queryBuilder,
   }) async {
     final directory = await Directory.systemTemp.createTemp(
@@ -501,6 +521,8 @@ final class _VideoServerFixture {
     final server = TdVideoStreamServer(
       42,
       query: queryBuilder?.call(file) ?? backend.query,
+      fileName: fileName,
+      mimeType: mimeType,
       maxResponseBytes: maxResponseBytes,
       rangeWaitTimeout: const Duration(milliseconds: 20),
       rangePollInterval: const Duration(milliseconds: 1),

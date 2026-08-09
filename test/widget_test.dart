@@ -815,6 +815,67 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('button row submits native TDLib button blocks', (
+      tester,
+    ) async {
+      RichTextComposerResult? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: RichTextComposerView(
+            initialText: '',
+            allowMedia: false,
+            onSubmit: (value) => result = value,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Button row'));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('rich-button-row-editor')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('rich-button-label-0')),
+        'Visit Mithka',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('rich-button-url-0')),
+        'https://mithka.app',
+      );
+      await tester.tap(find.byKey(const ValueKey('rich-button-align-right')));
+      await tester.tap(find.byKey(const ValueKey('rich-button-style-success')));
+      await tester.pump();
+      await tester.tap(find.text('Post'));
+      await tester.pump();
+
+      expect(result, isNotNull);
+      expect(result!.text, isEmpty);
+      expect(result!.segments, hasLength(1));
+      final block = result!.segments.single.blocks.single;
+      expect(block['@type'], 'inputPageBlockButtonRow');
+      expect(
+        (block['align'] as Map)['@type'],
+        'pageBlockHorizontalAlignmentRight',
+      );
+      final button = (block['buttons'] as List).single as Map<String, dynamic>;
+      expect(button['text'], {
+        '@type': 'richTextPlain',
+        'text': 'Visit Mithka',
+      });
+      expect((button['type'] as Map)['url'], 'https://mithka.app');
+      expect((button['style'] as Map)['@type'], 'buttonStyleSuccess');
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('inserting a block replaces an empty paragraph', (
       tester,
     ) async {
@@ -3612,6 +3673,43 @@ void main() {
       await tester.pump(const Duration(minutes: 3, seconds: 1));
     });
 
+    testWidgets('keeps an outgoing text repeat badge beside its bubble', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(id: 7, isOutgoing: true, text: '11', date: 1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            home: SizedBox(
+              width: 420,
+              child: Scaffold(
+                body: MessageBubble(
+                  message: message,
+                  peerTitle: 'Test',
+                  isGroup: false,
+                  showRepeat: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final badge = tester.getRect(
+        find.byKey(const ValueKey('messageRepeatBadge')),
+      );
+      final bubble = tester.getRect(
+        find.byKey(const ValueKey('messageTapTarget-7')),
+      );
+      expect((bubble.left - badge.right).abs(), lessThanOrEqualTo(7));
+    });
+
     testWidgets('shows detail time on tap unless always-on is enabled', (
       tester,
     ) async {
@@ -5649,6 +5747,7 @@ void main() {
       expect(controller.aiTranslationEnabled, isFalse);
       expect(controller.provider, TranslationProvider.tdlib);
       expect(controller.targetLanguageCode, 'zh-Hans');
+      expect(controller.displayStyle, TranslationDisplayStyle.quote);
       expect(
         controller.lingvaEndpoint,
         TranslationController.defaultLingvaEndpoint,
@@ -5662,6 +5761,7 @@ void main() {
       controller.aiTranslationEnabled = true;
       controller.provider = TranslationProvider.lingva;
       controller.targetLanguageCode = 'ja';
+      controller.displayStyle = TranslationDisplayStyle.both;
       controller.lingvaEndpoint = 'https://lingva.example.com/';
       controller.libreTranslateEndpoint = ' https://libre.example.com// ';
       controller.libreTranslateApiKey = ' secret-key ';
@@ -5674,6 +5774,7 @@ void main() {
       expect(reloaded.aiTranslationEnabled, isTrue);
       expect(reloaded.provider, TranslationProvider.lingva);
       expect(reloaded.targetLanguageCode, 'ja');
+      expect(reloaded.displayStyle, TranslationDisplayStyle.both);
       expect(reloaded.lingvaEndpoint, 'https://lingva.example.com');
       expect(reloaded.libreTranslateEndpoint, 'https://libre.example.com');
       expect(reloaded.libreTranslateApiKey, 'secret-key');

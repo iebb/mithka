@@ -4,6 +4,22 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('macOS builds avoid restricted Keychain Sharing entitlements', () {
+    for (final path in [
+      'macos/Runner/DebugProfile.entitlements',
+      'macos/Runner/Release.entitlements',
+    ]) {
+      final entitlements = File(path).readAsStringSync();
+      expect(
+        entitlements,
+        isNot(contains('<key>keychain-access-groups</key>')),
+        reason:
+            '$path must remain compatible with local ad-hoc signing; bot '
+            'credentials use the non-sharing macOS Keychain.',
+      );
+    }
+  });
+
   test('macOS app bundle identifier is visible to Xcode Cloud', () {
     final appInfo = File(
       'macos/Runner/Configs/AppInfo.xcconfig',
@@ -93,7 +109,7 @@ void main() {
             (pin['state']! as Map<String, Object?>)['version']! as String,
     };
 
-    expect(versions['firebase-ios-sdk'], '12.15.0');
+    expect(versions['firebase-ios-sdk'], '12.17.0');
     expect(versions['sentry-cocoa'], '8.58.4');
   });
 }

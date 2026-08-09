@@ -44,6 +44,51 @@ typedef TdVideoStreamQuery =
 typedef VideoPictureInPictureRestoreCallback =
     FutureOr<bool> Function(SystemPictureInPictureSnapshot snapshot);
 
+const _videoStreamExtensions = <String, String>{
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'video/x-matroska': 'mkv',
+  'video/mpeg': 'mpeg',
+  'video/x-msvideo': 'avi',
+  'video/3gpp': '3gp',
+  'video/3gpp2': '3g2',
+};
+
+const _videoStreamMimeTypesByExtension = <String, String>{
+  'mp4': 'video/mp4',
+  'm4v': 'video/mp4',
+  'mov': 'video/quicktime',
+  'webm': 'video/webm',
+  'mkv': 'video/x-matroska',
+  'mpeg': 'video/mpeg',
+  'mpg': 'video/mpeg',
+  'avi': 'video/x-msvideo',
+  '3gp': 'video/3gpp',
+  '3g2': 'video/3gpp2',
+};
+
+String? _safeFileExtension(String? fileName) {
+  final name = fileName?.trim().toLowerCase() ?? '';
+  final separator = name.lastIndexOf('.');
+  if (separator < 0 || separator + 1 >= name.length) return null;
+  final extension = name.substring(separator + 1);
+  return RegExp(r'^[a-z0-9]{1,8}$').hasMatch(extension) ? extension : null;
+}
+
+String _videoStreamMimeType(String? fileName, String? value) {
+  final mimeType = value?.split(';').first.trim().toLowerCase();
+  if (mimeType != null && mimeType.startsWith('video/')) return mimeType;
+  final extension = _safeFileExtension(fileName);
+  return _videoStreamMimeTypesByExtension[extension] ?? 'video/mp4';
+}
+
+String _videoStreamExtension(String? fileName, String mimeType) {
+  final mapped = _videoStreamExtensions[mimeType];
+  if (mapped != null) return mapped;
+  return _safeFileExtension(fileName) ?? 'mp4';
+}
+
 TdVideoStreamQuery tdVideoStreamQueryForAccount(int? accountSlot) {
   if (accountSlot == null) return TdClient.shared.query;
   return (request) => TdClient.shared.queryForSlot(request, accountSlot);
@@ -58,16 +103,25 @@ class TdVideoStreamServer {
   TdVideoStreamServer(
     this.fileId, {
     TdVideoStreamQuery? query,
+    String? fileName,
+    String? mimeType,
     int maxResponseBytes = _defaultMaxResponseBytes,
     this.rangeWaitTimeout = const Duration(seconds: 45),
     this.rangePollInterval = const Duration(milliseconds: 100),
   }) : assert(maxResponseBytes > 0),
        _query = query ?? TdClient.shared.query,
-       _maxResponseBytes = maxResponseBytes;
+       _maxResponseBytes = maxResponseBytes,
+       _mimeType = _videoStreamMimeType(fileName, mimeType),
+       _extension = _videoStreamExtension(
+         fileName,
+         _videoStreamMimeType(fileName, mimeType),
+       );
 
   final int fileId;
   final TdVideoStreamQuery _query;
   final int _maxResponseBytes;
+  final String _mimeType;
+  final String _extension;
   final Duration rangeWaitTimeout;
   final Duration rangePollInterval;
   HttpServer? _server;
@@ -118,7 +172,9 @@ class TdVideoStreamServer {
     }
     _server = server;
     server.listen(_handleRequest);
-    return Uri.parse('http://127.0.0.1:${server.port}/video/$fileId.mp4');
+    return Uri.parse(
+      'http://127.0.0.1:${server.port}/video/$fileId.$_extension',
+    );
   }
 
   Future<void> close() async {
@@ -264,7 +320,7 @@ class TdVideoStreamServer {
 
       request.response.headers
         ..set(HttpHeaders.acceptRangesHeader, 'bytes')
-        ..contentType = ContentType('video', 'mp4');
+        ..contentType = ContentType.parse(_mimeType);
 
       final preparation = _pendingPreparation;
       if (preparation != null) {
@@ -816,7 +872,8 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   }
 }
 
-class _VideoPlayerViewState extends State<VideoPlayerView> {
+class _VideoPlayerViewState extends State<VideoPlayerView>
+    with WidgetsBindingObserver {
   late final TdVideoStreamQuery _streamQuery =
       widget.streamQuery ?? tdVideoStreamQueryForAccount(widget.accountSlot);
   VideoPlayerController? _controller;
@@ -835,7 +892,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   TdVideoStreamServer? _streamServer;
   bool _openedCompletedLocalFile = false;
   bool _streamRecoveryInFlight = false;
+  bool _completedFileRecoveryInFlight = false;
+  bool _completedFileRecoveryAttempted = false;
+  Future<String?>? _completedFileDownloadOperation;
   int _automaticStreamRecoveryCount = 0;
+  Object? _lastControllerInitializationError;
+  Timer? _streamStallTimer;
+  Duration? _streamStallPosition;
+  bool _retryInFlight = false;
+  bool _retryFromPlaybackSnapshot = false;
   bool _lastKnownPlaybackWasPlaying = false;
   Duration _lastKnownPlaybackPosition = Duration.zero;
   bool _systemPiPHandoff = false;
@@ -894,9 +959,30 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
-  static const _resumeSaveStep = Duration(seconds: 2);
+  // Every step costs a full SharedPreferences serialization plus a platform
+  // round trip, so the tick is coarse; the exit paths and the lifecycle hook
+  // below force a save, which is what actually makes the position durable.
+  static const _resumeSaveStep = Duration(seconds: 15);
   static const _resumeMinimum = Duration(seconds: 3);
   static const _resumeEndSlack = Duration(seconds: 8);
+  static const _streamStallTimeout = Duration(seconds: 15);
+
+  bool get _canUseAndroidPlatformViewFallback =>
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android &&
+      widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  bool _isDecoderOrSurfaceFailure(Object? error) {
+    if (!_canUseAndroidPlatformViewFallback || error == null) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('mediacodecvideorenderer') ||
+        message.contains('mediacodecvideodecoderexception') ||
+        message.contains('decoderinitializationexception') ||
+        message.contains('video codec error') ||
+        message.contains('imagereader') ||
+        message.contains('surfaceproducer') ||
+        (message.contains('surface') && message.contains('released'));
+  }
 
   @override
   void initState() {
@@ -907,8 +993,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.initialSpeed.isFinite && widget.initialSpeed > 0) {
       _speed = widget.initialSpeed;
     }
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadPlaybackPreferences());
     _load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Leaving the app is where the resume position has to become durable: the
+    // process may never be resumed, and the periodic save is coarse.
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_storePlaybackPosition(force: true));
+    }
   }
 
   Future<void> _loadPlaybackPreferences() async {
@@ -922,7 +1020,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     });
   }
 
-  Future<void> _load() async {
+  Future<void> _load({Duration? resumeOverride, bool? playOverride}) async {
+    await _progressSub?.cancel();
     _progressSub = TdFileCenter.shared
         .progress(widget.video.id, accountSlot: widget.accountSlot)
         .listen((progress) {
@@ -945,11 +1044,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (completedPath != null) {
       _localPath = completedPath;
       _openedCompletedLocalFile = true;
-      final initialized = await _initializeFromFile(completedPath);
+      final initialized = await _initializeFileWithSurfaceFallback(
+        completedPath,
+        resumeOverride: resumeOverride,
+        playOverride: playOverride,
+      );
       if (initialized || !mounted) return;
       _openedCompletedLocalFile = false;
     }
-    final server = TdVideoStreamServer(widget.video.id, query: _streamQuery);
+    final server = TdVideoStreamServer(
+      widget.video.id,
+      query: _streamQuery,
+      fileName: widget.video.fileName,
+      mimeType: widget.video.mimeType,
+    );
     _streamServer = server;
     final uri = await server.start();
     if (!mounted) {
@@ -957,28 +1065,80 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       return;
     }
     if (uri == null) {
-      setState(() => _failed = true);
-      showToast(context, AppStringKeys.videoPlayerLoadFailed);
+      if (await _recoverFromCompletedFile(
+        releaseActiveController: false,
+        resumeOverride: resumeOverride,
+        playOverride: playOverride,
+      )) {
+        return;
+      }
+      if (!mounted) return;
+      _showTerminalPlaybackFailure(AppStringKeys.videoPlayerLoadFailed);
       return;
     }
     _localPath = uri.toString();
     var prepared = await server.prepareForPlayback();
     if (!mounted) return;
-    var initialized = prepared && await _initializeFromUri(uri);
+    var initialized =
+        prepared &&
+        await _initializeFromUri(
+          uri,
+          viewType: VideoViewType.textureView,
+          resumeOverride: resumeOverride,
+          playOverride: playOverride,
+        );
+    var attemptedPlatformView = false;
     if (!initialized && mounted) {
       // A player probe can still lose a TDLib request race to an existing
       // download from another view. Revalidate the bootstrap ranges and retry
       // inside this route instead of requiring the user to close and reopen it.
       prepared = await server.prepareForPlayback();
-      if (prepared && mounted) initialized = await _initializeFromUri(uri);
+      if (prepared && mounted) {
+        final viewType =
+            _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
+            ? VideoViewType.platformView
+            : VideoViewType.textureView;
+        attemptedPlatformView = viewType == VideoViewType.platformView;
+        initialized = await _initializeFromUri(
+          uri,
+          viewType: viewType,
+          resumeOverride: resumeOverride,
+          playOverride: playOverride,
+        );
+      }
+    }
+    if (!initialized &&
+        mounted &&
+        !attemptedPlatformView &&
+        _isDecoderOrSurfaceFailure(_lastControllerInitializationError)) {
+      prepared = await server.prepareForPlayback();
+      if (prepared && mounted) {
+        initialized = await _initializeFromUri(
+          uri,
+          viewType: VideoViewType.platformView,
+          resumeOverride: resumeOverride,
+          playOverride: playOverride,
+        );
+      }
     }
     if (initialized) {
       server.startBackgroundDownload();
       return;
     }
     if (!mounted) return;
-    setState(() => _failed = true);
-    showToast(context, AppStringKeys.videoPlayerCannotPlay);
+    if (await _recoverFromCompletedFile(
+      releaseActiveController: false,
+      resumeOverride: resumeOverride,
+      playOverride: playOverride,
+      preferredViewType:
+          _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
+          ? VideoViewType.platformView
+          : VideoViewType.textureView,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    _showTerminalPlaybackFailure(AppStringKeys.videoPlayerCannotPlay);
   }
 
   Future<String?> _completedLocalVideoPath() async {
@@ -987,39 +1147,136 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         '@type': 'getFile',
         'file_id': widget.video.id,
       });
-      final local = file.obj('local');
-      if (local?.boolean('is_downloading_completed') != true) return null;
-      final path = local?.str('path');
-      if (path == null || path.isEmpty) return null;
-      final localFile = File(path);
-      if (!await localFile.exists()) return null;
-      final length = await localFile.length();
-      if (length <= 0) return null;
-      final expected = file.integer('expected_size') ?? 0;
-      final size = file.integer('size') ?? 0;
-      final total = size > 0 ? size : expected;
-      if (total > 0 && length < total) return null;
-      _progress = TdFileProgress(
-        fileId: widget.video.id,
-        downloaded: total > 0 ? total : length,
-        prefixDownloaded: total > 0 ? total : length,
-        total: total > 0 ? total : length,
-        isActive: false,
-        isCompleted: true,
-      );
-      return path;
+      return _validatedCompletedVideoPath(file);
     } catch (_) {
       return null;
     }
   }
 
-  Future<bool> _initializeFromFile(String path) async {
-    final c = VideoPlayerController.file(File(path));
-    return _initializeController(c);
+  Future<String?> _downloadCompletedVideoPath() async {
+    final existingOperation = _completedFileDownloadOperation;
+    final operation = existingOperation ?? _requestCompletedVideoDownload();
+    if (existingOperation == null) {
+      _completedFileDownloadOperation = operation;
+      unawaited(
+        operation.whenComplete(() {
+          if (identical(_completedFileDownloadOperation, operation)) {
+            _completedFileDownloadOperation = null;
+          }
+        }),
+      );
+    }
+    try {
+      return await operation.timeout(const Duration(minutes: 5));
+    } on TimeoutException {
+      debugPrint(
+        'VideoPlayerView full-file fallback timed out for '
+        '${widget.video.id}; retaining the in-flight request.',
+      );
+      return null;
+    }
   }
 
-  Future<bool> _initializeFromUri(Uri uri) async {
-    return _initializeController(VideoPlayerController.networkUrl(uri));
+  Future<String?> _requestCompletedVideoDownload() async {
+    try {
+      final file = await _streamQuery({
+        '@type': 'downloadFile',
+        'file_id': widget.video.id,
+        'priority': 32,
+        'offset': 0,
+        'limit': 0,
+        'synchronous': true,
+      });
+      return _validatedCompletedVideoPath(file);
+    } catch (error) {
+      debugPrint(
+        'VideoPlayerView full-file fallback failed for '
+        '${widget.video.id}: $error',
+      );
+      return null;
+    }
+  }
+
+  Future<String?> _validatedCompletedVideoPath(
+    Map<String, dynamic> file,
+  ) async {
+    final responseFileId = file.integer('id');
+    if (responseFileId != null && responseFileId != widget.video.id) {
+      return null;
+    }
+    final local = file.obj('local');
+    if (local?.boolean('is_downloading_completed') != true) return null;
+    final path = local?.str('path');
+    if (path == null || path.isEmpty) return null;
+    final localFile = File(path);
+    if (!await localFile.exists()) return null;
+    final length = await localFile.length();
+    if (length <= 0) return null;
+    final expected = file.integer('expected_size') ?? 0;
+    final size = file.integer('size') ?? 0;
+    final total = size > 0 ? size : expected;
+    if (total > 0 && length < total) return null;
+    _progress = TdFileProgress(
+      fileId: widget.video.id,
+      downloaded: total > 0 ? total : length,
+      prefixDownloaded: total > 0 ? total : length,
+      total: total > 0 ? total : length,
+      isActive: false,
+      isCompleted: true,
+    );
+    return path;
+  }
+
+  Future<bool> _initializeFileWithSurfaceFallback(
+    String path, {
+    VideoViewType preferredViewType = VideoViewType.textureView,
+    Duration? resumeOverride,
+    bool? playOverride,
+  }) async {
+    final initialized = await _initializeFromFile(
+      path,
+      viewType: preferredViewType,
+      resumeOverride: resumeOverride,
+      playOverride: playOverride,
+    );
+    if (initialized ||
+        preferredViewType != VideoViewType.textureView ||
+        !_isDecoderOrSurfaceFailure(_lastControllerInitializationError)) {
+      return initialized;
+    }
+    return _initializeFromFile(
+      path,
+      viewType: VideoViewType.platformView,
+      resumeOverride: resumeOverride,
+      playOverride: playOverride,
+    );
+  }
+
+  Future<bool> _initializeFromFile(
+    String path, {
+    required VideoViewType viewType,
+    Duration? resumeOverride,
+    bool? playOverride,
+  }) async {
+    final c = VideoPlayerController.file(File(path), viewType: viewType);
+    return _initializeController(
+      c,
+      resumeOverride: resumeOverride,
+      playOverride: playOverride,
+    );
+  }
+
+  Future<bool> _initializeFromUri(
+    Uri uri, {
+    required VideoViewType viewType,
+    Duration? resumeOverride,
+    bool? playOverride,
+  }) async {
+    return _initializeController(
+      VideoPlayerController.networkUrl(uri, viewType: viewType),
+      resumeOverride: resumeOverride,
+      playOverride: playOverride,
+    );
   }
 
   Future<bool> _initializeController(
@@ -1027,6 +1284,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     Duration? resumeOverride,
     bool? playOverride,
   }) async {
+    _lastControllerInitializationError = null;
     try {
       await c.initialize().timeout(const Duration(seconds: 45));
       await c.setLooping(false);
@@ -1043,6 +1301,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       if (shouldPlay) await c.play();
       _lastKnownPlaybackWasPlaying = shouldPlay;
     } catch (error, stackTrace) {
+      _lastControllerInitializationError = error;
       debugPrint(
         'VideoPlayerView failed to initialize ${c.dataSource}: $error\n'
         '$stackTrace',
@@ -1063,34 +1322,234 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   void _handleReusablePlayerError(MithkaVideoPlayerError error) {
+    _recoverAfterStreamFailure(error, requireControllerError: true);
+  }
+
+  void _recoverAfterStreamFailure(
+    Object error, {
+    required bool requireControllerError,
+  }) {
     final controller = _controller;
     final source = _localPath;
-    if (controller?.value.hasError != true ||
+    if (controller == null ||
+        (requireControllerError && controller.value.hasError != true) ||
         _streamRecoveryInFlight ||
-        _automaticStreamRecoveryCount >= 1 ||
+        _completedFileRecoveryInFlight ||
         _systemPiPHandoff ||
         _systemPiPBusy ||
         _systemPiPPrepareOperation != null ||
         _systemPiPStartOperation != null ||
-        _streamServer == null ||
-        source == null ||
-        !(source.startsWith('http://') || source.startsWith('https://'))) {
+        source == null) {
       return;
     }
     debugPrint('VideoPlayerView runtime error for ${widget.video.id}: $error');
+    final isNetworkSource =
+        source.startsWith('http://') || source.startsWith('https://');
+    if (!isNetworkSource) {
+      if (controller.viewType == VideoViewType.textureView &&
+          _isDecoderOrSurfaceFailure(error)) {
+        unawaited(_recoverCompletedLocalPlayback(source));
+      } else {
+        unawaited(_stopErroredLocalPlayback());
+      }
+      return;
+    }
+    if (_streamServer == null) return;
+    if (_automaticStreamRecoveryCount >= 1) {
+      unawaited(
+        _recoverFromCompletedFile(
+          releaseActiveController: true,
+          preferredViewType:
+              _isDecoderOrSurfaceFailure(error) ||
+                  controller.viewType == VideoViewType.platformView
+              ? VideoViewType.platformView
+              : VideoViewType.textureView,
+        ).then((recovered) {
+          if (!recovered && mounted) {
+            _showTerminalPlaybackFailure(
+              AppStringKeys.videoPlayerCannotPlay,
+              preservePlaybackSnapshot: true,
+            );
+          }
+        }),
+      );
+      return;
+    }
     _automaticStreamRecoveryCount++;
-    unawaited(_recoverStreamingPlayback(Uri.parse(source)));
+    final recoveryViewType = _isDecoderOrSurfaceFailure(error)
+        ? VideoViewType.platformView
+        : controller.viewType;
+    unawaited(
+      _recoverStreamingPlayback(Uri.parse(source), viewType: recoveryViewType),
+    );
   }
 
-  Future<void> _recoverStreamingPlayback(Uri uri) async {
+  Future<void> _recoverCompletedLocalPlayback(String path) async {
+    if (_streamRecoveryInFlight || !mounted) return;
+    _streamRecoveryInFlight = true;
+    try {
+      final recovery = await _releaseActivePlaybackForRecovery(
+        closeStreamServer: false,
+      );
+      if (!mounted) return;
+      final initialized = await _initializeFromFile(
+        path,
+        viewType: VideoViewType.platformView,
+        resumeOverride: recovery.$1,
+        playOverride: recovery.$2,
+      );
+      if (!initialized && mounted) {
+        _showTerminalPlaybackFailure(
+          AppStringKeys.videoPlayerCannotPlay,
+          preservePlaybackSnapshot: true,
+        );
+      }
+    } finally {
+      _streamRecoveryInFlight = false;
+    }
+  }
+
+  Future<void> _recoverStreamingPlayback(
+    Uri uri, {
+    required VideoViewType viewType,
+  }) async {
     if (_streamRecoveryInFlight || !mounted) return;
     final server = _streamServer;
     if (server == null) return;
     _streamRecoveryInFlight = true;
+
+    try {
+      final recovery = await _releaseActivePlaybackForRecovery(
+        closeStreamServer: false,
+      );
+      if (!mounted) return;
+      final selectedViewType = _canUseAndroidPlatformViewFallback
+          ? viewType
+          : VideoViewType.textureView;
+      var prepared = await server.prepareForPlayback();
+      if (!mounted) return;
+      var initialized =
+          prepared &&
+          await _initializeController(
+            VideoPlayerController.networkUrl(uri, viewType: selectedViewType),
+            resumeOverride: recovery.$1,
+            playOverride: recovery.$2,
+          );
+      if (!initialized &&
+          selectedViewType == VideoViewType.textureView &&
+          _isDecoderOrSurfaceFailure(_lastControllerInitializationError)) {
+        prepared = await server.prepareForPlayback();
+        if (prepared && mounted) {
+          initialized = await _initializeController(
+            VideoPlayerController.networkUrl(
+              uri,
+              viewType: VideoViewType.platformView,
+            ),
+            resumeOverride: recovery.$1,
+            playOverride: recovery.$2,
+          );
+        }
+      }
+      if (initialized) {
+        server.startBackgroundDownload();
+        return;
+      }
+      final recovered = await _recoverFromCompletedFile(
+        releaseActiveController: false,
+        resumeOverride: recovery.$1,
+        playOverride: recovery.$2,
+        preferredViewType:
+            selectedViewType == VideoViewType.platformView ||
+                _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
+            ? VideoViewType.platformView
+            : VideoViewType.textureView,
+      );
+      if (!recovered && mounted) {
+        _showTerminalPlaybackFailure(
+          AppStringKeys.videoPlayerCannotPlay,
+          preservePlaybackSnapshot: true,
+        );
+      }
+    } finally {
+      _streamRecoveryInFlight = false;
+    }
+  }
+
+  Future<bool> _recoverFromCompletedFile({
+    required bool releaseActiveController,
+    Duration? resumeOverride,
+    bool? playOverride,
+    VideoViewType preferredViewType = VideoViewType.textureView,
+  }) async {
+    if (_completedFileRecoveryInFlight ||
+        _completedFileRecoveryAttempted ||
+        !mounted) {
+      return false;
+    }
+    _completedFileRecoveryInFlight = true;
+    _completedFileRecoveryAttempted = true;
+    _streamStallTimer?.cancel();
+    _streamStallTimer = null;
+    _streamStallPosition = null;
+    try {
+      var resume = resumeOverride;
+      var shouldPlay = playOverride;
+      if (releaseActiveController) {
+        final recovery = await _releaseActivePlaybackForRecovery(
+          closeStreamServer: true,
+        );
+        resume = recovery.$1;
+        shouldPlay = recovery.$2;
+      } else {
+        final server = _streamServer;
+        _streamServer = null;
+        await server?.close();
+      }
+      if (!mounted) return false;
+      final path = await _downloadCompletedVideoPath();
+      if (!mounted || path == null) return false;
+      _localPath = path;
+      _openedCompletedLocalFile = true;
+      final initialized = await _initializeFileWithSurfaceFallback(
+        path,
+        preferredViewType: _canUseAndroidPlatformViewFallback
+            ? preferredViewType
+            : VideoViewType.textureView,
+        resumeOverride: resume,
+        playOverride: shouldPlay,
+      );
+      if (!initialized) _openedCompletedLocalFile = false;
+      return initialized;
+    } finally {
+      _completedFileRecoveryInFlight = false;
+    }
+  }
+
+  Future<void> _stopErroredLocalPlayback() async {
+    if (_streamRecoveryInFlight || !mounted) return;
+    _streamRecoveryInFlight = true;
+    try {
+      await _releaseActivePlaybackForRecovery(closeStreamServer: true);
+      if (!mounted) return;
+      _showTerminalPlaybackFailure(
+        AppStringKeys.videoPlayerCannotPlay,
+        preservePlaybackSnapshot: true,
+      );
+    } finally {
+      _streamRecoveryInFlight = false;
+    }
+  }
+
+  Future<(Duration, bool)> _releaseActivePlaybackForRecovery({
+    required bool closeStreamServer,
+  }) async {
     final oldController = _controller;
     final resume = _lastKnownPlaybackPosition;
     final shouldPlay = _lastKnownPlaybackWasPlaying;
     oldController?.removeListener(_onTick);
+    _streamStallTimer?.cancel();
+    _streamStallTimer = null;
+    _streamStallPosition = null;
 
     final preparedPiPId = _systemPiPId;
     final pendingPiPPreparation = _systemPiPPrepareOperation;
@@ -1101,39 +1560,79 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _systemPiPUsesActivePlayer = false;
     _systemPiPPrepareOperation = null;
     _systemPiPStartOperation = null;
-    setState(() {
-      _controller = null;
-      _failed = false;
-    });
+    final streamServer = closeStreamServer ? _streamServer : null;
+    if (closeStreamServer) _streamServer = null;
+    if (mounted) {
+      setState(() {
+        _controller = null;
+        _failed = false;
+      });
+    }
     _updateWakelock();
 
+    if (oldController != null) await WidgetsBinding.instance.endOfFrame;
+    await _releasePlaybackResources(
+      controller: oldController,
+      disposeController: true,
+      preparedPiPId: preparedPiPId,
+      pendingPiPPreparation: pendingPiPPreparation,
+      pendingPiPStart: pendingPiPStart,
+      streamServer: streamServer,
+    );
+    return (resume, shouldPlay);
+  }
+
+  void _showTerminalPlaybackFailure(
+    String messageKey, {
+    bool preservePlaybackSnapshot = false,
+  }) {
+    if (!mounted) return;
+    if (preservePlaybackSnapshot) _retryFromPlaybackSnapshot = true;
+    setState(() => _failed = true);
+    showToast(context, messageKey);
+  }
+
+  Future<void> _retryPlayback() async {
+    if (_retryInFlight ||
+        _streamRecoveryInFlight ||
+        _completedFileRecoveryInFlight) {
+      return;
+    }
+    _retryInFlight = true;
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      await _releasePlaybackResources(
-        controller: oldController,
-        disposeController: true,
-        preparedPiPId: preparedPiPId,
-        pendingPiPPreparation: pendingPiPPreparation,
-        pendingPiPStart: pendingPiPStart,
-        streamServer: null,
-      );
-      await server.prepareForPlayback();
+      Duration? resumeOverride;
+      bool? playOverride;
+      if (_retryFromPlaybackSnapshot) {
+        resumeOverride = _lastKnownPlaybackPosition;
+        playOverride = _lastKnownPlaybackWasPlaying;
+      }
+      if (_controller != null) {
+        final recovery = await _releaseActivePlaybackForRecovery(
+          closeStreamServer: true,
+        );
+        resumeOverride = recovery.$1;
+        playOverride = recovery.$2;
+      } else {
+        _streamStallTimer?.cancel();
+        _streamStallTimer = null;
+        _streamStallPosition = null;
+        final server = _streamServer;
+        _streamServer = null;
+        await server?.close();
+      }
       if (!mounted) return;
-      final initialized = await _initializeController(
-        VideoPlayerController.networkUrl(uri),
-        resumeOverride: resume,
-        playOverride: shouldPlay,
-      );
-      if (initialized) {
-        server.startBackgroundDownload();
-        return;
-      }
-      if (mounted) {
-        setState(() => _failed = true);
-        showToast(context, AppStringKeys.videoPlayerCannotPlay);
-      }
+      _automaticStreamRecoveryCount = 0;
+      _completedFileRecoveryAttempted = false;
+      _lastControllerInitializationError = null;
+      _openedCompletedLocalFile = false;
+      _localPath = null;
+      _retryFromPlaybackSnapshot =
+          resumeOverride != null || playOverride != null;
+      setState(() => _failed = false);
+      await _load(resumeOverride: resumeOverride, playOverride: playOverride);
+      if (_controller != null) _retryFromPlaybackSnapshot = false;
     } finally {
-      _streamRecoveryInFlight = false;
+      _retryInFlight = false;
     }
   }
 
@@ -1141,9 +1640,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   void _onTick() {
     final value = _controller?.value;
     if (value != null && !value.hasError) {
-      _lastKnownPlaybackWasPlaying = value.isPlaying;
+      if (!value.isBuffering) {
+        _lastKnownPlaybackWasPlaying = value.isPlaying;
+      }
       _lastKnownPlaybackPosition = value.position;
     }
+    _syncStreamStallRecovery(value);
     final completed = value != null && isStoppedVideoPlaybackComplete(value);
     if (completed && !_completionHandled) {
       _completionHandled = true;
@@ -1162,6 +1664,62 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     // renders independently. Avoid rebuilding the entire TDLib host for every
     // decoded frame on mobile fullscreen playback.
     if (mounted && !_usesReusableMobileFullscreenPlayer) setState(() {});
+  }
+
+  void _syncStreamStallRecovery(VideoPlayerValue? value) {
+    final controller = _controller;
+    final source = _localPath;
+    final shouldWatch =
+        controller != null &&
+        value != null &&
+        value.isInitialized &&
+        value.isBuffering &&
+        !value.hasError &&
+        _lastKnownPlaybackWasPlaying &&
+        _scrubPosition == null &&
+        source != null &&
+        (source.startsWith('http://') || source.startsWith('https://')) &&
+        _streamServer != null &&
+        !_streamRecoveryInFlight &&
+        !_completedFileRecoveryInFlight &&
+        !_systemPiPHandoff &&
+        !_systemPiPBusy;
+    if (!shouldWatch) {
+      _streamStallTimer?.cancel();
+      _streamStallTimer = null;
+      _streamStallPosition = null;
+      return;
+    }
+    final watchedPosition = _streamStallPosition;
+    if (watchedPosition != null &&
+        (value.position - watchedPosition).abs() >=
+            const Duration(milliseconds: 250)) {
+      _streamStallTimer?.cancel();
+      _streamStallTimer = null;
+      _streamStallPosition = null;
+    }
+    if (_streamStallTimer != null) return;
+    _streamStallPosition = value.position;
+    _streamStallTimer = Timer(_streamStallTimeout, () {
+      _streamStallTimer = null;
+      final activeController = _controller;
+      final activeValue = activeController?.value;
+      final stalledAt = _streamStallPosition;
+      _streamStallPosition = null;
+      if (!mounted ||
+          activeController == null ||
+          activeValue == null ||
+          !activeValue.isBuffering ||
+          stalledAt == null ||
+          (activeValue.position - stalledAt).abs() >=
+              const Duration(milliseconds: 250)) {
+        return;
+      }
+      _recoverAfterStreamFailure(
+        'The loopback video stream stopped making progress.',
+        requireControllerError: false,
+      );
+    });
   }
 
   /// Keep the screen awake while the video is actively playing; release the
@@ -1225,6 +1783,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     final c = _controller;
     if (c == null) return;
     if (c.value.isPlaying) {
+      _lastKnownPlaybackWasPlaying = false;
       await c.pause();
       if (!mounted) return;
       setState(() => _controlsVisible = true);
@@ -1236,6 +1795,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         _completionHandled = false;
       }
       await c.play();
+      _lastKnownPlaybackWasPlaying = true;
       if (!mounted) return;
       setState(() {
         _controlsVisible = true;
@@ -1279,6 +1839,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     await c.seekTo(Duration.zero);
     _completionHandled = false;
     await c.play();
+    _lastKnownPlaybackWasPlaying = true;
     if (!mounted) return;
     setState(() {
       _showCompletionPrompt = false;
@@ -1667,6 +2228,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _releaseVideoOrientation();
     unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
@@ -1675,6 +2237,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     }
     _hideTimer?.cancel();
     _progressRebuildTimer?.cancel();
+    _streamStallTimer?.cancel();
     _scrubPreviewTimer?.cancel();
     _scrubPreviewOverlay?.remove();
     _scrubPreviewOverlay = null;
@@ -1853,8 +2416,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (_showCompletionPrompt) _completionPrompt(),
         if (controlsVisible) _closeButton(),
         if (controlsVisible) _topOverflowButton(),
-        if (_moreMenuVisible) _moreMenuOverlay(),
-        if (_modeMenuVisible) _modeMenuOverlay(),
+        if (_moreMenuVisible)
+          _moreMenuOverlay(
+            onTapOutside: () => _dismissMenusAndControls(scope: scope),
+          ),
+        if (_modeMenuVisible)
+          _modeMenuOverlay(
+            onTapOutside: () => _dismissMenusAndControls(scope: scope),
+          ),
       ],
     );
   }
@@ -1870,7 +2439,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     } else if (fraction > 0.58) {
       unawaited(actions.seekBy(const Duration(seconds: 10)));
     } else {
-      unawaited(actions.togglePlayback());
+      unawaited(_togglePlay());
     }
   }
 
@@ -1924,8 +2493,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     ? _pipTopBar()
                     : _closeButton(),
               if (ready && _controlsVisible) _topOverflowButton(),
-              if (_moreMenuVisible) _moreMenuOverlay(),
-              if (_modeMenuVisible) _modeMenuOverlay(),
+              if (_moreMenuVisible)
+                _moreMenuOverlay(onTapOutside: _dismissMenusAndControls),
+              if (_modeMenuVisible)
+                _modeMenuOverlay(onTapOutside: _dismissMenusAndControls),
             ],
           ),
         ),
@@ -2744,7 +3315,19 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     action();
   }
 
-  Widget _moreMenuOverlay() {
+  void _dismissMenusAndControls({MithkaVideoChromeScope? scope}) {
+    _hideTimer?.cancel();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final hideReusableControls = scope?.snapshot.controlsVisible == true;
+    setState(() {
+      _moreMenuVisible = false;
+      _modeMenuVisible = false;
+      if (scope == null) _controlsVisible = false;
+    });
+    if (hideReusableControls) scope!.actions.toggleControls();
+  }
+
+  Widget _moreMenuOverlay({required VoidCallback onTapOutside}) {
     final media = MediaQuery.of(context);
     final phoneFullscreen = _usesPhoneFullscreen(context);
     final menuWidth = math.min(212.0, media.size.width - 24);
@@ -2758,7 +3341,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               excludeFromSemantics: true,
-              onTap: _closeMoreMenu,
+              onTap: onTapOutside,
             ),
           ),
           PositionedDirectional(
@@ -2895,7 +3478,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _scheduleHide();
   }
 
-  Widget _modeMenuOverlay() {
+  Widget _modeMenuOverlay({required VoidCallback onTapOutside}) {
     final media = MediaQuery.of(context);
     final menuWidth = math.min(220.0, media.size.width - 24);
     final rtl = Directionality.of(context) == TextDirection.rtl;
@@ -2929,7 +3512,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               excludeFromSemantics: true,
-              onTap: _closeModeMenu,
+              onTap: onTapOutside,
             ),
           ),
           CompositedTransformFollower(
@@ -3081,9 +3664,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         ),
         if (_failed)
           Center(
-            child: Text(
-              AppStringKeys.videoPlayerLoadFailed.l10n(context),
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppStringKeys.videoPlayerLoadFailed.l10n(context),
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                ),
+                const SizedBox(height: 10),
+                _FocusableVideoTextButton(
+                  text: AppStringKeys.callsRetry.l10n(context),
+                  label: AppStringKeys.callsRetry.l10n(context),
+                  onPressed: () => unawaited(_retryPlayback()),
+                  size: const Size(96, 40),
+                  fontSize: 14,
+                ),
+              ],
             ),
           )
         else ...[

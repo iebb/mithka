@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../tdlib/json_helpers.dart';
@@ -133,7 +134,10 @@ class CallManager extends ChangeNotifier {
     // A call must not be created/accepted until this resolves. Otherwise a fast
     // tap can send the stale fallback protocol while the native engine is still
     // reporting its actual versions, leaving the peers unable to bring up media.
-    _protocolReady = _loadProtocol();
+    // Asking the engine for its protocol is what dlopens libntgcalls.so (~20 MB
+    // of WebRTC), so it waits for a gap in the scheduler rather than competing
+    // with the rest of the launch for I/O — create/accept still await it.
+    _protocolReady = _warmProtocol();
     // Outbound media signaling → TDLib. (v3/v4 calls negotiate WebRTC over this.)
     _engine.onSignalingData = _sendSignaling;
     _sub = _client.subscribe().listen((update) {
@@ -238,6 +242,21 @@ class CallManager extends ChangeNotifier {
     }
     unawaited(_acceptCall(active));
     return true;
+  }
+
+  /// Loads the protocol in a gap in the scheduler, with a timed backstop.
+  /// An idle task is declined for as long as any transient frame callback is
+  /// pending, so on a screen that animates without stopping it can sit in the
+  /// queue for a long time — and `_createCall`/`_acceptCall` await this future,
+  /// so the wait has to be bounded. Whichever arm arrives first performs the
+  /// load; the other joins the same one rather than querying twice.
+  Future<void> _warmProtocol() {
+    Future<void>? load;
+    Future<void> loadOnce() => load ??= _loadProtocol();
+    return Future.any<void>([
+      SchedulerBinding.instance.scheduleTask<void>(loadOnce, Priority.idle),
+      Future<void>.delayed(const Duration(seconds: 3), loadOnce),
+    ]);
   }
 
   Future<void> _loadProtocol() async {

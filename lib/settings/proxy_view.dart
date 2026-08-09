@@ -16,8 +16,8 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -121,176 +121,87 @@ class _ProxyViewState extends State<ProxyView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.proxyTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: _loading
-                  ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator.adaptive(
-                          strokeWidth: 2,
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                      children: [
-                        _card([_noneRow()]),
-                        if (_proxies.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          _card([
-                            for (var i = 0; i < _proxies.length; i++) ...[
-                              if (i > 0) const InsetDivider(leadingInset: 16),
-                              _proxyRow(_proxies[i]),
-                            ],
-                          ]),
-                        ],
-                        const SizedBox(height: 14),
-                        _card([
-                          _addRow(),
-                          const InsetDivider(leadingInset: 16),
-                          _addFromLinkRow(),
-                        ]),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                          child: Text(
-                            AppStrings.t(AppStringKeys.proxyDescription),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.proxyTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                _card([_noneRow()]),
+                if (_proxies.isNotEmpty) ...[
+                  _card([for (final proxy in _proxies) _proxyRow(proxy)]),
+                ],
+                _card([_addRow(), _addFromLinkRow()]),
+                SettingsNote(
+                  text: AppStrings.t(AppStringKeys.proxyDescription),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
   Widget _card(List<Widget> children) {
-    return SettingsCard(children: children);
+    return SettingsCard.rows(
+      rows: children,
+      dividerInset: AppMetric.settingsTextDividerInset,
+    );
   }
 
   Widget _noneRow() {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SettingsRow(
+      title: AppStrings.t(AppStringKeys.proxyDisabled),
+      showChevron: false,
+      trailing: !_anyEnabled
+          ? AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand)
+          : null,
       onTap: _anyEnabled ? _disable : null,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  AppStrings.t(AppStringKeys.proxyDisabled),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (!_anyEnabled)
-                AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
   Widget _proxyRow(Map<String, dynamic> proxy) {
-    final c = context.colors;
     final details = ProxyConfig.tdProxyDetails(proxy);
     final id = proxy.integer('id') ?? 0;
     final enabled = proxy.boolean('is_enabled') ?? false;
     final server = details.str('server') ?? '';
     final port = details.integer('port') ?? 0;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: enabled ? null : () => _enable(proxy),
-      child: SizedBox(
-        height: 60,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$server:$port',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _typeLabel(proxy),
-                      style: TextStyle(fontSize: 12, color: c.textSecondary),
-                    ),
-                  ],
-                ),
+    return SettingsRow(
+      title: '$server:$port',
+      subtitle: _typeLabel(proxy),
+      showChevron: false,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (enabled) ...[
+            AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
+            const SizedBox(width: AppSpacing.lg),
+          ],
+          AppInteractiveSurface(
+            semanticLabel: AppStringKeys.chatInfoRemove.l10n(context),
+            onTap: () => _remove(id),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xs),
+              child: AppIcon(
+                HeroAppIcons.circleMinus,
+                size: AppIconSize.xl,
+                color: AppTheme.tagRed.withValues(alpha: 0.85),
               ),
-              if (enabled) ...[
-                AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
-                const SizedBox(width: 12),
-              ],
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _remove(id),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: AppIcon(
-                    HeroAppIcons.circleMinus,
-                    size: 20,
-                    color: AppTheme.tagRed.withValues(alpha: 0.85),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
+      onTap: enabled ? null : () => _enable(proxy),
     );
   }
 
   Widget _addRow() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SettingsRow(
+      title: AppStrings.t(AppStringKeys.proxyAddProxy),
+      leading: const SettingsLeadingIcon(icon: HeroAppIcons.plus),
+      titleColor: AppTheme.brand,
+      showChevron: false,
       onTap: _add,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              AppIcon(HeroAppIcons.plus, size: 18, color: AppTheme.brand),
-              const SizedBox(width: 10),
-              Text(
-                AppStrings.t(AppStringKeys.proxyAddProxy),
-                style: TextStyle(fontSize: 16, color: AppTheme.brand),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -354,25 +265,12 @@ class _ProxyViewState extends State<ProxyView> {
   }
 
   Widget _addFromLinkRow() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SettingsRow(
+      title: AppStrings.t(AppStringKeys.proxyAddFromLink),
+      leading: const SettingsLeadingIcon(icon: HeroAppIcons.link),
+      titleColor: AppTheme.brand,
+      showChevron: false,
       onTap: _addFromLink,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              AppIcon(HeroAppIcons.link, size: 18, color: AppTheme.brand),
-              const SizedBox(width: 10),
-              Text(
-                AppStrings.t(AppStringKeys.proxyAddFromLink),
-                style: TextStyle(fontSize: 16, color: AppTheme.brand),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -456,80 +354,67 @@ class _ProxyEditViewState extends State<ProxyEditView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final mtproto = _type == 'mtproto';
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.proxyAddProxy),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _save,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            AppStrings.t(AppStringKeys.accentColorPickerSave),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: _valid
+                  ? AppTheme.brand
+                  : AppTheme.brand.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+      ),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.proxyAddProxy),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _save,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  AppStrings.t(AppStringKeys.accentColorPickerSave),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: _valid
-                        ? AppTheme.brand
-                        : AppTheme.brand.withValues(alpha: 0.4),
-                  ),
-                ),
+          _segments(),
+          const SizedBox(height: 14),
+          _card([
+            _field(
+              _server,
+              AppStrings.t(AppStringKeys.proxyServer),
+              AppStrings.t(AppStringKeys.proxyHostOrIp),
+            ),
+            _field(
+              _port,
+              AppStrings.t(AppStringKeys.proxyPort),
+              '0-65535',
+              number: true,
+            ),
+          ]),
+          const SizedBox(height: 14),
+          if (mtproto)
+            _card([
+              _field(
+                _secret,
+                AppStrings.t(AppStringKeys.proxySecret),
+                'secret',
               ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              children: [
-                _segments(),
-                const SizedBox(height: 14),
-                _card([
-                  _field(
-                    _server,
-                    AppStrings.t(AppStringKeys.proxyServer),
-                    AppStrings.t(AppStringKeys.proxyHostOrIp),
-                  ),
-                  const InsetDivider(leadingInset: 16),
-                  _field(
-                    _port,
-                    AppStrings.t(AppStringKeys.proxyPort),
-                    '0-65535',
-                    number: true,
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                if (mtproto)
-                  _card([
-                    _field(
-                      _secret,
-                      AppStrings.t(AppStringKeys.proxySecret),
-                      'secret',
-                    ),
-                  ])
-                else
-                  _card([
-                    _field(
-                      _username,
-                      AppStrings.t(AppStringKeys.editProfileUsername),
-                      AppStrings.t(AppStringKeys.proxyOptional),
-                    ),
-                    const InsetDivider(leadingInset: 16),
-                    _field(
-                      _password,
-                      AppStrings.t(AppStringKeys.proxyPassword),
-                      AppStrings.t(AppStringKeys.proxyOptional),
-                      secure: true,
-                    ),
-                  ]),
-              ],
-            ),
-          ),
+            ])
+          else
+            _card([
+              _field(
+                _username,
+                AppStrings.t(AppStringKeys.editProfileUsername),
+                AppStrings.t(AppStringKeys.proxyOptional),
+              ),
+              _field(
+                _password,
+                AppStrings.t(AppStringKeys.proxyPassword),
+                AppStrings.t(AppStringKeys.proxyOptional),
+                secure: true,
+              ),
+            ]),
         ],
       ),
     );
@@ -582,7 +467,10 @@ class _ProxyEditViewState extends State<ProxyEditView> {
   }
 
   Widget _card(List<Widget> children) {
-    return SettingsCard(children: children);
+    return SettingsCard.rows(
+      rows: children,
+      dividerInset: AppMetric.settingsTextDividerInset,
+    );
   }
 
   Widget _field(

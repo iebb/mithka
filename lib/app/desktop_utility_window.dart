@@ -536,7 +536,11 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   }
 
   Future<void> _sendRichText(RichTextComposerResult result) async {
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     try {
       if (!await _pickerViewModel.prepareMessageSend() || !mounted) return;
       if (_pickerViewModel.requiresPaidMessage) {
@@ -551,7 +555,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
         if (!confirmed || !mounted) return;
       }
       var sentAny = false;
-      if (await _pickerViewModel.currentUserIsPremium()) {
+      if (await TdClient.shared.activeAccountUsesBotApi() ||
+          await _pickerViewModel.currentUserIsPremium()) {
         for (final segment in result.segments) {
           if (segment.isHtml) {
             final files = await Future.wait(
@@ -601,6 +606,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
                 targetChatId: widget.arguments.chatId!,
                 tdClient: TdClient.shared,
                 files: files,
+                blocks: segment.blocks,
               );
               sentAny = true;
             } else if (segment.attachments.isNotEmpty) {

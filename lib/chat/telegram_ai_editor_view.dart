@@ -9,6 +9,7 @@ import '../components/ui_components.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
+import 'link_handler.dart';
 import 'telegram_ai_service.dart';
 
 Widget _aiTapLabel(
@@ -49,10 +50,12 @@ Widget _aiPrimaryButton(
   required String label,
   required VoidCallback? onTap,
   bool working = false,
+  String? badge,
 }) => Semantics(
+  key: const ValueKey('telegramAiPrimaryAction'),
   button: true,
   enabled: onTap != null,
-  label: label,
+  label: badge == null ? label : '$label $badge',
   child: GestureDetector(
     behavior: HitTestBehavior.opaque,
     onTap: onTap,
@@ -68,13 +71,44 @@ Widget _aiPrimaryButton(
       ),
       child: working
           ? const AppActivityIndicator(size: 20, color: Colors.white)
-          : Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (badge != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.38),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
     ),
   ),
@@ -290,6 +324,7 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   String _style = '';
   String? _expandedStylePromptName;
   bool _working = false;
+  bool _premiumLimitReached = false;
   TelegramAiFormattedText? _result;
 
   bool get _canGenerate => switch (_mode) {
@@ -332,7 +367,18 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       );
       if (mounted) setState(() => _result = result);
     } catch (error) {
-      if (mounted) showToast(context, error.toString());
+      if (!mounted) return;
+      if (isTelegramAiPremiumFlood(error)) {
+        setState(() => _premiumLimitReached = true);
+        showToast(
+          context,
+          '${AppStrings.t(AppStringKeys.telegramAiDailyLimitReached)}\n'
+          '${AppStrings.t(AppStringKeys.telegramAiDailyLimitMessage)}',
+          visibleFor: const Duration(seconds: 4),
+        );
+      } else {
+        showToast(context, error.toString());
+      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -386,8 +432,15 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
                   _aiPrimaryButton(
                     context,
                     label: _primaryLabel,
+                    badge: _premiumLimitReached
+                        ? AppStrings.t(
+                            AppStringKeys.telegramAiIncreaseLimitValue,
+                          )
+                        : null,
                     onTap: _working
                         ? null
+                        : _premiumLimitReached
+                        ? _openPremiumLimit
                         : _result != null
                         ? _submitResult
                         : _canGenerate
@@ -405,6 +458,9 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
   }
 
   String get _primaryLabel {
+    if (_premiumLimitReached) {
+      return AppStrings.t(AppStringKeys.telegramAiIncreaseLimit);
+    }
     if (_result != null) {
       return AppStrings.t(AppStringKeys.composerFormatApply);
     }
@@ -419,6 +475,10 @@ class _TelegramAiEditorViewState extends State<TelegramAiEditorView> {
       ),
       _TelegramAiMode.fix => AppStrings.t(AppStringKeys.telegramAiEditorFix),
     };
+  }
+
+  void _openPremiumLimit() {
+    unawaited(openTelegramPremiumFeatures(context, referrer: 'ai_tools'));
   }
 
   Widget _previewCard() {

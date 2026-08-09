@@ -15,6 +15,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -39,6 +40,7 @@ import 'app/desktop_utility_window.dart';
 import 'app/desktop_video_window.dart';
 import 'app/desktop_window_controls.dart';
 import 'app/global_video_split_host.dart';
+import 'app/handoff_service.dart';
 import 'app/telemetry_config.dart';
 import 'auth/account_store.dart';
 import 'auth/auth_manager.dart';
@@ -115,7 +117,10 @@ Future<void> main(List<String> arguments) async {
       final launch = await DesktopMiniAppWindowService.instance
           .configureChildProxy(miniAppArguments);
       final prefs = await SharedPreferences.getInstance();
-      await _preloadLocaleCatalogue(prefs);
+      await Future.wait<void>([
+        _preloadLocaleCatalogue(prefs),
+        ThemeController.preloadCachedEmojiFont(prefs),
+      ]);
       runApp(DesktopMiniAppWindowApp(launch: launch, prefs: prefs));
       return;
     }
@@ -137,7 +142,10 @@ Future<void> main(List<String> arguments) async {
       );
       final prefs = await SharedPreferences.getInstance();
       DesktopHotkeyController.initializeShared(prefs, replace: true);
-      await _preloadLocaleCatalogue(prefs);
+      await Future.wait<void>([
+        _preloadLocaleCatalogue(prefs),
+        ThemeController.preloadCachedEmojiFont(prefs),
+      ]);
       runApp(
         DesktopUtilityWindowApp(arguments: utilityArguments, prefs: prefs),
       );
@@ -153,7 +161,10 @@ Future<void> main(List<String> arguments) async {
         chatArguments,
       );
       final prefs = await SharedPreferences.getInstance();
-      await _preloadLocaleCatalogue(prefs);
+      await Future.wait<void>([
+        _preloadLocaleCatalogue(prefs),
+        ThemeController.preloadCachedEmojiFont(prefs),
+      ]);
       runApp(DesktopChatWindowApp(arguments: chatArguments, prefs: prefs));
       return;
     }
@@ -190,20 +201,29 @@ Future<void> _bootstrapAndRunApp() async {
   if (isMobile) {
     // Let iPhone and iPad follow every physical orientation. Desktop windows
     // have no orientation/system bars — skip both platform-channel round
-    // trips there.
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // trips there. Nothing below reads the reply, and it only lands once the
+    // Activity has processed it, so it must not sit on the chain to runApp.
+    unawaited(
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]),
+    );
     // Draw under transparent status / navigation bars (edge-to-edge).
     configureImmersiveSystemUI();
   }
   final prefs = await SharedPreferences.getInstance();
-  await _preloadLocaleCatalogue(prefs);
+  // Both must land before the first frame — the catalogue or early widgets
+  // render bare keys, the lock or the chat list flashes before the gate — but
+  // an asset load and a secure-storage read share nothing, so they overlap.
+  await Future.wait<void>([
+    _preloadLocaleCatalogue(prefs),
+    LocalAppLockController.shared.initialize(),
+    ThemeController.preloadCachedEmojiFont(prefs),
+  ]);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
-  await LocalAppLockController.shared.initialize();
   KeywordBlocker.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
   unawaited(SensitiveContentController.shared.initialize());
@@ -211,9 +231,12 @@ Future<void> _bootstrapAndRunApp() async {
   // Preload Telegram blocked-user list so chat filters have data right away.
   unawaited(BlockedUserService.shared.loadBlockedUsers());
   // Firebase + analytics + Sentry tags are several platform-channel round
-  // trips that nothing in the widget tree depends on — initialize them in
-  // parallel with the first frame instead of blocking it.
-  unawaited(_initTelemetry());
+  // trips that nothing in the widget tree depends on. Firebase's own init runs
+  // on the calling platform thread, so hold it until the scheduler is idle
+  // instead of letting it contend with the channel traffic launch needs.
+  unawaited(
+    SchedulerBinding.instance.scheduleTask<void>(_initTelemetry, Priority.idle),
+  );
   final app = MithkaApp(prefs: prefs, auth: auth);
   _runAppWithNonFatalGoogleFonts(app);
 }
@@ -252,8 +275,12 @@ void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
 
 Future<void> _initTelemetry() async {
   try {
-    final hasFirebaseConfiguration = await FirebaseConfiguration.isAvailable;
-    final appVersion = await AppVersion.load();
+    // Two unrelated platform channels — awaiting them in turn costs an extra
+    // round trip on a platform thread that launch is already contending for.
+    final (hasFirebaseConfiguration, appVersion) = await (
+      FirebaseConfiguration.isAvailable,
+      AppVersion.load(),
+    ).wait;
     if (hasFirebaseConfiguration) {
       await Firebase.initializeApp();
       await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
@@ -389,6 +416,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   bool _desktopSettingsReloading = false;
   bool _desktopSettingsReloadQueued = false;
 
+  /// Whether the app has actually been in the background since the last
+  /// resume. Starts true so the first resume of a session still refreshes.
+  bool _wasBackgrounded = true;
+
   @override
   void initState() {
     super.initState();
@@ -399,10 +430,24 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     BusinessQuickReplyService.shared.startPreloading(
       enabled: _theme.quickRepliesEnabled,
     );
-    _theme.loadSelectedEmojiFontIfAvailable();
+    // FontLoader.load registers a multi-MB colour font on the UI thread and
+    // invalidates the font collection, forcing a re-layout of every laid-out
+    // string. Text renders with the platform emoji fallback until it lands,
+    // so it waits for a gap in the scheduler instead of the launch frames.
+    unawaited(
+      SchedulerBinding.instance.scheduleTask<void>(
+        _theme.loadSelectedEmojiFontIfAvailable,
+        Priority.idle,
+      ),
+    );
     _autoDownload.initialize(widget.prefs);
     _auth.start();
     DeepLinkService.shared.start();
+    HandoffService.shared.start(
+      accounts: _accounts,
+      auth: _auth,
+      appLock: _appLock,
+    );
     DesktopMiniAppWindowService.instance.attachMainProxy();
     DesktopChatWindowService.instance.attachMainProxy(
       accountUserIdForSlot: _accountUserIdForSlot,
@@ -412,11 +457,23 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       accountUserIdForSlot: _accountUserIdForSlot,
     );
     unawaited(_ai.initialize());
-    unawaited(_mithkaPro.initialize());
+    // Binding the store and querying its catalogue is platform + network work
+    // that nothing on the launch path reads — the paywall re-initializes it
+    // itself if it opens first.
+    unawaited(
+      SchedulerBinding.instance.scheduleTask<void>(
+        _mithkaPro.initialize,
+        Priority.idle,
+      ),
+    );
     unawaited(_appIcons.initialize());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
     NotificationController.shared.start(widget.prefs);
-    PushDeviceRegistrar.shared.start();
+    // An iOS registerForRemoteNotifications round trip that nothing observes
+    // during launch.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => PushDeviceRegistrar.shared.start(),
+    );
   }
 
   @override
@@ -429,6 +486,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     DesktopMiniAppWindowService.instance.detachMainProxy();
     DesktopChatWindowService.instance.detachMainProxy();
     DesktopUtilityWindowService.instance.detachMainProxy();
+    unawaited(HandoffService.shared.stop());
     _calls.dispose();
     super.dispose();
   }
@@ -517,7 +575,12 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         BusinessQuickReplyService.shared.setPreloadingEnabled(
           nextTheme.quickRepliesEnabled,
         );
-        unawaited(nextTheme.loadSelectedEmojiFontIfAvailable());
+        unawaited(
+          SchedulerBinding.instance.scheduleTask<void>(
+            nextTheme.loadSelectedEmojiFontIfAvailable,
+            Priority.idle,
+          ),
+        );
 
         _autoDownload.initialize(widget.prefs);
         KeywordBlocker.shared.initialize(widget.prefs);
@@ -582,10 +645,19 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appLock.handleLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      TdClient.shared.restartReceiveIsolate();
-      unawaited(_mithkaPro.refresh());
+    if (state != AppLifecycleState.resumed) {
+      // `inactive` on its own is a Control Center glance, the notification
+      // shade or a permission sheet — the app never actually left.
+      if (state != AppLifecycleState.inactive) _wasBackgrounded = true;
+      return;
     }
+    TdClient.shared.restartReceiveIsolate();
+    // Refreshing per glance is a store network round trip for an entitlement
+    // that cannot have moved; purchases arrive through the gateway's own
+    // transaction listener, never through this poll.
+    if (!_wasBackgrounded) return;
+    _wasBackgrounded = false;
+    unawaited(_mithkaPro.refresh());
   }
 
   /// Last [_themeData] result per brightness, with the inputs it was built

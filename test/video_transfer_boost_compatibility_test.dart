@@ -45,11 +45,13 @@ void main() {
 
   test('sparse local files are completion-gated before file playback', () {
     final load = section(
-      'Future<void> _load()',
+      'Future<void> _load({',
       'Future<String?> _completedLocalVideoPath',
     );
     final completionCheck = load.indexOf('_completedLocalVideoPath');
-    final fileControllerInitialization = load.indexOf('_initializeFromFile');
+    final fileControllerInitialization = load.indexOf(
+      '_initializeFileWithSurfaceFallback',
+    );
 
     expect(completionCheck, isNonNegative);
     expect(fileControllerInitialization, greaterThan(completionCheck));
@@ -57,7 +59,7 @@ void main() {
 
   test('incomplete playback retains the loopback range source', () {
     final load = section(
-      'Future<void> _load()',
+      'Future<void> _load({',
       'Future<String?> _completedLocalVideoPath',
     );
     final loopbackStart = load.indexOf('final server = TdVideoStreamServer');
@@ -66,8 +68,14 @@ void main() {
 
     expect(loopbackFallback, contains('_streamServer = server'));
     expect(loopbackFallback, contains('_localPath = uri.toString()'));
-    expect(loopbackFallback, contains('_initializeFromUri(uri)'));
-    expect(loopbackFallback, isNot(contains('_initializeFromFile')));
+    final networkInitialization = loopbackFallback.indexOf(
+      '_initializeFromUri(',
+    );
+    final completedFileFallback = loopbackFallback.lastIndexOf(
+      '_recoverFromCompletedFile',
+    );
+    expect(networkInitialization, isNonNegative);
+    expect(completedFileFallback, greaterThan(networkInitialization));
     expect(loopbackFallback, isNot(contains('prepareNativeFile')));
     expect(loopbackFallback, isNot(contains('Platform.isIOS')));
   });

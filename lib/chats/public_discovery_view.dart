@@ -46,10 +46,18 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
   int _requiredStarCount = 0;
   int? _agreedStarCount;
 
+  /// Whether the last query had any characters (the clear button) and any
+  /// non-blank ones (which empty-state copy to show). Those are the only two
+  /// things `build` reads off the query text.
+  bool _hadQueryText = false;
+  bool _hadQueryTerm = false;
+
   @override
   void initState() {
     super.initState();
     _searchController.text = widget.initialQuery;
+    _hadQueryText = widget.initialQuery.isNotEmpty;
+    _hadQueryTerm = widget.initialQuery.trim().isNotEmpty;
     unawaited(_run(reset: true));
   }
 
@@ -60,11 +68,19 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     super.dispose();
   }
 
-  void _queryChanged(String _) {
+  void _queryChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 320), () {
       if (mounted) unawaited(_run(reset: true));
     });
+    // The field paints its own text, so a keystroke that changes neither of the
+    // two flags changes nothing on screen — and a rebuild here re-lays-out
+    // every result row.
+    final hasText = value.isNotEmpty;
+    final hasTerm = value.trim().isNotEmpty;
+    if (hasText == _hadQueryText && hasTerm == _hadQueryTerm) return;
+    _hadQueryText = hasText;
+    _hadQueryTerm = hasTerm;
     setState(() {});
   }
 
@@ -592,29 +608,38 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
         ),
       );
     }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
-      children: [
-        if (_channels.isNotEmpty)
-          _peerSection(
-            AppStrings.t(
-              searching
-                  ? AppStringKeys.publicDiscoveryPublicChannels
-                  : AppStringKeys.publicDiscoveryRecommendedChannels,
-            ),
-            _channels,
+    // Up to 150 result rows across the three sections, each with an avatar that
+    // resolves and decodes a TDLib file — the old Column built every one of
+    // them, on every keystroke.
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
+          sliver: SliverMainAxisGroup(
+            slivers: [
+              if (_channels.isNotEmpty)
+                _peerSection(
+                  AppStrings.t(
+                    searching
+                        ? AppStringKeys.publicDiscoveryPublicChannels
+                        : AppStringKeys.publicDiscoveryRecommendedChannels,
+                  ),
+                  _channels,
+                ),
+              if (_bots.isNotEmpty) ...[
+                const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                _peerSection(
+                  AppStrings.t(AppStringKeys.publicDiscoveryBotsSection),
+                  _bots,
+                ),
+              ],
+              if (_similarTitle.isNotEmpty) ...[
+                const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                _peerSection(_similarTitle, _similar, tracksSimilarOpen: true),
+              ],
+            ],
           ),
-        if (_bots.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _peerSection(
-            AppStrings.t(AppStringKeys.publicDiscoveryBotsSection),
-            _bots,
-          ),
-        ],
-        if (_similarTitle.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _peerSection(_similarTitle, _similar, tracksSimilarOpen: true),
-        ],
+        ),
       ],
     );
   }
@@ -625,44 +650,71 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     bool tracksSimilarOpen = false,
   }) {
     final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 7),
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
+    const radius = Radius.circular(AppRadius.card);
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: ClipRRect(
+            borderRadius: peers.isEmpty
+                ? const BorderRadius.all(radius)
+                : const BorderRadius.vertical(top: radius),
+            child: ColoredBox(
+              color: c.card,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 7),
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ),
+                  if (peers.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                      child: Text(
+                        AppStrings.t(
+                          _loading
+                              ? AppStringKeys.publicDiscoveryLoading
+                              : AppStringKeys.publicDiscoveryNoSimilarResults,
+                        ),
+                        style: TextStyle(fontSize: 14, color: c.textTertiary),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-          if (peers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-              child: Text(
-                AppStrings.t(
-                  _loading
-                      ? AppStringKeys.publicDiscoveryLoading
-                      : AppStringKeys.publicDiscoveryNoSimilarResults,
-                ),
-                style: TextStyle(fontSize: 14, color: c.textTertiary),
+        ),
+        SliverList.builder(
+          itemCount: peers.length,
+          itemBuilder: (context, index) {
+            final row = ColoredBox(
+              color: c.card,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (index > 0)
+                    Divider(height: 1, indent: 66, color: c.divider),
+                  _peerRow(peers[index], tracksSimilarOpen: tracksSimilarOpen),
+                ],
               ),
-            ),
-          for (var index = 0; index < peers.length; index++) ...[
-            if (index > 0) Divider(height: 1, indent: 66, color: c.divider),
-            _peerRow(peers[index], tracksSimilarOpen: tracksSimilarOpen),
-          ],
-        ],
-      ),
+            );
+            // Only the last row carries the card's bottom corners.
+            if (index != peers.length - 1) return row;
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: radius),
+              child: row,
+            );
+          },
+        ),
+      ],
     );
   }
 

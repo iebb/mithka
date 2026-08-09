@@ -1017,64 +1017,78 @@ class _StickerSetManageViewState extends State<StickerSetManageView> {
           Expanded(
             child: _loading
                 ? const Center(child: AppActivityIndicator(size: 24))
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _manageCard(colors),
-                      const SizedBox(height: 14),
+                // A shrinkWrap grid under a ListView gets unbounded height and
+                // lays out every cell, mounting a decoder per sticker up front.
+                : CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        sliver: SliverToBoxAdapter(child: _manageCard(colors)),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
                       if (_stickers.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Text(
-                            AppStringKeys.stickerStudioEmptySet.l10n(context),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: colors.textSecondary),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          sliver: SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Text(
+                                AppStringKeys.stickerStudioEmptySet.l10n(
+                                  context,
+                                ),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: colors.textSecondary),
+                              ),
+                            ),
                           ),
                         )
                       else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                mainAxisSpacing: 10,
-                                crossAxisSpacing: 10,
-                              ),
-                          itemCount: _stickers.length,
-                          itemBuilder: (_, index) => GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _working
-                                ? null
-                                : () => _stickerActions(index),
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: StickerPreview(
-                                    item: _stickers[index],
-                                    cornerRadius: 10,
-                                  ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          sliver: SliverGrid.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 4,
+                                  mainAxisSpacing: 10,
+                                  crossAxisSpacing: 10,
                                 ),
-                                Positioned(
-                                  right: 2,
-                                  bottom: 2,
-                                  child: Container(
-                                    width: 22,
-                                    height: 22,
-                                    decoration: BoxDecoration(
-                                      color: colors.card.withValues(alpha: 0.9),
-                                      shape: BoxShape.circle,
+                            itemCount: _stickers.length,
+                            itemBuilder: (_, index) => GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _working
+                                  ? null
+                                  : () => _stickerActions(index),
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: StickerPreview(
+                                      item: _stickers[index],
+                                      cornerRadius: 10,
                                     ),
-                                    child: Center(
-                                      child: AppIcon(
-                                        HeroAppIcons.ellipsis,
-                                        size: 15,
-                                        color: colors.textSecondary,
+                                  ),
+                                  Positioned(
+                                    right: 2,
+                                    bottom: 2,
+                                    child: Container(
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        color: colors.card.withValues(
+                                          alpha: 0.9,
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: AppIcon(
+                                          HeroAppIcons.ellipsis,
+                                          size: 15,
+                                          color: colors.textSecondary,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),

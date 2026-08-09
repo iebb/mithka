@@ -48,10 +48,17 @@ class DesktopVideoWindowService {
       _windows.forget(mediaKey);
     }
     _windows.beginOpening(mediaKey);
-    final stream = TdVideoStreamServer(
-      videoId,
-      query: tdVideoStreamQueryForAccount(accountSlot),
-    );
+    final accountLease = TdClient.shared.retainAccountSlot(accountSlot);
+    if (accountLease == null) {
+      _windows.finishOpening(mediaKey);
+      return false;
+    }
+    final stream = TdVideoStreamServer(videoId, query: accountLease.query);
+    Future<void> releaseResources() async {
+      await stream.close();
+      await accountLease.release();
+    }
+
     var handedOffToWindow = false;
     int? openedWindowId;
     try {
@@ -74,7 +81,7 @@ class DesktopVideoWindowService {
         ),
         onClosed: () {
           _windows.forget(mediaKey);
-          return stream.close();
+          return releaseResources();
         },
       );
       if (windowId == null) throw StateError('Window creation failed');
@@ -85,7 +92,7 @@ class DesktopVideoWindowService {
       return false;
     } finally {
       _windows.finishOpening(mediaKey, windowId: openedWindowId);
-      if (!handedOffToWindow) await stream.close();
+      if (!handedOffToWindow) await releaseResources();
     }
   }
 }

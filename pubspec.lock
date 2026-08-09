@@ -5,10 +5,10 @@ packages:
     dependency: transitive
     description:
       name: _flutterfire_internals
-      sha256: "460e9e684edb461d85498fc166ff8416f303f22216838d302d80676b348c6a4c"
+      sha256: "6727cf2ced9b104abca9daa278380be2eca2b98ce33d4b46f11708e387dc6b4d"
       url: "https://pub.dev"
     source: hosted
-    version: "1.3.75"
+    version: "1.3.76"
   app_links:
     dependency: "direct main"
     description:
@@ -101,10 +101,10 @@ packages:
     dependency: transitive
     description:
       name: camera_android_camerax
-      sha256: "30f34108480912ac444c7d3c942005abb8f42baf730bf6f81cedfbfa035b2c21"
+      sha256: "294b02ae027ad9edc98414a25f5e958d2dc6c65e9f102f21e2b36f0f558751eb"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.4+3"
+    version: "0.7.4+4"
   camera_avfoundation:
     dependency: transitive
     description:
@@ -125,10 +125,10 @@ packages:
     dependency: transitive
     description:
       name: camera_web
-      sha256: "1245a480a113437f8d46d19c0fb90cea9db921436d9cf2ba5fb11854a1312693"
+      sha256: "081441bd2f92b5841aa70ff4d6eddfe34078d97f9d085cc9e0f9d0102f145925"
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.5+4"
+    version: "0.3.5+5"
   characters:
     dependency: transitive
     description:
@@ -325,50 +325,50 @@ packages:
     dependency: "direct main"
     description:
       name: firebase_analytics
-      sha256: "47b68927bc4abd6d7b4e2ddfe7c64fe087cca5f96d0c2b8d9d6deb6120c10ad6"
+      sha256: a139dd0ada1c6e0ffd77bfdb877ac9061ffdec7c415e3e06113bdf8844db771f
       url: "https://pub.dev"
     source: hosted
-    version: "12.4.5"
+    version: "12.4.6"
   firebase_analytics_platform_interface:
     dependency: transitive
     description:
       name: firebase_analytics_platform_interface
-      sha256: "36ce5feb5a996381e6411792eaa00e89178e75943e54ac8f14a8296b6e9a3e88"
+      sha256: "448c319ea895da002e43892c7d3f15dccbc3c4c3b81d3e307e37da885ea52bdf"
       url: "https://pub.dev"
     source: hosted
-    version: "6.0.5"
+    version: "6.0.6"
   firebase_analytics_web:
     dependency: transitive
     description:
       name: firebase_analytics_web
-      sha256: c12358983c927093cd40d42feb0cb05c8594d3a9b56ab5ad303bec2b8838d252
+      sha256: "67f287a0df75f27eafdd4a66a41e44f232c3aba713ea4794a1159893665a8bf5"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1+11"
+    version: "0.6.1+12"
   firebase_core:
     dependency: "direct main"
     description:
       name: firebase_core
-      sha256: "6f22d1c62e0c20976f02cd842c7b7cd3c0f561cc2052586411871045c08860c9"
+      sha256: "9478ca6700c02d315c6aba37e206e612317f98bb4f335bb1cbd6e0ce67dcf764"
       url: "https://pub.dev"
     source: hosted
-    version: "4.12.1"
+    version: "4.13.0"
   firebase_core_platform_interface:
     dependency: transitive
     description:
       name: firebase_core_platform_interface
-      sha256: f74d1d6fabccf7743b0144c2ed363d81049e258e22428ebb6fb0faec2fa7d938
+      sha256: e28f9afdcb5b0f0a8ea74ea3b322f5a7592c81cb45dd9d189913bdae08a2089a
       url: "https://pub.dev"
     source: hosted
-    version: "8.0.0"
+    version: "8.1.0"
   firebase_core_web:
     dependency: transitive
     description:
       name: firebase_core_web
-      sha256: ddab99d709b8c27dd47576eb05a1e719e07a2aa45c009a49ae92ac4d2a8ca555
+      sha256: f471a288b0101a45567548322ac4a5ad31e3ecbf87a576dcc0e424e6a11e04ea
       url: "https://pub.dev"
     source: hosted
-    version: "3.9.1"
+    version: "3.10.0"
   fixnum:
     dependency: transitive
     description:
@@ -407,10 +407,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_local_notifications
-      sha256: "9375211fd7df9c070504ac4db7047c7fae857e238291433b770cfe696b5c357a"
+      sha256: "1447ba911c60f2ba3f25dae1af151ec187162566b0f57e37771bf0b400f013ad"
       url: "https://pub.dev"
     source: hosted
-    version: "22.2.0"
+    version: "22.3.0"
   flutter_local_notifications_linux:
     dependency: transitive
     description:
@@ -423,10 +423,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_local_notifications_platform_interface
-      sha256: "945a438a4779f3aca3a948718d8a4048cbe9f9c8c797492c00abd5d39112bf37"
+      sha256: "43c3761d916c9bd3d5c7ebbc44d82f4990329840c0c5d62ad5260cc1b5d399bd"
       url: "https://pub.dev"
     source: hosted
-    version: "12.1.0"
+    version: "12.2.0"
   flutter_local_notifications_web:
     dependency: transitive
     description:
@@ -492,18 +492,18 @@ packages:
     dependency: transitive
     description:
       name: flutter_secure_storage_linux
-      sha256: a5f35ddab43cf5c8215d2feb4ce1957851f28c5c37e6f04335066a0602087bf5
+      sha256: "76fa9c841b3b1619fc5b5bc36efc7d158fa2356f223b6caeb1d0c80a54168546"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.1"
+    version: "3.0.2"
   flutter_secure_storage_platform_interface:
     dependency: transitive
     description:
       name: flutter_secure_storage_platform_interface
-      sha256: "06686df417f34fe9f963ed217b7fdce250e2f637ddd6c374d7eb054549770633"
+      sha256: "788060052712555182aba55ecb5f8b6e5cb9cfe8f776c83249a61fe3ce877db4"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.2"
+    version: "2.0.3"
   flutter_secure_storage_web:
     dependency: transitive
     description:
@@ -574,14 +574,22 @@ packages:
       relative: true
     source: path
     version: "0.37.3+mithka.1"
+  geoclue:
+    dependency: transitive
+    description:
+      name: geoclue
+      sha256: c2a998c77474fc57aa00c6baa2928e58f4b267649057a1c76738656e9dbd2a7f
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   geolocator:
     dependency: "direct main"
     description:
       name: geolocator
-      sha256: ee2212a3df8292ec4c90b91183b8001d3f5a800823c974b570c5f9344ca320dc
+      sha256: "79939537046c9025be47ec645f35c8090ecadb6fe98eba146a0d25e8c1357516"
       url: "https://pub.dev"
     source: hosted
-    version: "14.0.1"
+    version: "14.0.2"
   geolocator_android:
     dependency: transitive
     description:
@@ -598,6 +606,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.14"
+  geolocator_linux:
+    dependency: transitive
+    description:
+      name: geolocator_linux
+      sha256: d64112a205931926f4363bb6bd48f14cb38e7326833041d170615586cd143797
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.4"
   geolocator_platform_interface:
     dependency: transitive
     description:
@@ -622,6 +638,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
+  glob:
+    dependency: transitive
+    description:
+      name: glob
+      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.3"
   google_fonts:
     dependency: "direct main"
     description:
@@ -630,6 +654,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "8.2.1"
+  gsettings:
+    dependency: transitive
+    description:
+      name: gsettings
+      sha256: "1b0ce661f5436d2db1e51f3c4295a49849f03d304003a7ba177d01e3a858249c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.8"
   gtk:
     dependency: transitive
     description:
@@ -871,10 +903,10 @@ packages:
     dependency: "direct main"
     description:
       name: light_compressor_v2
-      sha256: "4ad02779cdcbe7f742decd123f934dff76b9114b632941279a046f24cc9960c1"
+      sha256: "3f628c420ff5bdb2fa87956bb4cf38c6d0323fad6584cb96ead4fbc651048035"
       url: "https://pub.dev"
     source: hosted
-    version: "1.9.0"
+    version: "1.9.1"
   lints:
     dependency: transitive
     description:
@@ -1017,6 +1049,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.3.0"
+  native_toolchain_c:
+    dependency: transitive
+    description:
+      name: native_toolchain_c
+      sha256: f9c168717100ae6d9fee9ffb0be379bf1f8b26b0f6bcbd4fdddcd931993a6a72
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.19.2"
   nested:
     dependency: transitive
     description:
@@ -1189,10 +1229,10 @@ packages:
     dependency: "direct main"
     description:
       name: photo_manager
-      sha256: "4f7de6c9778993c5c54cf1fb2eaa8d5c27c0771dc24a4dfca341aa81aef13fe1"
+      sha256: "2d00a785b501bf1e5f6180bbef772846e767be11d45d11112b63092ef54a419e"
       url: "https://pub.dev"
     source: hosted
-    version: "3.11.0"
+    version: "3.12.0"
   photo_manager_image_provider:
     dependency: transitive
     description:
@@ -1454,6 +1494,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
+  sqlite3:
+    dependency: "direct main"
+    description:
+      name: sqlite3
+      sha256: "64b2c63c8232dd20d14b34105a81ebfd74320442e8451f836179ec89986aa478"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.5.1"
   stack_trace:
     dependency: transitive
     description:

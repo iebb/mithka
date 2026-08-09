@@ -459,6 +459,12 @@ class AiSettingsController extends ChangeNotifier {
 
   AiFeatureModelConfiguration configurationForFeature(AiFeature feature) {
     final candidate = modelCandidateForFeature(feature);
+    return configurationForCandidate(candidate);
+  }
+
+  AiFeatureModelConfiguration configurationForCandidate(
+    AiModelCandidate candidate,
+  ) {
     final provider = candidate.serverProvider;
     Uri? endpoint;
     if (provider != null) {
@@ -488,7 +494,11 @@ class AiSettingsController extends ChangeNotifier {
   }
 
   bool isConfiguredForFeature(AiFeature feature) {
-    final configuration = configurationForFeature(feature);
+    return isConfiguredCandidate(modelCandidateForFeature(feature));
+  }
+
+  bool isConfiguredCandidate(AiModelCandidate candidate) {
+    final configuration = configurationForCandidate(candidate);
     return switch (configuration.candidate.kind) {
       AiModelCandidateKind.applePcc =>
         _pccCapabilities?.available == true &&

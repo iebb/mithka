@@ -29,7 +29,7 @@ Future<void> promptForThemeWallpaper(
 
   final controller = ChatWallpaperController.shared;
   final dark = brightness == Brightness.dark;
-  await controller.loadDefaultWallpaper(dark: dark);
+  await controller.loadDefaultWallpaper(dark: dark, refresh: true);
   final existingDefault = controller.defaultWallpaper(dark: dark);
   final wallpaper = useWallpaper
       ? nextWallpaper

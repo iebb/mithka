@@ -74,132 +74,96 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final profile = _profile;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(
+        AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
+      ),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(
-              AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
-            ),
-            onBack: () => Navigator.of(context).pop(),
+          _networkSelector(),
+          const SizedBox(height: AppSpacing.lg),
+          SettingsCard.rows(
+            rows: [
+              SettingsRow(
+                title: AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsAutomaticDownload,
+                ),
+                value: _networkLabel(_network),
+                showChevron: false,
+                onTap: _controller.isApplying
+                    ? null
+                    : () => unawaited(
+                        _save(profile.copyWith(enabled: !profile.enabled)),
+                      ),
+                trailing: AppSwitch(
+                  value: profile.enabled,
+                  enabled: !_controller.isApplying,
+                  onChanged: (value) =>
+                      unawaited(_save(profile.copyWith(enabled: value))),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              children: [
-                _networkSelector(),
-                const SizedBox(height: 14),
-                _card([
-                  SettingsRow(
-                    title: AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsAutomaticDownload,
-                    ),
-                    value: _networkLabel(_network),
-                    showChevron: false,
-                    onTap: _controller.isApplying
-                        ? null
-                        : () => unawaited(
-                            _save(profile.copyWith(enabled: !profile.enabled)),
-                          ),
-                    trailing: AppSwitch(
-                      value: profile.enabled,
-                      enabled: !_controller.isApplying,
-                      onChanged: (value) =>
-                          unawaited(_save(profile.copyWith(enabled: value))),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys.autoDownloadSettingsFileSizeLimits,
-                  ),
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
+          SettingsSection(
+            titleKey: AppStringKeys.autoDownloadSettingsFileSizeLimits,
+            rows: [
+              _sizeRow(
+                HeroAppIcons.image,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsPhotos),
+                profile.maxPhotoBytes,
+                (value) => _save(profile.copyWith(maxPhotoBytes: value)),
+              ),
+              _sizeRow(
+                HeroAppIcons.video,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsVideos),
+                profile.maxVideoBytes,
+                (value) => _save(profile.copyWith(maxVideoBytes: value)),
+              ),
+              _sizeRow(
+                HeroAppIcons.solidFolder,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsFilesAndMusic),
+                profile.maxOtherBytes,
+                (value) => _save(profile.copyWith(maxOtherBytes: value)),
+              ),
+            ],
+          ),
+          SettingsSection(
+            titleKey: AppStringKeys.autoDownloadSettingsPreloadingAndCalls,
+            rows: [
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsPreloadLargeVideos,
                 ),
-                const SizedBox(height: 6),
-                _card([
-                  _sizeRow(
-                    HeroAppIcons.image,
-                    AppStrings.t(AppStringKeys.autoDownloadSettingsPhotos),
-                    profile.maxPhotoBytes,
-                    (value) => _save(profile.copyWith(maxPhotoBytes: value)),
-                  ),
-                  const Divider(height: 1),
-                  _sizeRow(
-                    HeroAppIcons.video,
-                    AppStrings.t(AppStringKeys.autoDownloadSettingsVideos),
-                    profile.maxVideoBytes,
-                    (value) => _save(profile.copyWith(maxVideoBytes: value)),
-                  ),
-                  const Divider(height: 1),
-                  _sizeRow(
-                    HeroAppIcons.solidFolder,
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsFilesAndMusic,
-                    ),
-                    profile.maxOtherBytes,
-                    (value) => _save(profile.copyWith(maxOtherBytes: value)),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys.autoDownloadSettingsPreloadingAndCalls,
-                  ),
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
+                profile.preloadLargeVideos,
+                (value) => _save(profile.copyWith(preloadLargeVideos: value)),
+              ),
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsPreloadNextAudio,
                 ),
-                const SizedBox(height: 6),
-                _card([
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadLargeVideos,
-                    ),
-                    profile.preloadLargeVideos,
-                    (value) =>
-                        _save(profile.copyWith(preloadLargeVideos: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadNextAudio,
-                    ),
-                    profile.preloadNextAudio,
-                    (value) => _save(profile.copyWith(preloadNextAudio: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadStories,
-                    ),
-                    profile.preloadStories,
-                    (value) => _save(profile.copyWith(preloadStories: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsUseLessDataForCalls,
-                    ),
-                    profile.useLessDataForCalls,
-                    (value) =>
-                        _save(profile.copyWith(useLessDataForCalls: value)),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys
-                        .autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor,
-                  ),
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    color: c.textTertiary,
-                  ),
+                profile.preloadNextAudio,
+                (value) => _save(profile.copyWith(preloadNextAudio: value)),
+              ),
+              _toggle(
+                AppStrings.t(AppStringKeys.autoDownloadSettingsPreloadStories),
+                profile.preloadStories,
+                (value) => _save(profile.copyWith(preloadStories: value)),
+              ),
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsUseLessDataForCalls,
                 ),
-              ],
+                profile.useLessDataForCalls,
+                (value) => _save(profile.copyWith(useLessDataForCalls: value)),
+              ),
+            ],
+          ),
+          SettingsNote(
+            text: AppStrings.t(
+              AppStringKeys
+                  .autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor,
             ),
           ),
         ],
@@ -253,10 +217,6 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     );
   }
 
-  Widget _card(List<Widget> children) {
-    return SettingsCard(children: children);
-  }
-
   Widget _sizeRow(
     AppIconData icon,
     String title,
@@ -265,7 +225,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   ) {
     final selected = _sizes.contains(value) ? value : _closestSize(value);
     return SettingsRow(
-      leading: AppIcon(icon, size: 21, color: AppTheme.brand),
+      leading: SettingsLeadingIcon(icon: icon),
       title: title,
       value: _sizeLabel(selected),
       onTap: _controller.isApplying
@@ -282,14 +242,13 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        final c = sheetContext.colors;
         return SafeArea(
           top: false,
-          child: SettingsCard(
+          child: SettingsCard.rows(
             margin: const EdgeInsets.all(10),
-            children: [
-              for (var index = 0; index < _sizes.length; index++) ...[
-                if (index > 0) Divider(height: 1, color: c.divider),
+            dividerInset: AppMetric.settingsTextDividerInset,
+            rows: [
+              for (var index = 0; index < _sizes.length; index++)
                 SettingsRow(
                   title: _sizeLabel(_sizes[index]),
                   showChevron: false,
@@ -298,7 +257,6 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
                       : null,
                   onTap: () => Navigator.of(sheetContext).pop(_sizes[index]),
                 ),
-              ],
             ],
           ),
         );

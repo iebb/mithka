@@ -271,6 +271,7 @@ abstract final class AppMetric {
   static const double settingsLeadingInset = AppSpacing.xxl;
   static const double settingsTrailingInset = AppSpacing.xl;
   static const double settingsIconDividerInset = 56;
+  static const double settingsTextDividerInset = AppSpacing.xxl;
   static const double maxBannerWidth = 300;
   static const double composerHeaderHeight = 64;
   static const double composerPublishButtonHeight = 38;

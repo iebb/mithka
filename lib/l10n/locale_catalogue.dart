@@ -21,25 +21,24 @@ class LocaleCatalogue {
     required this.countries,
   });
 
+  /// The `.unmodifiable` factories already convert element by element, so no
+  /// `.cast()` view goes in front of them: that would be a second checked pass
+  /// over ~3450 entries on the pre-first-frame path.
   factory LocaleCatalogue.fromJson(Map<String, dynamic> json) {
     return LocaleCatalogue(
       tag: json['locale'] as String,
       appKey: json['appKey'] as String,
       pluralCategories: List<String>.unmodifiable(
-        (json['pluralCategories'] as List).cast<String>(),
+        json['pluralCategories'] as List,
       ),
-      strings: Map<String, String>.unmodifiable(
-        (json['strings'] as Map).cast<String, String>(),
-      ),
+      strings: Map<String, String>.unmodifiable(json['strings'] as Map),
       plurals: Map<String, Map<String, String>>.unmodifiable({
         for (final entry in (json['plurals'] as Map).entries)
           entry.key as String: Map<String, String>.unmodifiable(
-            (entry.value as Map).cast<String, String>(),
+            entry.value as Map,
           ),
       }),
-      countries: Map<String, String>.unmodifiable(
-        (json['countries'] as Map).cast<String, String>(),
-      ),
+      countries: Map<String, String>.unmodifiable(json['countries'] as Map),
     );
   }
 

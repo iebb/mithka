@@ -12,6 +12,7 @@ import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/document_file_icon.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/message_bubble_background.dart';
@@ -46,6 +47,9 @@ void main() {
     TelegramMessageColors? messageColors,
     TelegramCloudTheme? cloudTheme,
     MessageBubbleBackground? bubbleBackground,
+    TranslationDisplayStyle translationDisplayStyle =
+        TranslationDisplayStyle.quote,
+    Set<int> showOriginalTranslationMessageIds = const <int>{},
     ValueChanged<ChatMessage>? onLongPress,
     void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
   }) async {
@@ -82,6 +86,9 @@ void main() {
               incomingBubbleColor: incomingBubbleColor,
               incomingBubbleTextColor: incomingBubbleTextColor,
               messageColors: messageColors,
+              translationDisplayStyle: translationDisplayStyle,
+              showOriginalTranslationMessageIds:
+                  showOriginalTranslationMessageIds,
               onLongPress:
                   onActionMenu ??
                   (onLongPress == null
@@ -117,6 +124,71 @@ void main() {
     incomingTime: Color(0xFF777788),
     outgoingTime: Color(0xFF887788),
   );
+
+  testWidgets('translation display styles replace, reveal, or divide text', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 901,
+      isOutgoing: false,
+      text: 'Original text',
+      date: 1,
+      contentType: 'messageText',
+      translationText: 'Translated text',
+      translationLanguageCode: 'en',
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.translatedOnly,
+    );
+
+    expect(find.text('Original text', findRichText: true), findsNothing);
+    expect(find.text('Translated text', findRichText: true), findsOneWidget);
+    expect(find.byKey(const ValueKey('messageTranslationBlock')), findsNothing);
+    final translatedOnly = tester.widget<RichText>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('messageTranslatedOnlyText')),
+            matching: find.byType(RichText),
+          )
+          .first,
+    );
+    expect(
+      (translatedOnly.text as TextSpan).style?.color,
+      Color.lerp(AppColors.light.bubbleIncomingText, AppTheme.brand, 0.52),
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.translatedOnly,
+      showOriginalTranslationMessageIds: const {901},
+    );
+
+    expect(find.text('Original text', findRichText: true), findsOneWidget);
+    expect(find.text('Translated text', findRichText: true), findsNothing);
+    expect(
+      find.byKey(const ValueKey('messageTranslatedOnlyText')),
+      findsNothing,
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.both,
+    );
+
+    expect(find.text('Original text', findRichText: true), findsOneWidget);
+    expect(find.text('Translated text', findRichText: true), findsOneWidget);
+    final bothBlock = tester.widget<Container>(
+      find.byKey(const ValueKey('messageTranslationBlock')),
+    );
+    final border = (bothBlock.decoration! as BoxDecoration).border! as Border;
+    expect(border.top.width, 0.5);
+    expect(border.left, BorderSide.none);
+  });
 
   testWidgets('secondary mouse click invokes message action callback', (
     tester,

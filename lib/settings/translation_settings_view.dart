@@ -4,8 +4,6 @@
 //  翻译 settings: provider and target language preferences.
 //
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
@@ -16,7 +14,6 @@ import '../components/ui_components.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'ai_settings_controller.dart';
-import 'ai_settings_view.dart';
 import 'ai_translation_prompt.dart';
 import 'translation_api.dart';
 import 'translation_controller.dart';
@@ -60,91 +57,66 @@ class _AiTranslationPromptEditorViewState
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.translationSettingsAiPrompt.l10n(context),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStringKeys.translationSettingsAiPrompt.l10n(context),
-            onBack: () => Navigator.of(context).pop(),
+          Text(
+            AppStringKeys.translationSettingsAiPromptDescription.l10n(context),
+            style: AppTextStyle.footnote(c.textSecondary).copyWith(height: 1.4),
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                Text(
-                  AppStringKeys.translationSettingsAiPromptDescription.l10n(
-                    context,
-                  ),
+          const SizedBox(height: AppSpacing.lg),
+          Semantics(
+            textField: true,
+            label: AppStringKeys.translationSettingsAiPrompt.l10n(context),
+            child: SettingsPanel(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 300),
+                child: TextField(
+                  key: const ValueKey('aiTranslationPromptField'),
+                  controller: _prompt,
+                  minLines: 14,
+                  maxLines: null,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.multiline,
+                  textCapitalization: TextCapitalization.sentences,
                   style: TextStyle(
-                    color: c.textSecondary,
-                    fontSize: 13,
+                    color: c.textPrimary,
+                    fontSize: 14,
                     height: 1.4,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Semantics(
-                  textField: true,
-                  label: AppStringKeys.translationSettingsAiPrompt.l10n(
-                    context,
-                  ),
-                  child: Container(
-                    constraints: const BoxConstraints(minHeight: 300),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: c.card,
-                      borderRadius: BorderRadius.circular(AppRadius.card),
-                      border: Border.all(color: c.divider, width: 0.5),
-                    ),
-                    child: TextField(
-                      key: const ValueKey('aiTranslationPromptField'),
-                      controller: _prompt,
-                      minLines: 14,
-                      maxLines: null,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      keyboardType: TextInputType.multiline,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(
-                        color: c.textPrimary,
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                      cursorColor: AppTheme.brand,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        hintText: defaultAiTranslationPrompt.trim(),
-                        hintStyle: TextStyle(
-                          color: c.textTertiary,
-                          fontSize: 14,
-                          height: 1.4,
-                        ),
-                      ),
+                  cursorColor: AppTheme.brand,
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    hintText: defaultAiTranslationPrompt.trim(),
+                    hintStyle: TextStyle(
+                      color: c.textTertiary,
+                      fontSize: 14,
+                      height: 1.4,
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _actionButton(
-                  label: AppStringKeys.translationSettingsAiPromptSave.l10n(
-                    context,
-                  ),
-                  onTap: _save,
-                ),
-                const SizedBox(height: 8),
-                _actionButton(
-                  label: AppStringKeys.translationSettingsAiPromptReset.l10n(
-                    context,
-                  ),
-                  onTap: () => setState(
-                    () => _prompt.text = defaultAiTranslationPrompt.trim(),
-                  ),
-                  backgroundColor: c.card,
-                  foregroundColor: AppTheme.brand,
-                  borderColor: AppTheme.brand,
-                ),
-              ],
+              ),
             ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _actionButton(
+            label: AppStringKeys.translationSettingsAiPromptSave.l10n(context),
+            onTap: _save,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _actionButton(
+            label: AppStringKeys.translationSettingsAiPromptReset.l10n(context),
+            onTap: () => setState(
+              () => _prompt.text = defaultAiTranslationPrompt.trim(),
+            ),
+            backgroundColor: c.card,
+            foregroundColor: AppTheme.brand,
+            borderColor: AppTheme.brand,
           ),
         ],
       ),
@@ -195,150 +167,114 @@ class _AiTranslationPromptEditorViewState
   }
 }
 
+class _TranslationOptionDescriptor {
+  const _TranslationOptionDescriptor({
+    required this.id,
+    required this.title,
+    required this.icon,
+    required this.available,
+    this.subtitle,
+  });
+
+  final String id;
+  final String title;
+  final String? subtitle;
+  final AppIconData icon;
+  final bool available;
+}
+
 class _TranslationSettingsViewState extends State<TranslationSettingsView> {
   late final Future<Set<TranslationProvider>> _availableProvidersFuture =
       NativeTranslationApi.availableProviders();
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final translation = context.watch<TranslationController>();
     final ai = context.watch<AiSettingsController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.messageActionTranslate),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.messageActionTranslate),
-            onBack: () => Navigator.of(context).pop(),
+          SettingsSection(
+            rows: [
+              SettingsSwitchRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.language),
+                title: AppStrings.t(
+                  AppStringKeys.translationSettingsShowTranslateButton,
+                ),
+                value: translation.enabled,
+                onChanged: (value) => translation.enabled = value,
+              ),
+              SettingsSwitchRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.comments),
+                title: AppStrings.t(
+                  AppStringKeys.translationSettingsTranslateChats,
+                ),
+                value: translation.translateChats,
+                onChanged: (value) => translation.translateChats = value,
+              ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.quoteLeft,
+                ),
+                title: AppStringKeys.translationSettingsDisplayStyle,
+                value: translation.displayStyleLabel,
+                onTap: () => _showDisplayStylePicker(context),
+              ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
+                title: AppStrings.t(
+                  AppStringKeys.translationSettingsTargetLanguage,
+                ),
+                value: translation.targetLanguageLabel,
+                onTap: () => _showTargetPicker(context),
+              ),
+              if (translation.enabled || translation.translateChats)
+                SettingsRow(
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.ban),
+                  title: AppStrings.t(
+                    AppStringKeys.translationSettingsDoNotTranslate,
+                  ),
+                  value: _ignoredLanguagesSummary(translation),
+                  onTap: () => _showIgnoredLanguagesPicker(context),
+                ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.penToSquare,
+                ),
+                title: AppStringKeys.translationSettingsAiPrompt.l10n(context),
+                value:
+                    (translation.hasCustomAiTranslationPrompt
+                            ? AppStringKeys.translationSettingsAiPromptCustom
+                            : AppStringKeys.translationSettingsAiPromptDefault)
+                        .l10n(context),
+                onTap: () => Navigator.of(context).push(
+                  AppPageRoute<void>(
+                    pageBuilder: (_, _, _) => _AiTranslationPromptEditorView(
+                      translation: translation,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                _card(context, [
-                  _switchRow(
-                    context,
-                    icon: HeroAppIcons.language,
-                    title: AppStrings.t(
-                      AppStringKeys.translationSettingsShowTranslateButton,
-                    ),
-                    value: translation.enabled,
-                    onChanged: (v) => translation.enabled = v,
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _switchRow(
-                    context,
-                    icon: HeroAppIcons.comments,
-                    title: AppStrings.t(
-                      AppStringKeys.translationSettingsTranslateChats,
-                    ),
-                    value: translation.translateChats,
-                    onChanged: (v) => translation.translateChats = v,
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                const SettingsSectionHeader(
-                  AppStringKeys.translationSettingsAiSection,
-                ),
-                _card(context, [
-                  _switchRow(
-                    context,
-                    icon: HeroAppIcons.cpuChip,
-                    title: AppStringKeys.translationSettingsAiEnabled.l10n(
-                      context,
-                    ),
-                    value: translation.aiTranslationEnabled,
-                    onChanged: (value) =>
-                        translation.aiTranslationEnabled = value,
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    icon: switch (ai.translationModelCandidate.kind) {
-                      AiModelCandidateKind.applePcc => HeroAppIcons.cloud,
-                      AiModelCandidateKind.appleOnDevice =>
-                        HeroAppIcons.cpuChip,
-                      AiModelCandidateKind.server => HeroAppIcons.cube,
-                      AiModelCandidateKind.telegramCocoon =>
-                        HeroAppIcons.wandMagicSparkles,
-                    },
-                    title: AppStringKeys.aiTranslateUsing.l10n(context),
-                    trailing: _aiModelLabel(
-                      context,
-                      ai.translationModelCandidate,
-                    ),
-                    onTap: () => showAiFeatureModelPicker(
-                      context,
-                      settings: ai,
-                      feature: AiFeature.translation,
-                    ),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    icon: HeroAppIcons.penToSquare,
-                    title: AppStringKeys.translationSettingsAiPrompt.l10n(
-                      context,
-                    ),
-                    trailing:
-                        (translation.hasCustomAiTranslationPrompt
-                                ? AppStringKeys
-                                      .translationSettingsAiPromptCustom
-                                : AppStringKeys
-                                      .translationSettingsAiPromptDefault)
-                            .l10n(context),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _AiTranslationPromptEditorView(
-                          translation: translation,
-                        ),
-                      ),
-                    ),
-                  ),
-                ]),
-                _note(
-                  context,
-                  AppStringKeys.translationSettingsAiDescription.l10n(context),
-                ),
-                const SizedBox(height: 14),
-                const SettingsSectionHeader(
-                  AppStringKeys.translationSettingsStandardSection,
-                ),
-                _card(context, [
-                  _navRow(
-                    context,
-                    icon: HeroAppIcons.server,
-                    title: AppStrings.t(
-                      AppStringKeys.translationSettingsService,
-                    ),
-                    trailing: translation.providerLabel,
-                    onTap: () => _showProviderPicker(context),
-                  ),
-                  const InsetDivider(leadingInset: 56),
-                  _navRow(
-                    context,
-                    icon: HeroAppIcons.globe,
-                    title: AppStrings.t(
-                      AppStringKeys.translationSettingsTargetLanguage,
-                    ),
-                    trailing: translation.targetLanguageLabel,
-                    onTap: () => _showTargetPicker(context),
-                  ),
-                  if (translation.enabled || translation.translateChats) ...[
-                    const InsetDivider(leadingInset: 56),
-                    _navRow(
-                      context,
-                      icon: HeroAppIcons.ban,
-                      title: AppStrings.t(
-                        AppStringKeys.translationSettingsDoNotTranslate,
-                      ),
-                      trailing: _ignoredLanguagesSummary(translation),
-                      onTap: () => _showIgnoredLanguagesPicker(context),
-                    ),
-                  ],
-                ]),
-              ],
+          const SettingsSectionHeader(
+            AppStringKeys.translationSettingsOptionsSection,
+          ),
+          FutureBuilder<Set<TranslationProvider>>(
+            future: _availableProvidersFuture,
+            builder: (context, snapshot) => _translationOptionsPanel(
+              context,
+              translation,
+              ai,
+              snapshot.data ?? const <TranslationProvider>{},
+            ),
+          ),
+          SettingsNote(
+            key: const ValueKey('translation-fallback-description'),
+            text: AppStringKeys.translationSettingsFallbackDescription.l10n(
+              context,
             ),
           ),
         ],
@@ -346,76 +282,233 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
     );
   }
 
-  void _showProviderPicker(BuildContext context) {
+  Widget _translationOptionsPanel(
+    BuildContext context,
+    TranslationController translation,
+    AiSettingsController ai,
+    Set<TranslationProvider> nativeProviders,
+  ) {
+    final options = _translationOptions(
+      context,
+      translation,
+      ai,
+      nativeProviders,
+    );
+    return SettingsPanel(
+      clipBehavior: Clip.antiAlias,
+      child: ReorderableListView.builder(
+        key: const ValueKey('translation-options-list'),
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: options.length,
+        onReorderItem: (oldIndex, newIndex) =>
+            translation.reorderTranslationOptions(
+              options.map((option) => option.id).toList(growable: false),
+              oldIndex,
+              newIndex,
+            ),
+        itemBuilder: (context, index) {
+          final option = options[index];
+          return Column(
+            key: ValueKey('translation-option-${option.id}'),
+            children: [
+              _translationOptionRow(context, translation, option, index),
+              if (index < options.length - 1) const SettingsDivider.text(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  List<_TranslationOptionDescriptor> _translationOptions(
+    BuildContext context,
+    TranslationController translation,
+    AiSettingsController ai,
+    Set<TranslationProvider> nativeProviders,
+  ) {
+    _TranslationOptionDescriptor provider(
+      TranslationProvider value,
+      AppIconData icon, {
+      bool available = true,
+    }) => _TranslationOptionDescriptor(
+      id: TranslationOptionIds.provider(value),
+      title: value.label.l10n(context),
+      icon: icon,
+      available: available,
+      subtitle: available
+          ? null
+          : AppStringKeys.translationSettingsOptionUnavailable.l10n(context),
+    );
+
+    final all = <_TranslationOptionDescriptor>[
+      provider(TranslationProvider.tdlib, HeroAppIcons.paperPlane),
+      for (final candidate in ai.modelCandidatesForFeature(
+        AiFeature.translation,
+      ))
+        _aiTranslationOption(context, ai, candidate),
+      for (final native in nativeProviders)
+        provider(native, HeroAppIcons.cpuChip),
+      provider(TranslationProvider.myMemory, HeroAppIcons.globe),
+      provider(TranslationProvider.lingva, HeroAppIcons.globe),
+      provider(
+        TranslationProvider.libreTranslate,
+        HeroAppIcons.server,
+        available: translation.libreTranslateEndpoint.isNotEmpty,
+      ),
+    ];
+    final byId = {for (final option in all) option.id: option};
+    return translation
+        .orderedTranslationOptions(byId.keys)
+        .map((id) => byId[id]!)
+        .toList(growable: false);
+  }
+
+  _TranslationOptionDescriptor _aiTranslationOption(
+    BuildContext context,
+    AiSettingsController ai,
+    AiModelCandidate candidate,
+  ) {
+    final available = ai.isConfiguredCandidate(candidate);
+    final title = _aiModelLabel(context, candidate);
+    final providerName = candidate.serverProvider?.name.trim() ?? '';
+    return _TranslationOptionDescriptor(
+      id: TranslationOptionIds.ai(candidate.id),
+      title: title,
+      subtitle: available
+          ? (providerName.isEmpty ? null : providerName)
+          : AppStringKeys.translationSettingsOptionUnavailable.l10n(context),
+      icon: switch (candidate.kind) {
+        AiModelCandidateKind.applePcc => HeroAppIcons.cloud,
+        AiModelCandidateKind.appleOnDevice => HeroAppIcons.cpuChip,
+        AiModelCandidateKind.server => HeroAppIcons.cube,
+        AiModelCandidateKind.telegramCocoon => HeroAppIcons.wandMagicSparkles,
+      },
+      available: available,
+    );
+  }
+
+  Widget _translationOptionRow(
+    BuildContext context,
+    TranslationController translation,
+    _TranslationOptionDescriptor option,
+    int index,
+  ) {
+    final colors = context.colors;
+    final enabled = translation.isTranslationOptionEnabled(option.id);
+    return SizedBox(
+      height: option.subtitle == null ? 58 : 68,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+        child: Row(
+          children: [
+            ReorderableDragStartListener(
+              index: index,
+              child: SizedBox(
+                width: 30,
+                height: 44,
+                child: Center(
+                  child: AppIcon(
+                    HeroAppIcons.bars,
+                    size: AppIconSize.lg,
+                    color: colors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            AppIcon(
+              option.icon,
+              size: AppIconSize.lg,
+              color: option.available
+                  ? colors.textSecondary
+                  : colors.textTertiary,
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    option.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: option.available
+                          ? colors.textPrimary
+                          : colors.textTertiary,
+                      fontSize: AppTextSize.body,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (option.subtitle case final subtitle?) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyle.footnote(colors.textTertiary),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            AppSwitch(
+              key: ValueKey('translation-option-switch-${option.id}'),
+              value: enabled,
+              enabled: option.available,
+              semanticLabel: option.title,
+              onChanged: (value) =>
+                  translation.setTranslationOptionEnabled(option.id, value),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDisplayStylePicker(BuildContext context) {
     showAppModalSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
           child: SettingsPanel(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            margin: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
             clipBehavior: Clip.antiAlias,
-            child: FutureBuilder<Set<TranslationProvider>>(
-              future: _availableProvidersFuture,
-              builder: (context, snapshot) {
-                final nativeProviders =
-                    snapshot.data ?? const <TranslationProvider>{};
-                final providers = TranslationProvider.selectableProviders
-                    .where(
-                      (provider) =>
-                          !provider.isNative ||
-                          nativeProviders.contains(provider),
-                    )
-                    .toList();
-                return ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: providers.length,
-                  separatorBuilder: (_, _) =>
-                      const InsetDivider(leadingInset: 56),
-                  itemBuilder: (context, i) {
-                    final provider = providers[i];
-                    final selected = translation.provider == provider;
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        translation.provider = provider;
-                        Navigator.of(context).pop();
-                      },
-                      child: SizedBox(
-                        height: 52,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              _iconBadge(
-                                context,
-                                HeroAppIcons.server,
-                                const Color(0xFF34A2DF),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  provider.label.l10n(context),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: c.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              if (selected)
-                                AppIcon(
-                                  HeroAppIcons.check,
-                                  size: 18,
-                                  color: AppTheme.brand,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: TranslationDisplayStyle.values.length,
+              separatorBuilder: (_, _) => const SettingsDivider(),
+              itemBuilder: (context, index) {
+                final style = TranslationDisplayStyle.values[index];
+                final selected = translation.displayStyle == style;
+                return SettingsRow(
+                  key: ValueKey('translation-display-style-${style.name}'),
+                  title: style.label,
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.quoteLeft,
+                  ),
+                  showChevron: false,
+                  trailing: selected
+                      ? AppIcon(
+                          HeroAppIcons.check,
+                          size: AppIconSize.lg,
+                          color: AppTheme.brand,
+                        )
+                      : null,
+                  onTap: () {
+                    translation.displayStyle = style;
+                    Navigator.of(context).pop();
                   },
                 );
               },
@@ -431,58 +524,39 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
           child: SettingsPanel(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            margin: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
             clipBehavior: Clip.antiAlias,
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: TranslationController.targetLanguages.length,
-              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
+              separatorBuilder: (_, _) => const SettingsDivider(),
               itemBuilder: (context, i) {
                 final language = TranslationController.targetLanguages[i];
                 final selected =
                     translation.targetLanguageCode == language.code;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                return SettingsRow(
+                  title: language.label,
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
+                  showChevron: false,
+                  trailing: selected
+                      ? AppIcon(
+                          HeroAppIcons.check,
+                          size: AppIconSize.lg,
+                          color: AppTheme.brand,
+                        )
+                      : null,
                   onTap: () {
                     translation.targetLanguageCode = language.code;
                     Navigator.of(context).pop();
                   },
-                  child: SizedBox(
-                    height: 52,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          _iconBadge(
-                            context,
-                            HeroAppIcons.globe,
-                            const Color(0xFF34A2DF),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              language.label.l10n(context),
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (selected)
-                            AppIcon(
-                              HeroAppIcons.check,
-                              size: 18,
-                              color: AppTheme.brand,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
                 );
               },
             ),
@@ -529,39 +603,28 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
-        final c = context.colors;
         final translation = context.watch<TranslationController>();
         return SafeArea(
           child: SettingsPanel(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            margin: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
             clipBehavior: Clip.antiAlias,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      AppStringKeys.translationSettingsDoNotTranslate.l10n(
-                        context,
-                      ),
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
-                    ),
-                  ),
+                const SettingsSectionHeader(
+                  AppStringKeys.translationSettingsDoNotTranslate,
                 ),
-                const InsetDivider(),
+                const SettingsDivider.text(),
                 Flexible(
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: TranslationController.targetLanguages.length,
-                    separatorBuilder: (_, _) =>
-                        const InsetDivider(leadingInset: 56),
+                    separatorBuilder: (_, _) => const SettingsDivider(),
                     itemBuilder: (context, i) {
                       final language = TranslationController.targetLanguages[i];
                       final normalized =
@@ -571,42 +634,22 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                       final selected =
                           normalized != null &&
                           translation.ignoredLanguageCodes.contains(normalized);
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
+                      return SettingsRow(
+                        title: language.label,
+                        leading: const SettingsLeadingIcon(
+                          icon: HeroAppIcons.ban,
+                        ),
+                        showChevron: false,
+                        trailing: selected
+                            ? AppIcon(
+                                HeroAppIcons.check,
+                                size: AppIconSize.lg,
+                                color: AppTheme.brand,
+                              )
+                            : null,
                         onTap: () => translation.setIgnoredLanguage(
                           language.code,
                           !selected,
-                        ),
-                        child: SizedBox(
-                          height: 52,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                _iconBadge(
-                                  context,
-                                  HeroAppIcons.ban,
-                                  const Color(0xFF34A2DF),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    language.label.l10n(context),
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: c.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                if (selected)
-                                  AppIcon(
-                                    HeroAppIcons.check,
-                                    size: 18,
-                                    color: AppTheme.brand,
-                                  ),
-                              ],
-                            ),
-                          ),
                         ),
                       );
                     },
@@ -619,109 +662,4 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
       },
     );
   }
-
-  Widget _card(BuildContext context, List<Widget> children) =>
-      SettingsCard(children: children);
-
-  Widget _note(BuildContext context, String text) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(4, 8, 4, 0),
-    child: Text(
-      text,
-      style: TextStyle(
-        color: context.colors.textTertiary,
-        fontSize: 13,
-        height: 1.35,
-      ),
-    ),
-  );
-
-  Widget _switchRow(
-    BuildContext context, {
-    required AppIconData icon,
-    required String title,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    final c = context.colors;
-    return SizedBox(
-      height: 56,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            _iconBadge(context, icon, const Color(0xFF34A2DF)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title.l10n(context),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
-              ),
-            ),
-            const SizedBox(width: 12),
-            AppSwitch(value: value, onChanged: onChanged),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navRow(
-    BuildContext context, {
-    required AppIconData icon,
-    required String title,
-    required String trailing,
-    required VoidCallback? onTap,
-  }) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 56,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _iconBadge(context, icon, const Color(0xFF34A2DF)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: math.min(MediaQuery.sizeOf(context).width * 0.42, 190),
-                child: Text(
-                  trailing.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
-                ),
-              ),
-              const SizedBox(width: 6),
-              if (onTap != null)
-                SizedBox(
-                  width: 14,
-                  child: AppIcon(
-                    HeroAppIcons.chevronRight,
-                    size: 14,
-                    color: c.textTertiary,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _iconBadge(BuildContext context, AppIconData icon, Color color) =>
-      SettingsIconTile(icon: icon, backgroundColor: color);
 }

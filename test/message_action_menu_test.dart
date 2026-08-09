@@ -366,4 +366,89 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('translated-only messages expose the original toggle', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs)
+      ..displayStyle = TranslationDisplayStyle.translatedOnly;
+    MessageAction? selected;
+    final message = ChatMessage(
+      id: 5,
+      isOutgoing: false,
+      text: 'Original',
+      date: 1,
+      contentType: 'messageText',
+      translationText: 'Translated',
+      translationLanguageCode: 'en',
+    );
+
+    Future<void> pump({required bool showingOriginal}) => tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MessageActionMenu(
+              message: message,
+              isPinned: false,
+              showingOriginalTranslation: showingOriginal,
+              onSelect: (action) => selected = action,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await pump(showingOriginal: false);
+    expect(find.text('Display original'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('message-action-displayOriginal')),
+    );
+    expect(selected, MessageAction.displayOriginal);
+
+    await pump(showingOriginal: true);
+    expect(find.text('Display translation'), findsOneWidget);
+    expect(find.text('Display original'), findsNothing);
+  });
+
+  testWidgets('translation action can be hidden when no provider is usable', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'translation.enabled': true});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+    addTearDown(translation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageActionMenu(
+              message: ChatMessage(
+                id: 9,
+                isOutgoing: false,
+                text: 'Bot message',
+                date: 1,
+                contentType: 'messageText',
+              ),
+              isPinned: false,
+              allowTranslation: false,
+              onSelect: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('message-action-translate')),
+      findsNothing,
+    );
+  });
 }

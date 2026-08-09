@@ -131,6 +131,104 @@ void main() {
     expect(() => richMessageInputContent(const []), throwsArgumentError);
   });
 
+  test('builds direct Bot API rich content without a relay chat', () {
+    final content =
+        botApiDirectRichMessageInputContent('<h2>Hello</h2>', const [
+          RichMessageSendFile(
+            id: 'cover',
+            attachment: OutgoingAttachment(
+              path: '/tmp/cover.jpg',
+              kind: OutgoingAttachmentKind.photo,
+            ),
+          ),
+        ]);
+
+    expect(content['@type'], 'inputMessageRichMessage');
+    final rich = content['rich_message'] as Map;
+    expect(rich['html'], '<h2>Hello</h2>');
+    expect(((rich['media'] as List).single as Map)['id'], 'cover');
+    expect((content['bot_api_files'] as List).single, {
+      'field': 'rich_media_0',
+      'path': '/tmp/cover.jpg',
+    });
+    expect(content, isNot(contains('relay')));
+  });
+
+  test('serializes button rows through Bot API structured rich blocks', () {
+    final content = botApiDirectRichMessageInputContent(
+      '<p>Hello</p>',
+      const [],
+      blocks: const [
+        {
+          '@type': 'inputPageBlockParagraph',
+          'text': {'@type': 'richTextBold', 'text': 'Hello'},
+        },
+        {
+          '@type': 'inputPageBlockButtonRow',
+          'align': {'@type': 'pageBlockHorizontalAlignmentCenter'},
+          'buttons': [
+            {
+              '@type': 'inlineButton',
+              'text': {'@type': 'richTextPlain', 'text': 'Open Mithka'},
+              'style': {'@type': 'buttonStyleSuccess'},
+              'type': {
+                '@type': 'inlineKeyboardButtonTypeUrl',
+                'url': 'https://mithka.app',
+              },
+            },
+          ],
+        },
+      ],
+    );
+
+    final rich = content['rich_message']! as Map<String, dynamic>;
+    expect(rich, isNot(contains('html')));
+    final blocks = rich['blocks']! as List;
+    expect(blocks, hasLength(2));
+    expect(blocks.first, {
+      'type': 'paragraph',
+      'text': {'type': 'bold', 'text': 'Hello'},
+    });
+    final row = blocks.last as Map<String, dynamic>;
+    expect(row['type'], 'button_row');
+    expect(row['align'], 'center');
+    expect((row['buttons'] as List).single, {
+      'text': 'Open Mithka',
+      'style': 'success',
+      'url': 'https://mithka.app',
+    });
+  });
+
+  test('keeps inline rich-text buttons out of the HTML fallback', () {
+    final rich = botApiRichMessagePayload(
+      '<p>Open</p>',
+      const [],
+      blocks: const [
+        {
+          '@type': 'inputPageBlockParagraph',
+          'text': {
+            '@type': 'richTextButton',
+            'button': {
+              '@type': 'inlineButton',
+              'text': {'@type': 'richTextPlain', 'text': 'Open'},
+              'type': {
+                '@type': 'inlineKeyboardButtonTypeUrl',
+                'url': 'https://example.com',
+              },
+            },
+          },
+        },
+      ],
+    );
+
+    expect(rich, isNot(contains('html')));
+    final paragraph = (rich['blocks'] as List).single as Map<String, dynamic>;
+    expect(paragraph['text'], {
+      'type': 'button',
+      'button': {'text': 'Open', 'url': 'https://example.com'},
+    });
+  });
+
   test('converts formatted entities into TDLib RichText nodes', () {
     final richText = formattedTextToRichText('bold link @user', const [
       {

@@ -172,6 +172,10 @@ class GroupCallController extends ChangeNotifier {
   StreamSubscription? _subscription;
   final Map<String, GroupCallParticipant> _participants = {};
   final List<String> _displayOrder = [];
+  List<GroupCallParticipant>? _participantsCache;
+  String? _mediaDescriptionSignature;
+  String? _videoChannelSignature;
+  List<String> _systemMemberNames = const [];
   Map<String, dynamic>? _selfSender;
   String _inviteHash = '';
   String _unboundInviteLink = '';
@@ -183,7 +187,11 @@ class GroupCallController extends ChangeNotifier {
   bool useFrontCamera = true;
   bool isMinimized = false;
 
+  /// Cached until the roster changes: this runs on every build and on every
+  /// participant update, and it allocates three lists each time.
   List<GroupCallParticipant> get participants {
+    final cached = _participantsCache;
+    if (cached != null) return cached;
     final ordered = <GroupCallParticipant>[];
     for (final key in _displayOrder) {
       final participant = _participants[key];
@@ -195,7 +203,9 @@ class GroupCallController extends ChangeNotifier {
             .toList()
           ..sort((a, b) => b.order.compareTo(a.order));
     ordered.addAll(missing);
-    return ordered;
+    return _participantsCache = List<GroupCallParticipant>.unmodifiable(
+      ordered,
+    );
   }
 
   void start() {
@@ -508,6 +518,7 @@ class GroupCallController extends ChangeNotifier {
     if (from < 0 || to < 0) return;
     final value = _displayOrder.removeAt(from);
     _displayOrder.insert(to, value);
+    _participantsCache = null;
     notifyListeners();
   }
 
@@ -577,7 +588,8 @@ class GroupCallController extends ChangeNotifier {
       'input_group_call': {'@type': 'inputGroupCallLink', 'link': link},
       'limit': 100,
     });
-    final senders = response.objects('participant_ids') ?? const [];
+    final senders =
+        response.objects('participant_ids') ?? const <Map<String, dynamic>>[];
     final keep = <String>{};
     for (final sender in senders) {
       final key = GroupCallParticipant.senderKey(sender);
@@ -598,10 +610,13 @@ class GroupCallController extends ChangeNotifier {
       );
       _participants[key] = participant;
       if (!_displayOrder.contains(key)) _displayOrder.add(key);
-      unawaited(_resolveParticipant(participant));
+      // The name/photo carried over above is all this resolves; re-querying it
+      // on every refresh costs a TDLib round trip and a second notification.
+      if (participant.name.isEmpty) unawaited(_resolveParticipant(participant));
     }
     _participants.removeWhere((key, _) => !keep.contains(key));
     _displayOrder.removeWhere((key) => !keep.contains(key));
+    _participantsCache = null;
     _updateSystemMembers();
     notifyListeners();
   }
@@ -613,6 +628,7 @@ class GroupCallController extends ChangeNotifier {
     if (parsed.order.isEmpty) {
       _participants.remove(parsed.key);
       _displayOrder.remove(parsed.key);
+      _participantsCache = null;
       _syncMediaSubscriptions();
       _updateSystemMembers();
       notifyListeners();
@@ -626,23 +642,42 @@ class GroupCallController extends ChangeNotifier {
     _displayOrder.add(parsed.key);
     _ensureDisplayOrder();
     _syncMediaSubscriptions();
-    unawaited(_resolveParticipant(parsed));
+    // Speaking / mute / video updates arrive constantly and carry no name, and
+    // the previous one was copied forward above — resolving again would cost a
+    // TDLib query plus a second notifyListeners per update.
+    if (parsed.name.isEmpty) unawaited(_resolveParticipant(parsed));
     _updateSystemMembers();
     notifyListeners();
   }
 
+  /// Both engine calls re-marshal their whole list over the platform channel,
+  /// and this runs on every participant update — where a speaking, mute or
+  /// volume blip leaves both sets identical. The signatures skip the object
+  /// construction and the encode entirely when nothing subscribable changed.
   void _syncMediaSubscriptions() {
-    final mediaDescriptions = _participants.values
+    final audioParticipants = _participants.values
         .where((participant) => participant.audioSourceId != 0)
-        .map(
-          (participant) => GroupCallMediaChannelDescription(
-            audioSourceId: participant.audioSourceId,
-            userId: _participantId(participant),
-          ),
-        )
-        .where((description) => description.userId != 0)
         .toList(growable: false);
-    _engine.setMediaChannelDescriptions(mediaDescriptions);
+    final descriptionSignature = audioParticipants
+        .map(
+          (participant) =>
+              '${participant.audioSourceId}:${_participantId(participant)}',
+        )
+        .join(',');
+    if (descriptionSignature != _mediaDescriptionSignature) {
+      _mediaDescriptionSignature = descriptionSignature;
+      _engine.setMediaChannelDescriptions(
+        audioParticipants
+            .map(
+              (participant) => GroupCallMediaChannelDescription(
+                audioSourceId: participant.audioSourceId,
+                userId: _participantId(participant),
+              ),
+            )
+            .where((description) => description.userId != 0)
+            .toList(growable: false),
+      );
+    }
 
     final videoParticipants = _participants.values
         .where(
@@ -658,19 +693,38 @@ class GroupCallController extends ChangeNotifier {
       <= 4 => GroupCallVideoQuality.medium,
       _ => GroupCallVideoQuality.thumbnail,
     };
-    final channels = videoParticipants
-        .map(
-          (participant) => GroupCallVideoChannel(
-            audioSourceId: participant.audioSourceId,
-            userId: _participantId(participant),
-            endpointId: participant.videoEndpointId!,
-            sourceGroups: participant.videoSourceGroups,
-            maxQuality: maxQuality,
-          ),
-        )
-        .where((channel) => channel.userId != 0)
-        .toList(growable: false);
-    _engine.setRequestedVideoChannels(channels);
+    // maxQuality is derived from the participant count, so it belongs in the
+    // key: a 4→5 transition changes the request without changing the endpoints.
+    // audioSourceId is in it for the same reason — it is marshalled with every
+    // channel, so a participant that re-joins on a new audio source has to be
+    // re-sent even when its endpoint and source groups are unchanged.
+    final channelSignature = [
+      maxQuality.name,
+      for (final participant in videoParticipants)
+        [
+          participant.videoEndpointId,
+          participant.audioSourceId,
+          _participantId(participant),
+          for (final group in participant.videoSourceGroups)
+            '${group.semantics}=${group.sourceIds.join('.')}',
+        ].join(':'),
+    ].join(',');
+    if (channelSignature == _videoChannelSignature) return;
+    _videoChannelSignature = channelSignature;
+    _engine.setRequestedVideoChannels(
+      videoParticipants
+          .map(
+            (participant) => GroupCallVideoChannel(
+              audioSourceId: participant.audioSourceId,
+              userId: _participantId(participant),
+              endpointId: participant.videoEndpointId!,
+              sourceGroups: participant.videoSourceGroups,
+              maxQuality: maxQuality,
+            ),
+          )
+          .where((channel) => channel.userId != 0)
+          .toList(growable: false),
+    );
   }
 
   int _participantId(GroupCallParticipant participant) =>
@@ -716,19 +770,24 @@ class GroupCallController extends ChangeNotifier {
             .toList()
           ..sort((a, b) => b.order.compareTo(a.order));
     _displayOrder.addAll(missing.map((participant) => participant.key));
+    _participantsCache = null;
   }
 
   void _updateSystemMembers() {
     final current = session;
     if (current == null) return;
+    // CallKit only: LiveCommunicationBridge.updateMembers returns immediately
+    // off iOS, so everywhere else this walked the roster for nobody. It also
+    // runs up to three times per participant update, hence the name memo.
+    if (!Platform.isIOS) return;
+    final names = participants
+        .map((participant) => participant.name)
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (listEquals(names, _systemMemberNames)) return;
+    _systemMemberNames = names;
     unawaited(
-      LiveCommunicationBridge.instance.updateMembers(
-        current.systemUuid,
-        participants
-            .map((participant) => participant.name)
-            .where((name) => name.isNotEmpty)
-            .toList(),
-      ),
+      LiveCommunicationBridge.instance.updateMembers(current.systemUuid, names),
     );
   }
 
@@ -743,6 +802,10 @@ class GroupCallController extends ChangeNotifier {
     session = null;
     _participants.clear();
     _displayOrder.clear();
+    _participantsCache = null;
+    _mediaDescriptionSignature = null;
+    _videoChannelSignature = null;
+    _systemMemberNames = const [];
     _selfSender = null;
     _inviteHash = '';
     _unboundInviteLink = '';

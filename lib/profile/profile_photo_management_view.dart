@@ -217,34 +217,43 @@ class _ProfilePhotoManagementViewState
           Expanded(
             child: _loading
                 ? const Center(child: AppActivityIndicator(size: 24))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
-                    children: [
-                      _actionCard(),
-                      const SizedBox(height: 18),
-                      Text(
-                        AppStrings.t(
-                          AppStringKeys.profilePhotoManagementPhotoHistory,
-                        ).toUpperCase(),
-                        style: AppTextStyle.caption(colors.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-                      if (_photos.isEmpty)
-                        _emptyCard()
-                      else
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 4,
-                                crossAxisSpacing: 4,
-                              ),
-                          itemCount: _photos.length,
-                          itemBuilder: (context, index) =>
-                              _photoTile(_photos[index]),
+                // A shrinkWrap grid under a ListView gets unbounded height and
+                // lays out every cell, so all 100 photos used to decode at once.
+                : CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
+                        sliver: SliverList.list(
+                          children: [
+                            _actionCard(),
+                            const SizedBox(height: 18),
+                            Text(
+                              AppStrings.t(
+                                AppStringKeys
+                                    .profilePhotoManagementPhotoHistory,
+                              ).toUpperCase(),
+                              style: AppTextStyle.caption(colors.textSecondary),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                         ),
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+                        sliver: _photos.isEmpty
+                            ? SliverToBoxAdapter(child: _emptyCard())
+                            : SliverGrid.builder(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 3,
+                                      mainAxisSpacing: 4,
+                                      crossAxisSpacing: 4,
+                                    ),
+                                itemCount: _photos.length,
+                                itemBuilder: (context, index) =>
+                                    _photoTile(_photos[index]),
+                              ),
+                      ),
                     ],
                   ),
           ),

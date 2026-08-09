@@ -27,6 +27,11 @@ enum MessageAction {
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
   suggestOffer(HeroAppIcons.penToSquare, AppStringKeys.suggestedPostEditOffer),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
+  displayOriginal(HeroAppIcons.eye, AppStringKeys.messageActionDisplayOriginal),
+  displayTranslation(
+    HeroAppIcons.language,
+    AppStringKeys.messageActionDisplayTranslation,
+  ),
   reply(HeroAppIcons.quoteLeft, AppStringKeys.chatInputBarReply),
   replies(HeroAppIcons.comments, AppStringKeys.messageActionReplies),
   forward(HeroAppIcons.share, AppStringKeys.messageActionForward),
@@ -168,15 +173,19 @@ class MessageActionMenu extends StatelessWidget {
     required this.isPinned,
     required this.onSelect,
     this.allowForwarding = true,
+    this.allowTranslation = true,
     this.allowSuggestedPostOffer = false,
     this.source = MessageActionSource.normal,
+    this.showingOriginalTranslation = false,
   });
   final ChatMessage message;
   final bool isPinned;
   final ValueChanged<MessageAction> onSelect;
   final bool allowForwarding;
+  final bool allowTranslation;
   final bool allowSuggestedPostOffer;
   final MessageActionSource source;
+  final bool showingOriginalTranslation;
 
   static const _surface = Color(0xFF2C2C2E);
   static const _destructive = Color(0xFFFF6961);
@@ -251,7 +260,7 @@ class MessageActionMenu extends StatelessWidget {
 
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
-  List<MessageAction> _actions(bool translationEnabled) {
+  List<MessageAction> _actions(TranslationController translation) {
     if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
     if (_hasCopyableText) {
@@ -259,7 +268,17 @@ class MessageActionMenu extends StatelessWidget {
       if (message.isOutgoing && _isEditableMessage) {
         result.add(MessageAction.edit);
       }
-      if (translationEnabled) result.add(MessageAction.translate);
+      if (translation.displayStyle == TranslationDisplayStyle.translatedOnly &&
+          (message.translationText?.trim().isNotEmpty ?? false)) {
+        result.add(
+          showingOriginalTranslation
+              ? MessageAction.displayTranslation
+              : MessageAction.displayOriginal,
+        );
+      }
+      if (translation.enabled && allowTranslation) {
+        result.add(MessageAction.translate);
+      }
     }
     if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
       result.add(MessageAction.edit);
@@ -306,14 +325,14 @@ class MessageActionMenu extends StatelessWidget {
       return preferredHeight;
     }
     return desktopHeightForActionCount(
-      _actions(context.read<TranslationController>().enabled).length,
+      _actions(context.read<TranslationController>()).length,
       availableHeight: MediaQuery.sizeOf(context).height - 24,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final actions = _actions(context.watch<TranslationController>().enabled);
+    final actions = _actions(context.watch<TranslationController>());
     if (isDesktopTargetPlatform(Theme.of(context).platform)) {
       return _DesktopActionList(actions: actions, onSelect: onSelect);
     }

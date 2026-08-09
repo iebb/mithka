@@ -10,6 +10,9 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    HandoffBridge.shared.register(
+      messenger: flutterViewController.engine.binaryMessenger
+    )
     DesktopClipboardImagesPlugin.register(
       with: flutterViewController.registrar(forPlugin: "DesktopClipboardImagesPlugin")
     )

@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
+import '../components/ui_components.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 
@@ -76,9 +77,11 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
+    return SettingsPageScaffold(
+      title: AppStringKeys.privacyScanLoginQr,
+      onBack: () => Navigator.of(context).pop(false),
+      constrainContent: false,
+      child: Stack(
         children: [
           Positioned.fill(
             child: MobileScanner(
@@ -114,43 +117,37 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
             ),
           ),
           Positioned.fill(child: _ScannerOverlay(accepting: _accepting)),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Row(
-                children: [
-                  _CircleButton(
-                    icon: HeroAppIcons.xmark,
-                    onTap: () => Navigator.of(context).pop(false),
+          Positioned(
+            top: AppSpacing.lg,
+            right: AppSpacing.xxl,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ValueListenableBuilder<MobileScannerState>(
+                  valueListenable: _controller,
+                  builder: (context, state, _) => _CircleButton(
+                    icon: HeroAppIcons.camera,
+                    onTap: !_accepting && state.isInitialized && state.isRunning
+                        ? _switchCamera
+                        : null,
                   ),
-                  const Spacer(),
-                  ValueListenableBuilder<MobileScannerState>(
-                    valueListenable: _controller,
-                    builder: (context, state, _) => _CircleButton(
-                      icon: HeroAppIcons.camera,
-                      onTap:
-                          !_accepting && state.isInitialized && state.isRunning
-                          ? _switchCamera
-                          : null,
-                    ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                ValueListenableBuilder<MobileScannerState>(
+                  valueListenable: _controller,
+                  builder: (context, state, _) => _CircleButton(
+                    icon: HeroAppIcons.flash,
+                    active: state.torchState == TorchState.on,
+                    onTap:
+                        _accepting ||
+                            !state.isInitialized ||
+                            !state.isRunning ||
+                            state.torchState == TorchState.unavailable
+                        ? null
+                        : _toggleTorch,
                   ),
-                  const SizedBox(width: 12),
-                  ValueListenableBuilder<MobileScannerState>(
-                    valueListenable: _controller,
-                    builder: (context, state, _) => _CircleButton(
-                      icon: HeroAppIcons.flash,
-                      active: state.torchState == TorchState.on,
-                      onTap:
-                          _accepting ||
-                              !state.isInitialized ||
-                              !state.isRunning ||
-                              state.torchState == TorchState.unavailable
-                          ? null
-                          : _toggleTorch,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           Positioned(

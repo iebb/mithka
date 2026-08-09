@@ -37,9 +37,21 @@ class AiChatTranslationService {
     String instructions = defaultAiTranslationPrompt,
     TelegramAiService? telegramAi,
   }) {
-    final configuration = settings.configurationForFeature(
-      AiFeature.translation,
+    return AiChatTranslationService.fromCandidate(
+      settings,
+      settings.translationModelCandidate,
+      instructions: instructions,
+      telegramAi: telegramAi,
     );
+  }
+
+  factory AiChatTranslationService.fromCandidate(
+    AiSettingsController settings,
+    AiModelCandidate candidate, {
+    String instructions = defaultAiTranslationPrompt,
+    TelegramAiService? telegramAi,
+  }) {
+    final configuration = settings.configurationForCandidate(candidate);
     if (configuration.candidate.kind == AiModelCandidateKind.telegramCocoon) {
       if (telegramAi == null) {
         throw StateError('Telegram Cocoon is unavailable for this chat.');

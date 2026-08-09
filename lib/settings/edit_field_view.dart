@@ -9,6 +9,8 @@
 import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
+import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 
@@ -59,15 +61,32 @@ class _EditFieldViewState extends State<EditFieldView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: widget.title,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
+        onTap: _save,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Text(
+            AppStrings.t(AppStringKeys.accentColorPickerSave),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.brand,
+            ),
+          ),
+        ),
+      ),
+      child: SettingsListView(
         children: [
-          _header(c),
-          const SizedBox(height: 14),
-          Container(
-            color: c.card,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          SettingsPanel(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xxl,
+              vertical: AppSpacing.xl,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -124,82 +143,20 @@ class _EditFieldViewState extends State<EditFieldView> {
               ],
             ),
           ),
-          if (widget.maxLength != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _controller,
-                  builder: (context, value, _) => Text(
-                    '${value.text.characters.length}/${widget.maxLength}',
-                    style: TextStyle(fontSize: 12, color: c.textTertiary),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _header(AppColors c) {
-    return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      decoration: BoxDecoration(
-        color: c.navBar,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: SizedBox(
-        height: 48,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: AppIcon(
-                    HeroAppIcons.chevronLeft,
-                    size: 22,
-                    color: c.textPrimary,
-                  ),
-                ),
-              ),
-            ),
-            Text(
-              widget.title.l10n(context),
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary,
-              ),
-            ),
+          if (widget.maxLength != null) ...[
+            const SizedBox(height: AppSpacing.sm),
             Align(
               alignment: Alignment.centerRight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _save,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    AppStrings.t(
-                      AppStringKeys.accentColorPickerSave,
-                    ).l10n(context),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.brand,
-                    ),
-                  ),
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _controller,
+                builder: (context, value, _) => Text(
+                  '${value.text.characters.length}/${widget.maxLength}',
+                  style: TextStyle(fontSize: 12, color: c.textTertiary),
                 ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
