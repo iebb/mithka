@@ -7,6 +7,59 @@ import XCTest
 
 class RunnerTests: XCTestCase {
 
+  func testHandoffPayloadContainsOnlyNavigationIdentity() throws {
+    let payload = try XCTUnwrap(
+      HandoffPayload(
+        arguments: [
+          "version": 1,
+          "activityId": "handoff-test",
+          "accountUserId": 42,
+          "chatId": -100_123,
+          "messageId": 88,
+        ]
+      )
+    )
+
+    XCTAssertEqual(payload.accountUserID, 42)
+    XCTAssertEqual(payload.chatID, -100_123)
+    XCTAssertEqual(payload.messageID, 88)
+    XCTAssertNil(payload.dictionary["sessionString"])
+  }
+
+  func testHandoffPayloadRejectsZeroAndFutureValues() {
+    XCTAssertNil(
+      HandoffPayload(
+        arguments: [
+          "version": 2,
+          "activityId": "future",
+          "accountUserId": 42,
+          "chatId": 7,
+        ]
+      )
+    )
+    XCTAssertNil(
+      HandoffPayload(
+        arguments: [
+          "version": 1,
+          "activityId": "invalid",
+          "accountUserId": 42,
+          "chatId": 0,
+        ]
+      )
+    )
+    XCTAssertNil(
+      HandoffPayload(
+        arguments: [
+          "version": 1,
+          "activityId": "temporary-message",
+          "accountUserId": 42,
+          "chatId": 7,
+          "messageId": -1,
+        ]
+      )
+    )
+  }
+
   @available(iOS 15.0, *)
   func testCommunicationNotificationUsesChatAvatarAndTapPayload() throws {
     let iconURL = FileManager.default.temporaryDirectory

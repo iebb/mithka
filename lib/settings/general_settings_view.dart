@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -71,77 +70,50 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.settingsDataAndStorage,
-            onBack: widget.showBackButton && Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  _storageCard(),
-                  const SizedBox(height: 14),
-                  _autoDownloadCard(),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.settingsDataAndStorage,
+      showBackButton: widget.showBackButton,
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(children: [_storageCard(), _autoDownloadCard()]),
     );
   }
 
   Widget _autoDownloadCard() {
     final auto = context.watch<AutoDownloadMediaController>();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SettingsSectionHeader(AppStringKeys.generalAutoDownloadMedia),
-        _card([
-          _toggleRowWithSubtitle(
-            HeroAppIcons.mobileScreenButton,
-            const Color(0xFF34C759),
-            AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
-            auto.mobileHighResImages
-                ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
-                : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
-            auto.mobileHighResImages,
-            auto.isApplying,
-            (value) =>
-                _setAutoDownload(() => auto.setMobileHighResImages(value)),
+    return SettingsSection(
+      titleKey: AppStringKeys.generalAutoDownloadMedia,
+      rows: [
+        SettingsSwitchRow(
+          title: AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
+          subtitle: auto.mobileHighResImages
+              ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
+              : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
+          value: auto.mobileHighResImages,
+          enabled: !auto.isApplying,
+          leading: const SettingsLeadingIcon(
+            icon: HeroAppIcons.mobileScreenButton,
           ),
-          const InsetDivider(leadingInset: 56),
-          _toggleRowWithSubtitle(
-            HeroAppIcons.image,
-            const Color(0xFF1D9BF0),
-            AppStrings.t(AppStringKeys.generalAutoDownloadWifi),
-            auto.wifiHighResImages
-                ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
-                : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
-            auto.wifiHighResImages,
-            auto.isApplying,
-            (value) => _setAutoDownload(() => auto.setWifiHighResImages(value)),
+          onChanged: (value) =>
+              _setAutoDownload(() => auto.setMobileHighResImages(value)),
+        ),
+        SettingsSwitchRow(
+          title: AppStrings.t(AppStringKeys.generalAutoDownloadWifi),
+          subtitle: auto.wifiHighResImages
+              ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
+              : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
+          value: auto.wifiHighResImages,
+          enabled: !auto.isApplying,
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.image),
+          onChanged: (value) =>
+              _setAutoDownload(() => auto.setWifiHighResImages(value)),
+        ),
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.generalAdvancedAutomaticDownload),
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.gear),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AutoDownloadSettingsView()),
           ),
-          const InsetDivider(leadingInset: 56),
-          _navigationRow(
-            HeroAppIcons.gear,
-            const Color(0xFFAF52DE),
-            AppStrings.t(AppStringKeys.generalAdvancedAutomaticDownload),
-            () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const AutoDownloadSettingsView(),
-              ),
-            ),
-          ),
-        ]),
+        ),
       ],
     );
   }
@@ -159,172 +131,41 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
     }
   }
 
-  Widget _iconBadge(AppIconData icon, Color color) =>
-      SettingsIconTile(icon: icon, backgroundColor: color);
-
-  Widget _card(List<Widget> children) {
-    return SettingsCard(children: children);
-  }
-
   Widget _storageCard() {
-    final c = context.colors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SettingsSectionHeader(AppStringKeys.generalStorage),
-        _card([
-          SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _iconBadge(HeroAppIcons.solidFolder, const Color(0xFF16B0A0)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      AppStrings.t(AppStringKeys.generalCacheSize),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  if (_loadingCache)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    Text(
-                      _cacheSize,
-                      style: TextStyle(fontSize: 15, color: c.textSecondary),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const InsetDivider(leadingInset: 56),
-          _navigationRow(
-            HeroAppIcons.compactDisc,
-            const Color(0xFF16B0A0),
-            AppStrings.t(AppStringKeys.generalDetailedStorageUsage),
-            () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const StorageUsageView())),
-          ),
-          const InsetDivider(leadingInset: 56),
-          _navigationRow(
-            HeroAppIcons.download,
-            const Color(0xFF3C8CF0),
-            AppStrings.t(AppStringKeys.generalDownloads),
-            () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const DownloadsView())),
-          ),
-          const InsetDivider(leadingInset: 56),
-          _navigationRow(
-            HeroAppIcons.networkWired,
-            const Color(0xFFFF9500),
-            AppStrings.t(AppStringKeys.generalNetworkUsage),
-            () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const NetworkUsageView())),
-          ),
-        ]),
+    return SettingsSection(
+      titleKey: AppStringKeys.generalStorage,
+      rows: [
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.generalCacheSize),
+          value: _loadingCache ? '' : _cacheSize,
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.solidFolder),
+          trailing: _loadingCache
+              ? const AppActivityIndicator(size: AppIconSize.md)
+              : null,
+          showChevron: false,
+        ),
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.generalDetailedStorageUsage),
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.compactDisc),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const StorageUsageView())),
+        ),
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.generalDownloads),
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.download),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const DownloadsView())),
+        ),
+        SettingsRow(
+          title: AppStrings.t(AppStringKeys.generalNetworkUsage),
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.networkWired),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NetworkUsageView())),
+        ),
       ],
-    );
-  }
-
-  Widget _navigationRow(
-    AppIconData icon,
-    Color color,
-    String title,
-    VoidCallback onTap,
-  ) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 52,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _iconBadge(icon, color),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, color: c.textPrimary),
-                ),
-              ),
-              const SizedBox(width: 8),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: 17,
-                color: c.textTertiary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _toggleRowWithSubtitle(
-    AppIconData icon,
-    Color color,
-    String title,
-    String subtitle,
-    bool value,
-    bool disabled,
-    ValueChanged<bool> onChanged,
-  ) {
-    final c = context.colors;
-    return SizedBox(
-      height: 66,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            _iconBadge(icon, color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title.l10n(context),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 17, color: c.textPrimary),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle.l10n(context),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 15, color: c.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            AppSwitch(
-              value: value,
-              enabled: !disabled,
-              semanticLabel: title.l10n(context),
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -339,91 +180,59 @@ class ChatBehaviorSettingsView extends StatefulWidget {
 }
 
 class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
-  SettingsIconTile _icon(AppIconData icon, Color color) =>
-      SettingsIconTile(icon: icon, backgroundColor: color);
-
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final theme = context.watch<ThemeController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.settingsChatBehavior,
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStringKeys.settingsChatBehavior,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  SettingsCard(
-                    children: [
-                      SettingsSwitchRow(
-                        key: const ValueKey('chat-behavior-enter-to-send'),
-                        title: AppStringKeys.generalSendMessageWithEnter,
-                        value: theme.enterToSend,
-                        leading: _icon(
-                          HeroAppIcons.reply,
-                          const Color(0xFF3C8CF0),
-                        ),
-                        onChanged: (value) => theme.enterToSend = value,
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsSwitchRow(
-                        key: const ValueKey('chat-behavior-open-at-latest'),
-                        title: AppStringKeys.generalOpenChatAtLatestMessage,
-                        value: theme.openChatsAtLatest,
-                        leading: _icon(
-                          HeroAppIcons.download,
-                          const Color(0xFF3C8CF0),
-                        ),
-                        onChanged: (value) => theme.openChatsAtLatest = value,
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsSwitchRow(
-                        key: const ValueKey('chat-behavior-preserve-sender'),
-                        title: AppStringKeys.generalRepeatPreserveSender,
-                        value: theme.preserveSenderWhenRepeating,
-                        leading: _icon(
-                          HeroAppIcons.arrowsRotate,
-                          const Color(0xFF16B0A0),
-                        ),
-                        onChanged: (value) =>
-                            theme.preserveSenderWhenRepeating = value,
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsSwitchRow(
-                        key: const ValueKey('chat-behavior-quick-replies'),
-                        title: AppStringKeys.businessToolsQuickReplies,
-                        value: theme.quickRepliesEnabled,
-                        leading: _icon(
-                          HeroAppIcons.solidMessage,
-                          const Color(0xFF34C759),
-                        ),
-                        onChanged: (value) => theme.quickRepliesEnabled = value,
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsRow(
-                        key: const ValueKey('chat-behavior-video-playback'),
-                        title: AppStringKeys.videoPlaybackSettingsTitle,
-                        leading: _icon(
-                          HeroAppIcons.video,
-                          const Color(0xFFAF52DE),
-                        ),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const VideoPlaybackSettingsView(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+          SettingsCard.rows(
+            rows: [
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-enter-to-send'),
+                title: AppStringKeys.generalSendMessageWithEnter,
+                value: theme.enterToSend,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.reply),
+                onChanged: (value) => theme.enterToSend = value,
               ),
-            ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-open-at-latest'),
+                title: AppStringKeys.generalOpenChatAtLatestMessage,
+                value: theme.openChatsAtLatest,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.download),
+                onChanged: (value) => theme.openChatsAtLatest = value,
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-preserve-sender'),
+                title: AppStringKeys.generalRepeatPreserveSender,
+                value: theme.preserveSenderWhenRepeating,
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.arrowsRotate,
+                ),
+                onChanged: (value) => theme.preserveSenderWhenRepeating = value,
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-quick-replies'),
+                title: AppStringKeys.businessToolsQuickReplies,
+                value: theme.quickRepliesEnabled,
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.solidMessage,
+                ),
+                onChanged: (value) => theme.quickRepliesEnabled = value,
+              ),
+              SettingsRow(
+                key: const ValueKey('chat-behavior-video-playback'),
+                title: AppStringKeys.videoPlaybackSettingsTitle,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.video),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const VideoPlaybackSettingsView(),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

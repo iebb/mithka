@@ -27,6 +27,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/diagnostic_breadcrumbs.dart';
+import '../bot_api/bot_api_account.dart';
+import '../bot_api/bot_api_client.dart';
+import '../bot_api/bot_api_endpoint_config.dart';
+import '../bot_api/bot_api_td_backend.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
@@ -254,6 +258,8 @@ class TdClient {
   // Accounts
   final Map<int, int> _clientForSlot = {};
   final Map<int, int> _slotForClient = {};
+  final Map<int, BotApiAccount> _botApiAccountForSlot = {};
+  final Map<int, BotApiTdBackend> _botApiBackendForClient = {};
   final TdAccountLeaseBook _accountLeases = TdAccountLeaseBook();
   final Map<int, Future<void>> _closingSlots = {};
   final Set<int> _proxyAppliedClients = {};
@@ -263,6 +269,7 @@ class TdClient {
 
   late SharedPreferences _prefs;
   String _supportDir = '';
+  Uri _botApiEndpoint = BotApiEndpointConfig.defaultEndpoint;
 
   static const _slotsKey = 'drachma.accountSlots';
   static const _activeKey = 'drachma.activeSlot';
@@ -275,6 +282,52 @@ class TdClient {
   List<int> get configuredSlots => List.unmodifiable(_slots);
   int? clientId(int slot) => _clientForSlot[slot];
   int? slotForClient(int clientId) => _slotForClient[clientId];
+  bool isBotApiSlot(int slot) => _botApiAccountForSlot.containsKey(slot);
+  bool get activeIsBotApi => isBotApiSlot(_activeSlot);
+
+  /// Returns whether the active account is backed by the Bot API.
+  ///
+  /// Detached desktop windows proxy requests to the primary engine and don't
+  /// own its account registry, so they ask the compatible backend directly.
+  Future<bool> activeAccountUsesBotApi() async {
+    if (activeIsBotApi) return true;
+    if (_proxyTransport == null) return false;
+    try {
+      final info = await query({'@type': 'getBotApiAccountInfo'});
+      return info.type == 'botApiAccountInfo';
+    } on TdError {
+      return false;
+    }
+  }
+
+  /// Reads the one Bot API server root shared by every bot account.
+  Future<Uri> configuredBotApiEndpoint() async {
+    if (_proxyTransport == null) {
+      if (!_isRunning) await start();
+      return _botApiEndpoint;
+    }
+    final result = await query({'@type': 'getBotApiEndpointConfiguration'});
+    return normalizeBotApiEndpoint(result.str('endpoint') ?? '');
+  }
+
+  /// Validates and applies a Bot API server root to every bot account.
+  Future<Uri> setBotApiEndpoint(String endpoint) async {
+    final normalized = normalizeBotApiEndpoint(endpoint);
+    if (_proxyTransport != null) {
+      final result = await query({
+        '@type': 'setBotApiEndpointConfiguration',
+        'endpoint': normalized.toString(),
+      });
+      return normalizeBotApiEndpoint(result.str('endpoint') ?? '');
+    }
+    if (!_isRunning) await start();
+    await _replaceGlobalBotApiEndpoint(normalized);
+    return _botApiEndpoint;
+  }
+
+  BotApiAccount? botApiAccount(int slot) => _botApiAccountForSlot[slot];
+  Uri? get activeBotApiEndpoint => botApiAccount(_activeSlot)?.endpoint;
+  Uri get botApiEndpoint => _botApiEndpoint;
 
   /// Every client currently registered, for callers that need to ask each
   /// account something rather than only the active one.
@@ -393,10 +446,71 @@ class TdClient {
     _supportDir = supportDir.path;
     if (kDebugMode) await _closeStaleDebugClients();
 
+    final storedBotApiAccounts = BotApiAccountRegistry.load(_prefs);
+    _botApiEndpoint = BotApiEndpointConfig.load(
+      _prefs,
+      legacyFallback: storedBotApiAccounts.firstOrNull?.endpoint,
+    );
+    final botApiAccounts = [
+      for (final account in storedBotApiAccounts)
+        account.copyWith(endpoint: _botApiEndpoint),
+    ];
+    if (_prefs.getString(BotApiEndpointConfig.preferenceKey) == null) {
+      await BotApiEndpointConfig.save(_prefs, _botApiEndpoint.toString());
+    }
+    if (botApiAccounts.any(
+      (account) =>
+          storedBotApiAccounts
+              .firstWhere((stored) => stored.slot == account.slot)
+              .endpoint !=
+          account.endpoint,
+    )) {
+      await BotApiAccountRegistry.replaceMetadata(_prefs, botApiAccounts);
+    }
+    final botApiMetadataSlots = botApiAccounts
+        .map((account) => account.slot)
+        .toSet();
+    final botTokens = <int, String>{};
+    for (final account in botApiAccounts) {
+      final token = await BotApiAccountRegistry.readToken(account.slot);
+      if (token != null) botTokens[account.slot] = token;
+    }
+    _botApiAccountForSlot
+      ..clear()
+      ..addEntries(
+        botApiAccounts
+            .where((account) => botTokens.containsKey(account.slot))
+            .map((account) => MapEntry(account.slot, account)),
+      );
+
     final stored =
         _prefs.getStringList(_slotsKey)?.map(int.parse).toList() ?? <int>[];
-    var loaded = stored.isEmpty ? <int>[0] : stored;
-    loaded = await _quarantineMalformedSessionStringSlots(loaded);
+    var loaded = stored.isEmpty
+        ? (botTokens.isEmpty ? <int>[0] : botTokens.keys.toList())
+        : <int>[
+            ...stored,
+            for (final slot in botTokens.keys)
+              if (!stored.contains(slot)) slot,
+          ];
+    final nativeSlots = loaded
+        .where((slot) => !botApiMetadataSlots.contains(slot))
+        .toList();
+    final validNativeSlots = nativeSlots.isEmpty
+        ? <int>[]
+        : await _quarantineMalformedSessionStringSlots(nativeSlots);
+    loaded = loaded
+        .where(
+          (slot) =>
+              validNativeSlots.contains(slot) || botTokens.containsKey(slot),
+        )
+        .toList();
+    if (loaded.isEmpty) {
+      var fallbackSlot = 0;
+      while (botApiMetadataSlots.contains(fallbackSlot)) {
+        fallbackSlot += 1;
+      }
+      loaded = <int>[fallbackSlot];
+    }
     final storedActive = _prefs.getInt(_activeKey);
     final active = (storedActive != null && loaded.contains(storedActive))
         ? storedActive
@@ -405,20 +519,35 @@ class TdClient {
     _slots = loaded;
     _activeSlot = active;
     for (final slot in loaded) {
-      final cid = _bindings.createClientId();
+      final account = _botApiAccountForSlot[slot];
+      final token = botTokens[slot];
+      final cid = account != null && token != null
+          ? _syntheticBotApiClientId(slot)
+          : _bindings.createClientId();
       _clientForSlot[slot] = cid;
       _slotForClient[cid] = slot;
+      if (account != null && token != null) {
+        _botApiBackendForClient[cid] = _createBotApiBackend(
+          account,
+          token,
+          cid,
+        );
+      }
     }
     _activeClientId = _clientForSlot[active] ?? 0;
     if (kDebugMode) unawaited(_persistDebugLiveClientIds());
 
     // The first request "activates" each client; TDLib then emits its
     // updateAuthorizationState(authorizationStateWaitTdlibParameters).
-    for (final cid in _clientForSlot.values) {
+    for (final cid in _clientForSlot.values.where((id) => id > 0)) {
       _bindings.send(
         cid,
         jsonEncode({'@type': 'getOption', 'name': 'version'}),
       );
+    }
+
+    for (final backend in _botApiBackendForClient.values) {
+      await backend.start();
     }
 
     if (kDebugMode) {
@@ -460,6 +589,9 @@ class TdClient {
   /// on Android where the FFI state became stale). Safe to call when healthy.
   void restartReceiveIsolate() {
     if (!_isRunning) return;
+    for (final backend in _botApiBackendForClient.values) {
+      unawaited(backend.resume());
+    }
     if (kDebugMode) return;
     if (!_receiveIsolateDead) return;
 
@@ -482,6 +614,154 @@ class TdClient {
     _bindings.send(cid, jsonEncode({'@type': 'getOption', 'name': 'version'}));
     return newSlot;
   }
+
+  /// Validates and adds a Bot API account without creating a native TDLib
+  /// database. The bot token is persisted only after getMe succeeds.
+  Future<int> addBotApiAccount({
+    required String token,
+    String endpoint = 'https://api.telegram.org',
+  }) async {
+    if (_proxyTransport != null) {
+      throw StateError('Bot accounts must be added from the main app window.');
+    }
+    if (!_isRunning) await start();
+    final normalizedToken = normalizeBotToken(token);
+    final normalizedEndpoint = normalizeBotApiEndpoint(endpoint);
+    final validationClient = BotApiClient(
+      token: normalizedToken,
+      endpoint: normalizedEndpoint,
+    );
+    late final Map<String, dynamic> bot;
+    try {
+      final result = await validationClient.call('getMe');
+      if (result is! Map) {
+        throw const BotApiException(
+          502,
+          'The Bot API endpoint returned an invalid bot.',
+        );
+      }
+      bot = Map<String, dynamic>.from(result);
+      if (bot.boolean('is_bot') != true || (bot.int64('id') ?? 0) <= 0) {
+        throw const BotApiException(
+          401,
+          'The token does not identify a Telegram bot.',
+        );
+      }
+      final botId = bot.int64('id')!;
+      if (_botApiAccountForSlot.values.any(
+        (account) => account.botId == botId,
+      )) {
+        throw const BotApiException(409, 'This bot account is already added.');
+      }
+    } finally {
+      validationClient.close();
+    }
+
+    await _replaceGlobalBotApiEndpoint(normalizedEndpoint);
+
+    final previousSlot = _activeSlot;
+    final slot = _nextSlot();
+    final account = BotApiAccount(
+      slot: slot,
+      endpoint: normalizedEndpoint,
+      bot: bot,
+    );
+    await BotApiAccountRegistry.save(_prefs, account, normalizedToken);
+    final clientId = _syntheticBotApiClientId(slot);
+    final backend = _createBotApiBackend(account, normalizedToken, clientId);
+    _slots.add(slot);
+    _clientForSlot[slot] = clientId;
+    _slotForClient[clientId] = slot;
+    _botApiAccountForSlot[slot] = account;
+    _botApiBackendForClient[clientId] = backend;
+    setActive(slot);
+    try {
+      await backend.start();
+      return slot;
+    } catch (_) {
+      _slots.remove(slot);
+      _clientForSlot.remove(slot);
+      _slotForClient.remove(clientId);
+      _botApiAccountForSlot.remove(slot);
+      _botApiBackendForClient.remove(clientId);
+      await backend.close();
+      await BotApiAccountRegistry.remove(_prefs, slot);
+      if (_clientForSlot.containsKey(previousSlot)) setActive(previousSlot);
+      _persist();
+      rethrow;
+    }
+  }
+
+  BotApiTdBackend _createBotApiBackend(
+    BotApiAccount account,
+    String token,
+    int clientId,
+  ) {
+    final directory = _botApiDataDirectory(account.slot);
+    return BotApiTdBackend(
+      account: account,
+      token: token,
+      databasePath: '$directory/history.sqlite3',
+      mediaDirectory: '$directory/files',
+      emit: (update) => _route({...update, '@client_id': clientId}),
+    );
+  }
+
+  Future<void> _replaceGlobalBotApiEndpoint(Uri endpoint) async {
+    if (endpoint == _botApiEndpoint) return;
+    final replacementAccounts = <int, BotApiAccount>{};
+    final replacementBackends = <int, BotApiTdBackend>{};
+
+    // Validate every existing token against the proposed root before changing
+    // any live account. A typo must not disconnect already-working bots.
+    for (final entry in _botApiAccountForSlot.entries) {
+      final token = await BotApiAccountRegistry.readToken(entry.key);
+      final clientId = _clientForSlot[entry.key];
+      if (token == null || clientId == null) continue;
+      final validation = BotApiClient(token: token, endpoint: endpoint);
+      try {
+        final result = await validation.call('getMe');
+        final returnedId = result is Map
+            ? Map<String, dynamic>.from(result).int64('id')
+            : null;
+        if (returnedId != entry.value.botId) {
+          throw const BotApiException(
+            409,
+            'The Bot API endpoint returned a different bot account.',
+          );
+        }
+      } finally {
+        validation.close();
+      }
+      final account = entry.value.copyWith(endpoint: endpoint);
+      replacementAccounts[entry.key] = account;
+      replacementBackends[clientId] = _createBotApiBackend(
+        account,
+        token,
+        clientId,
+      );
+    }
+
+    await BotApiEndpointConfig.save(_prefs, endpoint.toString());
+    final metadata = [
+      for (final account in _botApiAccountForSlot.values)
+        replacementAccounts[account.slot] ??
+            account.copyWith(endpoint: endpoint),
+    ];
+    await BotApiAccountRegistry.replaceMetadata(_prefs, metadata);
+
+    for (final entry in replacementBackends.entries) {
+      await _botApiBackendForClient[entry.key]?.close();
+    }
+    _botApiEndpoint = endpoint;
+    _botApiAccountForSlot.addAll(replacementAccounts);
+    _botApiBackendForClient.addAll(replacementBackends);
+    for (final backend in replacementBackends.values) {
+      await backend.start();
+    }
+  }
+
+  int _syntheticBotApiClientId(int slot) => -1000000 - slot;
 
   Future<int> restoreSessionSlot(
     String sessionString, {
@@ -981,6 +1261,12 @@ class TdClient {
     return null;
   }
 
+  /// Returns a locally authorized slot for [userId], if this device has one.
+  ///
+  /// Handoff uses the Telegram user id instead of a slot because slot numbers
+  /// are installation-local and have no meaning on the receiving device.
+  Future<int?> readySlotForUserId(int userId) => _readySlotForUserId(userId);
+
   static _TdSessionStringInfo _decodeSessionString(String sessionString) {
     final normalized = sessionString.trim();
     if (normalized.isEmpty) {
@@ -1042,7 +1328,9 @@ class TdClient {
     _activeSlot = slot;
     _activeClientId = cid;
     _persist();
-    _applySavedProxyToClientOnce(cid);
+    if (!_botApiBackendForClient.containsKey(cid)) {
+      _applySavedProxyToClientOnce(cid);
+    }
     if (changed) _activeSlotChanges.add(slot);
   }
 
@@ -1068,6 +1356,10 @@ class TdClient {
   }
 
   Future<void> _deleteSlotDataNow(int slot) async {
+    final botApiDirectory = Directory(_botApiDataDirectory(slot));
+    if (await botApiDirectory.exists()) {
+      await _deleteDirectoryIfPresent(botApiDirectory);
+    }
     final dbDir = Directory(_databaseDirectory(slot));
     if (!await dbDir.exists()) return;
     if (slot != 0) {
@@ -1145,6 +1437,20 @@ class TdClient {
   Future<void> _closeClientForSlot(int slot) async {
     final cid = _clientForSlot.remove(slot);
     if (cid == null) return;
+    final botApiBackend = _botApiBackendForClient.remove(cid);
+    if (botApiBackend != null) {
+      await botApiBackend.close();
+      await BotApiAccountRegistry.remove(_prefs, slot);
+      _botApiAccountForSlot.remove(slot);
+      _slotForClient.remove(cid);
+      TdUserIndex.shared.clearSlot(slot);
+      _latestChatFoldersByClient.remove(cid);
+      _latestEmojiChatThemesByClient.remove(cid);
+      _latestTextCompositionStylesByClient.remove(cid);
+      _latestCommunitiesByClient.remove(cid);
+      _proxyAppliedClients.remove(cid);
+      return;
+    }
     final closed = Completer<void>();
     _clientClosedWaiters[cid] = closed;
     _bindings.send(cid, jsonEncode({'@type': 'close'}));
@@ -1199,6 +1505,8 @@ class TdClient {
     final base = '$_supportDir/tdlib';
     return slot == 0 ? base : '$base/account-$slot';
   }
+
+  String _botApiDataDirectory(int slot) => '$_supportDir/bot-api/account-$slot';
 
   // MARK: - Routing (on the main isolate)
 
@@ -1314,11 +1622,15 @@ class TdClient {
   Future<void> _persistDebugLiveClientIds() {
     return _prefs.setStringList(
       _liveClientIdsKey,
-      _clientForSlot.values.map((id) => id.toString()).toList(),
+      _clientForSlot.values
+          .where((id) => id > 0)
+          .map((id) => id.toString())
+          .toList(),
     );
   }
 
   void _sendParameters(int clientId) {
+    if (_botApiBackendForClient.containsKey(clientId)) return;
     final slot = _slotForClient[clientId];
     if (slot == null) return;
 
@@ -1472,6 +1784,11 @@ class TdClient {
       unawaited(proxy.send(Map<String, dynamic>.from(request)));
       return;
     }
+    final botApiBackend = _botApiBackendForClient[clientId];
+    if (botApiBackend != null) {
+      unawaited(botApiBackend.send(Map<String, dynamic>.from(request)));
+      return;
+    }
     _bindings.send(clientId, jsonEncode(request));
   }
 
@@ -1526,7 +1843,46 @@ class TdClient {
       return result;
     }
     final requestType = request.type ?? 'unknown';
+    if (requestType == 'getBotApiEndpointConfiguration') {
+      return {
+        '@type': 'botApiEndpointConfiguration',
+        'endpoint': _botApiEndpoint.toString(),
+      };
+    }
+    if (requestType == 'setBotApiEndpointConfiguration') {
+      final endpoint = normalizeBotApiEndpoint(request.str('endpoint') ?? '');
+      await _replaceGlobalBotApiEndpoint(endpoint);
+      return {
+        '@type': 'botApiEndpointConfiguration',
+        'endpoint': _botApiEndpoint.toString(),
+      };
+    }
     final stopwatch = Stopwatch()..start();
+    final botApiBackend = _botApiBackendForClient[clientId];
+    if (botApiBackend != null) {
+      try {
+        final result = await botApiBackend.query(
+          Map<String, dynamic>.from(request),
+        );
+        if (result.type == 'error') throw TdError(result);
+        stopwatch.stop();
+        DiagnosticBreadcrumbs.tdlibRequestFinished(
+          requestType: requestType,
+          elapsed: stopwatch.elapsed,
+          resultType: result.type,
+        );
+        return result;
+      } catch (error, stackTrace) {
+        stopwatch.stop();
+        DiagnosticBreadcrumbs.tdlibRequestFinished(
+          requestType: requestType,
+          elapsed: stopwatch.elapsed,
+          failed: true,
+          errorCode: error is TdError ? error.code : null,
+        );
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+    }
     final extra = _nextExtra();
     final tagged = {...request, '@extra': extra};
     final completer = Completer<Map<String, dynamic>>();

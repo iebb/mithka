@@ -173,6 +173,7 @@ class MessageActionMenu extends StatelessWidget {
     required this.isPinned,
     required this.onSelect,
     this.allowForwarding = true,
+    this.allowTranslation = true,
     this.allowSuggestedPostOffer = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
@@ -181,6 +182,7 @@ class MessageActionMenu extends StatelessWidget {
   final bool isPinned;
   final ValueChanged<MessageAction> onSelect;
   final bool allowForwarding;
+  final bool allowTranslation;
   final bool allowSuggestedPostOffer;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
@@ -274,7 +276,9 @@ class MessageActionMenu extends StatelessWidget {
               : MessageAction.displayOriginal,
         );
       }
-      if (translation.enabled) result.add(MessageAction.translate);
+      if (translation.enabled && allowTranslation) {
+        result.add(MessageAction.translate);
+      }
     }
     if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
       result.add(MessageAction.edit);

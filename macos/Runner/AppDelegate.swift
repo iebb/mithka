@@ -21,6 +21,14 @@ class AppDelegate: FlutterAppDelegate {
     super.applicationDidFinishLaunching(notification)
   }
 
+  override func application(
+    _ application: NSApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void
+  ) -> Bool {
+    HandoffBridge.shared.accept(userActivity)
+  }
+
   private static func mirrorRightControlFlag(_ event: NSEvent) -> NSEvent {
     let deviceRightControl: UInt = 0x2000  // NX_DEVICERCTLKEYMASK
     let engineRightControl: UInt = 0x200  // bit Flutter's engine matches against

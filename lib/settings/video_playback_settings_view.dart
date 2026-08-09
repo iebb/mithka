@@ -70,71 +70,51 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.videoPlaybackSettingsTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                    children: [
-                      const SettingsSectionHeader(
-                        AppStringKeys.videoPlaybackHorizontalSwipe,
-                      ),
-                      _choiceCard<VideoHorizontalSwipeAction>(
-                        values: VideoHorizontalSwipeAction.values,
-                        selected: _preferences.horizontalSwipeAction,
-                        label: _swipeLabel,
-                        onSelected: _setSwipeAction,
-                      ),
-                      const SizedBox(height: 18),
-                      const SettingsSectionHeader(
-                        AppStringKeys.videoPlaybackLeftVerticalSwipe,
-                      ),
-                      _choiceCard<VideoVerticalSwipeAction>(
-                        values: VideoVerticalSwipeAction.values,
-                        selected: _preferences.leftVerticalSwipeAction,
-                        label: _verticalSwipeLabel,
-                        onSelected: _setLeftVerticalSwipeAction,
-                      ),
-                      const SizedBox(height: 18),
-                      const SettingsSectionHeader(
-                        AppStringKeys.videoPlaybackRightVerticalSwipe,
-                      ),
-                      _choiceCard<VideoVerticalSwipeAction>(
-                        values: VideoVerticalSwipeAction.values,
-                        selected: _preferences.rightVerticalSwipeAction,
-                        label: _verticalSwipeLabel,
-                        onSelected: _setRightVerticalSwipeAction,
-                      ),
-                      const SizedBox(height: 18),
-                      const SettingsSectionHeader(
-                        AppStringKeys.videoPlaybackWhenFinished,
-                      ),
-                      _choiceCard<VideoCompletionAction>(
-                        values: VideoCompletionAction.values,
-                        selected: _preferences.completionAction,
-                        label: _completionLabel,
-                        onSelected: _setCompletionAction,
-                      ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.videoPlaybackSettingsTitle,
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                const SettingsSectionHeader(
+                  AppStringKeys.videoPlaybackHorizontalSwipe,
+                ),
+                _choiceCard<VideoHorizontalSwipeAction>(
+                  values: VideoHorizontalSwipeAction.values,
+                  selected: _preferences.horizontalSwipeAction,
+                  label: _swipeLabel,
+                  onSelected: _setSwipeAction,
+                ),
+                const SettingsSectionHeader(
+                  AppStringKeys.videoPlaybackLeftVerticalSwipe,
+                ),
+                _choiceCard<VideoVerticalSwipeAction>(
+                  values: VideoVerticalSwipeAction.values,
+                  selected: _preferences.leftVerticalSwipeAction,
+                  label: _verticalSwipeLabel,
+                  onSelected: _setLeftVerticalSwipeAction,
+                ),
+                const SettingsSectionHeader(
+                  AppStringKeys.videoPlaybackRightVerticalSwipe,
+                ),
+                _choiceCard<VideoVerticalSwipeAction>(
+                  values: VideoVerticalSwipeAction.values,
+                  selected: _preferences.rightVerticalSwipeAction,
+                  label: _verticalSwipeLabel,
+                  onSelected: _setRightVerticalSwipeAction,
+                ),
+                const SettingsSectionHeader(
+                  AppStringKeys.videoPlaybackWhenFinished,
+                ),
+                _choiceCard<VideoCompletionAction>(
+                  values: VideoCompletionAction.values,
+                  selected: _preferences.completionAction,
+                  label: _completionLabel,
+                  onSelected: _setCompletionAction,
+                ),
+              ],
+            ),
     );
   }
 
@@ -144,43 +124,19 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
     required String Function(T value) label,
     required ValueChanged<T> onSelected,
   }) {
-    final c = context.colors;
-    return SettingsPanel(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (var index = 0; index < values.length; index++) ...[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onSelected(values[index]),
-              child: SizedBox(
-                height: 52,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label(values[index]).l10n(context),
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
-                        ),
-                      ),
-                      if (values[index] == selected)
-                        AppIcon(
-                          HeroAppIcons.check,
-                          size: 18,
-                          color: AppTheme.brand,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (index + 1 < values.length) const InsetDivider(leadingInset: 16),
-          ],
-        ],
-      ),
+    return SettingsCard.rows(
+      dividerInset: AppMetric.settingsTextDividerInset,
+      rows: [
+        for (final value in values)
+          SettingsRow(
+            title: label(value),
+            showChevron: false,
+            onTap: () => onSelected(value),
+            trailing: value == selected
+                ? const AppIcon(HeroAppIcons.check, size: 18)
+                : null,
+          ),
+      ],
     );
   }
 

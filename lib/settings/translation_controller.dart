@@ -4,11 +4,14 @@
 //  Persisted message translation preferences.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chat/message_translation_cache.dart';
+import 'ai_settings_controller.dart';
 import 'ai_translation_prompt.dart';
 
 class TranslationLanguage {
@@ -69,6 +72,31 @@ enum TranslationProvider {
   }
 }
 
+abstract final class TranslationOptionIds {
+  static const _providerPrefix = 'provider:';
+  static const _aiPrefix = 'ai:';
+
+  static String provider(TranslationProvider value) =>
+      '$_providerPrefix${value.storageValue}';
+
+  static String ai(String candidateId) => '$_aiPrefix$candidateId';
+
+  static bool isAi(String value) => value.startsWith(_aiPrefix);
+  static bool isProvider(String value) => value.startsWith(_providerPrefix);
+
+  static String? aiCandidateId(String value) =>
+      isAi(value) ? value.substring(_aiPrefix.length) : null;
+
+  static TranslationProvider? translationProvider(String value) {
+    if (!isProvider(value)) return null;
+    final storage = value.substring(_providerPrefix.length);
+    for (final provider in TranslationProvider.selectableProviders) {
+      if (provider.storageValue == storage) return provider;
+    }
+    return null;
+  }
+}
+
 class TranslationController extends ChangeNotifier {
   TranslationController(this._prefs)
     : _enabled = _prefs.getBool(_enabledKey) ?? false,
@@ -96,6 +124,8 @@ class TranslationController extends ChangeNotifier {
       _dismissedAutoTranslateChatIds = {
         ...?_prefs.getStringList(_dismissedAutoChatsKey),
       } {
+    _restoreTranslationOptions();
+    _restoreTelegramCooldown();
     messageCache = MessageTranslationCache(_prefs);
     messageCache.pruneExpired();
   }
@@ -114,6 +144,10 @@ class TranslationController extends ChangeNotifier {
   static const _ignoredLanguagesKey = 'translation.ignoredLanguages';
   static const _autoChatsKey = 'translation.autoChats';
   static const _dismissedAutoChatsKey = 'translation.dismissedAutoChats';
+  static const _optionOrderKey = 'translation.options.order.v1';
+  static const _enabledOptionsKey = 'translation.options.enabled.v1';
+  static const _telegramUnavailableUntilKey =
+      'translation.telegramUnavailableUntil.v1';
 
   static const defaultLingvaEndpoint = 'https://lingva.ml';
 
@@ -154,6 +188,10 @@ class TranslationController extends ChangeNotifier {
   final Set<String> _ignoredLanguageCodes;
   final Set<String> _autoTranslateChatIds;
   final Set<String> _dismissedAutoTranslateChatIds;
+  late List<String> _translationOptionOrder;
+  late Set<String> _enabledTranslationOptionIds;
+  DateTime? _telegramTranslationUnavailableUntil;
+  Timer? _telegramCooldownTimer;
 
   bool get enabled => _enabled;
   bool get translateChats => _translateChats;
@@ -171,6 +209,12 @@ class TranslationController extends ChangeNotifier {
   String get libreTranslateApiKey => _libreTranslateApiKey;
   Set<String> get ignoredLanguageCodes =>
       Set.unmodifiable(_ignoredLanguageCodes);
+  List<String> get translationOptionOrder =>
+      List.unmodifiable(_translationOptionOrder);
+  Set<String> get enabledTranslationOptionIds =>
+      Set.unmodifiable(_enabledTranslationOptionIds);
+  DateTime? get telegramTranslationUnavailableUntil =>
+      _telegramTranslationUnavailableUntil;
 
   String get targetLanguageLabel => labelForTarget(_targetLanguageCode);
 
@@ -192,6 +236,16 @@ class TranslationController extends ChangeNotifier {
     if (_aiTranslationEnabled == value) return;
     _aiTranslationEnabled = value;
     _prefs.setBool(_aiTranslationEnabledKey, value);
+    final candidateId =
+        _prefs.getString(
+          AiSettingsController.translationModelCandidatePreferenceKey,
+        ) ??
+        AiSettingsController.applePccModelCandidateId;
+    _setTranslationOptionEnabled(
+      TranslationOptionIds.ai(candidateId),
+      value,
+      notify: false,
+    );
     notifyListeners();
   }
 
@@ -214,6 +268,102 @@ class TranslationController extends ChangeNotifier {
     if (_provider == value) return;
     _provider = value;
     _prefs.setString(_providerKey, value.storageValue);
+    _enabledTranslationOptionIds.removeWhere(TranslationOptionIds.isProvider);
+    _setTranslationOptionEnabled(
+      TranslationOptionIds.provider(value),
+      true,
+      notify: false,
+    );
+    notifyListeners();
+  }
+
+  List<String> orderedTranslationOptions(Iterable<String> availableIds) {
+    final available = availableIds.toSet();
+    return [
+      for (final id in _translationOptionOrder)
+        if (available.remove(id)) id,
+      ...available,
+    ];
+  }
+
+  List<String> orderedEnabledTranslationOptions(
+    Iterable<String> availableIds,
+  ) => orderedTranslationOptions(
+    availableIds,
+  ).where(_enabledTranslationOptionIds.contains).toList(growable: false);
+
+  bool isTranslationOptionEnabled(String id) =>
+      _enabledTranslationOptionIds.contains(id);
+
+  void setTranslationOptionEnabled(String id, bool enabled) =>
+      _setTranslationOptionEnabled(id, enabled, notify: true);
+
+  void _setTranslationOptionEnabled(
+    String id,
+    bool enabled, {
+    required bool notify,
+  }) {
+    if (!TranslationOptionIds.isAi(id) &&
+        TranslationOptionIds.translationProvider(id) == null) {
+      return;
+    }
+    if (!_translationOptionOrder.contains(id)) {
+      _translationOptionOrder.add(id);
+      _prefs.setStringList(_optionOrderKey, _translationOptionOrder);
+    }
+    final changed = enabled
+        ? _enabledTranslationOptionIds.add(id)
+        : _enabledTranslationOptionIds.remove(id);
+    if (!changed) return;
+    _prefs.setStringList(
+      _enabledOptionsKey,
+      _enabledTranslationOptionIds.toList(growable: false),
+    );
+    _aiTranslationEnabled = _enabledTranslationOptionIds.any(
+      TranslationOptionIds.isAi,
+    );
+    _prefs.setBool(_aiTranslationEnabledKey, _aiTranslationEnabled);
+    final provider = TranslationOptionIds.translationProvider(id);
+    if (enabled && provider != null) {
+      _provider = provider;
+      _prefs.setString(_providerKey, provider.storageValue);
+    }
+    if (notify) notifyListeners();
+  }
+
+  void reorderTranslationOptions(
+    List<String> visibleOrder,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex < 0 || oldIndex >= visibleOrder.length) return;
+    if (newIndex < 0 || newIndex >= visibleOrder.length) return;
+    final reordered = [...visibleOrder];
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+    final visible = visibleOrder.toSet();
+    _translationOptionOrder = [
+      ...reordered,
+      for (final id in _translationOptionOrder)
+        if (!visible.contains(id)) id,
+    ];
+    _prefs.setStringList(_optionOrderKey, _translationOptionOrder);
+    notifyListeners();
+  }
+
+  bool isTelegramTranslationAvailable({DateTime? now}) {
+    final until = _telegramTranslationUnavailableUntil;
+    return until == null || !(now ?? DateTime.now()).isBefore(until);
+  }
+
+  void markTelegramTranslationUnavailable({
+    DateTime? now,
+    Duration duration = const Duration(minutes: 10),
+  }) {
+    final until = (now ?? DateTime.now()).add(duration);
+    _telegramTranslationUnavailableUntil = until;
+    _prefs.setInt(_telegramUnavailableUntilKey, until.millisecondsSinceEpoch);
+    _scheduleTelegramCooldownExpiry();
     notifyListeners();
   }
 
@@ -334,4 +484,75 @@ class TranslationController extends ChangeNotifier {
 
   static String normalizeEndpoint(String value) =>
       value.trim().replaceFirst(RegExp(r'/+$'), '');
+
+  void _restoreTranslationOptions() {
+    final selectedProvider = TranslationOptionIds.provider(_provider);
+    final selectedAi = TranslationOptionIds.ai(
+      _prefs.getString(
+            AiSettingsController.translationModelCandidatePreferenceKey,
+          ) ??
+          AiSettingsController.applePccModelCandidateId,
+    );
+    final storedOrder = _prefs.getStringList(_optionOrderKey);
+    final storedEnabled = _prefs.getStringList(_enabledOptionsKey);
+    _translationOptionOrder = storedOrder == null
+        ? [if (_aiTranslationEnabled) selectedAi, selectedProvider]
+        : [...storedOrder];
+    _enabledTranslationOptionIds = storedEnabled == null
+        ? {if (_aiTranslationEnabled) selectedAi, selectedProvider}
+        : {...storedEnabled};
+    for (final id in _enabledTranslationOptionIds) {
+      if (!_translationOptionOrder.contains(id)) {
+        _translationOptionOrder.add(id);
+      }
+    }
+    if (storedOrder == null) {
+      _prefs.setStringList(_optionOrderKey, _translationOptionOrder);
+    }
+    if (storedEnabled == null) {
+      _prefs.setStringList(
+        _enabledOptionsKey,
+        _enabledTranslationOptionIds.toList(growable: false),
+      );
+    }
+  }
+
+  void _restoreTelegramCooldown() {
+    final milliseconds = _prefs.getInt(_telegramUnavailableUntilKey);
+    if (milliseconds == null) return;
+    final until = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    if (!DateTime.now().isBefore(until)) {
+      _prefs.remove(_telegramUnavailableUntilKey);
+      return;
+    }
+    _telegramTranslationUnavailableUntil = until;
+    _scheduleTelegramCooldownExpiry();
+  }
+
+  void _scheduleTelegramCooldownExpiry() {
+    _telegramCooldownTimer?.cancel();
+    final until = _telegramTranslationUnavailableUntil;
+    if (until == null) return;
+    final delay = until.difference(DateTime.now());
+    if (delay <= Duration.zero) {
+      _clearTelegramCooldown();
+      return;
+    }
+    _telegramCooldownTimer = Timer(delay, _clearTelegramCooldown);
+  }
+
+  void _clearTelegramCooldown() {
+    _telegramCooldownTimer?.cancel();
+    _telegramCooldownTimer = null;
+    if (_telegramTranslationUnavailableUntil == null) return;
+    _telegramTranslationUnavailableUntil = null;
+    _prefs.remove(_telegramUnavailableUntilKey);
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _telegramCooldownTimer?.cancel();
+    super.dispose();
+  }
 }

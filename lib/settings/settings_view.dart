@@ -19,7 +19,6 @@ import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../pro/mithka_pro_service.dart';
@@ -176,31 +175,18 @@ class _SettingsViewState extends State<SettingsView> {
     required String query,
     required List<_SettingsDestination> matches,
   }) {
-    final c = context.colors;
-    return Scaffold(
+    return SettingsPageScaffold(
       key: const ValueKey('settings-compact-layout'),
-      backgroundColor: c.groupedBackground,
-      body: Column(
+      title: AppStrings.t(AppStringKeys.profileSettings),
+      showBackButton: widget.showBackButton,
+      onBack: () => Navigator.of(context).pop(),
+      child: Column(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.profileSettings),
-            onBack: widget.showBackButton && Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-          ),
+          _searchField(context),
           Expanded(
-            child: DesktopContentConstraint(
-              child: Column(
-                children: [
-                  _searchField(context),
-                  Expanded(
-                    child: query.isEmpty
-                        ? _settingsList(context, destinations)
-                        : _searchResults(context, matches),
-                  ),
-                ],
-              ),
-            ),
+            child: query.isEmpty
+                ? _settingsList(context, destinations)
+                : _searchResults(context, matches),
           ),
         ],
       ),
@@ -629,7 +615,9 @@ class _SettingsViewState extends State<SettingsView> {
       key: ValueKey('settings-detail-${chosen.id}'),
       child: Navigator(
         onGenerateRoute: (_) => MaterialPageRoute<void>(
-          builder: (_) => (chosen.splitDestination ?? chosen.destination)(),
+          builder: (_) => SettingsSplitPaneScope(
+            child: (chosen.splitDestination ?? chosen.destination)(),
+          ),
         ),
       ),
     );
@@ -657,25 +645,19 @@ class _SettingsViewState extends State<SettingsView> {
     required String messageKey,
   }) {
     final c = context.colors;
-    return Scaffold(
+    return SettingsPageScaffold(
       key: const ValueKey('settings-split-placeholder'),
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(title: titleKey),
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.section),
-                child: Text(
-                  messageKey.l10n(context),
-                  textAlign: TextAlign.center,
-                  style: AppTextStyle.body(c.textSecondary),
-                ),
-              ),
-            ),
+      title: titleKey,
+      showBackButton: false,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.section),
+          child: Text(
+            messageKey.l10n(context),
+            textAlign: TextAlign.center,
+            style: AppTextStyle.body(c.textSecondary),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -979,7 +961,13 @@ class _SettingsViewState extends State<SettingsView> {
         icon: HeroAppIcons.objectGroup,
         color: const Color(0xFF16B0A0),
         destination: () => const AdvancedSettingsView(),
-        searchTerms: const ['advanced', 'relay', 'transfer boost'],
+        searchTerms: const [
+          'advanced',
+          'relay',
+          'transfer boost',
+          'bot api',
+          'telegram api endpoint',
+        ],
       ),
       if (developer.unlocked)
         _SettingsDestination(
@@ -1015,7 +1003,6 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Widget _searchField(BuildContext context, {bool compact = false}) {
-    final c = context.colors;
     final desktopDense = compact && !kIsWeb && isDesktopTargetPlatform();
     return Padding(
       padding: compact
@@ -1031,62 +1018,11 @@ class _SettingsViewState extends State<SettingsView> {
               AppSpacing.lg,
               AppSpacing.sm,
             ),
-      child: Container(
-        key: const ValueKey('settings-search-container'),
-        constraints: BoxConstraints(minHeight: desktopDense ? 34 : 40),
-        padding: EdgeInsets.symmetric(
-          horizontal: desktopDense ? 10 : AppSpacing.lg,
-          vertical: desktopDense ? 7 : AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: c.searchFill,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-        ),
-        child: Row(
-          children: [
-            AppIcon(
-              HeroAppIcons.magnifyingGlass,
-              size: desktopDense ? 16 : AppMetric.searchIcon,
-              color: c.textTertiary,
-            ),
-            SizedBox(width: desktopDense ? 7 : AppSpacing.sm),
-            Expanded(
-              child: TextField(
-                key: const ValueKey('settings-search-field'),
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                textInputAction: TextInputAction.search,
-                style: TextStyle(
-                  fontSize: desktopDense ? 13 : AppTextSize.callout,
-                  color: c.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  border: InputBorder.none,
-                  hintText: AppStringKeys.settingsSearchHint.l10n(context),
-                  hintStyle: TextStyle(
-                    fontSize: desktopDense ? 13 : AppTextSize.callout,
-                    color: c.textTertiary,
-                  ),
-                ),
-              ),
-            ),
-            if (_searchController.text.isNotEmpty)
-              AppInteractiveSurface(
-                semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
-                onTap: _searchController.clear,
-                borderRadius: BorderRadius.circular(AppRadius.control),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xs),
-                  child: AppIcon(
-                    HeroAppIcons.xmark,
-                    size: AppIconSize.md,
-                    color: c.textTertiary,
-                  ),
-                ),
-              ),
-          ],
-        ),
+      child: SettingsSearchField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        hintText: AppStringKeys.settingsSearchHint,
+        compact: desktopDense,
       ),
     );
   }

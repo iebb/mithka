@@ -91,7 +91,7 @@ import 'voice_note_preview_view.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
 
-enum _RichTextSendMode { premium, botRelay }
+enum _RichTextSendMode { direct, botRelay }
 
 class _ReplyKeyboard {
   const _ReplyKeyboard({required this.message, required this.rows});
@@ -6086,7 +6086,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (!mounted) return;
     try {
       var sentAny = false;
-      if (mode == _RichTextSendMode.premium) {
+      if (mode == _RichTextSendMode.direct) {
         for (var index = 0; index < result.segments.length; index++) {
           final segment = result.segments[index];
           if (segment.isHtml) {
@@ -6270,8 +6270,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
+      if (await TdClient.shared.activeAccountUsesBotApi()) {
+        return _RichTextSendMode.direct;
+      }
       if (await widget.vm.currentUserIsPremium()) {
-        return _RichTextSendMode.premium;
+        return _RichTextSendMode.direct;
       }
       if (await RichMessageRelayConfig.isConfigured()) {
         return _RichTextSendMode.botRelay;

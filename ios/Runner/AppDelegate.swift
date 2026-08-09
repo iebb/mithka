@@ -48,6 +48,21 @@ import UserNotifications
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    if HandoffBridge.shared.accept(userActivity) {
+      return true
+    }
+    return super.application(
+      application,
+      continue: userActivity,
+      restorationHandler: restorationHandler
+    )
+  }
+
   private func setPrivacyShieldVisible(_ visible: Bool) {
     guard let window = Self.keyWindow() else { return }
     if visible {
@@ -156,6 +171,9 @@ import UserNotifications
     guard !didRegisterFlutterPlugins else { return }
     didRegisterFlutterPlugins = true
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    HandoffBridge.shared.register(
+      messenger: engineBridge.applicationRegistrar.messenger()
+    )
     let clipboardChannel = FlutterMethodChannel(
       name: "mithka/clipboard",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

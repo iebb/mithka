@@ -4,6 +4,29 @@ import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
+  test('recognizes Telegram AI Premium flood errors without false matches', () {
+    expect(
+      isTelegramAiPremiumFlood(
+        TdError({
+          '@type': 'error',
+          'code': 429,
+          'message': 'AICOMPOSE_FLOOD_PREMIUM',
+        }),
+      ),
+      isTrue,
+    );
+    expect(
+      isTelegramAiPremiumFlood(
+        StateError('429 AICOMPOSE_FLOOD_PREMIUM retry later'),
+      ),
+      isTrue,
+    );
+    expect(
+      isTelegramAiPremiumFlood(StateError('AICOMPOSE_FLOOD_PREMIUM_TEST')),
+      isFalse,
+    );
+  });
+
   test('AI composition request matches pinned TDLib schema', () {
     expect(
       buildComposeTextWithAiRequest(
@@ -289,7 +312,7 @@ I can confirm shortly.
 
     expect(
       service.createReply(transcript: 'A: Hello', prompt: 'Reply politely.'),
-      throwsA(isA<TelegramAiPremiumRequired>()),
+      throwsA(isA<TelegramAiDailyLimitReached>()),
     );
   });
 

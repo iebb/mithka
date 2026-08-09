@@ -13,132 +13,147 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets(
-    'translation settings keeps AI providers in a dedicated section',
-    (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
-      final translation = TranslationController(preferences);
-      final ai = AiSettingsController(
-        preferences,
-        pccApi: ApplePccApi(
-          invokeMethod: (_, _) async => {
-            'sdkAvailable': false,
-            'available': false,
-            'reason': 'unavailable',
-          },
-        ),
-        secureRead: (_) async => null,
-        secureWrite: (_, _) async {},
-      );
-      final theme = ThemeController(preferences);
-      addTearDown(translation.dispose);
-      addTearDown(ai.dispose);
-      addTearDown(theme.dispose);
-      await ai.initialize();
+  testWidgets('translation settings uses one sortable provider fallback list', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final translation = TranslationController(preferences);
+    final ai = AiSettingsController(
+      preferences,
+      pccApi: ApplePccApi(
+        invokeMethod: (_, _) async => {
+          'sdkAvailable': false,
+          'available': false,
+          'reason': 'unavailable',
+        },
+      ),
+      secureRead: (_) async => null,
+      secureWrite: (_, _) async {},
+    );
+    final theme = ThemeController(preferences);
+    addTearDown(translation.dispose);
+    addTearDown(ai.dispose);
+    addTearDown(theme.dispose);
+    await ai.initialize();
 
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider.value(value: translation),
-            ChangeNotifierProvider.value(value: ai),
-            ChangeNotifierProvider.value(value: theme),
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: translation),
+          ChangeNotifierProvider.value(value: ai),
+          ChangeNotifierProvider.value(value: theme),
+        ],
+        child: const MaterialApp(
+          locale: Locale('en'),
+          localizationsDelegates: [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
           ],
-          child: const MaterialApp(
-            locale: Locale('en'),
-            localizationsDelegates: [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: TranslationSettingsView(),
-          ),
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: TranslationSettingsView(),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('AI Translation'), findsOneWidget);
-      expect(find.text('Standard Translation'), findsOneWidget);
-      expect(find.text('Use AI for Translations'), findsOneWidget);
-      expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
-      expect(find.text('Translation Prompt'), findsOneWidget);
-      expect(find.text('Default'), findsOneWidget);
-      expect(find.text('Translation Display'), findsOneWidget);
-      expect(find.text('Quote style'), findsOneWidget);
+    expect(find.text('Translate Options'), findsOneWidget);
+    expect(find.text('Standard Translation'), findsNothing);
+    expect(find.text('AI Translation'), findsNothing);
+    expect(find.text('Use AI for Translations'), findsNothing);
+    expect(find.text('Telegram Translation'), findsOneWidget);
+    expect(find.text('Telegram Cocoon'), findsOneWidget);
+    expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
+    expect(find.text('Apple On-Device Model'), findsOneWidget);
+    expect(find.byType(ReorderableListView), findsOneWidget);
+    expect(find.byType(ReorderableDragStartListener), findsWidgets);
+    expect(find.text('Translation Prompt'), findsOneWidget);
+    expect(find.text('Default'), findsOneWidget);
+    expect(find.text('Translation Display'), findsOneWidget);
+    expect(find.text('Quote style'), findsOneWidget);
 
-      await tester.tap(find.text('Translation Display'));
-      await tester.pumpAndSettle();
-      expect(find.text('Translated only'), findsOneWidget);
-      expect(find.text('Original and translation'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('translation-display-style-translatedOnly')),
-      );
-      await tester.pumpAndSettle();
-      expect(translation.displayStyle, TranslationDisplayStyle.translatedOnly);
-      expect(
-        preferences.getString('translation.displayStyle'),
-        'translated_only',
-      );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('translation-fallback-description')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Enabled options are tried from top to bottom.'),
+      findsOneWidget,
+    );
 
-      await tester.tap(find.text('Translate using'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('aiFeatureModelPicker-translation')),
-        findsOneWidget,
-      );
-      expect(find.text('Providers'), findsNothing);
-      Navigator.of(
-        tester.element(
-          find.byKey(const ValueKey('aiFeatureModelPicker-translation')),
-        ),
-      ).pop();
-      await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, 500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Translation Display'));
+    await tester.pumpAndSettle();
+    expect(find.text('Translated only'), findsOneWidget);
+    expect(find.text('Original and translation'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('translation-display-style-translatedOnly')),
+    );
+    await tester.pumpAndSettle();
+    expect(translation.displayStyle, TranslationDisplayStyle.translatedOnly);
+    expect(
+      preferences.getString('translation.displayStyle'),
+      'translated_only',
+    );
 
-      final switches = find.byType(AppSwitch);
-      expect(switches, findsNWidgets(3));
-      await tester.tap(switches.at(2));
-      await tester.pumpAndSettle();
+    final cocoonSwitch = find.byKey(
+      const ValueKey('translation-option-switch-ai:builtin:telegram_cocoon'),
+    );
+    await tester.ensureVisible(cocoonSwitch);
+    await tester.tap(cocoonSwitch);
+    await tester.pumpAndSettle();
 
-      expect(translation.aiTranslationEnabled, isTrue);
-      expect(preferences.getBool('translation.ai.enabled'), isTrue);
+    expect(translation.aiTranslationEnabled, isTrue);
+    expect(preferences.getBool('translation.ai.enabled'), isTrue);
+    expect(
+      translation.enabledTranslationOptionIds,
+      contains('ai:builtin:telegram_cocoon'),
+    );
 
-      await tester.tap(find.text('Translation Prompt'));
-      await tester.pumpAndSettle();
-      expect(find.text('Reset to Default'), findsOneWidget);
-      await tester.enterText(
-        find.byKey(const ValueKey('aiTranslationPromptField')),
-        'Translate casually and preserve emoji. Return translation JSON.',
-      );
-      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save Prompt'));
-      await tester.pumpAndSettle();
+    final pccSwitch = tester.widget<AppSwitch>(
+      find.byKey(
+        const ValueKey('translation-option-switch-ai:builtin:apple_pcc'),
+      ),
+    );
+    expect(pccSwitch.enabled, isFalse);
 
-      expect(translation.hasCustomAiTranslationPrompt, isTrue);
-      expect(find.text('Custom'), findsOneWidget);
-      expect(
-        preferences.getString(
-          TranslationController.aiTranslationPromptPreferenceKey,
-        ),
-        contains('Translate casually'),
-      );
+    await tester.ensureVisible(find.text('Translation Prompt'));
+    await tester.tap(find.text('Translation Prompt'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset to Default'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('aiTranslationPromptField')),
+      'Translate casually and preserve emoji. Return translation JSON.',
+    );
+    await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save Prompt'));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Translation Prompt'));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView).last, const Offset(0, -240));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Reset to Default'));
-      await tester.tap(find.text('Save Prompt'));
-      await tester.pumpAndSettle();
+    expect(translation.hasCustomAiTranslationPrompt, isTrue);
+    expect(find.text('Custom'), findsOneWidget);
+    expect(
+      preferences.getString(
+        TranslationController.aiTranslationPromptPreferenceKey,
+      ),
+      contains('Translate casually'),
+    );
 
-      expect(
-        translation.aiTranslationPrompt,
-        defaultAiTranslationPrompt.trim(),
-      );
-      expect(translation.hasCustomAiTranslationPrompt, isFalse);
-      expect(find.text('Default'), findsOneWidget);
-    },
-  );
+    await tester.tap(find.text('Translation Prompt'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).last, const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset to Default'));
+    await tester.tap(find.text('Save Prompt'));
+    await tester.pumpAndSettle();
+
+    expect(translation.aiTranslationPrompt, defaultAiTranslationPrompt.trim());
+    expect(translation.hasCustomAiTranslationPrompt, isFalse);
+    expect(find.text('Default'), findsOneWidget);
+  });
 }

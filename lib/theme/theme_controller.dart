@@ -866,7 +866,9 @@ class ThemeController extends ChangeNotifier {
     this._prefs, {
     int initialAccountSlot = 0,
     int? initialAccountUserId,
-  }) : _activeAccountSlot = initialAccountSlot,
+    EmojiFontCatalog? emojiFontCatalog,
+  }) : _emojiFontCatalog = emojiFontCatalog ?? EmojiFontCatalog.shared,
+       _activeAccountSlot = initialAccountSlot,
        _activeAccountUserId = initialAccountUserId {
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
@@ -976,6 +978,7 @@ class ThemeController extends ChangeNotifier {
           ? EmojiFontChoice.system.label
           : _prefs.getString(_emojiFontLabelKey) ?? emojiFontKey,
       license: _prefs.getString(_emojiFontLicenseKey),
+      fontFamily: _emojiFontCatalog.loadedFamilyForKey(emojiFontKey),
     );
     _fontFallbackChain = dedupeFontFamilies(
       _prefs.getStringList(_fontFallbackChainKey) ?? const <String>[],
@@ -1199,6 +1202,7 @@ class ThemeController extends ChangeNotifier {
   static const double maxInterfaceScale = 1.50 * 1.50;
 
   final SharedPreferences _prefs;
+  final EmojiFontCatalog _emojiFontCatalog;
   int _activeAccountSlot;
   int? _activeAccountUserId;
   late bool _usePerAccountTheming;
@@ -1220,6 +1224,7 @@ class ThemeController extends ChangeNotifier {
   late AppMonospaceFontChoice _monospaceFontChoice;
   late String _customMonospaceFontFamily;
   late EmojiFontChoice _emojiFontChoice;
+  int _emojiFontSelectionRevision = 0;
   late List<String> _fontFallbackChain;
 
   // The font chain is rebuilt from scratch on every applyAppTextStyle call
@@ -2107,6 +2112,7 @@ class ThemeController extends ChangeNotifier {
   }
 
   void useSystemEmojiFont() {
+    _emojiFontSelectionRevision++;
     _emojiFontChoice = EmojiFontChoice.system;
     _invalidateFontCaches();
     _prefs.setString(_emojiFontChoiceKey, EmojiFontChoice.system.key);
@@ -2117,9 +2123,17 @@ class ThemeController extends ChangeNotifier {
 
   Future<void> loadSelectedEmojiFontIfAvailable() async {
     final key = _emojiFontChoice.key;
-    if (key == EmojiFontChoice.system.key) return;
-    final family = await EmojiFontCatalog.shared.loadCachedOrDownload(key);
-    if (family == null) return;
+    if (key == EmojiFontChoice.system.key ||
+        _emojiFontChoice.fontFamily != null) {
+      return;
+    }
+    final revision = _emojiFontSelectionRevision;
+    final family = await _emojiFontCatalog.loadCachedOrDownload(key);
+    if (family == null ||
+        revision != _emojiFontSelectionRevision ||
+        _emojiFontChoice.key != key) {
+      return;
+    }
     _emojiFontChoice = EmojiFontChoice(
       key: key,
       label: _emojiFontChoice.label,
@@ -2131,7 +2145,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   Future<void> setEmojiFont(EmojiFontManifestEntry entry) async {
-    final family = await EmojiFontCatalog.shared.downloadAndLoad(entry);
+    final revision = ++_emojiFontSelectionRevision;
+    final family = await _emojiFontCatalog.downloadAndLoad(entry);
+    if (revision != _emojiFontSelectionRevision) return;
     _emojiFontChoice = EmojiFontChoice(
       key: entry.key,
       label: entry.label,
@@ -2143,6 +2159,26 @@ class ThemeController extends ChangeNotifier {
     unawaited(_prefs.setString(_emojiFontLabelKey, entry.label));
     unawaited(_prefs.setString(_emojiFontLicenseKey, entry.license));
     notifyListeners();
+  }
+
+  /// Registers an already-cached selected emoji font before the first frame.
+  /// Missing cache entries are intentionally not downloaded on the launch
+  /// path; the normal idle loader can fetch those without delaying startup.
+  static Future<void> preloadCachedEmojiFont(SharedPreferences prefs) async {
+    final storedKey = prefs.getString(_emojiFontChoiceKey);
+    final migrated =
+        (prefs.getInt(_emojiFontSchemaKey) ?? 0) >= _emojiFontSchemaVersion ||
+        prefs.getString(_emojiFontLabelKey) != null;
+    final key = _normalizeEmojiFontKey(storedKey, migrated: migrated);
+    if (key == EmojiFontChoice.system.key) return;
+    try {
+      await EmojiFontCatalog.shared.loadCached(key);
+    } catch (error) {
+      debugPrint(
+        '[theme_controller] cached emoji font preload failed '
+        'type=${error.runtimeType}',
+      );
+    }
   }
 
   /// Bumped when stored emoji font keys need another one-shot migration.

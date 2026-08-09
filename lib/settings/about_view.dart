@@ -15,7 +15,6 @@ import '../app/app_version.dart';
 import '../app/telemetry_config.dart';
 import '../chat/link_handler.dart';
 import '../components/app_icons.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
@@ -92,176 +91,117 @@ class _AboutViewState extends State<AboutView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.aboutTitle),
+      showBackButton: widget.showBackButton,
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.aboutTitle),
-            onBack: widget.showBackButton && Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 32, 12, 24),
-                children: [
-                  Center(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 84,
-                          height: 84,
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.brandGradient,
-                            borderRadius: BorderRadius.circular(AppRadius.xl),
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.all(10),
-                            child: Image(
-                              image: AssetImage('assets/penguin.png'),
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'Mithka',
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.brandGradient,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Image(
+                      image: AssetImage('assets/penguin.png'),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Mithka',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(_handleVersionTap()),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: FutureBuilder<AppVersion>(
+                      future: _versionFuture,
+                      builder: (context, snapshot) {
+                        final version = snapshot.data?.display ?? '...';
+                        return Text(
+                          AppStrings.t(AppStringKeys.aboutVersion, {
+                            'value1': version,
+                          }),
                           style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: c.textPrimary,
+                            fontSize: 13,
+                            color: c.textSecondary,
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => unawaited(_handleVersionTap()),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            child: FutureBuilder<AppVersion>(
-                              future: _versionFuture,
-                              builder: (context, snapshot) {
-                                final version = snapshot.data?.display ?? '...';
-                                return Text(
-                                  AppStrings.t(AppStringKeys.aboutVersion, {
-                                    'value1': version,
-                                  }),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: c.textSecondary,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  SettingsPanel(
-                    padding: const EdgeInsets.only(left: 48),
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        if (UpdateChecker.supportsManualCheck) ...[
-                          SettingsRow(
-                            leading: AppIcon(
-                              HeroAppIcons.download,
-                              size: AppIconSize.lg,
-                              color: AppTheme.brand,
-                            ),
-                            title: AppStrings.t(
-                              AppStringKeys.aboutCheckForUpdates,
-                            ),
-                            value: _updateStatusLabel(),
-                            onTap: _checking
-                                ? null
-                                : () => unawaited(_checkForUpdates()),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 48),
-                            child: Divider(height: 1, color: c.divider),
-                          ),
-                        ],
-                        if (sentryEnabled) ...[
-                          SettingsRow(
-                            leading: AppIcon(
-                              HeroAppIcons.comments,
-                              size: AppIconSize.lg,
-                              color: AppTheme.brand,
-                            ),
-                            title: AppStrings.t(
-                              AppStringKeys.aboutReportProblem,
-                            ),
-                            value: AppStrings.t(
-                              AppStringKeys.aboutReportProblemDetail,
-                            ),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                settings: const RouteSettings(
-                                  name: '/settings/feedback',
-                                ),
-                                builder: (_) => const FeedbackReportView(),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 48),
-                            child: Divider(height: 1, color: c.divider),
-                          ),
-                        ],
-                        SettingsRow(
-                          leading: AppIcon(
-                            HeroAppIcons.globe,
-                            size: AppIconSize.lg,
-                            color: AppTheme.brand,
-                          ),
-                          title: AppStrings.t(AppStringKeys.aboutWebsite),
-                          value: 'mithka.ieb.app',
-                          onTap: () => openLink(context, _websiteUrl),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 48),
-                          child: Divider(height: 1, color: c.divider),
-                        ),
-                        SettingsRow(
-                          leading: AppIcon(
-                            HeroAppIcons.solidPaperPlane,
-                            size: AppIconSize.lg,
-                            color: AppTheme.brand,
-                          ),
-                          title: AppStrings.t(
-                            AppStringKeys.aboutTelegramChannel,
-                          ),
-                          value: 't.me/mithka',
-                          onTap: () => openLink(context, _channelUrl),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 48),
-                          child: Divider(height: 1, color: c.divider),
-                        ),
-                        SettingsRow(
-                          leading: AppIcon(
-                            HeroAppIcons.code,
-                            size: AppIconSize.lg,
-                            color: AppTheme.brand,
-                          ),
-                          title: 'GitHub',
-                          value: 'github.com/iebb/mithka',
-                          onTap: () => openLink(context, _githubUrl),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+          const SizedBox(height: 30),
+          SettingsCard.rows(
+            rows: [
+              if (UpdateChecker.supportsManualCheck) ...[
+                SettingsRow(
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.download,
+                  ),
+                  title: AppStrings.t(AppStringKeys.aboutCheckForUpdates),
+                  value: _updateStatusLabel(),
+                  onTap: _checking ? null : () => unawaited(_checkForUpdates()),
+                ),
+              ],
+              if (sentryEnabled) ...[
+                SettingsRow(
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.comments,
+                  ),
+                  title: AppStrings.t(AppStringKeys.aboutReportProblem),
+                  value: AppStrings.t(AppStringKeys.aboutReportProblemDetail),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      settings: const RouteSettings(name: '/settings/feedback'),
+                      builder: (_) => const FeedbackReportView(),
+                    ),
+                  ),
+                ),
+              ],
+              SettingsRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
+                title: AppStrings.t(AppStringKeys.aboutWebsite),
+                value: 'mithka.ieb.app',
+                onTap: () => openLink(context, _websiteUrl),
+              ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.solidPaperPlane,
+                ),
+                title: AppStrings.t(AppStringKeys.aboutTelegramChannel),
+                value: 't.me/mithka',
+                onTap: () => openLink(context, _channelUrl),
+              ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.code),
+                title: 'GitHub',
+                value: 'github.com/iebb/mithka',
+                onTap: () => openLink(context, _githubUrl),
+              ),
+            ],
           ),
         ],
       ),

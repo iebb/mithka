@@ -6,9 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
-import '../components/app_icons.dart';
+import '../components/ui_components.dart';
 import '../platform/animated_avatar_preparer.dart';
-import '../theme/app_theme.dart';
 
 class AnimatedAvatarCropView extends StatefulWidget {
   const AnimatedAvatarCropView({super.key, required this.source});
@@ -138,80 +137,48 @@ class _AnimatedAvatarCropViewState extends State<AnimatedAvatarCropView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _topBar(),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final side = math.min(
-                    constraints.maxWidth,
-                    constraints.maxHeight,
-                  );
-                  _viewportSide = math.max(1, side);
-                  return Center(
-                    child: SizedBox.square(
-                      dimension: side,
-                      child: _cropViewport(side),
-                    ),
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              child: Text(
-                AppStrings.t(AppStringKeys.imageEditCropAvatar),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-            ),
-          ],
-        ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.imageEditCropAvatar,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        enabled: _sourceSize != null,
+        onTap: _done,
       ),
-    );
-  }
-
-  Widget _topBar() {
-    return SizedBox(
-      height: 52,
-      child: Row(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).pop(),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: AppIcon(HeroAppIcons.xmark, color: Colors.white),
-            ),
-          ),
-          Text(
-            AppStrings.t(AppStringKeys.imageEditCropAvatar),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _sourceSize == null ? null : _done,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Text(
-                AppStrings.t(AppStringKeys.addMembersDone),
-                style: TextStyle(
-                  color: _sourceSize == null ? Colors.white38 : AppTheme.brand,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+      constrainContent: false,
+      child: ColoredBox(
+        color: Colors.black,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final side = math.min(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
+                    _viewportSide = math.max(1, side);
+                    return Center(
+                      child: SizedBox.square(
+                        dimension: side,
+                        child: _cropViewport(side),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                child: Text(
+                  AppStrings.t(AppStringKeys.imageEditCropAvatar),
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

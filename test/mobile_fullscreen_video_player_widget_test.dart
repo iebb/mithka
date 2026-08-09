@@ -229,6 +229,13 @@ void main() {
         expect(download, findsNothing);
         expect(saveToPhotos, findsNothing);
         expect(share, findsNothing);
+        expect(_semanticsWidget('Pause'), findsNothing);
+        expect(_semanticsWidget('Previous video'), findsNothing);
+        expect(_semanticsWidget('More'), findsNothing);
+
+        await tester.tapAt(const Offset(195, 200));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(_semanticsWidget('Pause'), findsOneWidget);
 
         await tester.tap(_semanticsWidget('Previous video'));
         await tester.tap(_semanticsWidget('Next video'));
@@ -582,6 +589,17 @@ void main() {
         expect(modeButtonSemantics.properties.value, 'Split Screen');
         expect(_selectedSemanticsWidget('Split Screen'), findsOneWidget);
 
+        await tester.tapAt(const Offset(20, 200));
+        await tester.pump();
+        expect(_selectedSemanticsWidget('Split Screen'), findsNothing);
+        expect(modeButton, findsNothing);
+
+        await tester.tapAt(const Offset(195, 200));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(modeButton, findsOneWidget);
+        await tester.tap(modeButton);
+        await tester.pump(const Duration(milliseconds: 140));
+
         await tester.tap(_semanticsWidget('Picture in Picture'));
         await tester.pump();
         expect(requestedModes, [
@@ -754,7 +772,220 @@ void main() {
   });
 
   testWidgets(
-    'iOS loopback runtime errors replace the controller once and restore playback',
+    'Android stream initialization failures fall back to one completed-file download',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      late Directory directory;
+      late File sparseFile;
+      await tester.runAsync(() async {
+        directory = await Directory.systemTemp.createTemp(
+          'mithka-initial-file-fallback-test-',
+        );
+        sparseFile = File('${directory.path}/sparse.mp4');
+        final handle = await sparseFile.open(mode: FileMode.write);
+        await handle.writeFrom(List<int>.generate(64, (index) => index));
+        await handle.truncate(1024 * 1024);
+        await handle.close();
+      });
+
+      final query = _SparseVideoQuery(
+        fileId: 707,
+        path: sparseFile.path,
+        totalBytes: 1024 * 1024,
+        downloadedBytes: 64,
+      );
+      const initialPosition = Duration(seconds: 23);
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform(
+        initializationFailures: 2,
+        initializationFailureMessage:
+            'MediaCodecVideoRenderer error from the texture '
+            'SurfaceProducer.',
+      );
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: VideoPlayerView(
+                video: TdFileRef(id: 707, localPath: sparseFile.path),
+                width: 1920,
+                height: 1080,
+                onClose: () {},
+                streamQuery: query.call,
+                initialPosition: initialPosition,
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(platform.createCalls, 3);
+        expect(platform.initializedEvents, 1);
+        expect(platform.disposedPlayerIds, [1, 2]);
+        expect(
+          platform.creationOptions.map(
+            (options) => options.dataSource.sourceType,
+          ),
+          [DataSourceType.network, DataSourceType.network, DataSourceType.file],
+        );
+        expect(platform.creationOptions.map((options) => options.viewType), [
+          VideoViewType.textureView,
+          VideoViewType.platformView,
+          VideoViewType.platformView,
+        ]);
+        expect(
+          query.requests.where(
+            (request) =>
+                request['@type'] == 'downloadFile' &&
+                request['limit'] == 0 &&
+                request['synchronous'] == true,
+          ),
+          hasLength(1),
+        );
+        expect(find.byType(MithkaVideoPlayer), findsOneWidget);
+        final completedFilePlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        expect(completedFilePlayer.controller?.value.position, initialPosition);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform, expectedCalls: 3);
+        expect(platform.disposedPlayerIds, [1, 2, 3]);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+        await tester.runAsync(() async {
+          if (await directory.exists()) await directory.delete(recursive: true);
+        });
+      }
+    },
+  );
+
+  testWidgets(
+    'Android completed-file decoder errors change to the fullscreen platform view',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(() {
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      final sourcePath = File('pubspec.yaml').absolute.path;
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: VideoPlayerView(
+                video: TdFileRef(id: 710, localPath: sourcePath),
+                width: 1920,
+                height: 1080,
+                onClose: () {},
+                streamQuery: _completedVideoQuery(sourcePath, fileId: 710),
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+
+        final firstPlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        final firstController = firstPlayer.controller!;
+        const resumePosition = Duration(seconds: 17);
+        await firstController.seekTo(resumePosition);
+        await tester.pump();
+        platform.emitRuntimeError(
+          platform.createdPlayerIds.single,
+          message:
+              'MediaCodecVideoRenderer error from the texture '
+              'SurfaceProducer.',
+        );
+        await _pumpUntilReplacementPlayerReady(
+          tester,
+          platform,
+          previousController: firstController,
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(platform.createCalls, 2);
+        expect(platform.disposedPlayerIds, [1]);
+        expect(
+          platform.creationOptions.map(
+            (options) => options.dataSource.sourceType,
+          ),
+          [DataSourceType.file, DataSourceType.file],
+        );
+        expect(platform.creationOptions.map((options) => options.viewType), [
+          VideoViewType.textureView,
+          VideoViewType.platformView,
+        ]);
+        final replacement = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        expect(replacement.controller?.value.position, resumePosition);
+        expect(replacement.controller?.value.isPlaying, isTrue);
+
+        platform.emitRuntimeError(
+          platform.createdPlayerIds.last,
+          message: 'The platform video surface could not decode this file.',
+        );
+        for (
+          var attempt = 0;
+          attempt < 40 && find.text('Try again').evaluate().isEmpty;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(find.text('Try again'), findsOneWidget);
+        expect(find.byType(MithkaVideoPlayer), findsNothing);
+        expect(platform.disposedPlayerIds, [1, 2]);
+
+        await tester.tap(find.text('Try again'));
+        await _pumpUntilPlayerReady(tester);
+        expect(platform.createCalls, 3);
+        final retriedPlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        expect(retriedPlayer.controller?.value.position, resumePosition);
+        expect(retriedPlayer.controller?.value.isPlaying, isTrue);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform, expectedCalls: 3);
+        expect(platform.disposedPlayerIds, [1, 2, 3]);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets(
+    'Android runtime failures change surface then fall back to the completed file',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(390, 844);
@@ -785,7 +1016,7 @@ void main() {
       final previousPlatform = VideoPlayerPlatform.instance;
       final platform = _FakeMobileVideoPlatform();
       VideoPlayerPlatform.instance = platform;
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         SharedPreferences.setMockInitialValues(const {});
         await tester.pumpWidget(
@@ -832,7 +1063,12 @@ void main() {
           reason: 'non-fatal command errors must retain the active controller',
         );
 
-        platform.emitRuntimeError(platform.createdPlayerIds.single);
+        platform.emitRuntimeError(
+          platform.createdPlayerIds.single,
+          message:
+              'MediaCodecVideoRenderer error from the texture '
+              'SurfaceProducer.',
+        );
         await _pumpUntilReplacementPlayerReady(
           tester,
           platform,
@@ -845,6 +1081,10 @@ void main() {
         expect(platform.createdPlayerIds, [1, 2]);
         expect(platform.disposedPlayerIds, [1]);
         expect(platform.creationOptions, hasLength(2));
+        expect(platform.creationOptions.map((options) => options.viewType), [
+          VideoViewType.textureView,
+          VideoViewType.platformView,
+        ]);
         expect(
           platform.creationOptions[1].dataSource.uri,
           platform.creationOptions[0].dataSource.uri,
@@ -860,14 +1100,56 @@ void main() {
         expect(platform.seekPositions, [resumePosition, resumePosition]);
         expect(platform.playCalls, 2);
 
-        await tester.pump(const Duration(milliseconds: 250));
-        expect(platform.createCalls, 2);
-        expect(platform.initializedEvents, 2);
-        expect(platform.disposedPlayerIds, [1]);
+        platform.emitRuntimeError(platform.createdPlayerIds.last);
+        await _pumpUntilReplacementPlayerReady(
+          tester,
+          platform,
+          previousController: replacementController,
+          expectedCalls: 3,
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(platform.createCalls, 3);
+        expect(platform.initializedEvents, 3);
+        expect(platform.createdPlayerIds, [1, 2, 3]);
+        expect(platform.disposedPlayerIds, [1, 2]);
+        expect(
+          platform.creationOptions[2].dataSource.sourceType,
+          DataSourceType.file,
+        );
+        expect(
+          platform.creationOptions[2].dataSource.uri,
+          Uri.file(sparseFile.path).toString(),
+        );
+        expect(
+          platform.creationOptions[2].viewType,
+          VideoViewType.platformView,
+        );
+        expect(
+          query.requests.where(
+            (request) =>
+                request['@type'] == 'downloadFile' &&
+                request['limit'] == 0 &&
+                request['synchronous'] == true,
+          ),
+          hasLength(1),
+        );
+
+        final completedFilePlayer = tester.widget<MithkaVideoPlayer>(
+          find.byType(MithkaVideoPlayer),
+        );
+        expect(completedFilePlayer.controller?.value.position, resumePosition);
+        expect(completedFilePlayer.controller?.value.isPlaying, isTrue);
+        expect(platform.seekPositions, [
+          resumePosition,
+          resumePosition,
+          resumePosition,
+        ]);
+        expect(platform.playCalls, 3);
 
         await tester.pumpWidget(const SizedBox.shrink());
-        await _pumpUntilDisposed(tester, platform, expectedCalls: 2);
-        expect(platform.disposedPlayerIds, [1, 2]);
+        await _pumpUntilDisposed(tester, platform, expectedCalls: 3);
+        expect(platform.disposedPlayerIds, [1, 2, 3]);
       } finally {
         VideoPlayerPlatform.instance = previousPlatform;
         debugDefaultTargetPlatformOverride = null;
@@ -877,6 +1159,99 @@ void main() {
       }
     },
   );
+
+  testWidgets('a loopback buffering stall automatically replaces the player', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    late Directory directory;
+    late File sparseFile;
+    await tester.runAsync(() async {
+      directory = await Directory.systemTemp.createTemp(
+        'mithka-buffering-recovery-test-',
+      );
+      sparseFile = File('${directory.path}/sparse.mp4');
+      final handle = await sparseFile.open(mode: FileMode.write);
+      await handle.writeFrom(List<int>.generate(64, (index) => index));
+      await handle.truncate(1024 * 1024);
+      await handle.close();
+    });
+
+    final query = _SparseVideoQuery(
+      fileId: 709,
+      path: sparseFile.path,
+      totalBytes: 1024 * 1024,
+      downloadedBytes: 64,
+    );
+    final previousPlatform = VideoPlayerPlatform.instance;
+    final platform = _FakeMobileVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      SharedPreferences.setMockInitialValues(const {});
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: VideoPlayerView(
+              video: TdFileRef(id: 709, localPath: sparseFile.path),
+              width: 1920,
+              height: 1080,
+              onClose: () {},
+              streamQuery: query.call,
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilPlayerReady(tester);
+
+      final firstPlayer = tester.widget<MithkaVideoPlayer>(
+        find.byType(MithkaVideoPlayer),
+      );
+      final firstController = firstPlayer.controller!;
+      platform.emitBufferingStart(platform.createdPlayerIds.single);
+      platform.emitIsPlayingStateUpdate(
+        platform.createdPlayerIds.single,
+        isPlaying: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 15));
+      await _pumpUntilReplacementPlayerReady(
+        tester,
+        platform,
+        previousController: firstController,
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(platform.createCalls, 2);
+      expect(platform.initializedEvents, 2);
+      expect(platform.disposedPlayerIds, [1]);
+      expect(
+        platform.creationOptions.map(
+          (options) => options.dataSource.sourceType,
+        ),
+        [DataSourceType.network, DataSourceType.network],
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpUntilDisposed(tester, platform, expectedCalls: 2);
+      expect(platform.disposedPlayerIds, [1, 2]);
+    } finally {
+      VideoPlayerPlatform.instance = previousPlatform;
+      debugDefaultTargetPlatformOverride = null;
+      await tester.runAsync(() async {
+        if (await directory.exists()) await directory.delete(recursive: true);
+      });
+    }
+  });
 
   testWidgets('app scrub preview recovers after a thumbnail timeout', (
     tester,
@@ -1075,6 +1450,7 @@ Future<void> _pumpUntilReplacementPlayerReady(
   WidgetTester tester,
   _FakeMobileVideoPlatform platform, {
   required Object previousController,
+  int expectedCalls = 2,
 }) async {
   for (var attempt = 0; attempt < 80; attempt++) {
     await tester.runAsync(
@@ -1082,8 +1458,8 @@ Future<void> _pumpUntilReplacementPlayerReady(
     );
     await tester.pump(const Duration(milliseconds: 10));
     final players = find.byType(MithkaVideoPlayer).evaluate();
-    if (platform.createCalls == 2 &&
-        platform.initializedEvents == 2 &&
+    if (platform.createCalls == expectedCalls &&
+        platform.initializedEvents == expectedCalls &&
         players.length == 1 &&
         !identical(
           (players.single.widget as MithkaVideoPlayer).controller,
@@ -1187,6 +1563,7 @@ final class _SparseVideoQuery {
   final String path;
   final int totalBytes;
   int downloadedBytes;
+  bool completed = false;
   final requests = <Map<String, dynamic>>[];
 
   Future<Map<String, dynamic>> call(Map<String, dynamic> request) async {
@@ -1198,11 +1575,14 @@ final class _SparseVideoQuery {
           path: path,
           totalBytes: totalBytes,
           downloadedBytes: downloadedBytes,
-          completed: false,
+          completed: completed,
         );
       case 'downloadFile':
         final limit = request['limit'] as int? ?? 0;
-        if (limit > 0 && request['synchronous'] == true) {
+        if (limit == 0 && request['synchronous'] == true) {
+          downloadedBytes = totalBytes;
+          completed = true;
+        } else if (limit > 0 && request['synchronous'] == true) {
           downloadedBytes = totalBytes;
         }
         return _tdFileInfo(
@@ -1210,13 +1590,15 @@ final class _SparseVideoQuery {
           path: path,
           totalBytes: totalBytes,
           downloadedBytes: downloadedBytes,
-          completed: false,
+          completed: completed,
         );
       case 'getFileDownloadedPrefixSize':
         final offset = request['offset'] as int? ?? 0;
         return {
           '@type': 'fileDownloadedPrefixSize',
-          'size': (downloadedBytes - offset).clamp(0, totalBytes),
+          'size': completed
+              ? (totalBytes - offset).clamp(0, totalBytes)
+              : (downloadedBytes - offset).clamp(0, totalBytes),
         };
       default:
         throw UnsupportedError('Unexpected TDLib query ${request['@type']}');
@@ -1225,7 +1607,15 @@ final class _SparseVideoQuery {
 }
 
 class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
+  _FakeMobileVideoPlatform({
+    this.initializationFailures = 0,
+    this.initializationFailureMessage =
+        'The loopback source could not be opened.',
+  });
+
   static const duration = Duration(minutes: 2);
+  final int initializationFailures;
+  final String initializationFailureMessage;
   final Map<int, StreamController<VideoEvent>> _events = {};
   final Map<int, Duration> _positions = {};
   var _nextPlayerId = 1;
@@ -1260,6 +1650,15 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
     final controller = _events[playerId]!;
     scheduleMicrotask(() {
       if (!controller.isClosed) {
+        if (playerId <= initializationFailures) {
+          controller.addError(
+            PlatformException(
+              code: 'VideoError',
+              message: initializationFailureMessage,
+            ),
+          );
+          return;
+        }
         initializedEvents++;
         controller.add(
           VideoEvent(
@@ -1281,11 +1680,26 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
     _positions.remove(playerId);
   }
 
-  void emitRuntimeError(int playerId) {
+  void emitRuntimeError(
+    int playerId, {
+    String message = 'The loopback stream stopped during playback.',
+  }) {
     _events[playerId]!.addError(
-      PlatformException(
-        code: 'runtime_video_error',
-        message: 'The loopback stream stopped during playback.',
+      PlatformException(code: 'runtime_video_error', message: message),
+    );
+  }
+
+  void emitBufferingStart(int playerId) {
+    _events[playerId]!.add(
+      VideoEvent(eventType: VideoEventType.bufferingStart),
+    );
+  }
+
+  void emitIsPlayingStateUpdate(int playerId, {required bool isPlaying}) {
+    _events[playerId]!.add(
+      VideoEvent(
+        eventType: VideoEventType.isPlayingStateUpdate,
+        isPlaying: isPlaying,
       ),
     );
   }

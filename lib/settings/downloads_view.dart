@@ -384,39 +384,24 @@ class _DownloadsViewState extends State<DownloadsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.generalDownloads),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _showActions,
+        child: const Padding(
+          padding: EdgeInsets.all(AppSpacing.sm),
+          child: AppIcon(HeroAppIcons.ellipsis, size: 22),
+        ),
+      ),
+      child: Column(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.generalDownloads),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _showActions,
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: AppIcon(HeroAppIcons.ellipsis, size: 22),
-              ),
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: TextField(
+            padding: AppInsets.screen.copyWith(bottom: AppSpacing.sm),
+            child: SettingsSearchField(
               controller: _search,
-              decoration: InputDecoration(
-                hintText: AppStrings.t(AppStringKeys.downloadsSearchDownloads),
-                prefixIcon: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: AppIcon(HeroAppIcons.magnifyingGlass, size: 19),
-                ),
-                filled: true,
-                fillColor: c.searchFill,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  borderSide: BorderSide.none,
-                ),
-              ),
+              hintText: AppStringKeys.downloadsSearchDownloads,
             ),
           ),
           _filters(),
@@ -436,7 +421,7 @@ class _DownloadsViewState extends State<DownloadsView> {
                     ],
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                    padding: AppInsets.screen.copyWith(top: AppSpacing.sm),
                     itemCount: _items.length + (_nextOffset.isEmpty ? 0 : 1),
                     itemBuilder: (context, index) {
                       if (index == _items.length) {

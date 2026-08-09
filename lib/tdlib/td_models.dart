@@ -19,6 +19,8 @@ class TdFileRef {
   TdFileRef({
     required this.id,
     this.localPath,
+    this.fileName,
+    this.mimeType,
     this.miniThumb,
     this.thumbnail,
     this.hasAnimation = false,
@@ -26,6 +28,8 @@ class TdFileRef {
   });
   final int id;
   final String? localPath;
+  final String? fileName;
+  final String? mimeType;
   final bool hasAnimation;
   final int? photoId;
   Uint8List? miniThumb; // decoded JPEG for instant placeholder
@@ -35,6 +39,8 @@ class TdFileRef {
     return TdFileRef(
       id: id,
       localPath: _usablePath(localPath) ?? _usablePath(previous?.localPath),
+      fileName: _usablePath(fileName) ?? _usablePath(previous?.fileName),
+      mimeType: _usablePath(mimeType) ?? _usablePath(previous?.mimeType),
       miniThumb: miniThumb ?? previous?.miniThumb,
       hasAnimation: hasAnimation || (previous?.hasAnimation ?? false),
       photoId: photoId ?? previous?.photoId,
@@ -598,6 +604,31 @@ class MessageAppearancePreview {
   final Map<String, dynamic>? chatTheme;
 }
 
+/// Community identity retained by a chat-added service message.
+///
+/// The Bot API intentionally supplies only an id and name. Native TDLib
+/// sessions can enrich the same model with a cached community photo later.
+class MessageCommunityPreview {
+  MessageCommunityPreview({required this.id, required this.name, this.photo});
+
+  static MessageCommunityPreview? fromContent(Map<String, dynamic>? content) {
+    if (content?.type != 'messageChatAddedToCommunity') return null;
+    final community = content?.obj('community');
+    return MessageCommunityPreview(
+      id: content?.int64('community_id') ?? community?.int64('id') ?? 0,
+      name:
+          content?.str('community_name') ??
+          community?.str('name') ??
+          community?.str('title') ??
+          '',
+    );
+  }
+
+  final int id;
+  String name;
+  TdFileRef? photo;
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -661,6 +692,7 @@ class ChatMessage {
     this.replyToImageHeight,
     this.serviceUserIds = const [],
     this.appearancePreview,
+    this.communityPreview,
     this.customEmoji = const [],
     this.textEntities = const [],
     this.linkPreview,
@@ -766,6 +798,9 @@ class ChatMessage {
   /// The visual payload retained only for Telegram's wallpaper/theme service
   /// messages. Other service content remains text-only.
   final MessageAppearancePreview? appearancePreview;
+
+  /// Rich identity for community membership service events.
+  final MessageCommunityPreview? communityPreview;
 
   // Inline custom (premium) emoji spans within `text`.
   List<CustomEmojiEntity> customEmoji;
@@ -1560,6 +1595,9 @@ abstract final class TDParse {
         appearancePreview: isContentRestricted
             ? null
             : MessageAppearancePreview.fromContent(content),
+        communityPreview: isContentRestricted
+            ? null
+            : MessageCommunityPreview.fromContent(content),
         customEmoji: isContentRestricted
             ? const []
             : customEmojiEntitiesFrom(parsedEntities),
@@ -1772,7 +1810,11 @@ abstract final class TDParse {
     final mini = decodeMiniThumb(video.obj('minithumbnail'));
     return MediaAttachment(
       image: fileRef(video.obj('thumbnail')?.obj('file'), miniThumb: mini),
-      video: fileRef(video.obj('video')),
+      video: fileRef(
+        video.obj('video'),
+        fileName: video.str('file_name'),
+        mimeType: video.str('mime_type'),
+      ),
       videoDuration: video.integer('duration') ?? fallback?.integer('duration'),
       width: video.integer('width') ?? fallback?.integer('width'),
       height: video.integer('height') ?? fallback?.integer('height'),
@@ -3362,7 +3404,12 @@ abstract final class TDParse {
           final thumb =
               fileRef(anim.obj('thumbnail')?.obj('file'), miniThumb: mini) ??
               fileRef(anim.obj('animation'), miniThumb: mini);
-          final animation = fileRef(anim.obj('animation'), miniThumb: mini);
+          final animation = fileRef(
+            anim.obj('animation'),
+            fileName: anim.str('file_name'),
+            mimeType: anim.str('mime_type'),
+            miniThumb: mini,
+          );
           return MediaAttachment(
             image: thumb,
             video: animation,
@@ -3381,7 +3428,11 @@ abstract final class TDParse {
               video.obj('thumbnail')?.obj('file'),
               miniThumb: mini,
             ),
-            video: fileRef(video.obj('video')),
+            video: fileRef(
+              video.obj('video'),
+              fileName: video.str('file_name'),
+              mimeType: video.str('mime_type'),
+            ),
             videoDuration: video.integer('duration'),
             videoFileSize: _fileSize(video.obj('video')),
             width: video.integer('width'),
@@ -3768,6 +3819,8 @@ abstract final class TDParse {
       case 'messageChatJoinByLink':
       case 'messageChatJoinByRequest':
       case 'messageChatBoost':
+      case 'messageChatAddedToCommunity':
+      case 'messageChatRemovedFromCommunity':
         return senderId != null && senderId > 0 ? [senderId] : const <int>[];
       case 'messageChatDeleteMember':
         final userId = content?.int64('user_id');
@@ -3826,6 +3879,8 @@ abstract final class TDParse {
 
   static TdFileRef? fileRef(
     Map<String, dynamic>? file, {
+    String? fileName,
+    String? mimeType,
     Uint8List? miniThumb,
     TdFileRef? thumbnail,
   }) {
@@ -3835,6 +3890,8 @@ abstract final class TDParse {
     return TdFileRef(
       id: id,
       localPath: file.obj('local')?.str('path'),
+      fileName: fileName,
+      mimeType: mimeType,
       miniThumb: miniThumb,
       thumbnail: normalizedThumbnail,
     );

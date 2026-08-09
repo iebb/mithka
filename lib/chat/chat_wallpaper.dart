@@ -1264,10 +1264,40 @@ class ChatWallpaperController extends ChangeNotifier {
   ChatWallpaper? defaultWallpaper({required bool dark}) =>
       _defaultBackgrounds[_globalId(dark)];
 
-  Future<void> loadDefaultWallpaper({required bool dark}) =>
-      _loadDefaultWallpapers(dark: dark);
+  /// Brightnesses whose default background has been read from the client at
+  /// least once this session.
+  final Set<bool> _defaultsLoaded = <bool>{};
+  final Map<bool?, Future<void>> _defaultsInFlight = <bool?, Future<void>>{};
 
-  Future<void> _loadDefaultWallpapers({bool? dark}) async {
+  /// Reads the default background, preferring what is already cached.
+  ///
+  /// The only way to ask TDLib for it is `getCurrentState`, which serialises the
+  /// client's entire state — every chat, user and setting — to answer a question
+  /// about one field. Opening a chat asked for it twice, once per brightness, so
+  /// every chat open dumped that state twice and the garbage it made dominated
+  /// the frames after it. It does not need asking: the value is read once at
+  /// `authorizationStateReady` and TDLib pushes `updateDefaultBackground`
+  /// thereafter, so the cache is authoritative. [refresh] forces the read anyway,
+  /// for the settings screens where the user is looking straight at the value.
+  Future<void> loadDefaultWallpaper({
+    required bool dark,
+    bool refresh = false,
+  }) {
+    if (!refresh && _defaultsLoaded.contains(dark)) return Future.value();
+    return _loadDefaultWallpapers(dark: dark);
+  }
+
+  Future<void> _loadDefaultWallpapers({bool? dark}) {
+    // A chat open fires light and dark together, and both would otherwise put
+    // their own getCurrentState on the wire.
+    final existing = _defaultsInFlight[dark];
+    if (existing != null) return existing;
+    final load = _readDefaultWallpapers(dark: dark);
+    _defaultsInFlight[dark] = load;
+    return load.whenComplete(() => _defaultsInFlight.remove(dark));
+  }
+
+  Future<void> _readDefaultWallpapers({bool? dark}) async {
     if (!_hasActiveClient()) return;
     try {
       final state = await _query({'@type': 'getCurrentState'});
@@ -1279,6 +1309,16 @@ class ChatWallpaperController extends ChangeNotifier {
         if (dark != null && updateDark != dark) continue;
         _ingestDefaultBackground(update);
         ingested = true;
+      }
+      // Marked on a clean read, not on a hit: a failed query must stay
+      // retryable, or a chat opened during a reconnect would cache nothing and
+      // never look again.
+      if (dark != null) {
+        _defaultsLoaded.add(dark);
+      } else {
+        _defaultsLoaded
+          ..add(false)
+          ..add(true);
       }
       if (ingested) notifyListeners();
     } catch (_) {}
@@ -1668,6 +1708,10 @@ class ChatWallpaperController extends ChangeNotifier {
         _themeKinds[_id(chatId)] = _chatThemeKind(theme);
         notifyListeners();
       case 'updateDefaultBackground':
+        // The push is the authoritative source, so it also satisfies the cache
+        // a later loadDefaultWallpaper would otherwise fill with a full
+        // getCurrentState.
+        _defaultsLoaded.add(update.boolean('for_dark_theme') ?? false);
         _ingestDefaultBackground(update);
         notifyListeners();
       case 'updateFile':

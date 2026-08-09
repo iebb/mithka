@@ -50,6 +50,33 @@ typedef MessageTranslationResult = ({
   String languageCode,
 });
 
+@visibleForTesting
+String resolvedCommunityServiceText({
+  required String contentType,
+  required String actorName,
+  String communityName = '',
+}) {
+  if (contentType == 'messageChatAddedToCommunity' &&
+      actorName.isNotEmpty &&
+      communityName.isNotEmpty) {
+    return AppStrings.t(AppStringKeys.communityChatAddedByService, {
+      'value1': actorName,
+      'value2': communityName,
+    });
+  }
+  if (contentType == 'messageChatRemovedFromCommunity' &&
+      actorName.isNotEmpty) {
+    return AppStrings.t(AppStringKeys.communityChatRemovedByService, {
+      'value1': actorName,
+    });
+  }
+  return AppStrings.t(
+    contentType == 'messageChatRemovedFromCommunity'
+        ? AppStringKeys.communityChatRemovedService
+        : AppStringKeys.communityChatAddedService,
+  );
+}
+
 class _SenderInfo {
   _SenderInfo(
     this.name,
@@ -423,6 +450,9 @@ class ChatViewModel extends ChangeNotifier {
   bool hasProtectedContent = false;
   bool _chatCanSend = true; // chat-wide default can_send_basic_messages
   bool peerIsBot = false;
+  bool isBotApiAccount = false;
+  bool botApiCanReadAllGroupMessages = false;
+  bool botApiBotToBotAccessObserved = false;
   bool isSecretChat = false;
   int businessBotUserId = 0;
   String businessBotManageUrl = '';
@@ -554,6 +584,15 @@ class ChatViewModel extends ChangeNotifier {
   bool get canUseSpeechRecognition =>
       aiCapabilities?.transcriptionSupported == true;
   bool get canSendWhenOnline => !isGroup && !peerIsBot;
+  bool get showBotApiPrivacyWarning =>
+      isBotApiAccount &&
+      isGroup &&
+      !isChannel &&
+      !botApiCanReadAllGroupMessages;
+  bool get showBotApiBotToBotWarning =>
+      isBotApiAccount && isGroup && !isChannel && !botApiBotToBotAccessObserved;
+  bool get showBotApiAccessWarning =>
+      showBotApiPrivacyWarning || showBotApiBotToBotWarning;
   List<AvailableMessageEffect> availableMessageEffects = const [];
   MessageSendConfiguration? _nextSendConfiguration;
   String get inputPlaceholder =>
@@ -707,6 +746,7 @@ class ChatViewModel extends ChangeNotifier {
     () async {
       unawaited(_loadMe());
       unawaited(_loadAiCapabilities());
+      unawaited(_loadBotApiAccessInfo());
       await _loadChatHeader();
       if (_chatOpenWorkIsStale) return;
       if (_restoredFromSession) {
@@ -821,6 +861,21 @@ class ChatViewModel extends ChangeNotifier {
       mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> _loadBotApiAccessInfo() async {
+    try {
+      final info = await _client.query({'@type': 'getBotApiAccountInfo'});
+      if (info.type != 'botApiAccountInfo' || _chatOpenWorkIsStale) return;
+      isBotApiAccount = true;
+      botApiCanReadAllGroupMessages =
+          info.boolean('can_read_all_group_messages') ?? false;
+      botApiBotToBotAccessObserved =
+          info.boolean('bot_to_bot_access_observed') ?? false;
+      notifyListeners();
+    } catch (_) {
+      // Native TDLib accounts do not implement this Bot API-only query.
+    }
   }
 
   Future<void> _loadAvailableMessageSenders() async {
@@ -1431,7 +1486,8 @@ class ChatViewModel extends ChangeNotifier {
     List<RichMessageSendFile> files = const [],
     List<Map<String, dynamic>> blocks = const [],
   }) async {
-    if (blocks.isEmpty) {
+    final botApiDirect = await _client.activeAccountUsesBotApi();
+    if (!botApiDirect && blocks.isEmpty) {
       throw StateError('Rich message blocks are required for user accounts');
     }
     for (final file in files) {
@@ -1445,7 +1501,9 @@ class ChatViewModel extends ChangeNotifier {
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
-      'input_message_content': richMessageInputContent(blocks),
+      'input_message_content': botApiDirect
+          ? botApiDirectRichMessageInputContent(html, files)
+          : richMessageInputContent(blocks),
     };
     if (replyTo != null) {
       request['reply_to'] = {
@@ -4563,6 +4621,19 @@ class ChatViewModel extends ChangeNotifier {
         }
         final message = TDParse.message(raw);
         if (message == null) return;
+        final senderId = message.senderId;
+        if (isBotApiAccount &&
+            !botApiBotToBotAccessObserved &&
+            !message.isOutgoing &&
+            senderId != null) {
+          final sender = TdUserIndex.shared.userFor(
+            _client.activeSlot,
+            senderId,
+          );
+          if (sender != null && TDParse.isBotUser(sender)) {
+            botApiBotToBotAccessObserved = true;
+          }
+        }
         if (_latestHistoryLoadInFlight) {
           _latestHistoryLiveArrivals[message.id] = message;
         }
@@ -6226,18 +6297,75 @@ class ChatViewModel extends ChangeNotifier {
 
   void _resolveServiceUsersIfNeeded(List<ChatMessage> batch) {
     for (final message in batch) {
-      if (!message.isService || message.serviceUserIds.isEmpty) continue;
+      if (!message.isService) continue;
       switch (message.contentType) {
+        case 'messageChatAddedToCommunity':
+        case 'messageChatRemovedFromCommunity':
+          _resolveCommunityServiceText(message);
         case 'messageChatAddMembers':
         case 'messageChatJoinByLink':
         case 'messageChatJoinByRequest':
-          _resolveJoinServiceText(message);
+          if (message.serviceUserIds.isNotEmpty) {
+            _resolveJoinServiceText(message);
+          }
         case 'messageChatBoost':
-          _resolveBoostServiceText(message);
+          if (message.serviceUserIds.isNotEmpty) {
+            _resolveBoostServiceText(message);
+          }
         case 'messageChatDeleteMember':
-          _resolveDeleteMemberServiceText(message);
+          if (message.serviceUserIds.isNotEmpty) {
+            _resolveDeleteMemberServiceText(message);
+          }
       }
     }
+  }
+
+  Future<void> _resolveCommunityServiceText(ChatMessage message) async {
+    _ensureMessageIndexes();
+    final target = _messagesById[message.id] ?? message;
+    var changed = _hydrateCommunityPreviewFromCache(target);
+    var actorName = '';
+    if (message.serviceUserIds.isNotEmpty) {
+      final userId = message.serviceUserIds.first;
+      try {
+        final user =
+            TdUserIndex.shared.userFor(_client.activeSlot, userId) ??
+            await _client.query({'@type': 'getUser', 'user_id': userId});
+        actorName = TDParse.userName(user);
+      } catch (_) {}
+    }
+    final text = resolvedCommunityServiceText(
+      contentType: message.contentType ?? '',
+      actorName: actorName,
+      communityName: target.communityPreview?.name ?? '',
+    );
+    if (target.text != text) {
+      target.text = text;
+      changed = true;
+    }
+    if (changed) _scheduleCoalescedNotify();
+  }
+
+  bool _hydrateCommunityPreviewFromCache(ChatMessage message) {
+    final preview = message.communityPreview;
+    if (preview == null || preview.id == 0) return false;
+    for (final update in _client.latestCommunityUpdates) {
+      final community = update.obj('community');
+      if (community?.int64('id') != preview.id) continue;
+      var changed = false;
+      final name = community?.str('name') ?? community?.str('title') ?? '';
+      if (preview.name.isEmpty && name.isNotEmpty) {
+        preview.name = name;
+        changed = true;
+      }
+      final photo = TDParse.smallPhoto(community?.obj('photo'));
+      if (preview.photo == null && photo != null) {
+        preview.photo = photo;
+        changed = true;
+      }
+      return changed;
+    }
+    return false;
   }
 
   Future<void> _resolveJoinServiceText(ChatMessage message) async {

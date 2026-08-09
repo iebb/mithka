@@ -71,7 +71,7 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
     try {
       final nextWallpaper = option.wallpaper;
       if (nextWallpaper != null) {
-        await _controller.loadDefaultWallpaper(dark: _dark);
+        await _controller.loadDefaultWallpaper(dark: _dark, refresh: true);
         if (!mounted) return;
         final existingDefault = _controller.defaultWallpaper(dark: _dark);
         final previousWallpaper = _controller.globalThemeWallpaperFor(

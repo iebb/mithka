@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/image_edit_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -944,40 +945,19 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final theme = context.watch<ThemeController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          PopScope(canPop: !_saving, child: const SizedBox.shrink()),
-          NavHeader(
-            title: widget.title,
-            onBack: _saving ? () {} : () => Navigator.of(context).maybePop(),
-            trailing: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                  )
-                : null,
-          ),
-          if (_loading)
-            const Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                ),
-              ),
-            )
-          else if (_loadError != null)
-            Expanded(child: _loadFailureView())
-          else
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+    return PopScope(
+      canPop: !_saving,
+      child: SettingsPageScaffold(
+        title: widget.title,
+        onBack: () => Navigator.of(context).maybePop(),
+        showBackButton: !_saving,
+        trailing: _saving ? const AppActivityIndicator(size: 20) : null,
+        child: _loading
+            ? const Center(child: AppActivityIndicator(size: 24))
+            : _loadError != null
+            ? _loadFailureView()
+            : SettingsListView(
                 children: [
                   if (_isProfilePhoto)
                     _privacySectionLabel(
@@ -1101,8 +1081,6 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
                   ],
                 ],
               ),
-            ),
-        ],
       ),
     );
   }
@@ -1609,144 +1587,119 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.privacyLoggedInDevices),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _scanLoginQr,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: AppIcon(
-                  HeroAppIcons.qrcode,
-                  size: 24,
-                  color: c.textPrimary,
-                ),
-              ),
-            ),
-          ),
-          if (_loading)
-            const Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  _card([
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _scanLoginQr,
-                      child: SizedBox(
-                        height: 54,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              AppIcon(
-                                HeroAppIcons.qrcode,
-                                size: 22,
-                                color: AppTheme.brand,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  AppStrings.t(
-                                    AppStringKeys.privacyScanLoginQr,
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: c.textPrimary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.privacyLoggedInDevices),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _scanLoginQr,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: AppIcon(HeroAppIcons.qrcode, size: 24, color: c.textPrimary),
+        ),
+      ),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                _card([
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _scanLoginQr,
+                    child: SizedBox(
+                      height: 54,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            AppIcon(
+                              HeroAppIcons.qrcode,
+                              size: 22,
+                              color: AppTheme.brand,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                AppStrings.t(AppStringKeys.privacyScanLoginQr),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: c.textPrimary,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              AppIcon(
-                                HeroAppIcons.chevronRight,
-                                size: 14,
-                                color: c.textTertiary,
-                              ),
-                            ],
+                            ),
+                            AppIcon(
+                              HeroAppIcons.chevronRight,
+                              size: 14,
+                              color: c.textTertiary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                if (_current != null) ...[
+                  const SettingsSectionHeader(
+                    AppStringKeys.privacyCurrentDevice,
+                  ),
+                  _card([_sessionRow(_current!, current: true)]),
+                  const SizedBox(height: 14),
+                ],
+                if (_others.isNotEmpty) ...[
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _terminateAll,
+                    child: _card([
+                      SizedBox(
+                        height: 50,
+                        child: Center(
+                          child: Text(
+                            AppStrings.t(
+                              AppStringKeys.privacyTerminateAllOtherSessions,
+                            ),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppTheme.tagRed,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 14),
+                  const SettingsSectionHeader(
+                    AppStringKeys.privacyOtherDevices,
+                  ),
+                  _card([
+                    for (var i = 0; i < _others.length; i++) ...[
+                      _sessionRow(_others[i]),
+                      if (i < _others.length - 1)
+                        const InsetDivider(leadingInset: 16),
+                    ],
+                  ]),
+                ] else ...[
+                  const SettingsSectionHeader(
+                    AppStringKeys.privacyOtherDevices,
+                  ),
+                  _card([
+                    SizedBox(
+                      height: 74,
+                      child: Center(
+                        child: Text(
+                          AppStrings.t(AppStringKeys.privacyNoOtherDevices),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: c.textSecondary,
                           ),
                         ),
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 14),
-                  if (_current != null) ...[
-                    const SettingsSectionHeader(
-                      AppStringKeys.privacyCurrentDevice,
-                    ),
-                    _card([_sessionRow(_current!, current: true)]),
-                    const SizedBox(height: 14),
-                  ],
-                  if (_others.isNotEmpty) ...[
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _terminateAll,
-                      child: _card([
-                        SizedBox(
-                          height: 50,
-                          child: Center(
-                            child: Text(
-                              AppStrings.t(
-                                AppStringKeys.privacyTerminateAllOtherSessions,
-                              ),
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.tagRed,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                    const SizedBox(height: 14),
-                    const SettingsSectionHeader(
-                      AppStringKeys.privacyOtherDevices,
-                    ),
-                    _card([
-                      for (var i = 0; i < _others.length; i++) ...[
-                        _sessionRow(_others[i]),
-                        if (i < _others.length - 1)
-                          const InsetDivider(leadingInset: 16),
-                      ],
-                    ]),
-                  ] else ...[
-                    const SettingsSectionHeader(
-                      AppStringKeys.privacyOtherDevices,
-                    ),
-                    _card([
-                      SizedBox(
-                        height: 74,
-                        child: Center(
-                          child: Text(
-                            AppStrings.t(AppStringKeys.privacyNoOtherDevices),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ]),
-                  ],
                 ],
-              ),
+              ],
             ),
-        ],
-      ),
     );
   }
 
@@ -1880,82 +1833,48 @@ class _BlockedUsersViewState extends State<BlockedUsersView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.privacyBlockedUsers),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          if (_loading)
-            const Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.privacyBlockedUsers),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : _blocked.isEmpty
+          ? Center(
+              child: Text(
+                AppStrings.t(AppStringKeys.privacyBlockedUsersEmpty),
+                style: TextStyle(fontSize: 14, color: c.textSecondary),
               ),
             )
-          else if (_blocked.isEmpty)
-            Expanded(
-              child: Center(
-                child: Text(
-                  AppStrings.t(AppStringKeys.privacyBlockedUsersEmpty),
-                  style: TextStyle(fontSize: 14, color: c.textSecondary),
+          : SettingsListView(
+              children: [
+                SettingsCard.rows(
+                  dividerInset: AppMetric.settingsTextDividerInset,
+                  rows: [for (final user in _blocked) _row(user)],
                 ),
-              ),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: _blocked.length,
-                itemBuilder: (context, i) => _row(_blocked[i]),
-              ),
+              ],
             ),
-        ],
-      ),
     );
   }
 
   Widget _row(Contact u) {
-    final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: c.background,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          PhotoAvatar(title: u.name, photo: u.photo, size: 44),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              u.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16, color: c.textPrimary),
-            ),
+    return SettingsRow(
+      title: u.name,
+      leading: PhotoAvatar(title: u.name, photo: u.photo, size: 36),
+      showChevron: false,
+      trailing: AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.privacyUnblock),
+        onTap: () => _unblock(u),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppTheme.brand),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _unblock(u),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.brand),
-                borderRadius: BorderRadius.circular(AppRadius.card),
-              ),
-              child: Text(
-                AppStrings.t(AppStringKeys.privacyUnblock),
-                style: TextStyle(fontSize: 13, color: AppTheme.brand),
-              ),
-            ),
+          child: Text(
+            AppStrings.t(AppStringKeys.privacyUnblock),
+            style: TextStyle(fontSize: 13, color: AppTheme.brand),
           ),
-        ],
+        ),
       ),
     );
   }

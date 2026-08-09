@@ -82,88 +82,36 @@ class _AutoDeleteViewState extends State<AutoDeleteView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.chatInfoAutoDeleteMessages,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                    children: [
-                      _card(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: Text(
-                          AppStrings.t(AppStringKeys.autoDeleteDescription),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: c.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.chatInfoAutoDeleteMessages,
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                _card(),
+                SettingsNote(
+                  text: AppStrings.t(AppStringKeys.autoDeleteDescription),
+                ),
+              ],
+            ),
     );
   }
 
   Widget _card() {
-    final c = context.colors;
-    return SettingsPanel(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (final o in _options) ...[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _set(o.seconds),
-              child: SizedBox(
-                height: 52,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          o.title.l10n(context),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 16, color: c.textPrimary),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (_selected == o.seconds)
-                        AppIcon(
-                          HeroAppIcons.check,
-                          size: 18,
-                          color: AppTheme.brand,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (o.seconds != _options.last.seconds)
-              const InsetDivider(leadingInset: 16),
-          ],
-        ],
-      ),
+    return SettingsCard.rows(
+      dividerInset: AppMetric.settingsTextDividerInset,
+      rows: [
+        for (final option in _options)
+          SettingsRow(
+            title: option.title,
+            showChevron: false,
+            onTap: () => _set(option.seconds),
+            trailing: _selected == option.seconds
+                ? const AppIcon(HeroAppIcons.check, size: 18)
+                : null,
+          ),
+      ],
     );
   }
 }

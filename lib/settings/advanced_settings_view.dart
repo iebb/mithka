@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../theme/app_theme.dart';
+import '../tdlib/td_client.dart';
+import 'bot_api_endpoint_view.dart';
 import 'rich_message_relay_config.dart';
 import 'rich_message_relay_view.dart';
 import 'transfer_boost_config.dart';
@@ -20,12 +20,14 @@ class AdvancedSettingsView extends StatefulWidget {
 class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
   bool _relayConfigured = false;
   bool _transferBoostEnabled = false;
+  String _botApiEndpoint = 'https://api.telegram.org';
 
   @override
   void initState() {
     super.initState();
     _refreshRelayStatus();
     _refreshTransferBoostStatus();
+    _refreshBotApiEndpoint();
   }
 
   Future<void> _refreshRelayStatus() async {
@@ -52,94 +54,66 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
     await _refreshTransferBoostStatus();
   }
 
+  Future<void> _refreshBotApiEndpoint() async {
+    try {
+      final endpoint = await TdClient.shared.configuredBotApiEndpoint();
+      if (mounted) setState(() => _botApiEndpoint = endpoint.toString());
+    } on Object {
+      // Keep the public default if a detached account transport is closing.
+    }
+  }
+
+  Future<void> _openBotApiEndpointSettings() async {
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const BotApiEndpointView()));
+    await _refreshBotApiEndpoint();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.advancedTitle,
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStringKeys.advancedTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.xl,
-                  AppSpacing.lg,
-                  AppSpacing.section,
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: 4,
-                      bottom: AppSpacing.sm,
-                    ),
-                    child: Text(
-                      AppStringKeys.advancedInput.l10n(context),
-                      style: TextStyle(
-                        fontSize: AppTextSize.caption,
-                        color: c.textTertiary,
-                      ),
-                    ),
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsRow(
-                        title: AppStringKeys.richTextRelayBotTitle,
-                        value:
-                            (_relayConfigured
-                                    ? AppStringKeys.richTextRelayBotConfigured
-                                    : AppStringKeys
-                                          .richTextRelayBotNotConfigured)
-                                .l10n(context),
-                        leading: AppIcon(
-                          HeroAppIcons.key,
-                          size: 21,
-                          color: AppTheme.brand,
-                        ),
-                        onTap: _openRelaySettings,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: 4,
-                      bottom: AppSpacing.sm,
-                    ),
-                    child: Text(
-                      AppStringKeys.advancedNetwork.l10n(context),
-                      style: TextStyle(
-                        fontSize: AppTextSize.caption,
-                        color: c.textTertiary,
-                      ),
-                    ),
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsRow(
-                        title: AppStringKeys.transferBoostTitle,
-                        value:
-                            (_transferBoostEnabled
-                                    ? AppStringKeys.transferBoostEnabled
-                                    : AppStringKeys.transferBoostDisabled)
-                                .l10n(context),
-                        leading: AppIcon(
-                          HeroAppIcons.arrowsUpDown,
-                          size: 21,
-                          color: AppTheme.brand,
-                        ),
-                        onTap: _openTransferBoostSettings,
-                      ),
-                    ],
-                  ),
-                ],
+          SettingsSection(
+            titleKey: AppStringKeys.advancedInput,
+            rows: [
+              SettingsRow(
+                title: AppStringKeys.richTextRelayBotTitle,
+                value:
+                    (_relayConfigured
+                            ? AppStringKeys.richTextRelayBotConfigured
+                            : AppStringKeys.richTextRelayBotNotConfigured)
+                        .l10n(context),
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.key),
+                onTap: _openRelaySettings,
               ),
-            ),
+            ],
+          ),
+          SettingsSection(
+            titleKey: AppStringKeys.advancedNetwork,
+            rows: [
+              SettingsRow(
+                title: AppStringKeys.loginBotApiEndpoint,
+                value: _botApiEndpoint,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.server),
+                onTap: _openBotApiEndpointSettings,
+              ),
+              SettingsRow(
+                title: AppStringKeys.transferBoostTitle,
+                value:
+                    (_transferBoostEnabled
+                            ? AppStringKeys.transferBoostEnabled
+                            : AppStringKeys.transferBoostDisabled)
+                        .l10n(context),
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.arrowsUpDown,
+                ),
+                onTap: _openTransferBoostSettings,
+              ),
+            ],
           ),
         ],
       ),

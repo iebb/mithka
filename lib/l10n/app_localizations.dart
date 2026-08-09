@@ -1036,8 +1036,10 @@ abstract final class AppStringKeys {
   static const cloudThemeOfficialDescription = 'cloudThemeOfficialDescription';
   static const cloudThemePreviewTitle = 'cloudThemePreviewTitle';
   static const communityChatAddedService = 'communityChatAddedService';
+  static const communityChatAddedByService = 'communityChatAddedByService';
   static const communityChatCount = 'communityChatCount';
   static const communityChatRemovedService = 'communityChatRemovedService';
+  static const communityChatRemovedByService = 'communityChatRemovedByService';
   static const communityChatsYouAreIn = 'communityChatsYouAreIn';
   static const communityChatsYouCanView = 'communityChatsYouCanView';
   static const communityNoChats = 'communityNoChats';
@@ -1045,6 +1047,7 @@ abstract final class AppStringKeys {
   static const communityShowAsOneChatDescription =
       'communityShowAsOneChatDescription';
   static const communityTitle = 'communityTitle';
+  static const communityViewAction = 'communityViewAction';
   static const commonUiDraftBadge = 'commonUiDraftBadge';
   static const commonUiGroupOwner = 'commonUiGroupOwner';
   static const commonUiMentionedBySomeoneBadge =
@@ -1664,8 +1667,18 @@ abstract final class AppStringKeys {
   static const locationDetailFetchingLocation =
       'locationDetailFetchingLocation';
   static const locationPickerDragMapToChoose = 'locationPickerDragMapToChoose';
+  static const botApiPrivacyWarning = 'botApiPrivacyWarning';
+  static const botApiBotToBotWarning = 'botApiBotToBotWarning';
+  static const botApiWarningDismiss = 'botApiWarningDismiss';
   static const loginBackToAccount = 'loginBackToAccount';
   static const loginBackToPreviousAccount = 'loginBackToPreviousAccount';
+  static const loginBotAccountDescription = 'loginBotAccountDescription';
+  static const loginBotAccountTitle = 'loginBotAccountTitle';
+  static const loginBotApiEndpoint = 'loginBotApiEndpoint';
+  static const loginBotApiEndpointHint = 'loginBotApiEndpointHint';
+  static const loginBotFailed = 'loginBotFailed';
+  static const loginBotSubmit = 'loginBotSubmit';
+  static const loginBotToken = 'loginBotToken';
   static const loginCodeSentByEmail = 'loginCodeSentByEmail';
   static const loginCodeSentByFirebase = 'loginCodeSentByFirebase';
   static const loginCodeSentByFlashCall = 'loginCodeSentByFlashCall';
@@ -1711,7 +1724,9 @@ abstract final class AppStringKeys {
   static const loginVerificationCode = 'loginVerificationCode';
   static const loginVerify = 'loginVerify';
   static const loginWithQrCode = 'loginWithQrCode';
+  static const loginWithBotToken = 'loginWithBotToken';
   static const loginWithPasskey = 'loginWithPasskey';
+  static const loginWithPhoneNumber = 'loginWithPhoneNumber';
   static const markdownLabel = 'markdownLabel';
   static const mediaSendPreviewTitle = 'mediaSendPreviewTitle';
   static const messageActionBlock = 'messageActionBlock';
@@ -2772,6 +2787,12 @@ abstract final class AppStringKeys {
   static const translationSettingsLanguageCount =
       'translationSettingsLanguageCount';
   static const translationSettingsNone = 'translationSettingsNone';
+  static const translationSettingsFallbackDescription =
+      'translationSettingsFallbackDescription';
+  static const translationSettingsOptionsSection =
+      'translationSettingsOptionsSection';
+  static const translationSettingsOptionUnavailable =
+      'translationSettingsOptionUnavailable';
   static const translationSettingsTargetLanguage =
       'translationSettingsTargetLanguage';
   static const translationSettingsStandardSection =
@@ -3638,6 +3659,10 @@ abstract final class AppStringKeys {
   static const telegramAiEditorTelegramStyle = 'telegramAiEditorTelegramStyle';
   static const telegramAiEditorToLanguage = 'telegramAiEditorToLanguage';
   static const telegramAiEditorTranslate = 'telegramAiEditorTranslate';
+  static const telegramAiDailyLimitMessage = 'telegramAiDailyLimitMessage';
+  static const telegramAiDailyLimitReached = 'telegramAiDailyLimitReached';
+  static const telegramAiIncreaseLimit = 'telegramAiIncreaseLimit';
+  static const telegramAiIncreaseLimitValue = 'telegramAiIncreaseLimitValue';
   static const telegramInvoiceCheckoutAddressLine2 =
       'telegramInvoiceCheckoutAddressLine2';
   static const telegramInvoiceCheckoutBillingCountryCode =

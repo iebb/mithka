@@ -388,29 +388,20 @@ class _StorageUsageViewState extends State<StorageUsageView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.storageUsageStorageUsage),
-            onBack: widget.showBackButton && Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-            trailing: AppInteractiveSurface(
-              onTap: _loading ? null : () => unawaited(_load()),
-              semanticLabel: AppStrings.t(AppStringKeys.groupAdminRefresh),
-              borderRadius: BorderRadius.circular(AppRadius.control),
-              child: const Padding(
-                padding: EdgeInsets.all(7),
-                child: AppIcon(HeroAppIcons.arrowsRotate, size: 19),
-              ),
-            ),
-          ),
-          Expanded(child: _content()),
-        ],
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.storageUsageStorageUsage),
+      showBackButton: widget.showBackButton,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: AppInteractiveSurface(
+        onTap: _loading ? null : () => unawaited(_load()),
+        semanticLabel: AppStrings.t(AppStringKeys.groupAdminRefresh),
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: const Padding(
+          padding: EdgeInsets.all(7),
+          child: AppIcon(HeroAppIcons.arrowsRotate, size: 19),
+        ),
       ),
+      child: _content(),
     );
   }
 
@@ -427,66 +418,57 @@ class _StorageUsageViewState extends State<StorageUsageView> {
       builder: (context, constraints) {
         final desktopDense =
             isDesktopTargetPlatform() && constraints.maxWidth >= 720;
-        final maxWidth = desktopDense ? 980.0 : 680.0;
-        final horizontal = desktopDense ? 24.0 : 14.0;
-        return Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            child: ListView(
-              key: const ValueKey('storage-dashboard'),
-              padding: EdgeInsets.fromLTRB(horizontal, 18, horizontal, 32),
-              children: [
-                _StorageDonutSummary(
-                  snapshot: snapshot,
-                  desktopDense: desktopDense,
-                ),
-                SizedBox(height: desktopDense ? 12 : 16),
-                _StorageActionCard(
-                  key: const ValueKey('storage-chats-files-card'),
-                  title: AppStrings.t(AppStringKeys.storageDashboardChatsFiles),
-                  description: AppStrings.t(
-                    AppStringKeys.storageDashboardChatsFilesDescription,
-                  ),
-                  value: formatStorageBytes(snapshot.cacheSize),
-                  action: AppStrings.t(AppStringKeys.appearanceManage),
-                  icon: HeroAppIcons.solidFolder,
-                  iconColor: const Color(0xFF16B8D4),
-                  desktopDense: desktopDense,
-                  enabled: !_working,
-                  onTap: _openManager,
-                ),
-                SizedBox(height: desktopDense ? 10 : 12),
-                _StorageActionCard(
-                  key: const ValueKey('storage-cache-card'),
-                  title: AppStrings.t(AppStringKeys.storageDashboardCache),
-                  description: AppStrings.t(
-                    AppStringKeys.storageDashboardCacheDescription,
-                  ),
-                  value: AppStrings.t(
-                    AppStringKeys.storageUsageValue1CachedFiles,
-                    {'value1': snapshot.fileCount},
-                  ),
-                  action: _working
-                      ? AppStrings.t(AppStringKeys.generalClearingCache)
-                      : AppStrings.t(AppStringKeys.generalClearCache),
-                  icon: HeroAppIcons.compactDisc,
-                  iconColor: const Color(0xFF7C5CFC),
-                  desktopDense: desktopDense,
-                  destructive: true,
-                  enabled: !_working,
-                  showProgress: _working,
-                  onTap: _clearAllCache,
-                ),
-                SizedBox(height: desktopDense ? 10 : 12),
-                _otherDataCard(snapshot, desktopDense: desktopDense),
-                SizedBox(height: desktopDense ? 10 : 12),
-                _policyCard(desktopDense: desktopDense),
-                SizedBox(height: desktopDense ? 10 : 12),
-                _relatedStorageCard(desktopDense: desktopDense),
-              ],
+        return ListView(
+          key: const ValueKey('storage-dashboard'),
+          padding: AppInsets.screen,
+          children: [
+            _StorageDonutSummary(
+              snapshot: snapshot,
+              desktopDense: desktopDense,
             ),
-          ),
+            SizedBox(height: desktopDense ? 12 : 16),
+            _StorageActionCard(
+              key: const ValueKey('storage-chats-files-card'),
+              title: AppStrings.t(AppStringKeys.storageDashboardChatsFiles),
+              description: AppStrings.t(
+                AppStringKeys.storageDashboardChatsFilesDescription,
+              ),
+              value: formatStorageBytes(snapshot.cacheSize),
+              action: AppStrings.t(AppStringKeys.appearanceManage),
+              icon: HeroAppIcons.solidFolder,
+              iconColor: const Color(0xFF16B8D4),
+              desktopDense: desktopDense,
+              enabled: !_working,
+              onTap: _openManager,
+            ),
+            SizedBox(height: desktopDense ? 10 : 12),
+            _StorageActionCard(
+              key: const ValueKey('storage-cache-card'),
+              title: AppStrings.t(AppStringKeys.storageDashboardCache),
+              description: AppStrings.t(
+                AppStringKeys.storageDashboardCacheDescription,
+              ),
+              value: AppStrings.t(AppStringKeys.storageUsageValue1CachedFiles, {
+                'value1': snapshot.fileCount,
+              }),
+              action: _working
+                  ? AppStrings.t(AppStringKeys.generalClearingCache)
+                  : AppStrings.t(AppStringKeys.generalClearCache),
+              icon: HeroAppIcons.compactDisc,
+              iconColor: const Color(0xFF7C5CFC),
+              desktopDense: desktopDense,
+              destructive: true,
+              enabled: !_working,
+              showProgress: _working,
+              onTap: _clearAllCache,
+            ),
+            SizedBox(height: desktopDense ? 10 : 12),
+            _otherDataCard(snapshot, desktopDense: desktopDense),
+            SizedBox(height: desktopDense ? 10 : 12),
+            _policyCard(desktopDense: desktopDense),
+            SizedBox(height: desktopDense ? 10 : 12),
+            _relatedStorageCard(desktopDense: desktopDense),
+          ],
         );
       },
     );
@@ -1248,27 +1230,16 @@ class _StorageManagerViewState extends State<_StorageManagerView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.storageManagerTitle),
-            onBack: Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final desktop =
-                    isDesktopTargetPlatform() && constraints.maxWidth >= 760;
-                return desktop ? _desktopManager() : _mobileManager();
-              },
-            ),
-          ),
-        ],
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.storageManagerTitle),
+      onBack: () => Navigator.of(context).pop(),
+      constrainContent: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final desktop =
+              isDesktopTargetPlatform() && constraints.maxWidth >= 760;
+          return desktop ? _desktopManager() : _mobileManager();
+        },
       ),
     );
   }

@@ -3612,6 +3612,43 @@ void main() {
       await tester.pump(const Duration(minutes: 3, seconds: 1));
     });
 
+    testWidgets('keeps an outgoing text repeat badge beside its bubble', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(id: 7, isOutgoing: true, text: '11', date: 1);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            home: SizedBox(
+              width: 420,
+              child: Scaffold(
+                body: MessageBubble(
+                  message: message,
+                  peerTitle: 'Test',
+                  isGroup: false,
+                  showRepeat: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final badge = tester.getRect(
+        find.byKey(const ValueKey('messageRepeatBadge')),
+      );
+      final bubble = tester.getRect(
+        find.byKey(const ValueKey('messageTapTarget-7')),
+      );
+      expect((bubble.left - badge.right).abs(), lessThanOrEqualTo(7));
+    });
+
     testWidgets('shows detail time on tap unless always-on is enabled', (
       tester,
     ) async {

@@ -415,4 +415,40 @@ void main() {
     expect(find.text('Display translation'), findsOneWidget);
     expect(find.text('Display original'), findsNothing);
   });
+
+  testWidgets('translation action can be hidden when no provider is usable', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'translation.enabled': true});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+    addTearDown(translation.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageActionMenu(
+              message: ChatMessage(
+                id: 9,
+                isOutgoing: false,
+                text: 'Bot message',
+                date: 1,
+                contentType: 'messageText',
+              ),
+              isPinned: false,
+              allowTranslation: false,
+              onSelect: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('message-action-translate')),
+      findsNothing,
+    );
+  });
 }

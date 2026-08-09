@@ -189,12 +189,21 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(ValueKey(entry.key)),
+          matching: find.byType(SettingsLeadingIcon),
+        ),
+        findsOneWidget,
+        reason: '${entry.key} does not use the shared line-icon treatment',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey(entry.key)),
           matching: find.byIcon(entry.value.data),
         ),
         findsOneWidget,
         reason: '${entry.key} does not use its owned icon',
       );
     }
+    expect(find.byType(SettingsIconTile), findsNothing);
   });
 
   testWidgets('Appearance summarizes hidden message bubbles as off', (
@@ -382,14 +391,14 @@ void main() {
       );
       expect(find.text('Hide Phone Number in Sidebar'), findsNothing);
 
-      final roundAvatarSwitch = find
+      final roundAvatarRow = find
           .descendant(
             of: find.byKey(const ValueKey('avatars-sidebar-controls')),
-            matching: find.byType(AppSwitch),
+            matching: find.byType(SettingsSwitchRow),
           )
           .first;
       final initiallyCircular = controller.circularGroupAvatars;
-      await tester.tap(roundAvatarSwitch);
+      await tester.tap(roundAvatarRow);
       await tester.pump();
       expect(controller.circularGroupAvatars, isNot(initiallyCircular));
     },

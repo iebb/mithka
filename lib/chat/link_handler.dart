@@ -2020,6 +2020,23 @@ Future<void> _openGiftAuction(NavigatorState nav, String auctionId) async {
   );
 }
 
+Future<void> openTelegramPremiumFeatures(
+  BuildContext context, {
+  String referrer = '',
+}) async {
+  final nav = Navigator.of(context);
+  try {
+    await _openPremiumFeatures(nav, referrer);
+  } catch (_) {
+    if (context.mounted) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.linkHandlerUnsupportedTelegramLink),
+      );
+    }
+  }
+}
+
 Future<void> _openPremiumFeatures(NavigatorState nav, String referrer) async {
   final result = await TdClient.shared.query({
     '@type': 'getPremiumFeatures',

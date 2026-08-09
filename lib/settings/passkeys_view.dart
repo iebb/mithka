@@ -116,95 +116,62 @@ class _PasskeysViewState extends State<PasskeysView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.passkeysTitle),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: AppInteractiveSurface(
-              semanticLabel: AppStrings.t(AppStringKeys.passkeysAdd),
-              onTap: _working ? null : () => unawaited(_add()),
-              enabled: !_working,
-              borderRadius: BorderRadius.circular(AppRadius.control),
-              child: Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: AppIcon(
-                  HeroAppIcons.plus,
-                  size: 24,
-                  color: _working ? c.textTertiary : c.textPrimary,
-                ),
-              ),
-            ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.passkeysTitle),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.passkeysAdd),
+        onTap: _working ? null : () => unawaited(_add()),
+        enabled: !_working,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: AppIcon(
+            HeroAppIcons.plus,
+            size: 24,
+            color: _working ? c.textTertiary : c.textPrimary,
           ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+        ),
+      ),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                SettingsNote(
+                  text: AppStrings.t(AppStringKeys.passkeysDescription),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                if (_items.isEmpty)
+                  SettingsPanel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 34,
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                        child: Text(
-                          AppStrings.t(AppStringKeys.passkeysDescription),
+                    child: Column(
+                      children: [
+                        AppIcon(
+                          HeroAppIcons.key,
+                          size: 30,
+                          color: c.textTertiary,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          AppStrings.t(AppStringKeys.passkeysEmpty),
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            height: 1.35,
-                            fontSize: 13,
+                            fontSize: 15,
                             color: c.textSecondary,
                           ),
                         ),
-                      ),
-                      if (_items.isEmpty)
-                        SettingsPanel(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 34,
-                          ),
-                          child: Column(
-                            children: [
-                              AppIcon(
-                                HeroAppIcons.key,
-                                size: 30,
-                                color: c.textTertiary,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                AppStrings.t(AppStringKeys.passkeysEmpty),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  color: c.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        SettingsCard(
-                          children: [
-                            for (
-                              var index = 0;
-                              index < _items.length;
-                              index++
-                            ) ...[
-                              _passkeyRow(_items[index]),
-                              if (index != _items.length - 1)
-                                const InsetDivider(leadingInset: 54),
-                            ],
-                          ],
-                        ),
-                    ],
+                      ],
+                    ),
+                  )
+                else
+                  SettingsCard.rows(
+                    rows: [for (final passkey in _items) _passkeyRow(passkey)],
                   ),
-          ),
-        ],
-      ),
+              ],
+            ),
     );
   }
 
@@ -221,52 +188,23 @@ class _PasskeysViewState extends State<PasskeysView> {
         : AppStrings.t(AppStringKeys.passkeysLastUsedOn, {
             'value1': _dateFormat.format(passkey.lastUsageDate!),
           });
-    return SizedBox(
-      height: lastUsed == null ? 68 : 82,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-        child: Row(
-          children: [
-            AppIcon(HeroAppIcons.key, size: 21, color: AppTheme.brand),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    lastUsed == null ? created : '$created\n$lastUsed',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.25,
-                      color: c.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _working ? null : () => unawaited(_remove(passkey)),
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: AppIcon(
-                  HeroAppIcons.trash,
-                  size: 20,
-                  color: _working ? c.textTertiary : AppTheme.unreadBadge,
-                ),
-              ),
-            ),
-          ],
+    return SettingsRow(
+      title: name,
+      subtitle: lastUsed == null ? created : '$created\n$lastUsed',
+      leading: const SettingsLeadingIcon(icon: HeroAppIcons.key),
+      showChevron: false,
+      trailing: AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.chatInfoRemove),
+        enabled: !_working,
+        onTap: _working ? null : () => unawaited(_remove(passkey)),
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: AppIcon(
+            HeroAppIcons.trash,
+            size: 20,
+            color: _working ? c.textTertiary : AppTheme.unreadBadge,
+          ),
         ),
       ),
     );

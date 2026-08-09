@@ -148,277 +148,243 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.businessSettingsTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.businessSettingsTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                if (_capabilities?.isPremium == false) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      border: Border.all(
+                        color: AppTheme.brand.withValues(alpha: 0.24),
+                        width: 0.5,
+                      ),
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
-                    children: [
-                      if (_capabilities?.isPremium == false) ...[
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppTheme.brand.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(AppRadius.card),
-                            border: Border.all(
-                              color: AppTheme.brand.withValues(alpha: 0.24),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              AppIcon(
-                                HeroAppIcons.solidStar,
-                                size: 19,
-                                color: AppTheme.brand,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  AppStrings.t(
-                                    AppStringKeys
-                                        .businessSettingsTelegramBusinessToolsRequireTelegramPremiumYourProfile,
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    height: 1.35,
-                                    color: c.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppIcon(
+                          HeroAppIcons.solidStar,
+                          size: 19,
+                          color: AppTheme.brand,
                         ),
-                        const SizedBox(height: 18),
-                      ],
-                      const SettingsSectionHeader(
-                        AppStringKeys.businessSettingsProfile,
-                      ),
-                      _card([
-                        if (_supports('businessFeatureLocation'))
-                          _row(
-                            HeroAppIcons.locationDot,
-                            const Color(0xFFFF7A2F),
-                            AppStringKeys.businessSettingsLocation,
-                            _locationSummary,
-                            () => _open(
-                              _BusinessLocationView(initial: _location),
-                              feature: 'businessFeatureLocation',
-                            ),
-                          ),
-                        if (_supports('businessFeatureLocation') &&
-                            _supports('businessFeatureOpeningHours'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureOpeningHours'))
-                          _row(
-                            HeroAppIcons.clock,
-                            const Color(0xFFFF5B50),
-                            AppStringKeys.businessSettingsOpeningHours,
-                            _hoursSummary,
-                            () => _open(
-                              _BusinessOpeningHoursView(initial: _openingHours),
-                              feature: 'businessFeatureOpeningHours',
-                            ),
-                          ),
-                        if ((_supports('businessFeatureLocation') ||
-                                _supports('businessFeatureOpeningHours')) &&
-                            _supports('businessFeatureStartPage'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureStartPage'))
-                          _row(
-                            HeroAppIcons.message,
-                            const Color(0xFF6D73F5),
-                            AppStringKeys.businessSettingsStartPage,
-                            _startPageSummary,
-                            () => _open(
-                              _BusinessStartPageView(initial: _startPage),
-                              feature: 'businessFeatureStartPage',
-                            ),
-                          ),
-                      ]),
-                      const SizedBox(height: 22),
-                      const SettingsSectionHeader(
-                        AppStringKeys.businessSettingsTools,
-                      ),
-                      _card([
-                        if (_supports('businessFeatureQuickReplies')) ...[
-                          _literalRow(
-                            HeroAppIcons.solidMessage,
-                            const Color(0xFF2FA96B),
-                            AppStrings.t(
-                              AppStringKeys.businessToolsQuickReplies,
-                            ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
                             AppStrings.t(
                               AppStringKeys
-                                  .businessSettingsQuickRepliesDescription,
+                                  .businessSettingsTelegramBusinessToolsRequireTelegramPremiumYourProfile,
                             ),
-                            () => _open(
-                              const BusinessQuickRepliesView(),
-                              feature: 'businessFeatureQuickReplies',
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.35,
+                              color: c.textSecondary,
                             ),
-                          ),
-                        ],
-                        if (_supports('businessFeatureQuickReplies') &&
-                            (_supports('businessFeatureGreetingMessage') ||
-                                _supports('businessFeatureAwayMessage')))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureGreetingMessage')) ...[
-                          _literalRow(
-                            HeroAppIcons.thumbsUp,
-                            const Color(0xFF19A874),
-                            AppStrings.t(
-                              AppStringKeys.businessToolsGreetingMessage,
-                            ),
-                            AppStrings.t(
-                              _greetingMessage == null
-                                  ? AppStringKeys.groupAdminOff
-                                  : AppStringKeys.privacyEnabled,
-                            ),
-                            () => _open(
-                              BusinessGreetingMessageView(
-                                initial: _greetingMessage,
-                              ),
-                              feature: 'businessFeatureGreetingMessage',
-                            ),
-                          ),
-                        ],
-                        if (_supports('businessFeatureGreetingMessage') &&
-                            _supports('businessFeatureAwayMessage'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureAwayMessage')) ...[
-                          _literalRow(
-                            HeroAppIcons.solidMoon,
-                            const Color(0xFF675CE8),
-                            AppStrings.t(
-                              AppStringKeys.businessToolsAwayMessage,
-                            ),
-                            AppStrings.t(
-                              _awayMessage == null
-                                  ? AppStringKeys.groupAdminOff
-                                  : AppStringKeys.privacyEnabled,
-                            ),
-                            () => _open(
-                              BusinessAwayMessageView(initial: _awayMessage),
-                              feature: 'businessFeatureAwayMessage',
-                            ),
-                          ),
-                        ],
-                        if ((_supports('businessFeatureQuickReplies') ||
-                                _supports('businessFeatureGreetingMessage') ||
-                                _supports('businessFeatureAwayMessage')) &&
-                            _supports('businessFeatureAccountLinks'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureAccountLinks'))
-                          _row(
-                            HeroAppIcons.link,
-                            const Color(0xFF9B63F6),
-                            AppStringKeys.businessSettingsChatLinks,
-                            AppStrings.t(
-                              AppStringKeys.businessSettingsChatLinksSubtitle,
-                            ),
-                            () => _open(
-                              const _BusinessChatLinksView(),
-                              feature: 'businessFeatureAccountLinks',
-                            ),
-                          ),
-                        if ((_supports('businessFeatureQuickReplies') ||
-                                _supports('businessFeatureGreetingMessage') ||
-                                _supports('businessFeatureAwayMessage') ||
-                                _supports('businessFeatureAccountLinks')) &&
-                            _supports('businessFeatureBots'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureBots'))
-                          _literalRow(
-                            HeroAppIcons.code,
-                            const Color(0xFF3288D6),
-                            AppStrings.t(
-                              AppStringKeys.businessToolsConnectedBot,
-                            ),
-                            AppStrings.t(
-                              AppStringKeys
-                                  .businessSettingsConnectedBotDescription,
-                            ),
-                            () => _open(
-                              const BusinessConnectedBotView(),
-                              feature: 'businessFeatureBots',
-                            ),
-                          ),
-                        if ((_supports('businessFeatureQuickReplies') ||
-                                _supports('businessFeatureGreetingMessage') ||
-                                _supports('businessFeatureAwayMessage') ||
-                                _supports('businessFeatureAccountLinks') ||
-                                _supports('businessFeatureBots')) &&
-                            _supports('businessFeatureEmojiStatus'))
-                          const InsetDivider(leadingInset: 56),
-                        if (_supports('businessFeatureEmojiStatus'))
-                          _row(
-                            HeroAppIcons.solidStar,
-                            const Color(0xFF6D73F5),
-                            AppStringKeys.businessSettingsEmojiStatus,
-                            _emojiStatusId == 0
-                                ? AppStrings.t(
-                                    AppStringKeys.businessSettingsNotSet,
-                                  )
-                                : AppStrings.t(
-                                    AppStringKeys
-                                        .businessSettingsEmojiStatusSet,
-                                  ),
-                            () async {
-                              final capabilities = _capabilities;
-                              if (capabilities?.canUse(
-                                    'businessFeatureEmojiStatus',
-                                  ) !=
-                                  true) {
-                                showToast(
-                                  context,
-                                  AppStrings.t(
-                                    AppStringKeys
-                                        .businessSettingsTelegramPremiumIsRequiredForBusinessTools,
-                                  ),
-                                );
-                                return;
-                              }
-                              await showEmojiStatusPicker(
-                                context,
-                                currentStatusId: _emojiStatusId,
-                              );
-                              await _load();
-                            },
-                          ),
-                      ]),
-                      if ((_capabilities?.features.isEmpty ?? true)) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          AppStrings.t(
-                            AppStringKeys
-                                .businessSettingsBusinessCapabilitiesCouldNotBeLoadedForThis,
-                          ),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: c.textSecondary,
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-          ),
-        ],
-      ),
+                  const SizedBox(height: 18),
+                ],
+                const SettingsSectionHeader(
+                  AppStringKeys.businessSettingsProfile,
+                ),
+                _card([
+                  if (_supports('businessFeatureLocation'))
+                    _row(
+                      HeroAppIcons.locationDot,
+                      const Color(0xFFFF7A2F),
+                      AppStringKeys.businessSettingsLocation,
+                      _locationSummary,
+                      () => _open(
+                        _BusinessLocationView(initial: _location),
+                        feature: 'businessFeatureLocation',
+                      ),
+                    ),
+                  if (_supports('businessFeatureLocation') &&
+                      _supports('businessFeatureOpeningHours'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureOpeningHours'))
+                    _row(
+                      HeroAppIcons.clock,
+                      const Color(0xFFFF5B50),
+                      AppStringKeys.businessSettingsOpeningHours,
+                      _hoursSummary,
+                      () => _open(
+                        _BusinessOpeningHoursView(initial: _openingHours),
+                        feature: 'businessFeatureOpeningHours',
+                      ),
+                    ),
+                  if ((_supports('businessFeatureLocation') ||
+                          _supports('businessFeatureOpeningHours')) &&
+                      _supports('businessFeatureStartPage'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureStartPage'))
+                    _row(
+                      HeroAppIcons.message,
+                      const Color(0xFF6D73F5),
+                      AppStringKeys.businessSettingsStartPage,
+                      _startPageSummary,
+                      () => _open(
+                        _BusinessStartPageView(initial: _startPage),
+                        feature: 'businessFeatureStartPage',
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 22),
+                const SettingsSectionHeader(
+                  AppStringKeys.businessSettingsTools,
+                ),
+                _card([
+                  if (_supports('businessFeatureQuickReplies')) ...[
+                    _literalRow(
+                      HeroAppIcons.solidMessage,
+                      const Color(0xFF2FA96B),
+                      AppStrings.t(AppStringKeys.businessToolsQuickReplies),
+                      AppStrings.t(
+                        AppStringKeys.businessSettingsQuickRepliesDescription,
+                      ),
+                      () => _open(
+                        const BusinessQuickRepliesView(),
+                        feature: 'businessFeatureQuickReplies',
+                      ),
+                    ),
+                  ],
+                  if (_supports('businessFeatureQuickReplies') &&
+                      (_supports('businessFeatureGreetingMessage') ||
+                          _supports('businessFeatureAwayMessage')))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureGreetingMessage')) ...[
+                    _literalRow(
+                      HeroAppIcons.thumbsUp,
+                      const Color(0xFF19A874),
+                      AppStrings.t(AppStringKeys.businessToolsGreetingMessage),
+                      AppStrings.t(
+                        _greetingMessage == null
+                            ? AppStringKeys.groupAdminOff
+                            : AppStringKeys.privacyEnabled,
+                      ),
+                      () => _open(
+                        BusinessGreetingMessageView(initial: _greetingMessage),
+                        feature: 'businessFeatureGreetingMessage',
+                      ),
+                    ),
+                  ],
+                  if (_supports('businessFeatureGreetingMessage') &&
+                      _supports('businessFeatureAwayMessage'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureAwayMessage')) ...[
+                    _literalRow(
+                      HeroAppIcons.solidMoon,
+                      const Color(0xFF675CE8),
+                      AppStrings.t(AppStringKeys.businessToolsAwayMessage),
+                      AppStrings.t(
+                        _awayMessage == null
+                            ? AppStringKeys.groupAdminOff
+                            : AppStringKeys.privacyEnabled,
+                      ),
+                      () => _open(
+                        BusinessAwayMessageView(initial: _awayMessage),
+                        feature: 'businessFeatureAwayMessage',
+                      ),
+                    ),
+                  ],
+                  if ((_supports('businessFeatureQuickReplies') ||
+                          _supports('businessFeatureGreetingMessage') ||
+                          _supports('businessFeatureAwayMessage')) &&
+                      _supports('businessFeatureAccountLinks'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureAccountLinks'))
+                    _row(
+                      HeroAppIcons.link,
+                      const Color(0xFF9B63F6),
+                      AppStringKeys.businessSettingsChatLinks,
+                      AppStrings.t(
+                        AppStringKeys.businessSettingsChatLinksSubtitle,
+                      ),
+                      () => _open(
+                        const _BusinessChatLinksView(),
+                        feature: 'businessFeatureAccountLinks',
+                      ),
+                    ),
+                  if ((_supports('businessFeatureQuickReplies') ||
+                          _supports('businessFeatureGreetingMessage') ||
+                          _supports('businessFeatureAwayMessage') ||
+                          _supports('businessFeatureAccountLinks')) &&
+                      _supports('businessFeatureBots'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureBots'))
+                    _literalRow(
+                      HeroAppIcons.code,
+                      const Color(0xFF3288D6),
+                      AppStrings.t(AppStringKeys.businessToolsConnectedBot),
+                      AppStrings.t(
+                        AppStringKeys.businessSettingsConnectedBotDescription,
+                      ),
+                      () => _open(
+                        const BusinessConnectedBotView(),
+                        feature: 'businessFeatureBots',
+                      ),
+                    ),
+                  if ((_supports('businessFeatureQuickReplies') ||
+                          _supports('businessFeatureGreetingMessage') ||
+                          _supports('businessFeatureAwayMessage') ||
+                          _supports('businessFeatureAccountLinks') ||
+                          _supports('businessFeatureBots')) &&
+                      _supports('businessFeatureEmojiStatus'))
+                    const InsetDivider(leadingInset: 56),
+                  if (_supports('businessFeatureEmojiStatus'))
+                    _row(
+                      HeroAppIcons.solidStar,
+                      const Color(0xFF6D73F5),
+                      AppStringKeys.businessSettingsEmojiStatus,
+                      _emojiStatusId == 0
+                          ? AppStrings.t(AppStringKeys.businessSettingsNotSet)
+                          : AppStrings.t(
+                              AppStringKeys.businessSettingsEmojiStatusSet,
+                            ),
+                      () async {
+                        final capabilities = _capabilities;
+                        if (capabilities?.canUse(
+                              'businessFeatureEmojiStatus',
+                            ) !=
+                            true) {
+                          showToast(
+                            context,
+                            AppStrings.t(
+                              AppStringKeys
+                                  .businessSettingsTelegramPremiumIsRequiredForBusinessTools,
+                            ),
+                          );
+                          return;
+                        }
+                        await showEmojiStatusPicker(
+                          context,
+                          currentStatusId: _emojiStatusId,
+                        );
+                        await _load();
+                      },
+                    ),
+                ]),
+                if ((_capabilities?.features.isEmpty ?? true)) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    AppStrings.t(
+                      AppStringKeys
+                          .businessSettingsBusinessCapabilitiesCouldNotBeLoadedForThis,
+                    ),
+                    style: TextStyle(fontSize: 13, color: c.textSecondary),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 
@@ -430,57 +396,12 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
     String title,
     String subtitle,
     VoidCallback onTap,
-  ) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 66,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
-            children: [
-              SettingsIconTile(
-                icon: icon,
-                backgroundColor: iconColor,
-                size: 30,
-                iconSize: 17,
-                radius: 8,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      AppStrings.t(title),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: c.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: 17,
-                color: c.textTertiary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  ) => SettingsRow(
+    title: title,
+    subtitle: subtitle,
+    leading: SettingsLeadingIcon(icon: icon),
+    onTap: onTap,
+  );
 
   Widget _literalRow(
     AppIconData icon,
@@ -488,57 +409,12 @@ class _BusinessSettingsViewState extends State<BusinessSettingsView> {
     String title,
     String subtitle,
     VoidCallback onTap,
-  ) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: 66,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
-            children: [
-              SettingsIconTile(
-                icon: icon,
-                backgroundColor: iconColor,
-                size: 30,
-                iconSize: 17,
-                radius: 8,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: c.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              AppIcon(
-                HeroAppIcons.chevronRight,
-                size: 17,
-                color: c.textTertiary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  ) => SettingsRow(
+    title: title,
+    subtitle: subtitle,
+    leading: SettingsLeadingIcon(icon: icon),
+    onTap: onTap,
+  );
 }
 
 const _minutesPerDay = 24 * 60;
@@ -635,88 +511,77 @@ class _BusinessLocationViewState extends State<_BusinessLocationView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.businessSettingsLocation,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: _saving,
+        onTap: _save,
+      ),
+      child: SettingsListView(
         children: [
-          _SaveHeader(
-            title: AppStringKeys.businessSettingsLocation,
-            saving: _saving,
-            onSave: _save,
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
-              children: [
-                _editorCard(
-                  child: CupertinoTextField(
-                    controller: _address,
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessSettingsLocationAddressHint,
-                    ),
-                    maxLength: 96,
-                    padding: const EdgeInsets.all(14),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _pickOnMap,
-                  child: _editorCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
-                          AppIcon(
-                            HeroAppIcons.locationDot,
-                            size: 19,
-                            color: AppTheme.brand,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _latitude == null
-                                  ? AppStrings.t(
-                                      AppStringKeys.businessSettingsSetOnMap,
-                                    )
-                                  : '${_latitude!.toStringAsFixed(5)}, ${_longitude!.toStringAsFixed(5)}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          AppIcon(
-                            HeroAppIcons.chevronRight,
-                            size: 17,
-                            color: c.textTertiary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (widget.initial != null) ...[
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _save(remove: true),
-                    child: Center(
-                      child: Text(
-                        AppStrings.t(
-                          AppStringKeys.businessSettingsRemoveLocation,
-                        ),
-                        style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+          _editorCard(
+            child: CupertinoTextField(
+              controller: _address,
+              placeholder: AppStrings.t(
+                AppStringKeys.businessSettingsLocationAddressHint,
+              ),
+              maxLength: 96,
+              padding: const EdgeInsets.all(14),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
             ),
           ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _pickOnMap,
+            child: _editorCard(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.locationDot,
+                      size: 19,
+                      color: AppTheme.brand,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _latitude == null
+                            ? AppStrings.t(
+                                AppStringKeys.businessSettingsSetOnMap,
+                              )
+                            : '${_latitude!.toStringAsFixed(5)}, ${_longitude!.toStringAsFixed(5)}',
+                        style: TextStyle(fontSize: 16, color: c.textPrimary),
+                      ),
+                    ),
+                    AppIcon(
+                      HeroAppIcons.chevronRight,
+                      size: 17,
+                      color: c.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (widget.initial != null) ...[
+            const SizedBox(height: 16),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _save(remove: true),
+              child: Center(
+                child: Text(
+                  AppStrings.t(AppStringKeys.businessSettingsRemoveLocation),
+                  style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -937,89 +802,82 @@ class _BusinessOpeningHoursViewState extends State<_BusinessOpeningHoursView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.businessSettingsOpeningHours,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: _saving,
+        onTap: _save,
+      ),
+      child: SettingsListView(
         children: [
-          _SaveHeader(
-            title: AppStringKeys.businessSettingsOpeningHours,
-            saving: _saving,
-            onSave: _save,
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+          _editorCard(
+            child: Column(
               children: [
-                _editorCard(
-                  child: Column(
-                    children: [
-                      _hoursRow(
-                        AppStrings.t(AppStringKeys.businessSettingsAlwaysOpen),
-                        AppSwitch(
-                          value: _alwaysOpen,
-                          onChanged: (value) =>
-                              setState(() => _alwaysOpen = value),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 14),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _chooseTimeZone,
-                        child: _hoursRow(
-                          AppStrings.t(AppStringKeys.businessSettingsTimeZone),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _timeZoneId,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: c.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              AppIcon(
-                                HeroAppIcons.chevronRight,
-                                size: 16,
-                                color: c.textTertiary,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                _hoursRow(
+                  AppStrings.t(AppStringKeys.businessSettingsAlwaysOpen),
+                  AppSwitch(
+                    value: _alwaysOpen,
+                    onChanged: (value) => setState(() => _alwaysOpen = value),
                   ),
                 ),
-                if (!_alwaysOpen) ...[
-                  const SizedBox(height: 14),
-                  _editorCard(
-                    child: Column(
+                const InsetDivider(leadingInset: 14),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _chooseTimeZone,
+                  child: _hoursRow(
+                    AppStrings.t(AppStringKeys.businessSettingsTimeZone),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        for (var day = 0; day < _days.length; day++) ...[
-                          _dayRow(day),
-                          if (day < _days.length - 1)
-                            const InsetDivider(leadingInset: 14),
-                        ],
+                        Text(
+                          _timeZoneId,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        AppIcon(
+                          HeroAppIcons.chevronRight,
+                          size: 16,
+                          color: c.textTertiary,
+                        ),
                       ],
                     ),
                   ),
-                ],
-                if (widget.initial != null) ...[
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _save(remove: true),
-                    child: Center(
-                      child: Text(
-                        AppStrings.t(AppStringKeys.businessSettingsRemoveHours),
-                        style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ],
             ),
           ),
+          if (!_alwaysOpen) ...[
+            const SizedBox(height: 14),
+            _editorCard(
+              child: Column(
+                children: [
+                  for (var day = 0; day < _days.length; day++) ...[
+                    _dayRow(day),
+                    if (day < _days.length - 1)
+                      const InsetDivider(leadingInset: 14),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          if (widget.initial != null) ...[
+            const SizedBox(height: 16),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _save(remove: true),
+              child: Center(
+                child: Text(
+                  AppStrings.t(AppStringKeys.businessSettingsRemoveHours),
+                  style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1210,126 +1068,114 @@ class _BusinessStartPageViewState extends State<_BusinessStartPageView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.businessSettingsStartPage,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: _saving,
+        onTap: _save,
+      ),
+      child: SettingsListView(
         children: [
-          _SaveHeader(
-            title: AppStringKeys.businessSettingsStartPage,
-            saving: _saving,
-            onSave: _save,
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
-              children: [
-                _fieldLabel(AppStringKeys.businessSettingsStartPageTitle),
-                _editorCard(
-                  child: CupertinoTextField(
-                    controller: _title,
-                    maxLength: 64,
-                    padding: const EdgeInsets.all(14),
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessSettingsStartPageTitleHint,
-                    ),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _fieldLabel(AppStringKeys.businessSettingsStartPageMessage),
-                _editorCard(
-                  child: CupertinoTextField(
-                    controller: _message,
-                    maxLength: 512,
-                    minLines: 4,
-                    maxLines: 7,
-                    padding: const EdgeInsets.all(14),
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessSettingsStartPageMessageHint,
-                    ),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _fieldLabel(AppStringKeys.businessSettingsGreetingSticker),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _chooseSticker,
-                  child: _editorCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
-                          AppIcon(
-                            HeroAppIcons.solidFaceSmile,
-                            size: 19,
-                            color: AppTheme.brand,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _stickerFileId == null
-                                  ? AppStrings.t(
-                                      AppStringKeys
-                                          .businessSettingsChooseOptionalGreetingSticker,
-                                    )
-                                  : AppStrings.t(
-                                      AppStringKeys
-                                          .businessSettingsGreetingStickerSelected,
-                                    ),
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (_stickerFileId != null)
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () =>
-                                  setState(() => _stickerFileId = null),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: AppIcon(
-                                  HeroAppIcons.xmark,
-                                  size: 16,
-                                  color: c.textTertiary,
-                                ),
-                              ),
-                            )
-                          else
-                            AppIcon(
-                              HeroAppIcons.chevronRight,
-                              size: 17,
-                              color: c.textTertiary,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (widget.initial != null) ...[
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _save(remove: true),
-                    child: Center(
-                      child: Text(
-                        AppStrings.t(
-                          AppStringKeys.businessSettingsRemoveStartPage,
-                        ),
-                        style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+          _fieldLabel(AppStringKeys.businessSettingsStartPageTitle),
+          _editorCard(
+            child: CupertinoTextField(
+              controller: _title,
+              maxLength: 64,
+              padding: const EdgeInsets.all(14),
+              placeholder: AppStrings.t(
+                AppStringKeys.businessSettingsStartPageTitleHint,
+              ),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
             ),
           ),
+          const SizedBox(height: 16),
+          _fieldLabel(AppStringKeys.businessSettingsStartPageMessage),
+          _editorCard(
+            child: CupertinoTextField(
+              controller: _message,
+              maxLength: 512,
+              minLines: 4,
+              maxLines: 7,
+              padding: const EdgeInsets.all(14),
+              placeholder: AppStrings.t(
+                AppStringKeys.businessSettingsStartPageMessageHint,
+              ),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _fieldLabel(AppStringKeys.businessSettingsGreetingSticker),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _chooseSticker,
+            child: _editorCard(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.solidFaceSmile,
+                      size: 19,
+                      color: AppTheme.brand,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _stickerFileId == null
+                            ? AppStrings.t(
+                                AppStringKeys
+                                    .businessSettingsChooseOptionalGreetingSticker,
+                              )
+                            : AppStrings.t(
+                                AppStringKeys
+                                    .businessSettingsGreetingStickerSelected,
+                              ),
+                        style: TextStyle(fontSize: 15, color: c.textPrimary),
+                      ),
+                    ),
+                    if (_stickerFileId != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _stickerFileId = null),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: AppIcon(
+                            HeroAppIcons.xmark,
+                            size: 16,
+                            color: c.textTertiary,
+                          ),
+                        ),
+                      )
+                    else
+                      AppIcon(
+                        HeroAppIcons.chevronRight,
+                        size: 17,
+                        color: c.textTertiary,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (widget.initial != null) ...[
+            const SizedBox(height: 16),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _save(remove: true),
+              child: Center(
+                child: Text(
+                  AppStrings.t(AppStringKeys.businessSettingsRemoveStartPage),
+                  style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1383,121 +1229,95 @@ class _BusinessChatLinksViewState extends State<_BusinessChatLinksView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.businessSettingsChatLinks),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _edit(null),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: AppIcon(
-                  HeroAppIcons.plus,
-                  size: 22,
-                  color: AppTheme.brand,
-                ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.businessSettingsChatLinks),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _edit(null),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: AppIcon(HeroAppIcons.plus, size: 22, color: AppTheme.brand),
+        ),
+      ),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : _links.isEmpty
+          ? Center(
+              child: Text(
+                AppStrings.t(AppStringKeys.businessSettingsChatLinksEmpty),
+                style: TextStyle(fontSize: 15, color: c.textSecondary),
               ),
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
-                : _links.isEmpty
-                ? Center(
-                    child: Text(
-                      AppStrings.t(
-                        AppStringKeys.businessSettingsChatLinksEmpty,
-                      ),
-                      style: TextStyle(fontSize: 15, color: c.textSecondary),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
-                    itemCount: _links.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, index) {
-                      final link = _links[index];
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _edit(link),
-                        child: _editorCard(
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
+            )
+          : ListView.separated(
+              padding: AppInsets.screen,
+              itemCount: _links.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (_, index) {
+                final link = _links[index];
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _edit(link),
+                  child: _editorCard(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          AppIcon(
+                            HeroAppIcons.link,
+                            size: 19,
+                            color: AppTheme.brand,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                AppIcon(
-                                  HeroAppIcons.link,
-                                  size: 19,
-                                  color: AppTheme.brand,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        link.str('title') ?? '',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: c.textPrimary,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        link.str('link') ?? '',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: c.textSecondary,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        AppStrings.t(
-                                          AppStringKeys
-                                              .businessSettingsLinkOpenCount,
-                                          {
-                                            'value1':
-                                                link.integer('view_count') ?? 0,
-                                          },
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: c.textTertiary,
-                                        ),
-                                      ),
-                                    ],
+                                Text(
+                                  link.str('title') ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: c.textPrimary,
                                   ),
                                 ),
-                                AppIcon(
-                                  HeroAppIcons.chevronRight,
-                                  size: 17,
-                                  color: c.textTertiary,
+                                const SizedBox(height: 3),
+                                Text(
+                                  link.str('link') ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  AppStrings.t(
+                                    AppStringKeys.businessSettingsLinkOpenCount,
+                                    {'value1': link.integer('view_count') ?? 0},
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textTertiary,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      );
-                    },
+                          AppIcon(
+                            HeroAppIcons.chevronRight,
+                            size: 17,
+                            color: c.textTertiary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-          ),
-        ],
-      ),
+                );
+              },
+            ),
     );
   }
 }
@@ -1589,104 +1409,61 @@ class _BusinessChatLinkEditorState extends State<_BusinessChatLinkEditor> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.businessSettingsChatLink,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: _saving,
+        onTap: _save,
+      ),
+      child: SettingsListView(
         children: [
-          _SaveHeader(
-            title: AppStringKeys.businessSettingsChatLink,
-            saving: _saving,
-            onSave: _save,
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
-              children: [
-                _fieldLabel(AppStringKeys.businessSettingsLinkTitle),
-                _editorCard(
-                  child: CupertinoTextField(
-                    controller: _title,
-                    maxLength: 32,
-                    padding: const EdgeInsets.all(14),
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessSettingsLinkTitleHint,
-                    ),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _fieldLabel(AppStringKeys.businessSettingsLinkDraft),
-                _editorCard(
-                  child: CupertinoTextField(
-                    controller: _draft,
-                    maxLength: 256,
-                    minLines: 3,
-                    maxLines: 5,
-                    padding: const EdgeInsets.all(14),
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessSettingsLinkDraftHint,
-                    ),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-                if (widget.initial != null) ...[
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _delete,
-                    child: Center(
-                      child: Text(
-                        AppStrings.t(AppStringKeys.businessSettingsDeleteLink),
-                        style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+          _fieldLabel(AppStringKeys.businessSettingsLinkTitle),
+          _editorCard(
+            child: CupertinoTextField(
+              controller: _title,
+              maxLength: 32,
+              padding: const EdgeInsets.all(14),
+              placeholder: AppStrings.t(
+                AppStringKeys.businessSettingsLinkTitleHint,
+              ),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SaveHeader extends StatelessWidget {
-  const _SaveHeader({
-    required this.title,
-    required this.saving,
-    required this.onSave,
-  });
-
-  final String title;
-  final bool saving;
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) {
-    return NavHeader(
-      title: AppStrings.t(title),
-      onBack: () => Navigator.of(context).pop(),
-      trailing: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: saving ? null : onSave,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          child: saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                )
-              : Text(
-                  AppStrings.t(AppStringKeys.addMembersDone),
-                  style: TextStyle(fontSize: 16, color: AppTheme.brand),
+          const SizedBox(height: 16),
+          _fieldLabel(AppStringKeys.businessSettingsLinkDraft),
+          _editorCard(
+            child: CupertinoTextField(
+              controller: _draft,
+              maxLength: 256,
+              minLines: 3,
+              maxLines: 5,
+              padding: const EdgeInsets.all(14),
+              placeholder: AppStrings.t(
+                AppStringKeys.businessSettingsLinkDraftHint,
+              ),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
+            ),
+          ),
+          if (widget.initial != null) ...[
+            const SizedBox(height: 16),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _delete,
+              child: Center(
+                child: Text(
+                  AppStrings.t(AppStringKeys.businessSettingsDeleteLink),
+                  style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
                 ),
-        ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

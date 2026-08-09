@@ -131,6 +131,9 @@ class EmojiFontManifestEntry {
 class EmojiFontCatalog {
   EmojiFontCatalog._();
 
+  @visibleForTesting
+  EmojiFontCatalog.forTesting();
+
   static final shared = EmojiFontCatalog._();
 
   /// Bump whenever release font binaries change without changing their keys.
@@ -144,6 +147,16 @@ class EmojiFontCatalog {
 
   final Set<String> _loadedFamilies = {};
   final Map<String, Future<String>> _inFlightFontLoads = {};
+
+  /// Returns the deterministic runtime family once this process has registered
+  /// it with Flutter. New ThemeController instances can therefore retain the
+  /// selected emoji face synchronously instead of flashing the platform face
+  /// until another asynchronous cache read completes.
+  String? loadedFamilyForKey(String key) {
+    if (key == EmojiFontChoice.system.key) return null;
+    final family = EmojiFontChoice.runtimeFamilyForKey(key);
+    return _loadedFamilies.contains(family) ? family : null;
+  }
 
   Future<List<EmojiFontManifestEntry>> loadManifest({
     bool forceRefresh = false,

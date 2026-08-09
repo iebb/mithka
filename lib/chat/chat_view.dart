@@ -16,6 +16,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
@@ -26,6 +27,8 @@ import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
 import '../chats/search_token_views.dart';
+import '../communities/community_models.dart';
+import '../communities/community_view.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -61,10 +64,12 @@ import 'ai_chat_translation_service.dart';
 import 'apple_pcc_unread_summary_provider.dart';
 import 'auto_translate_policy.dart';
 import 'blocked_message_runs.dart';
+import 'bot_api_access_warning.dart';
 import 'channel_direct_messages_service.dart';
 import 'channel_direct_messages_view.dart';
 import 'chat_appearance_message_preview.dart';
 import 'chat_auto_scroll_policy.dart';
+import 'chat_community_service_card.dart';
 import 'chat_first_contact_card.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_frame_scheduler.dart';
@@ -109,9 +114,11 @@ import 'quick_reaction_choice.dart';
 import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
 import 'sticker_viewer.dart';
+import 'telegram_ai_service.dart';
 import 'telegram_cocoon_unread_summary_provider.dart';
 import 'telegram_mini_app_view.dart';
 import 'transcript_pivot_partition.dart';
+import 'translation_fallback.dart';
 import 'unread_chat_summary_models.dart';
 import 'unread_chat_summary_service.dart';
 import 'unread_chat_summary_view.dart';
@@ -820,6 +827,9 @@ class _ChatViewState extends State<ChatView> {
   late final ChatViewModel _vm;
   ChatKind? _reportedChatKind;
   late final TranslationController _translation;
+  AiSettingsController? _ai;
+  Set<TranslationProvider> _nativeTranslationProviders = const {};
+  int? _dismissedBotApiWarningMask;
   late final ScrollController _scroll;
   final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
   final _targetKey = GlobalKey(); // arbitrary linked/anchored message row
@@ -853,6 +863,7 @@ class _ChatViewState extends State<ChatView> {
   bool _bannerDismissed = false; // "N条新消息" banner dismissed / caught up
   Timer? _bannerTimer; // auto-hides the banner a few seconds after it appears
   Timer? _readSyncTimer;
+  Timer? _handoffUpdateTimer;
   int? _scrollTargetId;
   int? _lastNewestMessageId;
   int? _lastOldestMessageId;
@@ -1099,6 +1110,10 @@ class _ChatViewState extends State<ChatView> {
     );
     _translation = context.read<TranslationController>();
     _translation.addListener(_onTranslationSettingsChanged);
+    _ai = context.read<AiSettingsController?>();
+    _ai?.addListener(_onTranslationSettingsChanged);
+    unawaited(_loadNativeTranslationProviders());
+    unawaited(_loadBotApiWarningDismissal());
     _historyWindowRevision = _vm.historyWindowRevision;
     _historyWindowInvalidationRevision = _vm.historyWindowInvalidationRevision;
     unawaited(
@@ -1195,8 +1210,32 @@ class _ChatViewState extends State<ChatView> {
         chatId: widget.chatId,
         title: () => _vm.peerTitle.isEmpty ? widget.title : _vm.peerTitle,
         isVisible: isVisible,
+        accountSlot: _sessionKey.accountSlot,
+        messageId: _handoffMessageId,
       );
     }
+    _scheduleHandoffRefresh();
+  }
+
+  int? _handoffMessageId() {
+    if (!_initialTranscriptReady || _vm.messages.isEmpty) {
+      final messageId = widget.initialMessageId;
+      return messageId != null && messageId > 0 ? messageId : null;
+    }
+    if (_scroll.hasClients && _isAtLoadedBottom(80)) {
+      final messageId = _latestServerMessage(_vm.messages)?.id;
+      return messageId != null && messageId > 0 ? messageId : null;
+    }
+    final messageId =
+        _captureSessionScrollAnchor()?.messageId ?? widget.initialMessageId;
+    return messageId != null && messageId > 0 ? messageId : null;
+  }
+
+  void _scheduleHandoffRefresh() {
+    _handoffUpdateTimer?.cancel();
+    _handoffUpdateTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) ActiveConversation.shared.refresh();
+    });
   }
 
   bool get _shouldRestoreSessionScroll {
@@ -1305,6 +1344,7 @@ class _ChatViewState extends State<ChatView> {
       _olderHistoryPull.reset();
       _scheduleLoadedOlderReveal();
       _saveSessionScrollSnapshot();
+      _scheduleHandoffRefresh();
     }
     return false;
   }
@@ -2202,6 +2242,7 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _modelDirtyWhileInactive = false;
+    _scheduleHandoffRefresh();
     if (!_sendFailureDialogVisible) {
       final failure = _vm.consumeSendFailure();
       if (failure != null) _scheduleSendFailureDialog(failure);
@@ -3336,7 +3377,9 @@ class _ChatViewState extends State<ChatView> {
     _wallpaperController.removeListener(_onWallpaperChanged);
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
+    _handoffUpdateTimer?.cancel();
     _translation.removeListener(_onTranslationSettingsChanged);
+    _ai?.removeListener(_onTranslationSettingsChanged);
     _search
       ..removeListener(_onSearchChanged)
       ..dispose();
@@ -4352,7 +4395,9 @@ class _ChatViewState extends State<ChatView> {
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (context, _, _) => _MessageTextSelectionDialog(
         text: message.text,
-        onTranslate: _translateSelectedText,
+        onTranslate: _hasAvailableTranslationOption
+            ? _translateSelectedText
+            : null,
         onAddToBlocklist: _addSelectionToBlocklist,
       ),
       transitionBuilder: (context, animation, _, child) {
@@ -4388,44 +4433,101 @@ class _ChatViewState extends State<ChatView> {
     if (sourceText.isEmpty || !mounted) return null;
     final translation = context.read<TranslationController>();
     final targetLanguage = _translationTargetLanguage(translation);
-    try {
-      if (translation.aiTranslationEnabled) {
-        return _translateTextWithAi(
+    final ai = _ai;
+    if (ai != null && !ai.initialized) {
+      try {
+        await ai.initialize();
+      } catch (_) {
+        // Non-AI fallbacks remain usable if AI setup cannot be loaded.
+      }
+    }
+    final options = _effectiveTranslationOptions;
+    if (options.isEmpty) return null;
+    Object? lastError;
+    for (final option in options) {
+      try {
+        return await _translateTextWithOption(
+          option,
           text: sourceText,
           sourceLanguageCode: 'autodetect',
           targetLanguageCode: targetLanguage,
         );
+      } catch (error) {
+        lastError = error;
+        if (_isTelegramTranslationOption(option) &&
+            isTelegramTranslationRateLimit(error)) {
+          translation.markTelegramTranslationUnavailable();
+        }
       }
-      return switch (translation.provider) {
-        TranslationProvider.iosSystem ||
-        TranslationProvider.androidMlKit => NativeTranslationApi.translate(
-          text: sourceText,
-          sourceLanguageCode: 'autodetect',
-          targetLanguageCode: targetLanguage,
-        ),
-        TranslationProvider.tdlib => _vm.translateText(
-          sourceText,
-          targetLanguage,
-        ),
-        _ => ThirdPartyTranslationApi.translate(
-          provider: translation.provider,
-          text: sourceText,
-          sourceLanguageCode: 'autodetect',
-          targetLanguageCode: targetLanguage,
-          lingvaEndpoint: translation.lingvaEndpoint,
-          libreTranslateEndpoint: translation.libreTranslateEndpoint,
-          libreTranslateApiKey: translation.libreTranslateApiKey,
-        ),
-      };
-    } catch (e) {
+    }
+    if (lastError != null) {
       if (mounted) {
         showToast(
           context,
-          AppStrings.t(AppStringKeys.chatTranslateFailed, {'value1': e}),
+          _translationFailureMessage(lastError),
+          visibleFor: isTelegramAiPremiumFlood(lastError)
+              ? const Duration(seconds: 4)
+              : const Duration(milliseconds: 1400),
         );
       }
-      return null;
     }
+    return null;
+  }
+
+  bool _isTelegramTranslationOption(String option) =>
+      TranslationOptionIds.translationProvider(option) ==
+      TranslationProvider.tdlib;
+
+  Future<String> _translateTextWithOption(
+    String option, {
+    required String text,
+    required String sourceLanguageCode,
+    required String targetLanguageCode,
+    List<String> priorMessages = const [],
+  }) {
+    final candidateId = TranslationOptionIds.aiCandidateId(option);
+    if (candidateId != null) {
+      final candidate = _ai?.modelCandidateByIdForFeature(
+        AiFeature.translation,
+        candidateId,
+      );
+      if (candidate == null) {
+        throw TranslationApiException(
+          AppStringKeys.translationAiProviderUnavailable.l10n(context),
+        );
+      }
+      return _translateTextWithAi(
+        candidate: candidate,
+        text: text,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+        priorMessages: priorMessages,
+      );
+    }
+    final provider = TranslationOptionIds.translationProvider(option);
+    return switch (provider) {
+      TranslationProvider.iosSystem ||
+      TranslationProvider.androidMlKit => NativeTranslationApi.translate(
+        text: text,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+      ),
+      TranslationProvider.tdlib => _vm.translateText(text, targetLanguageCode),
+      TranslationProvider.myMemory ||
+      TranslationProvider.lingva ||
+      TranslationProvider.libreTranslate => ThirdPartyTranslationApi.translate(
+        provider: provider!,
+        text: text,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+        lingvaEndpoint: _translation.lingvaEndpoint,
+        libreTranslateEndpoint: _translation.libreTranslateEndpoint,
+        libreTranslateApiKey: _translation.libreTranslateApiKey,
+      ),
+      null => throw TranslationApiException(
+        AppStringKeys.translationAiProviderUnavailable.l10n(context),
+      ),
+    };
   }
 
   String _keywordCandidate(String text) {
@@ -4473,6 +4575,18 @@ class _ChatViewState extends State<ChatView> {
     final sourceText = _translationSourceText(message);
     if (sourceText.trim().isEmpty) return true;
     final targetLanguage = _translationTargetLanguage(translation);
+    final noProviderMessage = AppStringKeys.translationAiProviderUnavailable
+        .l10n(context);
+    final ai = _ai;
+    if (ai != null && !ai.initialized) {
+      try {
+        await ai.initialize();
+      } catch (_) {
+        // Keep the non-AI providers in the fallback chain available.
+      }
+    }
+    final options = _effectiveTranslationOptions;
+    if (options.isEmpty) return false;
     try {
       final cached = await translation.messageCache.resolve(
         MessageTranslationCacheKey(
@@ -4483,46 +4597,28 @@ class _ChatViewState extends State<ChatView> {
           targetLanguageCode: targetLanguage,
         ),
         () async {
-          final MessageTranslationResult result;
-          if (translation.aiTranslationEnabled) {
-            result = await _vm.translateMessageExternally(
-              message.id,
-              targetLanguage,
-              () => _translateTextWithAi(
-                text: sourceText,
+          Object? lastError;
+          MessageTranslationResult? result;
+          for (final option in options) {
+            try {
+              result = await _translateMessageWithOption(
+                option,
+                message: message,
+                sourceText: sourceText,
                 sourceLanguageCode: sourceLanguageCode,
                 targetLanguageCode: targetLanguage,
-                priorMessages: _aiTranslationContextFor(message),
-              ),
-            );
-          } else if (translation.provider == TranslationProvider.iosSystem ||
-              translation.provider == TranslationProvider.androidMlKit) {
-            result = await _vm.translateMessageExternally(
-              message.id,
-              targetLanguage,
-              () => NativeTranslationApi.translate(
-                text: sourceText,
-                sourceLanguageCode: sourceLanguageCode,
-                targetLanguageCode: targetLanguage,
-              ),
-              showLoading: defaultTargetPlatform != TargetPlatform.iOS,
-            );
-          } else if (translation.provider == TranslationProvider.tdlib) {
-            result = await _vm.translateMessage(message.id, targetLanguage);
-          } else {
-            result = await _vm.translateMessageExternally(
-              message.id,
-              targetLanguage,
-              () => ThirdPartyTranslationApi.translate(
-                provider: translation.provider,
-                text: sourceText,
-                sourceLanguageCode: sourceLanguageCode,
-                targetLanguageCode: targetLanguage,
-                lingvaEndpoint: translation.lingvaEndpoint,
-                libreTranslateEndpoint: translation.libreTranslateEndpoint,
-                libreTranslateApiKey: translation.libreTranslateApiKey,
-              ),
-            );
+              );
+              break;
+            } catch (error) {
+              lastError = error;
+              if (_isTelegramTranslationOption(option) &&
+                  isTelegramTranslationRateLimit(error)) {
+                translation.markTelegramTranslationUnavailable();
+              }
+            }
+          }
+          if (result == null) {
+            throw lastError ?? TranslationApiException(noProviderMessage);
           }
           return MessageTranslationValue(
             text: result.text,
@@ -4544,11 +4640,98 @@ class _ChatViewState extends State<ChatView> {
       if (showErrors) {
         showToast(
           context,
-          AppStrings.t(AppStringKeys.chatTranslateFailed, {'value1': e}),
+          _translationFailureMessage(e),
+          visibleFor: isTelegramAiPremiumFlood(e)
+              ? const Duration(seconds: 4)
+              : const Duration(milliseconds: 1400),
         );
       }
       return false;
     }
+  }
+
+  Future<MessageTranslationResult> _translateMessageWithOption(
+    String option, {
+    required ChatMessage message,
+    required String sourceText,
+    required String sourceLanguageCode,
+    required String targetLanguageCode,
+  }) {
+    if (_isTelegramTranslationOption(option)) {
+      return _vm.translateMessage(message.id, targetLanguageCode);
+    }
+    final provider = TranslationOptionIds.translationProvider(option);
+    return _vm.translateMessageExternally(
+      message.id,
+      targetLanguageCode,
+      () => _translateTextWithOption(
+        option,
+        text: sourceText,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+        priorMessages: _aiTranslationContextFor(message),
+      ),
+      showLoading:
+          provider != TranslationProvider.iosSystem ||
+          defaultTargetPlatform != TargetPlatform.iOS,
+    );
+  }
+
+  String _translationFailureMessage(Object error) {
+    if (isTelegramAiPremiumFlood(error)) {
+      return '${AppStrings.t(AppStringKeys.telegramAiDailyLimitReached)}\n'
+          '${AppStrings.t(AppStringKeys.telegramAiDailyLimitMessage)}';
+    }
+    return AppStrings.t(AppStringKeys.chatTranslateFailed, {'value1': error});
+  }
+
+  List<String> get _effectiveTranslationOptions =>
+      effectiveTranslationOptionIds(
+        translation: _translation,
+        ai: _ai,
+        nativeProviders: _nativeTranslationProviders,
+        isBotApiAccount: _vm.isBotApiAccount,
+      );
+
+  bool get _hasAvailableTranslationOption =>
+      _effectiveTranslationOptions.isNotEmpty;
+
+  Future<void> _loadNativeTranslationProviders() async {
+    final providers = await NativeTranslationApi.availableProviders();
+    if (!mounted || setEquals(providers, _nativeTranslationProviders)) return;
+    setState(() => _nativeTranslationProviders = providers);
+    _scheduleChatLanguageDetection(force: true);
+    _scheduleAutomaticTranslations();
+  }
+
+  int get _botApiWarningMask =>
+      (_vm.showBotApiPrivacyWarning ? 1 : 0) |
+      (_vm.showBotApiBotToBotWarning ? 2 : 0);
+
+  String get _botApiWarningDismissalKey =>
+      'mithka.botApiAccessWarningDismissed.v1.${_sessionKey.accountSlot}';
+
+  bool get _showsBotApiAccessWarning {
+    final mask = _botApiWarningMask;
+    return mask != 0 && _dismissedBotApiWarningMask != mask;
+  }
+
+  Future<void> _loadBotApiWarningDismissal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final mask = prefs.getInt(_botApiWarningDismissalKey);
+    if (!mounted || mask == _dismissedBotApiWarningMask) return;
+    setState(() => _dismissedBotApiWarningMask = mask);
+  }
+
+  void _dismissBotApiAccessWarning() {
+    final mask = _botApiWarningMask;
+    if (mask == 0) return;
+    setState(() => _dismissedBotApiWarningMask = mask);
+    unawaited(
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.setInt(_botApiWarningDismissalKey, mask),
+      ),
+    );
   }
 
   void _onTranslationSettingsChanged() {
@@ -4567,6 +4750,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   bool get _automaticTranslationEnabled =>
+      _hasAvailableTranslationOption &&
       _translation.translateChats &&
       _translation.autoTranslateEnabledFor(widget.chatId) &&
       _translation.shouldTranslateLanguage(_detectedChatLanguage);
@@ -4579,6 +4763,7 @@ class _ChatViewState extends State<ChatView> {
   );
 
   bool get _showsChatTranslationPanel {
+    if (!_hasAvailableTranslationOption) return false;
     if (_automaticTranslationEnabled) return true;
     if (!_translation.translateChats ||
         _translation.autoTranslateSuggestionDismissedFor(widget.chatId) ||
@@ -4590,7 +4775,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _scheduleChatLanguageDetection({bool force = false}) {
-    if (!_translation.translateChats || _chatLanguageDetectionRunning) return;
+    if (!_hasAvailableTranslationOption ||
+        !_translation.translateChats ||
+        _chatLanguageDetectionRunning) {
+      return;
+    }
     if (!force && _chatLanguageDetectionComplete) {
       final detectedAt = _chatLanguageDetectedAt;
       if (_detectedChatLanguage != null &&
@@ -4803,21 +4992,24 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<String> _translateTextWithAi({
+    required AiModelCandidate candidate,
     required String text,
     required String sourceLanguageCode,
     required String targetLanguageCode,
     List<String> priorMessages = const [],
   }) async {
-    final settings = context.read<AiSettingsController>();
     final unavailableMessage = AppStringKeys.translationAiProviderUnavailable
         .l10n(context);
     final targetLanguageName = _translation.targetLanguageLabel.l10n(context);
-    if (!settings.initialized) await settings.initialize();
-    if (!settings.isConfiguredForFeature(AiFeature.translation)) {
+    final ai = _ai;
+    if (ai == null) throw TranslationApiException(unavailableMessage);
+    if (!ai.initialized) await ai.initialize();
+    if (!ai.isConfiguredCandidate(candidate)) {
       throw TranslationApiException(unavailableMessage);
     }
-    final service = AiChatTranslationService.fromSettings(
-      settings,
+    final service = AiChatTranslationService.fromCandidate(
+      ai,
+      candidate,
       instructions: _translation.aiTranslationPrompt,
       telegramAi: _vm.telegramAi,
     );
@@ -6603,6 +6795,12 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
           if (_showsChatTranslationPanel) _chatTranslationPanel(),
+          if (_showsBotApiAccessWarning)
+            BotApiAccessWarning(
+              showPrivacyWarning: _vm.showBotApiPrivacyWarning,
+              showBotToBotWarning: _vm.showBotApiBotToBotWarning,
+              onDismiss: _dismissBotApiAccessWarning,
+            ),
           if (widget.headerBottom != null)
             SizedBox(
               height: widget.headerBottomHeight,
@@ -7671,6 +7869,71 @@ class _ChatViewState extends State<ChatView> {
     });
   }
 
+  Future<void> _openCommunityPreview(MessageCommunityPreview preview) async {
+    if (preview.id == 0) return;
+    CommunitySummary? summary;
+    for (final update in TdClient.shared.latestCommunityUpdates) {
+      final raw = update.obj('community');
+      if (raw?.int64('id') != preview.id) continue;
+      summary = CommunitySummary.fromTd(raw!);
+      break;
+    }
+    summary ??= CommunitySummary(
+      id: preview.id,
+      name: preview.name,
+      haveAccess: true,
+      isAdministrator: false,
+      canEditChatList: false,
+      photo: preview.photo,
+    );
+    if (summary.name.isEmpty && preview.name.isNotEmpty) {
+      summary.name = preview.name;
+    }
+    summary.photo ??= preview.photo;
+
+    final chats = <ChatSummary>[];
+    final viewableChats = <ChatSummary>[];
+    try {
+      final fullInfo = await TdClient.shared.query(
+        communityFullInfoRequest(preview.id),
+      );
+      for (final peer in fullInfo.objects('peers') ?? const []) {
+        final chatId = peer.int64('chat_id');
+        if (chatId == null) continue;
+        try {
+          final chat = TDParse.chat(
+            await TdClient.shared.query({
+              '@type': 'getChat',
+              'chat_id': chatId,
+            }),
+          );
+          if (chat == null) continue;
+          if (peer.boolean('can_view_history') == true && chat.order == 0) {
+            viewableChats.add(chat);
+          } else {
+            chats.add(chat);
+          }
+        } catch (_) {
+          // A community peer can disappear while its directory is loading.
+        }
+      }
+    } catch (_) {
+      // Bot API accounts expose the event's id and name but no community
+      // catalogue endpoint, so their preview opens with the available header.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => CommunityView(
+          community: summary!,
+          chats: chats,
+          viewableChats: viewableChats,
+          onCollapsedChanged: (collapsed) => summary!.collapsed = collapsed,
+        ),
+      ),
+    );
+  }
+
   Widget _buildTranscriptEntry(
     _TranscriptEntry entry,
     List<ChatMessage> messages,
@@ -7692,7 +7955,15 @@ class _ChatViewState extends State<ChatView> {
         if (_needsSeparator(messageIndex, messages: messages))
           TimeSeparator(unix: message.date),
         if (message.isService)
-          message.appearancePreview == null
+          message.communityPreview != null
+              ? ChatCommunityServiceCard(
+                  preview: message.communityPreview!,
+                  label: message.text,
+                  onView: () => unawaited(
+                    _openCommunityPreview(message.communityPreview!),
+                  ),
+                )
+              : message.appearancePreview == null
               ? SystemBanner(text: message.text)
               : ChatAppearanceMessagePreview(
                   preview: message.appearancePreview!,
@@ -8133,6 +8404,7 @@ class _ChatViewState extends State<ChatView> {
       message: _actionTarget!,
       isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
       allowForwarding: _vm.canForwardContent,
+      allowTranslation: _hasAvailableTranslationOption,
       allowSuggestedPostOffer:
           _vm.isDirectMessagesGroup && !_vm.isAdministeredDirectMessagesGroup,
       source: _actionSource,
@@ -8416,7 +8688,7 @@ class _MessageTextSelectionDialog extends StatefulWidget {
   });
 
   final String text;
-  final Future<String?> Function(String text) onTranslate;
+  final Future<String?> Function(String text)? onTranslate;
   final ValueChanged<String> onAddToBlocklist;
 
   @override
@@ -8670,9 +8942,10 @@ class _MessageTextSelectionDialogState
 
   Future<void> _translateSelection() async {
     final selected = _selectedText;
-    if (selected.isEmpty || _translating) return;
+    final translate = widget.onTranslate;
+    if (selected.isEmpty || _translating || translate == null) return;
     setState(() => _translating = true);
-    final translated = await widget.onTranslate(selected);
+    final translated = await translate(selected);
     if (!mounted) return;
     setState(() {
       final isEmpty = translated == null || translated.trim().isEmpty;
@@ -8815,13 +9088,16 @@ class _MessageTextSelectionDialogState
                               onTap: _copySelection,
                             ),
                           ),
-                          Expanded(
-                            child: _TextSelectionAction(
-                              icon: HeroAppIcons.language,
-                              label: AppStringKeys.messageActionTranslate,
-                              onTap: _translating ? null : _translateSelection,
+                          if (widget.onTranslate != null)
+                            Expanded(
+                              child: _TextSelectionAction(
+                                icon: HeroAppIcons.language,
+                                label: AppStringKeys.messageActionTranslate,
+                                onTap: _translating
+                                    ? null
+                                    : _translateSelection,
+                              ),
                             ),
-                          ),
                           Expanded(
                             child: _TextSelectionAction(
                               icon: HeroAppIcons.filter,

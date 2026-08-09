@@ -15,7 +15,6 @@ import 'package:provider/provider.dart';
 
 import '../auth/telegram_passkey_service.dart';
 import '../components/app_icons.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -237,117 +236,84 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final sensitiveContent = context.watch<SensitiveContentController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.privacySecurityTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.privacySecurityTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  _group(AppStrings.t(AppStringKeys.privacySectionTitle), [
-                    for (final entry in _privacyRules)
-                      _Row(
-                        entry.icon,
-                        AppStrings.t(entry.title),
-                        _ruleValue[entry.setting] ?? '',
-                        () {
-                          unawaited(
-                            _open(
-                              PrivacyRuleView(
-                                title: entry.title,
-                                setting: entry.setting,
-                              ),
-                            ).then((_) => _loadRule(entry.setting)),
-                          );
-                        },
+          _group(AppStrings.t(AppStringKeys.privacySectionTitle), [
+            for (final entry in _privacyRules)
+              _Row(
+                entry.icon,
+                AppStrings.t(entry.title),
+                _ruleValue[entry.setting] ?? '',
+                () {
+                  unawaited(
+                    _open(
+                      PrivacyRuleView(
+                        title: entry.title,
+                        setting: entry.setting,
                       ),
-                  ]),
-                  const SizedBox(height: 14),
-                  _group(
-                    AppStrings.t(AppStringKeys.privacySecuritySectionTitle),
-                    [
-                      _Row(
-                        HeroAppIcons.lock,
-                        AppStrings.t(AppStringKeys.privacyTwoStepVerification),
-                        _twoStep,
-                        () => _open(
-                          const TwoStepPasswordView(),
-                        ).then((_) => _load()),
-                      ),
-                      _Row(
-                        HeroAppIcons.phone,
-                        AppStrings.t(
-                          AppStringKeys.accountSecurityChangePhoneNumber,
-                        ),
-                        '',
-                        () => _open(const ChangePhoneNumberView()),
-                      ),
-                      _Row(
-                        HeroAppIcons.networkWired,
-                        AppStrings.t(AppStringKeys.privacyLoggedInDevices),
-                        '',
-                        () => _open(const ActiveSessionsView()),
-                      ),
-                      if (_passkeyCount != null)
-                        _Row(
-                          HeroAppIcons.key,
-                          AppStrings.t(AppStringKeys.passkeysTitle),
-                          '$_passkeyCount',
-                          () => _open(
-                            const PasskeysView(),
-                          ).then((_) => _loadPasskeys()),
-                        ),
-                      if (sensitiveContent.shouldShowToggle)
-                        _SwitchRow(
-                          HeroAppIcons.eye,
-                          AppStrings.t(AppStringKeys.privacySensitiveContent),
-                          sensitiveContent.enabled,
-                          (value) =>
-                              unawaited(_setSensitiveContentEnabled(value)),
-                        ),
-                      _Row(
-                        HeroAppIcons.stopwatch,
-                        AppStringKeys.chatInfoAutoDeleteMessages,
-                        '',
-                        () => _open(const AutoDeleteView()),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  _group(
-                    AppStrings.t(AppStringKeys.privacyDangerZone),
-                    [
-                      _Row(
-                        HeroAppIcons.stopwatch,
-                        AppStrings.t(
-                          AppStringKeys.accountSecurityDeleteAccountIfAwayFor,
-                        ),
-                        '',
-                        () => _open(const AccountInactivityView()),
-                      ),
-                      _Row(
-                        HeroAppIcons.trash,
-                        AppStrings.t(
-                          AppStringKeys.privacyDeleteTelegramAccount,
-                        ),
-                        '',
-                        () => _open(const DeleteTelegramAccountView()),
-                      ),
-                    ],
-                    destructive: true,
-                  ),
-                ],
+                    ).then((_) => _loadRule(entry.setting)),
+                  );
+                },
               ),
+          ]),
+          _group(AppStrings.t(AppStringKeys.privacySecuritySectionTitle), [
+            _Row(
+              HeroAppIcons.lock,
+              AppStrings.t(AppStringKeys.privacyTwoStepVerification),
+              _twoStep,
+              () => _open(const TwoStepPasswordView()).then((_) => _load()),
             ),
-          ),
+            _Row(
+              HeroAppIcons.phone,
+              AppStrings.t(AppStringKeys.accountSecurityChangePhoneNumber),
+              '',
+              () => _open(const ChangePhoneNumberView()),
+            ),
+            _Row(
+              HeroAppIcons.networkWired,
+              AppStrings.t(AppStringKeys.privacyLoggedInDevices),
+              '',
+              () => _open(const ActiveSessionsView()),
+            ),
+            if (_passkeyCount != null)
+              _Row(
+                HeroAppIcons.key,
+                AppStrings.t(AppStringKeys.passkeysTitle),
+                '$_passkeyCount',
+                () => _open(const PasskeysView()).then((_) => _loadPasskeys()),
+              ),
+            if (sensitiveContent.shouldShowToggle)
+              _SwitchRow(
+                HeroAppIcons.eye,
+                AppStrings.t(AppStringKeys.privacySensitiveContent),
+                sensitiveContent.enabled,
+                (value) => unawaited(_setSensitiveContentEnabled(value)),
+              ),
+            _Row(
+              HeroAppIcons.stopwatch,
+              AppStringKeys.chatInfoAutoDeleteMessages,
+              '',
+              () => _open(const AutoDeleteView()),
+            ),
+          ]),
+          _group(AppStrings.t(AppStringKeys.privacyDangerZone), [
+            _Row(
+              HeroAppIcons.stopwatch,
+              AppStrings.t(AppStringKeys.accountSecurityDeleteAccountIfAwayFor),
+              '',
+              () => _open(const AccountInactivityView()),
+            ),
+            _Row(
+              HeroAppIcons.trash,
+              AppStrings.t(AppStringKeys.privacyDeleteTelegramAccount),
+              '',
+              () => _open(const DeleteTelegramAccountView()),
+            ),
+          ], destructive: true),
         ],
       ),
     );
@@ -358,100 +324,36 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
     List<_SettingsEntry> rows, {
     bool destructive = false,
   }) {
-    final c = context.colors;
-    return Column(
+    return SettingsSection(
       key: destructive ? const ValueKey('privacy-danger-zone') : null,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 6),
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              color: destructive ? AppTheme.tagRed : c.textTertiary,
-            ),
-          ),
-        ),
-        SettingsPanel(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (final row in rows) ...[
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: row.onTap,
-                  child: SizedBox(
-                    height: 52,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          AppIcon(
-                            row.icon,
-                            size: 20,
-                            color: destructive
-                                ? AppTheme.tagRed
-                                : AppTheme.brand,
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              row.title.l10n(context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: destructive
-                                    ? AppTheme.tagRed
-                                    : c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (row is _SwitchRow) ...[
-                            const SizedBox(width: 12),
-                            IgnorePointer(
-                              child: AppSwitch(
-                                value: row.value,
-                                onChanged: row.onChanged,
-                              ),
-                            ),
-                          ] else if (row is _Row && row.value.isNotEmpty) ...[
-                            const SizedBox(width: 12),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: Text(
-                                row.value.l10n(context),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.right,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: c.textSecondary,
-                                ),
-                              ),
-                            ),
-                          ],
-                          if (row is _Row && row.onTap != null) ...[
-                            const SizedBox(width: 6),
-                            AppIcon(
-                              HeroAppIcons.chevronRight,
-                              size: 14,
-                              color: c.textTertiary,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (row != rows.last) const InsetDivider(leadingInset: 50),
-              ],
-            ],
-          ),
-        ),
+      title: title,
+      headerColor: destructive ? AppTheme.tagRed : null,
+      rows: [
+        for (final row in rows) _settingsRow(row, destructive: destructive),
       ],
+    );
+  }
+
+  Widget _settingsRow(_SettingsEntry row, {required bool destructive}) {
+    final foreground = destructive ? AppTheme.tagRed : AppTheme.brand;
+    final leading = SettingsLeadingIcon(icon: row.icon, color: foreground);
+    if (row is _SwitchRow) {
+      return SettingsSwitchRow(
+        title: row.title,
+        value: row.value,
+        leading: leading,
+        titleColor: destructive ? AppTheme.tagRed : null,
+        onChanged: row.onChanged,
+      );
+    }
+    final navigationRow = row as _Row;
+    return SettingsRow(
+      title: navigationRow.title,
+      value: navigationRow.value,
+      leading: leading,
+      onTap: navigationRow.onTap,
+      showChevron: navigationRow.onTap != null,
+      titleColor: destructive ? AppTheme.tagRed : null,
     );
   }
 }

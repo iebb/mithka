@@ -347,12 +347,18 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     _MainTabItem(3, AppStringKeys.tabMoments, HeroAppIcons.circleNotch),
   ];
 
-  List<_MainTabItem> _visibleTabs(ThemeController theme) => [
-    _allTabs[0],
-    if (theme.showChannelsTab) _allTabs[1],
-    _allTabs[2],
-    if (theme.showMomentsTab) _allTabs[3],
-  ];
+  List<_MainTabItem> _visibleTabs(
+    ThemeController theme, {
+    required bool isBotApi,
+  }) {
+    if (isBotApi) return [_allTabs[0]];
+    return [
+      _allTabs[0],
+      if (theme.showChannelsTab) _allTabs[1],
+      _allTabs[2],
+      if (theme.showMomentsTab) _allTabs[3],
+    ];
+  }
 
   Widget _root(int i) => switch (i) {
     0 => ChatListView(controller: _chatListController),
@@ -405,7 +411,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   void _select(int i) {
     final theme = context.read<ThemeController>();
-    final tabs = _visibleTabs(theme);
+    final tabs = _visibleTabs(
+      theme,
+      isBotApi: context.read<AccountStore>().activeIsBotApi,
+    );
     if (i < 0 || i >= tabs.length) return;
     final tabIndex = tabs[i].index;
     final shouldToggleMessages = tabIndex == 0;
@@ -640,6 +649,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   Widget _classicTabs() {
     final theme = context.watch<ThemeController>();
+    final isBotApi = context.watch<AccountStore>().activeIsBotApi;
     if (!theme.communitiesEnabled && _selectedMessageCommunity != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted ||
@@ -650,7 +660,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         setState(() => _selectedMessageCommunity = null);
       });
     }
-    final tabs = _visibleTabs(theme);
+    final tabs = _visibleTabs(theme, isBotApi: isBotApi);
     if (!tabs.any((tab) => tab.index == _selection)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _selection = tabs.last.index);
@@ -747,6 +757,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     final theme = context.watch<ThemeController>();
     final appLocale = context.watch<AppLocaleController>();
     final accounts = context.watch<AccountStore>();
+    final isBotApi = accounts.activeIsBotApi;
     final messageSelection = activeTabIndex == 0 ? _selectedMessageChat : null;
     final selectedChat = desktopChatKindUsesContextPane(messageSelection?.kind)
         ? messageSelection
@@ -780,23 +791,25 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     ];
     final fileLabel = AppStrings.t(AppStringKeys.topicPostContentFile);
     final railActions = [
-      DesktopNavigationAction(
-        id: 'calls',
-        label: AppStrings.t(AppStringKeys.callsTitle),
-        icon: HeroAppIcons.phone,
-        onTap: () => _openDesktopUtility(
-          DesktopUtilityWindowKind.calls,
-          AppStrings.t(AppStringKeys.callsTitle),
+      if (!isBotApi)
+        DesktopNavigationAction(
+          id: 'calls',
+          label: AppStrings.t(AppStringKeys.callsTitle),
+          icon: HeroAppIcons.phone,
+          onTap: () => _openDesktopUtility(
+            DesktopUtilityWindowKind.calls,
+            AppStrings.t(AppStringKeys.callsTitle),
+          ),
         ),
-      ),
     ];
     final applicationMenuQuickActions = [
-      DesktopNavigationAction(
-        id: 'saved-messages',
-        label: AppStrings.t(AppStringKeys.savedMessages),
-        icon: HeroAppIcons.thumbtack,
-        onTap: () => unawaited(_openDesktopSavedMessages()),
-      ),
+      if (!isBotApi)
+        DesktopNavigationAction(
+          id: 'saved-messages',
+          label: AppStrings.t(AppStringKeys.savedMessages),
+          icon: HeroAppIcons.thumbtack,
+          onTap: () => unawaited(_openDesktopSavedMessages()),
+        ),
       DesktopNavigationAction(
         id: 'files',
         label: fileLabel,
@@ -814,18 +827,19 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     // Recomputed on each rail rebuild: the premium gate below changes after
     // the first frame, and a list captured in build() would stay stale.
     List<DesktopNavigationAction> applicationMenuActions() => [
-      DesktopNavigationAction(
-        id: 'profile',
-        label: AppStrings.t(AppStringKeys.editProfileTitle),
-        icon: HeroAppIcons.solidCircleUser,
-        onTap: () => _openDesktopUtility(
-          DesktopUtilityWindowKind.editProfile,
-          AppStrings.t(AppStringKeys.editProfileTitle),
+      if (!isBotApi)
+        DesktopNavigationAction(
+          id: 'profile',
+          label: AppStrings.t(AppStringKeys.editProfileTitle),
+          icon: HeroAppIcons.solidCircleUser,
+          onTap: () => _openDesktopUtility(
+            DesktopUtilityWindowKind.editProfile,
+            AppStrings.t(AppStringKeys.editProfileTitle),
+          ),
         ),
-      ),
       // Business tools need Telegram Premium; without it the screen is only a
       // wall of locked rows, so it does not earn a place in the menu.
-      if (EmojiStore.shared.isPremium)
+      if (!isBotApi && EmojiStore.shared.isPremium)
         DesktopNavigationAction(
           id: 'business-profile',
           label: AppStrings.t(AppStringKeys.businessSettingsTitle),

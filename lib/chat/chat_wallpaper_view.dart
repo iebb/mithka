@@ -118,7 +118,7 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
     final dark = _targetDark;
     if (widget.isGlobal) {
       await _controller.loadGlobalChatThemes();
-      await _controller.loadDefaultWallpaper(dark: dark);
+      await _controller.loadDefaultWallpaper(dark: dark, refresh: true);
       try {
         _catalogBackgrounds = await _controller.installedBackgrounds(
           dark: dark,

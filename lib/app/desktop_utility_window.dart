@@ -551,7 +551,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
         if (!confirmed || !mounted) return;
       }
       var sentAny = false;
-      if (await _pickerViewModel.currentUserIsPremium()) {
+      if (await TdClient.shared.activeAccountUsesBotApi() ||
+          await _pickerViewModel.currentUserIsPremium()) {
         for (final segment in result.segments) {
           if (segment.isHtml) {
             final files = await Future.wait(

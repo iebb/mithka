@@ -44,6 +44,83 @@ class RichMessageSendFile {
   final OutgoingAttachment attachment;
 }
 
+/// TD-compatible input content carrying a native Bot API rich message.
+///
+/// The Bot API backend consumes the private `bot_api_files` transport field and
+/// strips it before sending `rich_message` to Telegram. User-account TDLib
+/// never sees this shape.
+Map<String, dynamic> botApiDirectRichMessageInputContent(
+  String html,
+  List<RichMessageSendFile> files,
+) {
+  if (html.trim().isEmpty) {
+    throw ArgumentError.value(html, 'html', 'Rich message HTML required');
+  }
+  return {
+    '@type': 'inputMessageRichMessage',
+    'rich_message': {
+      'html': html,
+      if (files.isNotEmpty)
+        'media': [
+          for (var index = 0; index < files.length; index++)
+            {
+              'id': files[index].id,
+              'media': _botApiDirectRichMedia(
+                files[index].attachment,
+                'attach://rich_media_$index',
+              ),
+            },
+        ],
+      'is_rtl': false,
+      'skip_entity_detection': false,
+    },
+    if (files.isNotEmpty)
+      'bot_api_files': [
+        for (var index = 0; index < files.length; index++)
+          {'field': 'rich_media_$index', 'path': files[index].attachment.path},
+      ],
+  };
+}
+
+Map<String, dynamic> _botApiDirectRichMedia(
+  OutgoingAttachment attachment,
+  String media,
+) => switch (attachment.kind) {
+  OutgoingAttachmentKind.photo => {'type': 'photo', 'media': media},
+  OutgoingAttachmentKind.video => {
+    'type': 'video',
+    'media': media,
+    'supports_streaming': true,
+    if ((attachment.width ?? 0) > 0) 'width': attachment.width,
+    if ((attachment.height ?? 0) > 0) 'height': attachment.height,
+    if (attachment.duration > 0) 'duration': attachment.duration,
+  },
+  OutgoingAttachmentKind.animation => {
+    'type': 'animation',
+    'media': media,
+    if ((attachment.width ?? 0) > 0) 'width': attachment.width,
+    if ((attachment.height ?? 0) > 0) 'height': attachment.height,
+    if (attachment.duration > 0) 'duration': attachment.duration,
+  },
+  OutgoingAttachmentKind.audio => {
+    'type': 'audio',
+    'media': media,
+    if (attachment.duration > 0) 'duration': attachment.duration,
+    if (attachment.title.isNotEmpty) 'title': attachment.title,
+    if (attachment.performer.isNotEmpty) 'performer': attachment.performer,
+  },
+  OutgoingAttachmentKind.voiceNote => {
+    'type': 'voice_note',
+    'media': media,
+    if (attachment.duration > 0) 'duration': attachment.duration,
+  },
+  OutgoingAttachmentKind.document => throw ArgumentError.value(
+    attachment.kind,
+    'attachment.kind',
+    'Documents are not supported rich-message media',
+  ),
+};
+
 Map<String, dynamic> richMessageFilePayload(RichMessageSendFile file) {
   final attachment = file.attachment;
   final inputFile = attachmentInputFile(attachment);

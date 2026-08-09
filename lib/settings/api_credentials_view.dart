@@ -94,109 +94,83 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.apiCredentialsTitle,
-            onBack: () => Navigator.of(context).pop(),
-            trailing: AppInteractiveSurface(
-              semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
-              onTap: _valid && !_saving ? _save : null,
-              enabled: _valid && !_saving,
-              borderRadius: BorderRadius.circular(AppRadius.control),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  AppStrings.t(AppStringKeys.accentColorPickerSave),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: _valid && !_saving
-                        ? AppTheme.brand
-                        : AppTheme.brand.withValues(alpha: 0.4),
-                  ),
-                ),
-              ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.apiCredentialsTitle,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: AppInteractiveSurface(
+        semanticLabel: AppStrings.t(AppStringKeys.accentColorPickerSave),
+        onTap: _valid && !_saving ? _save : null,
+        enabled: _valid && !_saving,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            AppStrings.t(AppStringKeys.accentColorPickerSave),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: _valid && !_saving
+                  ? AppTheme.brand
+                  : AppTheme.brand.withValues(alpha: 0.4),
             ),
           ),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                    children: [
-                      _card([_switchRow()]),
-                      const SizedBox(height: 14),
-                      _card([
-                        _field(
-                          _apiId,
-                          'api_id',
-                          '123456',
-                          fieldKey: const ValueKey('telegramApiIdField'),
-                          number: true,
-                          enabled: _enabled,
-                        ),
-                        const InsetDivider(leadingInset: 16),
-                        _field(
-                          _apiHash,
-                          'api_hash',
-                          '0123456789abcdef',
-                          fieldKey: const ValueKey('telegramApiHashField'),
-                          enabled: _enabled,
-                        ),
-                      ]),
-                      const SizedBox(height: 14),
-                      const SettingsSectionHeader(
-                        AppStringKeys.apiCredentialsUserAgent,
-                      ),
-                      _card([
-                        _field(
-                          _deviceModel,
-                          'device_model',
-                          Platform.isIOS ? 'iPhone' : 'Android',
-                          fieldKey: const ValueKey('tdlibDeviceModelField'),
-                        ),
-                        const InsetDivider(leadingInset: 16),
-                        _field(
-                          _systemVersion,
-                          'system_version',
-                          _systemVersionHint,
-                          fieldKey: const ValueKey('tdlibSystemVersionField'),
-                        ),
-                        const InsetDivider(leadingInset: 16),
-                        _field(
-                          _applicationVersion,
-                          'app_version',
-                          '1.0',
-                          fieldKey: const ValueKey(
-                            'tdlibApplicationVersionField',
-                          ),
-                        ),
-                      ]),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: Text(
-                          AppStrings.t(AppStringKeys.apiCredentialsDescription),
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: c.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
+        ),
       ),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                _card([_switchRow()]),
+                const SizedBox(height: AppSpacing.lg),
+                _card([
+                  _field(
+                    _apiId,
+                    'api_id',
+                    '123456',
+                    fieldKey: const ValueKey('telegramApiIdField'),
+                    number: true,
+                    enabled: _enabled,
+                  ),
+                  const InsetDivider(leadingInset: 16),
+                  _field(
+                    _apiHash,
+                    'api_hash',
+                    '0123456789abcdef',
+                    fieldKey: const ValueKey('telegramApiHashField'),
+                    enabled: _enabled,
+                  ),
+                ]),
+                const SizedBox(height: AppSpacing.lg),
+                const SettingsSectionHeader(
+                  AppStringKeys.apiCredentialsUserAgent,
+                ),
+                _card([
+                  _field(
+                    _deviceModel,
+                    'device_model',
+                    Platform.isIOS ? 'iPhone' : 'Android',
+                    fieldKey: const ValueKey('tdlibDeviceModelField'),
+                  ),
+                  const InsetDivider(leadingInset: 16),
+                  _field(
+                    _systemVersion,
+                    'system_version',
+                    _systemVersionHint,
+                    fieldKey: const ValueKey('tdlibSystemVersionField'),
+                  ),
+                  const InsetDivider(leadingInset: 16),
+                  _field(
+                    _applicationVersion,
+                    'app_version',
+                    '1.0',
+                    fieldKey: const ValueKey('tdlibApplicationVersionField'),
+                  ),
+                ]),
+                SettingsNote(
+                  text: AppStrings.t(AppStringKeys.apiCredentialsDescription),
+                ),
+              ],
+            ),
     );
   }
 
@@ -214,31 +188,10 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
   }
 
   Widget _switchRow() {
-    final c = context.colors;
-    return SizedBox(
-      height: 56,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                AppStrings.t(AppStringKeys.apiCredentialsCustomClientApi),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, color: c.textPrimary),
-              ),
-            ),
-            AppSwitch(
-              value: _enabled,
-              semanticLabel: AppStrings.t(
-                AppStringKeys.apiCredentialsCustomClientApi,
-              ),
-              onChanged: (value) => setState(() => _enabled = value),
-            ),
-          ],
-        ),
-      ),
+    return SettingsSwitchRow(
+      title: AppStringKeys.apiCredentialsCustomClientApi,
+      value: _enabled,
+      onChanged: (value) => setState(() => _enabled = value),
     );
   }
 

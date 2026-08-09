@@ -766,8 +766,6 @@ class _MessageBubbleState extends State<MessageBubble>
             ],
           )
         : contentWidget;
-    final ownPhotoRepeat = outgoing && message.isPhoto && widget.showRepeat;
-
     final messageRow = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       child: Row(
@@ -775,7 +773,7 @@ class _MessageBubbleState extends State<MessageBubble>
         children: outgoing
             ? [
                 Expanded(
-                  child: ownPhotoRepeat
+                  child: widget.showRepeat
                       ? Align(
                           alignment: Alignment.centerRight,
                           child: Row(
@@ -786,20 +784,6 @@ class _MessageBubbleState extends State<MessageBubble>
                               Flexible(child: content),
                             ],
                           ),
-                        )
-                      : widget.showRepeat
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            _repeatBadge(),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: content,
-                              ),
-                            ),
-                          ],
                         )
                       // Without a badge the Row and Flexible are pure overhead:
                       // the Align already fills the Expanded and puts the
