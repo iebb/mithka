@@ -280,12 +280,20 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
                   )
                 else
                   Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        _setCard(c),
-                        const SizedBox(height: 18),
-                        _grid(),
+                    // A shrinkWrap grid under a ListView gets unbounded height
+                    // and lays out every cell, so all ~120 stickers used to
+                    // mount (and start) at once. A sliver keeps it lazy.
+                    child: CustomScrollView(
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          sliver: SliverToBoxAdapter(child: _setCard(c)),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          sliver: _grid(),
+                        ),
                       ],
                     ),
                   ),
@@ -530,9 +538,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
   }
 
   Widget _grid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    return SliverGrid.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
         mainAxisSpacing: 10,

@@ -1798,6 +1798,8 @@
     <string name="messageActionBlock">Blockieren</string>
     <string name="messageActionBlockKeyword">Wort blockieren</string>
     <string name="messageActionCopy">Kopieren</string>
+    <string name="messageActionDisplayOriginal">Original anzeigen</string>
+    <string name="messageActionDisplayTranslation">Übersetzung anzeigen</string>
     <string name="messageActionEdit">Bearbeiten</string>
     <string name="messageActionFavorite">Favorit</string>
     <string name="messageActionForward">Weiterleiten</string>
@@ -3223,6 +3225,9 @@
     <string name="transferBoostUpload">Upload-Boost</string>
     <string name="transferBoostUploadSection">Upload</string>
     <string name="translationAiProviderUnavailable">Konfiguriere zuerst einen verfügbaren Anbieter in den KI-Einstellungen.</string>
+    <string name="translationDisplayBoth">Original und Übersetzung</string>
+    <string name="translationDisplayQuote">Zitatstil</string>
+    <string name="translationDisplayTranslatedOnly">Nur Übersetzung</string>
     <string name="translationInternalNoExternalApi">Interne Übersetzung nutzt keine externe API</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate hat keine Übersetzung zurückgegeben</string>
     <string name="translationLibreTranslateUrlRequired">Bitte zuerst die LibreTranslate-Adresse festlegen</string>
@@ -3247,6 +3252,7 @@
     <string name="translationSettingsAiProvider">KI-Anbieter</string>
     <string name="translationSettingsAiSection">KI-Übersetzung</string>
     <string name="translationSettingsDoNotTranslate">Nicht übersetzen</string>
+    <string name="translationSettingsDisplayStyle">Übersetzungsanzeige</string>
     <string name="translationSettingsLanguageCount">{value1} Sprachen</string>
     <string name="translationSettingsNone">Keine</string>
     <string name="translationSettingsService">Übersetzungsdienst</string>

@@ -2,6 +2,7 @@
 //  appearance_view.dart
 //
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -55,6 +56,10 @@ class AppearanceView extends StatelessWidget {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final appIcons = context.watch<AppIconController>();
+    // The icon assets are 1024x1024; the row preview is 22 px wide, so the
+    // undecoded-size default would hold a 4 MiB bitmap in the image cache.
+    final appIconPreviewPx =
+        (AppIconSize.nav * MediaQuery.devicePixelRatioOf(context)).ceil();
     return Scaffold(
       backgroundColor: c.groupedBackground,
       body: Column(
@@ -90,6 +95,7 @@ class AppearanceView extends StatelessWidget {
                         appIcons.variant.asset,
                         width: AppIconSize.nav,
                         height: AppIconSize.nav,
+                        cacheWidth: appIconPreviewPx,
                       ),
                     ),
                   ]),
@@ -438,6 +444,9 @@ class _AppIconVariantTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final controller = context.read<AppIconController>();
+    // The icon assets are 1024x1024: decoding all eight at full size holds
+    // 32 MiB of image cache for tiles that are drawn at 96 px.
+    final tilePx = (96 * MediaQuery.devicePixelRatioOf(context)).ceil();
     return Semantics(
       button: true,
       selected: selected,
@@ -471,7 +480,11 @@ class _AppIconVariantTile extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
-                  child: Image.asset(variant.asset, fit: BoxFit.cover),
+                  child: Image.asset(
+                    variant.asset,
+                    fit: BoxFit.cover,
+                    cacheWidth: tilePx,
+                  ),
                 ),
               ),
               if (selected)
@@ -3795,6 +3808,13 @@ class _FontAddViewState extends State<FontAddView> {
   String _query = '';
   String? _loadingGoogleFamily;
   String? _failedGoogleFamily;
+  Timer? _searchDebounce;
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
 
   Future<List<_FontCandidate>> _loadFonts() async {
     final systemFonts = await SystemFontCatalog.loadFonts();
@@ -3823,7 +3843,7 @@ class _FontAddViewState extends State<FontAddView> {
       if (sourceCompare != 0) return sourceCompare;
       final priorityCompare = a.priority.compareTo(b.priority);
       if (priorityCompare != 0) return priorityCompare;
-      return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+      return a.lowerLabel.compareTo(b.lowerLabel);
     });
   }
 
@@ -3858,7 +3878,17 @@ class _FontAddViewState extends State<FontAddView> {
                 size: AppIconSize.lg,
                 color: c.textTertiary,
               ),
-              onChanged: (value) => setState(() => _query = value.trim()),
+              // Each filter pass scans the ~1900 Google families; a keystroke
+              // burst should only pay for the query the user settles on.
+              onChanged: (value) {
+                final next = value.trim();
+                _searchDebounce?.cancel();
+                if (next == _query) return;
+                _searchDebounce = Timer(
+                  const Duration(milliseconds: 150),
+                  () => setState(() => _query = next),
+                );
+              },
             ),
           ),
           Expanded(
@@ -3873,8 +3903,8 @@ class _FontAddViewState extends State<FontAddView> {
                     .where(
                       (font) =>
                           query.isEmpty ||
-                          font.label.toLowerCase().contains(query) ||
-                          font.family.toLowerCase().contains(query),
+                          font.lowerLabel.contains(query) ||
+                          font.lowerFamily.contains(query),
                     )
                     .toList();
                 return _fontList(context, fonts);
@@ -4049,7 +4079,7 @@ class _FontAddViewState extends State<FontAddView> {
 }
 
 class _FontCandidate {
-  const _FontCandidate({
+  _FontCandidate({
     required this.label,
     required this.family,
     required this.preview,
@@ -4057,10 +4087,15 @@ class _FontCandidate {
     this.google = false,
     this.downloaded = false,
     this.priority = 0,
-  });
+  }) : lowerLabel = label.toLowerCase(),
+       lowerFamily = family.toLowerCase();
 
   final String label;
   final String family;
+  // Search keys for the ~1900 candidates, folded once at construction instead
+  // of twice per candidate per keystroke.
+  final String lowerLabel;
+  final String lowerFamily;
   final String preview;
   final String source;
   final bool google;

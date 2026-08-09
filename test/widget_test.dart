@@ -5649,6 +5649,7 @@ void main() {
       expect(controller.aiTranslationEnabled, isFalse);
       expect(controller.provider, TranslationProvider.tdlib);
       expect(controller.targetLanguageCode, 'zh-Hans');
+      expect(controller.displayStyle, TranslationDisplayStyle.quote);
       expect(
         controller.lingvaEndpoint,
         TranslationController.defaultLingvaEndpoint,
@@ -5662,6 +5663,7 @@ void main() {
       controller.aiTranslationEnabled = true;
       controller.provider = TranslationProvider.lingva;
       controller.targetLanguageCode = 'ja';
+      controller.displayStyle = TranslationDisplayStyle.both;
       controller.lingvaEndpoint = 'https://lingva.example.com/';
       controller.libreTranslateEndpoint = ' https://libre.example.com// ';
       controller.libreTranslateApiKey = ' secret-key ';
@@ -5674,6 +5676,7 @@ void main() {
       expect(reloaded.aiTranslationEnabled, isTrue);
       expect(reloaded.provider, TranslationProvider.lingva);
       expect(reloaded.targetLanguageCode, 'ja');
+      expect(reloaded.displayStyle, TranslationDisplayStyle.both);
       expect(reloaded.lingvaEndpoint, 'https://lingva.example.com');
       expect(reloaded.libreTranslateEndpoint, 'https://libre.example.com');
       expect(reloaded.libreTranslateApiKey, 'secret-key');

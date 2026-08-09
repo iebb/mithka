@@ -1794,6 +1794,8 @@
     <string name="messageActionBlock">封鎖</string>
     <string name="messageActionBlockKeyword">封鎖詞</string>
     <string name="messageActionCopy">複製</string>
+    <string name="messageActionDisplayOriginal">顯示原文</string>
+    <string name="messageActionDisplayTranslation">顯示譯文</string>
     <string name="messageActionEdit">編輯</string>
     <string name="messageActionFavorite">收藏</string>
     <string name="messageActionForward">轉發</string>
@@ -3215,6 +3217,9 @@
     <string name="transferBoostUpload">上傳加速</string>
     <string name="transferBoostUploadSection">上傳</string>
     <string name="translationAiProviderUnavailable">請先在「AI 設定」中設定可用的供應商。</string>
+    <string name="translationDisplayBoth">原文與譯文</string>
+    <string name="translationDisplayQuote">引用樣式</string>
+    <string name="translationDisplayTranslatedOnly">僅顯示譯文</string>
     <string name="translationInternalNoExternalApi">內部翻譯不使用外部 API</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate 未返回譯文</string>
     <string name="translationLibreTranslateUrlRequired">請先設定 LibreTranslate 位址</string>
@@ -3239,6 +3244,7 @@
     <string name="translationSettingsAiProvider">AI 供應商</string>
     <string name="translationSettingsAiSection">AI 翻譯</string>
     <string name="translationSettingsDoNotTranslate">不要翻譯</string>
+    <string name="translationSettingsDisplayStyle">翻譯顯示方式</string>
     <string name="translationSettingsLanguageCount">{value1} 種語言</string>
     <string name="translationSettingsNone">無</string>
     <string name="translationSettingsService">翻譯服務</string>

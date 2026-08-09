@@ -44,6 +44,12 @@ import 'sticker_item.dart';
 import 'telegram_ai_service.dart';
 import 'unread_chat_summary_models.dart';
 
+typedef MessageTranslationResult = ({
+  String text,
+  List<MessageTextEntity> entities,
+  String languageCode,
+});
+
 class _SenderInfo {
   _SenderInfo(
     this.name,
@@ -2427,7 +2433,10 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> translateMessage(int messageId, String toLanguageCode) async {
+  Future<MessageTranslationResult> translateMessage(
+    int messageId,
+    String toLanguageCode,
+  ) async {
     _setTranslationLoading(messageId, true);
     try {
       final formatted = await _client.query({
@@ -2436,12 +2445,18 @@ class ChatViewModel extends ChangeNotifier {
         'message_id': messageId,
         'to_language_code': toLanguageCode,
       });
+      final result = (
+        text: formatted.str('text') ?? '',
+        entities: TDParse.textEntities(formatted),
+        languageCode: toLanguageCode,
+      );
       _replaceTranslation(
         messageId,
-        formatted.str('text') ?? '',
-        TDParse.textEntities(formatted),
-        toLanguageCode,
+        result.text,
+        result.entities,
+        result.languageCode,
       );
+      return result;
     } catch (_) {
       _setTranslationLoading(messageId, false);
       rethrow;
@@ -2499,7 +2514,7 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> translateMessageExternally(
+  Future<MessageTranslationResult> translateMessageExternally(
     int messageId,
     String toLanguageCode,
     Future<String> Function() translate, {
@@ -2509,6 +2524,11 @@ class ChatViewModel extends ChangeNotifier {
     try {
       final translated = await translate();
       _replaceTranslation(messageId, translated, const [], toLanguageCode);
+      return (
+        text: translated,
+        entities: const <MessageTextEntity>[],
+        languageCode: toLanguageCode,
+      );
     } catch (_) {
       if (showLoading) _setTranslationLoading(messageId, false);
       rethrow;
@@ -4485,8 +4505,49 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - Live updates
 
+  /// Every `@type` [_handle] has an arm for. Keep in sync with its switch: an
+  /// omission silently stops that arm from ever running.
+  static const _handledUpdateTypes = <String>[
+    'updateNewMessage',
+    'updateMessageContent',
+    'updateMessageSuggestedPostInfo',
+    'updateChatUnreadMentionCount',
+    'updateMessageSendSucceeded',
+    'updateMessageSendAcknowledged',
+    'updateMessageSendFailed',
+    'updateSecretChat',
+    'updateChat',
+    'updateChatActionBar',
+    'updateChatBusinessBotManageBar',
+    'updateChatHasProtectedContent',
+    'updateChatDraftMessage',
+    'updateChatMessageAutoDeleteTime',
+    'updateChatPaidMessageStarCount',
+    'updateDeleteMessages',
+    'mithkaChatHistoryCleared',
+    'mithkaChatLeft',
+    'updateChatReadOutbox',
+    'updateChatReadInbox',
+    'updateChatIsMarkedAsUnread',
+    'updateChatAction',
+    'updateChatMessageSender',
+    'updateUser',
+    'updateUserFullInfo',
+    'updateSupergroup',
+    'updateSupergroupFullInfo',
+    'updateBasicGroupFullInfo',
+    'updateUserStatus',
+    'updateMessageEdited',
+    'updateMessageInteractionInfo',
+    'updateAvailableMessageEffects',
+    'updateBlockMessageSender',
+  ];
+
   void _subscribeToUpdates() {
-    _sub ??= _client.subscribe().listen(_handle);
+    // An open chat used to be woken for every update in the app — including the
+    // `updateFile` storm of a chunked download — only to walk 33 cases and
+    // return. It now hears exactly the types it handles.
+    _sub ??= _client.updatesOfAny(_handledUpdateTypes).listen(_handle);
   }
 
   void _handle(Map<String, dynamic> update) {
@@ -5199,7 +5260,7 @@ class ChatViewModel extends ChangeNotifier {
   // MARK: - 引用 reply-quote resolution
 
   /// For each message that replies to another, resolve the quoted sender +
-  /// preview — from the already-loaded list when possible, else via getMessage.
+  /// preview — from the already-loaded list when possible, else via getMessages.
   void _resolveRepliesIfNeeded(List<ChatMessage> batch) {
     final repliesToResolve = batch
         .where(
@@ -5231,29 +5292,52 @@ class ChatViewModel extends ChangeNotifier {
       }
       unresolved.putIfAbsent(rid, () => <ChatMessage>[]).add(m);
     }
-    for (final entry in unresolved.entries) {
-      _client
-          .query({
-            '@type': 'getMessage',
-            'chat_id': chatId,
-            'message_id': entry.key,
-          })
-          .then((raw) {
+    if (unresolved.isEmpty) return;
+    // One getMessage per distinct target meant 10-25 concurrent round trips for
+    // a single reply-heavy history page, repeated for every page scrolled up.
+    // getMessages answers them all at once, so the previews fill in together.
+    final targets = unresolved.keys.toList();
+    for (var start = 0; start < targets.length; start += 100) {
+      final end = start + 100 > targets.length ? targets.length : start + 100;
+      _resolveReplyTargets(targets.sublist(start, end), unresolved);
+    }
+  }
+
+  /// Fetches one batch of reply targets and patches every message waiting on it.
+  void _resolveReplyTargets(
+    List<int> messageIds,
+    Map<int, List<ChatMessage>> unresolved,
+  ) {
+    _client
+        .query({
+          '@type': 'getMessages',
+          'chat_id': chatId,
+          'message_ids': messageIds,
+        })
+        .then((response) {
+          var changed = false;
+          // Unavailable ids come back as nulls that carry no identity, so the
+          // bucket is looked up by the id on each returned message, not by
+          // position.
+          final raws =
+              response.objects('messages') ?? const <Map<String, dynamic>>[];
+          for (final raw in raws) {
             final quoted = TDParse.message(raw);
-            if (quoted == null) return;
-            var changed = false;
-            for (final message in entry.value) {
-              if (message.replyToMessageId != entry.key ||
+            if (quoted == null) continue;
+            final waiting = unresolved[quoted.id];
+            if (waiting == null) continue;
+            for (final message in waiting) {
+              if (message.replyToMessageId != quoted.id ||
                   message.replyToPreview != null) {
                 continue;
               }
               _applyReply(message, quoted);
               changed = true;
             }
-            if (changed) _scheduleCoalescedNotify();
-          })
-          .catchError((_) {});
-    }
+          }
+          if (changed) _scheduleCoalescedNotify();
+        })
+        .catchError((_) {});
   }
 
   void _applyReply(ChatMessage m, ChatMessage quoted) {
@@ -5370,6 +5454,7 @@ class ChatViewModel extends ChangeNotifier {
     // published — never flip them outside this pass.
     final blockedUserService = BlockedUserService.shared;
     final marksBlockedUsers = blockedUserService.enabled;
+    _marksBlockedUsers = marksBlockedUsers;
     final visible = <ChatMessage>[];
     final blockedIds = <int>[];
     _messagesById.clear();
@@ -5401,7 +5486,57 @@ class ChatViewModel extends ChangeNotifier {
     // is not a total order, so only the pure-id case can be checked.
     assert(_pendingMessageCount > 0 || _isSortedById(_allMessages));
     messages = visible;
+    _blockedMessageIds = blockedIds;
     _markBlockedMessagesReadThroughVisibleBoundary(blockedIds);
+    notifyListeners();
+  }
+
+  // State the incremental append path needs to stay equivalent to the full
+  // pass: what `blockedByUser` was last computed against, and every blocked id
+  // in `_allMessages` (the read-boundary marker is handed the whole set each
+  // time, because an arrival can move the boundary past an older blocked one).
+  bool _marksBlockedUsers = false;
+  List<int> _blockedMessageIds = <int>[];
+
+  /// Folds one strictly-newest message into the published transcript without
+  /// the whole-transcript rebuild [_applyKeywordFilter] does.
+  ///
+  /// That rebuild walked every loaded message and refilled three indexes per
+  /// arrival, so a chat got measurably slower the further back the user had
+  /// scrolled — thousands of blocked checks and map inserts for one message.
+  void _appendToVisibleTranscript(ChatMessage message) {
+    final blockedUserService = BlockedUserService.shared;
+    // The full pass re-evaluates blockedByUser for the whole transcript. The
+    // other inputs to it announce themselves (KeywordBlocker notifies,
+    // updateBlockMessageSender reloads), but this toggle does not, so a change
+    // has to fall back.
+    if (blockedUserService.enabled != _marksBlockedUsers) {
+      _applyKeywordFilter();
+      return;
+    }
+    // Guaranteed by _appendIfStrictlyNewest, so the pending count cannot move.
+    assert(!isPendingChatMessage(message));
+    _allMessagesById[message.id] = message;
+    if (_isBlockedMessage(message)) {
+      _blockedMessageIds.add(message.id);
+    } else {
+      final senderId = message.senderId;
+      message.blockedByUser =
+          _marksBlockedUsers &&
+          !message.isOutgoing &&
+          !message.isService &&
+          senderId != null &&
+          blockedUserService.isBlocked(senderId);
+      // Reassigned, never mutated: chat_view's transcript memo keys on the
+      // list's identity.
+      messages = [...messages, message];
+      _messagesById[message.id] = message;
+      if (senderId != null) {
+        (_messagesBySenderId[senderId] ??= <ChatMessage>[]).add(message);
+      }
+    }
+    _messageIndexesDirty = false;
+    _markBlockedMessagesReadThroughVisibleBoundary(_blockedMessageIds);
     notifyListeners();
   }
 
@@ -5468,13 +5603,15 @@ class ChatViewModel extends ChangeNotifier {
         message.containsUnreadMention = false;
       }
     }
-    if (!_appendIfStrictlyNewest(incoming)) {
-      _allMessages = mergeChatMessages(
-        _allMessages,
-        incoming,
-        ignoredMessageIds: _ignoredMergeMessageIds,
-      );
+    if (_appendIfStrictlyNewest(incoming)) {
+      _appendToVisibleTranscript(incoming.first);
+      return;
     }
+    _allMessages = mergeChatMessages(
+      _allMessages,
+      incoming,
+      ignoredMessageIds: _ignoredMergeMessageIds,
+    );
     _applyKeywordFilter();
   }
 
@@ -5746,6 +5883,18 @@ class ChatViewModel extends ChangeNotifier {
     _scheduleCoalescedNotify();
   }
 
+  void restoreMessageTranslation(
+    int messageId,
+    MessageTranslationResult translation,
+  ) {
+    _replaceTranslation(
+      messageId,
+      translation.text,
+      translation.entities,
+      translation.languageCode,
+    );
+  }
+
   void clearTranslations(Iterable<int> messageIds) {
     var changed = false;
     for (final messageId in messageIds.toSet()) {
@@ -5790,6 +5939,10 @@ class ChatViewModel extends ChangeNotifier {
     // otherwise keep handing out deleted messages.
     _messageIndexesDirty = true;
     _blockedReadIds.removeWhere(removed.contains);
+    // Same reason: the incremental append path hands this list straight to the
+    // read-boundary marker, so a deleted id left here is force-read again (and
+    // never dropped until the next full pass).
+    _blockedMessageIds.removeWhere(removed.contains);
     if (replyTo != null && removed.contains(replyTo!.id)) replyTo = null;
     if (pinnedMessages.any((m) => removed.contains(m.id))) {
       pinnedMessages = pinnedMessages
@@ -5993,41 +6146,82 @@ class ChatViewModel extends ChangeNotifier {
       final uid = m.forwardFromUserId;
       final cid = m.forwardFromChatId;
       if (uid != null) {
-        final cached = _senderCache[uid];
+        final cached = _senderCache[uid]?.name ?? _forwardUserNames[uid];
         if (cached != null) {
-          m.forwardOrigin = cached.name;
-        } else {
-          _resolveForwardName(m, userId: uid);
+          m.forwardOrigin = cached;
+          continue;
         }
+        final waiting = _pendingForwardUsers[uid];
+        if (waiting != null) {
+          waiting.add(m);
+          continue;
+        }
+        _pendingForwardUsers[uid] = <ChatMessage>[m];
+        _resolveForwardName(userId: uid);
       } else if (cid != null) {
-        _resolveForwardName(m, chatId: cid);
+        final cached = _forwardChatTitles[cid];
+        if (cached != null) {
+          m.forwardOrigin = cached;
+          continue;
+        }
+        final waiting = _pendingForwardChats[cid];
+        if (waiting != null) {
+          waiting.add(m);
+          continue;
+        }
+        _pendingForwardChats[cid] = <ChatMessage>[m];
+        _resolveForwardName(chatId: cid);
       }
     }
   }
 
-  Future<void> _resolveForwardName(
-    ChatMessage m, {
-    int? userId,
-    int? chatId,
-  }) async {
+  // Forwards arrive in runs from the same origin, and the resolver used to keep
+  // no result and no in-flight set: a page with 20 forwards from one channel
+  // fired 20 identical getChat round trips, and every later page repeated them.
+  // Chat and user ids need separate maps — TDLib chat ids for groups/channels
+  // are already negative, and a private chat id equals its user id.
+  final Map<int, String> _forwardUserNames = {};
+  final Map<int, String> _forwardChatTitles = {};
+  final Map<int, List<ChatMessage>> _pendingForwardUsers = {};
+  final Map<int, List<ChatMessage>> _pendingForwardChats = {};
+
+  Future<void> _resolveForwardName({int? userId, int? chatId}) async {
+    String? name;
     try {
       if (userId != null) {
         final user = await _client.query({
           '@type': 'getUser',
           'user_id': userId,
         });
-        m.forwardOrigin = TDParse.userName(user);
+        name = TDParse.userName(user);
       } else if (chatId != null) {
         final chat = await _client.query({
           '@type': 'getChat',
           'chat_id': chatId,
         });
-        m.forwardOrigin = chat.str('title');
-      }
-      if (m.forwardOrigin != null && m.forwardOrigin!.isNotEmpty) {
-        _scheduleCoalescedNotify();
+        name = chat.str('title');
       }
     } catch (_) {}
+    final List<ChatMessage>? waiting;
+    if (userId != null) {
+      waiting = _pendingForwardUsers.remove(userId);
+    } else if (chatId != null) {
+      waiting = _pendingForwardChats.remove(chatId);
+    } else {
+      waiting = null;
+    }
+    // A failed lookup is not remembered, so a later page retries it exactly as
+    // it used to.
+    if (name == null || name.isEmpty || waiting == null) return;
+    if (userId != null) {
+      _forwardUserNames[userId] = name;
+    } else if (chatId != null) {
+      _forwardChatTitles[chatId] = name;
+    }
+    for (final message in waiting) {
+      message.forwardOrigin = name;
+    }
+    _scheduleCoalescedNotify();
   }
 
   void _resolveServiceUsersIfNeeded(List<ChatMessage> batch) {

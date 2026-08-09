@@ -100,6 +100,7 @@ import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'message_bubble_repository_view.dart';
 import 'message_replies_sheet.dart';
+import 'message_translation_cache.dart';
 import 'music_player_controller.dart';
 import 'openai_compatible_unread_summary_provider.dart';
 import 'outgoing_attachment.dart';
@@ -826,7 +827,7 @@ class _ChatViewState extends State<ChatView> {
   final _transcriptViewportKey = GlobalKey();
   final _newerTranscriptSliverKey = GlobalKey();
   final _firstContactLayoutKey = GlobalKey();
-  final Map<int, GlobalKey> _entryVisibilityKeys = <int, GlobalKey>{};
+  Map<int, GlobalKey> _entryVisibilityKeys = <int, GlobalKey>{};
   Map<int, _TranscriptEntry> _trackedTranscriptEntries = const {};
   TranscriptPivot? _transcriptPivot;
   bool _transcriptPivotFrozen = false;
@@ -835,6 +836,7 @@ class _ChatViewState extends State<ChatView> {
   late int _historyWindowInvalidationRevision;
   final Set<int> _reportedVisibleMessageIds = <int>{};
   final Set<int> _expandedBlockedRunIds = <int>{};
+  final Set<int> _showOriginalTranslationMessageIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
   bool _viewTickerEnabled = true;
   bool _modelDirtyWhileInactive = false;
@@ -866,6 +868,10 @@ class _ChatViewState extends State<ChatView> {
   int? _entryFirstUnreadMessageId;
   bool _showEntryUnreadBanner = false;
   late final ChatMessageSearchController _search;
+
+  /// Mirrors `_search.isActive`, so the controller's per-keystroke
+  /// notifications only setState when the value this build reads changed.
+  bool _searchActive = false;
 
   /// Whether the last layout had room for the results pane. Read by callbacks
   /// that run outside build, where the constraints are no longer at hand.
@@ -2752,17 +2758,42 @@ class _ChatViewState extends State<ChatView> {
       }
     }
     if (targetEntry == null) return null;
-    final partition = _partitionTranscript(entries);
+    // The visibility retry loop calls this up to six times in a row, so it
+    // reuses the partition and key indexes _transcript() already cached rather
+    // than repartitioning the whole entry list and rescanning it per attempt.
+    // `older` holds beforePivot reversed, which is why it is walked forwards.
+    final List<_TranscriptEntry> older;
+    final List<_TranscriptEntry> newer;
+    final int olderIndex;
+    final int newerIndex;
+    if (identical(entries, _sliverCacheEntries) &&
+        identical(_transcriptPivot, _sliverCachePivot) &&
+        _sliverCacheInitialLoaded == _vm.initialLoaded &&
+        _sliverCacheLeadingItemCount >= 0) {
+      older = _sliverCacheOlderEntries!;
+      newer = _sliverCacheNewerEntries!;
+      olderIndex = _sliverCacheOlderIndexByKey![targetEntry.key] ?? -1;
+      // The newer map is offset by the leading first-contact card, which is not
+      // an entry.
+      final mapped = olderIndex >= 0
+          ? null
+          : _sliverCacheNewerIndexByKey![targetEntry.key];
+      newerIndex = mapped == null ? -1 : mapped - _sliverCacheLeadingItemCount;
+    } else {
+      final partition = _partitionTranscript(entries);
+      older = partition.beforePivot.reversed.toList(growable: false);
+      newer = partition.pivotAndAfter;
+      olderIndex = older.indexOf(targetEntry);
+      newerIndex = olderIndex >= 0 ? -1 : newer.indexOf(targetEntry);
+    }
     final messages = _transcriptCacheMessages ?? _vm.messages;
     final position = _scroll.position;
     final viewport = _scroll.position.viewportDimension;
-    final targetIsBeforePivot = partition.beforePivot.contains(targetEntry);
 
-    if (targetIsBeforePivot) {
-      final targetIndex = partition.beforePivot.indexOf(targetEntry);
+    if (olderIndex >= 0) {
       var targetTop = 0.0;
-      for (var i = targetIndex; i < partition.beforePivot.length; i++) {
-        targetTop -= _estimatedEntryExtent(partition.beforePivot[i]);
+      for (var i = 0; i <= olderIndex; i++) {
+        targetTop -= _estimatedEntryExtent(older[i]);
       }
       if (!beforeUnreadDivider &&
           _needsUnreadDivider(targetEntry.startIndex, messages: messages)) {
@@ -2771,10 +2802,9 @@ class _ChatViewState extends State<ChatView> {
       return clampScrollOffset(position, targetTop - viewport * alignment);
     }
 
-    final targetIndex = partition.pivotAndAfter.indexOf(targetEntry);
     var targetTop = 0.0;
-    for (var i = 0; i < targetIndex; i++) {
-      targetTop += _estimatedEntryExtent(partition.pivotAndAfter[i]);
+    for (var i = 0; i < newerIndex; i++) {
+      targetTop += _estimatedEntryExtent(newer[i]);
     }
     if (!beforeUnreadDivider &&
         _needsUnreadDivider(targetEntry.startIndex, messages: messages)) {
@@ -3417,6 +3447,8 @@ class _ChatViewState extends State<ChatView> {
       message: message,
       selected: _selectedMessageIds.contains(message.id),
       groupedMedia: groupedMedia,
+      translationDisplayStyle: _translation.displayStyle,
+      showOriginalTranslationMessageIds: _showOriginalTranslationMessageIds,
       peerTitle: _vm.peerTitle,
       peerPhoto: _vm.peerPhoto,
       isGroup: _vm.isGroup,
@@ -4036,6 +4068,10 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_offerSuggestedPost(message));
       case MessageAction.translate:
         unawaited(_translateMessage(message));
+      case MessageAction.displayOriginal:
+        setState(() => _showOriginalTranslationMessageIds.add(message.id));
+      case MessageAction.displayTranslation:
+        setState(() => _showOriginalTranslationMessageIds.remove(message.id));
       case MessageAction.reply:
         _vm.setReply(message);
       case MessageAction.replies:
@@ -4438,45 +4474,69 @@ class _ChatViewState extends State<ChatView> {
     if (sourceText.trim().isEmpty) return true;
     final targetLanguage = _translationTargetLanguage(translation);
     try {
-      if (translation.aiTranslationEnabled) {
-        await _vm.translateMessageExternally(
-          message.id,
-          targetLanguage,
-          () => _translateTextWithAi(
-            text: sourceText,
-            sourceLanguageCode: sourceLanguageCode,
-            targetLanguageCode: targetLanguage,
-            priorMessages: _aiTranslationContextFor(message),
-          ),
-        );
-      } else if (translation.provider == TranslationProvider.iosSystem ||
-          translation.provider == TranslationProvider.androidMlKit) {
-        await _vm.translateMessageExternally(
-          message.id,
-          targetLanguage,
-          () => NativeTranslationApi.translate(
-            text: sourceText,
-            sourceLanguageCode: sourceLanguageCode,
-            targetLanguageCode: targetLanguage,
-          ),
-          showLoading: defaultTargetPlatform != TargetPlatform.iOS,
-        );
-      } else if (translation.provider == TranslationProvider.tdlib) {
-        await _vm.translateMessage(message.id, targetLanguage);
-      } else {
-        await _vm.translateMessageExternally(
-          message.id,
-          targetLanguage,
-          () => ThirdPartyTranslationApi.translate(
-            provider: translation.provider,
-            text: sourceText,
-            sourceLanguageCode: sourceLanguageCode,
-            targetLanguageCode: targetLanguage,
-            lingvaEndpoint: translation.lingvaEndpoint,
-            libreTranslateEndpoint: translation.libreTranslateEndpoint,
-            libreTranslateApiKey: translation.libreTranslateApiKey,
-          ),
-        );
+      final cached = await translation.messageCache.resolve(
+        MessageTranslationCacheKey(
+          accountSlot: _sessionKey.accountSlot,
+          chatId: widget.chatId,
+          messageId: message.id,
+          sourceText: sourceText,
+          targetLanguageCode: targetLanguage,
+        ),
+        () async {
+          final MessageTranslationResult result;
+          if (translation.aiTranslationEnabled) {
+            result = await _vm.translateMessageExternally(
+              message.id,
+              targetLanguage,
+              () => _translateTextWithAi(
+                text: sourceText,
+                sourceLanguageCode: sourceLanguageCode,
+                targetLanguageCode: targetLanguage,
+                priorMessages: _aiTranslationContextFor(message),
+              ),
+            );
+          } else if (translation.provider == TranslationProvider.iosSystem ||
+              translation.provider == TranslationProvider.androidMlKit) {
+            result = await _vm.translateMessageExternally(
+              message.id,
+              targetLanguage,
+              () => NativeTranslationApi.translate(
+                text: sourceText,
+                sourceLanguageCode: sourceLanguageCode,
+                targetLanguageCode: targetLanguage,
+              ),
+              showLoading: defaultTargetPlatform != TargetPlatform.iOS,
+            );
+          } else if (translation.provider == TranslationProvider.tdlib) {
+            result = await _vm.translateMessage(message.id, targetLanguage);
+          } else {
+            result = await _vm.translateMessageExternally(
+              message.id,
+              targetLanguage,
+              () => ThirdPartyTranslationApi.translate(
+                provider: translation.provider,
+                text: sourceText,
+                sourceLanguageCode: sourceLanguageCode,
+                targetLanguageCode: targetLanguage,
+                lingvaEndpoint: translation.lingvaEndpoint,
+                libreTranslateEndpoint: translation.libreTranslateEndpoint,
+                libreTranslateApiKey: translation.libreTranslateApiKey,
+              ),
+            );
+          }
+          return MessageTranslationValue(
+            text: result.text,
+            entities: result.entities,
+            languageCode: result.languageCode,
+          );
+        },
+      );
+      if (mounted) {
+        _vm.restoreMessageTranslation(message.id, (
+          text: cached.text,
+          entities: cached.entities,
+          languageCode: cached.languageCode,
+        ));
       }
       return true;
     } catch (e) {
@@ -4493,6 +4553,9 @@ class _ChatViewState extends State<ChatView> {
 
   void _onTranslationSettingsChanged() {
     if (!mounted) return;
+    if (_translation.displayStyle != TranslationDisplayStyle.translatedOnly) {
+      _showOriginalTranslationMessageIds.clear();
+    }
     _autoTranslationFailedMessageIds.clear();
     if (!_automaticTranslationEnabled && _autoTranslatedMessageIds.isNotEmpty) {
       _vm.clearTranslations(_autoTranslatedMessageIds);
@@ -5487,13 +5550,17 @@ class _ChatViewState extends State<ChatView> {
           Positioned(right: 16, bottom: 12, child: _jumpToBottomButton()),
         // Without a pane to hold them, suggestions float over the transcript
         // rather than replacing it — the conversation stays in view while a
-        // sender is picked.
-        if (!searchPane && _searchOverlay != null)
+        // sender is picked. The AnimatedBuilder keeps a suggestion arriving
+        // from rebuilding every visible bubble underneath it.
+        if (!searchPane && _search.isActive)
           Positioned(
             top: AppSpacing.md,
             left: AppSpacing.lg,
             right: AppSpacing.lg,
-            child: _searchOverlay!,
+            child: AnimatedBuilder(
+              animation: _search,
+              builder: (_, _) => _searchOverlay ?? const SizedBox.shrink(),
+            ),
           ),
       ],
     );
@@ -7041,6 +7108,7 @@ class _ChatViewState extends State<ChatView> {
     bool pinnedJump = false,
     double? alignment,
     bool forceAlignment = false,
+    bool Function()? isCancelled,
   }) async {
     _cancelSessionReopenNavigation(userClaimedViewport: true);
     await _scrollToMessageAndReport(
@@ -7048,6 +7116,7 @@ class _ChatViewState extends State<ChatView> {
       pinnedJump: pinnedJump,
       alignment: alignment,
       forceAlignment: forceAlignment,
+      isCancelled: isCancelled,
     );
   }
 
@@ -7106,7 +7175,14 @@ class _ChatViewState extends State<ChatView> {
 
   // MARK: - In-chat search
 
+  /// The controller notifies per keystroke, per page and per resolved sender,
+  /// and every search surface already AnimatedBuilds on it. `isActive` is the
+  /// only value this build reads, so anything else would rebuild the whole
+  /// transcript for a repaint that happens elsewhere.
   void _onSearchChanged() {
+    final active = _search.isActive;
+    if (active == _searchActive) return;
+    _searchActive = active;
     if (mounted) setState(() {});
   }
 
@@ -7135,7 +7211,16 @@ class _ChatViewState extends State<ChatView> {
     // A query's own landing must not, or typing would close the keyboard on
     // every pause.
     if (!automatic && !_searchResultsPaneVisible) _search.focusNode.unfocus();
-    await _scrollToMessage(result.id, alignment: 0.38, forceAlignment: true);
+    await _scrollToMessage(
+      result.id,
+      alignment: 0.38,
+      forceAlignment: true,
+      // A query's own landing can outlive the query: the history fetch it may
+      // need takes longer than the next keystroke. Aborting it beats racing it.
+      isCancelled: automatic
+          ? () => _search.activeMessageId != result.id
+          : null,
+    );
   }
 
   bool _searchUsesResultsPane(double conversationWidth) =>
@@ -7764,7 +7849,9 @@ class _ChatViewState extends State<ChatView> {
     _transcriptCacheGrouped = groupImages;
     _transcriptCacheUnreadCount = _vm.unreadCount;
     _transcriptCacheLastReadInboxId = _vm.lastReadInboxId;
-    final previousVisibilityKeys = Map<int, GlobalKey>.of(_entryVisibilityKeys);
+    // Read in place rather than copied: nothing mutates the map between here
+    // and the swap below, and the copy was n-sized on every incoming message.
+    final previousVisibilityKeys = _entryVisibilityKeys;
     final nextVisibilityKeys = <int, GlobalKey>{};
     final usedVisibilityKeys = <GlobalKey>{};
     for (final entry in entries) {
@@ -7782,9 +7869,7 @@ class _ChatViewState extends State<ChatView> {
         nextVisibilityKeys[message.id] = visibilityKey;
       }
     }
-    _entryVisibilityKeys
-      ..clear()
-      ..addAll(nextVisibilityKeys);
+    _entryVisibilityKeys = nextVisibilityKeys;
     _trackedTranscriptEntries = {
       for (final entry in entries) entry.last.id: entry,
     };
@@ -7982,6 +8067,8 @@ class _ChatViewState extends State<ChatView> {
       incomingBubbleColor: _effectiveIncomingColor(),
       incomingBubbleTextColor: _effectiveIncomingTextColor(),
       messageColors: _effectiveMessageColors(),
+      translationDisplayStyle: _translation.displayStyle,
+      showOriginalTranslationMessageIds: _showOriginalTranslationMessageIds,
       onAvatarTap: _openSenderProfile,
       onAvatarLongPress: (message) {
         if (_vm.isGroup && (message.senderName?.isNotEmpty ?? false)) {
@@ -8049,6 +8136,9 @@ class _ChatViewState extends State<ChatView> {
       allowSuggestedPostOffer:
           _vm.isDirectMessagesGroup && !_vm.isAdministeredDirectMessagesGroup,
       source: _actionSource,
+      showingOriginalTranslation: _showOriginalTranslationMessageIds.contains(
+        _actionTarget!.id,
+      ),
       onSelect: (action) => _perform(action, _actionTarget!),
     );
 

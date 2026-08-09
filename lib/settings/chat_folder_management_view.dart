@@ -621,7 +621,8 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
       ..._draft.excludedChatIds,
       ..._draft.pinnedChatIds,
     };
-    for (final id in ids) {
+
+    Future<void> resolve(int id) async {
       try {
         final chat = await widget.service.getChat(id);
         _chatTitles[id] = chat.str('title') ?? _chatFallbackTitle(id);
@@ -629,6 +630,10 @@ class _ChatFolderEditorViewState extends State<ChatFolderEditorView> {
         _chatTitles[id] = _chatFallbackTitle(id);
       }
     }
+
+    // Serializing these left every row on its numeric fallback title until the
+    // last of N round trips landed.
+    await Future.wait([for (final id in ids) resolve(id)]);
     if (mounted) setState(() {});
   }
 

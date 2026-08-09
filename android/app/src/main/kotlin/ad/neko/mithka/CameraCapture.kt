@@ -11,6 +11,7 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoFrame
 import org.webrtc.YuvHelper
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Owns the device camera via WebRTC's [org.webrtc.Camera2Capturer] and fans each
@@ -44,6 +45,19 @@ class CameraCapture(
     @Volatile
     private var sentOnce = false
 
+    // Recycled staging buffers: a fresh direct buffer per frame is ~41 MB/s of
+    // direct memory at 720p30 for the whole call, and direct memory is only
+    // reclaimed by forcing a GC — which stalls this capture thread. A buffer goes
+    // back to the pool only when the preview renderer releases the frame wrapping
+    // it, and that callback runs on the renderer's EGL thread, hence the
+    // concurrent queue.
+    //
+    // The heap array handed to sendExternalFrame is deliberately NOT pooled:
+    // ntgcalls is a prebuilt AAR, so whether it copies the array before returning
+    // cannot be checked from this repo, and reusing it would corrupt in-flight
+    // frames if it does not. ART reclaims a short-lived array cheaply anyway.
+    private val dstPool = ConcurrentLinkedQueue<ByteBuffer>()
+
     companion object {
         // Fixed encoder resolution. ntgcalls' WebRTC video encoder aborts
         // (SIGABRT on its VideoEncoderQue thread) if the frames it receives change
@@ -51,6 +65,11 @@ class CameraCapture(
         // frame to exactly this even size (matching the CAPTURE VideoDescription).
         private const val TARGET_W = 1280
         private const val TARGET_H = 720
+        private const val FRAME_SIZE = TARGET_W * TARGET_H * 3 / 2
+
+        // Frames that may be in flight at once: the preview renderer holds at
+        // most one, so three is slack.
+        private const val SCRATCH_DEPTH = 3
     }
 
     /** Open the requested camera (front/back) and start delivering frames. */
@@ -115,6 +134,7 @@ class CameraCapture(
         runCatching { helper?.dispose() }
         capturer = null
         helper = null
+        dstPool.clear()
     }
 
     /** Normalize → bake rotation → send. We center-crop to 16:9, scale to a fixed
@@ -149,8 +169,8 @@ class CameraCapture(
         }
         try {
             val rot = frame.rotation
-            val size = TARGET_W * TARGET_H * 3 / 2
-            val dst = ByteBuffer.allocateDirect(size)
+            val dst = dstPool.poll()?.apply { clear() }
+                ?: ByteBuffer.allocateDirect(FRAME_SIZE)
             // Bake `rot` into the pixels; output is tightly-packed I420.
             YuvHelper.I420Rotate(
                 i420.dataY, i420.strideY,
@@ -173,19 +193,22 @@ class CameraCapture(
             val vb = dst.duplicate().apply {
                 position(ySize + cSize); limit(ySize + 2 * cSize)
             }.slice()
-            val localBuf = JavaI420Buffer.wrap(outW, outH, yb, outW, ub, outW / 2, vb, outW / 2, null)
+            val localBuf = JavaI420Buffer.wrap(outW, outH, yb, outW, ub, outW / 2, vb, outW / 2) {
+                // Recycle only once the renderer is done with these slices.
+                if (dstPool.size < SCRATCH_DEPTH) dstPool.offer(dst)
+            }
             val localFrame = VideoFrame(localBuf, 0, frame.timestampNs)
             onLocalFrame(localFrame)
             localFrame.release()
 
-            val bytes = ByteArray(size)
+            val bytes = ByteArray(FRAME_SIZE)
             dst.rewind()
             dst.get(bytes)
             if (!sentOnce) {
                 sentOnce = true
                 Log.i(
                     "CallMediaVid",
-                    "send upright ${outW}x$outH (baked rot=$rot) bytes=$size src ${sw}x$sh",
+                    "send upright ${outW}x$outH (baked rot=$rot) bytes=$FRAME_SIZE src ${sw}x$sh",
                 )
             }
             onEncodedFrame(bytes, outW, outH, 0, frame.timestampNs / 1_000_000L)

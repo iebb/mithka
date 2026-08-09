@@ -7,6 +7,7 @@ import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 
 class _EnterToSendViewModel extends ChatViewModel {
@@ -314,11 +315,78 @@ void main() {
     );
     expect(find.byKey(const ValueKey('composerAiPrefixButton')), findsNothing);
 
+    final resizeHandle = find.byKey(
+      const ValueKey('desktopComposerResizeHandle'),
+    );
+    expect(resizeHandle, findsOneWidget);
+    expect(tester.getSize(resizeHandle).height, 8);
     expect(
-      find.byKey(const ValueKey('desktopComposerResizeHandle')),
-      findsOneWidget,
+      tester.getTopLeft(resizeHandle).dy,
+      closeTo(tester.getTopLeft(toolbar).dy, 0.01),
+    );
+    expect(
+      find.byKey(const ValueKey('desktopComposerResizeIndicator')),
+      findsNothing,
     );
   });
+
+  testWidgets(
+    'desktop bot controls stay in the toolbar and leave a full-width editor',
+    (tester) async {
+      await _pumpComposer(
+        tester,
+        enterToSend: false,
+        platform: TargetPlatform.macOS,
+        composerWidth: 700,
+        includeReplyKeyboardWebApp: true,
+      );
+
+      final toolbar = find.byKey(const ValueKey('desktopComposerToolbar'));
+      final miniApp = find.byKey(
+        const ValueKey('desktopComposerMiniAppAction'),
+      );
+      final keyboard = find.byKey(
+        const ValueKey('desktopComposerReplyKeyboardAction'),
+      );
+      expect(find.descendant(of: toolbar, matching: miniApp), findsOneWidget);
+      expect(find.descendant(of: toolbar, matching: keyboard), findsOneWidget);
+      expect(
+        tester.widget<AppInteractiveSurface>(miniApp).semanticLabel,
+        'Launch Mini App',
+      );
+      expect(
+        tester.widget<AppInteractiveSurface>(keyboard).semanticLabel,
+        'Show bot keyboard',
+      );
+      expect(
+        find.byKey(const ValueKey('desktopComposerBotMenuAction')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('composerReplyKeyboardMiniAppAction')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('composerReplyKeyboardToggle')),
+        findsNothing,
+      );
+
+      final editorRow = find.byKey(
+        const ValueKey('desktopComposerFullWidthEditorRow'),
+      );
+      final inputBox = find.byKey(const ValueKey('composerTextInputBox'));
+      final field = find.byType(TextField);
+      expect(tester.getSize(inputBox).width, tester.getSize(editorRow).width);
+      expect(
+        tester.getSize(field).width,
+        closeTo(tester.getSize(inputBox).width - 4, 0.01),
+      );
+
+      await tester.tap(keyboard);
+      await tester.pump();
+      expect(tester.widget<AppInteractiveSurface>(keyboard).selected, isTrue);
+    },
+  );
 
   testWidgets('desktop composer toolbar scrolls instead of overflowing', (
     tester,
@@ -501,9 +569,32 @@ Future<_EnterToSendViewModel> _pumpComposer(
   TargetPlatform platform = TargetPlatform.android,
   bool aiCompositionSupported = false,
   bool includeSenderOptions = false,
+  bool includeReplyKeyboardWebApp = false,
   double? composerWidth,
 }) async {
   final vm = _EnterToSendViewModel();
+  if (includeReplyKeyboardWebApp) {
+    vm
+      ..peerIsBot = true
+      ..messages = [
+        ChatMessage(
+          id: 1,
+          isOutgoing: false,
+          text: '',
+          date: 1,
+          buttonRows: const [
+            [
+              MessageButton(
+                text: 'Launch Mini App',
+                type: 'keyboardButtonTypeWebApp',
+                url: 'https://example.com/mini-app',
+                isReplyKeyboard: true,
+              ),
+            ],
+          ],
+        ),
+      ];
+  }
   if (includeSenderOptions) {
     vm.availableMessageSenders = const [
       MessageSenderOption(

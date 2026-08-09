@@ -41,6 +41,11 @@ class _DownloadItem {
   int downloaded;
   String path;
 
+  /// Bumped per updateFile chunk. TDLib emits those tens of times a second per
+  /// active download, and only this row's progress moves — the page-wide
+  /// setState rebuilt the header, the search field and every visible row.
+  final ValueNotifier<int> revision = ValueNotifier(0);
+
   bool get completed => completeDate > 0 || (size > 0 && downloaded >= size);
 }
 
@@ -74,6 +79,9 @@ class _DownloadsViewState extends State<DownloadsView> {
   void dispose() {
     _updates?.cancel();
     _searchTimer?.cancel();
+    for (final item in _items) {
+      item.revision.dispose();
+    }
     _search
       ..removeListener(_queueSearch)
       ..dispose();
@@ -103,7 +111,8 @@ class _DownloadsViewState extends State<DownloadsView> {
         offset: reset ? '' : _nextOffset,
       );
       final next = <_DownloadItem>[];
-      for (final raw in result.objects('files') ?? const []) {
+      for (final raw
+          in result.objects('files') ?? const <Map<String, dynamic>>[]) {
         final item = _parse(raw);
         if (item != null) next.add(item);
       }
@@ -197,12 +206,11 @@ class _DownloadsViewState extends State<DownloadsView> {
       final local = file?.obj('local');
       final index = _items.indexWhere((item) => item.fileId == fileId);
       if (index < 0 || !mounted) return;
-      setState(() {
-        final item = _items[index];
-        item.size = file?.int64('size') ?? item.size;
-        item.downloaded = local?.int64('downloaded_size') ?? item.downloaded;
-        item.path = local?.str('path') ?? item.path;
-      });
+      final item = _items[index];
+      item.size = file?.int64('size') ?? item.size;
+      item.downloaded = local?.int64('downloaded_size') ?? item.downloaded;
+      item.path = local?.str('path') ?? item.path;
+      item.revision.value++;
     } else if (update.type == 'updateFileAddedToDownloads' ||
         update.type == 'updateFileDownloads') {
       unawaited(_load(reset: true));
@@ -489,7 +497,12 @@ class _DownloadsViewState extends State<DownloadsView> {
     );
   }
 
-  Widget _row(_DownloadItem item) {
+  Widget _row(_DownloadItem item) => ValueListenableBuilder<int>(
+    valueListenable: item.revision,
+    builder: (_, _, _) => _rowContent(item),
+  );
+
+  Widget _rowContent(_DownloadItem item) {
     final c = context.colors;
     final progress = item.size <= 0
         ? null

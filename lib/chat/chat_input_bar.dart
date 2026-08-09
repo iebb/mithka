@@ -2452,7 +2452,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     });
   }
 
-  Widget _desktopResizeHandle(AppColors colors) => MouseRegion(
+  Widget _desktopResizeHandle() => MouseRegion(
     cursor: SystemMouseCursors.resizeUpDown,
     child: GestureDetector(
       key: const ValueKey('desktopComposerResizeHandle'),
@@ -2461,21 +2461,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       onVerticalDragEnd: _persistDesktopComposerHeight,
       child: Semantics(
         label: AppStrings.t(AppStringKeys.chatInputResizeMessageInput),
-        child: SizedBox(
-          height: 9,
-          width: double.infinity,
-          child: Center(
-            child: Container(
-              key: const ValueKey('desktopComposerResizeIndicator'),
-              width: 38,
-              height: 3,
-              decoration: BoxDecoration(
-                color: colors.textTertiary.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
+        child: const SizedBox(height: 8, width: double.infinity),
       ),
     ),
   );
@@ -2508,7 +2494,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (desktopComposer) _desktopResizeHandle(c),
                 if (editingMessage != null)
                   _editBanner(editingMessage)
                 else if (vm.replyTo != null)
@@ -2528,7 +2513,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   _clipboardAttachmentStrip(desktop: desktopComposer),
                 if (desktopComposer) ...[
                   if (editingMessage == null)
-                    _desktopIconStrip(aiSettings: aiSettings),
+                    _desktopIconStrip(
+                      aiSettings: aiSettings,
+                      replyKeyboard: replyKeyboard,
+                    ),
                   _inputRow(
                     replyKeyboard,
                     aiSettings: aiSettings,
@@ -2560,6 +2548,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ],
             ),
           ),
+          if (desktopComposer)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: _desktopResizeHandle(),
+            ),
           // The base input surface is painted exactly once across the complete
           // composer. When a media/reply panel is open, extend that panel's
           // surface through the system inset with the same single overlay used
@@ -4310,7 +4305,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
         replyTarget != null &&
         _isAiReplyTargetEligible(replyTarget);
     final sender = vm.selectedMessageSender;
-    final webAppButton = editing ? null : _webAppButton(replyKeyboard);
+    final webAppButton = editing || desktop
+        ? null
+        : _webAppButton(replyKeyboard);
     final desktopCanvasHeight = clampDesktopComposerCanvasHeight(
       _desktopComposerCanvasHeight,
       viewportHeight: MediaQuery.sizeOf(context).height,
@@ -4330,13 +4327,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 : null,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // The bot-menu mini-app launcher lives in the chat header now
-              // (menu bar), not on the message row — bots with a menu web app
-              // fall through to the standard bot-menu icon here.
-              if (webAppButton != null && replyKeyboard != null) ...[
+              // Desktop utility actions live in the toolbar so the editor
+              // keeps the entire composer width.
+              if (!desktop &&
+                  webAppButton != null &&
+                  replyKeyboard != null) ...[
                 _replyKeyboardMiniAppAction(replyKeyboard, webAppButton),
                 const SizedBox(width: 8),
-              ] else if (!editing &&
+              ] else if (!desktop &&
+                  !editing &&
                   (vm.peerIsBot || _guestQueries.isNotEmpty)) ...[
                 Semantics(
                   button: true,
@@ -4603,13 +4602,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 ),
                               ),
                             ),
-                            if (!hasText && replyKeyboard != null)
+                            if (!desktop && !hasText && replyKeyboard != null)
                               Semantics(
                                 button: true,
                                 label: _replyKeyboardVisible
                                     ? 'Hide bot keyboard'
                                     : 'Show bot keyboard',
                                 child: GestureDetector(
+                                  key: const ValueKey(
+                                    'composerReplyKeyboardToggle',
+                                  ),
                                   behavior: HitTestBehavior.opaque,
                                   onTap: _toggleReplyKeyboard,
                                   child: SizedBox(
@@ -5113,6 +5115,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       button: true,
       label: button.text,
       child: GestureDetector(
+        key: const ValueKey('composerReplyKeyboardMiniAppAction'),
         behavior: HitTestBehavior.opaque,
         onTap: () => unawaited(_openReplyKeyboardWebApp(keyboard, button)),
         onLongPress: () => _showBotMenu(forceMenu: true),
@@ -5218,9 +5221,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // MARK: - Icon strip
 
-  Widget _desktopIconStrip({required AiSettingsController? aiSettings}) {
+  Widget _desktopIconStrip({
+    required AiSettingsController? aiSettings,
+    required _ReplyKeyboard? replyKeyboard,
+  }) {
     final c = context.colors;
     final sender = vm.selectedMessageSender;
+    final webAppButton = _webAppButton(replyKeyboard);
+    final canToggleReplyKeyboard =
+        replyKeyboard != null &&
+        (_replyKeyboardVisible ||
+            (!_hasText && _pendingClipboardAttachments.isEmpty));
     final replyTarget = _currentAiReplyTarget();
     final aiReplyWorking = _aiReplyWorkingTargetId != null;
     final canUseAiReply =
@@ -5380,12 +5391,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     active: false,
                     onTap: _openScheduledMessages,
                   ),
-                  // In a bot chat the menu was only reachable from the round
-                  // button under the composer; it belongs with the other
-                  // composer actions too.
-                  if (vm.peerIsBot ||
-                      (vm.botMenu?.isWebApp ?? false) ||
-                      vm.botCommands.isNotEmpty)
+                  if (webAppButton != null && replyKeyboard != null)
+                    _desktopIcon(
+                      key: const ValueKey('desktopComposerMiniAppAction'),
+                      icon: HeroAppIcons.bot,
+                      semanticLabel: webAppButton.text,
+                      active: false,
+                      onTap: () => unawaited(
+                        _openReplyKeyboardWebApp(replyKeyboard, webAppButton),
+                      ),
+                      onLongPress: () => _showBotMenu(forceMenu: true),
+                    ),
+                  if (replyKeyboard != null)
+                    _desktopIcon(
+                      key: const ValueKey('desktopComposerReplyKeyboardAction'),
+                      icon: _replyKeyboardVisible
+                          ? HeroAppIcons.chevronDown
+                          : HeroAppIcons.tableCells,
+                      semanticLabel: _replyKeyboardVisible
+                          ? 'Hide bot keyboard'
+                          : 'Show bot keyboard',
+                      active: _replyKeyboardVisible,
+                      enabled: canToggleReplyKeyboard,
+                      onTap: _toggleReplyKeyboard,
+                    ),
+                  // A reply-keyboard Mini App takes the primary bot slot and
+                  // keeps the full command menu available on long press.
+                  if (webAppButton == null &&
+                      (vm.peerIsBot ||
+                          _guestQueries.isNotEmpty ||
+                          (vm.botMenu?.isWebApp ?? false) ||
+                          vm.botCommands.isNotEmpty))
                     _desktopIcon(
                       key: const ValueKey('desktopComposerBotMenuAction'),
                       icon: HeroAppIcons.bot,

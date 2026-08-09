@@ -236,6 +236,14 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                     value: translation.translateChats,
                     onChanged: (v) => translation.translateChats = v,
                   ),
+                  const InsetDivider(leadingInset: 56),
+                  _navRow(
+                    context,
+                    icon: HeroAppIcons.quoteLeft,
+                    title: AppStringKeys.translationSettingsDisplayStyle,
+                    trailing: translation.displayStyleLabel,
+                    onTap: () => _showDisplayStylePicker(context),
+                  ),
                 ]),
                 const SizedBox(height: 14),
                 const SettingsSectionHeader(
@@ -417,6 +425,72 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                       ),
                     );
                   },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDisplayStylePicker(BuildContext context) {
+    showAppModalSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final c = context.colors;
+        final translation = context.watch<TranslationController>();
+        return SafeArea(
+          child: SettingsPanel(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            clipBehavior: Clip.antiAlias,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: TranslationDisplayStyle.values.length,
+              separatorBuilder: (_, _) => const InsetDivider(leadingInset: 56),
+              itemBuilder: (context, index) {
+                final style = TranslationDisplayStyle.values[index];
+                final selected = translation.displayStyle == style;
+                return GestureDetector(
+                  key: ValueKey('translation-display-style-${style.name}'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    translation.displayStyle = style;
+                    Navigator.of(context).pop();
+                  },
+                  child: SizedBox(
+                    height: 52,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          _iconBadge(
+                            context,
+                            HeroAppIcons.quoteLeft,
+                            const Color(0xFF34A2DF),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              style.label.l10n(context),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (selected)
+                            AppIcon(
+                              HeroAppIcons.check,
+                              size: 18,
+                              color: AppTheme.brand,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 );
               },
             ),

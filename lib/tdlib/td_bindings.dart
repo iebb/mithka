@@ -17,6 +17,7 @@
 //  opens its own handle to the (process-global) library.
 //
 
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
@@ -197,6 +198,31 @@ class TdBindings {
     if (ptr == nullptr) return null;
     return ptr.toDartString();
   }
+
+  /// Like [receive], but parses the event straight out of the native bytes.
+  ///
+  /// Returns the decoded JSON (a `Map<String, dynamic>` for every real TDLib
+  /// event), the raw text when the payload is not valid JSON, or null on
+  /// timeout. Going through [receive] would materialize the whole event as a
+  /// throwaway UTF-16 String first — during a login sync that is tens of MB of
+  /// garbage on a heap the UI isolate shares, so its scavenges stop the UI.
+  ///
+  /// The byte view aliases tdjson's thread-local buffer and is only valid until
+  /// the next receive on this isolate, so it is consumed here and never escapes.
+  Object? receiveJson(double timeout) {
+    final ptr = _receive(timeout);
+    if (ptr == nullptr) return null;
+    final bytes = ptr.cast<Uint8>().asTypedList(ptr.length);
+    try {
+      return _utf8Json.convert(bytes);
+    } on FormatException {
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+
+  // fuse() is not const; hoisted so every event doesn't rebuild the converter.
+  static final Converter<List<int>, Object?> _utf8Json = const Utf8Decoder()
+      .fuse(const JsonDecoder());
 
   /// Synchronous, network-free request (e.g. log level). Returns the JSON.
   String? execute(String request) {

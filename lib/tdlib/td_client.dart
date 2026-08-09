@@ -49,6 +49,15 @@ class TdError implements Exception {
   String toString() => 'TDLib error $code: $message';
 }
 
+/// An in-flight [TdClient.queryTo], remembered with the client it went to so a
+/// closing or dead client can fail exactly its own requests.
+class _PendingRequest {
+  _PendingRequest(this.clientId, this.completer);
+
+  final int clientId;
+  final Completer<Map<String, dynamic>> completer;
+}
+
 class TdSessionRestoreException implements Exception {
   const TdSessionRestoreException(this.message);
 
@@ -223,7 +232,7 @@ class TdClient {
   bool _receiveIsolateDead = false;
 
   // Request/response correlation, keyed by the "@extra" we attach.
-  final Map<String, Completer<Map<String, dynamic>>> _pending = {};
+  final Map<String, _PendingRequest> _pending = {};
   final Map<int, Completer<void>> _clientClosedWaiters = {};
   int _extraCounter = 0;
 
@@ -429,7 +438,17 @@ class TdClient {
 
     Isolate.spawn(_receiveEntry, port.sendPort, debugName: 'TDLibReceive');
     _receiveSub = port.listen((message) {
-      if (message is Map<String, dynamic>) {
+      // The isolate batches events into one list; the terminal fatal notice is
+      // still sent on its own so it can't sit behind a partial batch.
+      if (message is List) {
+        for (final event in message) {
+          if (event is Map<String, dynamic>) {
+            _route(event);
+          } else if (event is String) {
+            _routeRaw(event);
+          }
+        }
+      } else if (message is Map<String, dynamic>) {
         _route(message);
       } else if (message is String) {
         _routeRaw(message);
@@ -1094,6 +1113,22 @@ class TdClient {
     return Future<void>.value();
   }
 
+  /// Fails every stranded request, optionally only the ones sent to [clientId].
+  void _failPending(String reason, {int? clientId}) {
+    if (_pending.isEmpty) return;
+    final stranded = [
+      for (final entry in _pending.entries)
+        if (clientId == null || entry.value.clientId == clientId) entry.key,
+    ];
+    for (final extra in stranded) {
+      final pending = _pending.remove(extra);
+      if (pending == null || pending.completer.isCompleted) continue;
+      pending.completer.completeError(
+        TdError(<String, dynamic>{'code': 500, 'message': reason}),
+      );
+    }
+  }
+
   Future<void> _startClosingSlot(int slot) {
     final existing = _closingSlots[slot];
     if (existing != null) return existing;
@@ -1121,6 +1156,10 @@ class TdClient {
       if (identical(_clientClosedWaiters[cid], closed)) {
         _clientClosedWaiters.remove(cid);
       }
+      // A completer nothing will answer keeps its awaiting frame suspended
+      // forever, retaining everything that frame captured — the State, the view
+      // model, decoded bytes. This client is gone, so fail its requests.
+      _failPending('TDLib client closed', clientId: cid);
       _slotForClient.remove(cid);
       TdUserIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
@@ -1172,12 +1211,12 @@ class TdClient {
     // Responses to our requests carry the "@extra" we attached (any client).
     final extra = object.str('@extra');
     if (extra != null) {
-      final completer = _pending.remove(extra);
-      if (completer != null) {
+      final pending = _pending.remove(extra);
+      if (pending != null) {
         if (object.type == 'error') {
-          completer.completeError(TdError(object));
+          pending.completer.completeError(TdError(object));
         } else {
-          completer.complete(object);
+          pending.completer.complete(object);
         }
         return;
       }
@@ -1226,6 +1265,9 @@ class TdClient {
     // restarts it.
     if (object.type == '_tdReceiveFatal') {
       _receiveIsolateDead = true;
+      // No response can arrive until the isolate is restarted, and a restart
+      // does not replay: everything in flight is stranded.
+      _failPending('TDLib receive isolate died');
       debugPrint(
         '🔑 [Mithka] receive isolate died: ${object['error'] ?? 'unknown'}',
       );
@@ -1488,7 +1530,7 @@ class TdClient {
     final extra = _nextExtra();
     final tagged = {...request, '@extra': extra};
     final completer = Completer<Map<String, dynamic>>();
-    _pending[extra] = completer;
+    _pending[extra] = _PendingRequest(clientId, completer);
     _bindings.send(clientId, jsonEncode(tagged));
     try {
       final result = await completer.future;
@@ -1537,6 +1579,40 @@ class TdClient {
       (_typedUpdates[type] ??= StreamController<Map<String, dynamic>>.broadcast(
         sync: true,
       )).stream;
+
+  /// Updates of any of [types] from the active account, in arrival order.
+  ///
+  /// The same win as [updatesOf] for a consumer that needs several types: a
+  /// [subscribe] listener is woken for every event in the app — including the
+  /// highest-rate ones, `updateFile` during a chunked download and the login
+  /// sync burst — only to walk its own `switch` and return.
+  ///
+  /// Order is preserved because every controller on this path is synchronous,
+  /// so an event is forwarded and delivered before the next one is dispatched.
+  Stream<Map<String, dynamic>> updatesOfAny(Iterable<String> types) {
+    final wanted = types.toSet();
+    final subscriptions = <StreamSubscription<Map<String, dynamic>>>[];
+    // Lives exactly as long as the stream it hands back; the source
+    // subscriptions are dropped in onCancel, so nothing is retained after the
+    // consumer lets go.
+    // ignore: close_sinks
+    late final StreamController<Map<String, dynamic>> merged;
+    merged = StreamController<Map<String, dynamic>>.broadcast(
+      sync: true,
+      onListen: () {
+        for (final type in wanted) {
+          subscriptions.add(updatesOf(type).listen(merged.add));
+        }
+      },
+      onCancel: () {
+        for (final subscription in subscriptions) {
+          unawaited(subscription.cancel());
+        }
+        subscriptions.clear();
+      },
+    );
+    return merged.stream;
+  }
 
   final Map<String, StreamController<Map<String, dynamic>>> _typedUpdates = {};
 
@@ -1612,21 +1688,50 @@ void _receiveEntry(SendPort toMain) {
     return;
   }
 
+  // One port message per event costs the main isolate one event-loop turn each,
+  // and a login sync emits thousands back to back. Batching removes that fixed
+  // overhead. The batch is deliberately SMALL: a large one only converts cost
+  // spread over many turns into a single uninterruptible chunk, which drops a
+  // frame instead of saving one.
+  const batchLimit = 16;
+  const batchWindowMicroseconds = 2000;
+  var batch = <Object>[];
+  final buffered = Stopwatch();
+
+  void flush() {
+    if (batch.isEmpty) return;
+    toMain.send(batch);
+    batch = <Object>[];
+    buffered
+      ..stop()
+      ..reset();
+  }
+
   while (true) {
-    String? event;
+    Object? event;
     try {
-      event = bindings.receive(1.0);
+      // Only block when nothing is buffered — a partial batch must not wait a
+      // second for the next event before the UI sees it.
+      event = bindings.receiveJson(batch.isEmpty ? 1.0 : 0.0);
     } catch (e) {
+      flush();
       toMain.send({'@type': '_tdReceiveFatal', 'error': e.toString()});
       return;
     }
-    if (event == null) continue;
-    try {
-      final decoded = jsonDecode(event);
-      if (decoded is Map<String, dynamic>) toMain.send(decoded);
-    } catch (_) {
-      // Malformed event; let the main isolate decide (it logs via _routeRaw).
-      toMain.send(event);
+    if (event == null) {
+      flush();
+      continue;
+    }
+    // Malformed events arrive as raw text; the main isolate decides via
+    // _routeRaw, so the batch is mixed-type and order carries the meaning.
+    if (event is Map<String, dynamic> || event is String) {
+      batch.add(event);
+    }
+    if (batch.isEmpty) continue;
+    if (!buffered.isRunning) buffered.start();
+    if (batch.length >= batchLimit ||
+        buffered.elapsedMicroseconds >= batchWindowMicroseconds) {
+      flush();
     }
   }
 }

@@ -1798,6 +1798,8 @@
     <string name="messageActionBlock">Bloquer</string>
     <string name="messageActionBlockKeyword">Bloquer mot</string>
     <string name="messageActionCopy">Copier</string>
+    <string name="messageActionDisplayOriginal">Afficher l’original</string>
+    <string name="messageActionDisplayTranslation">Afficher la traduction</string>
     <string name="messageActionEdit">Modifier</string>
     <string name="messageActionFavorite">Ajouter aux favoris</string>
     <string name="messageActionForward">Transférer</string>
@@ -3223,6 +3225,9 @@
     <string name="transferBoostUpload">Accélération des envois</string>
     <string name="transferBoostUploadSection">Envoi</string>
     <string name="translationAiProviderUnavailable">Configurez d’abord un fournisseur disponible dans les réglages IA.</string>
+    <string name="translationDisplayBoth">Original et traduction</string>
+    <string name="translationDisplayQuote">Style citation</string>
+    <string name="translationDisplayTranslatedOnly">Traduction uniquement</string>
     <string name="translationInternalNoExternalApi">La traduction interne n’utilise pas d’API externe</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate n’a renvoyé aucune traduction</string>
     <string name="translationLibreTranslateUrlRequired">Définissez d’abord l’adresse LibreTranslate</string>
@@ -3247,6 +3252,7 @@
     <string name="translationSettingsAiProvider">Fournisseur d’IA</string>
     <string name="translationSettingsAiSection">Traduction IA</string>
     <string name="translationSettingsDoNotTranslate">Ne pas traduire</string>
+    <string name="translationSettingsDisplayStyle">Affichage de la traduction</string>
     <string name="translationSettingsLanguageCount">{value1} langues</string>
     <string name="translationSettingsNone">Aucune</string>
     <string name="translationSettingsService">Service de traduction</string>

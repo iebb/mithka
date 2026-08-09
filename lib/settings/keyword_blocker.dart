@@ -23,6 +23,11 @@ class KeywordBlocker extends ChangeNotifier {
   List<String> _keywords = const [];
   String _listUrl = '';
   Set<int> _blockedSenderIds = const <int>{};
+  // matches() runs per keyword per message over the whole loaded transcript,
+  // so the rules are compiled and case-folded once per keyword-list change
+  // instead of once per test.
+  List<RegExp> _compiledRules = const [];
+  List<String> _plainLowered = const [];
 
   List<String> get keywords => List.unmodifiable(_keywords);
   String get listUrl => _listUrl;
@@ -35,21 +40,38 @@ class KeywordBlocker extends ChangeNotifier {
     _blockedSenderIds = _parseSenderIds(
       prefs.getStringList(_senderKey) ?? const [],
     );
+    _rebuildRules();
     notifyListeners();
   }
 
   bool matches(String text) {
     if (_keywords.isEmpty || text.trim().isEmpty) return false;
+    // Regex rules keep matching the original text, plain keywords the folded
+    // copy — the same split the per-call version made.
+    for (final regex in _compiledRules) {
+      if (regex.hasMatch(text)) return true;
+    }
+    if (_plainLowered.isEmpty) return false;
     final normalized = text.toLowerCase();
+    for (final keyword in _plainLowered) {
+      if (normalized.contains(keyword)) return true;
+    }
+    return false;
+  }
+
+  void _rebuildRules() {
+    final compiled = <RegExp>[];
+    final plain = <String>[];
     for (final keyword in _keywords) {
       final regex = _regexFromRule(keyword);
       if (regex != null) {
-        if (regex.hasMatch(text)) return true;
-      } else if (normalized.contains(keyword.toLowerCase())) {
-        return true;
+        compiled.add(regex);
+      } else {
+        plain.add(keyword.toLowerCase());
       }
     }
-    return false;
+    _compiledRules = compiled;
+    _plainLowered = plain;
   }
 
   bool isSenderBlocked(int? senderId) {
@@ -182,6 +204,7 @@ class KeywordBlocker extends ChangeNotifier {
 
   void _save() {
     _prefs?.setStringList(_prefsKey, _keywords);
+    _rebuildRules();
     notifyListeners();
   }
 

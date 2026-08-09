@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../chat/message_translation_cache.dart';
 import 'ai_translation_prompt.dart';
 
 class TranslationLanguage {
@@ -15,6 +16,23 @@ class TranslationLanguage {
 
   final String code;
   final String label;
+}
+
+enum TranslationDisplayStyle {
+  translatedOnly(
+    'translated_only',
+    AppStringKeys.translationDisplayTranslatedOnly,
+  ),
+  both('both', AppStringKeys.translationDisplayBoth),
+  quote('quote', AppStringKeys.translationDisplayQuote);
+
+  const TranslationDisplayStyle(this.storageValue, this.label);
+
+  final String storageValue;
+  final String label;
+
+  static TranslationDisplayStyle fromStorage(String? value) => values
+      .firstWhere((style) => style.storageValue == value, orElse: () => quote);
 }
 
 enum TranslationProvider {
@@ -65,6 +83,9 @@ class TranslationController extends ChangeNotifier {
       _targetLanguageCode = _normalizeTargetLanguage(
         _prefs.getString(_targetLanguageKey),
       ),
+      _displayStyle = TranslationDisplayStyle.fromStorage(
+        _prefs.getString(_displayStyleKey),
+      ),
       _lingvaEndpoint =
           _prefs.getString(_lingvaEndpointKey) ?? defaultLingvaEndpoint,
       _libreTranslateEndpoint =
@@ -74,7 +95,10 @@ class TranslationController extends ChangeNotifier {
       _autoTranslateChatIds = {...?_prefs.getStringList(_autoChatsKey)},
       _dismissedAutoTranslateChatIds = {
         ...?_prefs.getStringList(_dismissedAutoChatsKey),
-      };
+      } {
+    messageCache = MessageTranslationCache(_prefs);
+    messageCache.pruneExpired();
+  }
 
   static const _enabledKey = 'translation.enabled';
   static const _translateChatsKey = 'translation.translateChats';
@@ -82,6 +106,7 @@ class TranslationController extends ChangeNotifier {
   static const aiTranslationPromptPreferenceKey = 'translation.ai.prompt.v1';
   static const _providerKey = 'translation.provider';
   static const _targetLanguageKey = 'translation.targetLanguage';
+  static const _displayStyleKey = 'translation.displayStyle';
   static const _lingvaEndpointKey = 'translation.lingvaEndpoint';
   static const _libreTranslateEndpointKey =
       'translation.libreTranslateEndpoint';
@@ -115,12 +140,14 @@ class TranslationController extends ChangeNotifier {
   ];
 
   final SharedPreferences _prefs;
+  late final MessageTranslationCache messageCache;
   bool _enabled;
   bool _translateChats;
   bool _aiTranslationEnabled;
   String _aiTranslationPrompt;
   TranslationProvider _provider;
   String _targetLanguageCode;
+  TranslationDisplayStyle _displayStyle;
   String _lingvaEndpoint;
   String _libreTranslateEndpoint;
   String _libreTranslateApiKey;
@@ -137,6 +164,8 @@ class TranslationController extends ChangeNotifier {
   TranslationProvider get provider => _provider;
   String get providerLabel => _provider.label;
   String get targetLanguageCode => _targetLanguageCode;
+  TranslationDisplayStyle get displayStyle => _displayStyle;
+  String get displayStyleLabel => _displayStyle.label;
   String get lingvaEndpoint => _lingvaEndpoint;
   String get libreTranslateEndpoint => _libreTranslateEndpoint;
   String get libreTranslateApiKey => _libreTranslateApiKey;
@@ -193,6 +222,13 @@ class TranslationController extends ChangeNotifier {
     if (_targetLanguageCode == value) return;
     _targetLanguageCode = value;
     _prefs.setString(_targetLanguageKey, value);
+    notifyListeners();
+  }
+
+  set displayStyle(TranslationDisplayStyle value) {
+    if (_displayStyle == value) return;
+    _displayStyle = value;
+    _prefs.setString(_displayStyleKey, value.storageValue);
     notifyListeners();
   }
 

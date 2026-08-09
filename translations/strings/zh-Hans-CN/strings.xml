@@ -1794,6 +1794,8 @@
     <string name="messageActionBlock">屏蔽</string>
     <string name="messageActionBlockKeyword">屏蔽词</string>
     <string name="messageActionCopy">复制</string>
+    <string name="messageActionDisplayOriginal">显示原文</string>
+    <string name="messageActionDisplayTranslation">显示译文</string>
     <string name="messageActionEdit">编辑</string>
     <string name="messageActionFavorite">收藏</string>
     <string name="messageActionForward">转发</string>
@@ -3215,6 +3217,9 @@
     <string name="transferBoostUpload">上传加速</string>
     <string name="transferBoostUploadSection">上传</string>
     <string name="translationAiProviderUnavailable">请先在“AI 设置”中配置可用的提供商。</string>
+    <string name="translationDisplayBoth">原文和译文</string>
+    <string name="translationDisplayQuote">引用样式</string>
+    <string name="translationDisplayTranslatedOnly">仅显示译文</string>
     <string name="translationInternalNoExternalApi">内部翻译不走外部 API</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate 没有返回译文</string>
     <string name="translationLibreTranslateUrlRequired">请先设置 LibreTranslate 地址</string>
@@ -3239,6 +3244,7 @@
     <string name="translationSettingsAiProvider">AI 提供商</string>
     <string name="translationSettingsAiSection">AI 翻译</string>
     <string name="translationSettingsDoNotTranslate">不翻译</string>
+    <string name="translationSettingsDisplayStyle">译文显示方式</string>
     <string name="translationSettingsLanguageCount">{value1} 种语言</string>
     <string name="translationSettingsNone">无</string>
     <string name="translationSettingsService">翻译服务</string>

@@ -1794,6 +1794,8 @@
     <string name="messageActionBlock">차단</string>
     <string name="messageActionBlockKeyword">키워드 차단</string>
     <string name="messageActionCopy">복사</string>
+    <string name="messageActionDisplayOriginal">원문 표시</string>
+    <string name="messageActionDisplayTranslation">번역 표시</string>
     <string name="messageActionEdit">수정</string>
     <string name="messageActionFavorite">즐겨찾기</string>
     <string name="messageActionForward">전달</string>
@@ -3215,6 +3217,9 @@
     <string name="transferBoostUpload">업로드 가속</string>
     <string name="transferBoostUploadSection">업로드</string>
     <string name="translationAiProviderUnavailable">먼저 AI 설정에서 사용 가능한 제공자를 구성하세요.</string>
+    <string name="translationDisplayBoth">원문과 번역</string>
+    <string name="translationDisplayQuote">인용 스타일</string>
+    <string name="translationDisplayTranslatedOnly">번역만</string>
     <string name="translationInternalNoExternalApi">내부 번역은 외부 API를 사용하지 않습니다</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate가 번역 결과를 반환하지 않았습니다</string>
     <string name="translationLibreTranslateUrlRequired">먼저 LibreTranslate 주소를 설정하세요</string>
@@ -3239,6 +3244,7 @@
     <string name="translationSettingsAiProvider">AI 제공자</string>
     <string name="translationSettingsAiSection">AI 번역</string>
     <string name="translationSettingsDoNotTranslate">번역하지 않음</string>
+    <string name="translationSettingsDisplayStyle">번역 표시 방식</string>
     <string name="translationSettingsLanguageCount">{value1}개 언어</string>
     <string name="translationSettingsNone">없음</string>
     <string name="translationSettingsService">번역 서비스</string>

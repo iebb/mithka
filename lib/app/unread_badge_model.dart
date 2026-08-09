@@ -28,13 +28,21 @@ class UnreadBadgeModel extends ChangeNotifier {
     _started = true;
     _subscription = _updates.listen((update) {
       switch (update.type) {
+        // Both aggregates carry several counters and TDLib emits them whenever
+        // any of them moves — traffic in a muted chat leaves the unmuted count
+        // alone. Notifying anyway schedules a whole frame that rebuilds the
+        // tab bar or the desktop rail for a number that did not change.
         case 'updateUnreadChatCount':
           if (update.obj('chat_list')?.type != 'chatListMain') return;
-          _chatCount = update.integer('unread_unmuted_count') ?? 0;
+          final chats = update.integer('unread_unmuted_count') ?? 0;
+          if (chats == _chatCount) return;
+          _chatCount = chats;
           notifyListeners();
         case 'updateUnreadMessageCount':
           if (update.obj('chat_list')?.type != 'chatListMain') return;
-          _messageCount = update.integer('unread_unmuted_count') ?? 0;
+          final messages = update.integer('unread_unmuted_count') ?? 0;
+          if (messages == _messageCount) return;
+          _messageCount = messages;
           notifyListeners();
         case 'mithkaUnreadDelta':
           if (update.obj('chat_list')?.type != 'chatListMain') return;

@@ -608,26 +608,28 @@ class _SettingsViewState extends State<SettingsView> {
     // The sidebar now names every screen, so the detail pane shows the chosen
     // one rather than a list that repeats what is already on the left.
     final chosen = _resolveSelected(selected, query: query, matches: matches);
-    final identity =
-        chosen?.id ?? 'empty-${query.isEmpty ? selected.id : query}';
+    // The placeholder stays outside the Navigator: its identity used to carry
+    // the raw search query, so every keystroke deactivated and re-inflated a
+    // whole nested Navigator + route subtree.
+    if (chosen == null) {
+      return KeyedSubtree(
+        key: const ValueKey('settings-detail-empty'),
+        child: _splitPlaceholder(
+          context,
+          titleKey: query.isEmpty
+              ? selected.titleKey
+              : AppStringKeys.settingsSearchHint,
+          messageKey: query.isEmpty
+              ? AppStringKeys.settingsChooseSection
+              : AppStringKeys.settingsNoResults,
+        ),
+      );
+    }
     return KeyedSubtree(
-      key: ValueKey('settings-detail-$identity'),
+      key: ValueKey('settings-detail-${chosen.id}'),
       child: Navigator(
         onGenerateRoute: (_) => MaterialPageRoute<void>(
-          builder: (detailContext) {
-            if (chosen == null) {
-              return _splitPlaceholder(
-                detailContext,
-                titleKey: query.isEmpty
-                    ? selected.titleKey
-                    : AppStringKeys.settingsSearchHint,
-                messageKey: query.isEmpty
-                    ? AppStringKeys.settingsChooseSection
-                    : AppStringKeys.settingsNoResults,
-              );
-            }
-            return (chosen.splitDestination ?? chosen.destination)();
-          },
+          builder: (_) => (chosen.splitDestination ?? chosen.destination)(),
         ),
       ),
     );

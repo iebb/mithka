@@ -1794,6 +1794,8 @@
     <string name="messageActionBlock">ブロック</string>
     <string name="messageActionBlockKeyword">語句をブロック</string>
     <string name="messageActionCopy">コピー</string>
+    <string name="messageActionDisplayOriginal">原文を表示</string>
+    <string name="messageActionDisplayTranslation">翻訳を表示</string>
     <string name="messageActionEdit">編集</string>
     <string name="messageActionFavorite">お気に入り</string>
     <string name="messageActionForward">転送</string>
@@ -3215,6 +3217,9 @@
     <string name="transferBoostUpload">アップロード高速化</string>
     <string name="transferBoostUploadSection">アップロード</string>
     <string name="translationAiProviderUnavailable">先に AI 設定で利用可能なプロバイダーを構成してください。</string>
+    <string name="translationDisplayBoth">原文と翻訳</string>
+    <string name="translationDisplayQuote">引用スタイル</string>
+    <string name="translationDisplayTranslatedOnly">翻訳のみ</string>
     <string name="translationInternalNoExternalApi">内部翻訳は外部 API を使用しません</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate から翻訳結果が返されませんでした</string>
     <string name="translationLibreTranslateUrlRequired">先に LibreTranslate のアドレスを設定してください</string>
@@ -3239,6 +3244,7 @@
     <string name="translationSettingsAiProvider">AI プロバイダー</string>
     <string name="translationSettingsAiSection">AI 翻訳</string>
     <string name="translationSettingsDoNotTranslate">翻訳しない</string>
+    <string name="translationSettingsDisplayStyle">翻訳の表示</string>
     <string name="translationSettingsLanguageCount">{value1}言語</string>
     <string name="translationSettingsNone">なし</string>
     <string name="translationSettingsService">翻訳サービス</string>

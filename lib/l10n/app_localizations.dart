@@ -1717,6 +1717,9 @@ abstract final class AppStringKeys {
   static const messageActionBlock = 'messageActionBlock';
   static const messageActionBlockKeyword = 'messageActionBlockKeyword';
   static const messageActionCopy = 'messageActionCopy';
+  static const messageActionDisplayOriginal = 'messageActionDisplayOriginal';
+  static const messageActionDisplayTranslation =
+      'messageActionDisplayTranslation';
   static const messageActionEdit = 'messageActionEdit';
   static const messageActionFavorite = 'messageActionFavorite';
   static const messageActionForward = 'messageActionForward';
@@ -2718,6 +2721,10 @@ abstract final class AppStringKeys {
   static const transferBoostUploadSection = 'transferBoostUploadSection';
   static const translationInternalNoExternalApi =
       'translationInternalNoExternalApi';
+  static const translationDisplayBoth = 'translationDisplayBoth';
+  static const translationDisplayQuote = 'translationDisplayQuote';
+  static const translationDisplayTranslatedOnly =
+      'translationDisplayTranslatedOnly';
   static const translationAiProviderUnavailable =
       'translationAiProviderUnavailable';
   static const translationLibreTranslateNoResult =
@@ -2760,6 +2767,8 @@ abstract final class AppStringKeys {
       'translationSettingsShowTranslateButton';
   static const translationSettingsDoNotTranslate =
       'translationSettingsDoNotTranslate';
+  static const translationSettingsDisplayStyle =
+      'translationSettingsDisplayStyle';
   static const translationSettingsLanguageCount =
       'translationSettingsLanguageCount';
   static const translationSettingsNone = 'translationSettingsNone';

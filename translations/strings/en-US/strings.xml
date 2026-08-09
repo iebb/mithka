@@ -1798,6 +1798,8 @@
     <string name="messageActionBlock">Block</string>
     <string name="messageActionBlockKeyword">Block keyword</string>
     <string name="messageActionCopy">Copy</string>
+    <string name="messageActionDisplayOriginal">Display original</string>
+    <string name="messageActionDisplayTranslation">Display translation</string>
     <string name="messageActionEdit">Edit</string>
     <string name="messageActionFavorite">Favorite</string>
     <string name="messageActionForward">Forward</string>
@@ -3223,6 +3225,9 @@
     <string name="transferBoostUpload">Upload Boost</string>
     <string name="transferBoostUploadSection">Upload</string>
     <string name="translationAiProviderUnavailable">Configure an available provider in AI Settings first.</string>
+    <string name="translationDisplayBoth">Original and translation</string>
+    <string name="translationDisplayQuote">Quote style</string>
+    <string name="translationDisplayTranslatedOnly">Translated only</string>
     <string name="translationInternalNoExternalApi">Internal translation does not use an external API</string>
     <string name="translationLibreTranslateNoResult">LibreTranslate returned no translation</string>
     <string name="translationLibreTranslateUrlRequired">Set the LibreTranslate URL first</string>
@@ -3247,6 +3252,7 @@
     <string name="translationSettingsAiProvider">AI Provider</string>
     <string name="translationSettingsAiSection">AI Translation</string>
     <string name="translationSettingsDoNotTranslate">Do Not Translate</string>
+    <string name="translationSettingsDisplayStyle">Translation Display</string>
     <string name="translationSettingsLanguageCount">{value1} languages</string>
     <string name="translationSettingsNone">None</string>
     <string name="translationSettingsService">Translation Service</string>

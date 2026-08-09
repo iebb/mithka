@@ -603,16 +603,20 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
     int revision,
     int clientId,
   ) async {
-    final allowExceptions = await _resolveExceptions(
-      selection.allowUserIds,
-      selection.allowChatIds,
-      clientId: clientId,
-    );
-    final restrictExceptions = await _resolveExceptions(
-      selection.restrictUserIds,
-      selection.restrictChatIds,
-      clientId: clientId,
-    );
+    final resolved = await Future.wait([
+      _resolveExceptions(
+        selection.allowUserIds,
+        selection.allowChatIds,
+        clientId: clientId,
+      ),
+      _resolveExceptions(
+        selection.restrictUserIds,
+        selection.restrictChatIds,
+        clientId: clientId,
+      ),
+    ]);
+    final allowExceptions = resolved[0];
+    final restrictExceptions = resolved[1];
     if (!mounted ||
         _client.activeClientId != clientId ||
         _ruleRevision != revision) {
@@ -633,43 +637,46 @@ class _PrivacyRuleViewState extends State<PrivacyRuleView> {
     Set<int> chatIds, {
     required int clientId,
   }) async {
-    final entries = <_PrivacyException>[];
-    for (final id in userIds) {
+    Future<_PrivacyException> resolveUser(int id) async {
       try {
         final user = await _client.queryTo({
           '@type': 'getUser',
           'user_id': id,
         }, clientId);
-        entries.add(
-          _PrivacyException(
-            id: id,
-            isUser: true,
-            title: TDParse.userName(user),
-            photo: TDParse.smallPhoto(user.obj('profile_photo')),
-          ),
+        return _PrivacyException(
+          id: id,
+          isUser: true,
+          title: TDParse.userName(user),
+          photo: TDParse.smallPhoto(user.obj('profile_photo')),
         );
       } catch (_) {
-        entries.add(_PrivacyException(id: id, isUser: true, title: '$id'));
+        return _PrivacyException(id: id, isUser: true, title: '$id');
       }
     }
-    for (final id in chatIds) {
+
+    Future<_PrivacyException> resolveChat(int id) async {
       try {
         final chat = await _client.queryTo({
           '@type': 'getChat',
           'chat_id': id,
         }, clientId);
-        entries.add(
-          _PrivacyException(
-            id: id,
-            isUser: false,
-            title: chat.str('title') ?? '$id',
-            photo: TDParse.smallPhoto(chat.obj('photo')),
-          ),
+        return _PrivacyException(
+          id: id,
+          isUser: false,
+          title: chat.str('title') ?? '$id',
+          photo: TDParse.smallPhoto(chat.obj('photo')),
         );
       } catch (_) {
-        entries.add(_PrivacyException(id: id, isUser: false, title: '$id'));
+        return _PrivacyException(id: id, isUser: false, title: '$id');
       }
     }
+
+    // Every entry is its own FFI round trip; awaiting them one by one kept the
+    // exception rows blank until the last one landed.
+    final entries = await Future.wait([
+      for (final id in userIds) resolveUser(id),
+      for (final id in chatIds) resolveChat(id),
+    ]);
     entries.sort(
       (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
     );

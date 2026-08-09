@@ -816,7 +816,8 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   }
 }
 
-class _VideoPlayerViewState extends State<VideoPlayerView> {
+class _VideoPlayerViewState extends State<VideoPlayerView>
+    with WidgetsBindingObserver {
   late final TdVideoStreamQuery _streamQuery =
       widget.streamQuery ?? tdVideoStreamQueryForAccount(widget.accountSlot);
   VideoPlayerController? _controller;
@@ -894,7 +895,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   static const _speeds = <double>[0.5, 0.75, 1, 1.25, 1.5, 2];
   static const _resumePrefix = 'mithka.video.resume.';
-  static const _resumeSaveStep = Duration(seconds: 2);
+  // Every step costs a full SharedPreferences serialization plus a platform
+  // round trip, so the tick is coarse; the exit paths and the lifecycle hook
+  // below force a save, which is what actually makes the position durable.
+  static const _resumeSaveStep = Duration(seconds: 15);
   static const _resumeMinimum = Duration(seconds: 3);
   static const _resumeEndSlack = Duration(seconds: 8);
 
@@ -907,8 +911,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (widget.initialSpeed.isFinite && widget.initialSpeed > 0) {
       _speed = widget.initialSpeed;
     }
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadPlaybackPreferences());
     _load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Leaving the app is where the resume position has to become durable: the
+    // process may never be resumed, and the periodic save is coarse.
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_storePlaybackPosition(force: true));
+    }
   }
 
   Future<void> _loadPlaybackPreferences() async {
@@ -1667,6 +1683,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _releaseVideoOrientation();
     unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {

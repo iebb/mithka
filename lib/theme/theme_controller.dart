@@ -1231,6 +1231,9 @@ class ThemeController extends ChangeNotifier {
   final Map<(TextStyle, bool), TextStyle> _appTextStyleCache = {};
   late double _fontScale;
   late double _interfaceScale;
+  Timer? _scalePersistTimer;
+  bool _fontScaleNeedsPersist = false;
+  bool _interfaceScaleNeedsPersist = false;
   late bool _circularGroupAvatars;
   late bool _animateAvatars;
   late bool _animateStatusEmoji;
@@ -2246,16 +2249,61 @@ class ThemeController extends ChangeNotifier {
   }
 
   set fontScale(double value) {
-    _fontScale = value.clamp(minFontScale, maxFontScale);
-    _prefs.setDouble(_fontKey, _fontScale);
+    final next = value.clamp(minFontScale, maxFontScale);
+    if (_fontScale == next) return;
+    _fontScale = next;
+    _fontScaleNeedsPersist = true;
+    _scheduleScalePersist();
     notifyListeners();
   }
 
   set interfaceScale(double value) {
-    final option = value.clamp(minInterfaceScale, maxInterfaceScale);
-    _interfaceScale = math.sqrt(option);
-    _prefs.setDouble(_interfaceScaleKey, _interfaceScale);
+    // Guard the stored value, not the argument: the getter squares it back, so
+    // a round-tripped double would never compare equal to what came in.
+    final next = math.sqrt(value.clamp(minInterfaceScale, maxInterfaceScale));
+    if (_interfaceScale == next) return;
+    _interfaceScale = next;
+    _interfaceScaleNeedsPersist = true;
+    _scheduleScalePersist();
     notifyListeners();
+  }
+
+  /// The appearance sliders assign at pointer rate and every SharedPreferences
+  /// write rewrites the whole store (which also holds the cloud-theme blobs),
+  /// so the in-memory value moves now and the disk write waits for the drag.
+  /// The delay stays under the desktop settings-window sync debounce (350 ms),
+  /// which reloads the primary engine's preferences from the store.
+  void _scheduleScalePersist() {
+    _scalePersistTimer?.cancel();
+    _scalePersistTimer = Timer(
+      const Duration(milliseconds: 200),
+      _persistScales,
+    );
+  }
+
+  /// Only the scale that actually moved is written: on desktop the settings
+  /// window runs its own engine with its own controller, so writing back a
+  /// scale this instance never changed can push a stale cached value over one
+  /// the other window just stored.
+  void _persistScales() {
+    _scalePersistTimer = null;
+    if (_fontScaleNeedsPersist) {
+      _fontScaleNeedsPersist = false;
+      _prefs.setDouble(_fontKey, _fontScale);
+    }
+    if (_interfaceScaleNeedsPersist) {
+      _interfaceScaleNeedsPersist = false;
+      _prefs.setDouble(_interfaceScaleKey, _interfaceScale);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_scalePersistTimer != null) {
+      _scalePersistTimer!.cancel();
+      _persistScales();
+    }
+    super.dispose();
   }
 
   set circularGroupAvatars(bool value) {

@@ -142,6 +142,7 @@ class ChatMessageSearchController extends ChangeNotifier {
 
   final Map<int, _SearchSender> _senders = {};
   Timer? _debounce;
+  Timer? _suggestDebounce;
   int _runId = 0;
   bool _disposed = false;
   bool _active = false;
@@ -250,6 +251,8 @@ class ChatMessageSearchController extends ChangeNotifier {
     _activeToken = null;
     _committedSender = null;
     _suggestions = const [];
+    _suggestDebounce?.cancel();
+    _suggestDebounce = null;
     _suggestRunId++;
     textController.clear();
     focusNode.unfocus();
@@ -275,12 +278,28 @@ class ChatMessageSearchController extends ChangeNotifier {
   }
 
   void _startSuggestions() {
+    _suggestDebounce?.cancel();
     final token = _activeToken;
     final runId = ++_suggestRunId;
     if (token == null) {
       _suggestions = const [];
       return;
     }
+    // Every keystroke inside a `from:` token fans out into searchChatMembers
+    // plus one round trip per candidate id, so coalesce it the way the message
+    // search itself is. An empty token is the affordance shown the moment
+    // `from:` is typed, and it has nothing to coalesce, so it stays immediate.
+    if (token.value.isEmpty) {
+      _fetchSuggestions(token, runId);
+      return;
+    }
+    _suggestDebounce = Timer(const Duration(milliseconds: 240), () {
+      if (_disposed || runId != _suggestRunId) return;
+      _fetchSuggestions(token, runId);
+    });
+  }
+
+  void _fetchSuggestions(ChatSearchActiveToken token, int runId) {
     unawaited(() async {
       final results = await _suggester.suggest(token, scopeChatId: chatId);
       if (_disposed || runId != _suggestRunId) return;
@@ -606,6 +625,8 @@ class ChatMessageSearchController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _cancelRun();
+    _suggestDebounce?.cancel();
+    _suggestDebounce = null;
     textController.dispose();
     focusNode.dispose();
     super.dispose();

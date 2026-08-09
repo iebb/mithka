@@ -27,6 +27,7 @@ import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/sensitive_content_controller.dart';
+import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -59,6 +60,8 @@ class MessageBubble extends StatefulWidget {
     super.key,
     required this.message,
     this.groupedMedia = const <ChatMessage>[],
+    this.translationDisplayStyle = TranslationDisplayStyle.quote,
+    this.showOriginalTranslationMessageIds = const <int>{},
     required this.peerTitle,
     this.peerPhoto,
     required this.isGroup,
@@ -110,6 +113,8 @@ class MessageBubble extends StatefulWidget {
   });
 
   final ChatMessage message;
+  final TranslationDisplayStyle translationDisplayStyle;
+  final Set<int> showOriginalTranslationMessageIds;
 
   /// Selected messages take their own bubble fill. Telegram keys this
   /// separately (chat_inBubbleSelected / chat_outBubbleSelected) rather than
@@ -1738,10 +1743,26 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing, {
     bool includeForwardHeader = true,
     bool includeReplyQuote = true,
+    ChatMessage? source,
   }) {
-    final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = _messageLinkColor(outgoing);
-    final emojiOnly = _isEmojiOnlyText(text);
+    source ??= message;
+    final replacesOriginal = _translationReplacesOriginalFor(source);
+    final displayText = replacesOriginal ? source.translationText ?? '' : text;
+    final baseColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : outgoing
+        ? _outgoingTextColor
+        : _incomingTextColor;
+    final linkColor = replacesOriginal
+        ? Color.lerp(_messageLinkColor(outgoing), AppTheme.brand, 0.30)!
+        : _messageLinkColor(outgoing);
+    final displayEntities = replacesOriginal
+        ? source.translationEntities
+        : _activeTextEntities;
+    final displayRichBlocks = replacesOriginal
+        ? const <RichMessageBlock>[]
+        : _activeRichBlocks;
+    final emojiOnly = _isEmojiOnlyText(displayText);
     final textFontSize = emojiOnly ? 34.0 : AppTextSize.messageBody();
     final bubblePadding = emojiOnly
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
@@ -1771,23 +1792,41 @@ class _MessageBubbleState extends State<MessageBubble>
           outgoing,
           maxWidth: previewMaxWidth,
         ),
-        if (text.isNotEmpty) const SizedBox(height: 6),
+        if (displayText.isNotEmpty) const SizedBox(height: 6),
       ],
-      ..._richTextWidgets(
-        text,
-        baseColor,
-        linkColor,
-        outgoing,
-        false,
-        _activeTextEntities,
-        textFontSize,
-      ),
-      if (_activeRichBlocks.isNotEmpty) ...[
-        if (text.isNotEmpty) const SizedBox(height: 8),
-        ..._richBlockWidgets(_activeRichBlocks, outgoing),
+      if (replacesOriginal)
+        KeyedSubtree(
+          key: const ValueKey('messageTranslatedOnlyText'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: _richTextWidgets(
+              displayText,
+              baseColor,
+              linkColor,
+              outgoing,
+              false,
+              displayEntities,
+              textFontSize,
+            ),
+          ),
+        )
+      else
+        ..._richTextWidgets(
+          displayText,
+          baseColor,
+          linkColor,
+          outgoing,
+          false,
+          displayEntities,
+          textFontSize,
+        ),
+      if (displayRichBlocks.isNotEmpty) ...[
+        if (displayText.isNotEmpty) const SizedBox(height: 8),
+        ..._richBlockWidgets(displayRichBlocks, outgoing),
       ],
       if (_activeLinkPreview != null && !_activeLinkPreview!.showAboveText) ...[
-        if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
+        if (displayText.isNotEmpty || displayRichBlocks.isNotEmpty)
           const SizedBox(height: 7),
         _linkPreviewCard(
           _activeLinkPreview!,
@@ -1795,9 +1834,9 @@ class _MessageBubbleState extends State<MessageBubble>
           maxWidth: previewMaxWidth,
         ),
       ],
-      if (_showsTranslation) ...[
+      if (_showsTranslationBlockFor(source)) ...[
         const SizedBox(height: 7),
-        _translationBlock(outgoing),
+        _translationBlock(outgoing, source: source),
       ],
       if (_showsAiSummary) ...[
         const SizedBox(height: 7),
@@ -2814,11 +2853,28 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  bool get _showsTranslation => _showsTranslationFor(message);
-
   bool _showsTranslationFor(ChatMessage source) =>
       source.isTranslating ||
       (source.translationText?.trim().isNotEmpty ?? false);
+
+  bool _showsTranslationBlockFor(ChatMessage source) {
+    if (source.isTranslating) return true;
+    if (!(source.translationText?.trim().isNotEmpty ?? false)) return false;
+    return widget.translationDisplayStyle !=
+        TranslationDisplayStyle.translatedOnly;
+  }
+
+  bool _translationReplacesOriginalFor(ChatMessage source) =>
+      widget.translationDisplayStyle ==
+          TranslationDisplayStyle.translatedOnly &&
+      !widget.showOriginalTranslationMessageIds.contains(source.id) &&
+      !source.isTranslating &&
+      (source.translationText?.trim().isNotEmpty ?? false);
+
+  Color _translatedOnlyTextColor(bool outgoing) {
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    return Color.lerp(base, AppTheme.brand, outgoing ? 0.36 : 0.52)!;
+  }
 
   bool get _showsAiSummary =>
       message.aiSummaryLoading ||
@@ -2905,6 +2961,63 @@ class _MessageBubbleState extends State<MessageBubble>
         ? _outgoingTextColor.withValues(alpha: 0.70)
         : c.textSecondary;
     final link = _messageLinkColor(outgoing);
+    if (source.isTranslating) {
+      return Container(
+        key: const ValueKey('messageTranslationBlock'),
+        width: width ?? _bubbleMaxWidth(),
+        decoration: BoxDecoration(
+          color: outgoing
+              ? _outgoingTextColor.withValues(alpha: 0.10)
+              : c.searchFill.withValues(alpha: 0.80),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border(left: BorderSide(color: secondary, width: 2.5)),
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(secondary),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              AppStringKeys.messageBubbleTranslating.l10n(context),
+              style: TextStyle(fontSize: 13, color: secondary),
+            ),
+          ],
+        ),
+      );
+    }
+    if (widget.translationDisplayStyle == TranslationDisplayStyle.both) {
+      final divider = outgoing
+          ? _outgoingTextColor.withValues(alpha: 0.22)
+          : c.divider;
+      return Container(
+        key: const ValueKey('messageTranslationBlock'),
+        width: width ?? _bubbleMaxWidth(),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: divider, width: 0.5)),
+        ),
+        padding: const EdgeInsets.only(top: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: _richTextWidgets(
+            source.translationText ?? '',
+            base,
+            link,
+            outgoing,
+            false,
+            source.translationEntities,
+          ),
+        ),
+      );
+    }
     return Container(
       key: const ValueKey('messageTranslationBlock'),
       width: width ?? _bubbleMaxWidth(),
@@ -2916,48 +3029,29 @@ class _MessageBubbleState extends State<MessageBubble>
         border: Border(left: BorderSide(color: secondary, width: 2.5)),
       ),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
-      child: source.isTranslating
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(secondary),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  AppStringKeys.messageBubbleTranslating.l10n(context),
-                  style: TextStyle(fontSize: 13, color: secondary),
-                ),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  AppStringKeys.messageActionTranslate.l10n(context),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: secondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                ..._richTextWidgets(
-                  source.translationText ?? '',
-                  base,
-                  link,
-                  outgoing,
-                  false,
-                  source.translationEntities,
-                ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            AppStringKeys.messageActionTranslate.l10n(context),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: secondary,
             ),
+          ),
+          const SizedBox(height: 4),
+          ..._richTextWidgets(
+            source.translationText ?? '',
+            base,
+            link,
+            outgoing,
+            false,
+            source.translationEntities,
+          ),
+        ],
+      ),
     );
   }
 
@@ -4532,8 +4626,21 @@ class _MessageBubbleState extends State<MessageBubble>
     }
 
     final c = _colors;
-    final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = _messageLinkColor(outgoing);
+    final replacesOriginal = _translationReplacesOriginalFor(message);
+    final displayCaption = replacesOriginal
+        ? message.translationText ?? ''
+        : caption!;
+    final baseColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : outgoing
+        ? _outgoingTextColor
+        : _incomingTextColor;
+    final linkColor = replacesOriginal
+        ? Color.lerp(_messageLinkColor(outgoing), AppTheme.brand, 0.30)!
+        : _messageLinkColor(outgoing);
+    final captionEntities = replacesOriginal
+        ? message.translationEntities
+        : _activeTextEntities;
     return Container(
       decoration: _showsMessageBubbleSurface
           ? BoxDecoration(
@@ -4566,14 +4673,32 @@ class _MessageBubbleState extends State<MessageBubble>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                ..._richTextWidgets(
-                  caption!,
-                  baseColor,
-                  linkColor,
-                  outgoing,
-                  false,
-                ),
-                if (_showsTranslation) ...[
+                if (replacesOriginal)
+                  KeyedSubtree(
+                    key: const ValueKey('messageTranslatedOnlyText'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _richTextWidgets(
+                        displayCaption,
+                        baseColor,
+                        linkColor,
+                        outgoing,
+                        false,
+                        captionEntities,
+                      ),
+                    ),
+                  )
+                else
+                  ..._richTextWidgets(
+                    displayCaption,
+                    baseColor,
+                    linkColor,
+                    outgoing,
+                    false,
+                    captionEntities,
+                  ),
+                if (_showsTranslationBlockFor(message)) ...[
                   const SizedBox(height: 7),
                   _translationBlock(outgoing, width: double.infinity),
                 ],
@@ -5100,6 +5225,20 @@ class _MessageBubbleState extends State<MessageBubble>
         }
       }
     }
+    final replacesOriginal =
+        captionSource != null && _translationReplacesOriginalFor(captionSource);
+    final displayCaption = replacesOriginal
+        ? captionSource.translationText ?? ''
+        : caption;
+    final displayCaptionEntities = replacesOriginal
+        ? captionSource.translationEntities
+        : captionSource?.textEntities ?? const <MessageTextEntity>[];
+    final displayCaptionColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : captionText;
+    final displayCaptionLink = replacesOriginal
+        ? Color.lerp(captionLink, AppTheme.brand, 0.30)!
+        : captionLink;
     final singleGif =
         sources.length == 1 && _isGifDocument(sources.single.document!);
     return Container(
@@ -5136,21 +5275,26 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _richTextWidgets(
-                  caption,
-                  captionText,
-                  captionLink,
-                  outgoing,
-                  false,
-                  captionSource.textEntities,
+              child: KeyedSubtree(
+                key: replacesOriginal
+                    ? const ValueKey('messageTranslatedOnlyText')
+                    : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _richTextWidgets(
+                    displayCaption,
+                    displayCaptionColor,
+                    displayCaptionLink,
+                    outgoing,
+                    false,
+                    displayCaptionEntities,
+                  ),
                 ),
               ),
             ),
           ],
           if (translationSource != null &&
-              _showsTranslationFor(translationSource)) ...[
+              _showsTranslationBlockFor(translationSource)) ...[
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),

@@ -65,6 +65,22 @@ void main() {
       expect(find.text('Apple Private Cloud Compute'), findsOneWidget);
       expect(find.text('Translation Prompt'), findsOneWidget);
       expect(find.text('Default'), findsOneWidget);
+      expect(find.text('Translation Display'), findsOneWidget);
+      expect(find.text('Quote style'), findsOneWidget);
+
+      await tester.tap(find.text('Translation Display'));
+      await tester.pumpAndSettle();
+      expect(find.text('Translated only'), findsOneWidget);
+      expect(find.text('Original and translation'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('translation-display-style-translatedOnly')),
+      );
+      await tester.pumpAndSettle();
+      expect(translation.displayStyle, TranslationDisplayStyle.translatedOnly);
+      expect(
+        preferences.getString('translation.displayStyle'),
+        'translated_only',
+      );
 
       await tester.tap(find.text('Translate using'));
       await tester.pumpAndSettle();
