@@ -126,6 +126,111 @@ import 'video_playback_queue.dart';
 import 'video_player_view.dart';
 
 @visibleForTesting
+bool chatTranscriptAllowsCommentAttachment({required bool isChannel}) =>
+    isChannel;
+
+@visibleForTesting
+Future<T?> showReactionUsersModal<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+}) {
+  return showAppAdaptiveSheetDialog<T>(
+    context: context,
+    builder: builder,
+    barrierLabel: AppStrings.t(AppStringKeys.musicPlayerClose),
+    barrierColor: Colors.black.withValues(alpha: 0.46),
+    transitionDuration: const Duration(milliseconds: 220),
+    centeredBackgroundColor: context.colors.card,
+    mobileTransitionBuilder: (context, animation, _, child) {
+      final offset = Tween<Offset>(
+        begin: const Offset(0, 1),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+      return SlideTransition(position: offset, child: child);
+    },
+  );
+}
+
+@visibleForTesting
+const reactionUsersCenteredFrameKey = ValueKey<String>(
+  'reaction-users-centered-frame',
+);
+
+@visibleForTesting
+const reactionUsersTouchFrameKey = ValueKey<String>(
+  'reaction-users-touch-frame',
+);
+
+@visibleForTesting
+const reactionUsersDragHandleKey = ValueKey<String>(
+  'reaction-users-drag-handle',
+);
+
+@visibleForTesting
+class ReactionUsersSheetFrame extends StatelessWidget {
+  const ReactionUsersSheetFrame({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final centered = appModalUsesCenteredPresentation(
+      MediaQuery.sizeOf(context),
+    );
+    final height = math.min(MediaQuery.sizeOf(context).height * 0.62, 560.0);
+    final content = SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Column(
+        children: [
+          if (centered)
+            const SizedBox(height: 8)
+          else ...[
+            const SizedBox(height: 10),
+            Container(
+              key: reactionUsersDragHandleKey,
+              width: 42,
+              height: 5,
+              decoration: BoxDecoration(
+                color: c.divider,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Expanded(child: child),
+        ],
+      ),
+    );
+    if (centered) {
+      return ColoredBox(
+        key: reactionUsersCenteredFrameKey,
+        color: c.card,
+        child: content,
+      );
+    }
+    return SafeArea(
+      top: false,
+      child: Align(
+        key: reactionUsersTouchFrameKey,
+        alignment: Alignment.bottomCenter,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          child: ColoredBox(color: c.card, child: content),
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+bool chatMessageUsesSelectionDialog({
+  required bool selecting,
+  TargetPlatform? platform,
+}) => !selecting && !isDesktopTargetPlatform(platform);
+
+@visibleForTesting
 bool chatTranscriptBoundaryChanged({
   required int previousCount,
   required int currentCount,
@@ -844,7 +949,6 @@ class _ChatViewState extends State<ChatView> {
   bool _transcriptPivotFreezeScheduled = false;
   late int _historyWindowRevision;
   late int _historyWindowInvalidationRevision;
-  final Set<int> _reportedVisibleMessageIds = <int>{};
   final Set<int> _expandedBlockedRunIds = <int>{};
   final Set<int> _showOriginalTranslationMessageIds = <int>{};
   bool _unreadProgressUpdateScheduled = false;
@@ -869,13 +973,11 @@ class _ChatViewState extends State<ChatView> {
   int? _lastOldestMessageId;
   final ChatUnreadProgress _unreadProgress = ChatUnreadProgress();
   int get _liveNewMessageCount => _unreadProgress.liveCount;
-  int get _remainingUnreadCount => _liveNewMessageCount > 0
-      ? _liveNewMessageCount
-      : _showEntryUnreadBanner
-      ? _entryUnreadCount
-      : _unreadProgress.remaining(entryUnreadCount: _entryUnreadCount);
+  int get _remainingUnreadCount =>
+      _unreadProgress.badgeCount(entryUnreadCount: _entryUnreadCount);
   int _entryUnreadCount = 0;
   int _entryLastReadInboxId = 0;
+  int _entryLatestMessageId = 0;
   int? _entryFirstUnreadMessageId;
   bool _showEntryUnreadBanner = false;
   late final ChatMessageSearchController _search;
@@ -1646,16 +1748,22 @@ class _ChatViewState extends State<ChatView> {
 
       for (final message in entry.value.messages) {
         if (message.isOutgoing || message.isService) continue;
-        if (_reportedVisibleMessageIds.add(message.id)) {
+        final observation = _unreadProgress.observeVisibleIncoming(
+          messageId: message.id,
+          initialUnread: _isEntryUnreadMessage(message.id),
+        );
+        if (observation.shouldReportViewed) {
           newlyVisible.add(message);
         }
-        changed =
-            _unreadProgress.markVisible(
-              messageId: message.id,
-              initialUnread: message.id > _entryLastReadInboxId,
-            ) ||
-            changed;
+        changed = observation.unreadCountChanged || changed;
       }
+    }
+
+    if (_showEntryUnreadBanner &&
+        _unreadProgress.initialRemaining(entryUnreadCount: _entryUnreadCount) ==
+            0) {
+      _showEntryUnreadBanner = false;
+      changed = true;
     }
 
     if (newlyVisible.isNotEmpty) {
@@ -1980,9 +2088,29 @@ class _ChatViewState extends State<ChatView> {
     _onComposerMessageSent();
   }
 
+  void _captureEntryUnreadState() {
+    _entryUnreadCount = _vm.unreadCount;
+    _entryLastReadInboxId = _vm.lastReadInboxId;
+    _entryLatestMessageId = resolveCapturedEntryLatestMessageId(
+      knownLatestMessageId: _vm.knownLatestMessageId,
+      loadedLatestMessageId: _latestServerMessage(_vm.messages)?.id ?? 0,
+    );
+  }
+
+  bool _isEntryUnreadMessage(int messageId) => isCapturedEntryUnreadMessage(
+    messageId: messageId,
+    lastReadInboxId: _entryLastReadInboxId,
+    latestMessageId: _entryLatestMessageId,
+  );
+
   int? _firstLoadedEntryUnreadMessageId() => firstUnreadMessageIdAfterBoundary(
     incomingMessageIds: _vm.messages
-        .where((message) => !message.isOutgoing && !message.isService)
+        .where(
+          (message) =>
+              !message.isOutgoing &&
+              !message.isService &&
+              _isEntryUnreadMessage(message.id),
+        )
         .map((message) => message.id),
     lastReadInboxId: _entryLastReadInboxId,
   );
@@ -2210,8 +2338,7 @@ class _ChatViewState extends State<ChatView> {
     _cancelBottomFollow();
     _stopActiveTranscriptScroll();
     _resetTranscriptPivot();
-    _entryUnreadCount = _vm.unreadCount;
-    _entryLastReadInboxId = _vm.lastReadInboxId;
+    _captureEntryUnreadState();
     _entryFirstUnreadMessageId = _entryLastReadInboxId == 0
         ? confirmedUnreadMessageId
         : _firstLoadedEntryUnreadMessageId();
@@ -2424,15 +2551,14 @@ class _ChatViewState extends State<ChatView> {
     // boundary) is loaded, jump to the first unread message — or stay at the
     // bottom when caught up. Runs exactly once per chat open.
     if (!_didInitialScroll && _vm.initialLoaded) {
-      _entryUnreadCount = _vm.unreadCount;
-      _entryLastReadInboxId = _vm.lastReadInboxId;
+      _captureEntryUnreadState();
       final firstEntryUnreadMessageId = _firstLoadedEntryUnreadMessageId();
       final loadedIncomingUnreadCount = _vm.messages
           .where(
             (message) =>
                 !message.isOutgoing &&
                 !message.isService &&
-                message.id > _entryLastReadInboxId,
+                _isEntryUnreadMessage(message.id),
           )
           .length;
       final entryBoundaryIsLoaded =
@@ -3486,6 +3612,10 @@ class _ChatViewState extends State<ChatView> {
         _vm.ensureMessageCapabilities(member);
       }
     }
+    final useSelectionDialog = chatMessageUsesSelectionDialog(
+      selecting: _isSelecting,
+      platform: Theme.of(context).platform,
+    );
     return MessageBubble(
       message: message,
       selected: _selectedMessageIds.contains(message.id),
@@ -3501,9 +3631,9 @@ class _ChatViewState extends State<ChatView> {
       showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
       onRepeat: () => _vm.repeatMessage(message),
       onLongPress: _isSelecting ? null : _showActionMenuForMessage,
-      onDoubleTap: _isSelecting
-          ? null
-          : (m) => unawaited(_showTextSelection(m)),
+      onDoubleTap: useSelectionDialog
+          ? (m) => unawaited(_showTextSelection(m))
+          : null,
       onReply: (m) => _vm.setReply(m),
       onAvatarTap: _openSenderProfile,
       onAvatarLongPress: (m) {
@@ -3513,7 +3643,9 @@ class _ChatViewState extends State<ChatView> {
       },
       onOpenReply: _scrollToMessage,
       onOpenComments: _openMessageComments,
-      showCommentAttachment: _vm.isChannel,
+      showCommentAttachment: chatTranscriptAllowsCommentAttachment(
+        isChannel: _vm.isChannel,
+      ),
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       onOpenImage: _openImage,
       onApplyMessageBubble: offersMessageBubbleApplyAction(message)
@@ -4541,24 +4673,13 @@ class _ChatViewState extends State<ChatView> {
     MessageReaction reaction,
   ) async {
     if (!mounted || message.reactions.isEmpty) return;
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: AppStrings.t(AppStringKeys.musicPlayerClose),
-      barrierColor: Colors.black.withValues(alpha: 0.46),
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (context, _, _) => _ReactionUsersSheet(
+    await showReactionUsersModal<void>(
+      context,
+      builder: (dialogContext) => _ReactionUsersSheet(
         viewModel: _vm,
         message: message,
         initialReaction: reaction,
       ),
-      transitionBuilder: (context, animation, _, child) {
-        final offset =
-            Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            );
-        return SlideTransition(position: offset, child: child);
-      },
     );
   }
 
@@ -5393,6 +5514,7 @@ class _ChatViewState extends State<ChatView> {
     Widget withInternalLinkRouting(Widget child) => InternalChatLinkScope(
       target: InternalChatLinkTarget(
         chatId: widget.chatId,
+        accountSlot: _sessionKey.accountSlot,
         openMessage: _scrollToMessage,
       ),
       child: child,
@@ -7151,7 +7273,7 @@ class _ChatViewState extends State<ChatView> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             button(
-              HeroAppIcons.share.data,
+              HeroAppIcons.forward.data,
               _forwardSelected,
               actionEnabled: _vm.canForwardContent,
             ),
@@ -8329,7 +8451,9 @@ class _ChatViewState extends State<ChatView> {
       meName: _vm.meName,
       mePhoto: _vm.mePhoto,
       hasCustomChatTheme: _hasCustomChatTheme,
-      showCommentAttachment: _vm.isChannel,
+      showCommentAttachment: chatTranscriptAllowsCommentAttachment(
+        isChannel: _vm.isChannel,
+      ),
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       selecting: _isSelecting,
       selectedMessageIds: _selectedMessageIds,
@@ -8740,38 +8864,13 @@ class _ReactionUsersSheetState extends State<_ReactionUsersSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final height = math.min(MediaQuery.sizeOf(context).height * 0.62, 560.0);
-    return SafeArea(
-      top: false,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-          child: ColoredBox(
-            color: c.card,
-            child: SizedBox(
-              height: height,
-              width: double.infinity,
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 42,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: c.divider,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _reactionTabs(c),
-                  Divider(height: 1, thickness: 0.5, color: c.divider),
-                  Expanded(child: _reactionUsers(c)),
-                ],
-              ),
-            ),
-          ),
-        ),
+    return ReactionUsersSheetFrame(
+      child: Column(
+        children: [
+          _reactionTabs(c),
+          Divider(height: 1, thickness: 0.5, color: c.divider),
+          Expanded(child: _reactionUsers(c)),
+        ],
       ),
     );
   }

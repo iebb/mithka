@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -38,6 +39,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.LinkedHashSet
+import kotlin.math.roundToInt
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
@@ -225,6 +227,45 @@ class MainActivity : FlutterFragmentActivity() {
                             window.attributes = attributes
                         }
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/system_media_volume")
+            .setMethodCallHandler { call, result ->
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                when (call.method) {
+                    "get" -> result.success(systemMediaVolumeState(audioManager))
+                    "set" -> {
+                        val requested = (call.arguments as? Number)?.toDouble()
+                        if (requested == null || !requested.isFinite()) {
+                            result.error("invalid_volume", "Expected a finite numeric value", null)
+                            return@setMethodCallHandler
+                        }
+                        if (audioManager.isVolumeFixed) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        if (maximum <= 0) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val minimum = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            audioManager.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+                        } else {
+                            0
+                        }
+                        val index = (requested.coerceIn(0.0, 1.0) * maximum)
+                            .roundToInt()
+                            .coerceIn(minimum, maximum)
+                        try {
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
+                            result.success(systemMediaVolumeState(audioManager))
+                        } catch (error: SecurityException) {
+                            result.error("volume_change_denied", error.localizedMessage, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -916,6 +957,21 @@ class MainActivity : FlutterFragmentActivity() {
         }
         if (lower.startsWith("zh")) return "zh"
         return lower.substringBefore('-')
+    }
+
+    private fun systemMediaVolumeState(audioManager: AudioManager): Map<String, Any> {
+        val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val minimum = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            audioManager.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+        } else {
+            0
+        }
+        return mapOf(
+            "index" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+            "minimum" to minimum,
+            "maximum" to maximum,
+            "fixed" to audioManager.isVolumeFixed,
+        )
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

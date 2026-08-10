@@ -75,8 +75,105 @@ abstract final class AppMotion {
   }
 }
 
-/// Opens a native draggable modal sheet while applying Mithka's shared motion.
-/// All other arguments intentionally match [showModalBottomSheet].
+/// Opens a touch-native draggable sheet or a bounded centered modal.
+///
+/// All other arguments intentionally match [showModalBottomSheet]. Drag and
+/// drag-handle arguments apply only to the touch sheet presentation.
+@visibleForTesting
+const appCenteredModalFrameKey = ValueKey<String>('app-centered-modal-frame');
+
+@visibleForTesting
+const appCenteredModalSurfaceKey = ValueKey<String>(
+  'app-centered-modal-surface',
+);
+
+/// Whether a modal should use a bounded, centered surface instead of a sheet.
+///
+/// Native desktop windows use pointer-first dialogs. A landscape iPad also has
+/// enough room for the same presentation, while phones and portrait tablets
+/// keep the native bottom-sheet interaction.
+bool appModalUsesCenteredPresentation(Size size, [TargetPlatform? platform]) {
+  if (kIsWeb) return false;
+  final targetPlatform = platform ?? defaultTargetPlatform;
+  if (isDesktopTargetPlatform(targetPlatform)) return true;
+
+  return targetPlatform == TargetPlatform.iOS &&
+      size.width > size.height &&
+      size.shortestSide >= 600;
+}
+
+/// Preserves a custom bottom-sheet route on portrait touch layouts while
+/// presenting the same content in Mithka's bounded desktop modal surface.
+///
+/// This is for legacy/custom sheets whose mobile transition is intentionally
+/// different from [showModalBottomSheet]. The barrier, result, navigator,
+/// route settings, anchor, focus, and mobile animation contracts are carried
+/// through unchanged. The centered route keeps the same duration and curve
+/// pair while replacing the upward sheet motion with the desktop modal motion.
+Future<T?> showAppAdaptiveSheetDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  required String barrierLabel,
+  required Color barrierColor,
+  required Duration transitionDuration,
+  required RouteTransitionsBuilder mobileTransitionBuilder,
+  bool barrierDismissible = true,
+  bool useRootNavigator = true,
+  RouteSettings? routeSettings,
+  Offset? anchorPoint,
+  bool? requestFocus,
+  Color? centeredBackgroundColor,
+  ShapeBorder? centeredShape,
+  Clip centeredClipBehavior = Clip.antiAlias,
+  BoxConstraints? centeredConstraints,
+  bool centeredUseSafeArea = true,
+  Curve centeredTransitionCurve = AppMotion.emphasized,
+  Curve centeredReverseTransitionCurve = AppMotion.accelerate,
+}) {
+  if (appModalUsesCenteredPresentation(MediaQuery.sizeOf(context))) {
+    final centeredDuration = AppMotion.duration(context, transitionDuration);
+    return showAppModalSheet<T>(
+      context: context,
+      builder: builder,
+      backgroundColor: centeredBackgroundColor,
+      shape: centeredShape,
+      clipBehavior: centeredClipBehavior,
+      constraints: centeredConstraints,
+      barrierLabel: barrierLabel,
+      barrierColor: barrierColor,
+      isScrollControlled: true,
+      useRootNavigator: useRootNavigator,
+      isDismissible: barrierDismissible,
+      enableDrag: false,
+      showDragHandle: false,
+      useSafeArea: centeredUseSafeArea,
+      routeSettings: routeSettings,
+      anchorPoint: anchorPoint,
+      requestFocus: requestFocus,
+      sheetAnimationStyle: AnimationStyle(
+        duration: centeredDuration,
+        reverseDuration: centeredDuration,
+        curve: centeredTransitionCurve,
+        reverseCurve: centeredReverseTransitionCurve,
+      ),
+    );
+  }
+
+  return showGeneralDialog<T>(
+    context: context,
+    pageBuilder: (dialogContext, _, _) => builder(dialogContext),
+    barrierDismissible: barrierDismissible,
+    barrierLabel: barrierLabel,
+    barrierColor: barrierColor,
+    transitionDuration: transitionDuration,
+    transitionBuilder: mobileTransitionBuilder,
+    useRootNavigator: useRootNavigator,
+    routeSettings: routeSettings,
+    anchorPoint: anchorPoint,
+    requestFocus: requestFocus,
+  );
+}
+
 Future<T?> showAppModalSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -100,7 +197,9 @@ Future<T?> showAppModalSheet<T>({
   AnimationStyle? sheetAnimationStyle,
   bool? requestFocus,
 }) {
-  final useDesktopPresentation = !kIsWeb && isDesktopTargetPlatform();
+  final useCenteredPresentation = appModalUsesCenteredPresentation(
+    MediaQuery.sizeOf(context),
+  );
   final effectiveAnimationStyle =
       sheetAnimationStyle ??
       (AppMotion.isReduced(context)
@@ -111,25 +210,96 @@ Future<T?> showAppModalSheet<T>({
               duration: AppMotion.deliberate,
               reverseDuration: AppMotion.responsive,
             ));
-  final effectiveConstraints = useDesktopPresentation
-      ? _desktopSheetConstraints(constraints)
-      : constraints;
-  final effectiveShape = useDesktopPresentation
-      ? RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          side: shape is RoundedRectangleBorder ? shape.side : BorderSide.none,
-        )
-      : shape;
+  if (useCenteredPresentation) {
+    final navigator = Navigator.of(context, rootNavigator: useRootNavigator);
+    final materialLocalizations = MaterialLocalizations.of(context);
+    final theme = Theme.of(context);
+    final sheetTheme = theme.bottomSheetTheme;
+    final capturedThemes = InheritedTheme.capture(
+      from: context,
+      to: navigator.context,
+    );
+    final effectiveShape = switch (shape) {
+      RoundedRectangleBorder() => shape.copyWith(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+      ),
+      final ShapeBorder value => value,
+      null => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+      ),
+    };
+    final effectiveBackgroundColor =
+        backgroundColor ??
+        sheetTheme.modalBackgroundColor ??
+        sheetTheme.backgroundColor ??
+        theme.colorScheme.surface;
+    final effectiveElevation =
+        elevation ?? sheetTheme.modalElevation ?? sheetTheme.elevation ?? 0;
+    final effectiveBarrierColor =
+        barrierColor ?? sheetTheme.modalBarrierColor ?? Colors.black54;
+    final forwardDuration =
+        effectiveAnimationStyle.duration ?? AppMotion.deliberate;
+    final reverseDuration =
+        effectiveAnimationStyle.reverseDuration ?? AppMotion.responsive;
+
+    return navigator.push<T>(
+      _AppCenteredModalRoute<T>(
+        pageBuilder: (dialogContext, _, _) {
+          final centeredConstraints = _centeredModalConstraints(
+            requested: constraints,
+            availableSize: MediaQuery.sizeOf(dialogContext),
+            isScrollControlled: isScrollControlled,
+            scrollControlDisabledMaxHeightRatio:
+                scrollControlDisabledMaxHeightRatio,
+          );
+          Widget content = Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                key: appCenteredModalFrameKey,
+                constraints: centeredConstraints,
+                child: SizedBox(
+                  width: centeredConstraints.maxWidth,
+                  child: Material(
+                    key: appCenteredModalSurfaceKey,
+                    color: effectiveBackgroundColor,
+                    elevation: effectiveElevation,
+                    shape: effectiveShape,
+                    clipBehavior: clipBehavior ?? Clip.antiAlias,
+                    child: builder(dialogContext),
+                  ),
+                ),
+              ),
+            ),
+          );
+          if (useSafeArea) content = SafeArea(child: content);
+          return capturedThemes.wrap(content);
+        },
+        barrierDismissible: isDismissible,
+        barrierLabel: barrierLabel ?? materialLocalizations.scrimLabel,
+        barrierColor: effectiveBarrierColor,
+        transitionDuration: forwardDuration,
+        centeredReverseTransitionDuration: reverseDuration,
+        transitionCurve: effectiveAnimationStyle.curve ?? AppMotion.emphasized,
+        reverseTransitionCurve:
+            effectiveAnimationStyle.reverseCurve ?? AppMotion.accelerate,
+        settings: routeSettings,
+        transitionAnimationController: transitionAnimationController,
+        anchorPoint: anchorPoint,
+        requestFocus: requestFocus,
+      ),
+    );
+  }
+
   return showModalBottomSheet<T>(
     context: context,
     builder: builder,
     backgroundColor: backgroundColor,
     barrierLabel: barrierLabel,
     elevation: elevation,
-    shape: effectiveShape,
-    clipBehavior:
-        clipBehavior ?? (useDesktopPresentation ? Clip.antiAlias : null),
-    constraints: effectiveConstraints,
+    shape: shape,
+    clipBehavior: clipBehavior,
+    constraints: constraints,
     barrierColor: barrierColor,
     isScrollControlled: isScrollControlled,
     scrollControlDisabledMaxHeightRatio: scrollControlDisabledMaxHeightRatio,
@@ -147,12 +317,11 @@ Future<T?> showAppModalSheet<T>({
 }
 
 /// Preserves the native Cupertino popup route on touch platforms while
-/// presenting the same content in Mithka's bounded desktop modal surface.
+/// presenting the same content in Mithka's bounded centered modal surface.
 ///
-/// The arguments mirror [cupertino.showCupertinoModalPopup]. Desktop ignores
-/// the optional backdrop filter because Material's bottom-sheet route does not
-/// expose one, but keeps the barrier, navigator, route, anchor, and focus
-/// contracts intact.
+/// The arguments mirror [cupertino.showCupertinoModalPopup]. Centered
+/// presentation ignores the optional backdrop filter but keeps the barrier,
+/// navigator, route, anchor, and focus contracts intact.
 Future<T?> showAppCupertinoModalPopup<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -165,7 +334,7 @@ Future<T?> showAppCupertinoModalPopup<T>({
   Offset? anchorPoint,
   bool? requestFocus,
 }) {
-  if (kIsWeb || !isDesktopTargetPlatform()) {
+  if (!appModalUsesCenteredPresentation(MediaQuery.sizeOf(context))) {
     return cupertino.showCupertinoModalPopup<T>(
       context: context,
       builder: builder,
@@ -200,18 +369,85 @@ Future<T?> showAppCupertinoModalPopup<T>({
   );
 }
 
-BoxConstraints _desktopSheetConstraints(BoxConstraints? requested) {
+BoxConstraints _centeredModalConstraints({
+  required BoxConstraints? requested,
+  required Size availableSize,
+  required bool isScrollControlled,
+  required double scrollControlDisabledMaxHeightRatio,
+}) {
   const desktopMaxWidth = 560.0;
-  if (requested == null) {
-    return const BoxConstraints(maxWidth: desktopMaxWidth);
-  }
-  final maxWidth = math.min(requested.maxWidth, desktopMaxWidth);
-  return BoxConstraints(
-    minWidth: math.min(requested.minWidth, maxWidth),
-    maxWidth: maxWidth,
-    minHeight: requested.minHeight,
-    maxHeight: requested.maxHeight,
+  const outerPadding = 48.0;
+  final availableWidth = math.max(0.0, availableSize.width - outerPadding);
+  final availableHeight = math.max(0.0, availableSize.height - outerPadding);
+  final requestedMaxWidth = requested?.maxWidth ?? double.infinity;
+  final requestedMaxHeight = requested?.maxHeight ?? double.infinity;
+  final maxWidth = math.min(
+    requestedMaxWidth,
+    math.min(desktopMaxWidth, availableWidth),
   );
+  final presentationMaxHeight = isScrollControlled
+      ? availableHeight
+      : availableHeight * scrollControlDisabledMaxHeightRatio;
+  final maxHeight = math.min(requestedMaxHeight, presentationMaxHeight);
+  return BoxConstraints(
+    minWidth: math.min(requested?.minWidth ?? 0, maxWidth),
+    maxWidth: maxWidth,
+    minHeight: math.min(requested?.minHeight ?? 0, maxHeight),
+    maxHeight: maxHeight,
+  );
+}
+
+class _AppCenteredModalRoute<T> extends RawDialogRoute<T> {
+  _AppCenteredModalRoute({
+    required super.pageBuilder,
+    required super.barrierDismissible,
+    required super.barrierColor,
+    required super.barrierLabel,
+    required super.transitionDuration,
+    required this.centeredReverseTransitionDuration,
+    required Curve transitionCurve,
+    required Curve reverseTransitionCurve,
+    super.settings,
+    this.transitionAnimationController,
+    super.anchorPoint,
+    super.requestFocus,
+  }) : super(
+         transitionBuilder: (context, animation, secondaryAnimation, child) {
+           final entrance = CurvedAnimation(
+             parent: animation,
+             curve: transitionCurve,
+             reverseCurve: reverseTransitionCurve,
+           );
+           return FadeTransition(
+             opacity: entrance,
+             child: ScaleTransition(
+               scale: Tween<double>(begin: 0.94, end: 1).animate(entrance),
+               child: child,
+             ),
+           );
+         },
+       );
+
+  final AnimationController? transitionAnimationController;
+  final Duration centeredReverseTransitionDuration;
+
+  @override
+  Duration get reverseTransitionDuration =>
+      transitionAnimationController?.reverseDuration ??
+      transitionAnimationController?.duration ??
+      centeredReverseTransitionDuration;
+
+  @override
+  Duration get transitionDuration =>
+      transitionAnimationController?.duration ?? super.transitionDuration;
+
+  @override
+  AnimationController createAnimationController() {
+    final externalController = transitionAnimationController;
+    if (externalController == null) return super.createAnimationController();
+    willDisposeAnimationController = false;
+    return externalController;
+  }
 }
 
 /// A consistent shared-axis transition for ordinary app routes.

@@ -36,6 +36,7 @@ void main() {
     WidgetTester tester,
     ChatMessage message, {
     List<ChatMessage> groupedMedia = const <ChatMessage>[],
+    bool isGroup = false,
     bool showCommentAttachment = false,
     bool channelHasLinkedDiscussion = false,
     bool themingEnabled = true,
@@ -51,6 +52,7 @@ void main() {
         TranslationDisplayStyle.quote,
     Set<int> showOriginalTranslationMessageIds = const <int>{},
     ValueChanged<ChatMessage>? onLongPress,
+    ValueChanged<ChatMessage>? onOpenComments,
     void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
   }) async {
     SharedPreferences.setMockInitialValues({
@@ -78,7 +80,7 @@ void main() {
               message: message,
               groupedMedia: groupedMedia,
               peerTitle: 'Test',
-              isGroup: false,
+              isGroup: isGroup,
               showCommentAttachment: showCommentAttachment,
               channelHasLinkedDiscussion: channelHasLinkedDiscussion,
               outgoingBubbleColor: outgoingBubbleColor,
@@ -89,6 +91,7 @@ void main() {
               translationDisplayStyle: translationDisplayStyle,
               showOriginalTranslationMessageIds:
                   showOriginalTranslationMessageIds,
+              onOpenComments: onOpenComments,
               onLongPress:
                   onActionMenu ??
                   (onLongPress == null
@@ -1211,11 +1214,19 @@ void main() {
     final quoteText = tester.widget<RichText>(
       find.descendant(of: quote, matching: find.byType(RichText)),
     );
+    final expectedLinkStyle = readableLinkStyle(
+      background: colors.bubbleIncoming,
+      body: colors.bubbleIncomingText,
+      preferred: colors.linkBlue,
+    );
+    final renderedLink = _textSpans(
+      quoteText.text,
+    ).singleWhere((span) => span.text == text);
+    expect(renderedLink.style?.color, expectedLinkStyle.color);
     expect(
-      _textSpans(
-        quoteText.text,
-      ).singleWhere((span) => span.text == text).style?.color,
-      colors.linkBlue,
+      renderedLink.style?.decoration?.contains(TextDecoration.underline) ??
+          false,
+      expectedLinkStyle.underline,
     );
     expect(
       contrast(colors.bubbleIncomingText, paintedBackground),
@@ -1399,6 +1410,46 @@ void main() {
           .contains(tester.getRect(commentsFinder).bottomCenter),
       isTrue,
     );
+  });
+
+  testWidgets('normal group replies use only the compact bottom-right count', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final message = ChatMessage(
+      id: 121,
+      isOutgoing: false,
+      text: 'Group message',
+      date: 1,
+      contentType: 'messageText',
+      hasCommentThread: true,
+      commentCount: 7,
+    );
+
+    ChatMessage? opened;
+    await pumpBubble(
+      tester,
+      message,
+      isGroup: true,
+      onOpenComments: (message) => opened = message,
+    );
+
+    expect(
+      find.byKey(const ValueKey('messageCommentsAttachment-121')),
+      findsNothing,
+    );
+    expect(find.text('7 comments'), findsNothing);
+    final compact = find.byKey(const ValueKey('messageCompactReplies-121'));
+    expect(compact, findsOneWidget);
+    expect(
+      find.descendant(of: compact, matching: find.text('7')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(compact);
+    expect(opened, same(message));
   });
 
   testWidgets('linked channel discussion stays visible before first comment', (

@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
 class AvailableMessageEffect {
@@ -98,20 +98,7 @@ class MessageSendConfiguration {
 bool messageSendOptionsUsesCenteredModal(
   Size size, [
   TargetPlatform? platform,
-]) {
-  final targetPlatform = platform ?? defaultTargetPlatform;
-  final isDesktop = switch (targetPlatform) {
-    TargetPlatform.macOS ||
-    TargetPlatform.windows ||
-    TargetPlatform.linux => true,
-    _ => false,
-  };
-  if (isDesktop) return true;
-
-  return targetPlatform == TargetPlatform.iOS &&
-      size.width > size.height &&
-      size.shortestSide >= 600;
-}
+]) => appModalUsesCenteredPresentation(size, platform);
 
 Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   BuildContext context, {

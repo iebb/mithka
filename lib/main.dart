@@ -56,7 +56,9 @@ import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
 import 'notifications/in_app_notification_banner.dart';
 import 'notifications/notification_controller.dart';
+import 'notifications/notification_preferences.dart';
 import 'notifications/push_device_registrar.dart';
+import 'platform/application_exit_coordinator.dart';
 import 'platform/firebase_configuration.dart';
 import 'platform/system_ui.dart';
 import 'pro/mithka_pro_service.dart';
@@ -189,6 +191,10 @@ Future<void> main(List<String> arguments) async {
 }
 
 Future<void> _bootstrapAndRunApp() async {
+  // Register before AuthManager starts TDLib. Flutter's macOS delegate waits
+  // for this cancelable exit response, so even a very early Quit drains native
+  // clients before AppKit unloads libtdjson.
+  await ApplicationExitCoordinator.install();
   GoogleFonts.config.allowRuntimeFetching = true;
   // Bring TDLib up first: session restore is the longest serial chain in a
   // launch, and nothing below depends on it — the widget tree attaches to
@@ -540,6 +546,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         _desktopSettingsReloadQueued = false;
         await widget.prefs.reload();
         await DesktopHotkeyController.shared.reload();
+        NotificationPreferences.shared.initialize(widget.prefs);
         if (!mounted) return;
 
         final previousTheme = _theme;

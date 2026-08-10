@@ -64,9 +64,16 @@ import 'telegram_mini_app_view.dart';
 import 'telegram_payment_service.dart';
 import 'telegram_store_purchase_view.dart';
 
+typedef _TdLinkQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
 Future<void> openLink(BuildContext context, String url) async {
   final nav = Navigator.of(context);
   final sourceChat = InternalChatLinkScope.targetOf(context);
+  final query = sourceChat == null
+      ? TdClient.shared.query
+      : (Map<String, dynamic> request) =>
+            TdClient.shared.queryForSlot(request, sourceChat.accountSlot);
   final link = _normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {
@@ -80,11 +87,9 @@ Future<void> openLink(BuildContext context, String url) async {
     return;
   }
 
+  var fallbackLink = link;
   try {
-    final type = await TdClient.shared.query({
-      '@type': 'getInternalLinkType',
-      'link': link,
-    });
+    final type = await query({'@type': 'getInternalLinkType', 'link': link});
     switch (type.type) {
       case 'internalLinkTypePublicChat':
         final username = type.str('chat_username') ?? '';
@@ -92,11 +97,20 @@ Future<void> openLink(BuildContext context, String url) async {
           nav,
           username,
           draftText: type.str('draft_text') ?? '',
+          sourceChat: sourceChat,
+          query: query,
         );
       case 'internalLinkTypeMessage':
-        final info = await TdClient.shared.query({
+        // TDLib can canonicalize a message link (notably tg:// variants).
+        // Its contract requires getMessageLinkInfo to receive this returned
+        // URL, rather than the original spelling that was classified.
+        final resolvedUrl = type.str('url')?.trim();
+        if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+          fallbackLink = resolvedUrl;
+        }
+        final info = await query({
           '@type': 'getMessageLinkInfo',
-          'url': link,
+          'url': fallbackLink,
         });
         final message = info.obj('message');
         final chatId = info.int64('chat_id') ?? message?.int64('chat_id');
@@ -109,27 +123,33 @@ Future<void> openLink(BuildContext context, String url) async {
           chatId,
           initialMessageId: messageId,
           sourceChat: sourceChat,
+          query: query,
         );
       case 'internalLinkTypeUserPhoneNumber':
-        final user = await TdClient.shared.query({
+        final user = await query({
           '@type': 'searchUserByPhoneNumber',
           'phone_number': type.str('phone_number') ?? '',
         });
         final uid = user.int64('id');
         if (uid != null) {
-          final chat = await TdClient.shared.query({
+          final chat = await query({
             '@type': 'createPrivateChat',
             'user_id': uid,
             'force': false,
           });
-          await _openChat(nav, chat.int64('id'));
+          await _openChat(
+            nav,
+            chat.int64('id'),
+            sourceChat: sourceChat,
+            query: query,
+          );
         }
       case 'internalLinkTypeChatInvite':
         if (context.mounted) await _joinInvite(context, nav, link);
       case 'internalLinkTypeChatFolderInvite':
         if (context.mounted) await _joinFolderInvite(context, nav, link);
       case 'internalLinkTypeBotStart':
-        await _openBotStart(nav, type);
+        await _openBotStart(nav, type, sourceChat: sourceChat, query: query);
       case 'internalLinkTypeBotStartInGroup':
         if (context.mounted) await _openBotStartInGroup(context, nav, type);
       case 'internalLinkTypeAttachmentMenuBot':
@@ -166,12 +186,14 @@ Future<void> openLink(BuildContext context, String url) async {
           'code': type.str('code') ?? '',
         });
       case 'internalLinkTypeUserToken':
-        final user = await TdClient.shared.query({
+        final user = await query({
           '@type': 'searchUserByToken',
           'token': type.str('token') ?? '',
         });
         final uid = user.int64('id');
-        if (uid != null) await _openUser(nav, uid);
+        if (uid != null) {
+          await _openUser(nav, uid, sourceChat: sourceChat, query: query);
+        }
       case 'internalLinkTypeDirectMessagesChat':
         await _openDirectMessagesChat(nav, type.str('channel_username') ?? '');
       case 'internalLinkTypeChatAffiliateProgram':
@@ -301,15 +323,25 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeUnknownDeepLink':
         await _showDeepLinkInfoOrExternal(link);
       default:
-        if (!await _openTelegramFallback(nav, link, sourceChat: sourceChat) &&
+        if (!await _openTelegramFallback(
+              nav,
+              link,
+              sourceChat: sourceChat,
+              query: query,
+            ) &&
             context.mounted) {
           await _external(link);
         }
     }
   } catch (_) {
-    if (!await _openTelegramFallback(nav, link, sourceChat: sourceChat) &&
+    if (!await _openTelegramFallback(
+          nav,
+          fallbackLink,
+          sourceChat: sourceChat,
+          query: query,
+        ) &&
         context.mounted) {
-      await _external(link);
+      await _external(fallbackLink);
     }
   }
 }
@@ -571,10 +603,51 @@ String? _normalizeTelegramLink(String raw) {
   return null;
 }
 
+/// Converts the server-local post number carried by Telegram link syntax to
+/// the TDLib message identifier used by chat/history APIs.
+///
+/// IDs returned by getMessageLinkInfo are already TDLib IDs and must never be
+/// passed through this conversion; this helper is only for the manual fallback
+/// grammars parsed below.
+@visibleForTesting
+int? telegramFallbackMessageId(String link) {
+  final uri = Uri.tryParse(link);
+  if (uri == null) return null;
+  String? post;
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme == 'tg' || scheme == 'mk' || scheme == 'mithka') {
+    final host = uri.host.toLowerCase();
+    if (host == 'resolve' || host == 'privatepost') {
+      post = uri.queryParameters['post'];
+    }
+  } else {
+    final host = uri.host.toLowerCase();
+    final isTelegramHost =
+        host == 't.me' ||
+        host == 'telegram.me' ||
+        host == 'telegram.dog' ||
+        host == 'www.t.me' ||
+        host == 'www.telegram.me' ||
+        host == 'www.telegram.dog';
+    if (!isTelegramHost) return null;
+    final segments = uri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return null;
+    post = segments.first.toLowerCase() == 'c'
+        ? (segments.length > 2 ? segments[2] : null)
+        : (segments.length > 1 ? segments[1] : null);
+  }
+  final serverPostId = int.tryParse(post ?? '');
+  if (serverPostId == null || serverPostId <= 0) return null;
+  return serverPostId << 20;
+}
+
 Future<bool> _openTelegramFallback(
   NavigatorState nav,
   String link, {
   InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
 }) async {
   final uri = Uri.tryParse(link);
   if (uri == null) return false;
@@ -587,19 +660,34 @@ Future<bool> _openTelegramFallback(
     final params = uri.queryParameters;
     final userId = int.tryParse(params['id'] ?? '');
     if (host == 'user' && userId != null) {
-      return _openUser(nav, userId);
+      return _openUser(nav, userId, sourceChat: sourceChat, query: query);
     }
     if (host == 'resolve') {
       final username = params['domain'] ?? params['username'];
-      final messageId = int.tryParse(params['post'] ?? '');
+      final messageId = telegramFallbackMessageId(link);
       if (username != null && username.trim().isNotEmpty) {
         return _openPublicChat(
           nav,
           username.trim(),
           initialMessageId: messageId,
           sourceChat: sourceChat,
+          query: query,
         );
       }
+    }
+    if (host == 'privatepost') {
+      final channelId = int.tryParse(params['channel'] ?? '');
+      if (channelId == null || channelId <= 0) return false;
+      final chatId = int.tryParse('-100$channelId');
+      if (chatId == null) return false;
+      await _openChat(
+        nav,
+        chatId,
+        initialMessageId: telegramFallbackMessageId(link),
+        sourceChat: sourceChat,
+        query: query,
+      );
+      return true;
     }
     return false;
   }
@@ -621,27 +709,44 @@ Future<bool> _openTelegramFallback(
   final lowerFirst = first.toLowerCase();
   if (first.startsWith('+') || lowerFirst == 'joinchat') return false;
   if (lowerFirst == 'c') {
-    return _openPrivateMessageLink(nav, segments, sourceChat: sourceChat);
+    return _openPrivateMessageLink(
+      nav,
+      segments,
+      messageId: telegramFallbackMessageId(link),
+      sourceChat: sourceChat,
+      query: query,
+    );
   }
   if (!_isPublicUsername(first)) return false;
 
-  final messageId = segments.length > 1 ? int.tryParse(segments[1]) : null;
   return _openPublicChat(
     nav,
     first,
-    initialMessageId: messageId,
+    initialMessageId: telegramFallbackMessageId(link),
     sourceChat: sourceChat,
+    query: query,
   );
 }
 
-Future<bool> _openUser(NavigatorState nav, int userId) async {
+Future<bool> _openUser(
+  NavigatorState nav,
+  int userId, {
+  InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
+}) async {
+  final queryAccount = query ?? TdClient.shared.query;
   try {
-    final chat = await TdClient.shared.query({
+    final chat = await queryAccount({
       '@type': 'createPrivateChat',
       'user_id': userId,
       'force': false,
     });
-    await _openChat(nav, chat.int64('id'));
+    await _openChat(
+      nav,
+      chat.int64('id'),
+      sourceChat: sourceChat,
+      query: queryAccount,
+    );
     return true;
   } catch (_) {
     return false;
@@ -654,9 +759,11 @@ Future<bool> _openPublicChat(
   int? initialMessageId,
   String draftText = '',
   InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
 }) async {
+  final queryAccount = query ?? TdClient.shared.query;
   try {
-    final chat = await TdClient.shared.query({
+    final chat = await queryAccount({
       '@type': 'searchPublicChat',
       'username': username,
     });
@@ -665,13 +772,14 @@ Future<bool> _openPublicChat(
       await _setChatDraft(chatId, {
         '@type': 'formattedText',
         'text': draftText.trim(),
-      });
+      }, query: queryAccount);
     }
     await _openChat(
       nav,
       chatId,
       initialMessageId: initialMessageId,
       sourceChat: sourceChat,
+      query: queryAccount,
     );
     return true;
   } catch (_) {
@@ -681,11 +789,14 @@ Future<bool> _openPublicChat(
 
 Future<void> _openBotStart(
   NavigatorState nav,
-  Map<String, dynamic> type,
-) async {
+  Map<String, dynamic> type, {
+  InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
+}) async {
+  final queryAccount = query ?? TdClient.shared.query;
   final username = type.str('bot_username') ?? '';
   if (username.isEmpty) return;
-  final chat = await TdClient.shared.query({
+  final chat = await queryAccount({
     '@type': 'searchPublicChat',
     'username': username,
   });
@@ -694,14 +805,14 @@ Future<void> _openBotStart(
   final parameter = type.str('start_parameter') ?? '';
   final autostart = type.boolean('autostart') ?? false;
   if (autostart && chatId != null && botUserId != null) {
-    await TdClient.shared.query({
+    await queryAccount({
       '@type': 'sendBotStartMessage',
       'bot_user_id': botUserId,
       'chat_id': chatId,
       'parameter': parameter,
     });
   }
-  await _openChat(nav, chatId);
+  await _openChat(nav, chatId, sourceChat: sourceChat, query: queryAccount);
 }
 
 Future<void> _openMiniAppLink(
@@ -917,9 +1028,10 @@ Future<void> _shareDraft(
 
 Future<void> _setChatDraft(
   int chatId,
-  Map<String, dynamic> formattedText,
-) async {
-  await TdClient.shared.query(
+  Map<String, dynamic> formattedText, {
+  _TdLinkQuery? query,
+}) async {
+  await (query ?? TdClient.shared.query)(
     setTextChatDraftRequest(
       chatId: chatId,
       formattedText: formattedText,
@@ -2184,11 +2296,12 @@ Future<void> _showDeepLinkInfoOrExternal(String link) async {
 Future<bool> _openPrivateMessageLink(
   NavigatorState nav,
   List<String> segments, {
+  required int? messageId,
   InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
 }) async {
   if (segments.length < 3) return false;
   final internalId = int.tryParse(segments[1]);
-  final messageId = int.tryParse(segments[2]);
   if (internalId == null) return false;
   final chatId = int.tryParse('-100$internalId');
   if (chatId == null) return false;
@@ -2197,6 +2310,7 @@ Future<bool> _openPrivateMessageLink(
     chatId,
     initialMessageId: messageId,
     sourceChat: sourceChat,
+    query: query,
   );
   return true;
 }
@@ -2209,6 +2323,7 @@ Future<void> _openChat(
   int? chatId, {
   int? initialMessageId,
   InternalChatLinkTarget? sourceChat,
+  _TdLinkQuery? query,
 }) async {
   if (chatId == null) return;
   if (sourceChat?.chatId == chatId &&
@@ -2224,7 +2339,7 @@ Future<void> _openChat(
   }
   var title = '';
   try {
-    final chat = await TdClient.shared.query({
+    final chat = await (query ?? TdClient.shared.query)({
       '@type': 'getChat',
       'chat_id': chatId,
     });

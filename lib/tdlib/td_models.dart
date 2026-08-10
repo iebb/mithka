@@ -729,8 +729,13 @@ class ChatMessage {
     this.hasCommentThread = false,
     this.commentCount = 0,
     this.lastCommentMessageId,
+    bool? commentThreadMetadataKnown,
     this.blockedByUser = false,
-  });
+  }) : commentThreadMetadataKnown =
+           commentThreadMetadataKnown ??
+           (hasCommentThread ||
+               commentCount > 0 ||
+               lastCommentMessageId != null);
 
   final int id;
   final bool isOutgoing;
@@ -838,9 +843,16 @@ class ChatMessage {
   int viewCount;
   int forwardCount;
   bool hasCommentThread;
-  int
-  commentCount; // channel discussion replies/comments, when TDLib exposes it
+
+  /// TDLib `reply_info.reply_count`: channel comments or ordinary group
+  /// replies, depending on the containing chat.
+  int commentCount;
   int? lastCommentMessageId;
+
+  /// Whether this instance carries an authoritative reply-info snapshot.
+  /// False means a partial/cached message omitted interaction metadata, so a
+  /// same-ID merge must not erase newer thread information already in memory.
+  bool commentThreadMetadataKnown;
 
   /// When true, this message is from a Telegram-blocked user and the
   /// "hide blocked user messages" feature is on.
@@ -1524,7 +1536,8 @@ abstract final class TDParse {
         : null;
 
     final parsedEntities = messageTextEntities(content);
-    final replyInfo = message.obj('interaction_info')?.obj('reply_info');
+    final interactionInfo = message.obj('interaction_info');
+    final replyInfo = interactionInfo?.obj('reply_info');
     var contentDisplayText = contentText;
     var contentDisplayEntities = parsedEntities;
     final contentRichBlocks = <RichMessageBlock>[...richMessageBlocks(content)];
@@ -1631,9 +1644,8 @@ abstract final class TDParse {
             (content?.obj('message')?.boolean('is_full') ?? false),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
         isSending: message.obj('sending_state') != null,
-        viewCount: message.obj('interaction_info')?.integer('view_count') ?? 0,
-        forwardCount:
-            message.obj('interaction_info')?.integer('forward_count') ?? 0,
+        viewCount: interactionInfo?.integer('view_count') ?? 0,
+        forwardCount: interactionInfo?.integer('forward_count') ?? 0,
         hasCommentThread: !isContentRestricted && replyInfo != null,
         commentCount: isContentRestricted
             ? 0
@@ -1643,6 +1655,7 @@ abstract final class TDParse {
         lastCommentMessageId: isContentRestricted
             ? null
             : replyInfo?.int64('last_message_id'),
+        commentThreadMetadataKnown: interactionInfo != null,
       )
       ..reactions = reactionsFrom(message)
       ..forwardOrigin = isContentRestricted ? null : fwdName
@@ -4066,9 +4079,18 @@ abstract final class TDParse {
     final id = file?.integer('id');
     if (file == null || id == null) return null;
     final normalizedThumbnail = thumbnail?.id == id ? null : thumbnail;
+    final local = file.obj('local');
+    // TDLib exposes `local.path` as soon as any prefix/range exists. That path
+    // is not a decodable whole file until the completion bit is set; treating
+    // it as an outgoing/local source bypasses TdFileCenter's download waiter
+    // and can leave message media displaying a permanently partial image.
+    final completedLocalPath =
+        local?.boolean('is_downloading_completed') == true
+        ? local?.str('path')
+        : null;
     return TdFileRef(
       id: id,
-      localPath: file.obj('local')?.str('path'),
+      localPath: completedLocalPath,
       fileName: fileName,
       mimeType: mimeType,
       miniThumb: miniThumb,

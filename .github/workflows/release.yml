@@ -39,7 +39,7 @@ concurrency:
 
 permissions:
   contents: write
-  models: read
+  copilot-requests: write
 
 env:
   # Keep each Mithka release reproducible by pinning an immutable TDLib build.
@@ -699,6 +699,16 @@ jobs:
           git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
           git push --force origin "$RELEASE_TAG"
 
+      - name: Set up Node.js for Copilot CLI
+        if: needs.prepare.outputs.prerelease == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install Copilot CLI
+        if: needs.prepare.outputs.prerelease == 'true'
+        run: npm install --global @github/copilot
+
       - name: Generate release notes
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -733,53 +743,60 @@ jobs:
               | awk '!/^Subject: chore: sync nightly /' \
               > changes.txt
 
-            git log --reverse --no-merges \
-              --format='- %s ([%h]('"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"'/commit/%H))' \
-              "$change_range" -- . ':(exclude).github/**' \
-              | grep -v '^- chore: sync nightly ' \
-              > fallback-items.txt \
-              || true
             {
               echo "## Changes"
               echo "### English"
-              if [ -s fallback-items.txt ]; then
-                cat fallback-items.txt
-              else
-                echo "- Maintenance and reliability improvements."
-              fi
+              echo "- Maintenance and reliability improvements; see the full changelog for details."
               echo
               echo "### 中文"
               echo "- 维护和可靠性改进；详细内容请参阅完整变更记录。"
             } > change-summary.md
 
-            jq -n --rawfile changes changes.txt '{
-              model: "openai/gpt-4.1",
-              messages: [
-                {
-                  role: "system",
-                  content: "Write concise bilingual Markdown release notes for app users using only facts in the supplied git history. Use exactly this structure: ## Changes, then ### English with 1 to 6 English bullet points, then ### 中文 with faithful Simplified Chinese translations of the same bullet points in the same order. Combine related commits and make every bullet a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. If there are no user-visible changes, use one maintenance and reliability bullet in each language. Do not add an introduction or conclusion."
-                },
-                { role: "user", content: $changes }
-              ],
-              temperature: 0,
-              max_tokens: 900
-            }' > model-request.json
+            summary_prompt="$(
+              jq -nr --rawfile changes changes.txt '
+                "Write concise bilingual release notes for app users using only facts in the supplied git history. " +
+                "Return only one JSON object with exactly two properties: english and chinese. " +
+                "Each property must be an array containing 1 to 6 paired strings in the same order, with each Chinese item a faithful Simplified Chinese translation of the corresponding English item. " +
+                "Combine related commits and make every item a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. " +
+                "Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. " +
+                "If there are no user-visible changes, use one maintenance and reliability item in each language. " +
+                "Do not include Markdown, headings, bullet markers, commit hashes, or URLs in the array values.\n\nGit history:\n" +
+                $changes
+              '
+            )"
 
-            if model_response="$(
-              curl -fsS --retry 1 --retry-all-errors \
-                --connect-timeout 10 --max-time 30 \
-                https://models.github.ai/inference/chat/completions \
-                -H "Authorization: Bearer $GITHUB_TOKEN" \
-                -H 'Content-Type: application/json' \
-                --data-binary @model-request.json
-            )" && model_notes="$(
-              jq -er '.choices[0].message.content | select(startswith("## Changes") and contains("### English") and contains("### 中文"))' \
-                <<< "$model_response"
-            )"; then
-              printf '%s\n' "$model_notes" > change-summary.md
-              echo "Generated bilingual nightly release notes with GitHub Models"
+            if model_content="$(
+              copilot -p "$summary_prompt" \
+                --silent \
+                --model=auto \
+                --no-ask-user \
+                --no-auto-update \
+                --no-remote \
+                --disable-builtin-mcps \
+                --deny-tool='memory,read,shell,url,write'
+            )" && printf '%s\n' "$model_content" | \
+              jq -er '
+                select(
+                    (.english | type) == "array" and
+                    (.chinese | type) == "array" and
+                    (.english | length) >= 1 and
+                    (.english | length) <= 6 and
+                    (.english | length) == (.chinese | length) and
+                    all(.english[]; type == "string" and length > 0) and
+                    all(.chinese[]; type == "string" and length > 0)
+                  )
+              ' > model-notes.json; then
+              {
+                echo "## Changes"
+                echo "### English"
+                jq -r '.english[] | "- " + .' model-notes.json
+                echo
+                echo "### 中文"
+                jq -r '.chinese[] | "- " + .' model-notes.json
+              } > change-summary.md
+              echo "Generated bilingual nightly release notes with GitHub Copilot"
             else
-              echo "GitHub Models unavailable; using bilingual fallback release notes" >&2
+              echo "GitHub Copilot unavailable or returned invalid notes; using paired bilingual fallback release notes" >&2
             fi
           fi
 

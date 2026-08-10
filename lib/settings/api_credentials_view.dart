@@ -17,6 +17,16 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'api_credentials_config.dart';
 
+String apiCredentialsDeviceModelHint(TargetPlatform platform) =>
+    switch (platform) {
+      TargetPlatform.android => 'Android',
+      TargetPlatform.iOS => 'iPhone',
+      TargetPlatform.macOS => 'Mac',
+      TargetPlatform.windows => 'Windows PC',
+      TargetPlatform.linux => 'Linux PC',
+      TargetPlatform.fuchsia => 'Device',
+    };
+
 class ApiCredentialsView extends StatefulWidget {
   const ApiCredentialsView({super.key, this.onSaved});
 
@@ -148,7 +158,7 @@ class _ApiCredentialsViewState extends State<ApiCredentialsView> {
                   _field(
                     _deviceModel,
                     'device_model',
-                    Platform.isIOS ? 'iPhone' : 'Android',
+                    apiCredentialsDeviceModelHint(Theme.of(context).platform),
                     fieldKey: const ValueKey('tdlibDeviceModelField'),
                   ),
                   const InsetDivider(leadingInset: 16),

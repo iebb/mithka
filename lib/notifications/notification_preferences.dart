@@ -35,6 +35,13 @@ class NotificationPreferences extends ChangeNotifier {
   bool get namesOnLockScreen => _namesOnLockScreen;
 
   void initialize(SharedPreferences preferences) {
+    final wasInitialized = _preferences != null;
+    final previousMode = _accountMode;
+    final previousSelectedAccountIds = _selectedAccountIds;
+    final previousInAppSounds = _inAppSounds;
+    final previousInAppVibrate = _inAppVibrate;
+    final previousInAppPreview = _inAppPreview;
+    final previousNamesOnLockScreen = _namesOnLockScreen;
     _preferences = preferences;
     final storedMode = preferences.getString(_accountModeKey);
     _accountMode = NotificationAccountMode.values.firstWhere(
@@ -56,6 +63,18 @@ class NotificationPreferences extends ChangeNotifier {
     _inAppVibrate = preferences.getBool(_inAppVibrateKey) ?? false;
     _inAppPreview = preferences.getBool(_inAppPreviewKey) ?? true;
     _namesOnLockScreen = preferences.getBool(_namesOnLockScreenKey) ?? true;
+    if (wasInitialized &&
+        (previousMode != _accountMode ||
+            !setEquals(previousSelectedAccountIds, _selectedAccountIds) ||
+            previousInAppSounds != _inAppSounds ||
+            previousInAppVibrate != _inAppVibrate ||
+            previousInAppPreview != _inAppPreview ||
+            previousNamesOnLockScreen != _namesOnLockScreen)) {
+      // Detached desktop Settings writes to the shared preference store, then
+      // asks the primary engine to reload it. Notify active consumers (most
+      // notably push registration) when that reload changes effective state.
+      notifyListeners();
+    }
   }
 
   Future<void> setAllAccounts(bool value) => setAccountMode(

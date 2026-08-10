@@ -7,6 +7,7 @@ class ChatDeepLinkRequest {
     this.messageId,
     this.accountUserId,
     this.accountSlot,
+    this.preserveChatStack = false,
   });
 
   final int chatId;
@@ -14,6 +15,16 @@ class ChatDeepLinkRequest {
   final int? messageId;
   final int? accountUserId;
   final int? accountSlot;
+  final bool preserveChatStack;
+
+  ChatDeepLinkRequest scopedToAccountSlot(int slot) => ChatDeepLinkRequest(
+    chatId: chatId,
+    title: title,
+    messageId: messageId,
+    accountUserId: accountUserId,
+    accountSlot: slot,
+    preserveChatStack: preserveChatStack,
+  );
 
   /// Presentation-only payload used when a registered desktop child asks the
   /// primary window to select a conversation. Account identity is never read
@@ -90,6 +101,7 @@ class ChatDeepLinkController extends ChangeNotifier {
     int? messageId,
     int? accountUserId,
     int? accountSlot,
+    bool preserveChatStack = false,
   }) {
     _pending = ChatDeepLinkRequest(
       chatId: chatId,
@@ -97,6 +109,7 @@ class ChatDeepLinkController extends ChangeNotifier {
       messageId: messageId,
       accountUserId: accountUserId,
       accountSlot: accountSlot,
+      preserveChatStack: preserveChatStack,
     );
     notifyListeners();
   }

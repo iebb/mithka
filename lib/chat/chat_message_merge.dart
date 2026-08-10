@@ -87,6 +87,13 @@ List<ChatMessage> mergeChatMessages(
       message.senderPhoto ??= existing.senderPhoto;
       message.senderRole ??= existing.senderRole;
       message.senderTitle ??= existing.senderTitle;
+      if (!message.commentThreadMetadataKnown &&
+          existing.commentThreadMetadataKnown) {
+        message.hasCommentThread = existing.hasCommentThread;
+        message.commentCount = existing.commentCount;
+        message.lastCommentMessageId = existing.lastCommentMessageId;
+        message.commentThreadMetadataKnown = true;
+      }
     }
     byId[message.id] = message;
   }

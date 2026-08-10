@@ -51,7 +51,11 @@ class AppearanceView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
-    final appIcons = context.watch<AppIconController>();
+    final platform = Theme.of(context).platform;
+    final showAppIconPicker = appIconPickerAvailableForPlatform(platform);
+    final appIcons = showAppIconPicker
+        ? context.watch<AppIconController>()
+        : null;
     // The icon assets are 1024x1024; the row preview is 22 px wide, so the
     // undecoded-size default would hold a 4 MiB bitmap in the image cache.
     final appIconPreviewPx =
@@ -64,24 +68,25 @@ class AppearanceView extends StatelessWidget {
           // What the app looks like as a whole. No heading: it is the
           // first card, and a "Theme" heading over a "Theme" row only
           // says it twice.
-          _card(context, [
-            _navigationRow(
-              context,
-              AppStrings.t(AppStringKeys.appIconTitle),
-              null,
-              () => Navigator.of(context).push(
-                AppPageRoute<void>(
-                  pageBuilder: (_, _, _) => const AppIconSettingsView(),
+          if (showAppIconPicker)
+            _card(context, [
+              _navigationRow(
+                context,
+                AppStrings.t(AppStringKeys.appIconTitle),
+                null,
+                () => Navigator.of(context).push(
+                  AppPageRoute<void>(
+                    pageBuilder: (_, _, _) => const AppIconSettingsView(),
+                  ),
+                ),
+                preview: Image.asset(
+                  appIcons!.variant.asset,
+                  width: AppIconSize.nav,
+                  height: AppIconSize.nav,
+                  cacheWidth: appIconPreviewPx,
                 ),
               ),
-              preview: Image.asset(
-                appIcons.variant.asset,
-                width: AppIconSize.nav,
-                height: AppIconSize.nav,
-                cacheWidth: appIconPreviewPx,
-              ),
-            ),
-          ]),
+            ]),
           _label(context, AppStrings.t(AppStringKeys.appearanceSectionText)),
           _card(context, [
             KeyedSubtree(
@@ -323,6 +328,7 @@ class AppIconSettingsView extends StatelessWidget {
                   variant: variant,
                   selected: controller.variant == variant,
                   loading: controller.loading,
+                  enabled: controller.supported,
                 );
               },
             ),
@@ -338,11 +344,13 @@ class _AppIconVariantTile extends StatelessWidget {
     required this.variant,
     required this.selected,
     required this.loading,
+    required this.enabled,
   });
 
   final AppIconVariant variant;
   final bool selected;
   final bool loading;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -353,11 +361,12 @@ class _AppIconVariantTile extends StatelessWidget {
     final tilePx = (96 * MediaQuery.devicePixelRatioOf(context)).ceil();
     return Semantics(
       button: true,
+      enabled: enabled,
       selected: selected,
       label: AppStrings.t(variant.labelKey),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: loading
+        onTap: loading || !enabled
             ? null
             : () async {
                 final ok = await controller.setVariant(variant);
@@ -697,6 +706,11 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
     const appearance = AppearanceView();
+    final platform = Theme.of(context).platform;
+    final desktop = isDesktopTargetPlatform(platform);
+    final archiveMode = theme.archivedChatsDisplayMode.effectiveForPlatform(
+      platform: platform,
+    );
     return _DisplaySectionPage(
       title: AppStrings.t(AppStringKeys.appearanceChatList),
       controls: Column(
@@ -715,25 +729,26 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
               ),
               icon: HeroAppIcons.folder.data,
             ),
-            KeyedSubtree(
-              key: const ValueKey('chat-list-swipe-settings-row'),
-              child: appearance._navigationRow(
-                context,
-                AppStrings.t(AppStringKeys.gesturesChatListSwipe),
-                AppStrings.t(theme.chatListSwipeMode.label),
-                () => Navigator.of(context).push(
-                  AppPageRoute<void>(
-                    pageBuilder: (_, _, _) =>
-                        const ChatListGestureSettingsView(),
+            if (!desktop)
+              KeyedSubtree(
+                key: const ValueKey('chat-list-swipe-settings-row'),
+                child: appearance._navigationRow(
+                  context,
+                  AppStrings.t(AppStringKeys.gesturesChatListSwipe),
+                  AppStrings.t(theme.chatListSwipeMode.label),
+                  () => Navigator.of(context).push(
+                    AppPageRoute<void>(
+                      pageBuilder: (_, _, _) =>
+                          const ChatListGestureSettingsView(),
+                    ),
                   ),
+                  icon: HeroAppIcons.arrowsRightLeft.data,
                 ),
-                icon: HeroAppIcons.arrowsRightLeft.data,
               ),
-            ),
             appearance._navigationRow(
               context,
               AppStrings.t(AppStringKeys.appearanceArchivedChats),
-              AppStrings.t(theme.archivedChatsDisplayMode.label),
+              AppStrings.t(archiveMode.label),
               () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const ArchivedChatsSettingsView(),
@@ -741,13 +756,14 @@ class ChatListAppearanceSettingsView extends StatelessWidget {
               ),
               icon: HeroAppIcons.inbox.data,
             ),
-            appearance._toggleRow(
-              context,
-              HeroAppIcons.magnifyingGlass.data,
-              AppStrings.t(AppStringKeys.appearanceShowChatListSearch),
-              theme.showChatListSearch,
-              (value) => theme.showChatListSearch = value,
-            ),
+            if (!desktop)
+              appearance._toggleRow(
+                context,
+                HeroAppIcons.magnifyingGlass.data,
+                AppStrings.t(AppStringKeys.appearanceShowChatListSearch),
+                theme.showChatListSearch,
+                (value) => theme.showChatListSearch = value,
+              ),
             appearance._navigationRow(
               context,
               AppStrings.t(AppStringKeys.appearanceShowNameColors),
@@ -1436,8 +1452,12 @@ class ArchivedChatsSettingsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final theme = context.watch<ThemeController>();
+    final platform = Theme.of(context).platform;
+    final desktop = isDesktopTargetPlatform(platform);
+    final selectedMode = theme.archivedChatsDisplayMode.effectiveForPlatform(
+      platform: platform,
+    );
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.appearanceArchivedChats),
       onBack: () => Navigator.of(context).pop(),
@@ -1445,24 +1465,15 @@ class ArchivedChatsSettingsView extends StatelessWidget {
         children: [
           const AppearanceView()._card(context, [
             for (final mode in ArchivedChatsDisplayMode.values)
-              const AppearanceView()._choiceRow(
-                context,
-                mode.icon,
-                mode.label,
-                theme.archivedChatsDisplayMode == mode,
-                () => theme.archivedChatsDisplayMode = mode,
-              ),
+              if (!desktop || mode != ArchivedChatsDisplayMode.pullDown)
+                const AppearanceView()._choiceRow(
+                  context,
+                  mode.icon,
+                  mode.label,
+                  selectedMode == mode,
+                  () => theme.archivedChatsDisplayMode = mode,
+                ),
           ]),
-          if (!kIsWeb && isDesktopTargetPlatform()) ...[
-            const SizedBox(height: AppSpacing.md),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Text(
-                AppStringKeys.appearanceArchivedChatsDesktopHint.l10n(context),
-                style: AppTextStyle.footnote(c.textSecondary),
-              ),
-            ),
-          ],
         ],
       ),
     );

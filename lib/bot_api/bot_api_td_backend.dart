@@ -41,6 +41,7 @@ class BotApiTdBackend {
 
   bool _started = false;
   bool _closed = false;
+  Future<void>? _startOperation;
   bool _polling = false;
   bool _webhookConflict = false;
   String _connectionError = '';
@@ -50,10 +51,29 @@ class BotApiTdBackend {
   bool get webhookConflict => _webhookConflict;
   String get connectionError => _connectionError;
 
-  Future<void> start() async {
-    if (_started || _closed) return;
+  Future<void> start() {
+    final existing = _startOperation;
+    if (existing != null) return existing;
+    if (_started || _closed) return Future<void>.value();
     _started = true;
+
+    late final Future<void> operation;
+    operation = _start().whenComplete(() {
+      if (identical(_startOperation, operation)) _startOperation = null;
+    });
+    _startOperation = operation;
+    return operation;
+  }
+
+  Future<void> _start() async {
     await _store.open();
+    // Application shutdown can close the backend while its database is still
+    // opening. Do not resume initialization or emit fresh work after the
+    // process-terminal shutdown latch has taken ownership.
+    if (_closed) {
+      _store.close();
+      return;
+    }
     _migrateLegacyTransportPlaceholders();
     final me = _converter.user(account.bot);
     _preserveObservedUserPhoto(me);
@@ -83,12 +103,18 @@ class BotApiTdBackend {
   }
 
   Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    _pollGeneration += 1;
-    _client.close();
-    _store.close();
-    _emit(_authorizationUpdate('authorizationStateClosed'));
+    final starting = _startOperation;
+    if (!_closed) {
+      _closed = true;
+      _pollGeneration += 1;
+      _client.close();
+      _store.close();
+      _emit(_authorizationUpdate('authorizationStateClosed'));
+    }
+    // A database open already in progress can finish after close() was called.
+    // Join it so application shutdown cannot approve process exit while that
+    // native SQLite work is still capable of resuming.
+    if (starting != null) await starting;
   }
 
   Future<void> send(Map<String, dynamic> request) async {

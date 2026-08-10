@@ -1173,6 +1173,7 @@ class _LoginViewState extends State<LoginView> {
         semanticLabel: AppStrings.t(AppStringKeys.proxyTitle),
         onTap: _openProxySetup,
         onLongPress: enabled ? _disableProxy : null,
+        onSecondaryTap: enabled ? _disableProxy : null,
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Padding(
           padding: const EdgeInsets.all(10),

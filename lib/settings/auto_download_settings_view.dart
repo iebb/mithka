@@ -6,6 +6,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../platform/adaptive_platform.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'auto_download_media_controller.dart';
@@ -49,6 +50,14 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
+      _network = 'networkTypeWiFi';
+    }
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_refresh);
     super.dispose();
@@ -75,6 +84,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     return SettingsPageScaffold(
       title: AppStrings.t(
         AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
@@ -82,11 +92,14 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
       onBack: () => Navigator.of(context).pop(),
       child: SettingsListView(
         children: [
-          _networkSelector(),
-          const SizedBox(height: AppSpacing.lg),
+          if (!desktop) ...[
+            _networkSelector(),
+            const SizedBox(height: AppSpacing.lg),
+          ],
           SettingsCard.rows(
             rows: [
               SettingsRow(
+                key: ValueKey('auto-download-profile-$_network'),
                 title: AppStrings.t(
                   AppStringKeys.autoDownloadSettingsAutomaticDownload,
                 ),
@@ -174,6 +187,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   Widget _networkSelector() {
     final c = context.colors;
     return SettingsPanel(
+      key: const ValueKey('auto-download-network-selector'),
       padding: const EdgeInsets.all(4),
       child: Row(
         children: [
@@ -186,6 +200,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
           }.entries)
             Expanded(
               child: GestureDetector(
+                key: ValueKey('auto-download-network-${entry.key}'),
                 behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => _network = entry.key),
                 child: AnimatedContainer(

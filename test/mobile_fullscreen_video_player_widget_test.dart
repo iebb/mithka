@@ -679,6 +679,97 @@ void main() {
     }
   });
 
+  testWidgets('Android volume gesture controls the system media stream', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    const volumeChannel = MethodChannel('mithka/system_media_volume');
+    final volumeCalls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(volumeChannel, (call) async {
+          volumeCalls.add(call);
+          return switch (call.method) {
+            'get' => <String, Object>{
+              'index': 6,
+              'minimum': 0,
+              'maximum': 15,
+              'fixed': false,
+            },
+            'set' => <String, Object>{
+              'index': 8,
+              'minimum': 0,
+              'maximum': 15,
+              'fixed': false,
+            },
+            _ => null,
+          };
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(volumeChannel, null);
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final previousPlatform = VideoPlayerPlatform.instance;
+    final platform = _FakeMobileVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      SharedPreferences.setMockInitialValues(const {});
+      final sourcePath = File('pubspec.yaml').absolute.path;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: VideoPlayerView(
+              video: TdFileRef(id: 708, localPath: sourcePath),
+              width: 1920,
+              height: 1080,
+              onClose: () {},
+              streamQuery: _completedVideoQuery(sourcePath, fileId: 708),
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilPlayerReady(tester);
+
+      final playerVolumeWritesBefore = platform.volumeValues.length;
+      final gesture = await tester.startGesture(const Offset(320, 420));
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, -100));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, -50));
+      await tester.pump();
+
+      expect(volumeCalls.first.method, 'get');
+      expect(volumeCalls.where((call) => call.method == 'set'), isNotEmpty);
+      expect(
+        volumeCalls.last.arguments as double,
+        closeTo(0.4 + 170 / 844 * 0.5, 0.001),
+      );
+      expect(find.text('53%'), findsOneWidget);
+      expect(platform.volumeValues, hasLength(playerVolumeWritesBefore));
+
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(platform.volumeValues, hasLength(playerVolumeWritesBefore));
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpUntilDisposed(tester, platform);
+    } finally {
+      VideoPlayerPlatform.instance = previousPlatform;
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('iOS sparse files retain the loopback network controller', (
     tester,
   ) async {
@@ -1628,6 +1719,7 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
   final createdPlayerIds = <int>[];
   final disposedPlayerIds = <int>[];
   final seekPositions = <Duration>[];
+  final volumeValues = <double>[];
 
   @override
   Future<void> init() async {}
@@ -1728,7 +1820,9 @@ class _FakeMobileVideoPlatform extends VideoPlayerPlatform {
   Future<void> setLooping(int playerId, bool looping) async {}
 
   @override
-  Future<void> setVolume(int playerId, double volume) async {}
+  Future<void> setVolume(int playerId, double volume) async {
+    volumeValues.add(volume);
+  }
 
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}

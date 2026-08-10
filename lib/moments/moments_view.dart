@@ -4461,7 +4461,7 @@ class _PostActions extends StatelessWidget {
         const SizedBox(width: _actionGap),
         _actionButton(
           context,
-          HeroAppIcons.share,
+          HeroAppIcons.forward,
           onTap: () => _forward(context),
         ),
       ],

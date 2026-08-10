@@ -26,6 +26,54 @@ void main() {
     }
   });
 
+  test('does not resume backend startup after application shutdown', () async {
+    final openGate = Completer<void>();
+    final store = _DelayedBotApiStore(
+      '${temporaryDirectory.path}/history.sqlite3',
+      openGate,
+    );
+    final updates = <Map<String, dynamic>>[];
+    final backend = BotApiTdBackend(
+      account: BotApiAccount(
+        slot: 3,
+        endpoint: Uri.parse('https://bots.example.test'),
+        bot: const {
+          'id': 999,
+          'is_bot': true,
+          'first_name': 'Mithka Test Bot',
+          'username': 'mithka_test_bot',
+        },
+      ),
+      token: '999:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij',
+      databasePath: store.path,
+      mediaDirectory: '${temporaryDirectory.path}/files',
+      emit: updates.add,
+      client: _FakeBotApiClient((_, _) => const <Object>[]),
+      store: store,
+    );
+
+    final starting = backend.start();
+    await store.openStarted.future;
+    var closeCompleted = false;
+    final closing = backend.close().whenComplete(() => closeCompleted = true);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(closeCompleted, isFalse);
+    openGate.complete();
+    await Future.wait([starting, closing]);
+    expect(closeCompleted, isTrue);
+
+    expect(store.closeCount, 2);
+    expect(
+      updates.map((update) => update['@type']),
+      equals(['updateAuthorizationState']),
+    );
+    expect(
+      (updates.single['authorization_state'] as Map)['@type'],
+      'authorizationStateClosed',
+    );
+  });
+
   test('commits received updates before exposing local TD history', () async {
     final waitForSecondPoll = Completer<Object?>();
     var updateDelivered = false;
@@ -1022,5 +1070,24 @@ class _FakeBotApiClient extends BotApiClient {
   void close() {
     onClose?.call();
     super.close();
+  }
+}
+
+class _DelayedBotApiStore extends BotApiStore {
+  _DelayedBotApiStore(super.path, this._openGate);
+
+  final Completer<void> _openGate;
+  final Completer<void> openStarted = Completer<void>();
+  int closeCount = 0;
+
+  @override
+  Future<void> open() async {
+    if (!openStarted.isCompleted) openStarted.complete();
+    await _openGate.future;
+  }
+
+  @override
+  void close() {
+    closeCount += 1;
   }
 }

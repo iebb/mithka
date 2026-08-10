@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/handoff_service.dart';
 
@@ -78,5 +80,30 @@ void main() {
         isNull,
       );
     });
+  });
+
+  test('cold Handoff waits for the local account catalogue', () async {
+    var readinessChecks = 0;
+
+    await waitForHandoffStartup(
+      isReady: () => ++readinessChecks >= 3,
+      isActive: () => true,
+      retryDelay: Duration.zero,
+    );
+
+    expect(readinessChecks, 3);
+  });
+
+  test('macOS Handoff restores and foregrounds the primary window', () {
+    final appDelegate = File(
+      'macos/Runner/AppDelegate.swift',
+    ).readAsStringSync();
+
+    expect(
+      appDelegate,
+      contains('application.activate(ignoringOtherApps: true)'),
+    );
+    expect(appDelegate, contains('primaryWindow.deminiaturize(nil)'));
+    expect(appDelegate, contains('primaryWindow.makeKeyAndOrderFront(nil)'));
   });
 }

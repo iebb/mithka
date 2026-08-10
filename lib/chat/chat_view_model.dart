@@ -5043,6 +5043,7 @@ class ChatViewModel extends ChangeNotifier {
             'interaction_info': interactionInfo,
           });
           for (final message in targets) {
+            message.commentThreadMetadataKnown = true;
             message.reactions = reactions;
             message.viewCount = interactionInfo?.integer('view_count') ?? 0;
             message.forwardCount =

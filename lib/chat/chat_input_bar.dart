@@ -4795,85 +4795,133 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final sendLabel =
         (editing ? AppStringKeys.messageActionEdit : AppStringKeys.composerSend)
             .l10n(context);
-    final radius = BorderRadius.circular(AppRadius.md);
-    return AppInteractiveSurface(
-      key: const ValueKey('composerSendButton'),
-      semanticLabel: '$sendLabel ($shortcut)',
-      enabled: !disabled,
-      onTap: disabled ? null : () => unawaited(_sendCurrentText()),
-      onLongPress: disabled || editing
-          ? null
-          : () => unawaited(_showTextSendOptions()),
-      borderRadius: radius,
-      child: Container(
-        key: const ValueKey('desktopComposerSendButton'),
-        constraints: const BoxConstraints(minWidth: 112),
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: disabled
-              ? AppTheme.brand.withValues(alpha: 0.42)
-              : editing
-              ? AppTheme.cloverGreen
-              : AppTheme.brand,
-          borderRadius: radius,
+    final color = disabled
+        ? AppTheme.brand.withValues(alpha: 0.42)
+        : editing
+        ? AppTheme.cloverGreen
+        : AppTheme.brand;
+    const splitRadius = Radius.circular(AppRadius.md);
+    final primaryRadius = editing
+        ? const BorderRadius.all(splitRadius)
+        : const BorderRadius.only(
+            topLeft: splitRadius,
+            bottomLeft: splitRadius,
+          );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppInteractiveSurface(
+          key: const ValueKey('composerSendButton'),
+          semanticLabel: '$sendLabel ($shortcut)',
+          enabled: !disabled,
+          onTap: disabled ? null : () => unawaited(_sendCurrentText()),
+          onLongPress: disabled || editing
+              ? null
+              : () => unawaited(_showTextSendOptions()),
+          borderRadius: primaryRadius,
+          child: Container(
+            key: const ValueKey('desktopComposerSendButton'),
+            constraints: const BoxConstraints(minWidth: 112),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: primaryRadius,
+            ),
+            child: !editing && vm.requiresPaidMessage
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const AppIcon(
+                        HeroAppIcons.solidStar,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        'x${vm.paidMessageStarCount}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (editing) ...[
+                        const AppIcon(
+                          HeroAppIcons.check,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        sendLabel,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        shortcut,
+                        key: const ValueKey('desktopComposerShortcutHint'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
-        child: !editing && vm.requiresPaidMessage
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const AppIcon(
-                    HeroAppIcons.solidStar,
-                    size: 14,
-                    color: Colors.white,
+        if (!editing)
+          AppInteractiveSurface(
+            key: const ValueKey('desktopComposerSendOptionsButton'),
+            semanticLabel: AppStringKeys.messageSendOptionsTitle.l10n(context),
+            enabled: !disabled,
+            onTap: disabled
+                ? null
+                : () => unawaited(_showTextSendOptions()),
+            borderRadius: const BorderRadius.only(
+              topRight: splitRadius,
+              bottomRight: splitRadius,
+            ),
+            child: Container(
+              key: const ValueKey('desktopComposerSendOptionsControl'),
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color,
+                border: Border(
+                  left: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.28),
                   ),
-                  const SizedBox(width: 3),
-                  Text(
-                    'x${vm.paidMessageStarCount}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (editing) ...[
-                    const AppIcon(
-                      HeroAppIcons.check,
-                      size: 15,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    sendLabel,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    shortcut,
-                    key: const ValueKey('desktopComposerShortcutHint'),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.78),
-                    ),
-                  ),
-                ],
+                ),
+                borderRadius: const BorderRadius.only(
+                  topRight: splitRadius,
+                  bottomRight: splitRadius,
+                ),
               ),
-      ),
+              child: const AppIcon(
+                HeroAppIcons.chevronDown,
+                size: 12,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 

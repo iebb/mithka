@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chat/quick_reaction_choice.dart';
 import '../components/app_icons.dart';
+import '../platform/adaptive_platform.dart';
 import 'app_theme.dart';
 import 'custom_message_bubble_background.dart';
 import 'emoji_font_catalog.dart';
@@ -95,6 +96,18 @@ enum ArchivedChatsDisplayMode {
   bool get isInline =>
       this == ArchivedChatsDisplayMode.firstPosition ||
       this == ArchivedChatsDisplayMode.nextPage;
+
+  ArchivedChatsDisplayMode effectiveForPlatform({
+    TargetPlatform? platform,
+    bool isWeb = kIsWeb,
+  }) {
+    if (!isWeb &&
+        isDesktopTargetPlatform(platform) &&
+        this == ArchivedChatsDisplayMode.pullDown) {
+      return ArchivedChatsDisplayMode.firstPosition;
+    }
+    return this;
+  }
 
   int insertionIndex({required int chatCount, required int visibleRows}) {
     return switch (this) {

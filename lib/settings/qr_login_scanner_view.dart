@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -5,27 +7,86 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../platform/camera_permission.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 
+typedef QrLoginScannerBuilder =
+    Widget Function(
+      BuildContext context,
+      MobileScannerController controller,
+      void Function(BarcodeCapture capture) onDetect,
+    );
+
 class QrLoginScannerView extends StatefulWidget {
-  const QrLoginScannerView({super.key});
+  const QrLoginScannerView({
+    super.key,
+    this.cameraPermission = const SystemCameraPermissionGateway(),
+    this.scannerBuilder,
+  });
+
+  final CameraPermissionGateway cameraPermission;
+
+  @visibleForTesting
+  final QrLoginScannerBuilder? scannerBuilder;
 
   @override
   State<QrLoginScannerView> createState() => _QrLoginScannerViewState();
 }
 
-class _QrLoginScannerViewState extends State<QrLoginScannerView> {
+class _QrLoginScannerViewState extends State<QrLoginScannerView>
+    with WidgetsBindingObserver {
   late final MobileScannerController _controller = MobileScannerController(
     formats: const [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
+  CameraPermissionAccess? _cameraAccess;
+  bool _permissionBusy = false;
   bool _accepting = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_resolveCameraPermission(request: true));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_resolveCameraPermission(request: false));
+    }
+  }
+
+  @override
   void dispose() {
-    _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_controller.dispose());
     super.dispose();
+  }
+
+  Future<void> _resolveCameraPermission({required bool request}) async {
+    if (_permissionBusy) return;
+    _permissionBusy = true;
+    if (mounted) setState(() {});
+    CameraPermissionAccess access;
+    try {
+      access = request
+          ? await widget.cameraPermission.request()
+          : await widget.cameraPermission.check();
+    } catch (_) {
+      access = CameraPermissionAccess.denied;
+    } finally {
+      _permissionBusy = false;
+    }
+    if (!mounted) return;
+    setState(() => _cameraAccess = access);
+  }
+
+  Future<void> _openCameraSettings() async {
+    await widget.cameraPermission.openSettings();
+    if (!mounted) return;
+    await _resolveCameraPermission(request: false);
   }
 
   Future<void> _handleCapture(BarcodeCapture capture) async {
@@ -84,37 +145,51 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: MobileScanner(
-              controller: _controller,
-              onDetect: _handleCapture,
-              placeholderBuilder: (context) => const ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator.adaptive(strokeWidth: 2.4),
-                  ),
-                ),
-              ),
-              errorBuilder: (context, error) => ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 36),
-                    child: Text(
-                      AppStrings.t(AppStringKeys.privacyLoginQrAcceptFailed),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFFFFFFF),
-                        fontSize: 15,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            child: _cameraAccess == CameraPermissionAccess.granted
+                ? widget.scannerBuilder?.call(
+                        context,
+                        _controller,
+                        _handleCapture,
+                      ) ??
+                      MobileScanner(
+                        key: const ValueKey('qr-login-mobile-scanner'),
+                        controller: _controller,
+                        onDetect: _handleCapture,
+                        placeholderBuilder: (context) => const ColoredBox(
+                          color: Colors.black,
+                          child: Center(
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator.adaptive(
+                                strokeWidth: 2.4,
+                              ),
+                            ),
+                          ),
+                        ),
+                        errorBuilder: (context, error) => ColoredBox(
+                          color: Colors.black,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 36,
+                              ),
+                              child: Text(
+                                AppStrings.t(
+                                  AppStringKeys.qrScannerCameraUnavailable,
+                                ),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFFFFFFFF),
+                                  fontSize: 15,
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                : const ColoredBox(color: Colors.black),
           ),
           Positioned.fill(child: _ScannerOverlay(accepting: _accepting)),
           Positioned(
@@ -181,7 +256,95 @@ class _QrLoginScannerViewState extends State<QrLoginScannerView> {
               ],
             ),
           ),
+          if (_cameraAccess != CameraPermissionAccess.granted)
+            Positioned.fill(child: _cameraPermissionState()),
         ],
+      ),
+    );
+  }
+
+  Widget _cameraPermissionState() {
+    final checking = _cameraAccess == null || _permissionBusy;
+    final blocked = _cameraAccess == CameraPermissionAccess.blocked;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (checking)
+                const SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: CircularProgressIndicator.adaptive(strokeWidth: 2.4),
+                )
+              else ...[
+                Container(
+                  width: 72,
+                  height: 72,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppTheme.brand.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.camera,
+                    size: 32,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  AppStrings.t(AppStringKeys.qrScannerCameraUnavailable),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: 16,
+                    height: 1.35,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  key: ValueKey(
+                    blocked
+                        ? 'qr-login-camera-open-settings'
+                        : 'qr-login-camera-retry',
+                  ),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: blocked
+                      ? _openCameraSettings
+                      : () =>
+                            unawaited(_resolveCameraPermission(request: true)),
+                  child: Container(
+                    height: 46,
+                    padding: const EdgeInsets.symmetric(horizontal: 26),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                    ),
+                    child: Text(
+                      AppStrings.t(
+                        blocked
+                            ? AppStringKeys.storyOpenSettings
+                            : AppStringKeys.privacyRetry,
+                      ),
+                      style: const TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

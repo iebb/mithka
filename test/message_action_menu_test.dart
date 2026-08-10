@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:heroicons_flutter/heroicons_flutter.dart';
 import 'package:mithka/chat/message_action_menu.dart';
 import 'package:mithka/chat/quick_reaction_choice.dart';
+import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -22,12 +24,24 @@ void main() {
     }
   });
 
-  test('action menu matches the compact reaction bar width', () {
+  test('mobile action menu uses content width through a two-by-five grid', () {
     expect(MessageActionMenu.widthForAvailable(400), 332);
     expect(MessageActionMenu.widthForAvailable(300), 300);
     expect(MessageActionMenu.mobileWidthForActionCount(4, 400), 244);
     expect(MessageActionMenu.mobileWidthForActionCount(3, 400), 186);
-    expect(MessageActionMenu.mobileWidthForActionCount(5, 400), 332);
+    expect(MessageActionMenu.mobileWidthForActionCount(5, 400), 302);
+    expect(MessageActionMenu.mobileWidthForActionCount(6, 400), 186);
+    expect(MessageActionMenu.mobileWidthForActionCount(8, 400), 244);
+    expect(MessageActionMenu.mobileWidthForActionCount(9, 400), 302);
+    expect(MessageActionMenu.mobileWidthForActionCount(10, 400), 302);
+    expect(MessageActionMenu.mobileWidthForActionCount(11, 400), 332);
+    expect(MessageActionMenu.mobileWidthForActionCount(10, 280), 280);
+  });
+
+  test('forward has a dedicated curved-right glyph', () {
+    expect(MessageAction.forward.glyph, same(HeroAppIcons.forward));
+    expect(HeroAppIcons.forward.data, HeroiconsOutline.arrowUturnRight);
+    expect(HeroAppIcons.forward.data, isNot(HeroAppIcons.share.data));
   });
 
   test('desktop context menu starts at pointer and stays on screen', () {
@@ -159,7 +173,9 @@ void main() {
     expect(ThemeController(prefs).quickRepliesEnabled, isFalse);
   });
 
-  testWidgets('message menu renders +1 at reaction bar width', (tester) async {
+  testWidgets('message menu renders +1 at its action content width', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final translation = TranslationController(prefs);
@@ -195,7 +211,7 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('message-action-menu-surface')))
           .width,
-      MessageActionMenu.preferredWidth,
+      244,
     );
   });
 

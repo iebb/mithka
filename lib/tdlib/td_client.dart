@@ -228,11 +228,19 @@ class TdClient {
   StreamSubscription<Map<String, dynamic>>? _proxyUpdateSub;
 
   bool _isRunning = false;
+  bool _isShuttingDown = false;
+  bool _shutdownComplete = false;
+  Future<void>? _startOperation;
+  Future<bool>? _shutdownOperation;
   Timer? _debugReceiveTimer;
 
   // Receive isolate management — stored as fields so we can restart on resume.
   ReceivePort? _receivePort;
   StreamSubscription<dynamic>? _receiveSub;
+  Isolate? _receiveIsolate;
+  Future<void>? _receiveIsolateExited;
+  final Set<Future<void>> _receiveIsolateExitFutures = {};
+  int _receiveIsolateGeneration = 0;
   bool _receiveIsolateDead = false;
 
   // Request/response correlation, keyed by the "@extra" we attach.
@@ -261,7 +269,8 @@ class TdClient {
   final Map<int, BotApiAccount> _botApiAccountForSlot = {};
   final Map<int, BotApiTdBackend> _botApiBackendForClient = {};
   final TdAccountLeaseBook _accountLeases = TdAccountLeaseBook();
-  final Map<int, Future<void>> _closingSlots = {};
+  final Map<int, Future<bool>> _closingSlots = {};
+  final Map<int, int> _unconfirmedSlotForClient = {};
   final Set<int> _proxyAppliedClients = {};
   int _activeClientId = 0;
   int _activeSlot = 0;
@@ -411,11 +420,30 @@ class TdClient {
   // MARK: - Lifecycle
 
   /// Creates a client for every known account and starts the receive isolate.
-  Future<void> start() async {
-    if (_proxyTransport != null) return;
-    if (_isRunning) return;
+  Future<void> start() {
+    if (_proxyTransport != null) return Future<void>.value();
+    if (_isShuttingDown || _shutdownComplete) return Future<void>.value();
+    if (_isRunning) return _startOperation ?? Future<void>.value();
     _isRunning = true;
 
+    late final Future<void> operation;
+    operation = _startGuarded().whenComplete(() {
+      if (identical(_startOperation, operation)) _startOperation = null;
+    });
+    _startOperation = operation;
+    return operation;
+  }
+
+  Future<void> _startGuarded() async {
+    try {
+      await _start();
+    } catch (_) {
+      _isRunning = false;
+      rethrow;
+    }
+  }
+
+  Future<void> _start() async {
     // Keep TDLib quiet in the console; raise while debugging if needed.
     _bindings.execute(
       jsonEncode({'@type': 'setLogVerbosityLevel', 'new_verbosity_level': 1}),
@@ -427,6 +455,10 @@ class TdClient {
       SharedPreferences.getInstance(),
       getApplicationSupportDirectory(),
     ).wait;
+    if (_isShuttingDown) {
+      _isRunning = false;
+      return;
+    }
     _prefs = prefs;
     final transferBoost = TransferBoostConfig.fromPrefs(_prefs);
     _bindings.configureTransferBoost(
@@ -516,6 +548,14 @@ class TdClient {
         ? storedActive
         : loaded.first;
 
+    // Quit can be requested while secure storage or session repair is still
+    // resolving. Never create a native client after shutdown has taken
+    // ownership of the process lifecycle.
+    if (_isShuttingDown) {
+      _isRunning = false;
+      return;
+    }
+
     _slots = loaded;
     _activeSlot = active;
     for (final slot in loaded) {
@@ -537,6 +577,15 @@ class TdClient {
     _activeClientId = _clientForSlot[active] ?? 0;
     if (kDebugMode) unawaited(_persistDebugLiveClientIds());
 
+    // Start receiving before the first asynchronous backend startup. If Quit
+    // lands in that window, shutdown must still receive every native
+    // authorizationStateClosed acknowledgement before AppKit exits.
+    if (kDebugMode) {
+      _startDebugReceivePump();
+    } else {
+      _spawnReceiveIsolate();
+    }
+
     // The first request "activates" each client; TDLib then emits its
     // updateAuthorizationState(authorizationStateWaitTdlibParameters).
     for (final cid in _clientForSlot.values.where((id) => id > 0)) {
@@ -547,25 +596,66 @@ class TdClient {
     }
 
     for (final backend in _botApiBackendForClient.values) {
+      if (_isShuttingDown) break;
       await backend.start();
-    }
-
-    if (kDebugMode) {
-      _startDebugReceivePump();
-    } else {
-      _spawnReceiveIsolate();
     }
   }
 
   void _spawnReceiveIsolate() {
+    final generation = ++_receiveIsolateGeneration;
+    _receiveIsolate?.kill(priority: Isolate.immediate);
+    _receiveIsolate = null;
     _receivePort?.close();
-    _receiveSub?.cancel();
+    unawaited(_receiveSub?.cancel());
 
     final port = ReceivePort();
+    final exitPort = ReceivePort();
     _receivePort = port;
     _receiveIsolateDead = false;
+    final exited = Completer<void>();
+    late final Future<void> exitFuture;
+    exitFuture = exited.future.whenComplete(() {
+      _receiveIsolateExitFutures.remove(exitFuture);
+      if (identical(_receiveIsolateExited, exitFuture)) {
+        _receiveIsolateExited = null;
+        _receiveIsolate = null;
+      }
+    });
+    _receiveIsolateExitFutures.add(exitFuture);
+    _receiveIsolateExited = exitFuture;
+    late final StreamSubscription<dynamic> exitSubscription;
+    exitSubscription = exitPort.listen((_) {
+      if (!exited.isCompleted) exited.complete();
+      unawaited(exitSubscription.cancel());
+      exitPort.close();
+    });
 
-    Isolate.spawn(_receiveEntry, port.sendPort, debugName: 'TDLibReceive');
+    unawaited(
+      Isolate.spawn(
+            _receiveEntry,
+            port.sendPort,
+            debugName: 'TDLibReceive',
+            onExit: exitPort.sendPort,
+          )
+          .then<void>((isolate) {
+            if (generation != _receiveIsolateGeneration ||
+                (!_isRunning && !_isShuttingDown)) {
+              isolate.kill(priority: Isolate.immediate);
+              return;
+            }
+            _receiveIsolate = isolate;
+          })
+          .catchError((Object error, StackTrace stackTrace) {
+            if (generation == _receiveIsolateGeneration) {
+              _receiveIsolateDead = true;
+              _failPending('TDLib receive isolate failed to start');
+              debugPrint('🔑 [Mithka] receive isolate failed to start: $error');
+            }
+            if (!exited.isCompleted) exited.complete();
+            unawaited(exitSubscription.cancel());
+            exitPort.close();
+          }),
+    );
     _receiveSub = port.listen((message) {
       // The isolate batches events into one list; the terminal fatal notice is
       // still sent on its own so it can't sit behind a partial batch.
@@ -588,7 +678,7 @@ class TdClient {
   /// Restarts the receive isolate if it died (e.g. after app background→foreground
   /// on Android where the FFI state became stale). Safe to call when healthy.
   void restartReceiveIsolate() {
-    if (!_isRunning) return;
+    if (!_isRunning || _isShuttingDown) return;
     for (final backend in _botApiBackendForClient.values) {
       unawaited(backend.resume());
     }
@@ -599,11 +689,169 @@ class TdClient {
     _spawnReceiveIsolate();
   }
 
+  /// Closes every process-owned Telegram client before the desktop host exits.
+  ///
+  /// macOS unloads `libtdjson` during normal AppKit termination. Letting that
+  /// happen while its receive isolate or native workers are still active can
+  /// abort inside the library's static destructors. This latch keeps normal
+  /// Quit cancelable until every native client confirms
+  /// authorizationStateClosed and the receive isolate itself has exited.
+  /// Persisted accounts, tokens, sessions, and local databases are untouched.
+  Future<bool> shutdown() {
+    if (_proxyTransport != null) {
+      return closeProxy().then((_) => true);
+    }
+    if (_shutdownComplete) return Future<bool>.value(true);
+    final existing = _shutdownOperation;
+    if (existing != null) return existing;
+
+    _isShuttingDown = true;
+    late final Future<bool> operation;
+    operation = _runShutdown().whenComplete(() {
+      if (identical(_shutdownOperation, operation)) {
+        _shutdownOperation = null;
+      }
+    });
+    _shutdownOperation = operation;
+    return operation;
+  }
+
+  Future<bool> _runShutdown() async {
+    try {
+      final closed = await _shutdownOwnedClients();
+      if (closed) {
+        _shutdownComplete = true;
+      }
+      return closed;
+    } catch (_) {
+      // Shutdown is a process-terminal latch. If Quit is cancelled because a
+      // native client failed to close, do not resume ordinary traffic or let a
+      // still-running startup operation create replacement clients. A later
+      // Quit request can retry the remaining close operation safely.
+      rethrow;
+    }
+  }
+
+  Future<bool> _shutdownOwnedClients() async {
+    final starting = _startOperation;
+    if (starting != null) {
+      try {
+        await starting.timeout(const Duration(seconds: 3));
+      } on TimeoutException {
+        // Startup checks the shutdown latch before creating clients, and Bot
+        // API startup checks it again after opening its store. Continue with
+        // the clients that already exist instead of hanging AppKit forever.
+      } catch (error) {
+        debugPrint('🔑 [Mithka] startup ended during Quit: $error');
+      }
+    }
+
+    _ensureReceivePumpForShutdown();
+    final slots = <int>{
+      ..._clientForSlot.keys,
+      ..._closingSlots.keys,
+      ..._unconfirmedSlotForClient.values,
+    };
+    final results = await Future.wait<bool>([
+      for (final slot in slots) _closeSlotForApplicationShutdown(slot),
+    ]);
+    if (results.any((closed) => !closed)) {
+      debugPrint(
+        '🔑 [Mithka] Quit cancelled: a TDLib client did not close in time',
+      );
+      return false;
+    }
+
+    final receiverStopped = await _stopReceivePump();
+    if (!receiverStopped) {
+      debugPrint(
+        '🔑 [Mithka] Quit cancelled: the TDLib receive isolate did not exit',
+      );
+      return false;
+    }
+
+    _failPending('Application is shutting down');
+    for (final waiter in _clientClosedWaiters.values) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+    _clientClosedWaiters.clear();
+    _clientForSlot.clear();
+    _slotForClient.clear();
+    _botApiBackendForClient.clear();
+    _unconfirmedSlotForClient.clear();
+    _activeClientId = 0;
+    _isRunning = false;
+    return true;
+  }
+
+  void _ensureReceivePumpForShutdown() {
+    final hasNativeClient = _clientForSlot.values.any(
+      (clientId) => !_botApiBackendForClient.containsKey(clientId),
+    );
+    if (!hasNativeClient && _unconfirmedSlotForClient.isEmpty) return;
+    if (kDebugMode) {
+      if (_debugReceiveTimer == null) _startDebugReceivePump();
+      return;
+    }
+    if (_receiveIsolateDead || _receiveIsolateExited == null) {
+      _spawnReceiveIsolate();
+    }
+  }
+
+  Future<bool> _closeSlotForApplicationShutdown(int slot) async {
+    try {
+      final closing =
+          _closingSlots[slot] ??
+          _startClosingSlotResult(slot, preserveBotApiAccount: true);
+      return await closing.timeout(const Duration(seconds: 16));
+    } on TimeoutException {
+      return false;
+    } catch (error) {
+      debugPrint('🔑 [Mithka] failed to close account slot $slot: $error');
+      return false;
+    }
+  }
+
+  Future<bool> _stopReceivePump() async {
+    _debugReceiveTimer?.cancel();
+    _debugReceiveTimer = null;
+
+    final receiveSubscription = _receiveSub;
+    _receiveSub = null;
+    await receiveSubscription?.cancel();
+    _receivePort?.close();
+    _receivePort = null;
+
+    final exits = Set<Future<void>>.of(_receiveIsolateExitFutures);
+    final isolate = _receiveIsolate;
+    ++_receiveIsolateGeneration;
+    isolate?.kill(priority: Isolate.immediate);
+    if (exits.isEmpty) {
+      _receiveIsolate = null;
+      return true;
+    }
+    try {
+      await Future.wait(exits).timeout(const Duration(seconds: 3));
+      _receiveIsolate = null;
+      _receiveIsolateExited = null;
+      return true;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
   // MARK: - Account management
+
+  void _ensureAcceptingNewClients() {
+    if (_isShuttingDown || _shutdownComplete) {
+      throw StateError('TDLib is shutting down');
+    }
+  }
 
   /// Creates a fresh account slot (a new TDLib client + database directory)
   /// and returns its slot index. Does not change the active account.
   int addSlot() {
+    _ensureAcceptingNewClients();
     final newSlot = _nextSlot();
     final cid = _bindings.createClientId();
     _slots.add(newSlot);
@@ -621,10 +869,12 @@ class TdClient {
     required String token,
     String endpoint = 'https://api.telegram.org',
   }) async {
+    _ensureAcceptingNewClients();
     if (_proxyTransport != null) {
       throw StateError('Bot accounts must be added from the main app window.');
     }
     if (!_isRunning) await start();
+    _ensureAcceptingNewClients();
     final normalizedToken = normalizeBotToken(token);
     final normalizedEndpoint = normalizeBotApiEndpoint(endpoint);
     final validationClient = BotApiClient(
@@ -657,7 +907,9 @@ class TdClient {
       validationClient.close();
     }
 
+    _ensureAcceptingNewClients();
     await _replaceGlobalBotApiEndpoint(normalizedEndpoint);
+    _ensureAcceptingNewClients();
 
     final previousSlot = _activeSlot;
     final slot = _nextSlot();
@@ -667,6 +919,7 @@ class TdClient {
       bot: bot,
     );
     await BotApiAccountRegistry.save(_prefs, account, normalizedToken);
+    _ensureAcceptingNewClients();
     final clientId = _syntheticBotApiClientId(slot);
     final backend = _createBotApiBackend(account, normalizedToken, clientId);
     _slots.add(slot);
@@ -708,6 +961,7 @@ class TdClient {
   }
 
   Future<void> _replaceGlobalBotApiEndpoint(Uri endpoint) async {
+    _ensureAcceptingNewClients();
     if (endpoint == _botApiEndpoint) return;
     final replacementAccounts = <int, BotApiAccount>{};
     final replacementBackends = <int, BotApiTdBackend>{};
@@ -733,6 +987,7 @@ class TdClient {
       } finally {
         validation.close();
       }
+      _ensureAcceptingNewClients();
       final account = entry.value.copyWith(endpoint: endpoint);
       replacementAccounts[entry.key] = account;
       replacementBackends[clientId] = _createBotApiBackend(
@@ -742,21 +997,26 @@ class TdClient {
       );
     }
 
+    _ensureAcceptingNewClients();
     await BotApiEndpointConfig.save(_prefs, endpoint.toString());
+    _ensureAcceptingNewClients();
     final metadata = [
       for (final account in _botApiAccountForSlot.values)
         replacementAccounts[account.slot] ??
             account.copyWith(endpoint: endpoint),
     ];
     await BotApiAccountRegistry.replaceMetadata(_prefs, metadata);
+    _ensureAcceptingNewClients();
 
     for (final entry in replacementBackends.entries) {
       await _botApiBackendForClient[entry.key]?.close();
     }
+    _ensureAcceptingNewClients();
     _botApiEndpoint = endpoint;
     _botApiAccountForSlot.addAll(replacementAccounts);
     _botApiBackendForClient.addAll(replacementBackends);
     for (final backend in replacementBackends.values) {
+      _ensureAcceptingNewClients();
       await backend.start();
     }
   }
@@ -830,6 +1090,7 @@ class TdClient {
     _proxyAppliedClients.remove(oldClientId);
     await deleteSlotData(slot);
 
+    _ensureAcceptingNewClients();
     final newClientId = _bindings.createClientId();
     _clientForSlot[slot] = newClientId;
     _slotForClient[newClientId] = slot;
@@ -886,6 +1147,7 @@ class TdClient {
     }
     await dbDir.create(recursive: true);
     final sessionFile = File('${dbDir.path}/td.binlog');
+    _ensureAcceptingNewClients();
     _bindings.importSessionString(sessionString, sessionFile.path);
 
     final cid = _bindings.createClientId();
@@ -925,6 +1187,7 @@ class TdClient {
     }
     await dbDir.create(recursive: true);
 
+    _ensureAcceptingNewClients();
     final cid = _bindings.createClientId();
     if (!_slots.contains(newSlot)) _slots.add(newSlot);
     _clientForSlot[newSlot] = cid;
@@ -1208,6 +1471,7 @@ class TdClient {
       throw UnsupportedError('TDLib session string backup is unavailable');
     }
 
+    _ensureAcceptingNewClients();
     final api = ApiCredentialsConfig.fromPrefs(_prefs);
     final useCustomApi = api.isUsable;
     final apiId = useCustomApi ? api.apiId : Secrets.apiId;
@@ -1422,26 +1686,47 @@ class TdClient {
   }
 
   Future<void> _startClosingSlot(int slot) {
+    return _startClosingSlotResult(slot).then<void>((_) {});
+  }
+
+  Future<bool> _startClosingSlotResult(
+    int slot, {
+    bool preserveBotApiAccount = false,
+  }) {
     final existing = _closingSlots[slot];
     if (existing != null) return existing;
-    late final Future<void> closing;
-    closing = _closeClientForSlot(slot).whenComplete(() {
-      if (identical(_closingSlots[slot], closing)) {
-        _closingSlots.remove(slot);
-      }
-    });
+    late final Future<bool> closing;
+    closing =
+        _closeClientForSlot(
+          slot,
+          preserveBotApiAccount: preserveBotApiAccount,
+        ).whenComplete(() {
+          if (identical(_closingSlots[slot], closing)) {
+            _closingSlots.remove(slot);
+          }
+        });
     _closingSlots[slot] = closing;
     return closing;
   }
 
-  Future<void> _closeClientForSlot(int slot) async {
-    final cid = _clientForSlot.remove(slot);
-    if (cid == null) return;
+  Future<bool> _closeClientForSlot(
+    int slot, {
+    bool preserveBotApiAccount = false,
+  }) async {
+    final cid =
+        _clientForSlot.remove(slot) ??
+        _unconfirmedSlotForClient.entries
+            .where((entry) => entry.value == slot)
+            .map((entry) => entry.key)
+            .firstOrNull;
+    if (cid == null) return true;
     final botApiBackend = _botApiBackendForClient.remove(cid);
     if (botApiBackend != null) {
       await botApiBackend.close();
-      await BotApiAccountRegistry.remove(_prefs, slot);
-      _botApiAccountForSlot.remove(slot);
+      if (!preserveBotApiAccount) {
+        await BotApiAccountRegistry.remove(_prefs, slot);
+        _botApiAccountForSlot.remove(slot);
+      }
       _slotForClient.remove(cid);
       TdUserIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
@@ -1449,15 +1734,20 @@ class TdClient {
       _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
       _proxyAppliedClients.remove(cid);
-      return;
+      return true;
     }
-    final closed = Completer<void>();
-    _clientClosedWaiters[cid] = closed;
-    _bindings.send(cid, jsonEncode({'@type': 'close'}));
+    final existingWaiter = _clientClosedWaiters[cid];
+    final closed = existingWaiter ?? Completer<void>();
+    if (existingWaiter == null) {
+      _clientClosedWaiters[cid] = closed;
+      _bindings.send(cid, jsonEncode({'@type': 'close'}));
+    }
+    var didClose = true;
     try {
       await closed.future.timeout(const Duration(seconds: 15));
     } on TimeoutException {
-      // Continue cleanup if a broken client never emits its terminal update.
+      didClose = false;
+      _unconfirmedSlotForClient[cid] = slot;
     } finally {
       if (identical(_clientClosedWaiters[cid], closed)) {
         _clientClosedWaiters.remove(cid);
@@ -1475,6 +1765,8 @@ class TdClient {
       _proxyAppliedClients.remove(cid);
       if (kDebugMode) unawaited(_persistDebugLiveClientIds());
     }
+    if (didClose) _unconfirmedSlotForClient.remove(cid);
+    return didClose;
   }
 
   Future<void> _releaseAccountLease(int slot) async {
@@ -1482,7 +1774,7 @@ class TdClient {
     Future<void>? closing;
     if (plan.closeClient) closing = _startClosingSlot(slot);
     if (plan.deleteData && !_slots.contains(slot)) {
-      closing ??= _closingSlots[slot];
+      closing ??= _closingSlots[slot]?.then<void>((_) {});
       if (closing != null) await closing;
       await _deleteSlotDataNow(slot);
     }
@@ -1512,7 +1804,10 @@ class TdClient {
 
   void _route(Map<String, dynamic> object) {
     final clientId = object.integer('@client_id') ?? -1;
-    final slot = _slotForClient[clientId] ?? _activeSlot;
+    final slot =
+        _slotForClient[clientId] ??
+        _unconfirmedSlotForClient[clientId] ??
+        _activeSlot;
     AvatarAnimationIndex.shared.observe(slot, object);
     TdUserIndex.shared.observe(slot, object);
 
@@ -1533,12 +1828,14 @@ class TdClient {
     if (object.type == 'updateAuthorizationState' &&
         object.obj('authorization_state')?.type == 'authorizationStateClosed') {
       TdUserIndex.shared.clearSlot(slot);
+      _unconfirmedSlotForClient.remove(clientId);
       final waiter = _clientClosedWaiters.remove(clientId);
       if (waiter != null && !waiter.isCompleted) waiter.complete();
     }
     // Bootstrap ANY client that asks for parameters, so every account
     // initializes and stays logged in (not just the active one).
-    if (object.type == 'updateAuthorizationState' &&
+    if (!_isShuttingDown &&
+        object.type == 'updateAuthorizationState' &&
         object.obj('authorization_state')?.type ==
             'authorizationStateWaitTdlibParameters') {
       _sendParameters(clientId);
@@ -1630,6 +1927,7 @@ class TdClient {
   }
 
   void _sendParameters(int clientId) {
+    if (_isShuttingDown || _shutdownComplete) return;
     if (_botApiBackendForClient.containsKey(clientId)) return;
     final slot = _slotForClient[clientId];
     if (slot == null) return;
@@ -1779,6 +2077,7 @@ class TdClient {
 
   /// Fire-and-forget request to a specific account client.
   void sendTo(Map<String, dynamic> request, int clientId) {
+    if (_isShuttingDown || _shutdownComplete) return;
     final proxy = _proxyTransport;
     if (proxy != null) {
       unawaited(proxy.send(Map<String, dynamic>.from(request)));
@@ -1819,6 +2118,7 @@ class TdClient {
   /// selected. Explicit slot removal and local-data deletion are deferred
   /// until every detached window/file owner releases its lease.
   TdAccountLease? retainAccountSlot(int accountSlot) {
+    if (_isShuttingDown || _shutdownComplete) return null;
     final clientId = _clientForSlot[accountSlot];
     if (clientId == null || !_slots.contains(accountSlot)) return null;
     _accountLeases.retain(accountSlot);
@@ -1836,6 +2136,9 @@ class TdClient {
     Map<String, dynamic> request,
     int clientId,
   ) async {
+    if (_isShuttingDown || _shutdownComplete) {
+      throw StateError('TDLib is shutting down');
+    }
     final proxy = _proxyTransport;
     if (proxy != null) {
       final result = await proxy.query(Map<String, dynamic>.from(request));
@@ -1911,6 +2214,7 @@ class TdClient {
 
   /// Synchronous, network-free request (e.g. log level). Returns parsed JSON.
   Map<String, dynamic>? execute(Map<String, dynamic> request) {
+    if (_isShuttingDown || _shutdownComplete) return null;
     final result = _bindings.execute(jsonEncode(request));
     if (result == null) return null;
     final decoded = jsonDecode(result);

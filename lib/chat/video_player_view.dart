@@ -26,6 +26,7 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../platform/player_brightness.dart';
+import '../platform/player_system_volume.dart';
 import '../platform/screen_wakelock.dart';
 import '../platform/system_picture_in_picture.dart';
 import '../tdlib/json_helpers.dart';
@@ -660,6 +661,24 @@ bool usesReusableMobileFullscreenPlayer({
   return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
 }
 
+/// Whether the legacy video surface should install touch-style pan gestures.
+///
+/// Native desktop playback keeps mouse drags free for the desktop interaction
+/// model. Its keyboard shortcuts, pointer-wheel volume adjustment, taps, and
+/// double-click fullscreen action are handled independently and remain active.
+@visibleForTesting
+bool videoPlaybackSurfaceUsesPanGestures({
+  required VideoPlayerPresentation presentation,
+  required TargetPlatform platform,
+  bool isWeb = false,
+}) {
+  if (presentation != VideoPlayerPresentation.fullscreen) return false;
+  if (isWeb) return true;
+  return platform != TargetPlatform.macOS &&
+      platform != TargetPlatform.windows &&
+      platform != TargetPlatform.linux;
+}
+
 @visibleForTesting
 bool isStoppedVideoPlaybackComplete(VideoPlayerValue value) {
   if (value.isPlaying || !value.isInitialized) return false;
@@ -921,6 +940,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   double _gestureStartValue = 0;
   double _gestureValue = 0;
   bool _gestureBrightnessReady = false;
+  bool _gestureVolumeReady = false;
+  bool _gestureUsesSystemVolume = false;
+  int _gestureVolumeRequestGeneration = 0;
   Duration _gestureStartPosition = Duration.zero;
   Duration _gestureSeekPosition = Duration.zero;
   int _gestureNavigationDelta = 0;
@@ -968,6 +990,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   static const _streamStallTimeout = Duration(seconds: 15);
 
   bool get _canUseAndroidPlatformViewFallback =>
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android &&
+      widget.presentation == VideoPlayerPresentation.fullscreen;
+
+  bool get _usesAndroidSystemMediaVolume =>
       !kIsWeb &&
       defaultTargetPlatform == TargetPlatform.android &&
       widget.presentation == VideoPlayerPresentation.fullscreen;
@@ -2511,8 +2538,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     return Scaffold(backgroundColor: Colors.black, body: body);
   }
 
-  bool get _supportsPlaybackGestures =>
-      widget.presentation == VideoPlayerPresentation.fullscreen;
+  bool get _supportsPlaybackGestures => videoPlaybackSurfaceUsesPanGestures(
+    presentation: widget.presentation,
+    platform: defaultTargetPlatform,
+    isWeb: kIsWeb,
+  );
 
   bool get _usesReusableMobileFullscreenPlayer =>
       usesReusableMobileFullscreenPlayer(
@@ -2610,7 +2640,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   bool get _gestureIndicatorReady =>
       _activeGesture != null &&
-      (_activeGesture != _PlayerGesture.brightness || _gestureBrightnessReady);
+      (_activeGesture != _PlayerGesture.brightness ||
+          _gestureBrightnessReady) &&
+      (_activeGesture != _PlayerGesture.volume || _gestureVolumeReady);
 
   void _startPlaybackGesture(
     DragStartDetails details,
@@ -2621,6 +2653,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _gestureStartValue = _volume;
     _gestureValue = _volume;
     _gestureBrightnessReady = false;
+    _gestureVolumeReady = false;
+    _gestureUsesSystemVolume = false;
+    _gestureVolumeRequestGeneration++;
     _gestureStartPosition = controller.value.position;
     _gestureSeekPosition = _gestureStartPosition;
     if (!_controlsVisible) setState(() => _controlsVisible = true);
@@ -2668,6 +2703,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       }
       if (gesture == _PlayerGesture.brightness) {
         unawaited(_beginBrightnessGesture());
+      } else if (gesture == _PlayerGesture.volume) {
+        if (_usesAndroidSystemMediaVolume) {
+          unawaited(_beginSystemVolumeGesture(controller));
+        } else {
+          _gestureStartValue = controller.value.volume;
+          _gestureValue = controller.value.volume;
+          _gestureVolumeReady = true;
+        }
       }
     }
 
@@ -2681,11 +2724,17 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
               .clamp(0, duration.inMilliseconds),
         );
       case _PlayerGesture.volume:
-        _gestureValue =
+        if (!_gestureVolumeReady) break;
+        final target =
             (_gestureStartValue -
                     delta.dy / size.height * _verticalGestureSensitivity)
                 .clamp(0.0, 1.0);
-        controller.setVolume(_gestureValue);
+        if (_gestureUsesSystemVolume) {
+          unawaited(_setSystemVolumeFromGesture(target));
+        } else {
+          _gestureValue = target;
+          controller.setVolume(target);
+        }
       case _PlayerGesture.brightness:
         if (!_gestureBrightnessReady) break;
         _gestureValue =
@@ -2739,6 +2788,41 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     await session?.set(value);
   }
 
+  Future<void> _beginSystemVolumeGesture(
+    VideoPlayerController controller,
+  ) async {
+    final request = ++_gestureVolumeRequestGeneration;
+    final current = await PlayerSystemVolume.current();
+    if (!mounted ||
+        request != _gestureVolumeRequestGeneration ||
+        _activeGesture != _PlayerGesture.volume) {
+      return;
+    }
+    final useSystemVolume = current?.canSet == true;
+    final start = useSystemVolume
+        ? current!.fraction
+        : controller.value.volume.clamp(0.0, 1.0);
+    setState(() {
+      _gestureStartValue = start;
+      _gestureValue = start;
+      _gestureUsesSystemVolume = useSystemVolume;
+      _gestureVolumeReady = true;
+    });
+  }
+
+  Future<void> _setSystemVolumeFromGesture(double value) async {
+    final request = ++_gestureVolumeRequestGeneration;
+    final current = await PlayerSystemVolume.setFraction(value);
+    if (!mounted ||
+        request != _gestureVolumeRequestGeneration ||
+        _activeGesture != _PlayerGesture.volume ||
+        !_gestureUsesSystemVolume ||
+        current == null) {
+      return;
+    }
+    setState(() => _gestureValue = current.fraction);
+  }
+
   void _finishPlaybackGesture(VideoPlayerController controller) {
     final gesture = _activeGesture;
     if (gesture == _PlayerGesture.seek) {
@@ -2750,7 +2834,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         _gestureNavigationDelta != 0 &&
         _canNavigate(_gestureNavigationDelta)) {
       widget.onNavigate?.call(_gestureNavigationDelta);
-    } else if (gesture == _PlayerGesture.volume) {
+    } else if (gesture == _PlayerGesture.volume && !_gestureUsesSystemVolume) {
       _volume = _gestureValue;
     }
     _cancelPlaybackGesture();
@@ -2758,12 +2842,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   void _cancelPlaybackGesture() {
+    _gestureVolumeRequestGeneration++;
     if (!mounted) return;
     setState(() {
       _activeGesture = null;
       _activeGestureSide = null;
       _gestureOrigin = null;
       _gestureNavigationDelta = 0;
+      _gestureVolumeReady = false;
+      _gestureUsesSystemVolume = false;
     });
   }
 
@@ -3423,7 +3510,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                 KeyedSubtree(
                                   key: const ValueKey('video-more-share'),
                                   child: _FocusableVideoMenuItem(
-                                    icon: HeroAppIcons.share,
+                                    icon: HeroAppIcons.forward,
                                     label: AppStringKeys.topicChatShare.l10n(
                                       context,
                                     ),

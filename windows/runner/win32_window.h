@@ -2,9 +2,11 @@
 #define RUNNER_WIN32_WINDOW_H_
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
@@ -52,6 +54,15 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Keeps the primary window alive when it is minimized or closed, exposing
+  // Show and Quit through a native notification-area icon. Call before Create
+  // so a second launch can safely reactivate a window that is still starting.
+  void EnableBackgroundTray();
+
+  // Values shared with the single-instance activation path in main.cpp.
+  static const wchar_t* GetWindowClassName();
+  static constexpr UINT kActivatePrimaryWindowMessage = WM_APP + 0x52;
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -63,6 +74,15 @@ class Win32Window {
                                  UINT const message,
                                  WPARAM const wparam,
                                  LPARAM const lparam) noexcept;
+
+  // Handles primary-window tray/background messages before Flutter plugins.
+  // Close must be intercepted here: the multi-window plugin's normal main
+  // close path posts WM_QUIT before the runner can otherwise hide the window.
+  std::optional<LRESULT> HandleBackgroundTrayMessage(
+      HWND window,
+      UINT const message,
+      WPARAM const wparam,
+      LPARAM const lparam) noexcept;
 
   // Called when CreateAndShow is called, allowing subclass window-related
   // setup. Subclasses should return false if setup fails.
@@ -90,7 +110,22 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  bool AddTrayIcon();
+  void RemoveTrayIcon();
+  void HideToTray();
+  void RestoreFromTray();
+  void ShowTrayMenu();
+  void RequestQuit();
+  void FinalizeDestruction();
+
   bool quit_on_close_ = false;
+  bool background_tray_enabled_ = false;
+  bool tray_icon_added_ = false;
+  bool quit_requested_ = false;
+  bool destruction_finalized_ = false;
+  bool destroying_ = false;
+  UINT taskbar_created_message_ = 0;
+  NOTIFYICONDATAW tray_icon_data_{};
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

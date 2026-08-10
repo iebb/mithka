@@ -251,14 +251,7 @@ ArchivedChatsDisplayMode effectiveChatListArchiveDisplayMode(
   ArchivedChatsDisplayMode requested, {
   TargetPlatform? platform,
   bool isWeb = kIsWeb,
-}) {
-  if (!isWeb &&
-      isDesktopTargetPlatform(platform) &&
-      requested == ArchivedChatsDisplayMode.pullDown) {
-    return ArchivedChatsDisplayMode.firstPosition;
-  }
-  return requested;
-}
+}) => requested.effectiveForPlatform(platform: platform, isWeb: isWeb);
 
 /// Returns the distance that leading chat-list content must move up to cancel
 /// the viewport's native top overscroll in the same frame.
