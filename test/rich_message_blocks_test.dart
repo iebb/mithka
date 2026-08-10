@@ -75,6 +75,21 @@ void main() {
             {'@type': 'pageBlockMathematicalExpression', 'expression': r'x^2'},
             {'@type': 'pageBlockAnchor', 'name': 'chapter-1'},
             {
+              '@type': 'pageBlockButtonRow',
+              'align': {'@type': 'pageBlockHorizontalAlignmentCenter'},
+              'buttons': [
+                {
+                  '@type': 'inlineButton',
+                  'text': _plain('Open Mithka'),
+                  'style': {'@type': 'buttonStylePrimary'},
+                  'type': {
+                    '@type': 'inlineKeyboardButtonTypeUrl',
+                    'url': 'https://mithka.app',
+                  },
+                },
+              ],
+            },
+            {
               '@type': 'pageBlockList',
               'items': [
                 {
@@ -215,18 +230,83 @@ void main() {
     ]);
     expect(message.richBlocks[1].size, 2);
     expect(message.richBlocks[2].language, 'dart');
-    expect(message.richBlocks[8].listItems.single.isChecked, isTrue);
-    expect(message.richBlocks[11].video?.id, 11);
-    expect(message.richBlocks[12].music?.file?.id, 12);
-    expect(message.richBlocks[13].image?.id, 13);
-    expect(message.richBlocks[13].hasSpoiler, isTrue);
-    expect(message.richBlocks[14].video?.id, 14);
-    expect(message.richBlocks[15].voice?.file?.id, 15);
-    expect(message.richBlocks[16].children.single.image?.id, 16);
-    expect(message.richBlocks[17].children.single.video?.id, 17);
-    expect(message.richBlocks[18].tableRows.single.single.text, 'Cell');
-    expect(message.richBlocks[19].children.single.text, 'Inside');
-    expect(message.richBlocks[20].mapLocation?.latitude, 35.681236);
+    expect(message.richBlocks[8].buttons.single.text, 'Open Mithka');
+    expect(message.richBlocks[8].buttons.single.url, 'https://mithka.app');
+    expect(
+      message.richBlocks[8].buttons.single.style,
+      MessageButtonStyle.primary,
+    );
+    expect(message.richBlocks[8].horizontalAlignment, 'center');
+    expect(message.richBlocks[9].listItems.single.isChecked, isTrue);
+    expect(message.richBlocks[12].video?.id, 11);
+    expect(message.richBlocks[13].music?.file?.id, 12);
+    expect(message.richBlocks[14].image?.id, 13);
+    expect(message.richBlocks[14].hasSpoiler, isTrue);
+    expect(message.richBlocks[15].video?.id, 14);
+    expect(message.richBlocks[16].voice?.file?.id, 15);
+    expect(message.richBlocks[17].children.single.image?.id, 16);
+    expect(message.richBlocks[18].children.single.video?.id, 17);
+    expect(message.richBlocks[19].tableRows.single.single.text, 'Cell');
+    expect(message.richBlocks[20].children.single.text, 'Inside');
+    expect(message.richBlocks[21].mapLocation?.latitude, 35.681236);
+  });
+
+  test('parses Bot API button rows and inline rich-text buttons', () {
+    final message = TDParse.message({
+      '@type': 'message',
+      'id': 502,
+      'chat_id': 42,
+      'date': 1,
+      'is_outgoing': false,
+      'content': {
+        '@type': 'messageRichMessage',
+        'message': {
+          'blocks': [
+            {
+              'type': 'paragraph',
+              'text': [
+                {'type': 'bold', 'text': 'Choose '},
+                {
+                  'type': 'button',
+                  'button': {
+                    'text': 'inline',
+                    'style': 'danger',
+                    'url': 'https://inline.example',
+                  },
+                },
+              ],
+            },
+            {
+              'type': 'button_row',
+              'align': 'right',
+              'buttons': [
+                {
+                  'text': 'Visit',
+                  'style': 'success',
+                  'url': 'https://example.com',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(message, isNotNull);
+    expect(message!.richBlocks, hasLength(2));
+    final paragraph = message.richBlocks.first;
+    expect(paragraph.text, 'Choose \uFFFC');
+    final inline = paragraph.textEntities.singleWhere(
+      (entity) => entity.type == 'textEntityTypeButton',
+    );
+    expect(inline.button?.text, 'inline');
+    expect(inline.button?.url, 'https://inline.example');
+    expect(inline.button?.style, MessageButtonStyle.danger);
+    final row = message.richBlocks.last;
+    expect(row.kind, RichMessageBlockKind.buttonRow);
+    expect(row.horizontalAlignment, 'right');
+    expect(row.buttons.single.text, 'Visit');
+    expect(row.buttons.single.style, MessageButtonStyle.success);
   });
 
   test('treats whitespace-only rich media captions as absent', () {

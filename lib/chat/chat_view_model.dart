@@ -1502,7 +1502,7 @@ class ChatViewModel extends ChangeNotifier {
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': botApiDirect
-          ? botApiDirectRichMessageInputContent(html, files)
+          ? botApiDirectRichMessageInputContent(html, files, blocks: blocks)
           : richMessageInputContent(blocks),
     };
     if (replyTo != null) {

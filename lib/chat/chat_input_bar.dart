@@ -2300,7 +2300,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       submitText: AppStringKeys.composerSend,
     );
     if (result == null || !mounted) return;
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     final canAttemptSend = await vm.prepareMessageSend();
     if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
@@ -6155,7 +6159,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       submitText: AppStringKeys.composerSend,
     );
     if (result == null || !mounted) return;
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     final canAttemptSend = await vm.prepareMessageSend();
     if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
@@ -6199,6 +6207,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             targetChatId: widget.vm.chatId,
             tdClient: TdClient.shared,
             files: files,
+            blocks: segment.blocks,
             onProgress: _updateRelayProgress,
           );
           sentAny = true;

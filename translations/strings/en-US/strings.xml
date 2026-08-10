@@ -2448,6 +2448,7 @@
     <string name="richTextBlockAnimation">Animation</string>
     <string name="richTextBlockAudio">Audio</string>
     <string name="richTextBlockBlockQuotation">Block quote</string>
+    <string name="richTextBlockButtonRow">Button row</string>
     <string name="richTextBlockCollage">Collage</string>
     <string name="richTextBlockDetails">Details</string>
     <string name="richTextBlockDivider">Divider</string>
@@ -2468,6 +2469,16 @@
     <string name="richTextComposerAddColumn">Add column</string>
     <string name="richTextComposerAddRow">Add row</string>
     <string name="richTextComposerAnchorName">Anchor name</string>
+    <string name="richTextComposerButtonAdd">Add button</string>
+    <string name="richTextComposerButtonDefaultLabel">Open link</string>
+    <string name="richTextComposerButtonInvalid">Every button needs a label and a valid HTTP, HTTPS, or tg URL.</string>
+    <string name="richTextComposerButtonLabel">Button label</string>
+    <string name="richTextComposerButtonRemove">Remove button</string>
+    <string name="richTextComposerButtonStyleDanger">Danger</string>
+    <string name="richTextComposerButtonStyleDefault">Default</string>
+    <string name="richTextComposerButtonStylePrimary">Primary</string>
+    <string name="richTextComposerButtonStyleSuccess">Success</string>
+    <string name="richTextComposerButtonUrl">Button URL</string>
     <string name="richTextComposerContentPlaceholder">Enter rich text</string>
     <string name="richTextComposerDetailsContent">Details content</string>
     <string name="richTextComposerDetailsOpen">Open by default</string>

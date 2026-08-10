@@ -815,6 +815,67 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('button row submits native TDLib button blocks', (
+      tester,
+    ) async {
+      RichTextComposerResult? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: RichTextComposerView(
+            initialText: '',
+            allowMedia: false,
+            onSubmit: (value) => result = value,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Button row'));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('rich-button-row-editor')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('rich-button-label-0')),
+        'Visit Mithka',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('rich-button-url-0')),
+        'https://mithka.app',
+      );
+      await tester.tap(find.byKey(const ValueKey('rich-button-align-right')));
+      await tester.tap(find.byKey(const ValueKey('rich-button-style-success')));
+      await tester.pump();
+      await tester.tap(find.text('Post'));
+      await tester.pump();
+
+      expect(result, isNotNull);
+      expect(result!.text, isEmpty);
+      expect(result!.segments, hasLength(1));
+      final block = result!.segments.single.blocks.single;
+      expect(block['@type'], 'inputPageBlockButtonRow');
+      expect(
+        (block['align'] as Map)['@type'],
+        'pageBlockHorizontalAlignmentRight',
+      );
+      final button = (block['buttons'] as List).single as Map<String, dynamic>;
+      expect(button['text'], {
+        '@type': 'richTextPlain',
+        'text': 'Visit Mithka',
+      });
+      expect((button['type'] as Map)['url'], 'https://mithka.app');
+      expect((button['style'] as Map)['@type'], 'buttonStyleSuccess');
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('inserting a block replaces an empty paragraph', (
       tester,
     ) async {

@@ -2224,6 +2224,7 @@ abstract final class AppStringKeys {
   static const richTextBlockAnimation = 'richTextBlockAnimation';
   static const richTextBlockAudio = 'richTextBlockAudio';
   static const richTextBlockBlockQuotation = 'richTextBlockBlockQuotation';
+  static const richTextBlockButtonRow = 'richTextBlockButtonRow';
   static const richTextBlockCollage = 'richTextBlockCollage';
   static const richTextBlockDetails = 'richTextBlockDetails';
   static const richTextBlockDivider = 'richTextBlockDivider';
@@ -2245,6 +2246,21 @@ abstract final class AppStringKeys {
   static const richTextComposerAddColumn = 'richTextComposerAddColumn';
   static const richTextComposerAddRow = 'richTextComposerAddRow';
   static const richTextComposerAnchorName = 'richTextComposerAnchorName';
+  static const richTextComposerButtonAdd = 'richTextComposerButtonAdd';
+  static const richTextComposerButtonDefaultLabel =
+      'richTextComposerButtonDefaultLabel';
+  static const richTextComposerButtonInvalid = 'richTextComposerButtonInvalid';
+  static const richTextComposerButtonLabel = 'richTextComposerButtonLabel';
+  static const richTextComposerButtonRemove = 'richTextComposerButtonRemove';
+  static const richTextComposerButtonStyleDanger =
+      'richTextComposerButtonStyleDanger';
+  static const richTextComposerButtonStyleDefault =
+      'richTextComposerButtonStyleDefault';
+  static const richTextComposerButtonStylePrimary =
+      'richTextComposerButtonStylePrimary';
+  static const richTextComposerButtonStyleSuccess =
+      'richTextComposerButtonStyleSuccess';
+  static const richTextComposerButtonUrl = 'richTextComposerButtonUrl';
   static const richTextComposerContentPlaceholder =
       'richTextComposerContentPlaceholder';
   static const richTextComposerDetailsContent =

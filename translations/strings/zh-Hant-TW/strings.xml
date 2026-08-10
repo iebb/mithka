@@ -2441,6 +2441,7 @@
     <string name="richTextBlockAnimation">動畫</string>
     <string name="richTextBlockAudio">音訊</string>
     <string name="richTextBlockBlockQuotation">區塊引用</string>
+    <string name="richTextBlockButtonRow">按鈕列</string>
     <string name="richTextBlockCollage">拼貼</string>
     <string name="richTextBlockDetails">摺疊詳情</string>
     <string name="richTextBlockDivider">分隔線</string>
@@ -2461,6 +2462,16 @@
     <string name="richTextComposerAddColumn">新增欄</string>
     <string name="richTextComposerAddRow">新增列</string>
     <string name="richTextComposerAnchorName">錨點名稱</string>
+    <string name="richTextComposerButtonAdd">新增按鈕</string>
+    <string name="richTextComposerButtonDefaultLabel">開啟連結</string>
+    <string name="richTextComposerButtonInvalid">每個按鈕都需要標籤及有效的 HTTP、HTTPS 或 tg URL。</string>
+    <string name="richTextComposerButtonLabel">按鈕標籤</string>
+    <string name="richTextComposerButtonRemove">刪除按鈕</string>
+    <string name="richTextComposerButtonStyleDanger">危險</string>
+    <string name="richTextComposerButtonStyleDefault">預設</string>
+    <string name="richTextComposerButtonStylePrimary">主要</string>
+    <string name="richTextComposerButtonStyleSuccess">成功</string>
+    <string name="richTextComposerButtonUrl">按鈕 URL</string>
     <string name="richTextComposerContentPlaceholder">輸入富文字內容</string>
     <string name="richTextComposerDetailsContent">詳細內容</string>
     <string name="richTextComposerDetailsOpen">預設展開</string>

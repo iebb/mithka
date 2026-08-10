@@ -2441,6 +2441,7 @@
     <string name="richTextBlockAnimation">动画</string>
     <string name="richTextBlockAudio">音频</string>
     <string name="richTextBlockBlockQuotation">块引用</string>
+    <string name="richTextBlockButtonRow">按钮行</string>
     <string name="richTextBlockCollage">拼贴</string>
     <string name="richTextBlockDetails">折叠详情</string>
     <string name="richTextBlockDivider">分割线</string>
@@ -2461,6 +2462,16 @@
     <string name="richTextComposerAddColumn">添加列</string>
     <string name="richTextComposerAddRow">添加行</string>
     <string name="richTextComposerAnchorName">锚点名称</string>
+    <string name="richTextComposerButtonAdd">添加按钮</string>
+    <string name="richTextComposerButtonDefaultLabel">打开链接</string>
+    <string name="richTextComposerButtonInvalid">每个按钮都需要标签及有效的 HTTP、HTTPS 或 tg URL。</string>
+    <string name="richTextComposerButtonLabel">按钮标签</string>
+    <string name="richTextComposerButtonRemove">删除按钮</string>
+    <string name="richTextComposerButtonStyleDanger">危险</string>
+    <string name="richTextComposerButtonStyleDefault">默认</string>
+    <string name="richTextComposerButtonStylePrimary">主要</string>
+    <string name="richTextComposerButtonStyleSuccess">成功</string>
+    <string name="richTextComposerButtonUrl">按钮 URL</string>
     <string name="richTextComposerContentPlaceholder">输入富文本内容</string>
     <string name="richTextComposerDetailsContent">详细内容</string>
     <string name="richTextComposerDetailsOpen">默认展开</string>

@@ -82,6 +82,7 @@ void main() {
       kind: RichMessageBlockKind.paragraph,
       text: 'Paragraph',
     );
+    MessageButton? tappedButton;
     final message = ChatMessage(
       id: 900,
       chatId: 42,
@@ -115,6 +116,14 @@ void main() {
           kind: RichMessageBlockKind.anchor,
           name: 'chapter-1',
         ),
+        const RichMessageBlock.buttonRow([
+          MessageButton(
+            text: 'Open Mithka',
+            type: 'inlineKeyboardButtonTypeUrl',
+            url: 'https://mithka.app',
+            style: MessageButtonStyle.success,
+          ),
+        ], horizontalAlignment: 'center'),
         const RichMessageBlock.container(
           kind: RichMessageBlockKind.list,
           listItems: [
@@ -182,6 +191,7 @@ void main() {
                 message: message,
                 peerTitle: 'Test',
                 isGroup: false,
+                onButtonTap: (_, button) => tappedButton = button,
               ),
             ),
           ),
@@ -204,6 +214,10 @@ void main() {
         reason: 'Missing renderer for ${kind.name}',
       );
     }
+    expect(find.text('Open Mithka'), findsOneWidget);
+    await tester.tap(find.text('Open Mithka'));
+    await tester.pump();
+    expect(tappedButton?.url, 'https://mithka.app');
     expect(tester.takeException(), isNull);
   });
 }

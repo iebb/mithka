@@ -2441,6 +2441,7 @@
     <string name="richTextBlockAnimation">애니메이션</string>
     <string name="richTextBlockAudio">오디오</string>
     <string name="richTextBlockBlockQuotation">블록 인용</string>
+    <string name="richTextBlockButtonRow">버튼 행</string>
     <string name="richTextBlockCollage">콜라주</string>
     <string name="richTextBlockDetails">접이식 세부 정보</string>
     <string name="richTextBlockDivider">구분선</string>
@@ -2461,6 +2462,16 @@
     <string name="richTextComposerAddColumn">열 추가</string>
     <string name="richTextComposerAddRow">행 추가</string>
     <string name="richTextComposerAnchorName">앵커 이름</string>
+    <string name="richTextComposerButtonAdd">버튼 추가</string>
+    <string name="richTextComposerButtonDefaultLabel">링크 열기</string>
+    <string name="richTextComposerButtonInvalid">각 버튼에 레이블과 유효한 HTTP, HTTPS 또는 tg URL을 입력하세요.</string>
+    <string name="richTextComposerButtonLabel">버튼 레이블</string>
+    <string name="richTextComposerButtonRemove">버튼 삭제</string>
+    <string name="richTextComposerButtonStyleDanger">위험</string>
+    <string name="richTextComposerButtonStyleDefault">기본</string>
+    <string name="richTextComposerButtonStylePrimary">주요</string>
+    <string name="richTextComposerButtonStyleSuccess">성공</string>
+    <string name="richTextComposerButtonUrl">버튼 URL</string>
     <string name="richTextComposerContentPlaceholder">서식 있는 텍스트 입력</string>
     <string name="richTextComposerDetailsContent">세부 내용</string>
     <string name="richTextComposerDetailsOpen">기본으로 펼치기</string>

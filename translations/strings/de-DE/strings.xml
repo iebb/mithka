@@ -2448,6 +2448,7 @@
     <string name="richTextBlockAnimation">Animation</string>
     <string name="richTextBlockAudio">Audio</string>
     <string name="richTextBlockBlockQuotation">Blockzitat</string>
+    <string name="richTextBlockButtonRow">Schaltflächenzeile</string>
     <string name="richTextBlockCollage">Collage</string>
     <string name="richTextBlockDetails">Details</string>
     <string name="richTextBlockDivider">Trennlinie</string>
@@ -2468,6 +2469,16 @@
     <string name="richTextComposerAddColumn">Spalte hinzufügen</string>
     <string name="richTextComposerAddRow">Zeile hinzufügen</string>
     <string name="richTextComposerAnchorName">Ankername</string>
+    <string name="richTextComposerButtonAdd">Schaltfläche hinzufügen</string>
+    <string name="richTextComposerButtonDefaultLabel">Link öffnen</string>
+    <string name="richTextComposerButtonInvalid">Jede Schaltfläche benötigt eine Beschriftung und eine gültige HTTP-, HTTPS- oder tg-URL.</string>
+    <string name="richTextComposerButtonLabel">Beschriftung</string>
+    <string name="richTextComposerButtonRemove">Schaltfläche entfernen</string>
+    <string name="richTextComposerButtonStyleDanger">Gefahr</string>
+    <string name="richTextComposerButtonStyleDefault">Standard</string>
+    <string name="richTextComposerButtonStylePrimary">Primär</string>
+    <string name="richTextComposerButtonStyleSuccess">Erfolg</string>
+    <string name="richTextComposerButtonUrl">Schaltflächen-URL</string>
     <string name="richTextComposerContentPlaceholder">Rich-Text eingeben</string>
     <string name="richTextComposerDetailsContent">Detailinhalt</string>
     <string name="richTextComposerDetailsOpen">Standardmäßig geöffnet</string>

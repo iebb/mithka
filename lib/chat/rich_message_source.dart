@@ -51,34 +51,374 @@ class RichMessageSendFile {
 /// never sees this shape.
 Map<String, dynamic> botApiDirectRichMessageInputContent(
   String html,
-  List<RichMessageSendFile> files,
-) {
-  if (html.trim().isEmpty) {
-    throw ArgumentError.value(html, 'html', 'Rich message HTML required');
+  List<RichMessageSendFile> files, {
+  List<Map<String, dynamic>> blocks = const [],
+}) {
+  if (html.trim().isEmpty && blocks.isEmpty) {
+    throw ArgumentError.value(
+      html,
+      'html',
+      'Rich message HTML or blocks required',
+    );
   }
   return {
     '@type': 'inputMessageRichMessage',
-    'rich_message': {
-      'html': html,
-      if (files.isNotEmpty)
-        'media': [
-          for (var index = 0; index < files.length; index++)
-            {
-              'id': files[index].id,
-              'media': _botApiDirectRichMedia(
-                files[index].attachment,
-                'attach://rich_media_$index',
-              ),
-            },
-        ],
-      'is_rtl': false,
-      'skip_entity_detection': false,
-    },
+    'rich_message': botApiRichMessagePayload(html, files, blocks: blocks),
     if (files.isNotEmpty)
       'bot_api_files': [
         for (var index = 0; index < files.length; index++)
           {'field': 'rich_media_$index', 'path': files[index].attachment.path},
       ],
+  };
+}
+
+/// Builds the Bot API `InputRichMessage` shared by the direct bot backend and
+/// the relay-bot path.
+///
+/// HTML remains the compatibility path for existing blocks. A button can't be
+/// represented by the older rich-message HTML vocabulary, so any segment that
+/// contains an [inputPageBlockButtonRow] or inline [richTextButton] is sent
+/// through Bot API block entities.
+Map<String, dynamic> botApiRichMessagePayload(
+  String html,
+  List<RichMessageSendFile> files, {
+  List<Map<String, dynamic>> blocks = const [],
+}) {
+  final useBlocks = blocks.any(_containsRichButtonBlock);
+  if (useBlocks) {
+    var mediaIndex = 0;
+    Map<String, dynamic> convert(Map<String, dynamic> block) =>
+        _botApiInputRichBlock(block, files, () => mediaIndex++);
+    return {
+      'blocks': blocks.map(convert).toList(growable: false),
+      'is_rtl': false,
+      'skip_entity_detection': false,
+    };
+  }
+  if (html.trim().isEmpty) {
+    throw ArgumentError.value(html, 'html', 'Rich message HTML required');
+  }
+  return {
+    'html': html,
+    if (files.isNotEmpty)
+      'media': [
+        for (var index = 0; index < files.length; index++)
+          {
+            'id': files[index].id,
+            'media': _botApiDirectRichMedia(
+              files[index].attachment,
+              'attach://rich_media_$index',
+            ),
+          },
+      ],
+    'is_rtl': false,
+    'skip_entity_detection': false,
+  };
+}
+
+bool _containsRichButtonBlock(Map<String, dynamic> block) =>
+    _containsRichButtonElement(block);
+
+bool _containsRichButtonElement(Object? value) {
+  if (value is Map<String, dynamic>) {
+    if (value['@type'] == 'inputPageBlockButtonRow' ||
+        value['@type'] == 'richTextButton') {
+      return true;
+    }
+    return value.values.any(_containsRichButtonElement);
+  }
+  return value is List && value.any(_containsRichButtonElement);
+}
+
+Map<String, dynamic> _botApiInputRichBlock(
+  Map<String, dynamic> block,
+  List<RichMessageSendFile> files,
+  int Function() takeMediaIndex,
+) {
+  Object? richText(Object? value) => _botApiRichText(value);
+  List<Map<String, dynamic>> children(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map<String, dynamic>>()
+        .map((child) => _botApiInputRichBlock(child, files, takeMediaIndex))
+        .toList(growable: false);
+  }
+
+  Map<String, dynamic>? caption(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    return {
+      'text': richText(value['text']),
+      if (value['credit'] != null) 'credit': richText(value['credit']),
+    };
+  }
+
+  Map<String, dynamic> media(String type, String field) {
+    final index = takeMediaIndex();
+    if (index < 0 || index >= files.length) {
+      throw StateError('Rich message media block has no matching file');
+    }
+    final attachment = files[index].attachment;
+    return {
+      'type': type,
+      field: _botApiDirectRichMedia(attachment, 'attach://rich_media_$index'),
+      if (block['caption'] != null) 'caption': caption(block['caption']),
+    };
+  }
+
+  final type = block['@type'];
+  return switch (type) {
+    'inputPageBlockSectionHeading' => {
+      'type': 'heading',
+      'text': richText(block['text']),
+      'size': block['size'],
+    },
+    'inputPageBlockParagraph' => {
+      'type': 'paragraph',
+      'text': richText(block['text']),
+    },
+    'inputPageBlockPreformatted' => {
+      'type': 'pre',
+      'text': richText(block['text']),
+      if ('${block['language'] ?? ''}'.isNotEmpty)
+        'language': block['language'],
+    },
+    'inputPageBlockFooter' => {
+      'type': 'footer',
+      'text': richText(block['footer'] ?? block['text']),
+    },
+    'inputPageBlockDivider' => {'type': 'divider'},
+    'inputPageBlockMathematicalExpression' => {
+      'type': 'mathematical_expression',
+      'expression': block['expression'],
+    },
+    'inputPageBlockAnchor' => {'type': 'anchor', 'name': block['name']},
+    'inputPageBlockList' => {
+      'type': 'list',
+      'items': [
+        for (final item
+            in (block['items'] as List? ?? const [])
+                .whereType<Map<String, dynamic>>())
+          {
+            'blocks': children(item['blocks']),
+            if (item['has_checkbox'] == true) 'has_checkbox': true,
+            if (item['is_checked'] == true) 'is_checked': true,
+            if ((item['value'] as int? ?? 0) != 0) 'value': item['value'],
+            if ('${item['type'] ?? ''}'.isNotEmpty) 'type': item['type'],
+          },
+      ],
+    },
+    'inputPageBlockBlockQuote' => {
+      'type': 'blockquote',
+      'blocks': children(block['blocks']),
+      if (block['credit'] != null) 'credit': richText(block['credit']),
+    },
+    'inputPageBlockPullQuote' => {
+      'type': 'pullquote',
+      'text': richText(block['text']),
+      if (block['credit'] != null) 'credit': richText(block['credit']),
+    },
+    'inputPageBlockCollage' => {
+      'type': 'collage',
+      'blocks': children(block['blocks']),
+      if (block['caption'] != null) 'caption': caption(block['caption']),
+    },
+    'inputPageBlockSlideshow' => {
+      'type': 'slideshow',
+      'blocks': children(block['blocks']),
+      if (block['caption'] != null) 'caption': caption(block['caption']),
+    },
+    'inputPageBlockTable' => {
+      'type': 'table',
+      'cells': [
+        for (final row in (block['cells'] as List? ?? const []))
+          if (row is List)
+            [
+              for (final cell in row.whereType<Map<String, dynamic>>())
+                {
+                  'text': richText(cell['text']),
+                  if (cell['is_header'] == true) 'is_header': true,
+                  if ((cell['colspan'] as int? ?? 1) != 1)
+                    'colspan': cell['colspan'],
+                  if ((cell['rowspan'] as int? ?? 1) != 1)
+                    'rowspan': cell['rowspan'],
+                  'align': _botApiHorizontalAlignment(cell['align']),
+                  'valign': _botApiVerticalAlignment(cell['valign']),
+                },
+            ],
+      ],
+      if (block['caption'] != null) 'caption': richText(block['caption']),
+      if (block['is_bordered'] == true) 'is_bordered': true,
+      if (block['is_striped'] == true) 'is_striped': true,
+    },
+    'inputPageBlockDetails' => {
+      'type': 'details',
+      'summary': richText(block['header'] ?? block['summary']),
+      'blocks': children(block['blocks']),
+      if (block['is_open'] == true) 'is_open': true,
+    },
+    'inputPageBlockMap' => {
+      'type': 'map',
+      'location': block['location'],
+      'zoom': block['zoom'],
+      'width': block['width'],
+      'height': block['height'],
+      if (block['caption'] != null) 'caption': caption(block['caption']),
+    },
+    'inputPageBlockAnimation' => media('animation', 'animation'),
+    'inputPageBlockAudio' => media('audio', 'audio'),
+    'inputPageBlockPhoto' => media('photo', 'photo'),
+    'inputPageBlockVideo' => media('video', 'video'),
+    'inputPageBlockVoiceNote' => media('voice_note', 'voice_note'),
+    'inputPageBlockButtonRow' => {
+      'type': 'button_row',
+      'buttons': [
+        for (final button
+            in (block['buttons'] as List? ?? const [])
+                .whereType<Map<String, dynamic>>())
+          _botApiInlineButton(button),
+      ],
+      'align': _botApiHorizontalAlignment(block['align']),
+    },
+    _ => throw UnsupportedError('Unsupported rich block: $type'),
+  };
+}
+
+Object? _botApiRichText(Object? value) {
+  if (value == null || value is String) return value;
+  if (value is List) {
+    return value.map(_botApiRichText).toList(growable: false);
+  }
+  if (value is! Map<String, dynamic>) return null;
+  final type = value['@type'];
+  if (type == 'richTextPlain') return '${value['text'] ?? ''}';
+  if (type == 'richTexts') {
+    return (value['texts'] as List? ?? const [])
+        .map(_botApiRichText)
+        .toList(growable: false);
+  }
+  if (type == 'richTextCustomEmoji') {
+    return {
+      'type': 'custom_emoji',
+      'custom_emoji_id': value['custom_emoji_id'],
+      'alternative_text': value['alternative_text'],
+    };
+  }
+  if (type == 'richTextMathematicalExpression') {
+    return {
+      'type': 'mathematical_expression',
+      'expression': value['expression'],
+    };
+  }
+  if (type == 'richTextButton') {
+    final button = value['button'];
+    return {
+      'type': 'button',
+      if (button is Map<String, dynamic>) 'button': _botApiInlineButton(button),
+    };
+  }
+  final botType = switch (type) {
+    'richTextBold' => 'bold',
+    'richTextItalic' => 'italic',
+    'richTextUnderline' => 'underline',
+    'richTextStrikethrough' => 'strikethrough',
+    'richTextSpoiler' => 'spoiler',
+    'richTextDateTime' => 'date_time',
+    'richTextMentionName' => 'text_mention',
+    'richTextFixed' => 'code',
+    'richTextUrl' => 'url',
+    'richTextEmailAddress' => 'email_address',
+    'richTextPhoneNumber' => 'phone_number',
+    'richTextBankCardNumber' => 'bank_card_number',
+    'richTextMention' => 'mention',
+    'richTextHashtag' => 'hashtag',
+    'richTextCashtag' => 'cashtag',
+    'richTextBotCommand' => 'bot_command',
+    'richTextMarked' => 'marked',
+    'richTextSubscript' => 'subscript',
+    'richTextSuperscript' => 'superscript',
+    'richTextAnchor' => 'anchor',
+    'richTextAnchorLink' => 'anchor_link',
+    'richTextReference' => 'reference',
+    'richTextReferenceLink' => 'reference_link',
+    _ => null,
+  };
+  if (botType == null) {
+    throw UnsupportedError('Unsupported rich text: $type');
+  }
+  return {
+    'type': botType,
+    if (value['text'] != null) 'text': _botApiRichText(value['text']),
+    if (type == 'richTextDateTime') ...{
+      'unix_time': value['unix_time'],
+      if (_dateTimeFormat(value['formatting_type']).isNotEmpty)
+        'date_time_format': _dateTimeFormat(value['formatting_type']),
+    },
+    if (type == 'richTextMentionName') 'user': {'id': value['user_id']},
+    for (final field in const [
+      'url',
+      'email_address',
+      'phone_number',
+      'name',
+      'anchor_name',
+      'reference_name',
+    ])
+      if (value[field] != null) field: value[field],
+  };
+}
+
+Map<String, dynamic> _botApiInlineButton(Map<String, dynamic> button) {
+  final type = button['type'];
+  final action = type is Map<String, dynamic>
+      ? type
+      : const <String, dynamic>{};
+  final actionType = action['@type'];
+  final style = _botApiButtonStyle(button['style']);
+  return {
+    'text': _botApiRichText(button['text']),
+    'style': ?style,
+    if (actionType == 'inlineKeyboardButtonTypeUrl') 'url': action['url'],
+    if (actionType == 'inlineKeyboardButtonTypeWebApp')
+      'web_app': {'url': action['url']},
+    if (actionType == 'inlineKeyboardButtonTypeCallback')
+      'callback_data': action['data'],
+    if (actionType == 'inlineKeyboardButtonTypeCopyText')
+      'copy_text': {'text': action['text']},
+    if (actionType == 'inlineKeyboardButtonTypeUser')
+      'url': 'tg://user?id=${action['user_id']}',
+    if (actionType == 'inlineKeyboardButtonTypeSwitchInline') ...{
+      if (action['in_current_chat'] == true)
+        'switch_inline_query_current_chat': action['query']
+      else
+        'switch_inline_query': action['query'],
+    },
+  };
+}
+
+String? _botApiButtonStyle(Object? value) {
+  final type = value is Map<String, dynamic> ? value['@type'] : value;
+  return switch (type) {
+    'buttonStylePrimary' => 'primary',
+    'buttonStyleDanger' => 'danger',
+    'buttonStyleSuccess' => 'success',
+    _ => null,
+  };
+}
+
+String _botApiHorizontalAlignment(Object? value) {
+  final type = value is Map<String, dynamic> ? value['@type'] : value;
+  return switch (type) {
+    'pageBlockHorizontalAlignmentCenter' => 'center',
+    'pageBlockHorizontalAlignmentRight' => 'right',
+    _ => 'left',
+  };
+}
+
+String _botApiVerticalAlignment(Object? value) {
+  final type = value is Map<String, dynamic> ? value['@type'] : value;
+  return switch (type) {
+    'pageBlockVerticalAlignmentMiddle' => 'middle',
+    'pageBlockVerticalAlignmentBottom' => 'bottom',
+    _ => 'top',
   };
 }
 

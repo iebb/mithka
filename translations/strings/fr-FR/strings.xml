@@ -2448,6 +2448,7 @@
     <string name="richTextBlockAnimation">Animation</string>
     <string name="richTextBlockAudio">Audio</string>
     <string name="richTextBlockBlockQuotation">Citation en bloc</string>
+    <string name="richTextBlockButtonRow">Rangée de boutons</string>
     <string name="richTextBlockCollage">Collage</string>
     <string name="richTextBlockDetails">Détails</string>
     <string name="richTextBlockDivider">Séparateur</string>
@@ -2468,6 +2469,16 @@
     <string name="richTextComposerAddColumn">Ajouter une colonne</string>
     <string name="richTextComposerAddRow">Ajouter une ligne</string>
     <string name="richTextComposerAnchorName">Nom de l’ancre</string>
+    <string name="richTextComposerButtonAdd">Ajouter un bouton</string>
+    <string name="richTextComposerButtonDefaultLabel">Ouvrir le lien</string>
+    <string name="richTextComposerButtonInvalid">Chaque bouton doit avoir un libellé et une URL HTTP, HTTPS ou tg valide.</string>
+    <string name="richTextComposerButtonLabel">Libellé du bouton</string>
+    <string name="richTextComposerButtonRemove">Supprimer le bouton</string>
+    <string name="richTextComposerButtonStyleDanger">Danger</string>
+    <string name="richTextComposerButtonStyleDefault">Par défaut</string>
+    <string name="richTextComposerButtonStylePrimary">Principal</string>
+    <string name="richTextComposerButtonStyleSuccess">Succès</string>
+    <string name="richTextComposerButtonUrl">URL du bouton</string>
     <string name="richTextComposerContentPlaceholder">Saisissez du texte enrichi</string>
     <string name="richTextComposerDetailsContent">Contenu détaillé</string>
     <string name="richTextComposerDetailsOpen">Ouvert par défaut</string>

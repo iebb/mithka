@@ -2441,6 +2441,7 @@
     <string name="richTextBlockAnimation">アニメーション</string>
     <string name="richTextBlockAudio">音声</string>
     <string name="richTextBlockBlockQuotation">ブロック引用</string>
+    <string name="richTextBlockButtonRow">ボタン行</string>
     <string name="richTextBlockCollage">コラージュ</string>
     <string name="richTextBlockDetails">詳細</string>
     <string name="richTextBlockDivider">区切り線</string>
@@ -2461,6 +2462,16 @@
     <string name="richTextComposerAddColumn">列を追加</string>
     <string name="richTextComposerAddRow">行を追加</string>
     <string name="richTextComposerAnchorName">アンカー名</string>
+    <string name="richTextComposerButtonAdd">ボタンを追加</string>
+    <string name="richTextComposerButtonDefaultLabel">リンクを開く</string>
+    <string name="richTextComposerButtonInvalid">各ボタンにラベルと有効な HTTP、HTTPS、または tg URL を入力してください。</string>
+    <string name="richTextComposerButtonLabel">ボタンのラベル</string>
+    <string name="richTextComposerButtonRemove">ボタンを削除</string>
+    <string name="richTextComposerButtonStyleDanger">危険</string>
+    <string name="richTextComposerButtonStyleDefault">標準</string>
+    <string name="richTextComposerButtonStylePrimary">プライマリ</string>
+    <string name="richTextComposerButtonStyleSuccess">成功</string>
+    <string name="richTextComposerButtonUrl">ボタンの URL</string>
     <string name="richTextComposerContentPlaceholder">リッチテキストを入力</string>
     <string name="richTextComposerDetailsContent">詳細内容</string>
     <string name="richTextComposerDetailsOpen">デフォルトで開く</string>

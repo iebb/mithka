@@ -435,6 +435,7 @@ enum _RichBlockKind {
   collage,
   slideshow,
   table,
+  buttonRow,
   details,
   map,
   animation,
@@ -504,6 +505,39 @@ class _RichMediaGroupDraft {
   void dispose() => caption.dispose();
 }
 
+enum _RichButtonAlignment { left, center, right }
+
+enum _RichButtonStyle { standard, primary, success, danger }
+
+class _RichButtonDraft {
+  _RichButtonDraft({String label = '', String url = ''})
+    : label = TextEditingController(text: label),
+      url = TextEditingController(text: url);
+
+  final TextEditingController label;
+  final TextEditingController url;
+  _RichButtonStyle style = _RichButtonStyle.primary;
+
+  void dispose() {
+    label.dispose();
+    url.dispose();
+  }
+}
+
+class _RichButtonRowDraft {
+  _RichButtonRowDraft({required String defaultLabel})
+    : buttons = [_RichButtonDraft(label: defaultLabel)];
+
+  final List<_RichButtonDraft> buttons;
+  _RichButtonAlignment alignment = _RichButtonAlignment.left;
+
+  void dispose() {
+    for (final button in buttons) {
+      button.dispose();
+    }
+  }
+}
+
 class _RichContentBlock {
   _RichContentBlock._({
     required this.kind,
@@ -513,6 +547,7 @@ class _RichContentBlock {
     this.attachment,
     this.generic,
     this.mediaGroup,
+    this.buttonRow,
   }) : id = _nextId++;
 
   factory _RichContentBlock.text(_RichTextBlock text, {_RichBlockKind? kind}) =>
@@ -542,6 +577,9 @@ class _RichContentBlock {
   factory _RichContentBlock.mediaGroup(_RichMediaGroupDraft group) =>
       _RichContentBlock._(kind: group.kind, mediaGroup: group);
 
+  factory _RichContentBlock.buttonRow(_RichButtonRowDraft row) =>
+      _RichContentBlock._(kind: _RichBlockKind.buttonRow, buttonRow: row);
+
   static int _nextId = 1;
 
   static _RichBlockKind _kindForAttachment(OutgoingAttachment attachment) {
@@ -564,6 +602,7 @@ class _RichContentBlock {
   final OutgoingAttachment? attachment;
   final _RichGenericDraft? generic;
   final _RichMediaGroupDraft? mediaGroup;
+  final _RichButtonRowDraft? buttonRow;
 }
 
 class _RichTextComposerViewState extends State<RichTextComposerView> {
@@ -644,6 +683,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     block.math?.dispose();
     block.generic?.dispose();
     block.mediaGroup?.dispose();
+    block.buttonRow?.dispose();
   }
 
   void _submit() {
@@ -668,7 +708,7 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
     void flushHtml() {
       final html = htmlBuffer.toString().trim();
-      if (html.isNotEmpty) {
+      if (html.isNotEmpty || inputBlocks.isNotEmpty) {
         segments.add(
           RichMessageSendSegment.html(
             html,
@@ -745,6 +785,35 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         continue;
       }
       flushAttachments();
+      final buttonRow = block.buttonRow;
+      if (buttonRow != null) {
+        if (buttonRow.buttons.isEmpty) continue;
+        final buttons = <Map<String, dynamic>>[];
+        for (final button in buttonRow.buttons) {
+          final label = button.label.text.trim();
+          final url = button.url.text.trim();
+          if (label.isEmpty || !_isValidRichButtonUrl(url)) {
+            showToast(
+              context,
+              AppStringKeys.richTextComposerButtonInvalid.l10n(context),
+            );
+            return;
+          }
+          buttons.add({
+            '@type': 'inlineButton',
+            'text': formattedTextToRichText(label, const []),
+            'type': {'@type': 'inlineKeyboardButtonTypeUrl', 'url': url},
+            if (button.style != _RichButtonStyle.standard)
+              'style': {'@type': button.style.tdType},
+          });
+        }
+        inputBlocks.add({
+          '@type': 'inputPageBlockButtonRow',
+          'buttons': buttons,
+          'align': {'@type': buttonRow.alignment.tdType},
+        });
+        continue;
+      }
       String text;
       List<Map<String, dynamic>> blockEntities = const [];
       if (block.text != null) {
@@ -823,6 +892,14 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       }
       final group = block.mediaGroup;
       if (group != null) text.write(group.caption.text);
+      final buttonRow = block.buttonRow;
+      if (buttonRow != null) {
+        for (final button in buttonRow.buttons) {
+          text
+            ..write(button.label.text)
+            ..write(button.url.text);
+        }
+      }
       final table = block.table;
       if (table != null) {
         for (final row in table.cells) {
@@ -833,6 +910,15 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       }
     }
     return telegramUtf8CharacterCount(text.toString());
+  }
+
+  bool _isValidRichButtonUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.hasScheme) return false;
+    if (uri.scheme == 'http' || uri.scheme == 'https') {
+      return uri.host.isNotEmpty;
+    }
+    return uri.scheme == 'tg';
   }
 
   String _mediaBlockHtml(OutgoingAttachment attachment, String id) {
@@ -1161,6 +1247,15 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         );
       case _RichBlockKind.table:
         _insertTable();
+      case _RichBlockKind.buttonRow:
+        _insertStructuredBlock(
+          _RichContentBlock.buttonRow(
+            _RichButtonRowDraft(
+              defaultLabel: AppStringKeys.richTextComposerButtonDefaultLabel
+                  .l10n(context),
+            ),
+          ),
+        );
       case _RichBlockKind.details:
         _insertStructuredBlock(
           _RichContentBlock.generic(
@@ -1467,6 +1562,10 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     }
     final table = block.table;
     if (table == null) {
+      final buttonRow = block.buttonRow;
+      if (buttonRow != null) {
+        return _buttonRowEditor(c, index, buttonRow);
+      }
       final group = block.mediaGroup;
       if (group != null) return _mediaGroupEditor(c, index, group);
       final generic = block.generic;
@@ -1807,6 +1906,256 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
   bool get _hasAnyText => _blocks.any(
     (block) => block.text?.controller.text.trim().isNotEmpty ?? false,
   );
+
+  Widget _buttonRowEditor(
+    AppColors c,
+    int blockIndex,
+    _RichButtonRowDraft row,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 3, 12, 3),
+      child: Container(
+        key: const ValueKey('rich-button-row-editor'),
+        padding: const EdgeInsets.fromLTRB(10, 9, 8, 10),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: c.divider, width: 0.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppStringKeys.richTextBlockButtonRow.l10n(context),
+                    style: AppTextStyle.callout(
+                      c.textPrimary,
+                      weight: AppTextWeight.semibold,
+                    ),
+                  ),
+                ),
+                for (final alignment in _RichButtonAlignment.values)
+                  _buttonAlignmentControl(c, row, alignment),
+                const SizedBox(width: 2),
+                _miniIconButton(
+                  c,
+                  icon: HeroAppIcons.trash,
+                  label: AppStringKeys.richTextComposerRemoveBlock.l10n(
+                    context,
+                  ),
+                  destructive: true,
+                  onTap: () => _removeStructuredBlock(blockIndex),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (var index = 0; index < row.buttons.length; index++) ...[
+              if (index > 0) const SizedBox(height: 8),
+              _buttonDraftEditor(c, row, index),
+            ],
+            const SizedBox(height: 8),
+            GestureDetector(
+              key: const ValueKey('rich-button-add'),
+              behavior: HitTestBehavior.opaque,
+              onTap: row.buttons.length >= 8
+                  ? null
+                  : () {
+                      setState(() {
+                        row.buttons.add(_RichButtonDraft());
+                      });
+                    },
+              child: Container(
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.brand.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                    color: AppTheme.brand.withValues(alpha: 0.24),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.plus,
+                      size: 16,
+                      color: row.buttons.length >= 8
+                          ? c.textTertiary
+                          : AppTheme.brand,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      AppStringKeys.richTextComposerButtonAdd.l10n(context),
+                      style: AppTextStyle.caption(
+                        row.buttons.length >= 8
+                            ? c.textTertiary
+                            : AppTheme.brand,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buttonAlignmentControl(
+    AppColors c,
+    _RichButtonRowDraft row,
+    _RichButtonAlignment alignment,
+  ) {
+    final selected = row.alignment == alignment;
+    return Tooltip(
+      message: alignment.labelKey.l10n(context),
+      excludeFromSemantics: true,
+      child: GestureDetector(
+        key: ValueKey('rich-button-align-${alignment.name}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => row.alignment = alignment),
+        child: Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.brand.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: AppIcon(
+            alignment.icon,
+            size: 16,
+            color: selected ? AppTheme.brand : c.textTertiary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buttonDraftEditor(AppColors c, _RichButtonRowDraft row, int index) {
+    final button = row.buttons[index];
+    return Container(
+      key: ValueKey('rich-button-item-$index'),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: ValueKey('rich-button-label-$index'),
+            controller: button.label,
+            onChanged: (_) => setState(() {}),
+            style: AppTextStyle.callout(c.textPrimary),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
+              hintText: AppStringKeys.richTextComposerButtonLabel.l10n(context),
+              hintStyle: AppTextStyle.callout(c.textTertiary),
+            ),
+          ),
+          Container(height: 0.5, color: c.divider),
+          TextField(
+            key: ValueKey('rich-button-url-$index'),
+            controller: button.url,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            enableSuggestions: false,
+            onChanged: (_) => setState(() {}),
+            style: AppTextStyle.callout(c.textPrimary),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
+              hintText: AppStringKeys.richTextComposerButtonUrl.l10n(context),
+              hintStyle: AppTextStyle.callout(c.textTertiary),
+            ),
+          ),
+          const SizedBox(height: 7),
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children: [
+                    for (final style in _RichButtonStyle.values)
+                      _buttonStyleChip(c, button, style),
+                  ],
+                ),
+              ),
+              _miniIconButton(
+                c,
+                icon: HeroAppIcons.trash,
+                label: AppStringKeys.richTextComposerButtonRemove.l10n(context),
+                destructive: true,
+                onTap: row.buttons.length <= 1
+                    ? null
+                    : () {
+                        setState(() {
+                          row.buttons.removeAt(index).dispose();
+                        });
+                      },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buttonStyleChip(
+    AppColors c,
+    _RichButtonDraft button,
+    _RichButtonStyle style,
+  ) {
+    final selected = button.style == style;
+    final accent = switch (style) {
+      _RichButtonStyle.standard => c.textSecondary,
+      _RichButtonStyle.primary => AppTheme.brand,
+      _RichButtonStyle.success => const Color(0xFF22A559),
+      _RichButtonStyle.danger => const Color(0xFFE94B4B),
+    };
+    return GestureDetector(
+      key: ValueKey('rich-button-style-${style.name}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => button.style = style),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 27),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? accent : accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border.all(
+            color: selected ? accent : accent.withValues(alpha: 0.24),
+            width: 0.5,
+          ),
+        ),
+        child: Text(
+          style.labelKey.l10n(context),
+          style: AppTextStyle.caption(
+            selected ? Colors.white : accent,
+          ).copyWith(fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
 
   Widget _genericBlockEditor(AppColors c, int index, _RichContentBlock block) {
     if (block.kind == _RichBlockKind.map) {
@@ -2827,6 +3176,12 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             label: AppStringKeys.richTextComposerInsertTable.l10n(context),
             onTap: () => unawaited(_insertBlockKind(_RichBlockKind.table)),
           ),
+          _iconButton(
+            c,
+            icon: HeroAppIcons.link,
+            label: _RichBlockKind.buttonRow.labelKey.l10n(context),
+            onTap: () => unawaited(_insertBlockKind(_RichBlockKind.buttonRow)),
+          ),
           _actionChip(
             c,
             '∑',
@@ -3466,6 +3821,7 @@ extension on _RichBlockKind {
     _RichBlockKind.collage => AppStringKeys.richTextBlockCollage,
     _RichBlockKind.slideshow => AppStringKeys.richTextBlockSlideshow,
     _RichBlockKind.table => AppStringKeys.richTextBlockTable,
+    _RichBlockKind.buttonRow => AppStringKeys.richTextBlockButtonRow,
     _RichBlockKind.details => AppStringKeys.richTextBlockDetails,
     _RichBlockKind.map => AppStringKeys.richTextBlockMap,
     _RichBlockKind.animation => AppStringKeys.richTextBlockAnimation,
@@ -3491,6 +3847,7 @@ extension on _RichBlockKind {
     _RichBlockKind.collage => HeroAppIcons.images,
     _RichBlockKind.slideshow => HeroAppIcons.tableColumns,
     _RichBlockKind.table => HeroAppIcons.tableCells,
+    _RichBlockKind.buttonRow => HeroAppIcons.link,
     _RichBlockKind.details => HeroAppIcons.bars,
     _RichBlockKind.map => HeroAppIcons.locationPin,
     _RichBlockKind.animation => HeroAppIcons.gif,
@@ -3500,6 +3857,45 @@ extension on _RichBlockKind {
     _RichBlockKind.voiceNote => HeroAppIcons.microphone,
     _RichBlockKind.thinking => HeroAppIcons.comments,
     _RichBlockKind.document => HeroAppIcons.file,
+  };
+}
+
+extension on _RichButtonAlignment {
+  String get tdType => switch (this) {
+    _RichButtonAlignment.left => 'pageBlockHorizontalAlignmentLeft',
+    _RichButtonAlignment.center => 'pageBlockHorizontalAlignmentCenter',
+    _RichButtonAlignment.right => 'pageBlockHorizontalAlignmentRight',
+  };
+
+  String get labelKey => switch (this) {
+    _RichButtonAlignment.left => AppStringKeys.richTextTableAlignLeft,
+    _RichButtonAlignment.center => AppStringKeys.richTextTableAlignCenter,
+    _RichButtonAlignment.right => AppStringKeys.richTextTableAlignRight,
+  };
+
+  AppIconData get icon => switch (this) {
+    _RichButtonAlignment.left => HeroAppIcons.alignLeft,
+    _RichButtonAlignment.center => HeroAppIcons.alignCenter,
+    _RichButtonAlignment.right => HeroAppIcons.alignRight,
+  };
+}
+
+extension on _RichButtonStyle {
+  String get tdType => switch (this) {
+    _RichButtonStyle.standard => 'buttonStyleDefault',
+    _RichButtonStyle.primary => 'buttonStylePrimary',
+    _RichButtonStyle.success => 'buttonStyleSuccess',
+    _RichButtonStyle.danger => 'buttonStyleDanger',
+  };
+
+  String get labelKey => switch (this) {
+    _RichButtonStyle.standard =>
+      AppStringKeys.richTextComposerButtonStyleDefault,
+    _RichButtonStyle.primary =>
+      AppStringKeys.richTextComposerButtonStylePrimary,
+    _RichButtonStyle.success =>
+      AppStringKeys.richTextComposerButtonStyleSuccess,
+    _RichButtonStyle.danger => AppStringKeys.richTextComposerButtonStyleDanger,
   };
 }
 

@@ -536,7 +536,11 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   }
 
   Future<void> _sendRichText(RichTextComposerResult result) async {
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     try {
       if (!await _pickerViewModel.prepareMessageSend() || !mounted) return;
       if (_pickerViewModel.requiresPaidMessage) {
@@ -602,6 +606,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
                 targetChatId: widget.arguments.chatId!,
                 tdClient: TdClient.shared,
                 files: files,
+                blocks: segment.blocks,
               );
               sentAny = true;
             } else if (segment.attachments.isNotEmpty) {

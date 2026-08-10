@@ -2011,6 +2011,7 @@ class _MessageBubbleState extends State<MessageBubble>
         outgoing,
       ),
       RichMessageBlockKind.anchor => const SizedBox.shrink(),
+      RichMessageBlockKind.buttonRow => _richButtonRowBlock(block, outgoing),
       RichMessageBlockKind.list => _richListBlock(block, outgoing),
       RichMessageBlockKind.blockQuote ||
       RichMessageBlockKind.pullQuote => _richQuoteContainer(block, outgoing),
@@ -2025,6 +2026,30 @@ class _MessageBubbleState extends State<MessageBubble>
       RichMessageBlockKind.details => _richDetailsBlock(block, outgoing),
       RichMessageBlockKind.map => _richMapBlock(block, outgoing),
     };
+  }
+
+  Widget _richButtonRowBlock(RichMessageBlock block, bool outgoing) {
+    final alignment = switch (block.horizontalAlignment) {
+      'center' => WrapAlignment.center,
+      'right' => WrapAlignment.end,
+      _ => WrapAlignment.start,
+    };
+    return SizedBox(
+      key: const ValueKey('rich-message-button-row'),
+      width: _bubbleMaxWidth(),
+      child: Wrap(
+        alignment: alignment,
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final button in block.buttons)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 88, maxWidth: 220),
+              child: _buttonCell(button, outgoing),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _richTextBlock(
@@ -3857,6 +3882,7 @@ class _MessageBubbleState extends State<MessageBubble>
       link,
       entities ?? message.textEntities,
       effectiveFontSize,
+      outgoing,
     );
     if (appendMeta) children.add(_metaSpan(outgoing));
     final style = DefaultTextStyle.of(
@@ -4037,6 +4063,7 @@ class _MessageBubbleState extends State<MessageBubble>
     Color link,
     List<MessageTextEntity> sourceEntities,
     double fontSize,
+    bool outgoing,
   ) {
     final entities =
         sourceEntities
@@ -4063,7 +4090,9 @@ class _MessageBubbleState extends State<MessageBubble>
         cursor = next;
         continue;
       }
-      spans.addAll(_textSegmentSpans(segment, active, base, link, fontSize));
+      spans.addAll(
+        _textSegmentSpans(segment, active, base, link, fontSize, outgoing),
+      );
       cursor = next;
     }
     return spans;
@@ -4075,6 +4104,7 @@ class _MessageBubbleState extends State<MessageBubble>
     Color base,
     Color link,
     double fontSize,
+    bool outgoing,
   ) {
     final spoilerKey = _spoilerKey(active);
     final spoilerHidden =
@@ -4101,6 +4131,18 @@ class _MessageBubbleState extends State<MessageBubble>
               .where((e) => e.type != 'textEntityTypeSpoiler')
               .toList(growable: false);
     final style = _entityStyle(effectiveActive, base, link);
+    final inlineButton = _inlineButton(effectiveActive);
+    if (inlineButton != null) {
+      return [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 88, maxWidth: 220),
+            child: _buttonCell(inlineButton, outgoing),
+          ),
+        ),
+      ];
+    }
     final customEmojiId = _customEmojiId(effectiveActive);
     if (customEmojiId != null) {
       return [
@@ -4195,6 +4237,15 @@ class _MessageBubbleState extends State<MessageBubble>
 
   bool _hasInlineCode(List<MessageTextEntity> active) {
     return active.any((e) => e.type == 'textEntityTypeCode');
+  }
+
+  MessageButton? _inlineButton(List<MessageTextEntity> active) {
+    for (final entity in active.reversed) {
+      if (entity.type == 'textEntityTypeButton' && entity.button != null) {
+        return entity.button;
+      }
+    }
+    return null;
   }
 
   int? _customEmojiId(List<MessageTextEntity> active) {
