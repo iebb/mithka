@@ -1,5 +1,8 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
+
+import '../platform/adaptive_platform.dart';
 
 /// A route-owned animation driver for [FullPageBackSwipe].
 ///
@@ -73,6 +76,11 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
     if (_pointer != null) return;
     _reset();
     if (!widget.enabled) return;
+    final desktopPointer =
+        isDesktopTargetPlatform(Theme.of(context).platform) &&
+        (event.kind == PointerDeviceKind.mouse ||
+            event.kind == PointerDeviceKind.trackpad);
+    if (desktopPointer) return;
     _pointer = event.pointer;
     _velocity = VelocityTracker.withKind(event.kind)
       ..addPosition(event.timeStamp, event.position);

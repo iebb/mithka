@@ -416,6 +416,26 @@ class TdFileCenter {
     }, clientId);
   }
 
+  /// Renews a visible whole-file download without allocating a query waiter.
+  ///
+  /// TDLib emits updateFile for the resumed transfer. Fire-and-forget matters
+  /// here: this is the bounded path waiter's one recovery attempt, and a lost
+  /// response must not accumulate another permanently pending query.
+  void resumeDownload(int fileId, {int? accountSlot}) {
+    _startIfNeeded();
+    final slot = accountSlot ?? _client.activeSlot;
+    final clientId = _client.clientId(slot);
+    if (clientId == null) return;
+    _client.sendTo({
+      '@type': 'downloadFile',
+      'file_id': fileId,
+      'priority': 32,
+      'offset': 0,
+      'limit': 0,
+      'synchronous': false,
+    }, clientId);
+  }
+
   /// Drops the remembered local path for a file id.
   ///
   /// TDLib deletes cached files on its own (storage optimizer, "clear cache",
@@ -425,6 +445,33 @@ class TdFileCenter {
   void forget(int fileId, {int? accountSlot}) {
     final slot = accountSlot ?? _client.activeSlot;
     _cache.remove(_key(slot, fileId));
+  }
+
+  Future<void> _requestPathDownload(int fileId, int accountSlot) async {
+    try {
+      final response = await _client.queryForSlot({
+        '@type': 'downloadFile',
+        'file_id': fileId,
+        'priority': 16,
+        'offset': 0,
+        'limit': 0,
+        'synchronous': false,
+      }, accountSlot);
+      _ingest(response, accountSlot: accountSlot);
+    } catch (_) {
+      // The completion waiter remains bounded and updateFile can still finish
+      // a request whose immediate response was lost.
+    }
+  }
+
+  void _removePathWaiter(
+    String key,
+    Completer<String?> completer,
+    List<Completer<String?>> waiters,
+  ) {
+    if (!identical(_waiters[key], waiters)) return;
+    waiters.remove(completer);
+    if (waiters.isEmpty) _waiters.remove(key);
   }
 
   /// Returns a local path for the file id, downloading if needed.
@@ -442,42 +489,21 @@ class TdFileCenter {
       return completer.future.timeout(
         const Duration(seconds: 180),
         onTimeout: () {
-          _waiters[k]?.remove(completer);
+          _removePathWaiter(k, completer, pending);
           return null;
         },
       );
     }
 
     final completer = Completer<String?>();
-    _waiters[k] = [completer];
+    final waiters = <Completer<String?>>[completer];
+    _waiters[k] = waiters;
 
-    // Kick the download. The immediate response reflects current state, so an
-    // already-complete file resolves without waiting for an update.
-    try {
-      final response = await _client.queryForSlot({
-        '@type': 'downloadFile',
-        'file_id': fileId,
-        'priority': 16,
-        'offset': 0,
-        'limit': 0,
-        'synchronous': false,
-      }, slot);
-      _ingest(response, accountSlot: slot);
-      final local = response.obj('local');
-      if (local?.boolean('is_downloading_completed') == true) {
-        final path = local?.str('path');
-        if (path != null && path.isNotEmpty) {
-          _remember(k, path);
-          final pending = _waiters.remove(k) ?? [];
-          for (final c in pending) {
-            if (!c.isCompleted) c.complete(path);
-          }
-          return path;
-        }
-      }
-    } catch (_) {
-      // fall through to wait for updateFile
-    }
+    // Do not await the request response before installing the bounded wait.
+    // A lost TDLib response previously meant the first resolver never reached
+    // its 180-second timeout (only later joined callers did). _ingest handles
+    // both an immediate completed response and the eventual updateFile event.
+    unawaited(_requestPathDownload(fileId, slot));
 
     // Otherwise wait for the completing updateFile.
     final existing = _cache[k];
@@ -487,7 +513,7 @@ class TdFileCenter {
     return completer.future.timeout(
       const Duration(seconds: 180),
       onTimeout: () {
-        _waiters[k]?.remove(completer);
+        _removePathWaiter(k, completer, waiters);
         return null;
       },
     );

@@ -24,10 +24,12 @@ import '../chat/custom_emoji.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
+import '../components/desktop_row_actions.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
+import '../platform/adaptive_platform.dart';
 import '../settings/edit_profile_view.dart';
 import '../settings/settings_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -391,6 +393,7 @@ class _ProfileViewState extends State<ProfileView> {
                   const SizedBox(width: 8),
                   // Edit profile — replaces the old duplicate 编辑资料 card.
                   GestureDetector(
+                    key: const ValueKey('profile-banner-edit'),
                     onTap: () => _root.push(
                       MaterialPageRoute(
                         builder: (_) => const EditProfileView(),
@@ -564,7 +567,7 @@ class _ProfileViewState extends State<ProfileView> {
         children: [
           const InsetDivider(leadingInset: 0),
           for (final s in accounts.summaries) ...[
-            _SwipeAccountRow(
+            AccountActionRow(
               onTap: () =>
                   accounts.switchTo(s.slot, context.read<AuthManager>()),
               onLongPress: () => _confirmRemoveAccount(accounts, s),
@@ -738,19 +741,6 @@ class _ProfileViewState extends State<ProfileView> {
           child: Row(
             children: [
               const SizedBox(width: 16),
-              // Profile sits before settings here as it does in the desktop
-              // application menu: it is a thing you own, not a preference.
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _root.push(
-                  MaterialPageRoute(builder: (_) => const EditProfileView()),
-                ),
-                child: _barItem(
-                  HeroAppIcons.solidCircleUser,
-                  AppStrings.t(AppStringKeys.editProfileTitle),
-                ),
-              ),
-              const SizedBox(width: 24),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _root.push(
@@ -797,8 +787,9 @@ class _ProfileViewState extends State<ProfileView> {
   }
 }
 
-class _SwipeAccountRow extends StatefulWidget {
-  const _SwipeAccountRow({
+class AccountActionRow extends StatefulWidget {
+  const AccountActionRow({
+    super.key,
     required this.child,
     required this.onTap,
     required this.onLongPress,
@@ -813,10 +804,10 @@ class _SwipeAccountRow extends StatefulWidget {
   final VoidCallback onLogout;
 
   @override
-  State<_SwipeAccountRow> createState() => _SwipeAccountRowState();
+  State<AccountActionRow> createState() => _AccountActionRowState();
 }
 
-class _SwipeAccountRowState extends State<_SwipeAccountRow> {
+class _AccountActionRowState extends State<AccountActionRow> {
   static const double _actionWidth = 78;
   static const double _actionsWidth = _actionWidth * 2;
   double _offset = 0;
@@ -834,6 +825,54 @@ class _SwipeAccountRowState extends State<_SwipeAccountRow> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    if (isDesktopTargetPlatform()) {
+      final actions = <DesktopRowAction>[
+        DesktopRowAction(
+          id: 'remove-account',
+          label: AppStringKeys.profileRemoveAccount,
+          icon: HeroAppIcons.circleMinus,
+          color: const Color(0xFFFF9500),
+          onInvoke: widget.onRemove,
+        ),
+        DesktopRowAction(
+          id: 'log-out-account',
+          label: AppStringKeys.profileLogOutAccount,
+          icon: HeroAppIcons.rightFromBracket,
+          color: AppTheme.tagRed,
+          onInvoke: widget.onLogout,
+        ),
+      ];
+      return SizedBox(
+        height: 56,
+        child: DesktopRowActionRegion(
+          actions: actions,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: ColoredBox(
+              color: c.card,
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 44),
+                    child: widget.child,
+                  ),
+                  Positioned(
+                    right: 10,
+                    top: 13,
+                    child: DesktopRowActionButton(
+                      key: const ValueKey('account-row-actions'),
+                      actions: actions,
+                      semanticLabel: AppStringKeys.notificationOptions,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: 56,
       child: Stack(
@@ -909,7 +948,7 @@ class _SwipeActionButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: _SwipeAccountRowState._actionWidth,
+        width: _AccountActionRowState._actionWidth,
         height: double.infinity,
         alignment: Alignment.center,
         color: color,

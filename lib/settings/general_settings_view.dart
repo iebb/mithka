@@ -12,6 +12,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
@@ -80,23 +81,27 @@ class _GeneralSettingsViewState extends State<GeneralSettingsView> {
 
   Widget _autoDownloadCard() {
     final auto = context.watch<AutoDownloadMediaController>();
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     return SettingsSection(
       titleKey: AppStringKeys.generalAutoDownloadMedia,
       rows: [
-        SettingsSwitchRow(
-          title: AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
-          subtitle: auto.mobileHighResImages
-              ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
-              : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
-          value: auto.mobileHighResImages,
-          enabled: !auto.isApplying,
-          leading: const SettingsLeadingIcon(
-            icon: HeroAppIcons.mobileScreenButton,
+        if (!desktop)
+          SettingsSwitchRow(
+            key: const ValueKey('general-auto-download-mobile'),
+            title: AppStrings.t(AppStringKeys.generalAutoDownloadMobileData),
+            subtitle: auto.mobileHighResImages
+                ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)
+                : AppStrings.t(AppStringKeys.generalAutoDownloadDisabled),
+            value: auto.mobileHighResImages,
+            enabled: !auto.isApplying,
+            leading: const SettingsLeadingIcon(
+              icon: HeroAppIcons.mobileScreenButton,
+            ),
+            onChanged: (value) =>
+                _setAutoDownload(() => auto.setMobileHighResImages(value)),
           ),
-          onChanged: (value) =>
-              _setAutoDownload(() => auto.setMobileHighResImages(value)),
-        ),
         SettingsSwitchRow(
+          key: const ValueKey('general-auto-download-wifi'),
           title: AppStrings.t(AppStringKeys.generalAutoDownloadWifi),
           subtitle: auto.wifiHighResImages
               ? AppStrings.t(AppStringKeys.generalAutoDownloadHighResImages)

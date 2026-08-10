@@ -289,7 +289,7 @@ class _MessageInfoViewState extends State<MessageInfoView> {
           value: widget.message.viewCount.toString(),
         ),
         _InfoRow(
-          icon: HeroAppIcons.share,
+          icon: HeroAppIcons.forward,
           label: AppStringKeys.messageInfoForwards,
           value: widget.message.forwardCount.toString(),
         ),

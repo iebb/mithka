@@ -70,6 +70,25 @@ class HandoffChatActivity {
 
 int? _strictInt(Object? value) => value is int ? value : null;
 
+/// Waits for the local account catalogue during a cold Handoff launch.
+///
+/// Without this gate, an activity delivered before TDLib has recreated its
+/// clients looks like an account that is absent from the device. Mithka then
+/// asks the source device for a session unnecessarily and can abandon the
+/// navigation before the already-signed-in account becomes ready.
+@visibleForTesting
+Future<void> waitForHandoffStartup({
+  required bool Function() isReady,
+  required bool Function() isActive,
+  Duration timeout = const Duration(seconds: 8),
+  Duration retryDelay = const Duration(milliseconds: 100),
+}) async {
+  final elapsed = Stopwatch()..start();
+  while (isActive() && !isReady() && elapsed.elapsed < timeout) {
+    await Future<void>.delayed(retryDelay);
+  }
+}
+
 /// Publishes the visible chat to Apple's Handoff service and resumes incoming
 /// chat activities on iOS and macOS.
 ///
@@ -201,6 +220,11 @@ class HandoffService {
       case 'continueActivity':
         final activity = HandoffChatActivity.tryParse(call.arguments);
         if (activity == null) return false;
+        // The source keeps one activity id while the same chat remains
+        // visible. A new user-initiated continuation must still reopen it;
+        // completed ids only suppress the duplicate pending-activity fetch
+        // from this delivery.
+        _completedActivityIds.remove(activity.activityId);
         _enqueueIncoming(activity);
         return true;
       case 'exportSession':
@@ -264,6 +288,18 @@ class HandoffService {
       var slot = await TdClient.shared.readySlotForUserId(
         activity.accountUserId,
       );
+      if (slot == null &&
+          (TdClient.shared.configuredSlots.isEmpty ||
+              auth.step is AuthInitializing)) {
+        await waitForHandoffStartup(
+          isReady: () =>
+              TdClient.shared.configuredSlots.isNotEmpty &&
+              auth.step is! AuthInitializing,
+          isActive: () => _started,
+        );
+        if (!_started) return;
+        slot = await TdClient.shared.readySlotForUserId(activity.accountUserId);
+      }
       if (slot == null) {
         final response = await _channel.invokeMethod<Object?>(
           'requestSession',
@@ -302,11 +338,13 @@ class HandoffService {
           }
           await accounts.refresh();
         }
-      } else if (slot != accounts.activeSlot) {
-        accounts.switchTo(slot, auth);
       }
 
       final title = await _chatTitle(slot: slot, chatId: activity.chatId);
+      // MainTabView owns account switching because it can retain and replay
+      // this request after the account-keyed UI subtree has been rebuilt.
+      // Switching here can let the outgoing subtree consume the request and
+      // then discard the selected chat during that rebuild.
       ChatDeepLinkController.shared.openChat(
         chatId: activity.chatId,
         title: title,

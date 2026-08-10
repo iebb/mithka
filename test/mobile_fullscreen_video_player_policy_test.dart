@@ -80,6 +80,67 @@ void main() {
     });
   });
 
+  group('videoPlaybackSurfaceUsesPanGestures', () {
+    test('native desktop fullscreen does not install touch-style pans', () {
+      for (final platform in const [
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      ]) {
+        expect(
+          videoPlaybackSurfaceUsesPanGestures(
+            presentation: VideoPlayerPresentation.fullscreen,
+            platform: platform,
+          ),
+          isFalse,
+          reason: '$platform mouse drags must not seek or adjust side levels',
+        );
+      }
+    });
+
+    test('mobile fullscreen retains its existing pan gestures', () {
+      for (final platform in const [
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+      ]) {
+        expect(
+          videoPlaybackSurfaceUsesPanGestures(
+            presentation: VideoPlayerPresentation.fullscreen,
+            platform: platform,
+          ),
+          isTrue,
+          reason: '$platform fullscreen must retain touch gestures',
+        );
+      }
+    });
+
+    test('embedded and picture-in-picture surfaces stay non-pannable', () {
+      for (final presentation in const [
+        VideoPlayerPresentation.embedded,
+        VideoPlayerPresentation.pictureInPicture,
+      ]) {
+        expect(
+          videoPlaybackSurfaceUsesPanGestures(
+            presentation: presentation,
+            platform: TargetPlatform.iOS,
+          ),
+          isFalse,
+        );
+      }
+    });
+
+    test('web fullscreen is not treated as a native desktop surface', () {
+      expect(
+        videoPlaybackSurfaceUsesPanGestures(
+          presentation: VideoPlayerPresentation.fullscreen,
+          platform: TargetPlatform.macOS,
+          isWeb: true,
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('isStoppedVideoPlaybackComplete', () {
     const duration = Duration(minutes: 1);
 

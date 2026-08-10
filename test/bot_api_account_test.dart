@@ -197,40 +197,57 @@ void main() {
     },
   );
 
-  test('uses the non-sharing macOS Keychain for bot tokens', () async {
-    const secureStorage = MethodChannel(
-      'plugins.it_nomads.com/flutter_secure_storage',
-    );
-    SharedPreferences.setMockInitialValues({});
-    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    Map<Object?, Object?>? writeArguments;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(secureStorage, (call) async {
-          if (call.method == 'write') {
-            writeArguments = (call.arguments as Map).cast<Object?, Object?>();
-          }
-          return null;
-        });
-    addTearDown(
-      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(secureStorage, null),
-    );
-    final preferences = await SharedPreferences.getInstance();
-    final account = BotApiAccount(
-      slot: 2,
-      endpoint: Uri.parse('https://bots.example.test'),
-      bot: const {'id': 654321, 'is_bot': true},
-    );
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.macOS]) {
+    test('uses the shared iCloud Keychain on ${platform.name}', () async {
+      const secureStorage = MethodChannel(
+        'plugins.it_nomads.com/flutter_secure_storage',
+      );
+      SharedPreferences.setMockInitialValues({});
+      debugDefaultTargetPlatformOverride = platform;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final operationOptions = <String, Map<String, String>>{};
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(secureStorage, (call) async {
+            if (call.method == 'write' || call.method == 'read') {
+              final arguments = (call.arguments as Map)
+                  .cast<Object?, Object?>();
+              operationOptions[call.method] = (arguments['options'] as Map)
+                  .cast<String, String>();
+            }
+            return null;
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(secureStorage, null),
+      );
+      final preferences = await SharedPreferences.getInstance();
+      final account = BotApiAccount(
+        slot: 2,
+        endpoint: Uri.parse('https://bots.example.test'),
+        bot: const {'id': 654321, 'is_bot': true},
+      );
 
-    await BotApiAccountRegistry.save(
-      preferences,
-      account,
-      '654321:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
-    );
+      await BotApiAccountRegistry.save(
+        preferences,
+        account,
+        '654321:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
+      );
+      await BotApiAccountRegistry.readToken(account.slot);
 
-    final options = (writeArguments?['options'] as Map?)
-        ?.cast<String, String>();
-    expect(options?['usesDataProtectionKeychain'], 'false');
-  });
+      expect(operationOptions['write'], operationOptions['read']);
+      expect(
+        operationOptions['write']?['accountName'],
+        'ad.neko.mithka.bot-api',
+      );
+      expect(operationOptions['write']?['accessibility'], 'unlocked');
+      expect(operationOptions['write']?['synchronizable'], 'true');
+      expect(operationOptions['write'], isNot(contains('groupId')));
+      if (platform == TargetPlatform.macOS) {
+        expect(
+          operationOptions['write']?['usesDataProtectionKeychain'],
+          'true',
+        );
+      }
+    });
+  }
 }

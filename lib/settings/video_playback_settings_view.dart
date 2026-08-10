@@ -4,6 +4,7 @@ import '../chat/video_playback_preferences.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
 import '../theme/app_theme.dart';
 
 class VideoPlaybackSettingsView extends StatefulWidget {
@@ -70,6 +71,7 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     return SettingsPageScaffold(
       title: AppStringKeys.videoPlaybackSettingsTitle,
       onBack: () => Navigator.of(context).pop(),
@@ -77,35 +79,43 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
           ? const Center(child: AppActivityIndicator(size: 24))
           : SettingsListView(
               children: [
-                const SettingsSectionHeader(
-                  AppStringKeys.videoPlaybackHorizontalSwipe,
-                ),
-                _choiceCard<VideoHorizontalSwipeAction>(
-                  values: VideoHorizontalSwipeAction.values,
-                  selected: _preferences.horizontalSwipeAction,
-                  label: _swipeLabel,
-                  onSelected: _setSwipeAction,
-                ),
-                const SettingsSectionHeader(
-                  AppStringKeys.videoPlaybackLeftVerticalSwipe,
-                ),
-                _choiceCard<VideoVerticalSwipeAction>(
-                  values: VideoVerticalSwipeAction.values,
-                  selected: _preferences.leftVerticalSwipeAction,
-                  label: _verticalSwipeLabel,
-                  onSelected: _setLeftVerticalSwipeAction,
-                ),
-                const SettingsSectionHeader(
-                  AppStringKeys.videoPlaybackRightVerticalSwipe,
-                ),
-                _choiceCard<VideoVerticalSwipeAction>(
-                  values: VideoVerticalSwipeAction.values,
-                  selected: _preferences.rightVerticalSwipeAction,
-                  label: _verticalSwipeLabel,
-                  onSelected: _setRightVerticalSwipeAction,
-                ),
+                if (!desktop) ...[
+                  const SettingsSectionHeader(
+                    AppStringKeys.videoPlaybackHorizontalSwipe,
+                    key: ValueKey('video-playback-horizontal-swipe-section'),
+                  ),
+                  _choiceCard<VideoHorizontalSwipeAction>(
+                    values: VideoHorizontalSwipeAction.values,
+                    selected: _preferences.horizontalSwipeAction,
+                    label: _swipeLabel,
+                    onSelected: _setSwipeAction,
+                  ),
+                  const SettingsSectionHeader(
+                    AppStringKeys.videoPlaybackLeftVerticalSwipe,
+                    key: ValueKey('video-playback-left-vertical-swipe-section'),
+                  ),
+                  _choiceCard<VideoVerticalSwipeAction>(
+                    values: VideoVerticalSwipeAction.values,
+                    selected: _preferences.leftVerticalSwipeAction,
+                    label: _verticalSwipeLabel,
+                    onSelected: _setLeftVerticalSwipeAction,
+                  ),
+                  const SettingsSectionHeader(
+                    AppStringKeys.videoPlaybackRightVerticalSwipe,
+                    key: ValueKey(
+                      'video-playback-right-vertical-swipe-section',
+                    ),
+                  ),
+                  _choiceCard<VideoVerticalSwipeAction>(
+                    values: VideoVerticalSwipeAction.values,
+                    selected: _preferences.rightVerticalSwipeAction,
+                    label: _verticalSwipeLabel,
+                    onSelected: _setRightVerticalSwipeAction,
+                  ),
+                ],
                 const SettingsSectionHeader(
                   AppStringKeys.videoPlaybackWhenFinished,
+                  key: ValueKey('video-playback-completion-section'),
                 ),
                 _choiceCard<VideoCompletionAction>(
                   values: VideoCompletionAction.values,

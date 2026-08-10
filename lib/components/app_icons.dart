@@ -150,6 +150,10 @@ class HeroAppIcons {
   static const flash = AppIconData(HeroiconsOutline.bolt);
   static const folder = AppIconData(HeroiconsOutline.folder);
   static const font = AppIconData(HeroiconsOutline.documentText);
+
+  /// Message, post, and story forwarding. Generic share/export actions keep
+  /// using [share] so the two commands stay visually distinct.
+  static const forward = AppIconData(HeroiconsOutline.arrowUturnRight);
   static const gear = AppIconData(HeroiconsOutline.cog6Tooth);
   static const gif = AppIconData(HeroiconsOutline.gif);
   static const globe = AppIconData(HeroiconsOutline.globeAlt);

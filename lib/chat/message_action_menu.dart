@@ -34,7 +34,7 @@ enum MessageAction {
   ),
   reply(HeroAppIcons.quoteLeft, AppStringKeys.chatInputBarReply),
   replies(HeroAppIcons.comments, AppStringKeys.messageActionReplies),
-  forward(HeroAppIcons.share, AppStringKeys.messageActionForward),
+  forward(HeroAppIcons.forward, AppStringKeys.messageActionForward),
   repeat(HeroAppIcons.circlePlus, AppStringKeys.messageActionRepeat),
   report(HeroAppIcons.triangleExclamation, AppStringKeys.messageActionReport),
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
@@ -191,6 +191,7 @@ class MessageActionMenu extends StatelessWidget {
   static const _destructive = Color(0xFFFF6961);
   static const _horizontalPadding = 6.0;
   static const _actionWidth = 58.0;
+  static const _maxContentSizedActionCount = 10;
   static const preferredWidth = 332.0;
   static const preferredHeight = 152.0;
   static const desktopPreferredWidth = 220.0;
@@ -208,9 +209,13 @@ class MessageActionMenu extends StatelessWidget {
 
   @visibleForTesting
   static double mobileWidthForActionCount(int count, double availableWidth) {
-    if (count >= 5) return widthForAvailable(availableWidth);
+    if (count > _maxContentSizedActionCount) {
+      return widthForAvailable(availableWidth);
+    }
+    final rows = rowCountsForActionCount(count);
+    final columns = math.max(rows.first, rows.second);
     final fitted =
-        (_horizontalPadding * 2) + (math.max(count, 1) * _actionWidth);
+        (_horizontalPadding * 2) + (math.max(columns, 1) * _actionWidth);
     return math.min(fitted, availableWidth);
   }
 

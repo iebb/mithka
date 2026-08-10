@@ -125,15 +125,40 @@ int? firstUnreadMessageIdAfterBoundary({
   return earliest;
 }
 
+/// Whether [messageId] belonged to the unread range captured when the chat
+/// entry state was recorded. The upper bound prevents later auto-followed
+/// arrivals from consuming the fixed entry unread count after their live-ID
+/// marker has already been cleared.
+bool isCapturedEntryUnreadMessage({
+  required int messageId,
+  required int lastReadInboxId,
+  required int latestMessageId,
+}) => messageId > lastReadInboxId && messageId <= latestMessageId;
+
+int resolveCapturedEntryLatestMessageId({
+  required int knownLatestMessageId,
+  required int loadedLatestMessageId,
+}) => knownLatestMessageId > 0 ? knownLatestMessageId : loadedLatestMessageId;
+
 class ChatUnreadProgress {
   final Set<int> _seenInitialMessageIds = <int>{};
   final Set<int> _liveMessageIds = <int>{};
+  final Set<int> _reportedVisibleMessageIds = <int>{};
 
   int get liveCount => _liveMessageIds.length;
 
+  int initialRemaining({required int entryUnreadCount}) =>
+      (entryUnreadCount - _seenInitialMessageIds.length).clamp(0, 1 << 30);
+
   int remaining({required int entryUnreadCount}) =>
-      (entryUnreadCount - _seenInitialMessageIds.length).clamp(0, 1 << 30) +
-      _liveMessageIds.length;
+      initialRemaining(entryUnreadCount: entryUnreadCount) + liveCount;
+
+  /// Count shown by the new-message control. Live arrivals retain their
+  /// existing priority, while entry unread messages now reflect what has
+  /// actually entered the viewport instead of staying frozen at open time.
+  int badgeCount({required int entryUnreadCount}) => liveCount > 0
+      ? liveCount
+      : initialRemaining(entryUnreadCount: entryUnreadCount);
 
   bool addLiveMessage(int messageId) => _liveMessageIds.add(messageId);
 
@@ -149,6 +174,22 @@ class ChatUnreadProgress {
     if (_liveMessageIds.remove(messageId)) return true;
     return initialUnread && _seenInitialMessageIds.add(messageId);
   }
+
+  /// Records one incoming message intersecting the laid-out viewport.
+  ///
+  /// [shouldReportViewed] is true only on the first observation so callers can
+  /// issue TDLib's `viewMessages` exactly once even when layout is measured
+  /// again without a scroll event.
+  ({bool shouldReportViewed, bool unreadCountChanged}) observeVisibleIncoming({
+    required int messageId,
+    required bool initialUnread,
+  }) => (
+    shouldReportViewed: _reportedVisibleMessageIds.add(messageId),
+    unreadCountChanged: markVisible(
+      messageId: messageId,
+      initialUnread: initialUnread,
+    ),
+  );
 
   bool clearLiveMessages() {
     if (_liveMessageIds.isEmpty) return false;

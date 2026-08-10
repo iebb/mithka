@@ -48,6 +48,7 @@ import 'location_detail_view.dart';
 import 'looping_video_view.dart';
 import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
+import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
 import 'music_player_controller.dart';
 import 'sensitive_content_reveal_prompt.dart';
@@ -208,6 +209,10 @@ class _MessageBubbleState extends State<MessageBubble>
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
   bool _showRestrictedContent = false;
+  int? _desktopSecondaryPointer;
+  Offset? _desktopSecondaryPosition;
+  bool _desktopSecondaryHandled = false;
+  int _desktopSecondarySequence = 0;
 
   SensitiveContentController get _sensitiveContentController =>
       widget.sensitiveContentController ?? SensitiveContentController.shared;
@@ -240,8 +245,55 @@ class _MessageBubbleState extends State<MessageBubble>
     TapUpDetails details, [
     MessageActionSource source = MessageActionSource.normal,
   ]) {
+    _markDesktopSecondaryHandled();
+    _handleSecondaryPress(details.globalPosition, source);
+  }
+
+  void _handleDesktopPointerDown(PointerDownEvent event) {
+    if ((event.buttons & kSecondaryMouseButton) == 0) return;
+    _desktopSecondarySequence += 1;
+    _desktopSecondaryPointer = event.pointer;
+    _desktopSecondaryPosition = event.position;
+    _desktopSecondaryHandled = false;
+  }
+
+  void _handleDesktopPointerUp(PointerUpEvent event) {
+    if (_desktopSecondaryPointer != event.pointer) return;
+    final sequence = _desktopSecondarySequence;
+    final position = _desktopSecondaryPosition ?? event.position;
+    scheduleMicrotask(() {
+      if (!mounted ||
+          sequence != _desktopSecondarySequence ||
+          _desktopSecondaryPointer != event.pointer) {
+        return;
+      }
+      final handled = _desktopSecondaryHandled;
+      _desktopSecondaryPointer = null;
+      _desktopSecondaryPosition = null;
+      _desktopSecondaryHandled = false;
+      if (!handled) _handleSecondaryPress(position);
+    });
+  }
+
+  void _handleDesktopPointerCancel(PointerCancelEvent event) {
+    if (_desktopSecondaryPointer != event.pointer) return;
+    _desktopSecondarySequence += 1;
+    _desktopSecondaryPointer = null;
+    _desktopSecondaryPosition = null;
+    _desktopSecondaryHandled = false;
+  }
+
+  void _markDesktopSecondaryHandled() {
+    if (_desktopSecondaryPointer != null) {
+      _desktopSecondaryHandled = true;
+    }
+  }
+
+  void _handleSecondaryPress(
+    Offset position, [
+    MessageActionSource source = MessageActionSource.normal,
+  ]) {
     _lastTapAt = null;
-    final position = details.globalPosition;
     if (_shouldOfferSensitiveContentUnblock) {
       unawaited(
         _showSensitiveContentUnblockPrompt(
@@ -427,6 +479,9 @@ class _MessageBubbleState extends State<MessageBubble>
       color.withValues(alpha: color.a * _messageAccentFillOpacity);
 
   Color _messageLinkColor(bool outgoing) {
+    if (!_theme.themingEnabled) {
+      return _disabledThemeLinkStyle(outgoing).color;
+    }
     if (!_showsMessageBubbleSurface) return _colors.linkBlue;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     if (_usesDecorativeBubbleBackground) return base;
@@ -436,6 +491,16 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     return outgoing ? colors.outgoingLink : colors.incomingLink;
   }
+
+  ReadableLinkStyle _disabledThemeLinkStyle(bool outgoing) => readableLinkStyle(
+    background: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+    body: outgoing ? _outgoingTextColor : _incomingTextColor,
+    preferred: _colors.linkBlue,
+  );
+
+  bool get _underlinesDisabledThemeLinks =>
+      !_theme.themingEnabled &&
+      _disabledThemeLinkStyle(message.isOutgoing).underline;
 
   Color _messageQuoteColor(bool outgoing) {
     if (_usesDecorativeBubbleBackground) {
@@ -539,6 +604,12 @@ class _MessageBubbleState extends State<MessageBubble>
       (message.hasCommentThread ||
           message.commentCount > 0 ||
           (widget.channelHasLinkedDiscussion && !message.isService));
+
+  bool get _showsCompactReplyCount =>
+      !message.isContentRestricted &&
+      widget.isGroup &&
+      !widget.showCommentAttachment &&
+      message.commentCount > 0;
 
   BorderRadius _messageBorderRadius(double radius) =>
       BorderRadius.circular(radius);
@@ -722,19 +793,36 @@ class _MessageBubbleState extends State<MessageBubble>
     final showDetailTime = alwaysShowTime || _showTappedTimestamp;
     final timeInSenderHeader =
         widget.isGroup && !outgoing && message.senderName != null;
+    final desktopInteraction = isDesktopTargetPlatform(
+      Theme.of(context).platform,
+    );
+    final contentBody = _contentBody(outgoing);
     final body = GestureDetector(
       key: _bubbleKey,
       behavior: HitTestBehavior.opaque,
       onTapDown: _handleTapDown,
       onTap: () => _handleTap(alwaysShowTime),
       onLongPress: _handleLongPress,
-      onSecondaryTapUp: _handleSecondaryTapUp,
-      onHorizontalDragStart: (_) => _swipeController.stop(),
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
+      onSecondaryTapUp: desktopInteraction ? null : _handleSecondaryTapUp,
+      onHorizontalDragStart: desktopInteraction
+          ? null
+          : (_) => _swipeController.stop(),
+      onHorizontalDragUpdate: desktopInteraction ? null : _onDragUpdate,
+      onHorizontalDragEnd: desktopInteraction ? null : _onDragEnd,
       child: KeyedSubtree(
         key: ValueKey('messageTapTarget-${message.id}'),
-        child: _contentBody(outgoing),
+        child: desktopInteraction
+            ? Listener(
+                onPointerDown: _handleDesktopPointerDown,
+                onPointerUp: _handleDesktopPointerUp,
+                onPointerCancel: _handleDesktopPointerCancel,
+                child: SelectionArea(
+                  key: ValueKey('messageTextSelectionArea-${message.id}'),
+                  contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                  child: contentBody,
+                ),
+              )
+            : contentBody,
       ),
     );
     final contentWidget = ConstrainedBox(
@@ -1412,13 +1500,42 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _withFloatingMeta(Widget child, bool outgoing) {
-    final show = message.isEdited || outgoing;
+    final showReplies = _showsCompactReplyCount;
+    final show = message.isEdited || outgoing || showReplies;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        child,
-        Positioned(right: 2, bottom: 2, child: _floatingMeta(outgoing)),
+        if (showReplies)
+          Padding(padding: const EdgeInsets.only(bottom: 19), child: child)
+        else
+          child,
+        Positioned(
+          right: 2,
+          bottom: showReplies ? 0 : 2,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showReplies)
+                MessageReplyCountBadge(
+                  key: ValueKey('messageCompactReplies-${message.id}'),
+                  count: message.commentCount,
+                  foreground: outgoing
+                      ? _outgoingTextColor.withValues(alpha: 0.78)
+                      : _colors.textSecondary,
+                  background: outgoing
+                      ? _outgoingBubbleColor.withValues(alpha: 0.82)
+                      : _colors.card.withValues(alpha: 0.82),
+                  onTap: widget.onOpenComments == null
+                      ? null
+                      : () => widget.onOpenComments?.call(message),
+                ),
+              if (showReplies && (message.isEdited || outgoing))
+                const SizedBox(width: 4),
+              if (message.isEdited || outgoing) _floatingMeta(outgoing),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -3593,7 +3710,7 @@ class _MessageBubbleState extends State<MessageBubble>
       mainAxisSize: MainAxisSize.min,
       children: [
         AppIcon(
-          HeroAppIcons.share,
+          HeroAppIcons.forward,
           size: 11,
           color: accent.withValues(alpha: 0.9),
         ),
@@ -3888,10 +4005,16 @@ class _MessageBubbleState extends State<MessageBubble>
     final style = DefaultTextStyle.of(
       context,
     ).style.merge(TextStyle(fontSize: effectiveFontSize, color: base));
-    return RichText(
-      maxLines: maxLines,
-      overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
-      text: TextSpan(style: style, children: children),
+    return Builder(
+      builder: (context) => RichText(
+        maxLines: maxLines,
+        overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
+        text: TextSpan(style: style, children: children),
+        selectionRegistrar: SelectionContainer.maybeOf(context),
+        selectionColor:
+            Theme.of(context).textSelectionTheme.selectionColor ??
+            AppTheme.brand.withValues(alpha: 0.28),
+      ),
     );
   }
 
@@ -4286,6 +4409,7 @@ class _MessageBubbleState extends State<MessageBubble>
     var useCodeFont = false;
     var fontFeatures = const <FontFeature>[];
     final decorations = <TextDecoration>[];
+    var isLink = false;
     for (final e in active) {
       switch (e.type) {
         case 'textEntityTypeBold':
@@ -4315,9 +4439,11 @@ class _MessageBubbleState extends State<MessageBubble>
         case 'textEntityTypePhoneNumber':
         case 'textEntityTypeBankCardNumber':
           color = link;
+          isLink = true;
         case 'textEntityTypeMediaTimestamp':
           color = link;
           weight = FontWeight.w600;
+          isLink = true;
         case 'textEntityTypeMarked':
           backgroundColor = Colors.amber.withValues(alpha: 0.32);
         case 'textEntityTypeSubscript':
@@ -4326,7 +4452,15 @@ class _MessageBubbleState extends State<MessageBubble>
           fontFeatures = const [FontFeature.superscripts()];
         case 'textEntityTypeDateTime':
           color = link;
+          isLink = true;
       }
+    }
+    final fallbackUnderline =
+        isLink &&
+        !active.any((entity) => entity.type == 'textEntityTypeSpoiler') &&
+        _underlinesDisabledThemeLinks;
+    if (fallbackUnderline && !decorations.contains(TextDecoration.underline)) {
+      decorations.add(TextDecoration.underline);
     }
     final style = TextStyle(
       color: color,
@@ -4337,6 +4471,8 @@ class _MessageBubbleState extends State<MessageBubble>
           ? null
           : TextDecoration.combine(decorations),
       decorationColor: color,
+      decorationStyle: fallbackUnderline ? TextDecorationStyle.solid : null,
+      decorationThickness: fallbackUnderline ? 1.0 : null,
       fontFeatures: fontFeatures.isEmpty ? null : fontFeatures,
     );
     return useCodeFont ? _theme.codeTextStyle(style) : style;
@@ -4403,10 +4539,7 @@ class _MessageBubbleState extends State<MessageBubble>
           : matched;
       if (isHashtag && widget.onHashtagTap == null) {
         spans.add(
-          TextSpan(
-            text: matched,
-            style: baseStyle.copyWith(color: link),
-          ),
+          TextSpan(text: matched, style: _autoLinkStyle(baseStyle, link)),
         );
         last = m.end;
         continue;
@@ -4423,7 +4556,7 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(
         TextSpan(
           text: matched,
-          style: baseStyle.copyWith(color: link),
+          style: _autoLinkStyle(baseStyle, link),
           recognizer: recognizer,
         ),
       );
@@ -4433,6 +4566,25 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(TextSpan(text: text.substring(last), style: baseStyle));
     }
     return spans;
+  }
+
+  TextStyle _autoLinkStyle(TextStyle baseStyle, Color link) {
+    if (!_underlinesDisabledThemeLinks) {
+      return baseStyle.copyWith(color: link);
+    }
+    final existing = baseStyle.decoration;
+    final decoration = existing == null || existing == TextDecoration.none
+        ? TextDecoration.underline
+        : existing == TextDecoration.underline
+        ? existing
+        : TextDecoration.combine([existing, TextDecoration.underline]);
+    return baseStyle.copyWith(
+      color: link,
+      decoration: decoration,
+      decorationColor: link,
+      decorationStyle: TextDecorationStyle.solid,
+      decorationThickness: 1.0,
+    );
   }
 
   String _normalizeHashtag(String tag) {
@@ -5419,6 +5571,7 @@ class _MessageBubbleState extends State<MessageBubble>
     ChatMessage source,
     Offset globalPosition,
   ) {
+    _markDesktopSecondaryHandled();
     _lastTapAt = null;
     widget.onLongPress?.call(
       source,

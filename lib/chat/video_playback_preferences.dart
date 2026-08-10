@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum VideoHorizontalSwipeAction {
@@ -10,6 +11,10 @@ enum VideoHorizontalSwipeAction {
 enum VideoVerticalSwipeAction { disabled, brightness, volume }
 
 enum VideoCompletionAction { prompt, autoplayNext, replay, returnToChat }
+
+class _VideoPlaybackPreferenceChanges extends ChangeNotifier {
+  void emit() => notifyListeners();
+}
 
 class VideoPlaybackPreferences {
   const VideoPlaybackPreferences({
@@ -26,6 +31,15 @@ class VideoPlaybackPreferences {
   static const rightVerticalSwipePreferenceKey =
       'videoPlayback.rightVerticalSwipeAction';
   static const completionPreferenceKey = 'videoPlayback.completionAction';
+
+  /// Emits after a playback preference has been durably written.
+  ///
+  /// Detached desktop Settings runs in a separate Flutter engine, so its
+  /// preference writes need an observable source that can trigger the
+  /// existing settings-changed IPC back to the primary engine.
+  static final _VideoPlaybackPreferenceChanges _changes =
+      _VideoPlaybackPreferenceChanges();
+  static ChangeNotifier get changes => _changes;
 
   final VideoHorizontalSwipeAction horizontalSwipeAction;
   final VideoVerticalSwipeAction leftVerticalSwipeAction;
@@ -92,27 +106,21 @@ class VideoPlaybackPreferences {
 
   static Future<void> saveHorizontalSwipeAction(
     VideoHorizontalSwipeAction action,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(horizontalSwipePreferenceKey, action.name);
-  }
+  ) => _save(horizontalSwipePreferenceKey, action);
 
   static Future<void> saveLeftVerticalSwipeAction(
     VideoVerticalSwipeAction action,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(leftVerticalSwipePreferenceKey, action.name);
-  }
+  ) => _save(leftVerticalSwipePreferenceKey, action);
 
   static Future<void> saveRightVerticalSwipeAction(
     VideoVerticalSwipeAction action,
-  ) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(rightVerticalSwipePreferenceKey, action.name);
-  }
+  ) => _save(rightVerticalSwipePreferenceKey, action);
 
-  static Future<void> saveCompletionAction(VideoCompletionAction action) async {
+  static Future<void> saveCompletionAction(VideoCompletionAction action) =>
+      _save(completionPreferenceKey, action);
+
+  static Future<void> _save(String key, Enum value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(completionPreferenceKey, action.name);
+    if (await prefs.setString(key, value.name)) _changes.emit();
   }
 }

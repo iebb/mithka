@@ -59,6 +59,76 @@ void main() {
     },
   );
 
+  test('same-ID hydration preserves omitted comment thread metadata', () {
+    final current = ChatMessage(
+      id: 20,
+      isOutgoing: false,
+      text: 'Post',
+      date: 20,
+      hasCommentThread: true,
+      commentCount: 7,
+      lastCommentMessageId: 99,
+    );
+    final fetched = _message(20, 'Post refreshed');
+
+    final merged = mergeChatMessages([current], [fetched]).single;
+
+    expect(merged.hasCommentThread, isTrue);
+    expect(merged.commentCount, 7);
+    expect(merged.lastCommentMessageId, 99);
+  });
+
+  test('same-ID hydration accepts an explicit zero-count thread', () {
+    final current = ChatMessage(
+      id: 20,
+      isOutgoing: false,
+      text: 'Post',
+      date: 20,
+      hasCommentThread: true,
+      commentCount: 7,
+      lastCommentMessageId: 99,
+    );
+    final fetched = ChatMessage(
+      id: 20,
+      isOutgoing: false,
+      text: 'Post refreshed',
+      date: 20,
+      hasCommentThread: true,
+    );
+
+    final merged = mergeChatMessages([current], [fetched]).single;
+
+    expect(merged.hasCommentThread, isTrue);
+    expect(merged.commentCount, 0);
+    expect(merged.lastCommentMessageId, isNull);
+  });
+
+  test('same-ID hydration accepts explicit no-thread interaction metadata', () {
+    final current = ChatMessage(
+      id: 20,
+      isOutgoing: false,
+      text: 'Post',
+      date: 20,
+      hasCommentThread: true,
+      commentCount: 7,
+      lastCommentMessageId: 99,
+    );
+    final fetched = ChatMessage(
+      id: 20,
+      isOutgoing: false,
+      text: 'Post refreshed',
+      date: 20,
+      commentThreadMetadataKnown: true,
+    );
+
+    final merged = mergeChatMessages([current], [fetched]).single;
+
+    expect(merged.commentThreadMetadataKnown, isTrue);
+    expect(merged.hasCommentThread, isFalse);
+    expect(merged.commentCount, 0);
+    expect(merged.lastCommentMessageId, isNull);
+  });
+
   test('explicit target replacement preserves messages arriving in flight', () {
     final atStart = [_message(100, 'old window')];
     final atCompletion = [...atStart, _message(500, 'live arrival')];

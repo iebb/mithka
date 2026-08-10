@@ -84,6 +84,8 @@ void main() {
       find.byType(ProfileView),
     );
     expect(drawerPosition.left, 0);
+    expect(find.byKey(const ValueKey('profile-banner-edit')), findsOneWidget);
+    expect(find.byTooltip('Edit profile'), findsNothing);
 
     harness.drawer.close();
     await tester.pump();
@@ -304,7 +306,7 @@ void main() {
     }
   });
 
-  testWidgets('phone deep links replace the active chat instead of stacking', (
+  testWidgets('external phone deep links replace the active chat', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -336,6 +338,45 @@ void main() {
       await tester.pump();
       expect(navigator.routes, hasLength(1));
       expect(find.byType(ChatListView), findsOneWidget);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('phone message jumps return to the source chat', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await _setSurfaceSize(tester, const Size(390, 844));
+      final navigator = _TrackingNavigatorObserver();
+      await _pumpMainShell(
+        tester,
+        reducedMotion: true,
+        navigatorObservers: [navigator],
+      );
+      final deepLinks = ChatDeepLinkController.shared;
+
+      deepLinks.openChat(chatId: 41, title: 'Source chat', messageId: 410);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 320));
+      _discardMissingTdlibErrors(tester);
+
+      deepLinks.openChat(
+        chatId: 84,
+        title: 'Linked chat',
+        messageId: 840,
+        preserveChatStack: true,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 320));
+      _discardMissingTdlibErrors(tester);
+      expect(navigator.routes, hasLength(3));
+      expect(_chatFor(navigator.routes.last).chatId, 84);
+
+      navigator.navigator!.pop();
+      await tester.pump();
+      expect(navigator.routes, hasLength(2));
+      expect(_chatFor(navigator.routes.last).chatId, 41);
       await _disposeShell(tester);
     } finally {
       debugDefaultTargetPlatformOverride = null;

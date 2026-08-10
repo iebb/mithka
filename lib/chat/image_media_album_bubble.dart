@@ -18,6 +18,7 @@ import 'chat_appearance_preview.dart';
 import 'media_album_layout.dart';
 import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
+import 'message_reply_count_badge.dart';
 import 'telegram_rich_text.dart';
 
 typedef MediaAlbumImageBuilder =
@@ -310,6 +311,11 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         (interactionOwner.hasCommentThread ||
             interactionOwner.commentCount > 0 ||
             (channelHasLinkedDiscussion && !interactionOwner.isService));
+    final showCompactReplies =
+        isGroup &&
+        !showCommentAttachment &&
+        !interactionOwner.isContentRestricted &&
+        interactionOwner.commentCount > 0;
     final baseTextColor = outgoing ? outgoingText : incomingText;
     final baseLinkColor = outgoing
         ? themedMessageColors?.outgoingLink ?? outgoingText
@@ -339,7 +345,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
                 translationDisplayStyle !=
                     TranslationDisplayStyle.translatedOnly));
 
-    return Container(
+    final card = Container(
       key: ValueKey('messageImageAlbumCard-${messages.first.id}'),
       constraints: BoxConstraints(maxWidth: width),
       decoration: showsSurface
@@ -438,6 +444,30 @@ class ImageMediaAlbumBubble extends StatelessWidget {
             ),
         ],
       ),
+    );
+    if (!showCompactReplies) return card;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(padding: const EdgeInsets.only(bottom: 19), child: card),
+        Positioned(
+          right: 2,
+          bottom: 0,
+          child: MessageReplyCountBadge(
+            key: ValueKey('messageCompactReplies-${interactionOwner.id}'),
+            count: interactionOwner.commentCount,
+            foreground: outgoing
+                ? outgoingText.withValues(alpha: 0.78)
+                : colors.textSecondary,
+            background: outgoing
+                ? outgoingColor.withValues(alpha: 0.82)
+                : colors.card.withValues(alpha: 0.82),
+            onTap: onOpenComments == null
+                ? null
+                : () => onOpenComments?.call(interactionOwner),
+          ),
+        ),
+      ],
     );
   }
 

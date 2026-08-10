@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('macOS builds avoid restricted Keychain Sharing entitlements', () {
+  test('macOS uses the app-ID Keychain group without a custom group', () {
     for (final path in [
       'macos/Runner/DebugProfile.entitlements',
       'macos/Runner/Release.entitlements',
@@ -14,28 +14,40 @@ void main() {
         entitlements,
         isNot(contains('<key>keychain-access-groups</key>')),
         reason:
-            '$path must remain compatible with local ad-hoc signing; bot '
-            'credentials use the non-sharing macOS Keychain.',
+            '$path should use the signed app identifier as the common iOS and '
+            'macOS Keychain group, while remaining compatible with local '
+            'ad-hoc builds.',
       );
     }
   });
 
-  test('macOS app bundle identifier is visible to Xcode Cloud', () {
+  test('Apple targets share one app identifier for iCloud Keychain', () {
     final appInfo = File(
       'macos/Runner/Configs/AppInfo.xcconfig',
     ).readAsStringSync();
-    final project = File(
+    final macProject = File(
       'macos/Runner.xcodeproj/project.pbxproj',
+    ).readAsStringSync();
+    final iosProject = File(
+      'ios/Runner.xcodeproj/project.pbxproj',
     ).readAsStringSync();
 
     const bundleSetting = 'PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka';
     expect(appInfo, contains(bundleSetting));
     expect(
-      RegExp('${RegExp.escape(bundleSetting)};').allMatches(project),
+      RegExp('${RegExp.escape(bundleSetting)};').allMatches(macProject),
       hasLength(3),
       reason:
           'Runner Debug, Profile, and Release must expose the bundle ID '
           'directly for Xcode Cloud discovery.',
+    );
+    expect(
+      RegExp('${RegExp.escape(bundleSetting)};').allMatches(iosProject),
+      hasLength(3),
+      reason:
+          'The iOS and macOS Runner targets must resolve to the same signed '
+          'application identifier so their synchronizable items can meet in '
+          'one default Keychain access group.',
     );
   });
 

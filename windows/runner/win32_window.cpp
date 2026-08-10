@@ -2,6 +2,9 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <shellapi.h>
+
+#include <cwchar>
 
 #include "resource.h"
 
@@ -17,6 +20,13 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr const wchar_t kTrayTooltip[] = L"Mithka";
+constexpr UINT kTrayCallbackMessage = WM_APP + 0x51;
+constexpr UINT kTrayIconId = 1;
+constexpr UINT kTrayShowCommand = 41001;
+constexpr UINT kTrayQuitCommand = 41002;
+constexpr UINT_PTR kQuitFallbackTimer = 1;
+constexpr UINT kQuitFallbackDelayMs = 5000;
 
 /// Registry key for app theme preference.
 ///
@@ -124,6 +134,8 @@ bool Win32Window::Create(const std::wstring& title,
                          const Point& origin,
                          const Size& size) {
   Destroy();
+  quit_requested_ = false;
+  destruction_finalized_ = false;
 
   const wchar_t* window_class =
       WindowClassRegistrar::GetInstance()->GetWindowClass();
@@ -146,7 +158,15 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
-  return OnCreate();
+  if (!OnCreate()) {
+    Destroy();
+    return false;
+  }
+
+  if (background_tray_enabled_) {
+    AddTrayIcon();
+  }
+  return true;
 }
 
 bool Win32Window::Show() {
@@ -180,8 +200,11 @@ Win32Window::MessageHandler(HWND hwnd,
                             LPARAM const lparam) noexcept {
   switch (message) {
     case WM_DESTROY:
+      KillTimer(hwnd, kQuitFallbackTimer);
+      RemoveTrayIcon();
       window_handle_ = nullptr;
-      Destroy();
+      child_content_ = nullptr;
+      FinalizeDestruction();
       if (quit_on_close_) {
         PostQuitMessage(0);
       }
@@ -222,11 +245,16 @@ Win32Window::MessageHandler(HWND hwnd,
 }
 
 void Win32Window::Destroy() {
-  OnDestroy();
-
-  if (window_handle_) {
-    DestroyWindow(window_handle_);
-    window_handle_ = nullptr;
+  if (!destroying_ && window_handle_) {
+    destroying_ = true;
+    const HWND window = window_handle_;
+    if (!DestroyWindow(window)) {
+      // DestroyWindow can fail only for an invalid/cross-thread handle. Avoid
+      // re-entering OnDestroy; a later native WM_DESTROY remains authoritative.
+      destroying_ = false;
+      return;
+    }
+    destroying_ = false;
   }
   if (g_active_window_count == 0) {
     WindowClassRegistrar::GetInstance()->UnregisterWindowClass();
@@ -261,6 +289,221 @@ HWND Win32Window::GetHandle() {
 
 void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
+}
+
+void Win32Window::EnableBackgroundTray() {
+  background_tray_enabled_ = true;
+  taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
+  if (window_handle_) {
+    AddTrayIcon();
+  }
+}
+
+const wchar_t* Win32Window::GetWindowClassName() {
+  return kWindowClassName;
+}
+
+std::optional<LRESULT> Win32Window::HandleBackgroundTrayMessage(
+    HWND window,
+    UINT const message,
+    WPARAM const wparam,
+    LPARAM const lparam) noexcept {
+  if (!background_tray_enabled_) {
+    return std::nullopt;
+  }
+
+  if (message == kActivatePrimaryWindowMessage) {
+    RestoreFromTray();
+    return 0;
+  }
+
+  if (taskbar_created_message_ != 0 && message == taskbar_created_message_) {
+    tray_icon_added_ = false;
+    if (!AddTrayIcon() && !IsWindowVisible(window)) {
+      // Never strand a background process without a way to reopen it.
+      RestoreFromTray();
+    }
+    return 0;
+  }
+
+  if (message == kTrayCallbackMessage) {
+    const UINT event = LOWORD(lparam);
+    if (event == WM_LBUTTONUP || event == WM_LBUTTONDBLCLK ||
+        event == NIN_SELECT || event == NIN_KEYSELECT) {
+      RestoreFromTray();
+    } else if (event == WM_RBUTTONUP || event == WM_CONTEXTMENU) {
+      ShowTrayMenu();
+    }
+    return 0;
+  }
+
+  if (message == WM_COMMAND) {
+    switch (LOWORD(wparam)) {
+      case kTrayShowCommand:
+        RestoreFromTray();
+        return 0;
+      case kTrayQuitCommand:
+        RequestQuit();
+        return 0;
+    }
+  }
+
+  if (message == WM_TIMER && wparam == kQuitFallbackTimer) {
+    KillTimer(window, kQuitFallbackTimer);
+    Destroy();
+    return 0;
+  }
+
+  if (message == WM_QUERYENDSESSION) {
+    // A tray-enabled app must never prevent Windows logoff or shutdown.
+    return TRUE;
+  }
+  if (message == WM_ENDSESSION && wparam == TRUE) {
+    quit_requested_ = true;
+    RemoveTrayIcon();
+    return std::nullopt;
+  }
+
+  if (!quit_requested_ && tray_icon_added_) {
+    if (message == WM_CLOSE) {
+      HideToTray();
+      return 0;
+    }
+    if (message == WM_SYSCOMMAND) {
+      const WPARAM command = wparam & 0xFFF0;
+      if (command == SC_CLOSE || command == SC_MINIMIZE) {
+        HideToTray();
+        return 0;
+      }
+    }
+    if (message == WM_SIZE && wparam == SIZE_MINIMIZED) {
+      HideToTray();
+      return 0;
+    }
+  }
+
+  return std::nullopt;
+}
+
+bool Win32Window::AddTrayIcon() {
+  if (!background_tray_enabled_ || tray_icon_added_ || !window_handle_) {
+    return tray_icon_added_;
+  }
+
+  tray_icon_data_ = {};
+  tray_icon_data_.cbSize = sizeof(tray_icon_data_);
+  tray_icon_data_.hWnd = window_handle_;
+  tray_icon_data_.uID = kTrayIconId;
+  tray_icon_data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+#ifdef NIF_SHOWTIP
+  tray_icon_data_.uFlags |= NIF_SHOWTIP;
+#endif
+  tray_icon_data_.uCallbackMessage = kTrayCallbackMessage;
+  tray_icon_data_.hIcon = reinterpret_cast<HICON>(LoadImageW(
+      GetModuleHandle(nullptr), MAKEINTRESOURCEW(IDI_TRAY_ICON), IMAGE_ICON,
+      GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+      LR_DEFAULTCOLOR | LR_SHARED));
+  if (!tray_icon_data_.hIcon) {
+    tray_icon_data_.hIcon =
+        LoadIconW(GetModuleHandle(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON));
+  }
+  wcsncpy_s(tray_icon_data_.szTip, _countof(tray_icon_data_.szTip),
+            kTrayTooltip, _TRUNCATE);
+
+  tray_icon_added_ =
+      Shell_NotifyIconW(NIM_ADD, &tray_icon_data_) == TRUE;
+#ifdef NOTIFYICON_VERSION_4
+  if (tray_icon_added_) {
+    tray_icon_data_.uVersion = NOTIFYICON_VERSION_4;
+    Shell_NotifyIconW(NIM_SETVERSION, &tray_icon_data_);
+  }
+#endif
+  return tray_icon_added_;
+}
+
+void Win32Window::RemoveTrayIcon() {
+  if (!tray_icon_added_) {
+    return;
+  }
+  Shell_NotifyIconW(NIM_DELETE, &tray_icon_data_);
+  tray_icon_added_ = false;
+}
+
+void Win32Window::HideToTray() {
+  if (window_handle_ && tray_icon_added_) {
+    ShowWindow(window_handle_, SW_HIDE);
+  }
+}
+
+void Win32Window::RestoreFromTray() {
+  if (!window_handle_) {
+    return;
+  }
+  int show_command = SW_SHOW;
+  if (IsIconic(window_handle_)) {
+    show_command = SW_RESTORE;
+  } else if (IsZoomed(window_handle_)) {
+    show_command = SW_SHOWMAXIMIZED;
+  }
+  ShowWindow(window_handle_, show_command);
+  SetForegroundWindow(window_handle_);
+}
+
+void Win32Window::ShowTrayMenu() {
+  if (!window_handle_) {
+    return;
+  }
+
+  HMENU menu = CreatePopupMenu();
+  if (!menu) {
+    return;
+  }
+  AppendMenuW(menu, MF_STRING, kTrayShowCommand, L"Show Mithka");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kTrayQuitCommand, L"Quit Mithka");
+
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  SetForegroundWindow(window_handle_);
+  const UINT command = TrackPopupMenu(
+      menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN |
+                TPM_RETURNCMD | TPM_NONOTIFY,
+      cursor.x, cursor.y, 0, window_handle_, nullptr);
+  DestroyMenu(menu);
+  PostMessageW(window_handle_, WM_NULL, 0, 0);
+
+  if (command == kTrayShowCommand) {
+    RestoreFromTray();
+  } else if (command == kTrayQuitCommand) {
+    RequestQuit();
+  }
+}
+
+void Win32Window::RequestQuit() {
+  if (quit_requested_ || !window_handle_) {
+    return;
+  }
+  quit_requested_ = true;
+  // Let Dart and multi_window_manager perform their normal confirmed close,
+  // but do not hang forever if Quit is chosen before Dart installs its handler
+  // or if that handler has crashed.
+  if (!SetTimer(window_handle_, kQuitFallbackTimer, kQuitFallbackDelayMs,
+                nullptr)) {
+    Destroy();
+    return;
+  }
+  if (!PostMessageW(window_handle_, WM_CLOSE, 0, 0)) {
+    KillTimer(window_handle_, kQuitFallbackTimer);
+    Destroy();
+  }
+}
+
+void Win32Window::FinalizeDestruction() {
+  if (destruction_finalized_) {
+    return;
+  }
+  destruction_finalized_ = true;
+  OnDestroy();
 }
 
 bool Win32Window::OnCreate() {

@@ -17,6 +17,7 @@ import '../l10n/app_localizations.dart';
 import '../notifications/notification_preferences.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../notifications/scope_notification_settings.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_motion.dart';
@@ -321,6 +322,7 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
   @override
   Widget build(BuildContext context) {
     final hasMultipleAccounts = TdClient.shared.configuredSlots.length > 1;
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     return SettingsPageScaffold(
       key: const ValueKey('notification-settings'),
       title: AppStrings.t(AppStringKeys.notificationNotifications),
@@ -427,16 +429,17 @@ class _NotificationSettingsViewState extends State<NotificationSettingsView> {
                 onChanged: (value) =>
                     unawaited(_preferences.setInAppSounds(value)),
               ),
-              SettingsSwitchRow(
-                key: const ValueKey('mithka-notification-in-app-vibrate'),
-                title: AppStringKeys.notificationInAppVibrate,
-                value: _preferences.inAppVibrate,
-                leading: const SettingsLeadingIcon(
-                  icon: HeroAppIcons.mobileScreenButton,
+              if (!desktop)
+                SettingsSwitchRow(
+                  key: const ValueKey('mithka-notification-in-app-vibrate'),
+                  title: AppStringKeys.notificationInAppVibrate,
+                  value: _preferences.inAppVibrate,
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.mobileScreenButton,
+                  ),
+                  onChanged: (value) =>
+                      unawaited(_preferences.setInAppVibrate(value)),
                 ),
-                onChanged: (value) =>
-                    unawaited(_preferences.setInAppVibrate(value)),
-              ),
               SettingsSwitchRow(
                 key: const ValueKey('mithka-notification-in-app-preview'),
                 title: AppStringKeys.notificationInAppPreview,

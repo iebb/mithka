@@ -14,6 +14,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'audio_search_view.dart';
@@ -52,26 +53,24 @@ Future<RichTextComposerResult?> showRichTextComposerSheet(
   String hintText = AppStringKeys.richTextComposerContentPlaceholder,
   bool allowMedia = true,
 }) {
-  return showGeneralDialog<RichTextComposerResult>(
+  return showAppAdaptiveSheetDialog<RichTextComposerResult>(
     context: context,
-    barrierDismissible: true,
+    builder: (dialogContext) => RichTextComposerView(
+      initialText: initialText,
+      initialEntities: initialEntities,
+      initialMedia: initialMedia,
+      initialAttachments: initialAttachments,
+      title: title,
+      submitText: submitText,
+      hintText: hintText,
+      allowMedia: allowMedia,
+      asSheet: true,
+    ),
     barrierLabel: title.l10n(context),
     barrierColor: Colors.black.withValues(alpha: 0.36),
     transitionDuration: const Duration(milliseconds: 240),
-    pageBuilder: (dialogContext, _, _) {
-      return RichTextComposerView(
-        initialText: initialText,
-        initialEntities: initialEntities,
-        initialMedia: initialMedia,
-        initialAttachments: initialAttachments,
-        title: title,
-        submitText: submitText,
-        hintText: hintText,
-        allowMedia: allowMedia,
-        asSheet: true,
-      );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
+    centeredBackgroundColor: context.colors.background,
+    mobileTransitionBuilder: (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
         parent: animation,
         curve: Curves.easeOutCubic,
@@ -1438,6 +1437,9 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     );
     if (!widget.asSheet) {
       return Scaffold(backgroundColor: c.background, body: content);
+    }
+    if (appModalUsesCenteredPresentation(MediaQuery.sizeOf(context))) {
+      return ColoredBox(color: c.background, child: content);
     }
     return Align(
       alignment: Alignment.bottomCenter,

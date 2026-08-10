@@ -91,7 +91,11 @@ void main() {
         'small': {
           '@type': 'file',
           'id': 123,
-          'local': {'@type': 'localFile', 'path': '/tmp/chat-photo.jpg'},
+          'local': {
+            '@type': 'localFile',
+            'path': '/tmp/chat-photo.jpg',
+            'is_downloading_completed': true,
+          },
         },
       },
     });

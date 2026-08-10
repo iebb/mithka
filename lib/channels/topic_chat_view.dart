@@ -1550,7 +1550,7 @@ class _PostActions extends StatelessWidget {
           onTap: onComments,
         ),
         const SizedBox(width: 18),
-        _PostActionButton(icon: HeroAppIcons.share, onTap: onShare),
+        _PostActionButton(icon: HeroAppIcons.forward, onTap: onShare),
       ],
     );
   }

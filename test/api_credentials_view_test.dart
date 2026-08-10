@@ -8,6 +8,14 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('TDLib device-model hint follows the desktop platform', () {
+    expect(apiCredentialsDeviceModelHint(TargetPlatform.macOS), 'Mac');
+    expect(apiCredentialsDeviceModelHint(TargetPlatform.windows), 'Windows PC');
+    expect(apiCredentialsDeviceModelHint(TargetPlatform.linux), 'Linux PC');
+    expect(apiCredentialsDeviceModelHint(TargetPlatform.iOS), 'iPhone');
+    expect(apiCredentialsDeviceModelHint(TargetPlatform.android), 'Android');
+  });
+
   testWidgets(
     'TDLib user-agent fields stay editable without enabling custom API keys',
     (tester) async {
