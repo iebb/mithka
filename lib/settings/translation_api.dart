@@ -7,10 +7,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import 'google_translate_defaults.dart';
 import 'translation_controller.dart';
 
 class NativeTranslationApi {
@@ -109,8 +112,198 @@ class DetectedTranslationLanguage {
   final double confidence;
 }
 
+@visibleForTesting
+List<Object> buildGoogleTranslateRequestBody(
+  String text,
+  String source,
+  String target,
+) => [
+  [
+    [text],
+    source == 'autodetect' ? 'auto' : source,
+    target,
+  ],
+  'wt_lib',
+];
+
+@visibleForTesting
+String parseGoogleTranslateResponse(Object? decoded) {
+  if (decoded is List && decoded.isNotEmpty && decoded.first is List) {
+    final translations = (decoded.first as List).whereType<String>().toList();
+    if (translations.isNotEmpty) return translations.join('\n');
+  }
+  throw TranslationApiException(
+    AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
+  );
+}
+
+@visibleForTesting
+String parseGoogleGtxResponse(Object? decoded) {
+  if (decoded is List && decoded.isNotEmpty && decoded.first is List) {
+    final translated = StringBuffer();
+    for (final segment in decoded.first as List) {
+      if (segment is List && segment.isNotEmpty && segment.first is String) {
+        translated.write(segment.first as String);
+      }
+    }
+    if (translated.isNotEmpty) return translated.toString();
+  }
+  throw TranslationApiException(
+    AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
+  );
+}
+
+@visibleForTesting
+Map<String, Object> buildGoogleCloudTranslateRequestBody(
+  String text,
+  String source,
+  String target,
+) => {
+  'q': text,
+  if (source != 'autodetect' && source != 'auto') 'source': source,
+  'target': target,
+  'format': 'text',
+};
+
+@visibleForTesting
+String parseGoogleCloudTranslateResponse(Object? decoded) {
+  if (decoded is Map && decoded['data'] is Map) {
+    final translations = (decoded['data'] as Map)['translations'];
+    if (translations is List) {
+      final values = <String>[
+        for (final translation in translations)
+          if (translation is Map && translation['translatedText'] is String)
+            translation['translatedText'] as String,
+      ];
+      if (values.isNotEmpty) return values.join('\n');
+    }
+  }
+  throw TranslationApiException(
+    AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
+  );
+}
+
+typedef GoogleTranslateJsonRequest =
+    Future<Object?> Function({
+      required String method,
+      required Uri uri,
+      required Object? body,
+      required String contentType,
+      required Map<String, String> headers,
+    });
+
+/// Google translation transports shared by the built-in public client and
+/// user-configured Cloud Translation Basic providers.
+class GoogleTranslationApi {
+  GoogleTranslationApi({
+    GoogleTranslateJsonRequest? request,
+    int Function(int max)? randomIndex,
+  }) : _request = request ?? _defaultRequest,
+       _randomIndex = randomIndex ?? Random.secure().nextInt;
+
+  static final _publicHtmlUri = Uri.https(
+    'translate-pa.googleapis.com',
+    '/v1/translateHtml',
+  );
+  static final _cloudTranslateUri = Uri.https(
+    'translation.googleapis.com',
+    '/language/translate/v2',
+  );
+
+  // Public client key used by the embedded Google Translate web client and by
+  // go_translate v1.0.6. It is intentionally shipped with clients rather than
+  // being a user or server credential.
+  static const _publicHtmlApiKey = 'AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520';
+
+  final GoogleTranslateJsonRequest _request;
+  final int Function(int max) _randomIndex;
+
+  Future<String> translatePublic({
+    required String text,
+    required String source,
+    required String target,
+  }) async {
+    try {
+      final decoded = await _request(
+        method: 'POST',
+        uri: _publicHtmlUri,
+        body: buildGoogleTranslateRequestBody(text, source, target),
+        contentType: 'application/json+protobuf',
+        headers: {
+          'User-Agent': _randomValue(googleTranslateDefaultUserAgents),
+          'X-Goog-API-Key': _publicHtmlApiKey,
+        },
+      );
+      return parseGoogleTranslateResponse(decoded);
+    } catch (_) {
+      // `DefaultServiceUrls` is a pool for the package's keyless GTX client,
+      // not for the fixed translateHtml endpoint. Match that split while using
+      // GTX as the public client's fallback when the well-known key stops.
+      final host = _randomValue(googleTranslateDefaultServiceUrls);
+      final decoded = await _request(
+        method: 'GET',
+        uri: Uri.https(host, '/translate_a/single', {
+          'client': 'gtx',
+          'sl': 'auto',
+          'dt': 't',
+          'tl': target,
+          'q': text,
+        }),
+        body: null,
+        contentType: 'application/json',
+        headers: {'User-Agent': _randomValue(googleTranslateDefaultUserAgents)},
+      );
+      return parseGoogleGtxResponse(decoded);
+    }
+  }
+
+  Future<String> translateCloud({
+    required String text,
+    required String source,
+    required String target,
+    required String apiKey,
+  }) async {
+    final normalizedKey = apiKey.trim();
+    if (normalizedKey.isEmpty) {
+      throw const FormatException('A Google Cloud API key is required.');
+    }
+    final decoded = await _request(
+      method: 'POST',
+      uri: _cloudTranslateUri,
+      body: buildGoogleCloudTranslateRequestBody(text, source, target),
+      contentType: 'application/json',
+      // Google recommends the header over `?key=` so credentials do not enter
+      // URL logs or histories.
+      headers: {'X-Goog-Api-Key': normalizedKey},
+    );
+    return parseGoogleCloudTranslateResponse(decoded);
+  }
+
+  T _randomValue<T>(List<T> values) => values[_randomIndex(values.length)];
+
+  static Future<Object?> _defaultRequest({
+    required String method,
+    required Uri uri,
+    required Object? body,
+    required String contentType,
+    required Map<String, String> headers,
+  }) {
+    if (method == 'GET') {
+      return ThirdPartyTranslationApi._getJsonValue(uri, headers: headers);
+    }
+    return ThirdPartyTranslationApi._postJsonValue(
+      uri,
+      body!,
+      contentType: contentType,
+      headers: headers,
+    );
+  }
+}
+
 class ThirdPartyTranslationApi {
   const ThirdPartyTranslationApi._();
+
+  static final _google = GoogleTranslationApi();
 
   static Future<String> translate({
     required TranslationProvider provider,
@@ -127,6 +320,11 @@ class ThirdPartyTranslationApi {
       TranslationProvider.iosSystem ||
       TranslationProvider.androidMlKit => throw TranslationApiException(
         AppStrings.t(AppStringKeys.translationNativeNoExternalApi),
+      ),
+      TranslationProvider.googleTranslate => _translateGoogle(
+        text,
+        source,
+        target,
       ),
       TranslationProvider.myMemory => _translateMyMemory(text, source, target),
       TranslationProvider.lingva => _translateLingva(
@@ -146,6 +344,26 @@ class ThirdPartyTranslationApi {
         AppStrings.t(AppStringKeys.translationInternalNoExternalApi),
       ),
     };
+  }
+
+  static Future<String> _translateGoogle(
+    String text,
+    String source,
+    String target,
+  ) => _google.translatePublic(text: text, source: source, target: target);
+
+  static Future<String> translateGoogleCloud({
+    required String text,
+    required String sourceLanguageCode,
+    required String targetLanguageCode,
+    required String apiKey,
+  }) {
+    return _google.translateCloud(
+      text: text,
+      source: _sourceLanguage(sourceLanguageCode),
+      target: _apiLanguage(targetLanguageCode),
+      apiKey: apiKey,
+    );
   }
 
   static Future<String> _translateMyMemory(
@@ -266,16 +484,32 @@ class ThirdPartyTranslationApi {
   }
 
   static Future<Map<String, dynamic>> _getJson(Uri uri) async {
+    final decoded = await _getJsonValue(uri);
+    if (decoded is! Map<String, dynamic>) {
+      throw TranslationApiException(
+        AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
+      );
+    }
+    return decoded;
+  }
+
+  static Future<Object?> _getJsonValue(
+    Uri uri, {
+    Map<String, String> headers = const {},
+  }) async {
     final client = HttpClient();
     try {
       final request = await client
           .getUrl(uri)
           .timeout(const Duration(seconds: 15));
       request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      for (final header in headers.entries) {
+        request.headers.set(header.key, header.value);
+      }
       final response = await request.close().timeout(
         const Duration(seconds: 15),
       );
-      return _decodeJson(response);
+      return _decodeJsonValue(response);
     } finally {
       client.close(force: true);
     }
@@ -285,26 +519,42 @@ class ThirdPartyTranslationApi {
     Uri uri,
     Map<String, Object> body,
   ) async {
+    final decoded = await _postJsonValue(uri, body);
+    if (decoded is! Map<String, dynamic>) {
+      throw TranslationApiException(
+        AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
+      );
+    }
+    return decoded;
+  }
+
+  static Future<Object?> _postJsonValue(
+    Uri uri,
+    Object body, {
+    String contentType = 'application/json',
+    Map<String, String> headers = const {},
+  }) async {
     final client = HttpClient();
     try {
       final request = await client
           .postUrl(uri)
           .timeout(const Duration(seconds: 15));
-      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.contentTypeHeader, contentType);
       request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      for (final header in headers.entries) {
+        request.headers.set(header.key, header.value);
+      }
       request.write(jsonEncode(body));
       final response = await request.close().timeout(
         const Duration(seconds: 15),
       );
-      return _decodeJson(response);
+      return _decodeJsonValue(response);
     } finally {
       client.close(force: true);
     }
   }
 
-  static Future<Map<String, dynamic>> _decodeJson(
-    HttpClientResponse response,
-  ) async {
+  static Future<Object?> _decodeJsonValue(HttpClientResponse response) async {
     final body = await utf8.decoder.bind(response).join();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw TranslationApiException(
@@ -313,13 +563,7 @@ class ThirdPartyTranslationApi {
         }),
       );
     }
-    final decoded = jsonDecode(body);
-    if (decoded is! Map<String, dynamic>) {
-      throw TranslationApiException(
-        AppStrings.t(AppStringKeys.translationServiceInvalidResponse),
-      );
-    }
-    return decoded;
+    return jsonDecode(body);
   }
 
   static List<String> _chunksByUtf8Bytes(String text, int maxBytes) {

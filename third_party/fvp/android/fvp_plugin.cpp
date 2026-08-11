@@ -9,6 +9,7 @@
 //#include <vulkan/vulkan.h> // before any mdk header
 #include <mdk/Player.h>
 #include <mdk/MediaInfo.h>
+#include <mdk/global.h>
 #include <cassert>
 #include <unordered_map>
 #include <iostream>
@@ -32,6 +33,8 @@ private:
 };
 
 static unordered_map<int64_t, shared_ptr<TexturePlayer>> players;
+static JavaVM* java_vm = nullptr;
+static bool java_vm_registered = false;
 
 
 extern "C" {
@@ -45,6 +48,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
         clog << "GetEnv for JNI_VERSION_1_4 failed" << endl;
         return -1;
     }
+    java_vm = vm;
 
     // Disabled for Android 14/15 load testing.
     return JNI_VERSION_1_4;
@@ -59,6 +63,12 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_mediadevkit_fvp_FvpPlugin_nativeSetSurface(JNIEnv *env, jobject thiz, jlong player_handle,
                                                     jlong tex_id, jobject surface, jint w, jint h, jboolean tunnel) {
+    if (!java_vm_registered && java_vm) {
+        // Register outside JNI_OnLoad: initializing MDK while the dynamic loader
+        // lock is held crashes on recent Android releases.
+        mdk::SetGlobalOption("jvm", java_vm);
+        java_vm_registered = true;
+    }
     if (!player_handle || !surface) {
         if (auto it = players.find(tex_id); it != players.end()) {
             auto& player = it->second;
@@ -66,7 +76,7 @@ Java_com_mediadevkit_fvp_FvpPlugin_nativeSetSurface(JNIEnv *env, jobject thiz, j
             player->updateNativeSurface(nullptr);
             players.erase(it);
             if (s) {
-                env->DeleteGlobalRef(surface);
+                env->DeleteGlobalRef(s);
             }
         } else {
             clog << "player not found(already removed?) for textureId " + std::to_string(tex_id) + " surface " + std::to_string((intptr_t)surface) << endl;
@@ -75,13 +85,13 @@ Java_com_mediadevkit_fvp_FvpPlugin_nativeSetSurface(JNIEnv *env, jobject thiz, j
     }
     assert(surface && "null surface");
     auto player = make_shared<TexturePlayer>(player_handle);
+    player->surface = env->NewGlobalRef(surface);
     clog << __func__ << endl;
     if (tunnel) { // TODO: tunel via ffi + global var
-        player->surface = env->NewGlobalRef(surface);
         player->setProperty("video.decoder", "surface=" + std::to_string((intptr_t)player->surface));
     } else {
-        player->updateNativeSurface(surface, w, h);
-        player->vo_opaque = surface;
+        player->updateNativeSurface(player->surface, w, h);
+        player->vo_opaque = player->surface;
     }
     players[tex_id] = player;
 }

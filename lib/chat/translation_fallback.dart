@@ -30,12 +30,22 @@ List<String> effectiveTranslationOptionIds({
   final availableIds = <String>[
     for (final provider in TranslationProvider.selectableProviders)
       TranslationOptionIds.provider(provider),
+    for (final provider in translation.googleCloudProviders)
+      TranslationOptionIds.googleCloud(provider.id),
     for (final candidate in candidates.values)
       TranslationOptionIds.ai(candidate.id),
   ];
   return translation
       .orderedEnabledTranslationOptions(availableIds)
       .where((id) {
+        final googleCloudProviderId =
+            TranslationOptionIds.googleCloudProviderId(id);
+        if (googleCloudProviderId != null) {
+          return translation
+                  .googleCloudProviderById(googleCloudProviderId)
+                  ?.hasApiKey ??
+              false;
+        }
         final provider = TranslationOptionIds.translationProvider(id);
         if (provider != null) {
           return switch (provider) {
@@ -45,7 +55,9 @@ List<String> effectiveTranslationOptionIds({
               nativeProviders.contains(provider),
             TranslationProvider.libreTranslate =>
               translation.libreTranslateEndpoint.isNotEmpty,
-            TranslationProvider.myMemory || TranslationProvider.lingva => true,
+            TranslationProvider.googleTranslate ||
+            TranslationProvider.myMemory ||
+            TranslationProvider.lingva => true,
           };
         }
         final candidateId = TranslationOptionIds.aiCandidateId(id);

@@ -3265,6 +3265,8 @@
     <string name="translationLibreTranslateNoResult">LibreTranslate returned no translation</string>
     <string name="translationLibreTranslateUrlRequired">Set the LibreTranslate URL first</string>
     <string name="translationLingvaNoResult">Lingva returned no translation</string>
+    <string name="translationGoogleCloudApiKeyRequired">An API key is required.</string>
+    <string name="translationGoogleCloudPrivacy">Each provider uses its own Google Cloud API key. Keys are stored securely on this device and sent only to Google Cloud Translation.</string>
     <string name="translationMlKitLocal">ML Kit (local)</string>
     <string name="translationMyMemoryNoResult">MyMemory returned no translation</string>
     <string name="translationNativeCancelledOrTimedOut">Native translation was canceled or timed out</string>

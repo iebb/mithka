@@ -4,6 +4,8 @@
 //  翻译 settings: provider and target language preferences.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
@@ -167,6 +169,330 @@ class _AiTranslationPromptEditorViewState
     Navigator.of(context).pop();
   }
 }
+
+class _GoogleCloudTranslationProviderListView extends StatelessWidget {
+  const _GoogleCloudTranslationProviderListView();
+
+  @override
+  Widget build(BuildContext context) {
+    final translation = context.watch<TranslationController>();
+    final providers = translation.googleCloudProviders;
+    return SettingsPageScaffold(
+      title: 'Google Cloud Translation',
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
+        children: [
+          SettingsSection(
+            rows: [
+              for (final provider in providers)
+                SettingsRow(
+                  key: ValueKey('google-cloud-provider-${provider.id}'),
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.cloud),
+                  title: provider.name,
+                  onTap: () => _openEditor(context, provider),
+                ),
+              SettingsRow(
+                key: const ValueKey('google-cloud-provider-add'),
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.circlePlus,
+                ),
+                title: AppStringKeys.aiAddProvider.l10n(context),
+                onTap: () => _openEditor(context, null),
+              ),
+            ],
+          ),
+          SettingsNote(
+            text: AppStringKeys.translationGoogleCloudPrivacy.l10n(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openEditor(
+    BuildContext context,
+    GoogleCloudTranslationProvider? provider,
+  ) {
+    Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) =>
+            _GoogleCloudTranslationProviderEditorView(provider: provider),
+      ),
+    );
+  }
+}
+
+class _GoogleCloudTranslationProviderEditorView extends StatefulWidget {
+  const _GoogleCloudTranslationProviderEditorView({this.provider});
+
+  final GoogleCloudTranslationProvider? provider;
+
+  @override
+  State<_GoogleCloudTranslationProviderEditorView> createState() =>
+      _GoogleCloudTranslationProviderEditorViewState();
+}
+
+class _GoogleCloudTranslationProviderEditorViewState
+    extends State<_GoogleCloudTranslationProviderEditorView> {
+  late final TextEditingController _name;
+  late final TextEditingController _apiKey;
+  bool _loadingApiKey = false;
+  bool _obscureApiKey = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.provider?.name ?? '');
+    _apiKey = TextEditingController();
+    if (widget.provider != null) {
+      _loadingApiKey = true;
+      unawaited(_loadApiKey());
+    }
+  }
+
+  Future<void> _loadApiKey() async {
+    final provider = widget.provider;
+    if (provider == null) return;
+    final value = await context
+        .read<TranslationController>()
+        .googleCloudApiKeyForProvider(provider.id);
+    if (!mounted) return;
+    _apiKey.text = value;
+    setState(() => _loadingApiKey = false);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _apiKey.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return SettingsPageScaffold(
+      title:
+          (widget.provider == null
+                  ? AppStringKeys.aiAddProvider
+                  : AppStringKeys.aiEditProvider)
+              .l10n(context),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
+        children: [
+          _googleCloudInputField(
+            context,
+            fieldKey: const ValueKey('google-cloud-provider-name'),
+            controller: _name,
+            icon: HeroAppIcons.cloud,
+            label: AppStringKeys.aiProviderName.l10n(context),
+            hint: 'Google Cloud Translation',
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _googleCloudInputField(
+            context,
+            fieldKey: const ValueKey('google-cloud-provider-api-key'),
+            controller: _apiKey,
+            icon: HeroAppIcons.key,
+            label: AppStringKeys.aiServerApiKey.l10n(context),
+            hint: _loadingApiKey ? '••••••••' : '',
+            obscureText: _obscureApiKey,
+            trailing: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _obscureApiKey = !_obscureApiKey),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: AppIcon(
+                  _obscureApiKey ? HeroAppIcons.eye : HeroAppIcons.eyeSlash,
+                  size: 19,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          SettingsNote(
+            text: AppStringKeys.translationGoogleCloudPrivacy.l10n(context),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _googleCloudActionButton(
+            context,
+            key: const ValueKey('google-cloud-provider-save'),
+            label: AppStringKeys.aiSaveProvider.l10n(context),
+            saving: _saving,
+            onTap: _loadingApiKey ? null : _save,
+          ),
+          if (widget.provider != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _googleCloudActionButton(
+              context,
+              key: const ValueKey('google-cloud-provider-delete'),
+              label: AppStringKeys.aiDeleteProvider.l10n(context),
+              saving: _saving,
+              onTap: _loadingApiKey ? null : _delete,
+              backgroundColor: const Color(0xFFDC3C3C),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (_saving || _loadingApiKey) return;
+    if (_apiKey.text.trim().isEmpty) {
+      showToast(
+        context,
+        AppStringKeys.translationGoogleCloudApiKeyRequired.l10n(context),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await context.read<TranslationController>().saveGoogleCloudProvider(
+        id: widget.provider?.id,
+        name: _name.text,
+        apiKey: _apiKey.text,
+      );
+      if (!mounted) return;
+      showToast(context, AppStringKeys.aiSaved.l10n(context));
+      Navigator.of(context).pop();
+    } on FormatException {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.translationGoogleCloudApiKeyRequired.l10n(context),
+      );
+      setState(() => _saving = false);
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.chatTranslateFailed, {'value1': error}),
+      );
+      setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final provider = widget.provider;
+    if (provider == null || _saving || _loadingApiKey) return;
+    setState(() => _saving = true);
+    try {
+      await context.read<TranslationController>().deleteGoogleCloudProvider(
+        provider.id,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.chatTranslateFailed, {'value1': error}),
+      );
+      setState(() => _saving = false);
+    }
+  }
+}
+
+Widget _googleCloudInputField(
+  BuildContext context, {
+  required Key fieldKey,
+  required TextEditingController controller,
+  required AppIconData icon,
+  required String label,
+  required String hint,
+  bool obscureText = false,
+  Widget? trailing,
+}) {
+  final colors = context.colors;
+  return Semantics(
+    textField: true,
+    label: label,
+    child: Container(
+      constraints: const BoxConstraints(minHeight: 60),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: colors.divider, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          AppIcon(icon, size: 19, color: colors.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: AppTextStyle.caption(colors.textTertiary)),
+                const SizedBox(height: 3),
+                TextField(
+                  key: fieldKey,
+                  controller: controller,
+                  obscureText: obscureText,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  style: AppTextStyle.body(colors.textPrimary),
+                  cursorColor: AppTheme.brand,
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    hintText: hint,
+                    hintStyle: AppTextStyle.body(colors.textTertiary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _googleCloudActionButton(
+  BuildContext context, {
+  required Key key,
+  required String label,
+  required bool saving,
+  required VoidCallback? onTap,
+  Color? backgroundColor,
+}) => Semantics(
+  button: true,
+  enabled: !saving && onTap != null,
+  child: GestureDetector(
+    key: key,
+    behavior: HitTestBehavior.opaque,
+    onTap: saving ? null : onTap,
+    child: AnimatedOpacity(
+      duration: const Duration(milliseconds: 140),
+      opacity: saving || onTap == null ? 0.55 : 1,
+      child: Container(
+        height: 48,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: backgroundColor ?? AppTheme.brand,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        child: saving
+            ? AppActivityIndicator(
+                size: 20,
+                color: readableForeground(backgroundColor ?? AppTheme.brand),
+              )
+            : Text(
+                label,
+                style: TextStyle(
+                  color: readableForeground(backgroundColor ?? AppTheme.brand),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
+    ),
+  ),
+);
 
 class _TranslationOptionDescriptor {
   const _TranslationOptionDescriptor({
@@ -333,6 +659,36 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
               context,
             ),
           ),
+          SettingsSection(
+            rows: [
+              SettingsRow(
+                key: const ValueKey('google-cloud-providers-settings'),
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.cloud),
+                title: 'Google Cloud Translation',
+                value: translation.googleCloudProviders.isEmpty
+                    ? AppStringKeys.translationSettingsNone.l10n(context)
+                    : '${translation.googleCloudProviders.length}',
+                onTap: () => Navigator.of(context).push(
+                  AppPageRoute<void>(
+                    pageBuilder: (_, _, _) =>
+                        const _GoogleCloudTranslationProviderListView(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SettingsSection(
+            rows: [
+              SettingsRow(
+                key: const ValueKey('translation-options-reset'),
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.restore),
+                title: AppStringKeys.translationSettingsAiPromptReset,
+                titleColor: AppTheme.brand,
+                showChevron: false,
+                onTap: translation.resetTranslationOptionPriorities,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -406,6 +762,19 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         _aiTranslationOption(context, ai, candidate),
       for (final native in nativeProviders)
         provider(native, HeroAppIcons.cpuChip),
+      provider(TranslationProvider.googleTranslate, HeroAppIcons.globe),
+      for (final cloudProvider in translation.googleCloudProviders)
+        _TranslationOptionDescriptor(
+          id: TranslationOptionIds.googleCloud(cloudProvider.id),
+          title: cloudProvider.name,
+          subtitle: cloudProvider.hasApiKey
+              ? 'Google Cloud Translation'
+              : AppStringKeys.translationSettingsOptionUnavailable.l10n(
+                  context,
+                ),
+          icon: HeroAppIcons.cloud,
+          available: cloudProvider.hasApiKey,
+        ),
       provider(TranslationProvider.myMemory, HeroAppIcons.globe),
       provider(TranslationProvider.lingva, HeroAppIcons.globe),
       provider(

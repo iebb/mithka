@@ -54,6 +54,7 @@ import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
+import 'media/video_view_compatibility.dart';
 import 'notifications/in_app_notification_banner.dart';
 import 'notifications/notification_controller.dart';
 import 'notifications/notification_preferences.dart';
@@ -221,13 +222,15 @@ Future<void> _bootstrapAndRunApp() async {
     configureImmersiveSystemUI();
   }
   final prefs = await SharedPreferences.getInstance();
-  // Both must land before the first frame — the catalogue or early widgets
-  // render bare keys, the lock or the chat list flashes before the gate — but
-  // an asset load and a secure-storage read share nothing, so they overlap.
+  // These must land before the first frame — the catalogue or early widgets
+  // render bare keys, the lock or the chat list flashes before the gate, and
+  // video surfaces must be selected before any controller is created. Their
+  // platform and asset reads are independent, so they overlap.
   await Future.wait<void>([
     _preloadLocaleCatalogue(prefs),
     LocalAppLockController.shared.initialize(),
     ThemeController.preloadCachedEmojiFont(prefs),
+    initializeCompatibleVideoViewType(),
   ]);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   KeywordBlocker.shared.initialize(prefs);
@@ -265,6 +268,10 @@ bool _shouldUseFvp() {
 }
 
 void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    MithkaFvpBackend.ensureAndroidStickerDecoderInitialized();
+    return;
+  }
   if (!_shouldUseFvp()) return;
   MithkaFvpBackend.ensureInitialized(
     configuration: MithkaFvpConfiguration(

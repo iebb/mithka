@@ -25,6 +25,7 @@ import '../app/video_split_controller.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
+import '../media/video_view_compatibility.dart';
 import '../platform/player_brightness.dart';
 import '../platform/player_system_volume.dart';
 import '../platform/screen_wakelock.dart';
@@ -1054,6 +1055,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _load({Duration? resumeOverride, bool? playOverride}) async {
+    final preferredViewType = preferredCompatibleVideoViewType;
     await _progressSub?.cancel();
     _progressSub = TdFileCenter.shared
         .progress(widget.video.id, accountSlot: widget.accountSlot)
@@ -1079,6 +1081,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       _openedCompletedLocalFile = true;
       final initialized = await _initializeFileWithSurfaceFallback(
         completedPath,
+        preferredViewType: preferredViewType,
         resumeOverride: resumeOverride,
         playOverride: playOverride,
       );
@@ -1116,11 +1119,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         prepared &&
         await _initializeFromUri(
           uri,
-          viewType: VideoViewType.textureView,
+          viewType: preferredViewType,
           resumeOverride: resumeOverride,
           playOverride: playOverride,
         );
-    var attemptedPlatformView = false;
+    var attemptedPlatformView = preferredViewType == VideoViewType.platformView;
     if (!initialized && mounted) {
       // A player probe can still lose a TDLib request race to an existing
       // download from another view. Revalidate the bootstrap ranges and retry
@@ -1128,7 +1131,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       prepared = await server.prepareForPlayback();
       if (prepared && mounted) {
         final viewType =
-            _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
+            preferredViewType == VideoViewType.platformView ||
+                _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
             ? VideoViewType.platformView
             : VideoViewType.textureView;
         attemptedPlatformView = viewType == VideoViewType.platformView;
@@ -1164,7 +1168,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       resumeOverride: resumeOverride,
       playOverride: playOverride,
       preferredViewType:
-          _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
+          preferredViewType == VideoViewType.platformView ||
+              _isDecoderOrSurfaceFailure(_lastControllerInitializationError)
           ? VideoViewType.platformView
           : VideoViewType.textureView,
     )) {

@@ -3265,6 +3265,8 @@
     <string name="translationLibreTranslateNoResult">LibreTranslate n’a renvoyé aucune traduction</string>
     <string name="translationLibreTranslateUrlRequired">Définissez d’abord l’adresse LibreTranslate</string>
     <string name="translationLingvaNoResult">Lingva n’a renvoyé aucune traduction</string>
+    <string name="translationGoogleCloudApiKeyRequired">Une clé API est requise.</string>
+    <string name="translationGoogleCloudPrivacy">Chaque fournisseur utilise sa propre clé API Google Cloud. Les clés sont stockées de manière sécurisée sur cet appareil et envoyées uniquement à Google Cloud Translation.</string>
     <string name="translationMlKitLocal">ML Kit (local)</string>
     <string name="translationMyMemoryNoResult">MyMemory n’a renvoyé aucune traduction</string>
     <string name="translationNativeCancelledOrTimedOut">La traduction native a été annulée ou a expiré</string>

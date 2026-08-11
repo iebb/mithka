@@ -145,6 +145,9 @@ class MainActivity : FlutterFragmentActivity() {
                             "abis" to Build.SUPPORTED_ABIS.toList(),
                             "version" to (pkg.versionName ?: ""),
                             "sdkInt" to Build.VERSION.SDK_INT,
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL,
+                            "hardware" to Build.HARDWARE,
                         ),
                     )
                 } else {

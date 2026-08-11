@@ -14,6 +14,7 @@ import 'package:video_player/video_player.dart';
 
 import '../components/photo_avatar.dart';
 import '../media/looping_media_playback.dart';
+import '../media/video_view_compatibility.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
@@ -173,7 +174,10 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
       return;
     }
 
-    final controller = VideoPlayerController.file(File(path));
+    final controller = VideoPlayerController.file(
+      File(path),
+      viewType: preferredCompatibleVideoViewType,
+    );
     _initializingController = controller;
     try {
       await controller.initialize();
@@ -326,7 +330,10 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
             child: SizedBox(
               width: controller.value.size.width,
               height: controller.value.size.height,
-              child: VideoPlayer(controller),
+              // Inline previews have no controls of their own. Keeping the
+              // native view out of hit testing lets the enclosing message
+              // gesture open fullscreen playback on direct-surface devices.
+              child: IgnorePointer(child: VideoPlayer(controller)),
             ),
           ),
       ],

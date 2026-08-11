@@ -2768,6 +2768,9 @@ abstract final class AppStringKeys {
   static const translationLibreTranslateUrlRequired =
       'translationLibreTranslateUrlRequired';
   static const translationLingvaNoResult = 'translationLingvaNoResult';
+  static const translationGoogleCloudApiKeyRequired =
+      'translationGoogleCloudApiKeyRequired';
+  static const translationGoogleCloudPrivacy = 'translationGoogleCloudPrivacy';
   static const translationMlKitLocal = 'translationMlKitLocal';
   static const translationMyMemoryNoResult = 'translationMyMemoryNoResult';
   static const translationNativeCancelledOrTimedOut =

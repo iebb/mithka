@@ -3257,6 +3257,8 @@
     <string name="translationLibreTranslateNoResult">LibreTranslate 未返回譯文</string>
     <string name="translationLibreTranslateUrlRequired">請先設定 LibreTranslate 位址</string>
     <string name="translationLingvaNoResult">Lingva 未返回譯文</string>
+    <string name="translationGoogleCloudApiKeyRequired">必須填寫 API 金鑰。</string>
+    <string name="translationGoogleCloudPrivacy">每個提供商都使用各自的 Google Cloud API 金鑰。金鑰會安全地儲存在此裝置上，且僅傳送至 Google Cloud Translation。</string>
     <string name="translationMlKitLocal">ML Kit（本機）</string>
     <string name="translationMyMemoryNoResult">MyMemory 未返回譯文</string>
     <string name="translationNativeCancelledOrTimedOut">本機翻譯已取消或逾時</string>

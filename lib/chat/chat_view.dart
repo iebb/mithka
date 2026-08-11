@@ -4679,6 +4679,32 @@ class _ChatViewState extends State<ChatView> {
       TranslationOptionIds.translationProvider(option) ==
       TranslationProvider.tdlib;
 
+  Future<String> _translateTextWithGoogleCloud(
+    String providerId, {
+    required String text,
+    required String sourceLanguageCode,
+    required String targetLanguageCode,
+  }) async {
+    final provider = _translation.googleCloudProviderById(providerId);
+    if (provider == null || !provider.hasApiKey) {
+      throw TranslationApiException(
+        AppStringKeys.translationAiProviderUnavailable.l10n(context),
+      );
+    }
+    final apiKey = await _translation.googleCloudApiKeyForProvider(providerId);
+    if (apiKey.isEmpty) {
+      throw TranslationApiException(
+        AppStrings.t(AppStringKeys.translationGoogleCloudApiKeyRequired),
+      );
+    }
+    return ThirdPartyTranslationApi.translateGoogleCloud(
+      text: text,
+      sourceLanguageCode: sourceLanguageCode,
+      targetLanguageCode: targetLanguageCode,
+      apiKey: apiKey,
+    );
+  }
+
   Future<String> _translateTextWithOption(
     String option, {
     required String text,
@@ -4686,6 +4712,17 @@ class _ChatViewState extends State<ChatView> {
     required String targetLanguageCode,
     List<String> priorMessages = const [],
   }) {
+    final googleCloudProviderId = TranslationOptionIds.googleCloudProviderId(
+      option,
+    );
+    if (googleCloudProviderId != null) {
+      return _translateTextWithGoogleCloud(
+        googleCloudProviderId,
+        text: text,
+        sourceLanguageCode: sourceLanguageCode,
+        targetLanguageCode: targetLanguageCode,
+      );
+    }
     final candidateId = TranslationOptionIds.aiCandidateId(option);
     if (candidateId != null) {
       final candidate = _ai?.modelCandidateByIdForFeature(
@@ -4714,6 +4751,7 @@ class _ChatViewState extends State<ChatView> {
         targetLanguageCode: targetLanguageCode,
       ),
       TranslationProvider.tdlib => _vm.translateText(text, targetLanguageCode),
+      TranslationProvider.googleTranslate ||
       TranslationProvider.myMemory ||
       TranslationProvider.lingva ||
       TranslationProvider.libreTranslate => ThirdPartyTranslationApi.translate(

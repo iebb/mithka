@@ -3257,6 +3257,8 @@
     <string name="translationLibreTranslateNoResult">LibreTranslate から翻訳結果が返されませんでした</string>
     <string name="translationLibreTranslateUrlRequired">先に LibreTranslate のアドレスを設定してください</string>
     <string name="translationLingvaNoResult">Lingva から翻訳結果が返されませんでした</string>
+    <string name="translationGoogleCloudApiKeyRequired">API キーが必要です。</string>
+    <string name="translationGoogleCloudPrivacy">各プロバイダーは個別の Google Cloud API キーを使用します。キーはこのデバイスの安全なストレージに保存され、Google Cloud Translation にのみ送信されます。</string>
     <string name="translationMlKitLocal">ML Kit（ローカル）</string>
     <string name="translationMyMemoryNoResult">MyMemory から翻訳結果が返されませんでした</string>
     <string name="translationNativeCancelledOrTimedOut">端末内翻訳がキャンセルされたか、タイムアウトしました</string>
