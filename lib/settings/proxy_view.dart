@@ -18,6 +18,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
@@ -128,11 +129,18 @@ class _ProxyViewState extends State<ProxyView> {
           ? const Center(child: AppActivityIndicator(size: 24))
           : SettingsListView(
               children: [
-                _card([_noneRow()]),
+                _card([_noneRow()], key: const ValueKey('proxy-disabled-card')),
+                const SizedBox(height: AppSpacing.lg),
                 if (_proxies.isNotEmpty) ...[
-                  _card([for (final proxy in _proxies) _proxyRow(proxy)]),
+                  _card([
+                    for (final proxy in _proxies) _proxyRow(proxy),
+                  ], key: const ValueKey('proxy-configured-card')),
+                  const SizedBox(height: AppSpacing.lg),
                 ],
-                _card([_addRow(), _addFromLinkRow()]),
+                _card([
+                  _addRow(),
+                  _addFromLinkRow(),
+                ], key: const ValueKey('proxy-actions-card')),
                 SettingsNote(
                   text: AppStrings.t(AppStringKeys.proxyDescription),
                 ),
@@ -141,8 +149,9 @@ class _ProxyViewState extends State<ProxyView> {
     );
   }
 
-  Widget _card(List<Widget> children) {
+  Widget _card(List<Widget> children, {Key? key}) {
     return SettingsCard.rows(
+      key: key,
       rows: children,
       dividerInset: AppMetric.settingsTextDividerInset,
     );
@@ -377,8 +386,8 @@ class _ProxyEditViewState extends State<ProxyEditView> {
       ),
       child: SettingsListView(
         children: [
-          _segments(),
-          const SizedBox(height: 14),
+          _typeSelector(),
+          const SizedBox(height: AppSpacing.xl),
           _card([
             _field(
               _server,
@@ -392,7 +401,7 @@ class _ProxyEditViewState extends State<ProxyEditView> {
               number: true,
             ),
           ]),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.xl),
           if (mtproto)
             _card([
               _field(
@@ -420,49 +429,34 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     );
   }
 
-  Widget _segments() {
-    final c = context.colors;
+  Widget _typeSelector() {
     const types = [
       ('socks5', 'SOCKS5'),
       ('http', 'HTTP'),
       ('mtproto', 'MTProto'),
     ];
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: c.searchFill,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-      ),
-      child: Row(
-        children: [
-          for (final t in types)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _type = t.$1),
-                child: Container(
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _type == t.$1 ? c.card : Colors.transparent,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                  child: Text(
-                    t.$2,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: _type == t.$1
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: _type == t.$1 ? c.textPrimary : c.textSecondary,
-                    ),
-                  ),
-                ),
+    final selectedLabel = types.firstWhere((entry) => entry.$1 == _type).$2;
+    return SettingsCard.rows(
+      key: const ValueKey('proxy-type-card'),
+      rows: [
+        SettingsSelectionRow<String>(
+          key: const ValueKey('proxy-type-selector'),
+          title: AppStrings.t(AppStringKeys.proxyTitle),
+          value: selectedLabel,
+          menuTitle: AppStrings.t(AppStringKeys.proxyTitle),
+          menuKey: const ValueKey('proxy-type-menu'),
+          options: [
+            for (final type in types)
+              SettingsSelectionOption<String>(
+                id: 'proxy-type-${type.$1}',
+                value: type.$1,
+                label: type.$2,
               ),
-            ),
-        ],
-      ),
+          ],
+          isSelected: (value) => value == _type,
+          onSelected: (value) => setState(() => _type = value),
+        ),
+      ],
     );
   }
 

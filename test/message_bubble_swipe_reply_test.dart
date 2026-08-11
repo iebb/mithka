@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_view.dart';
+import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_action_menu.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -38,6 +39,9 @@ void main() {
     List<ChatMessage> groupedMedia = const <ChatMessage>[],
     void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
     ValueChanged<String>? onBotCommandTap,
+    GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey,
+    ValueChanged<SelectedContent?>? onMobileTextSelectionChanged,
+    VoidCallback? onMobileTextSelectionDisposed,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
@@ -69,6 +73,9 @@ void main() {
               onReply: (message) => replied = message,
               onLongPress: onActionMenu,
               onBotCommandTap: onBotCommandTap,
+              mobileTextSelectionAreaKey: mobileTextSelectionAreaKey,
+              onMobileTextSelectionChanged: onMobileTextSelectionChanged,
+              onMobileTextSelectionDisposed: onMobileTextSelectionDisposed,
             ),
           ),
         ),
@@ -105,6 +112,54 @@ void main() {
     // Guard the finder itself: a predicate that never matches would make the
     // assertion above pass for the wrong reason.
     expect(find.byType(MessageBubble), findsOneWidget);
+  });
+
+  test('protected content immediately invalidates an armed selection', () {
+    expect(
+      protectedContentRequiresMobileSelectionClear(
+        hasProtectedContent: true,
+        hasSelectionKey: true,
+      ),
+      isTrue,
+    );
+    expect(
+      protectedContentRequiresMobileSelectionClear(
+        hasProtectedContent: false,
+        hasSelectionKey: true,
+      ),
+      isFalse,
+    );
+    expect(
+      protectedContentRequiresMobileSelectionClear(
+        hasProtectedContent: true,
+        hasSelectionKey: false,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('mobile first long press requests the message action menu', (
+    tester,
+  ) async {
+    var requests = 0;
+    MessageActionSource? source;
+    await pumpBubble(
+      tester,
+      onActionMenu: (_, _, value) {
+        requests += 1;
+        source = value;
+      },
+    );
+
+    await tester.longPress(find.byKey(const ValueKey('messageTapTarget-78')));
+    await tester.pump();
+
+    expect(requests, 1);
+    expect(source, MessageActionSource.normal);
+    expect(
+      find.byKey(const ValueKey('messageTextSelectionArea-78')),
+      findsNothing,
+    );
   });
 
   testWidgets('a swipe past the trigger reveals the glyph and replies', (
@@ -330,27 +385,422 @@ void main() {
     expect(command, '/help');
   });
 
-  test('the text-selection dialog remains mobile-only', () {
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets(
+      '${platform.name} second long press selects the touched word below a dropdown',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final theme = ThemeController(preferences);
+        addTearDown(theme.dispose);
+        final selectionKey = GlobalKey<SelectionAreaState>();
+        var actionRequests = 0;
+        var menuTaps = 0;
+        var menuOpen = false;
+        String? selectedText;
+        await tester.pumpWidget(
+          ChangeNotifierProvider<ThemeController>.value(
+            value: theme,
+            child: MaterialApp(
+              theme: ThemeData(
+                platform: platform,
+                extensions: [AppColors.light],
+              ),
+              locale: const Locale('en'),
+              localizationsDelegates: const [AppLocalizations.delegate],
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: StatefulBuilder(
+                  builder: (context, setState) => Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: MessageBubble(
+                          message: ChatMessage(
+                            id: 90,
+                            isOutgoing: false,
+                            text: 'Selectable caption',
+                            date: 1785862260,
+                          ),
+                          peerTitle: 'Test',
+                          isGroup: false,
+                          mobileTextSelectionAreaKey:
+                              menuOpen || selectedText != null
+                              ? selectionKey
+                              : null,
+                          onMobileTextSelectionChanged: (content) {
+                            selectedText = content?.plainText;
+                            if (content != null &&
+                                content.plainText.isNotEmpty) {
+                              setState(() => menuOpen = false);
+                            }
+                          },
+                          onLongPress: (_, _, _) {
+                            actionRequests += 1;
+                            setState(() => menuOpen = true);
+                          },
+                        ),
+                      ),
+                      if (menuOpen)
+                        Positioned.fill(
+                          child: ChatActionOverlayGestureLayer(
+                            selectionAreaKey: selectionKey,
+                            child: Stack(
+                              children: [
+                                const Positioned.fill(
+                                  child: ColoredBox(color: Colors.transparent),
+                                ),
+                                Positioned(
+                                  left: 0,
+                                  top: 0,
+                                  child: GestureDetector(
+                                    onTap: () => menuTaps += 1,
+                                    child: Container(
+                                      key: const ValueKey(
+                                        'mobile-dropdown-surface',
+                                      ),
+                                      width: 260,
+                                      height: 90,
+                                      color: Colors.black12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final textFinder = find.text('Selectable caption', findRichText: true);
+        final textPosition = tester.getCenter(textFinder);
+        await tester.longPressAt(textPosition);
+        await tester.pump();
+        expect(actionRequests, 1);
+        expect(menuOpen, isTrue);
+        expect(selectionKey.currentState, isNotNull);
+        expect(
+          tester
+              .getRect(find.byKey(const ValueKey('mobile-dropdown-surface')))
+              .contains(textPosition),
+          isTrue,
+        );
+
+        await tester.tapAt(textPosition);
+        await tester.pump();
+        expect(menuTaps, 1);
+        expect(selectedText, isNull);
+
+        await tester.longPressAt(textPosition);
+        await tester.pump();
+        expect(actionRequests, 1);
+        expect(menuOpen, isFalse);
+        expect(selectedText, 'Selectable');
+        final paragraph = tester.renderObject<RenderParagraph>(textFinder);
+        expect(paragraph.selections, isNotEmpty);
+        expect(paragraph.selections.single.isCollapsed, isFalse);
+        expect(
+          selectionKey.currentState!.selectableRegion.selectionOverlay,
+          isNotNull,
+        );
+        expect(
+          selectionKey
+              .currentState!
+              .selectableRegion
+              .selectionOverlay!
+              .toolbarIsVisible,
+          isTrue,
+        );
+      },
+    );
+  }
+
+  testWidgets('action overlay preserves transformed selection coordinates', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                left: 96,
+                top: 280,
+                child: Transform.scale(
+                  scale: 1.2,
+                  alignment: Alignment.topLeft,
+                  child: SelectionArea(
+                    key: selectionKey,
+                    onSelectionChanged: (content) {
+                      selectedText = content?.plainText;
+                    },
+                    child: const Text('Alpha transformed omega'),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: ChatActionOverlayGestureLayer(
+                  selectionAreaKey: selectionKey,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byType(SelectionArea),
+        matching: find.byType(RichText),
+      ),
+    );
+    const caret = Rect.fromLTWH(0, 0, 2, 20);
+    final caretOffset = paragraph.getOffsetForCaret(
+      const TextPosition(offset: 10),
+      caret,
+    );
+    final target = paragraph.localToGlobal(
+      Offset(caretOffset.dx, paragraph.size.height / 2),
+    );
     expect(
-      chatMessageUsesSelectionDialog(
-        selecting: false,
-        platform: TargetPlatform.android,
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: target,
+      ),
+      isTrue,
+    );
+    await tester.longPressAt(target);
+    await tester.pump();
+
+    expect(selectedText, 'transformed');
+  });
+
+  testWidgets(
+    'an armed mobile action overlay absorbs reply and transcript drags',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      final scrollController = ScrollController();
+      addTearDown(theme.dispose);
+      addTearDown(scrollController.dispose);
+      final selectionKey = GlobalKey<SelectionAreaState>();
+      ChatMessage? replied;
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            theme: ThemeData(
+              platform: TargetPlatform.iOS,
+              extensions: [AppColors.light],
+            ),
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Stack(
+                children: [
+                  ListView(
+                    controller: scrollController,
+                    children: [
+                      MessageBubble(
+                        message: ChatMessage(
+                          id: 91,
+                          isOutgoing: false,
+                          text: 'Overlay drag target',
+                          date: 1785862260,
+                        ),
+                        peerTitle: 'Test',
+                        isGroup: false,
+                        mobileTextSelectionAreaKey: selectionKey,
+                        onReply: (message) => replied = message,
+                      ),
+                      const SizedBox(height: 1200),
+                    ],
+                  ),
+                  Positioned.fill(
+                    child: ChatActionOverlayGestureLayer(
+                      selectionAreaKey: selectionKey,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {},
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final textPosition = tester.getCenter(
+        find.text('Overlay drag target', findRichText: true),
+      );
+      expect(selectionKey.currentState, isNotNull);
+      expect(scrollController.offset, 0);
+
+      final replyDrag = await tester.startGesture(textPosition);
+      await replyDrag.moveBy(const Offset(-180, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await replyDrag.up();
+      await tester.pumpAndSettle();
+
+      expect(replied, isNull);
+      expect(scrollController.offset, 0);
+
+      final scrollDrag = await tester.startGesture(textPosition);
+      await scrollDrag.moveBy(const Offset(0, -220));
+      await tester.pump(const Duration(milliseconds: 16));
+      await scrollDrag.up();
+      await tester.pumpAndSettle();
+
+      expect(replied, isNull);
+      expect(scrollController.offset, 0);
+    },
+  );
+
+  testWidgets('desktop action overlay does not claim a second long press', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                left: 20,
+                top: 20,
+                child: SelectionArea(
+                  key: selectionKey,
+                  onSelectionChanged: (content) =>
+                      selectedText = content?.plainText,
+                  child: const Text('Desktop selectable text'),
+                ),
+              ),
+              Positioned.fill(
+                child: ChatActionOverlayGestureLayer(
+                  selectionAreaKey: selectionKey,
+                  child: const ColoredBox(color: Colors.transparent),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.longPressAt(
+      tester.getCenter(find.text('Desktop selectable text')),
+    );
+    await tester.pump();
+    expect(selectedText, isNull);
+  });
+
+  testWidgets('mobile selection target is the rendered message text', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    await pumpBubble(
+      tester,
+      mobileTextSelectionAreaKey: selectionKey,
+      onMobileTextSelectionChanged: (content) {
+        selectedText = content?.plainText;
+      },
+    );
+
+    final textPosition = tester.getCenter(bubbleText);
+    expect(
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: textPosition,
       ),
       isTrue,
     );
     expect(
-      chatMessageUsesSelectionDialog(
-        selecting: false,
-        platform: TargetPlatform.macOS,
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: const Offset(2, 2),
       ),
       isFalse,
     );
-    expect(
-      chatMessageUsesSelectionDialog(
-        selecting: true,
-        platform: TargetPlatform.android,
-      ),
-      isFalse,
+
+    selectionKey.currentState!.selectableRegion.selectAll(
+      SelectionChangedCause.toolbar,
     );
+    await tester.pump();
+    expect(selectedText, 'Swipe me');
+  });
+
+  testWidgets('mobile long press selects a custom emoji fallback', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    await pumpBubble(
+      tester,
+      message: ChatMessage(
+        id: 92,
+        isOutgoing: false,
+        text: '🙂',
+        date: 1785862260,
+        textEntities: const [
+          MessageTextEntity(
+            offset: 0,
+            length: 2,
+            type: 'textEntityTypeCustomEmoji',
+            customEmojiId: 922,
+          ),
+        ],
+      ),
+      mobileTextSelectionAreaKey: selectionKey,
+      onMobileTextSelectionChanged: (content) {
+        selectedText = content?.plainText;
+      },
+    );
+
+    await tester.longPress(find.byType(SelectableCustomEmojiView));
+    await tester.pump();
+
+    expect(selectedText, '🙂');
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('unmounting a mobile selection row clears its chat session', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    var disposed = 0;
+    await pumpBubble(
+      tester,
+      mobileTextSelectionAreaKey: selectionKey,
+      onMobileTextSelectionDisposed: () => disposed += 1,
+    );
+    expect(selectionKey.currentState, isNotNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(disposed, 1);
   });
 }

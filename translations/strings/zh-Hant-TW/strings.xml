@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">即時預覽無法使用</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">合併顯示媒體相簿</string>
+    <string name="appearanceMessageActionMenu">訊息操作選單</string>
+    <string name="appearanceMessageActionMenuDropdown">下拉式選單</string>
+    <string name="appearanceMessageActionMenuGrid">網格</string>
     <string name="appearanceMessageBubbles">訊息氣泡</string>
     <string name="appearanceMode">模式</string>
     <string name="appearanceMonospaceFont">等寬字型</string>

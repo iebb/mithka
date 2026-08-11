@@ -12,12 +12,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('all settings destinations reuse the shared page skeleton', () {
+    const externalSettingsSurfaces = [
+      'lib/chat/chat_theme_view.dart',
+      'lib/chat/chat_wallpaper_color_view.dart',
+      'lib/chat/chat_wallpaper_search_view.dart',
+      'lib/chat/chat_wallpaper_view.dart',
+      'lib/chat/global_chat_theme_view.dart',
+      'lib/theme/global_theme_view.dart',
+      'lib/theme/telegram_cloud_theme_view.dart',
+    ];
     final files = <File>[
       ...Directory('lib/settings').listSync().whereType<File>().where(
         (file) => file.path.endsWith('_view.dart'),
       ),
       File('lib/security/local_app_lock_views.dart'),
       File('lib/pro/mithka_pro_view.dart'),
+      for (final path in externalSettingsSurfaces) File(path),
     ];
 
     final rawScaffolds = <String, int>{};
@@ -54,39 +64,10 @@ void main() {
     expect(detailIconTiles, isEmpty);
     expect(builtInIcons, isEmpty);
 
-    const destinationFiles = [
-      'lib/pro/mithka_pro_view.dart',
-      'lib/security/local_app_lock_views.dart',
-      'lib/settings/about_view.dart',
-      'lib/settings/account_backup_view.dart',
-      'lib/settings/account_security_views.dart',
-      'lib/settings/advanced_settings_view.dart',
-      'lib/settings/ai_settings_view.dart',
-      'lib/settings/appearance_view.dart',
-      'lib/settings/auto_download_settings_view.dart',
-      'lib/settings/blocking_settings_view.dart',
-      'lib/settings/business_settings_view.dart',
-      'lib/settings/business_tools_views.dart',
-      'lib/settings/chat_folder_management_view.dart',
-      'lib/settings/country_message_filter_view.dart',
-      'lib/settings/desktop_hotkey_settings_view.dart',
-      'lib/settings/developer_settings_view.dart',
-      'lib/settings/downloads_view.dart',
-      'lib/settings/edit_profile_view.dart',
-      'lib/settings/feature_settings_view.dart',
-      'lib/settings/general_settings_view.dart',
-      'lib/settings/language_settings_view.dart',
-      'lib/settings/notification_settings_view.dart',
-      'lib/settings/privacy_detail_views.dart',
-      'lib/settings/privacy_security_view.dart',
-      'lib/settings/proxy_view.dart',
-      'lib/settings/settings_view.dart',
-      'lib/settings/storage_usage_view.dart',
-      'lib/settings/translation_settings_view.dart',
-    ];
-    for (final path in destinationFiles) {
+    for (final file in files) {
+      final path = _relativePath(file);
       expect(
-        File(path).readAsStringSync(),
+        file.readAsStringSync(),
         contains('SettingsPageScaffold('),
         reason: '$path must build destinations through the shared skeleton',
       );

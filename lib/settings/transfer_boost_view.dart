@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../theme/app_motion.dart';
 import 'transfer_boost_config.dart';
 
 class TransferBoostView extends StatefulWidget {
@@ -50,45 +50,29 @@ class _TransferBoostViewState extends State<TransferBoostView> {
     return '${bytes ~/ TransferBoostConfig.kibibyte} KB';
   }
 
-  void _showValuePicker({
+  Widget _valueSelector({
+    required String title,
     required List<int> values,
     required int selectedValue,
     required String Function(int value) labelFor,
     required AppIconData icon,
-    required ValueChanged<int> onSelected,
-  }) {
-    showAppModalSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return SafeArea(
-          child: SettingsCard.rows(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            rows: [
-              for (final value in values)
-                Builder(
-                  builder: (context) {
-                    final selected = selectedValue == value;
-                    return SettingsRow(
-                      title: labelFor(value),
-                      leading: SettingsLeadingIcon(icon: icon),
-                      showChevron: false,
-                      trailing: selected
-                          ? const AppIcon(HeroAppIcons.check, size: 18)
-                          : null,
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        if (!selected) onSelected(value);
-                      },
-                    );
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+    required FutureOr<void> Function(int value) onSelected,
+  }) => SettingsSelectionRow<int>(
+    title: title,
+    value: labelFor(selectedValue),
+    leading: SettingsLeadingIcon(icon: icon),
+    options: [
+      for (final value in values)
+        SettingsSelectionOption(
+          id: 'transfer-boost-value-$value',
+          value: value,
+          label: labelFor(value),
+          icon: icon,
+        ),
+    ],
+    isSelected: (value) => value == selectedValue,
+    onSelected: onSelected,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -113,42 +97,27 @@ class _TransferBoostViewState extends State<TransferBoostView> {
                       ),
                     ),
                     if (_config.downloadEnabled) ...[
-                      SettingsRow(
+                      _valueSelector(
                         title: AppStringKeys.transferBoostChunkSize,
-                        value: _formatChunkSize(_config.downloadChunkSizeBytes),
-                        leading: const SettingsLeadingIcon(
-                          icon: HeroAppIcons.compactDisc,
-                        ),
-                        onTap: () => _showValuePicker(
-                          values: TransferBoostConfig.downloadChunkSizesBytes,
-                          selectedValue: _config.downloadChunkSizeBytes,
-                          labelFor: _formatChunkSize,
-                          icon: HeroAppIcons.compactDisc,
-                          onSelected: (value) => unawaited(
-                            _save(
-                              _config.copyWith(downloadChunkSizeBytes: value),
-                            ),
-                          ),
+                        values: TransferBoostConfig.downloadChunkSizesBytes,
+                        selectedValue: _config.downloadChunkSizeBytes,
+                        labelFor: _formatChunkSize,
+                        icon: HeroAppIcons.compactDisc,
+                        onSelected: (value) => _save(
+                          _config.copyWith(downloadChunkSizeBytes: value),
                         ),
                       ),
-                      SettingsRow(
+                      _valueSelector(
                         title: AppStringKeys.transferBoostParallelism,
-                        value: '${_config.downloadParallelism}',
-                        leading: const SettingsLeadingIcon(
-                          icon: HeroAppIcons.networkWired,
+                        values: List<int>.generate(
+                          TransferBoostConfig.maxParallelism,
+                          (index) => index + 1,
                         ),
-                        onTap: () => _showValuePicker(
-                          values: List<int>.generate(
-                            TransferBoostConfig.maxParallelism,
-                            (index) => index + 1,
-                          ),
-                          selectedValue: _config.downloadParallelism,
-                          labelFor: (value) => '$value',
-                          icon: HeroAppIcons.networkWired,
-                          onSelected: (value) => unawaited(
+                        selectedValue: _config.downloadParallelism,
+                        labelFor: (value) => '$value',
+                        icon: HeroAppIcons.networkWired,
+                        onSelected: (value) =>
                             _save(_config.copyWith(downloadParallelism: value)),
-                          ),
-                        ),
                       ),
                     ],
                   ],
@@ -167,42 +136,27 @@ class _TransferBoostViewState extends State<TransferBoostView> {
                       ),
                     ),
                     if (_config.uploadEnabled) ...[
-                      SettingsRow(
+                      _valueSelector(
                         title: AppStringKeys.transferBoostChunkSize,
-                        value: _formatChunkSize(_config.uploadChunkSizeBytes),
-                        leading: const SettingsLeadingIcon(
-                          icon: HeroAppIcons.compactDisc,
-                        ),
-                        onTap: () => _showValuePicker(
-                          values: TransferBoostConfig.uploadChunkSizesBytes,
-                          selectedValue: _config.uploadChunkSizeBytes,
-                          labelFor: _formatChunkSize,
-                          icon: HeroAppIcons.compactDisc,
-                          onSelected: (value) => unawaited(
-                            _save(
-                              _config.copyWith(uploadChunkSizeBytes: value),
-                            ),
-                          ),
+                        values: TransferBoostConfig.uploadChunkSizesBytes,
+                        selectedValue: _config.uploadChunkSizeBytes,
+                        labelFor: _formatChunkSize,
+                        icon: HeroAppIcons.compactDisc,
+                        onSelected: (value) => _save(
+                          _config.copyWith(uploadChunkSizeBytes: value),
                         ),
                       ),
-                      SettingsRow(
+                      _valueSelector(
                         title: AppStringKeys.transferBoostParallelism,
-                        value: '${_config.uploadParallelism}',
-                        leading: const SettingsLeadingIcon(
-                          icon: HeroAppIcons.networkWired,
+                        values: List<int>.generate(
+                          TransferBoostConfig.maxParallelism,
+                          (index) => index + 1,
                         ),
-                        onTap: () => _showValuePicker(
-                          values: List<int>.generate(
-                            TransferBoostConfig.maxParallelism,
-                            (index) => index + 1,
-                          ),
-                          selectedValue: _config.uploadParallelism,
-                          labelFor: (value) => '$value',
-                          icon: HeroAppIcons.networkWired,
-                          onSelected: (value) => unawaited(
+                        selectedValue: _config.uploadParallelism,
+                        labelFor: (value) => '$value',
+                        icon: HeroAppIcons.networkWired,
+                        onSelected: (value) =>
                             _save(_config.copyWith(uploadParallelism: value)),
-                          ),
-                        ),
                       ),
                     ],
                   ],

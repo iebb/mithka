@@ -156,6 +156,7 @@ class SettingsSearchField extends StatelessWidget {
     this.controller,
     this.focusNode,
     this.onChanged,
+    this.onSubmitted,
     this.textInputAction = TextInputAction.search,
     this.compact = false,
   });
@@ -164,6 +165,7 @@ class SettingsSearchField extends StatelessWidget {
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final TextInputAction textInputAction;
   final bool compact;
 
@@ -203,6 +205,7 @@ class SettingsSearchField extends StatelessWidget {
               focusNode: focusNode,
               textInputAction: textInputAction,
               onChanged: onChanged,
+              onSubmitted: onSubmitted,
               style: TextStyle(fontSize: fontSize, color: c.textPrimary),
               decoration: InputDecoration(
                 isCollapsed: true,

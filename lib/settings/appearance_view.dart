@@ -607,12 +607,45 @@ class DisplaySettingsView extends StatelessWidget {
   }
 }
 
+class MobileMessageActionMenuSettingsView extends StatelessWidget {
+  const MobileMessageActionMenuSettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeController>();
+    const appearance = AppearanceView();
+    return SettingsPageScaffold(
+      key: const ValueKey('mobile-message-action-menu-style-page'),
+      title: AppStrings.t(AppStringKeys.appearanceMessageActionMenu),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
+        children: [
+          appearance._card(context, [
+            for (final style in MobileMessageActionMenuStyle.values)
+              KeyedSubtree(
+                key: ValueKey('mobile-message-action-menu-style-${style.name}'),
+                child: appearance._choiceRow(
+                  context,
+                  style.icon.data,
+                  AppStrings.t(style.label),
+                  theme.mobileMessageActionMenuStyle == style,
+                  () => theme.mobileMessageActionMenuStyle = style,
+                ),
+              ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
 class ChatViewAppearanceSettingsView extends StatelessWidget {
   const ChatViewAppearanceSettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     const appearance = AppearanceView();
     return _DisplaySectionPage(
       title: AppStrings.t(AppStringKeys.appearanceChatView),
@@ -681,6 +714,22 @@ class ChatViewAppearanceSettingsView extends StatelessWidget {
           theme.alwaysShowMessageTime,
           (value) => theme.alwaysShowMessageTime = value,
         ),
+        if (!desktop)
+          KeyedSubtree(
+            key: const ValueKey('mobile-message-action-menu-style-row'),
+            child: appearance._navigationRow(
+              context,
+              AppStrings.t(AppStringKeys.appearanceMessageActionMenu),
+              AppStrings.t(theme.mobileMessageActionMenuStyle.label),
+              () => Navigator.of(context).push(
+                AppPageRoute<void>(
+                  pageBuilder: (_, _, _) =>
+                      const MobileMessageActionMenuSettingsView(),
+                ),
+              ),
+              icon: HeroAppIcons.listCheck.data,
+            ),
+          ),
         appearance._navigationRow(
           context,
           AppStrings.t(AppStringKeys.quickReactionsTitle),

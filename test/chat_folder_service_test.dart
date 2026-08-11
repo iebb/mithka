@@ -45,6 +45,56 @@ void main() {
   });
 
   group('ChatFolderService', () {
+    for (final testCase in <(String, bool?, bool?, ChatFolderTagEntitlement)>[
+      (
+        'Premium unavailable',
+        false,
+        false,
+        ChatFolderTagEntitlement.unavailable,
+      ),
+      (
+        'Premium availability unknown',
+        false,
+        null,
+        ChatFolderTagEntitlement.unavailable,
+      ),
+      ('non-Premium', false, true, ChatFolderTagEntitlement.locked),
+      ('Premium', true, true, ChatFolderTagEntitlement.enabled),
+      (
+        'Premium while upgrades are unavailable',
+        true,
+        false,
+        ChatFolderTagEntitlement.enabled,
+      ),
+      (
+        'Premium while availability is unknown',
+        true,
+        null,
+        ChatFolderTagEntitlement.enabled,
+      ),
+    ]) {
+      test('maps ${testCase.$1} to the folder-tag entitlement', () async {
+        final requests = <Map<String, dynamic>>[];
+        final service = ChatFolderService(
+          query: (request) async {
+            requests.add(request);
+            final value = request['name'] == 'is_premium'
+                ? testCase.$2
+                : testCase.$3;
+            return value == null
+                ? {'@type': 'optionValueEmpty'}
+                : {'@type': 'optionValueBoolean', 'value': value};
+          },
+        );
+
+        expect(await service.folderTagEntitlement(), testCase.$4);
+        expect(requests, [
+          {'@type': 'getOption', 'name': 'is_premium'},
+          {'@type': 'getOption', 'name': 'is_premium_available'},
+        ]);
+      });
+    }
+
     test('loads folder details in update order', () async {
       final requests = <Map<String, dynamic>>[];
       final service = ChatFolderService(

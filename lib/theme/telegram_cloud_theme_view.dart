@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
@@ -25,26 +26,25 @@ class TelegramCloudThemePreviewView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = theme.uiColors;
-    return ColoredBox(
-      color: colors.groupedBackground,
-      child: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.cloudThemePreviewTitle,
-            onBack: () => Navigator.of(context).pop(),
+    final inheritedTheme = Theme.of(context);
+    return Theme(
+      data: inheritedTheme.copyWith(
+        brightness: theme.isDark ? Brightness.dark : Brightness.light,
+        extensions: [colors],
+      ),
+      child: Builder(
+        builder: (previewContext) => SettingsPageScaffold(
+          title: AppStringKeys.cloudThemePreviewTitle,
+          onBack: () => Navigator.of(previewContext).pop(),
+          bottomNavigationBar: _applyBar(previewContext, colors),
+          child: SettingsListView(
+            children: [
+              _identity(colors),
+              const SizedBox(height: AppSpacing.xl),
+              _chatPreview(previewContext, colors),
+            ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              children: [
-                _identity(colors),
-                const SizedBox(height: AppSpacing.xl),
-                _chatPreview(context, colors),
-              ],
-            ),
-          ),
-          _applyBar(context, colors),
-        ],
+        ),
       ),
     );
   }

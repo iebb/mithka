@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -22,6 +23,7 @@ import android.view.DragEvent
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.view.WindowCompat
+import ad.neko.mithka.system_picture_in_picture.SystemPictureInPicturePlugin
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.languageid.LanguageIdentifier
@@ -63,6 +65,48 @@ class MainActivity : FlutterFragmentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         pendingSharePayload = parseIncomingShareIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SystemPictureInPicturePlugin.onActivityStarted(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SystemPictureInPicturePlugin.onActivityResumed(this)
+    }
+
+    override fun onPause() {
+        SystemPictureInPicturePlugin.onActivityPaused(this)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        SystemPictureInPicturePlugin.onActivityStopped(this)
+        super.onStop()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        SystemPictureInPicturePlugin.onUserLeaveHint(this)
+    }
+
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    override fun onPictureInPictureRequested(): Boolean =
+        SystemPictureInPicturePlugin.onPictureInPictureRequested(this) ||
+            super.onPictureInPictureRequested()
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        SystemPictureInPicturePlugin.onPictureInPictureModeChanged(
+            this,
+            isInPictureInPictureMode,
+            newConfig,
+        )
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -755,6 +799,7 @@ class MainActivity : FlutterFragmentActivity() {
             add("com.baseflow.permissionhandler.PermissionHandlerPlugin")
             add("io.sentry.flutter.SentryFlutterPlugin")
             add("io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin")
+            add("ad.neko.mithka.system_picture_in_picture.SystemPictureInPicturePlugin")
             add("io.flutter.plugins.urllauncher.UrlLauncherPlugin")
             add("io.flutter.plugins.videoplayer.VideoPlayerPlugin")
         }
@@ -989,5 +1034,10 @@ class MainActivity : FlutterFragmentActivity() {
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onDestroy() {
+        SystemPictureInPicturePlugin.onActivityDestroyed(this)
+        super.onDestroy()
     }
 }

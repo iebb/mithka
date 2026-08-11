@@ -22,8 +22,9 @@ import 'sticker_preview.dart';
 import 'sticker_set_studio_view.dart';
 
 class StickerSetDetailView extends StatefulWidget {
-  const StickerSetDetailView({super.key, required this.setId});
+  const StickerSetDetailView({super.key, required this.setId, this.onClose});
   final int setId;
+  final VoidCallback? onClose;
 
   @override
   State<StickerSetDetailView> createState() => _StickerSetDetailViewState();
@@ -389,7 +390,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
             alignment: Alignment.centerLeft,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
+              onTap: widget.onClose ?? () => Navigator.of(context).pop(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: AppIcon(
@@ -538,14 +539,27 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
   }
 
   Widget _grid() {
-    return SliverGrid.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
+    return SliverLayoutBuilder(
+      builder: (context, constraints) => SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: stickerSetGridColumnCount(
+            constraints.crossAxisExtent,
+          ),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+        ),
+        itemCount: _stickers.length,
+        itemBuilder: (context, i) => StickerPreview(item: _stickers[i]),
       ),
-      itemCount: _stickers.length,
-      itemBuilder: (context, i) => StickerPreview(item: _stickers[i]),
     );
   }
+}
+
+/// Chooses the smallest number of columns that keeps every square sticker at
+/// or below 150 logical pixels. Grid spacing only makes the final cells
+/// smaller, so it does not need to be subtracted here.
+@visibleForTesting
+int stickerSetGridColumnCount(double width) {
+  if (!width.isFinite || width <= 0) return 1;
+  return (width / 150).ceil();
 }

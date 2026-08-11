@@ -102,39 +102,29 @@ class _GlobalChatThemeViewState extends State<GlobalChatThemeView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.groupedBackground,
-      child: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.chatThemeTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loaded
-                ? ListView(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-                    children: [
-                      _brightnessPicker(),
-                      const SizedBox(height: 14),
-                      _preview(_selection),
-                      const SizedBox(height: 20),
-                      Text(
-                        AppStringKeys.chatThemeChoose.l10n(context),
-                        style: TextStyle(
-                          color: c.textSecondary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _themeGrid(),
-                    ],
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.chatThemeTitle,
+      onBack: () => Navigator.of(context).pop(),
+      child: _loaded
+          ? SettingsListView(
+              children: [
+                _brightnessPicker(),
+                const SizedBox(height: AppSpacing.xl),
+                _preview(_selection),
+                const SizedBox(height: AppSpacing.section),
+                Text(
+                  AppStringKeys.chatThemeChoose.l10n(context),
+                  style: TextStyle(
+                    color: c.textSecondary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _themeGrid(),
+              ],
+            )
+          : const SizedBox.shrink(),
     );
   }
 

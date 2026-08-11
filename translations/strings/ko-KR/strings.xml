@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">실시간 미리보기를 사용할 수 없음</string>
     <string name="appearanceManage">관리</string>
     <string name="appearanceMergeConsecutiveImages">미디어 앨범 묶어 보기</string>
+    <string name="appearanceMessageActionMenu">메시지 작업 메뉴</string>
+    <string name="appearanceMessageActionMenuDropdown">드롭다운</string>
+    <string name="appearanceMessageActionMenuGrid">그리드</string>
     <string name="appearanceMessageBubbles">메시지 말풍선</string>
     <string name="appearanceMode">모드</string>
     <string name="appearanceMonospaceFont">고정폭 글꼴</string>

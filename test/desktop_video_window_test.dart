@@ -108,6 +108,12 @@ void main() {
       );
       expect(portableWindowStub, isNot(contains('multi_window_manager')));
       expect(window, isNot(contains('desktop_multi_window')));
+      expect(window, contains('currentWindowCloseRevision.addListener'));
+      expect(window, contains('unawaited(_controller?.pause())'));
+      expect(window, contains('SystemPictureInPicture.start('));
+      expect(window, contains('MithkaDesktopVideoWindows.focusCurrentWindow'));
+      expect(window, contains('MithkaDesktopVideoWindows.hideCurrentWindow'));
+      expect(window, contains('MithkaDesktopVideoWindows.closeCurrentWindow'));
       expect(player, contains('LogicalKeyboardKey.space'));
       expect(player, contains('LogicalKeyboardKey.arrowLeft'));
       expect(player, contains('LogicalKeyboardKey.arrowRight'));
@@ -123,6 +129,22 @@ void main() {
       );
       expect(player, contains('thumbCenter - previewWidth / 2'));
       expect(player, contains('math.max(0.0, trackWidth - previewWidth)'));
+      expect(
+        desktopWindowImplementation,
+        contains('await MultiWindowManager.ensureInitialized(windowId);'),
+      );
+      expect(
+        desktopWindowImplementation,
+        contains('_DeferredMacOSSecondaryWindowRenderFix'),
+      );
+      expect(
+        desktopWindowImplementation,
+        contains('_waitForFullscreenState(window, fullscreen)'),
+      );
+      expect(
+        desktopWindowImplementation,
+        contains('_currentWindowCloseRevision.value++'),
+      );
     },
   );
 
@@ -140,6 +162,11 @@ void main() {
     );
     expect(runner, contains('RegisterGeneratedPlugins(registry: registry)'));
     expect(runner, contains('DesktopClipboardImagesPlugin.register('));
+    expect(runner, contains('MacOSSystemPictureInPicturePlugin.register('));
+    expect(
+      runner,
+      contains('AVPictureInPictureController(playerLayer: layer)'),
+    );
   });
 
   test('scrub preview converts through the root overlay coordinates', () {

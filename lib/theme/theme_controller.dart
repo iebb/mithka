@@ -150,6 +150,19 @@ enum ChatListSwipeMode {
   final AppIconData icon;
 }
 
+enum MobileMessageActionMenuStyle {
+  grid(AppStringKeys.appearanceMessageActionMenuGrid, HeroAppIcons.grip),
+  dropdown(
+    AppStringKeys.appearanceMessageActionMenuDropdown,
+    HeroAppIcons.listCheck,
+  );
+
+  const MobileMessageActionMenuStyle(this.label, this.icon);
+
+  final String label;
+  final AppIconData icon;
+}
+
 enum NameColorAudience {
   premium(AppStringKeys.appearanceNameColorPremium, HeroAppIcons.star),
   allUsers(AppStringKeys.appearanceNameColorAllUsers, HeroAppIcons.users),
@@ -1090,6 +1103,12 @@ class ThemeController extends ChangeNotifier {
     _showMessageMetaIndicators =
         _prefs.getBool(_messageMetaIndicatorsKey) ?? false;
     _alwaysShowMessageTime = _prefs.getBool(_alwaysShowMessageTimeKey) ?? false;
+    _mobileMessageActionMenuStyle = MobileMessageActionMenuStyle.values
+        .firstWhere(
+          (style) =>
+              style.name == _prefs.getString(_mobileMessageActionMenuStyleKey),
+          orElse: () => MobileMessageActionMenuStyle.grid,
+        );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
     _preserveSenderWhenRepeating =
@@ -1194,6 +1213,8 @@ class ThemeController extends ChangeNotifier {
   static const _senderNameReadabilityModeKey = 'senderNameReadabilityMode.v1';
   static const _messageMetaIndicatorsKey = 'showMessageMetaIndicators';
   static const _alwaysShowMessageTimeKey = 'alwaysShowMessageTime';
+  static const _mobileMessageActionMenuStyleKey =
+      'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
@@ -1270,6 +1291,7 @@ class ThemeController extends ChangeNotifier {
       SenderNameReadabilityMode.blend;
   bool _showMessageMetaIndicators = false;
   bool _alwaysShowMessageTime = false;
+  late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
   bool _preserveSenderWhenRepeating = true;
@@ -1718,6 +1740,8 @@ class ThemeController extends ChangeNotifier {
       _senderNameReadabilityMode;
   bool get showMessageMetaIndicators => _showMessageMetaIndicators;
   bool get alwaysShowMessageTime => _alwaysShowMessageTime;
+  MobileMessageActionMenuStyle get mobileMessageActionMenuStyle =>
+      _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
@@ -2483,6 +2507,13 @@ class ThemeController extends ChangeNotifier {
     if (_alwaysShowMessageTime == value) return;
     _alwaysShowMessageTime = value;
     _prefs.setBool(_alwaysShowMessageTimeKey, value);
+    notifyListeners();
+  }
+
+  set mobileMessageActionMenuStyle(MobileMessageActionMenuStyle value) {
+    if (_mobileMessageActionMenuStyle == value) return;
+    _mobileMessageActionMenuStyle = value;
+    _prefs.setString(_mobileMessageActionMenuStyleKey, value.name);
     notifyListeners();
   }
 

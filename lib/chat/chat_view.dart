@@ -46,7 +46,6 @@ import '../settings/ai_settings_controller.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/business_tools_views.dart';
-import '../settings/keyword_blocker.dart';
 import '../settings/quick_reaction_settings_view.dart';
 import '../settings/sensitive_content_controller.dart';
 import '../settings/topic_group_display_mode.dart';
@@ -225,10 +224,147 @@ class ReactionUsersSheetFrame extends StatelessWidget {
 }
 
 @visibleForTesting
-bool chatMessageUsesSelectionDialog({
-  required bool selecting,
-  TargetPlatform? platform,
-}) => !selecting && !isDesktopTargetPlatform(platform);
+bool protectedContentRequiresMobileSelectionClear({
+  required bool hasProtectedContent,
+  required bool hasSelectionKey,
+}) => hasProtectedContent && hasSelectionKey;
+
+@visibleForTesting
+bool selectionAreaContainsGlobalTextPosition({
+  required GlobalKey<SelectionAreaState> selectionAreaKey,
+  required Offset globalPosition,
+}) {
+  final root = selectionAreaKey.currentContext?.findRenderObject();
+  if (root is! RenderBox ||
+      !root.attached ||
+      !root.hasSize ||
+      !(Offset.zero & root.size).contains(root.globalToLocal(globalPosition))) {
+    return false;
+  }
+
+  bool visibleWithinSelectionArea(RenderParagraph paragraph) {
+    RenderObject? current = paragraph;
+    while (current != null) {
+      if (current case final RenderBox box when box.hasSize) {
+        final localPosition = box.globalToLocal(globalPosition);
+        if (!(Offset.zero & box.size).contains(localPosition)) return false;
+      }
+      if (identical(current, root)) return true;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  var contains = false;
+  void visit(RenderObject child) {
+    if (contains || !child.attached) return;
+    if (child case final RenderParagraph paragraph
+        when paragraph.hasSize &&
+            paragraph.registrar != null &&
+            visibleWithinSelectionArea(paragraph)) {
+      final localPosition = paragraph.globalToLocal(globalPosition);
+      if ((Offset.zero & paragraph.size).contains(localPosition)) {
+        contains = true;
+        return;
+      }
+    }
+    child.visitChildren(visit);
+  }
+
+  if (root case final RenderParagraph paragraph
+      when paragraph.hasSize &&
+          paragraph.registrar != null &&
+          visibleWithinSelectionArea(paragraph)) {
+    final localPosition = paragraph.globalToLocal(globalPosition);
+    contains = (Offset.zero & paragraph.size).contains(localPosition);
+  }
+  if (!contains) root.visitChildren(visit);
+  return contains;
+}
+
+@visibleForTesting
+class ChatActionOverlayGestureLayer extends StatelessWidget {
+  const ChatActionOverlayGestureLayer({
+    super.key,
+    required this.selectionAreaKey,
+    required this.child,
+  });
+
+  final GlobalKey<SelectionAreaState>? selectionAreaKey;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _MessageSelectionHitTestPassthrough(
+    key: const ValueKey('message-action-overlay-gesture-layer'),
+    selectionAreaKey: isDesktopTargetPlatform(Theme.of(context).platform)
+        ? null
+        : selectionAreaKey,
+    child: child,
+  );
+}
+
+class _MessageSelectionHitTestPassthrough
+    extends SingleChildRenderObjectWidget {
+  const _MessageSelectionHitTestPassthrough({
+    super.key,
+    required this.selectionAreaKey,
+    required super.child,
+  });
+
+  final GlobalKey<SelectionAreaState>? selectionAreaKey;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderMessageSelectionHitTestPassthrough(selectionAreaKey);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderMessageSelectionHitTestPassthrough renderObject,
+  ) {
+    renderObject.selectionAreaKey = selectionAreaKey;
+  }
+}
+
+class _RenderMessageSelectionHitTestPassthrough extends RenderProxyBox {
+  _RenderMessageSelectionHitTestPassthrough(this.selectionAreaKey);
+
+  GlobalKey<SelectionAreaState>? selectionAreaKey;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final key = selectionAreaKey;
+    if (key != null &&
+        selectionAreaContainsGlobalTextPosition(
+          selectionAreaKey: key,
+          globalPosition: localToGlobal(position),
+        )) {
+      // Keep the visible overlay controls first, then add only the selected
+      // text region underneath. Letting the Stack hit-test the whole transcript
+      // would also admit its scroll and swipe-to-reply recognizers while the
+      // action menu is open.
+      final overlayHit = super.hitTest(result, position: position);
+      final selectionRoot = key.currentContext?.findRenderObject();
+      if (selectionRoot is RenderBox &&
+          selectionRoot.attached &&
+          selectionRoot.hasSize) {
+        final globalToOverlay = Matrix4.tryInvert(getTransformTo(null));
+        if (globalToOverlay == null) return overlayHit;
+        final selectionToOverlay = globalToOverlay
+          ..multiply(selectionRoot.getTransformTo(null));
+        final selectionHit = result.addWithPaintTransform(
+          transform: selectionToOverlay,
+          position: position,
+          hitTest: (result, localPosition) =>
+              selectionRoot.hitTest(result, position: localPosition),
+        );
+        return overlayHit || selectionHit;
+      }
+      return overlayHit;
+    }
+    return super.hitTest(result, position: position);
+  }
+}
 
 @visibleForTesting
 bool chatTranscriptBoundaryChanged({
@@ -951,6 +1087,7 @@ class _ChatViewState extends State<ChatView> {
   late int _historyWindowInvalidationRevision;
   final Set<int> _expandedBlockedRunIds = <int>{};
   final Set<int> _showOriginalTranslationMessageIds = <int>{};
+  int? _desktopStickerSetId;
   bool _unreadProgressUpdateScheduled = false;
   bool _viewTickerEnabled = true;
   bool _modelDirtyWhileInactive = false;
@@ -958,6 +1095,10 @@ class _ChatViewState extends State<ChatView> {
   ChatMessage? _actionTarget;
   Rect? _actionRect; // bounds in the action-overlay Stack's coordinate space
   final GlobalKey _actionOverlayKey = GlobalKey();
+  GlobalKey<SelectionAreaState>? _mobileTextSelectionAreaKey;
+  int? _mobileTextSelectionMessageId;
+  bool _mobileTextSelectionActive = false;
+  Offset? _lastActionPointerGlobalPosition;
   MessageActionSource _actionSource = MessageActionSource.normal;
   bool _reactionExpanded = false; // full reaction picker vs. quick bar
   String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
@@ -2363,6 +2504,7 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
+    _syncProtectedContentSelectionState();
     _reportChatKindIfReady();
     if (!_viewTickerEnabled) {
       _modelDirtyWhileInactive = true;
@@ -3307,6 +3449,7 @@ class _ChatViewState extends State<ChatView> {
     setState(() {
       _actionTarget = null;
       _actionRect = null;
+      _clearMobileTextSelectionState();
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
       _selectionAnchorId = message.id;
@@ -3612,10 +3755,10 @@ class _ChatViewState extends State<ChatView> {
         _vm.ensureMessageCapabilities(member);
       }
     }
-    final useSelectionDialog = chatMessageUsesSelectionDialog(
-      selecting: _isSelecting,
-      platform: Theme.of(context).platform,
-    );
+    final mobileSelectionKey =
+        !_vm.hasProtectedContent && _mobileTextSelectionMessageId == message.id
+        ? _mobileTextSelectionAreaKey
+        : null;
     return MessageBubble(
       message: message,
       selected: _selectedMessageIds.contains(message.id),
@@ -3631,9 +3774,14 @@ class _ChatViewState extends State<ChatView> {
       showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
       onRepeat: () => _vm.repeatMessage(message),
       onLongPress: _isSelecting ? null : _showActionMenuForMessage,
-      onDoubleTap: useSelectionDialog
-          ? (m) => unawaited(_showTextSelection(m))
-          : null,
+      mobileTextSelectionAreaKey: mobileSelectionKey,
+      onMobileTextSelectionChanged: _handleMobileTextSelectionChanged,
+      onMobileTextSelectionDisposed: mobileSelectionKey == null
+          ? null
+          : () => _handleMobileTextSelectionDisposed(
+              message.id,
+              mobileSelectionKey,
+            ),
       onReply: (m) => _vm.setReply(m),
       onAvatarTap: _openSenderProfile,
       onAvatarLongPress: (m) {
@@ -4093,10 +4241,26 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _openSticker(ChatMessage message) {
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => StickerViewer(message: message),
+        builder: (_) => StickerViewer(
+          message: message,
+          onOpenSet: desktop ? _openStickerSet : null,
+        ),
+      ),
+    );
+  }
+
+  void _openStickerSet(int setId) {
+    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
+      setState(() => _desktopStickerSetId = setId);
+      return;
+    }
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => StickerSetDetailView(setId: setId)),
       ),
     );
   }
@@ -4232,6 +4396,8 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _perform(MessageAction action, ChatMessage message) async {
     setState(() {
       _actionTarget = null;
+      _actionRect = null;
+      _clearMobileTextSelectionState();
       _actionSource = MessageActionSource.normal;
     });
     switch (action) {
@@ -4393,15 +4559,7 @@ class _ChatViewState extends State<ChatView> {
         }
       case MessageAction.viewStickerSet:
         final sid = message.stickerSetId;
-        if (sid != null) {
-          unawaited(
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => StickerSetDetailView(setId: sid),
-              ),
-            ),
-          );
-        }
+        if (sid != null) _openStickerSet(sid);
       case MessageAction.delete:
         await _performDeleteAction(message);
     }
@@ -4517,95 +4675,6 @@ class _ChatViewState extends State<ChatView> {
     return AppStrings.t(AppStringKeys.topicChatUsers);
   }
 
-  Future<void> _showTextSelection(ChatMessage message) async {
-    if (message.text.isEmpty || !mounted) return;
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: AppStrings.t(AppStringKeys.musicPlayerClose),
-      barrierColor: Colors.black.withValues(alpha: 0.48),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, _) => _MessageTextSelectionDialog(
-        text: message.text,
-        onTranslate: _hasAvailableTranslationOption
-            ? _translateSelectedText
-            : null,
-        onAddToBlocklist: _addSelectionToBlocklist,
-      ),
-      transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-            child: child,
-          ),
-        );
-      },
-    );
-  }
-
-  void _addSelectionToBlocklist(String selectedText) {
-    final rule = _keywordCandidate(selectedText);
-    if (rule.isEmpty) return;
-    KeywordBlocker.shared.add(rule);
-    if (!mounted) return;
-    showToast(
-      context,
-      AppStrings.t(AppStringKeys.keywordBlockerRuleAdded, {'value1': rule}),
-    );
-  }
-
-  Future<String?> _translateSelectedText(String selectedText) async {
-    final sourceText = selectedText.trim();
-    if (sourceText.isEmpty || !mounted) return null;
-    final translation = context.read<TranslationController>();
-    final targetLanguage = _translationTargetLanguage(translation);
-    final ai = _ai;
-    if (ai != null && !ai.initialized) {
-      try {
-        await ai.initialize();
-      } catch (_) {
-        // Non-AI fallbacks remain usable if AI setup cannot be loaded.
-      }
-    }
-    final options = _effectiveTranslationOptions;
-    if (options.isEmpty) return null;
-    Object? lastError;
-    for (final option in options) {
-      try {
-        return await _translateTextWithOption(
-          option,
-          text: sourceText,
-          sourceLanguageCode: 'autodetect',
-          targetLanguageCode: targetLanguage,
-        );
-      } catch (error) {
-        lastError = error;
-        if (_isTelegramTranslationOption(option) &&
-            isTelegramTranslationRateLimit(error)) {
-          translation.markTelegramTranslationUnavailable();
-        }
-      }
-    }
-    if (lastError != null) {
-      if (mounted) {
-        showToast(
-          context,
-          _translationFailureMessage(lastError),
-          visibleFor: isTelegramAiPremiumFlood(lastError)
-              ? const Duration(seconds: 4)
-              : const Duration(milliseconds: 1400),
-        );
-      }
-    }
-    return null;
-  }
-
   bool _isTelegramTranslationOption(String option) =>
       TranslationOptionIds.translationProvider(option) ==
       TranslationProvider.tdlib;
@@ -4660,12 +4729,6 @@ class _ChatViewState extends State<ChatView> {
         AppStringKeys.translationAiProviderUnavailable.l10n(context),
       ),
     };
-  }
-
-  String _keywordCandidate(String text) {
-    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.length <= 80) return normalized;
-    return normalized.substring(0, 80).trim();
   }
 
   Future<void> _showReactionUsers(
@@ -5593,78 +5656,116 @@ class _ChatViewState extends State<ChatView> {
                       !_isSelecting &&
                       !showPeerRestrictionBlock,
                   onImagesDropped: _previewAndSendDroppedImages,
-                  child: Stack(
-                    key: _actionOverlayKey,
-                    children: [
-                      Positioned.fill(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            // Scaffold shrinks its body as the keyboard slides,
-                            // so this builder re-runs every animation frame
-                            // even though only the width matters. Handing back
-                            // the same widget lets Element.updateChild skip the
-                            // header, transcript and composer entirely.
-                            final width = constraints.maxWidth;
-                            final cached = _cachedShellLayout;
-                            if (cached != null &&
-                                _cachedShellLayoutGeneration ==
-                                    _shellLayoutGeneration &&
-                                _cachedShellLayoutWidth == width) {
-                              return cached;
-                            }
-                            final searchPane = _searchUsesResultsPane(width);
-                            _searchResultsPaneVisible = searchPane;
-                            final searching = _search.isActive;
-                            final shell = ChatHeaderTrailingPaneLayout(
-                              header: showPeerRestrictionBlock
-                                  ? _header()
-                                  : searching
-                                  ? _searchHeader(showSteppers: searchPane)
-                                  : (_isSelecting
-                                        ? _selectionHeader()
-                                        : _header()),
-                              body: showPeerRestrictionBlock
-                                  ? _restrictedPeerBlockPage()
-                                  : Column(
-                                      children: [
-                                        Expanded(
-                                          child: _transcriptLayer(
-                                            searchPane: searchPane,
+                  child: Listener(
+                    onPointerDown: _handleChatPointerDown,
+                    child: Stack(
+                      key: _actionOverlayKey,
+                      children: [
+                        Positioned.fill(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              // Scaffold shrinks its body as the keyboard slides,
+                              // so this builder re-runs every animation frame
+                              // even though only the width matters. Handing back
+                              // the same widget lets Element.updateChild skip the
+                              // header, transcript and composer entirely.
+                              final width = constraints.maxWidth;
+                              final cached = _cachedShellLayout;
+                              if (cached != null &&
+                                  _cachedShellLayoutGeneration ==
+                                      _shellLayoutGeneration &&
+                                  _cachedShellLayoutWidth == width) {
+                                return cached;
+                              }
+                              final searchPane = _searchUsesResultsPane(width);
+                              _searchResultsPaneVisible = searchPane;
+                              final searching = _search.isActive;
+                              final shell = ChatHeaderTrailingPaneLayout(
+                                header: showPeerRestrictionBlock
+                                    ? _header()
+                                    : searching
+                                    ? _searchHeader(showSteppers: searchPane)
+                                    : (_isSelecting
+                                          ? _selectionHeader()
+                                          : _header()),
+                                body: showPeerRestrictionBlock
+                                    ? _restrictedPeerBlockPage()
+                                    : Column(
+                                        children: [
+                                          Expanded(
+                                            child: _transcriptLayer(
+                                              searchPane: searchPane,
+                                            ),
                                           ),
-                                        ),
-                                        _chatMusicPlayer(),
-                                        // A narrow chat trades the composer
-                                        // for the hit navigator; a wide one
-                                        // keeps composing beside the results.
-                                        if (searching && !searchPane)
-                                          _searchNavigator()
-                                        else if (_isSelecting)
-                                          _selectionActionBar()
-                                        else
-                                          _composerArea(),
-                                      ],
-                                    ),
-                              trailingPane: searchPane
-                                  ? _searchResultsPane()
-                                  : widget.trailingPane,
-                              trailingPaneWidth: searchPane
-                                  ? chatSearchResultsPaneWidth
-                                  : widget.trailingPaneWidth,
-                            );
-                            _cachedShellLayout = shell;
-                            _cachedShellLayoutGeneration =
-                                _shellLayoutGeneration;
-                            _cachedShellLayoutWidth = width;
-                            return shell;
-                          },
+                                          _chatMusicPlayer(),
+                                          // A narrow chat trades the composer
+                                          // for the hit navigator; a wide one
+                                          // keeps composing beside the results.
+                                          if (searching && !searchPane)
+                                            _searchNavigator()
+                                          else if (_isSelecting)
+                                            _selectionActionBar()
+                                          else
+                                            _composerArea(),
+                                        ],
+                                      ),
+                                trailingPane: searchPane
+                                    ? _searchResultsPane()
+                                    : widget.trailingPane,
+                                trailingPaneWidth: searchPane
+                                    ? chatSearchResultsPaneWidth
+                                    : widget.trailingPaneWidth,
+                              );
+                              _cachedShellLayout = shell;
+                              _cachedShellLayoutGeneration =
+                                  _shellLayoutGeneration;
+                              _cachedShellLayoutWidth = width;
+                              return shell;
+                            },
+                          ),
                         ),
-                      ),
-                      if (_actionTarget != null && !_isSelecting)
-                        _actionMenuOverlay(),
-                    ],
+                        if (_desktopStickerSetId != null)
+                          _desktopStickerSetPanel(_desktopStickerSetId!),
+                        if (_actionTarget != null && !_isSelecting)
+                          _actionMenuOverlay(),
+                      ],
+                    ),
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopStickerSetPanel(int setId) {
+    final colors = context.colors;
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            key: const ValueKey('desktop-sticker-set-panel'),
+            width: constraints.maxWidth / 2,
+            height: constraints.maxHeight,
+            decoration: BoxDecoration(
+              color: colors.groupedBackground,
+              border: Border(left: BorderSide(color: colors.divider)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 22,
+                  offset: const Offset(-6, 0),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: StickerSetDetailView(
+              key: ValueKey('desktop-sticker-set-$setId'),
+              setId: setId,
+              onClose: () => setState(() => _desktopStickerSetId = null),
             ),
           ),
         ),
@@ -8334,19 +8435,126 @@ class _ChatViewState extends State<ChatView> {
     EmojiStore.shared.loadIfNeeded();
     final overlayBox =
         _actionOverlayKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlayRect = rect != null && overlayBox?.hasSize == true
+    final platform = Theme.of(context).platform;
+    final desktop = isDesktopTargetPlatform(platform);
+    final usePointer =
+        desktop ||
+        (!desktop &&
+            context.read<ThemeController>().mobileMessageActionMenuStyle ==
+                MobileMessageActionMenuStyle.dropdown);
+    final globalAnchor = MessageActionMenu.anchorRectForPresentation(
+      targetRect: rect,
+      pointer: _lastActionPointerGlobalPosition,
+      usePointer: usePointer,
+    );
+    _lastActionPointerGlobalPosition = null;
+    final overlayRect = globalAnchor != null && overlayBox?.hasSize == true
         ? MessageActionMenu.rectInOverlay(
-            rect,
+            globalAnchor,
             globalToLocal: overlayBox!.globalToLocal,
           )
-        : rect;
+        : globalAnchor;
+    final enableMobileTextSelection =
+        !isDesktopTargetPlatform(platform) && !_vm.hasProtectedContent;
+    final oldSelectionState = _mobileTextSelectionAreaKey?.currentState;
     setState(() {
       _actionTarget = message;
       _actionRect = overlayRect;
+      _mobileTextSelectionAreaKey = enableMobileTextSelection
+          ? GlobalKey<SelectionAreaState>()
+          : null;
+      _mobileTextSelectionMessageId = enableMobileTextSelection
+          ? message.id
+          : null;
+      _mobileTextSelectionActive = false;
       _actionSource = source;
       _reactionExpanded = false;
       _reactionTab = 'standard';
     });
+    oldSelectionState?.selectableRegion.clearSelection();
+  }
+
+  void _clearMobileTextSelectionState() {
+    final selectionState = _mobileTextSelectionAreaKey?.currentState;
+    _mobileTextSelectionAreaKey = null;
+    _mobileTextSelectionMessageId = null;
+    _mobileTextSelectionActive = false;
+    selectionState?.selectableRegion.clearSelection();
+  }
+
+  void _syncProtectedContentSelectionState() {
+    final selectionState = _mobileTextSelectionAreaKey?.currentState;
+    if (!protectedContentRequiresMobileSelectionClear(
+      hasProtectedContent: _vm.hasProtectedContent,
+      hasSelectionKey: _mobileTextSelectionAreaKey != null,
+    )) {
+      return;
+    }
+    _mobileTextSelectionAreaKey = null;
+    _mobileTextSelectionMessageId = null;
+    _mobileTextSelectionActive = false;
+    _actionTarget = null;
+    _actionRect = null;
+    _lastActionPointerGlobalPosition = null;
+    _actionSource = MessageActionSource.normal;
+    _reactionExpanded = false;
+    selectionState?.selectableRegion.clearSelection();
+  }
+
+  void _handleMobileTextSelectionChanged(SelectedContent? content) {
+    if (content != null && content.plainText.isNotEmpty) {
+      if (_actionTarget != null) {
+        setState(() {
+          _mobileTextSelectionActive = true;
+          _actionTarget = null;
+          _actionRect = null;
+          _lastActionPointerGlobalPosition = null;
+          _actionSource = MessageActionSource.normal;
+          _reactionExpanded = false;
+        });
+      } else {
+        _mobileTextSelectionActive = true;
+      }
+      return;
+    }
+    if (!_mobileTextSelectionActive) return;
+    _mobileTextSelectionActive = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _actionTarget != null) return;
+      if (_mobileTextSelectionMessageId != null) {
+        setState(() => _mobileTextSelectionMessageId = null);
+      }
+    });
+  }
+
+  void _handleMobileTextSelectionDisposed(
+    int messageId,
+    GlobalKey<SelectionAreaState> selectionAreaKey,
+  ) {
+    if (!mounted ||
+        _mobileTextSelectionMessageId != messageId ||
+        !identical(_mobileTextSelectionAreaKey, selectionAreaKey)) {
+      return;
+    }
+    setState(() {
+      _mobileTextSelectionAreaKey = null;
+      _mobileTextSelectionMessageId = null;
+      _mobileTextSelectionActive = false;
+    });
+  }
+
+  void _handleChatPointerDown(PointerDownEvent event) {
+    _lastActionPointerGlobalPosition = event.position;
+    final selectionAreaKey = _mobileTextSelectionAreaKey;
+    if (!_mobileTextSelectionActive ||
+        selectionAreaKey == null ||
+        selectionAreaContainsGlobalTextPosition(
+          selectionAreaKey: selectionAreaKey,
+          globalPosition: event.position,
+        )) {
+      return;
+    }
+    selectionAreaKey.currentState?.selectableRegion.clearSelection();
   }
 
   List<_TranscriptEntry> _plainTranscript() {
@@ -8443,6 +8651,18 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _imageGroupBubble(List<ChatMessage> group) {
+    ChatMessage? captionMessage;
+    for (final message in group) {
+      if (message.text.trim().isNotEmpty) {
+        captionMessage = message;
+        break;
+      }
+    }
+    final mobileSelectionKey =
+        !_vm.hasProtectedContent &&
+            _mobileTextSelectionMessageId == captionMessage?.id
+        ? _mobileTextSelectionAreaKey
+        : null;
     return ImageMediaAlbumBubble(
       messages: group,
       peerTitle: _vm.peerTitle,
@@ -8475,6 +8695,15 @@ class _ChatViewState extends State<ChatView> {
       onEditCaption: (message) => unawaited(_editMessageText(message)),
       onOpenComments: _openMessageComments,
       onLongPress: _showActionMenuForMessage,
+      mobileTextSelectionAreaKey: mobileSelectionKey,
+      onMobileTextSelectionChanged: _handleMobileTextSelectionChanged,
+      onMobileTextSelectionDisposed:
+          captionMessage == null || mobileSelectionKey == null
+          ? null
+          : () => _handleMobileTextSelectionDisposed(
+              captionMessage!.id,
+              mobileSelectionKey,
+            ),
       onToggleSelection: (message) => _toggleSelection([message]),
       onBotCommandTap: _sendCommand,
       onHashtagTap: _openHashtagSearch,
@@ -8486,6 +8715,8 @@ class _ChatViewState extends State<ChatView> {
     final target = _actionTarget;
     setState(() {
       _actionTarget = null;
+      _actionRect = null;
+      _clearMobileTextSelectionState();
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
@@ -8504,6 +8735,8 @@ class _ChatViewState extends State<ChatView> {
     final target = _actionTarget;
     setState(() {
       _actionTarget = null;
+      _actionRect = null;
+      _clearMobileTextSelectionState();
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
@@ -8511,7 +8744,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _actionMenuOverlay() {
-    final screenSize = MediaQuery.sizeOf(context);
+    final overlayBox =
+        _actionOverlayKey.currentContext?.findRenderObject() as RenderBox?;
+    final screenSize = overlayBox?.hasSize == true
+        ? overlayBox!.size
+        : MediaQuery.sizeOf(context);
     final safeArea = MediaQuery.paddingOf(context);
     final screenW = screenSize.width;
     final screenH = screenSize.height;
@@ -8521,8 +8758,13 @@ class _ChatViewState extends State<ChatView> {
     final rect = _actionRect;
     final showActionMenu = !_reactionExpanded;
     final desktopMenu = isDesktopTargetPlatform(Theme.of(context).platform);
+    final mobileDropdown =
+        !desktopMenu &&
+        context.watch<ThemeController>().mobileMessageActionMenuStyle ==
+            MobileMessageActionMenuStyle.dropdown;
+    final verticalMenu = desktopMenu || mobileDropdown;
     final pointerAnchored =
-        desktopMenu && rect != null && rect.width == 0 && rect.height == 0;
+        verticalMenu && rect != null && rect.width == 0 && rect.height == 0;
     final showReactions = !desktopMenu && !_actionTarget!.isCall;
     final actionMenu = MessageActionMenu(
       message: _actionTarget!,
@@ -8535,6 +8777,9 @@ class _ChatViewState extends State<ChatView> {
       showingOriginalTranslation: _showOriginalTranslationMessageIds.contains(
         _actionTarget!.id,
       ),
+      layout: verticalMenu
+          ? MessageActionMenuLayout.vertical
+          : MessageActionMenuLayout.grid,
       onSelect: (action) => _perform(action, _actionTarget!),
     );
 
@@ -8560,7 +8805,7 @@ class _ChatViewState extends State<ChatView> {
         topSafe,
         bottomSafe - reactionH,
       );
-      menuTop = (desktopMenu ? rect.top : rect.bottom + gap).clamp(
+      menuTop = (verticalMenu ? rect.top : rect.bottom + gap).clamp(
         topSafe,
         bottomSafe - menuH,
       );
@@ -8569,78 +8814,89 @@ class _ChatViewState extends State<ChatView> {
       menuTop = reactionTop + reactionH + menuGap;
     }
     final align = outgoing ? Alignment.centerRight : Alignment.centerLeft;
-    final desktopMenuWidth = math.min(
+    final verticalMenuWidth = math.min(
       MessageActionMenu.desktopPreferredWidth,
       math.max(0.0, screenW - 20),
     );
     final pointerMenuOrigin = pointerAnchored
-        ? MessageActionMenu.desktopOriginForPointer(
+        ? MessageActionMenu.verticalOriginForPointer(
             pointer: rect.topLeft,
             viewport: screenSize,
-            menuSize: Size(desktopMenuWidth, menuH),
+            menuSize: Size(verticalMenuWidth, menuH),
             topSafe: topSafe,
             bottomSafe: bottomSafe,
           )
         : const Offset(10, 0);
+    final boundedActionMenu = verticalMenu
+        ? SizedBox(width: verticalMenuWidth, height: menuH, child: actionMenu)
+        : actionMenu;
 
     void dismiss() => setState(() {
       _actionTarget = null;
       _actionRect = null;
+      _lastActionPointerGlobalPosition = null;
+      _clearMobileTextSelectionState();
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
 
     return Positioned.fill(
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey('message-action-dismiss-layer'),
-              behavior: HitTestBehavior.opaque,
-              onTap: dismiss,
-              child: const SizedBox.expand(),
-            ),
-          ),
-          // Call logs and other special messages aren't reactable — no +1 bar.
-          if (showReactions)
-            Positioned(
-              top: reactionTop,
-              left: 10,
-              right: 10,
-              child: AnimatedBuilder(
-                animation: EmojiStore.shared,
-                builder: (context, _) {
-                  if (_reactionExpanded) {
-                    return Align(
-                      alignment: align,
-                      child: _expandedReactionPicker(),
-                    );
-                  }
-                  final reactions = effectiveQuickReactions(
-                    context.watch<ThemeController>().quickReactions,
-                    allowCustomEmoji: EmojiStore.shared.isPremium,
-                  );
-                  return Align(
-                    alignment: align,
-                    child: QuickReactionBar(
-                      reactions: reactions,
-                      onReaction: _reactQuick,
-                      onExpand: () => setState(() => _reactionExpanded = true),
-                    ),
-                  );
-                },
+      child: ChatActionOverlayGestureLayer(
+        selectionAreaKey: _mobileTextSelectionMessageId == null
+            ? null
+            : _mobileTextSelectionAreaKey,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                key: const ValueKey('message-action-dismiss-layer'),
+                behavior: HitTestBehavior.opaque,
+                onTap: dismiss,
+                child: const SizedBox.expand(),
               ),
             ),
-          if (showActionMenu)
-            Positioned(
-              top: pointerAnchored ? pointerMenuOrigin.dy : menuTop,
-              left: pointerAnchored ? pointerMenuOrigin.dx : 10,
-              right: pointerAnchored ? null : 10,
-              child: pointerAnchored
-                  ? actionMenu
-                  : Align(alignment: align, child: actionMenu),
-            ),
-        ],
+            // Call logs and other special messages aren't reactable — no +1 bar.
+            if (showReactions)
+              Positioned(
+                top: reactionTop,
+                left: 10,
+                right: 10,
+                child: AnimatedBuilder(
+                  animation: EmojiStore.shared,
+                  builder: (context, _) {
+                    if (_reactionExpanded) {
+                      return Align(
+                        alignment: align,
+                        child: _expandedReactionPicker(),
+                      );
+                    }
+                    final reactions = effectiveQuickReactions(
+                      context.watch<ThemeController>().quickReactions,
+                      allowCustomEmoji: EmojiStore.shared.isPremium,
+                    );
+                    return Align(
+                      alignment: align,
+                      child: QuickReactionBar(
+                        reactions: reactions,
+                        onReaction: _reactQuick,
+                        onExpand: () =>
+                            setState(() => _reactionExpanded = true),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            if (showActionMenu)
+              Positioned(
+                top: pointerAnchored ? pointerMenuOrigin.dy : menuTop,
+                left: pointerAnchored ? pointerMenuOrigin.dx : 10,
+                right: pointerAnchored ? null : 10,
+                child: pointerAnchored
+                    ? boundedActionMenu
+                    : Align(alignment: align, child: boundedActionMenu),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -8760,6 +9016,7 @@ class _ChatViewState extends State<ChatView> {
               setState(() {
                 _actionTarget = null;
                 _actionRect = null;
+                _clearMobileTextSelectionState();
                 _reactionExpanded = false;
               });
               Navigator.of(context).push(
@@ -8804,6 +9061,9 @@ class _ChatViewState extends State<ChatView> {
   }
 }
 
+// Retained as a keyboard-accessible fallback surface for future non-message
+// text sources. Mobile messages now use the in-place SelectionArea flow.
+// ignore: unused_element
 class _MessageTextSelectionDialog extends StatefulWidget {
   const _MessageTextSelectionDialog({
     required this.text,

@@ -316,47 +316,34 @@ class _ChatWallpaperViewState extends State<ChatWallpaperView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.groupedBackground,
-      child: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.chatWallpaperTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loaded
-                ? SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (widget.isGlobal) ...[
-                          _brightnessPicker(),
-                          const SizedBox(height: 12),
-                        ],
-                        _preview(),
-                        const SizedBox(height: 12),
-                        _customizeBlock(),
-                        const SizedBox(height: 18),
-                        Text(
-                          AppStringKeys.chatWallpaperChoose.l10n(context),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: c.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _choices(),
-                      ],
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          _applyBar(),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.chatWallpaperTitle,
+      onBack: () => Navigator.of(context).pop(),
+      bottomNavigationBar: _applyBar(),
+      child: _loaded
+          ? SettingsListView(
+              children: [
+                if (widget.isGlobal) ...[
+                  _brightnessPicker(),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+                _preview(),
+                const SizedBox(height: AppSpacing.lg),
+                _customizeBlock(),
+                const SizedBox(height: AppSpacing.xxl),
+                Text(
+                  AppStringKeys.chatWallpaperChoose.l10n(context),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _choices(),
+              ],
+            )
+          : const SizedBox.shrink(),
     );
   }
 

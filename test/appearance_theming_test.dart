@@ -239,6 +239,60 @@ void main() {
     expect(find.text('Manage folders'), findsNothing);
   });
 
+  testWidgets('Chat View exposes the mobile message action menu selector', (
+    tester,
+  ) async {
+    final controller = await _pumpAppearance(
+      tester,
+      themingEnabled: true,
+      platform: TargetPlatform.iOS,
+    );
+
+    final chatViewRow = find.byKey(const ValueKey('chat-view-settings-row'));
+    await tester.ensureVisible(chatViewRow);
+    await tester.tap(chatViewRow);
+    await tester.pumpAndSettle();
+
+    final styleRow = find.byKey(
+      const ValueKey('mobile-message-action-menu-style-row'),
+    );
+    expect(styleRow, findsOneWidget);
+    expect(find.text('Grid'), findsOneWidget);
+    await tester.ensureVisible(styleRow);
+    await tester.tap(styleRow);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MobileMessageActionMenuSettingsView), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('mobile-message-action-menu-style-dropdown')),
+    );
+    await tester.pump();
+    expect(
+      controller.mobileMessageActionMenuStyle,
+      MobileMessageActionMenuStyle.dropdown,
+    );
+  });
+
+  testWidgets('desktop Chat View hides the mobile action menu selector', (
+    tester,
+  ) async {
+    await _pumpAppearance(
+      tester,
+      themingEnabled: true,
+      platform: TargetPlatform.macOS,
+    );
+
+    final chatViewRow = find.byKey(const ValueKey('chat-view-settings-row'));
+    await tester.ensureVisible(chatViewRow);
+    await tester.tap(chatViewRow);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('mobile-message-action-menu-style-row')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'Appearance separates sidebar controls from the merged Chat List page',
     (tester) async {

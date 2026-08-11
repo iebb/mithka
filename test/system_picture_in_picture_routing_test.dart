@@ -25,6 +25,9 @@ void main() {
     final mainActivity = File(
       'android/app/src/main/kotlin/ad/neko/mithka/MainActivity.kt',
     ).readAsStringSync();
+    final androidManifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
 
     expect(player, contains('SystemPictureInPicture.startPrepared('));
     expect(player, contains('SystemPictureInPicture.start('));
@@ -34,9 +37,33 @@ void main() {
     expect(bridge, contains('Platform.isIOS || Platform.isAndroid'));
     expect(android, contains('enterPictureInPictureMode'));
     expect(android, contains('setAspectRatio'));
+    expect(android, contains('setExpandedAspectRatio'));
+    expect(android, contains('setSourceRectHint'));
+    expect(android, contains('setAutoEnterEnabled'));
+    expect(android, contains('RemoteAction'));
+    expect(android, contains('AppOpsManager.MODE_DEFAULT'));
+    expect(android, contains('"actionRequested"'));
+    expect(android, contains('"didRestore"'));
     expect(iosPlugin, contains('AVPictureInPictureController'));
     expect(appDelegate, isNot(contains('SystemPictureInPictureBridge')));
-    expect(mainActivity, isNot(contains('SystemPictureInPicturePlugin')));
+    expect(
+      mainActivity,
+      contains('SystemPictureInPicturePlugin.onUserLeaveHint'),
+    );
+    expect(
+      mainActivity,
+      contains(
+        'add("ad.neko.mithka.system_picture_in_picture.'
+        'SystemPictureInPicturePlugin")',
+      ),
+    );
+    expect(mainActivity, contains('onPictureInPictureRequested'));
+    expect(mainActivity, contains('onPictureInPictureModeChanged'));
+    expect(
+      androidManifest,
+      contains('android:supportsPictureInPicture="true"'),
+    );
+    expect(androidManifest, isNot(contains('SYSTEM_ALERT_WINDOW')));
   });
 
   test('one display mode control owns split and PiP routing', () {

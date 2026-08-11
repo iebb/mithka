@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as image_lib;
@@ -632,6 +633,38 @@ class ChatWallpaperController extends ChangeNotifier {
   final Map<int, String> _photoSearchBotUsernames = {};
   final Map<int, int> _photoSearchBotUserIds = {};
   final Map<int, int> _photoSearchBotChatIds = {};
+  bool _notificationScheduled = false;
+  bool _disposed = false;
+
+  /// A wallpaper load can be started by a widget while another route is still
+  /// building. ChangeNotifier dispatch is synchronous, so notifying an open
+  /// chat in that phase would make it call setState during the active build.
+  /// Defer and coalesce only those notifications; all other updates remain
+  /// synchronous.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    SchedulerBinding? binding;
+    try {
+      binding = SchedulerBinding.instance;
+    } catch (_) {
+      // The controller also supports pure Dart consumers and unit tests that
+      // intentionally have no Flutter binding. There is no widget build to
+      // guard in that environment, so dispatch synchronously.
+      super.notifyListeners();
+      return;
+    }
+    if (binding.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      if (_notificationScheduled) return;
+      _notificationScheduled = true;
+      binding.addPostFrameCallback((_) {
+        _notificationScheduled = false;
+        if (!_disposed) super.notifyListeners();
+      });
+      return;
+    }
+    super.notifyListeners();
+  }
 
   String _id(int chatId) => '${_activeSlot()}:$chatId';
   String _fileKey(int fileId) => '${_activeSlot()}:$fileId';
@@ -2228,6 +2261,7 @@ class ChatWallpaperController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_updateSubscription?.cancel());
     super.dispose();
   }

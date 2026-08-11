@@ -12,6 +12,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('message action rows stay balanced', () {
     expect(MessageActionMenu.rowCountsForActionCount(6), (first: 3, second: 3));
     expect(MessageActionMenu.rowCountsForActionCount(7), (first: 4, second: 3));
@@ -36,6 +38,23 @@ void main() {
     expect(MessageActionMenu.mobileWidthForActionCount(10, 400), 302);
     expect(MessageActionMenu.mobileWidthForActionCount(11, 400), 332);
     expect(MessageActionMenu.mobileWidthForActionCount(10, 280), 280);
+  });
+
+  test('grid labels stay within eight characters in every locale', () async {
+    for (final locale in AppLocalizations.supportedLocales) {
+      await AppStrings.ensureLoaded(locale);
+      final localeKey = AppLocalizations.localeKeyFor(locale);
+      for (final action in MessageAction.values) {
+        final fullLabel = AppStrings.tForLocale(localeKey, action.label);
+        final gridLabel = MessageActionMenu.gridLabel(fullLabel);
+        expect(
+          gridLabel.runes.length,
+          lessThanOrEqualTo(MessageActionMenu.maxGridLabelCharacters),
+          reason: '${locale.toLanguageTag()} ${action.name}: $gridLabel',
+        );
+      }
+    }
+    expect(MessageActionMenu.gridLabel('Select multiple'), 'Select…');
   });
 
   test('forward has a dedicated curved-right glyph', () {
@@ -86,6 +105,28 @@ void main() {
     );
   });
 
+  test('mobile dropdown replaces message bounds with the press position', () {
+    const target = Rect.fromLTWH(20, 40, 180, 64);
+    const pointer = Offset(140, 186);
+
+    expect(
+      MessageActionMenu.anchorRectForPresentation(
+        targetRect: target,
+        pointer: pointer,
+        usePointer: true,
+      ),
+      const Rect.fromLTWH(140, 186, 0, 0),
+    );
+    expect(
+      MessageActionMenu.anchorRectForPresentation(
+        targetRect: target,
+        pointer: pointer,
+        usePointer: false,
+      ),
+      target,
+    );
+  });
+
   testWidgets('ten or fewer reaction controls fit without overflow', (
     tester,
   ) async {
@@ -129,6 +170,26 @@ void main() {
       expect(restored, hasLength(9));
       expect(restored.first, custom);
       expect(restored[1], const QuickReactionChoice.emoji('👍'));
+    },
+  );
+
+  test(
+    'mobile message action menu style defaults to grid and persists',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      expect(
+        theme.mobileMessageActionMenuStyle,
+        MobileMessageActionMenuStyle.grid,
+      );
+
+      theme.mobileMessageActionMenuStyle =
+          MobileMessageActionMenuStyle.dropdown;
+      expect(
+        ThemeController(prefs).mobileMessageActionMenuStyle,
+        MobileMessageActionMenuStyle.dropdown,
+      );
     },
   );
 
@@ -272,6 +333,58 @@ void main() {
     expect(forward.dy, greaterThan(reply.dy));
   });
 
+  testWidgets('mobile dropdown reuses the compact vertical action list', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final translation = TranslationController(prefs);
+    await tester.binding.setSurfaceSize(const Size(400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: translation,
+        child: MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: MessageActionMenu(
+                message: ChatMessage(
+                  id: 19,
+                  isOutgoing: false,
+                  text: 'mobile dropdown',
+                  date: 1,
+                  contentType: 'messageText',
+                  commentCount: 2,
+                ),
+                isPinned: false,
+                layout: MessageActionMenuLayout.vertical,
+                onSelect: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('message-action-menu-vertical-list')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('message-action-menu-surface')))
+          .width,
+      MessageActionMenu.desktopPreferredWidth,
+    );
+    expect(find.text('View replies'), findsOneWidget);
+  });
+
   testWidgets('captionless outgoing media still exposes edit', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -336,7 +449,11 @@ void main() {
     );
 
     expect(find.text('Reply'), findsOneWidget);
-    expect(find.text('View replies'), findsOneWidget);
+    expect(
+      find.text(MessageActionMenu.gridLabel('View replies')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('View replies'), findsOneWidget);
     expect(find.byKey(const ValueKey('message-action-info')), findsNothing);
   });
 
@@ -421,15 +538,15 @@ void main() {
     );
 
     await pump(showingOriginal: false);
-    expect(find.text('Display original'), findsOneWidget);
+    expect(find.bySemanticsLabel('Display original'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey('message-action-displayOriginal')),
     );
     expect(selected, MessageAction.displayOriginal);
 
     await pump(showingOriginal: true);
-    expect(find.text('Display translation'), findsOneWidget);
-    expect(find.text('Display original'), findsNothing);
+    expect(find.bySemanticsLabel('Display translation'), findsOneWidget);
+    expect(find.bySemanticsLabel('Display original'), findsNothing);
   });
 
   testWidgets('translation action can be hidden when no provider is usable', (

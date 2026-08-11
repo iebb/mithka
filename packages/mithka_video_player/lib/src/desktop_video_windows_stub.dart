@@ -9,6 +9,7 @@ MithkaDesktopVideoWindowsPlatform createDesktopWindowsPlatform() =>
 class _UnsupportedDesktopVideoWindows
     implements MithkaDesktopVideoWindowsPlatform {
   final ValueNotifier<bool> _currentWindowFullscreen = ValueNotifier(false);
+  final ValueNotifier<int> _currentWindowCloseRevision = ValueNotifier(0);
 
   @override
   bool get isSupported => false;
@@ -21,6 +22,10 @@ class _UnsupportedDesktopVideoWindows
 
   @override
   ValueListenable<bool> get currentWindowFullscreen => _currentWindowFullscreen;
+
+  @override
+  ValueListenable<int> get currentWindowCloseRevision =>
+      _currentWindowCloseRevision;
 
   @override
   Future<MithkaDesktopVideoWindowArguments?> initialize(
@@ -60,6 +65,12 @@ class _UnsupportedDesktopVideoWindows
 
   @override
   Future<bool> focus(int windowId) async => false;
+
+  @override
+  Future<void> focusCurrentWindow() async {}
+
+  @override
+  Future<void> hideCurrentWindow() async {}
 
   @override
   Future<void> closeCurrentWindow() async {}

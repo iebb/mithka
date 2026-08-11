@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/telegram_rich_text.dart';
@@ -90,6 +91,68 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CustomEmojiView), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('selection copies a custom emoji fallback as message text', (
+    tester,
+  ) async {
+    const text = 'A🙂B';
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText =
+              (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SelectionArea(
+            key: selectionKey,
+            onSelectionChanged: (content) {
+              selectedText = content?.plainText;
+            },
+            child: const TelegramRichText(
+              text: text,
+              entities: [
+                MessageTextEntity(
+                  offset: 1,
+                  length: 2,
+                  type: 'textEntityTypeCustomEmoji',
+                  customEmojiId: 456,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    selectionKey.currentState!.selectableRegion.selectAll(
+      SelectionChangedCause.keyboard,
+    );
+    await tester.pump();
+    expect(selectedText, text);
+
+    Actions.invoke(
+      tester.element(find.byType(TelegramRichText)),
+      CopySelectionTextIntent.copy,
+    );
+    await tester.pump();
+    expect(copiedText, text);
     await tester.pump(const Duration(milliseconds: 50));
   });
 }

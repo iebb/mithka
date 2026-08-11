@@ -173,11 +173,15 @@ class _ProfileViewState extends State<ProfileView> {
       if (mounted) setState(() {});
     });
     _vm.onAppear();
-    unawaited(_wallpaperController.loadGlobalChatThemes());
-    unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
-    unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<AccountStore>().refresh();
+      if (!mounted) return;
+      // Loading global themes notifies every open chat. Starting that work
+      // from initState can synchronously dirty an ancestor while this profile
+      // subtree is still being built, so begin it after the frame is complete.
+      unawaited(_wallpaperController.loadGlobalChatThemes());
+      unawaited(_wallpaperController.loadDefaultWallpaper(dark: false));
+      unawaited(_wallpaperController.loadDefaultWallpaper(dark: true));
+      context.read<AccountStore>().refresh();
     });
   }
 

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../chat/chat_picker_view.dart';
+import '../chat/telegram_premium_features.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -20,9 +22,16 @@ String _chatFallbackTitle(int id) =>
     AppStrings.t(AppStringKeys.chatFolderManagementChatValue1, {'value1': id});
 
 class ChatFolderManagementView extends StatefulWidget {
-  const ChatFolderManagementView({super.key, this.service});
+  const ChatFolderManagementView({
+    super.key,
+    this.service,
+    this.updates,
+    this.onLockedFolderTagsActivated,
+  });
 
   final ChatFolderService? service;
+  final Stream<Map<String, dynamic>>? updates;
+  final VoidCallback? onLockedFolderTagsActivated;
 
   @override
   State<ChatFolderManagementView> createState() =>
@@ -36,17 +45,20 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   List<RecommendedFolder> _recommended = const [];
   bool _loading = true;
   bool _tagsEnabled = false;
+  ChatFolderTagEntitlement _folderTagEntitlement =
+      ChatFolderTagEntitlement.unavailable;
+  final FocusNode _folderTagLockFocusNode = FocusNode();
   int _mainListPosition = 0;
   int _generation = 0;
+  int _entitlementGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    if (widget.service == null) {
-      _updates = TdClient.shared.subscribe().listen((update) {
-        if (update.type == 'updateChatFolders') _load(update);
-      });
-    }
+    final updates =
+        widget.updates ??
+        (widget.service == null ? TdClient.shared.subscribe() : null);
+    _updates = updates?.listen(_handleUpdate);
     _load(
       widget.service == null
           ? TdClient.shared.latestChatFoldersUpdate
@@ -57,21 +69,79 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   @override
   void dispose() {
     _updates?.cancel();
+    _folderTagLockFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleUpdate(Map<String, dynamic> update) {
+    if (update.type == 'updateChatFolders') {
+      unawaited(_load(update));
+      return;
+    }
+    if (update.type == 'updateOption') _handleOptionUpdate(update);
+  }
+
+  void _handleOptionUpdate(Map<String, dynamic> update) {
+    final name = update.str('name');
+    if (name != 'is_premium' && name != 'is_premium_available') return;
+    final value = update.obj('value')?.boolean('value');
+    if (name == 'is_premium') {
+      if (value == true) {
+        if (mounted) {
+          setState(
+            () => _folderTagEntitlement = ChatFolderTagEntitlement.enabled,
+          );
+        }
+        return;
+      }
+      if (value == false &&
+          _folderTagEntitlement == ChatFolderTagEntitlement.locked) {
+        return;
+      }
+      if (mounted) {
+        // A downgrade must revoke before availability is confirmed.
+        setState(
+          () => _folderTagEntitlement = ChatFolderTagEntitlement.unavailable,
+        );
+      }
+      unawaited(_refreshFolderTagEntitlement());
+      return;
+    }
+
+    if (_folderTagEntitlement == ChatFolderTagEntitlement.enabled) {
+      // Current Premium entitlement wins even when purchasing Premium isn't
+      // advertised or the availability update is malformed.
+      return;
+    }
+    if (_folderTagEntitlement == ChatFolderTagEntitlement.locked) {
+      if (value == true) return;
+      if (mounted) {
+        setState(
+          () => _folderTagEntitlement = ChatFolderTagEntitlement.unavailable,
+        );
+      }
+      return;
+    }
+    unawaited(_refreshFolderTagEntitlement());
   }
 
   Future<void> _load(Map<String, dynamic>? update) async {
     final generation = ++_generation;
+    final entitlementGeneration = _entitlementGeneration;
     if (mounted && _folders.isEmpty) setState(() => _loading = true);
     try {
       final values = await Future.wait<Object>([
         _service.load(update),
         _service.recommended(),
+        _loadFolderTagEntitlement(),
       ]);
       if (!mounted || generation != _generation) return;
       setState(() {
         _folders = values[0] as List<ChatFolderRecord>;
         _recommended = values[1] as List<RecommendedFolder>;
+        if (entitlementGeneration == _entitlementGeneration) {
+          _folderTagEntitlement = values[2] as ChatFolderTagEntitlement;
+        }
         _tagsEnabled = update?.boolean('are_tags_enabled') ?? _tagsEnabled;
         _mainListPosition =
             update?.integer('main_chat_list_position') ?? _mainListPosition;
@@ -88,6 +158,21 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         ),
       );
     }
+  }
+
+  Future<ChatFolderTagEntitlement> _loadFolderTagEntitlement() async {
+    try {
+      return await _service.folderTagEntitlement();
+    } catch (_) {
+      return ChatFolderTagEntitlement.unavailable;
+    }
+  }
+
+  Future<void> _refreshFolderTagEntitlement() async {
+    final generation = ++_entitlementGeneration;
+    final entitlement = await _loadFolderTagEntitlement();
+    if (!mounted || generation != _entitlementGeneration) return;
+    setState(() => _folderTagEntitlement = entitlement);
   }
 
   Future<void> _refresh() => _load(
@@ -237,6 +322,12 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   }
 
   Future<void> _toggleTags(bool enabled) async {
+    if (_folderTagEntitlement != ChatFolderTagEntitlement.enabled) {
+      if (_folderTagEntitlement == ChatFolderTagEntitlement.locked) {
+        _activateLockedFolderTags();
+      }
+      return;
+    }
     final previous = _tagsEnabled;
     setState(() => _tagsEnabled = enabled);
     try {
@@ -252,6 +343,20 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         ),
       );
     }
+  }
+
+  void _activateLockedFolderTags() {
+    final callback = widget.onLockedFolderTagsActivated;
+    if (callback != null) {
+      callback();
+      return;
+    }
+    unawaited(
+      openTelegramPremiumBusinessFeature(
+        context,
+        feature: const {'@type': 'businessFeatureChatFolderTags'},
+      ),
+    );
   }
 
   @override
@@ -295,27 +400,33 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
                   key: const ValueKey('title'),
                 ),
                 _folderOrderCard(),
-                const SizedBox(
-                  key: ValueKey('gap-tags'),
-                  height: AppSpacing.xl,
-                ),
-                _sectionTitle(
-                  AppStrings.t(AppStringKeys.chatFolderManagementFolderTags),
-                  key: const ValueKey('tags-title'),
-                ),
-                _card(
-                  key: const ValueKey('folder-tags'),
-                  children: [
-                    _switchRow(
-                      AppStrings.t(
-                        AppStringKeys
-                            .chatFolderManagementShowFolderTagsInChatList,
+                if (_folderTagEntitlement !=
+                    ChatFolderTagEntitlement.unavailable) ...[
+                  const SizedBox(
+                    key: ValueKey('gap-tags'),
+                    height: AppSpacing.xl,
+                  ),
+                  _sectionTitle(
+                    AppStrings.t(AppStringKeys.chatFolderManagementFolderTags),
+                    key: const ValueKey('tags-title'),
+                  ),
+                  _card(
+                    key: const ValueKey('folder-tags'),
+                    children: [
+                      _switchRow(
+                        AppStrings.t(
+                          AppStringKeys
+                              .chatFolderManagementShowFolderTagsInChatList,
+                        ),
+                        _tagsEnabled,
+                        _toggleTags,
+                        locked:
+                            _folderTagEntitlement ==
+                            ChatFolderTagEntitlement.locked,
                       ),
-                      _tagsEnabled,
-                      _toggleTags,
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
                 if (_recommended.isNotEmpty) ...[
                   const SizedBox(
                     key: ValueKey('gap-recommended'),
@@ -506,12 +617,34 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     );
   }
 
-  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
-    return SettingsSwitchRow(
+  Widget _switchRow(
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged, {
+    bool locked = false,
+  }) {
+    final row = SettingsSwitchRow(
       title: label,
       value: value,
-      leading: const SettingsLeadingIcon(icon: HeroAppIcons.hashtag),
+      leading: SettingsLeadingIcon(
+        icon: locked ? HeroAppIcons.lock : HeroAppIcons.hashtag,
+      ),
+      subtitle: locked
+          ? context.l10n.t(AppStringKeys.profileToolsPremiumRequired)
+          : null,
+      enabled: !locked,
       onChanged: onChanged,
+    );
+    if (!locked) return row;
+    return AppInteractiveSurface(
+      key: const ValueKey('folder-tags-premium-lock'),
+      semanticLabel:
+          '$label. ${context.l10n.t(AppStringKeys.profileToolsPremiumRequired)}',
+      isButton: true,
+      focusNode: _folderTagLockFocusNode,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      onTap: _activateLockedFolderTags,
+      child: ExcludeSemantics(child: row),
     );
   }
 

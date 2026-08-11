@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph, SelectedContent;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_action_menu.dart';
@@ -51,6 +52,8 @@ void main() {
     TranslationDisplayStyle translationDisplayStyle =
         TranslationDisplayStyle.quote,
     Set<int> showOriginalTranslationMessageIds = const <int>{},
+    GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey,
+    ValueChanged<SelectedContent?>? onMobileTextSelectionChanged,
     ValueChanged<ChatMessage>? onLongPress,
     ValueChanged<ChatMessage>? onOpenComments,
     void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
@@ -91,6 +94,8 @@ void main() {
               translationDisplayStyle: translationDisplayStyle,
               showOriginalTranslationMessageIds:
                   showOriginalTranslationMessageIds,
+              mobileTextSelectionAreaKey: mobileTextSelectionAreaKey,
+              onMobileTextSelectionChanged: onMobileTextSelectionChanged,
               onOpenComments: onOpenComments,
               onLongPress:
                   onActionMenu ??
@@ -191,6 +196,38 @@ void main() {
     final border = (bothBlock.decoration! as BoxDecoration).border! as Border;
     expect(border.top.width, 0.5);
     expect(border.left, BorderSide.none);
+  });
+
+  testWidgets('mobile selection includes each displayed translation text', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    final message = ChatMessage(
+      id: 902,
+      isOutgoing: false,
+      text: 'Original selectable words',
+      date: 1,
+      contentType: 'messageText',
+      translationText: 'Translated selectable words',
+      translationLanguageCode: 'en',
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.both,
+      mobileTextSelectionAreaKey: selectionKey,
+    );
+
+    final original = tester.renderObject<RenderParagraph>(
+      find.text('Original selectable words', findRichText: true),
+    );
+    final translated = tester.renderObject<RenderParagraph>(
+      find.text('Translated selectable words', findRichText: true),
+    );
+    expect(selectionKey.currentState, isNotNull);
+    expect(original.registrar, isNotNull);
+    expect(translated.registrar, isNotNull);
   });
 
   testWidgets('secondary mouse click invokes message action callback', (
@@ -1265,6 +1302,45 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CustomEmojiView), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('mobile message selection preserves custom emoji fallback text', (
+    tester,
+  ) async {
+    const text = 'A🙂B';
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    final message = ChatMessage(
+      id: 42,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 1,
+          length: 2,
+          type: 'textEntityTypeCustomEmoji',
+          customEmojiId: 456,
+        ),
+      ],
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      mobileTextSelectionAreaKey: selectionKey,
+      onMobileTextSelectionChanged: (content) {
+        selectedText = content?.plainText;
+      },
+    );
+    selectionKey.currentState!.selectableRegion.selectAll(
+      SelectionChangedCause.toolbar,
+    );
+    await tester.pump();
+
+    expect(selectedText, text);
     await tester.pump(const Duration(milliseconds: 50));
   });
 

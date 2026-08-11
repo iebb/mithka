@@ -62,7 +62,10 @@ import 'telegram_invoice_checkout_view.dart';
 import 'telegram_link_details_view.dart';
 import 'telegram_mini_app_view.dart';
 import 'telegram_payment_service.dart';
+import 'telegram_premium_features.dart';
 import 'telegram_store_purchase_view.dart';
+
+export 'telegram_premium_features.dart';
 
 typedef _TdLinkQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
@@ -278,7 +281,13 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeUpgradedGift':
         await _openUpgradedGift(nav, type.str('name') ?? '');
       case 'internalLinkTypePremiumFeaturesPage':
-        await _openPremiumFeatures(nav, type.str('referrer') ?? '');
+        await pushTelegramPremiumFeatures(
+          nav,
+          source: {
+            '@type': 'premiumSourceLink',
+            'referrer': type.str('referrer') ?? '',
+          },
+        );
       case 'internalLinkTypePremiumGiftCode':
         if (context.mounted) {
           await _applyPremiumGiftCode(context, type.str('code') ?? '');
@@ -2125,59 +2134,6 @@ Future<void> _openGiftAuction(NavigatorState nav, String auctionId) async {
             TelegramLinkDetail(
               AppStrings.t(AppStringKeys.linkHandlerDetailMinimumBid),
               '⭐ ${state?.int64('minimum_bid_star_count')}',
-            ),
-        ],
-      ),
-    ),
-  );
-}
-
-Future<void> openTelegramPremiumFeatures(
-  BuildContext context, {
-  String referrer = '',
-}) async {
-  final nav = Navigator.of(context);
-  try {
-    await _openPremiumFeatures(nav, referrer);
-  } catch (_) {
-    if (context.mounted) {
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.linkHandlerUnsupportedTelegramLink),
-      );
-    }
-  }
-}
-
-Future<void> _openPremiumFeatures(NavigatorState nav, String referrer) async {
-  final result = await TdClient.shared.query({
-    '@type': 'getPremiumFeatures',
-    'source': {'@type': 'premiumSourceLink', 'referrer': referrer},
-  });
-  if (!nav.mounted) return;
-  final features = result.objects('features') ?? const <Map<String, dynamic>>[];
-  final limits = result.objects('limits') ?? const <Map<String, dynamic>>[];
-  await nav.push(
-    MaterialPageRoute<void>(
-      builder: (_) => TelegramLinkDetailsView(
-        title: AppStrings.t(AppStringKeys.linkHandlerTelegramPremium),
-        icon: HeroAppIcons.solidStar,
-        subtitle: AppStrings.t(
-          AppStringKeys.linkHandlerPremiumFeaturesSubtitle,
-        ),
-        details: [
-          TelegramLinkDetail(
-            AppStrings.t(AppStringKeys.linkHandlerDetailFeatures),
-            '${features.length}',
-          ),
-          TelegramLinkDetail(
-            AppStrings.t(AppStringKeys.linkHandlerDetailHigherLimits),
-            '${limits.length}',
-          ),
-          if (result.obj('payment_link')?.type case final String paymentType)
-            TelegramLinkDetail(
-              AppStrings.t(AppStringKeys.linkHandlerDetailPurchaseOption),
-              paymentType.replaceFirst('internalLinkType', ''),
             ),
         ],
       ),

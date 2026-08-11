@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">ライブプレビューを利用できません</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">メディアアルバムをまとめて表示</string>
+    <string name="appearanceMessageActionMenu">メッセージ操作メニュー</string>
+    <string name="appearanceMessageActionMenuDropdown">ドロップダウン</string>
+    <string name="appearanceMessageActionMenuGrid">グリッド</string>
     <string name="appearanceMessageBubbles">メッセージバブル</string>
     <string name="appearanceMode">モード</string>
     <string name="appearanceMonospaceFont">等幅フォント</string>

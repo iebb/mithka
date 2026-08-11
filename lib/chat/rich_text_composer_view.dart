@@ -4307,6 +4307,7 @@ class _RichBlockInsertMenu extends StatelessWidget {
                     SizedBox(
                       width: (menuWidth - 12) / 2,
                       child: _RichMenuRow(
+                        key: ValueKey('rich-insert-${kind.name}'),
                         icon: kind.icon,
                         label: kind.labelKey.l10n(context),
                         compact: true,
@@ -4428,6 +4429,7 @@ class _RichMenuRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: compact ? 14 : 16,
+                      fontWeight: AppTextWeight.regular,
                       color: onTap == null
                           ? context.colors.textTertiary
                           : destructive

@@ -119,13 +119,20 @@ class TranslationController extends ChangeNotifier {
       _libreTranslateEndpoint =
           _prefs.getString(_libreTranslateEndpointKey) ?? '',
       _libreTranslateApiKey = _prefs.getString(_libreTranslateApiKeyKey) ?? '',
-      _ignoredLanguageCodes = {...?_prefs.getStringList(_ignoredLanguagesKey)},
+      _ignoredLanguageCodes = _restoreIgnoredLanguageCodes(
+        _prefs.getStringList(_ignoredLanguagesKey),
+      ),
       _autoTranslateChatIds = {...?_prefs.getStringList(_autoChatsKey)},
       _dismissedAutoTranslateChatIds = {
         ...?_prefs.getStringList(_dismissedAutoChatsKey),
       } {
     _restoreTranslationOptions();
     _restoreTelegramCooldown();
+    final storedIgnored =
+        _prefs.getStringList(_ignoredLanguagesKey)?.toSet() ?? const <String>{};
+    if (!setEquals(storedIgnored, _ignoredLanguageCodes)) {
+      _persistStringSet(_ignoredLanguagesKey, _ignoredLanguageCodes);
+    }
     messageCache = MessageTranslationCache(_prefs);
     messageCache.pruneExpired();
   }
@@ -477,9 +484,42 @@ class TranslationController extends ChangeNotifier {
 
   static String? normalizeLanguageCode(String? code) {
     if (code == null || code.isEmpty) return null;
-    final lower = code.toLowerCase();
-    if (lower.startsWith('zh')) return 'zh';
+    final lower = code.toLowerCase().replaceAll('_', '-');
+    if (lower == 'zh' || lower.startsWith('zh-')) {
+      final parts = lower.split('-').skip(1).toSet();
+      if (parts.contains('hans') ||
+          parts.contains('cn') ||
+          parts.contains('sg')) {
+        return 'zh-Hans';
+      }
+      if (parts.contains('hant') ||
+          parts.contains('tw') ||
+          parts.contains('hk') ||
+          parts.contains('mo')) {
+        return 'zh-Hant';
+      }
+      return 'zh';
+    }
     return lower.split('-').first;
+  }
+
+  static Set<String> _restoreIgnoredLanguageCodes(List<String>? stored) {
+    final result = <String>{};
+    for (final code in stored ?? const <String>[]) {
+      final normalized = normalizeLanguageCode(code);
+      if (normalized == null) continue;
+      if (normalized == 'zh') {
+        // Older builds collapsed both Chinese scripts into one `zh` value.
+        // Preserve that broad preference while allowing either script to be
+        // toggled independently from now on.
+        result
+          ..add('zh-Hans')
+          ..add('zh-Hant');
+      } else {
+        result.add(normalized);
+      }
+    }
+    return result;
   }
 
   static String normalizeEndpoint(String value) =>

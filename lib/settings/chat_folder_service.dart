@@ -4,6 +4,8 @@ import '../tdlib/td_client.dart';
 typedef ChatFolderQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
+enum ChatFolderTagEntitlement { unavailable, locked, enabled }
+
 class ChatFolderRecord {
   const ChatFolderRecord({
     required this.id,
@@ -251,6 +253,20 @@ class ChatFolderService {
 
   Future<void> toggleTags(bool enabled) =>
       _query({'@type': 'toggleChatFolderTags', 'are_tags_enabled': enabled});
+
+  Future<ChatFolderTagEntitlement> folderTagEntitlement() async {
+    final options = await Future.wait([
+      _query({'@type': 'getOption', 'name': 'is_premium'}),
+      _query({'@type': 'getOption', 'name': 'is_premium_available'}),
+    ]);
+    final isPremium = options[0].boolean('value');
+    final isPremiumAvailable = options[1].boolean('value');
+    if (isPremium == true) return ChatFolderTagEntitlement.enabled;
+    if (isPremium == false && isPremiumAvailable == true) {
+      return ChatFolderTagEntitlement.locked;
+    }
+    return ChatFolderTagEntitlement.unavailable;
+  }
 
   Future<List<int>> shareableChats(int id) async {
     final result = await _query({

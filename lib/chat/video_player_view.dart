@@ -927,10 +927,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   bool _systemPiPSupported = false;
   bool _systemPiPBusy = false;
   bool _systemPiPPrepared = false;
+  bool _systemPiPActive = false;
   String? _systemPiPId;
   Future<void>? _systemPiPPrepareOperation;
   Future<bool>? _systemPiPStartOperation;
   int _lastSystemPiPSyncMs = -1;
+  bool? _lastSystemPiPPlaying;
+  double? _lastSystemPiPSpeed;
+  bool? _lastSystemPiPMuted;
+  Rect? _lastSystemPiPSourceRect;
+  MithkaVideoActions? _reusablePlayerActions;
   bool _wakelockActive = false;
   bool _landscapePlayback = false;
   bool _orientationChangeInFlight = false;
@@ -1763,29 +1769,131 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   void _syncSystemPictureInPictureIfNeeded() {
-    final id = _systemPiPId;
     final c = _controller;
-    if (id == null ||
-        !_systemPiPPrepared ||
-        c == null ||
-        !c.value.isInitialized) {
+    if (c == null || !c.value.isInitialized) {
       return;
     }
+    if (_usesAndroidSystemPictureInPicture &&
+        _systemPiPSupported &&
+        c.value.isPlaying &&
+        _systemPiPId == null &&
+        _systemPiPPrepareOperation == null) {
+      unawaited(_prepareSystemPictureInPicture());
+      return;
+    }
+    final id = _systemPiPId;
+    if (id == null || !_systemPiPPrepared) return;
     final positionMs = c.value.position.inMilliseconds;
-    if ((positionMs - _lastSystemPiPSyncMs).abs() < 900 && c.value.isPlaying) {
+    final playing = c.value.isPlaying;
+    final muted = _volume <= 0.01;
+    final sourceRect = _systemPiPActive
+        ? null
+        : _systemPictureInPictureSourceRect(c);
+    final sourceRectChanged =
+        sourceRect != null && sourceRect != _lastSystemPiPSourceRect;
+    final playbackStateChanged =
+        playing != _lastSystemPiPPlaying ||
+        _speed != _lastSystemPiPSpeed ||
+        muted != _lastSystemPiPMuted;
+    if ((positionMs - _lastSystemPiPSyncMs).abs() < 900 &&
+        playing &&
+        !playbackStateChanged &&
+        !sourceRectChanged) {
       return;
     }
     _lastSystemPiPSyncMs = positionMs;
+    _lastSystemPiPPlaying = playing;
+    _lastSystemPiPSpeed = _speed;
+    _lastSystemPiPMuted = muted;
+    if (sourceRect != null) _lastSystemPiPSourceRect = sourceRect;
     unawaited(
       SystemPictureInPicture.updatePrepared(
         id: id,
         position: c.value.position,
         speed: _speed,
-        muted: _volume <= 0.01,
-        playing: c.value.isPlaying,
+        muted: muted,
+        playing: playing,
         videoSize: c.value.size,
+        sourceRect: sourceRect,
+        playLabel: AppStringKeys.musicPlayerPlay.l10n(context),
+        pauseLabel: AppStringKeys.musicPlayerPause.l10n(context),
       ),
     );
+  }
+
+  bool get _usesAndroidSystemPictureInPicture =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  Rect? _systemPictureInPictureSourceRect(VideoPlayerController controller) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return null;
+    }
+    final videoSize = _displayVideoSize(controller);
+    if (videoSize.width <= 0 || videoSize.height <= 0) return null;
+    final fitted = _containSize(videoSize, renderObject.size);
+    if (fitted.width <= 0 || fitted.height <= 0) return null;
+    final localOffset = Offset(
+      (renderObject.size.width - fitted.width) / 2,
+      (renderObject.size.height - fitted.height) / 2,
+    );
+    final globalOffset = renderObject.localToGlobal(localOffset);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final physicalRect = Rect.fromLTWH(
+      globalOffset.dx * pixelRatio,
+      globalOffset.dy * pixelRatio,
+      fitted.width * pixelRatio,
+      fitted.height * pixelRatio,
+    );
+    final logicalWindowSize = MediaQuery.sizeOf(context);
+    final physicalWindowBounds = Rect.fromLTWH(
+      0,
+      0,
+      logicalWindowSize.width * pixelRatio,
+      logicalWindowSize.height * pixelRatio,
+    );
+    final clipped = physicalRect.intersect(physicalWindowBounds);
+    return clipped.isEmpty ? null : clipped;
+  }
+
+  void _handleSystemPictureInPictureEntered(SystemPictureInPictureSnapshot _) {
+    if (!mounted || _systemPiPActive) return;
+    _hideTimer?.cancel();
+    setState(() {
+      _systemPiPActive = true;
+      _controlsVisible = false;
+      _moreMenuVisible = false;
+      _modeMenuVisible = false;
+    });
+  }
+
+  void _handleSystemPictureInPictureRestored(SystemPictureInPictureSnapshot _) {
+    if (!mounted || !_systemPiPActive) return;
+    _lastSystemPiPSourceRect = null;
+    setState(() {
+      _systemPiPActive = false;
+      _controlsVisible = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reusablePlayerActions?.showControls();
+    });
+  }
+
+  Future<void> _handleSystemPictureInPictureAction(
+    SystemPictureInPictureAction action,
+  ) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    switch (action) {
+      case SystemPictureInPictureAction.play:
+        await controller.play();
+        return;
+      case SystemPictureInPictureAction.pause:
+        await controller.pause();
+        return;
+    }
   }
 
   void _scheduleHide() {
@@ -2067,6 +2175,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
     var id = _systemPiPId;
     var started = false;
+    final sourceRect = _systemPictureInPictureSourceRect(c);
+    if (sourceRect != null) _lastSystemPiPSourceRect = sourceRect;
+    final playLabel = AppStringKeys.musicPlayerPlay.l10n(context);
+    final pauseLabel = AppStringKeys.musicPlayerPause.l10n(context);
     if (id != null && _systemPiPPrepared) {
       started = await SystemPictureInPicture.startPrepared(
         id: id,
@@ -2075,6 +2187,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
         videoSize: c.value.size,
+        sourceRect: sourceRect,
+        playLabel: playLabel,
+        pauseLabel: pauseLabel,
       );
       if (!mounted) {
         await SystemPictureInPicture.cancelPrepared(id);
@@ -2102,13 +2217,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
         videoSize: c.value.size,
+        sourceRect: sourceRect,
+        playLabel: playLabel,
+        pauseLabel: pauseLabel,
         playerId: c.fvpPlayerId,
+        onEntered: _handleSystemPictureInPictureEntered,
+        onRestored: _handleSystemPictureInPictureRestored,
+        onActionRequested: _handleSystemPictureInPictureAction,
         onRestoreRequested: (position) async {
           final accepted = await _restoreSystemPictureInPicture(position);
           restoreAccepted = accepted;
           return accepted;
         },
         onStop: (finalPosition) async {
+          if (_usesAndroidSystemPictureInPicture && mounted) {
+            _systemPiPPrepared = false;
+            _systemPiPId = null;
+            _systemPiPActive = false;
+            _streamServer = null;
+            try {
+              await c.pause();
+            } catch (_) {}
+            if (mounted) _close();
+          }
           if (finalPosition != null) {
             await _storeResumePosition(finalPosition, c.value.duration);
           }
@@ -2135,7 +2266,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     if (SystemPictureInPicture.keepsFlutterPlayerInActivity) {
       // Android PiP hosts this Activity. Keep the Flutter route and its video
       // texture mounted so the system captures the active player, not chat.
-      if (mounted) setState(() => _controlsVisible = false);
+      _handleSystemPictureInPictureEntered(
+        SystemPictureInPictureSnapshot(
+          position: c.value.position,
+          playing: c.value.isPlaying,
+          speed: _speed,
+          muted: _volume <= 0.01,
+        ),
+      );
       return true;
     }
     _systemPiPUsesActivePlayer =
@@ -2184,6 +2322,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         !_openedCompletedLocalFile && _progress?.isCompleted != true;
     final id = '${widget.video.id}-${DateTime.now().microsecondsSinceEpoch}';
     _systemPiPId = id;
+    final sourceRect = _systemPictureInPictureSourceRect(c);
+    if (sourceRect != null) _lastSystemPiPSourceRect = sourceRect;
     var restoreAccepted = false;
     final prepared = await SystemPictureInPicture.prepare(
       id: id,
@@ -2193,13 +2333,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       muted: _volume <= 0.01,
       playing: c.value.isPlaying,
       videoSize: c.value.size,
+      sourceRect: sourceRect,
+      playLabel: AppStringKeys.musicPlayerPlay.l10n(context),
+      pauseLabel: AppStringKeys.musicPlayerPause.l10n(context),
       playerId: c.fvpPlayerId,
+      onEntered: _handleSystemPictureInPictureEntered,
+      onRestored: _handleSystemPictureInPictureRestored,
+      onActionRequested: _handleSystemPictureInPictureAction,
       onRestoreRequested: (position) async {
         final accepted = await _restoreSystemPictureInPicture(position);
         restoreAccepted = accepted;
         return accepted;
       },
       onStop: (finalPosition) async {
+        if (_usesAndroidSystemPictureInPicture && mounted) {
+          _systemPiPPrepared = false;
+          _systemPiPId = null;
+          _systemPiPActive = false;
+          _streamServer = null;
+          try {
+            await c.pause();
+          } catch (_) {}
+          if (mounted) _close();
+        }
         if (finalPosition != null) {
           await _storeResumePosition(finalPosition, c.value.duration);
         }
@@ -2225,7 +2381,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _refreshSystemPictureInPictureSupport() async {
-    await _isSystemPictureInPictureSupported();
+    final supported = await _isSystemPictureInPictureSupported();
+    if (supported &&
+        mounted &&
+        _usesAndroidSystemPictureInPicture &&
+        (_controller?.value.isPlaying ?? false)) {
+      await _prepareSystemPictureInPicture();
+    }
   }
 
   Future<bool> _isSystemPictureInPictureSupported() async {
@@ -2269,6 +2431,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _scrubPreviewOverlay?.remove();
     _scrubPreviewOverlay = null;
     _scrubPreviewGeneration++;
+    _reusablePlayerActions = null;
     _completionPromptFocusNode.dispose();
     _moreButtonFocusNode.dispose();
     _modeButtonFocusNode.dispose();
@@ -2382,7 +2545,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       isFullscreen: true,
       onError: _handleReusablePlayerError,
       loadingBuilder: (_) => _loadingState(),
-      chromeBuilder: (_, scope) => _mobileFullscreenChrome(controller, scope),
+      chromeBuilder: (_, scope) {
+        _reusablePlayerActions = scope.actions;
+        if (_systemPiPActive) return const SizedBox.expand();
+        return _mobileFullscreenChrome(controller, scope);
+      },
     );
   }
 
@@ -4691,7 +4858,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Future<void> _enterPictureInPicture() async {
     if (_systemPiPBusy) return;
     setState(() => _systemPiPBusy = true);
-    if (SystemPictureInPicture.isSupportedPlatform) {
+    // Prefer the native backend only after it has confirmed support. When a
+    // presentation switch callback is available it remains the deterministic
+    // fallback (including while support probing is still in flight).
+    if (_systemPiPSupported ||
+        (widget.onSwitchMode == null &&
+            SystemPictureInPicture.isSupportedPlatform)) {
       try {
         await _startSystemPictureInPicture();
       } catch (_) {}

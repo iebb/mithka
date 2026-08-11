@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
@@ -19,6 +20,7 @@ import 'media_album_layout.dart';
 import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
 import 'message_reply_count_badge.dart';
+import 'mobile_message_text_selection.dart';
 import 'telegram_rich_text.dart';
 
 typedef MediaAlbumImageBuilder =
@@ -60,6 +62,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onEditCaption,
     this.onOpenComments,
     this.onLongPress,
+    this.mobileTextSelectionAreaKey,
+    this.onMobileTextSelectionChanged,
+    this.onMobileTextSelectionDisposed,
     this.onToggleSelection,
     this.onBotCommandTap,
     this.onHashtagTap,
@@ -97,6 +102,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     MessageActionSource source,
   )?
   onLongPress;
+  final GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey;
+  final ValueChanged<SelectedContent?>? onMobileTextSelectionChanged;
+  final VoidCallback? onMobileTextSelectionDisposed;
   final ValueChanged<ChatMessage>? onToggleSelection;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
@@ -390,44 +398,69 @@ class ImageMediaAlbumBubble extends StatelessWidget {
                   ),
                 ),
                 if (captionMessage != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: outgoing
-                        ? () => onEditCaption?.call(captionMessage)
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TelegramRichText(
-                            key: replacesOriginal
-                                ? const ValueKey('messageTranslatedOnlyText')
-                                : null,
-                            text: captionText,
-                            entities: captionEntities,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.25,
-                              color: displayedTextColor,
-                            ),
-                            linkColor: displayedLinkColor,
-                            onBotCommandTap: onBotCommandTap,
-                            onHashtagTap: onHashtagTap,
-                            onMentionTap: onMentionTap,
-                          ),
-                          if (showsTranslationBlock) ...[
-                            const SizedBox(height: 7),
-                            _translationBlock(
-                              context,
-                              captionMessage,
-                              outgoing: outgoing,
-                              baseTextColor: baseTextColor,
-                              linkColor: baseLinkColor,
-                            ),
-                          ],
-                        ],
+                  Builder(
+                    builder: (captionContext) => GestureDetector(
+                      key: ValueKey(
+                        'messageImageAlbumCaption-${captionMessage.id}',
+                      ),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: outgoing
+                          ? () => onEditCaption?.call(captionMessage)
+                          : null,
+                      onLongPress:
+                          selecting || mobileTextSelectionAreaKey != null
+                          ? null
+                          : () {
+                              final box =
+                                  captionContext.findRenderObject()
+                                      as RenderBox?;
+                              final bounds = box != null && box.hasSize
+                                  ? box.localToGlobal(Offset.zero) & box.size
+                                  : null;
+                              onLongPress?.call(
+                                captionMessage,
+                                bounds,
+                                MessageActionSource.normal,
+                              );
+                            },
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                        child: Builder(
+                          builder: (context) {
+                            final selectionContent = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _captionText(
+                                  captionText,
+                                  captionEntities,
+                                  displayedTextColor,
+                                  displayedLinkColor,
+                                  replacesOriginal: replacesOriginal,
+                                ),
+                                if (showsTranslationBlock) ...[
+                                  const SizedBox(height: 7),
+                                  _translationBlock(
+                                    context,
+                                    captionMessage,
+                                    outgoing: outgoing,
+                                    baseTextColor: baseTextColor,
+                                    linkColor: baseLinkColor,
+                                  ),
+                                ],
+                              ],
+                            );
+                            final selectionKey = mobileTextSelectionAreaKey;
+                            if (selectionKey == null) return selectionContent;
+                            return MobileMessageTextSelectionArea(
+                              selectionAreaKey: selectionKey,
+                              onSelectionChanged: onMobileTextSelectionChanged,
+                              onDisposed:
+                                  onMobileTextSelectionDisposed ?? () {},
+                              child: selectionContent,
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -471,6 +504,23 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     );
   }
 
+  Widget _captionText(
+    String text,
+    List<MessageTextEntity> entities,
+    Color textColor,
+    Color linkColor, {
+    required bool replacesOriginal,
+  }) => TelegramRichText(
+    key: replacesOriginal ? const ValueKey('messageTranslatedOnlyText') : null,
+    text: text,
+    entities: entities,
+    style: TextStyle(fontSize: 15, height: 1.25, color: textColor),
+    linkColor: linkColor,
+    onBotCommandTap: onBotCommandTap,
+    onHashtagTap: onHashtagTap,
+    onMentionTap: onMentionTap,
+  );
+
   Widget _translationBlock(
     BuildContext context,
     ChatMessage source, {
@@ -483,34 +533,36 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         ? baseTextColor.withValues(alpha: 0.70)
         : colors.textSecondary;
     if (source.isTranslating) {
-      return Container(
-        key: const ValueKey('messageTranslationBlock'),
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: outgoing
-              ? baseTextColor.withValues(alpha: 0.10)
-              : colors.searchFill.withValues(alpha: 0.80),
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border(left: BorderSide(color: secondary, width: 2.5)),
-        ),
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 13,
-              height: 13,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(secondary),
+      return SelectionContainer.disabled(
+        child: Container(
+          key: const ValueKey('messageTranslationBlock'),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: outgoing
+                ? baseTextColor.withValues(alpha: 0.10)
+                : colors.searchFill.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border(left: BorderSide(color: secondary, width: 2.5)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(secondary),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              AppStringKeys.messageBubbleTranslating.l10n(context),
-              style: TextStyle(fontSize: 13, color: secondary),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Text(
+                AppStringKeys.messageBubbleTranslating.l10n(context),
+                style: TextStyle(fontSize: 13, color: secondary),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -553,12 +605,14 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            AppStringKeys.messageActionTranslate.l10n(context),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: secondary,
+          SelectionContainer.disabled(
+            child: Text(
+              AppStringKeys.messageActionTranslate.l10n(context),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: secondary,
+              ),
             ),
           ),
           const SizedBox(height: 4),

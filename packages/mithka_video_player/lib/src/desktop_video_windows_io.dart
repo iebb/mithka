@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:multi_window_manager/multi_window_manager.dart';
 
@@ -19,6 +20,7 @@ class _IoDesktopVideoWindows
   final Map<int, MultiWindowManager> _controllers = {};
   final Set<int> _activeWindowIds = {};
   final ValueNotifier<bool> _currentWindowFullscreen = ValueNotifier(false);
+  final ValueNotifier<int> _currentWindowCloseRevision = ValueNotifier(0);
 
   Future<void>? _initializing;
   int? _currentWindowId;
@@ -38,6 +40,10 @@ class _IoDesktopVideoWindows
 
   @override
   ValueListenable<bool> get currentWindowFullscreen => _currentWindowFullscreen;
+
+  @override
+  ValueListenable<int> get currentWindowCloseRevision =>
+      _currentWindowCloseRevision;
 
   @override
   Future<MithkaDesktopVideoWindowArguments?> initialize(
@@ -217,6 +223,33 @@ class _IoDesktopVideoWindows
   }
 
   @override
+  Future<void> focusCurrentWindow() async {
+    if (!isSupported || _currentWindowId == null || _currentWindowId == 0) {
+      return;
+    }
+    try {
+      final window = MultiWindowManager.current;
+      if (!await window.isVisible()) await window.show();
+      if (await window.isMinimized()) await window.restore();
+      await window.focus();
+    } on Object catch (error, stackTrace) {
+      _report('focusCurrentWindow', error, stackTrace);
+    }
+  }
+
+  @override
+  Future<void> hideCurrentWindow() async {
+    if (!isSupported || _currentWindowId == null || _currentWindowId == 0) {
+      return;
+    }
+    try {
+      await MultiWindowManager.current.hide();
+    } on Object catch (error, stackTrace) {
+      _report('hideCurrentWindow', error, stackTrace);
+    }
+  }
+
+  @override
   Future<void> closeCurrentWindow() async {
     if (!isSupported || _currentWindowId == null || _currentWindowId == 0) {
       return;
@@ -254,7 +287,9 @@ class _IoDesktopVideoWindows
       if (await window.isFullScreen() != fullscreen) {
         await window.setFullScreen(fullscreen);
       }
-      final current = await window.isFullScreen();
+      final current = Platform.isMacOS
+          ? await _waitForFullscreenState(window, fullscreen)
+          : await window.isFullScreen();
       _currentWindowFullscreen.value = current;
       return current == fullscreen;
     } on Object catch (error, stackTrace) {
@@ -270,11 +305,27 @@ class _IoDesktopVideoWindows
     }
     try {
       final window = MultiWindowManager.current;
-      await window.setFullScreen(!await window.isFullScreen());
-      _currentWindowFullscreen.value = await window.isFullScreen();
+      final target = !await window.isFullScreen();
+      await window.setFullScreen(target);
+      _currentWindowFullscreen.value = Platform.isMacOS
+          ? await _waitForFullscreenState(window, target)
+          : await window.isFullScreen();
     } on Object catch (error, stackTrace) {
       _report('toggleCurrentWindowFullscreen', error, stackTrace);
     }
+  }
+
+  Future<bool> _waitForFullscreenState(
+    MultiWindowManager window,
+    bool expected,
+  ) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    var current = await window.isFullScreen();
+    while (current != expected && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      current = await window.isFullScreen();
+    }
+    return current;
   }
 
   Future<void> _ensureInitialized(int windowId) async {
@@ -315,10 +366,25 @@ class _IoDesktopVideoWindows
         _observingRegistry = true;
       }
     } else {
-      await MultiWindowManager.ensureInitializedSecondary(
-        windowId,
-        isEnabledReuse: Platform.isLinux,
-      );
+      if (Platform.isMacOS) {
+        // multi_window_manager's macOS secondary initializer installs a
+        // lifecycle observer that rewrites `hidden` to `inactive` from inside
+        // the `hidden` notification. Observers registered earlier finish the
+        // outer notification in `hidden`, while the binding itself ends in
+        // `inactive`; the next focus event then reaches EditableText as the
+        // invalid `hidden -> resumed` transition. macOS does not reuse child
+        // engines here, so initialize the concrete window directly and let
+        // Flutter synthesize the normal hidden/inactive/resumed sequence.
+        await MultiWindowManager.ensureInitialized(windowId);
+        WidgetsBinding.instance.addObserver(
+          _DeferredMacOSSecondaryWindowRenderFix(),
+        );
+      } else {
+        await MultiWindowManager.ensureInitializedSecondary(
+          windowId,
+          isEnabledReuse: Platform.isLinux,
+        );
+      }
       if (!_observingCurrent) {
         MultiWindowManager.current.addListener(this);
         _observingCurrent = true;
@@ -348,6 +414,10 @@ class _IoDesktopVideoWindows
 
   @override
   void onWindowClose([int? windowId]) {
+    if (windowId == null && (_currentWindowId ?? 0) > 0) {
+      _currentWindowCloseRevision.value++;
+      return;
+    }
     if (windowId != null) unawaited(_finishWindow(windowId));
   }
 
@@ -452,5 +522,28 @@ class _IoDesktopVideoWindows
       debugPrint('$error\n$stackTrace');
       return true;
     }());
+  }
+}
+
+/// Keeps macOS child engines rendering after they are hidden without mutating
+/// lifecycle state recursively from inside the `hidden` notification.
+///
+/// Deferring the synthetic `inactive` transition lets every existing observer
+/// finish `hidden` first. A later native `resumed` event is consequently valid
+/// for both the binding and widgets such as [EditableText].
+class _DeferredMacOSSecondaryWindowRenderFix extends WidgetsBindingObserver {
+  bool _transitionScheduled = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.hidden || _transitionScheduled) return;
+    _transitionScheduled = true;
+    scheduleMicrotask(() {
+      _transitionScheduled = false;
+      final binding = SchedulerBinding.instance;
+      if (binding.lifecycleState != AppLifecycleState.hidden) return;
+      // ignore: invalid_use_of_protected_member
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    });
   }
 }

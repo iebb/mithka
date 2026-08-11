@@ -190,6 +190,33 @@ void main() {
     },
   );
 
+  testWidgets('wallpaper notifications are deferred during widget build', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final controller = ChatWallpaperController(
+      activeSlot: () => 0,
+      hasActiveClient: () => false,
+      listenForUpdates: false,
+    );
+    addTearDown(controller.dispose);
+
+    // Prime both preference slots so the load triggered below reaches
+    // notifyListeners synchronously while the child widget is building.
+    await controller.loadGlobalChatThemes();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: _WallpaperListenerHost(controller: controller),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   test('custom gradients preserve colors and rotation independently', () {
     const pattern = ChatWallpaper.telegram(
       backgroundId: 91,
@@ -1527,4 +1554,59 @@ void main() {
     expect(saved.single.intensity, 37);
     expect(saved.single.isMoving, isTrue);
   });
+}
+
+class _WallpaperListenerHost extends StatefulWidget {
+  const _WallpaperListenerHost({required this.controller});
+
+  final ChatWallpaperController controller;
+
+  @override
+  State<_WallpaperListenerHost> createState() => _WallpaperListenerHostState();
+}
+
+class _WallpaperListenerHostState extends State<_WallpaperListenerHost> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onWallpaperChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onWallpaperChanged);
+    super.dispose();
+  }
+
+  void _onWallpaperChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _LoadWallpaperThemesDuringBuild(controller: widget.controller);
+}
+
+class _LoadWallpaperThemesDuringBuild extends StatefulWidget {
+  const _LoadWallpaperThemesDuringBuild({required this.controller});
+
+  final ChatWallpaperController controller;
+
+  @override
+  State<_LoadWallpaperThemesDuringBuild> createState() =>
+      _LoadWallpaperThemesDuringBuildState();
+}
+
+class _LoadWallpaperThemesDuringBuildState
+    extends State<_LoadWallpaperThemesDuringBuild> {
+  bool _loaded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      _loaded = true;
+      unawaited(widget.controller.loadGlobalChatThemes());
+    }
+    return const SizedBox.shrink();
+  }
 }

@@ -297,6 +297,7 @@ class AiSettingsController extends ChangeNotifier {
        _secureWrite = secureWrite ?? _defaultSecureWrite;
 
   static const enabledPreferenceKey = 'ai.unread_summary.enabled';
+  static const defaultUnreadSummaryEnabled = false;
   static const providerPreferenceKey = 'ai.provider_mode';
   static const endpointPreferenceKey = 'ai.custom_server.endpoint';
   static const modelPreferenceKey = 'ai.custom_server.model';
@@ -340,7 +341,7 @@ class AiSettingsController extends ChangeNotifier {
 
   Future<void>? _initialization;
   bool _initialized = false;
-  bool _enabled = false;
+  bool _enabled = defaultUnreadSummaryEnabled;
   AiProviderMode _provider = AiProviderMode.applePcc;
   List<AiServerProvider> _serverProviders = const [];
   List<AiModelProfile> _modelProfiles = const [];
@@ -568,7 +569,14 @@ class AiSettingsController extends ChangeNotifier {
   }
 
   Future<void> _initialize() async {
-    _enabled = _preferences.getBool(enabledPreferenceKey) ?? false;
+    final storedEnabled = _preferences.getBool(enabledPreferenceKey);
+    _enabled = storedEnabled ?? defaultUnreadSummaryEnabled;
+    if (storedEnabled == null) {
+      await _preferences.setBool(
+        enabledPreferenceKey,
+        defaultUnreadSummaryEnabled,
+      );
+    }
     _provider = AiProviderMode.fromStorage(
       _preferences.getString(providerPreferenceKey),
     );

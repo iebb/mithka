@@ -106,7 +106,7 @@ void main() {
       final preferences = await SharedPreferences.getInstance();
       final theme = ThemeController(preferences);
       addTearDown(theme.dispose);
-      var selectionDialogCount = 0;
+      final selectionKey = GlobalKey<SelectionAreaState>();
       const label = 'Safe hot result';
       final message = ChatMessage(
         id: 1,
@@ -140,18 +140,18 @@ void main() {
                   message: message,
                   peerTitle: 'Source chat',
                   isGroup: true,
-                  onDoubleTap: (_) => selectionDialogCount += 1,
+                  mobileTextSelectionAreaKey: selectionKey,
                 ),
               ),
             ),
           ),
         ),
       );
+      expect(selectionKey.currentState, isNotNull);
 
       await tester.tap(find.text(label, findRichText: true));
       await tester.pump();
 
-      expect(selectionDialogCount, 0);
       expect(
         requests.where((request) => request['@type'] == 'getMessageLinkInfo'),
         [
@@ -283,7 +283,6 @@ void main() {
                 message: message,
                 peerTitle: 'Source chat',
                 isGroup: true,
-                onDoubleTap: (_) => fail('a single link tap must not select'),
               ),
             ),
           ),
@@ -339,7 +338,6 @@ void main() {
                 message: message,
                 peerTitle: 'Source chat',
                 isGroup: true,
-                onDoubleTap: (_) => fail('a single link tap must not select'),
               ),
             ),
           ),

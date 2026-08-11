@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">Vista previa en vivo no disponible</string>
     <string name="appearanceManage">Gestionar</string>
     <string name="appearanceMergeConsecutiveImages">Agrupar álbumes multimedia</string>
+    <string name="appearanceMessageActionMenu">Menú de acciones de mensajes</string>
+    <string name="appearanceMessageActionMenuDropdown">Menú desplegable</string>
+    <string name="appearanceMessageActionMenuGrid">Cuadrícula</string>
     <string name="appearanceMessageBubbles">Burbujas de mensaje</string>
     <string name="appearanceMode">Modo</string>
     <string name="appearanceMonospaceFont">Fuente monoespaciada</string>

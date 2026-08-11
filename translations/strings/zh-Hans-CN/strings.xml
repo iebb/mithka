@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">实时预览不可用</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">合并显示媒体相册</string>
+    <string name="appearanceMessageActionMenu">消息操作菜单</string>
+    <string name="appearanceMessageActionMenuDropdown">下拉菜单</string>
+    <string name="appearanceMessageActionMenuGrid">网格</string>
     <string name="appearanceMessageBubbles">消息气泡</string>
     <string name="appearanceMode">模式</string>
     <string name="appearanceMonospaceFont">等宽字体</string>

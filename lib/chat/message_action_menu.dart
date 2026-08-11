@@ -61,6 +61,8 @@ enum MessageAction {
 
 enum MessageActionSource { normal, video }
 
+enum MessageActionMenuLayout { adaptive, grid, vertical }
+
 class QuickReactionBar extends StatelessWidget {
   const QuickReactionBar({
     super.key,
@@ -177,6 +179,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowSuggestedPostOffer = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
+    this.layout = MessageActionMenuLayout.adaptive,
   });
   final ChatMessage message;
   final bool isPinned;
@@ -186,6 +189,7 @@ class MessageActionMenu extends StatelessWidget {
   final bool allowSuggestedPostOffer;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
+  final MessageActionMenuLayout layout;
 
   static const _surface = Color(0xFF2C2C2E);
   static const _destructive = Color(0xFFFF6961);
@@ -196,6 +200,7 @@ class MessageActionMenu extends StatelessWidget {
   static const preferredHeight = 152.0;
   static const desktopPreferredWidth = 220.0;
   static const _desktopActionHeight = 36.0;
+  static const maxGridLabelCharacters = 8;
 
   @visibleForTesting
   static ({int first, int second}) rowCountsForActionCount(int count) {
@@ -234,7 +239,18 @@ class MessageActionMenu extends StatelessWidget {
     globalToLocal(globalRect.bottomRight),
   );
 
-  static Offset desktopOriginForPointer({
+  static Rect? anchorRectForPresentation({
+    required Rect? targetRect,
+    required Offset? pointer,
+    required bool usePointer,
+  }) {
+    if (usePointer && pointer != null) {
+      return Rect.fromLTWH(pointer.dx, pointer.dy, 0, 0);
+    }
+    return targetRect;
+  }
+
+  static Offset verticalOriginForPointer({
     required Offset pointer,
     required Size viewport,
     required Size menuSize,
@@ -252,6 +268,40 @@ class MessageActionMenu extends StatelessWidget {
       pointer.dy.clamp(topSafe, maxTop),
     );
   }
+
+  static Offset desktopOriginForPointer({
+    required Offset pointer,
+    required Size viewport,
+    required Size menuSize,
+    required double topSafe,
+    required double bottomSafe,
+    double horizontalMargin = 10,
+  }) => verticalOriginForPointer(
+    pointer: pointer,
+    viewport: viewport,
+    menuSize: menuSize,
+    topSafe: topSafe,
+    bottomSafe: bottomSafe,
+    horizontalMargin: horizontalMargin,
+  );
+
+  @visibleForTesting
+  static String gridLabel(String label) {
+    final codePoints = label.runes.toList(growable: false);
+    if (codePoints.length <= maxGridLabelCharacters) return label;
+    final prefix = String.fromCharCodes(
+      codePoints.take(maxGridLabelCharacters - 1),
+    ).trimRight();
+    return '$prefix…';
+  }
+
+  bool _usesVerticalLayout(BuildContext context) => switch (layout) {
+    MessageActionMenuLayout.vertical => true,
+    MessageActionMenuLayout.grid => false,
+    MessageActionMenuLayout.adaptive => isDesktopTargetPlatform(
+      Theme.of(context).platform,
+    ),
+  };
 
   bool get _isEditableMessage =>
       message.contentType == 'messageText' ||
@@ -326,7 +376,7 @@ class MessageActionMenu extends StatelessWidget {
   }
 
   double preferredHeightFor(BuildContext context) {
-    if (!isDesktopTargetPlatform(Theme.of(context).platform)) {
+    if (!_usesVerticalLayout(context)) {
       return preferredHeight;
     }
     return desktopHeightForActionCount(
@@ -338,8 +388,8 @@ class MessageActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = _actions(context.watch<TranslationController>());
-    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
-      return _DesktopActionList(actions: actions, onSelect: onSelect);
+    if (_usesVerticalLayout(context)) {
+      return _VerticalActionList(actions: actions, onSelect: onSelect);
     }
     final rowCounts = rowCountsForActionCount(actions.length);
     final firstRowCount = rowCounts.first;
@@ -414,8 +464,8 @@ class MessageActionMenu extends StatelessWidget {
   }
 }
 
-class _DesktopActionList extends StatelessWidget {
-  const _DesktopActionList({required this.actions, required this.onSelect});
+class _VerticalActionList extends StatelessWidget {
+  const _VerticalActionList({required this.actions, required this.onSelect});
 
   final List<MessageAction> actions;
   final ValueChanged<MessageAction> onSelect;
@@ -454,6 +504,7 @@ class _DesktopActionList extends StatelessWidget {
         ],
       ),
       child: ListView.builder(
+        key: const ValueKey('message-action-menu-vertical-list'),
         padding: EdgeInsets.zero,
         itemCount: actions.length,
         itemBuilder: (context, index) {
@@ -561,7 +612,8 @@ class _ActionRow extends StatelessWidget {
                     ),
                   const SizedBox(height: 5),
                   Text(
-                    AppStrings.t(action.label),
+                    MessageActionMenu.gridLabel(AppStrings.t(action.label)),
+                    semanticsLabel: AppStrings.t(action.label),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

@@ -475,6 +475,18 @@ void main() {
 
       expect(labels, contains('Format'));
       expect(labels, contains('Insert'));
+
+      toolbar.buttonItems!
+          .singleWhere((item) => item.label == 'Insert')
+          .onPressed!();
+      await tester.pumpAndSettle();
+      final paragraph = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('rich-insert-paragraph')),
+          matching: find.text('Paragraph'),
+        ),
+      );
+      expect(paragraph.style?.fontWeight, AppTextWeight.regular);
     });
 
     testWidgets('table title is editable and table actions stay clickable', (
@@ -3869,44 +3881,6 @@ void main() {
       expect(timestamp, findsNothing);
       expect(tester.getRect(find.byType(MessageBubble)), layoutRectBefore);
     });
-
-    testWidgets('opens text selection through a double tap', (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final theme = ThemeController(prefs);
-      addTearDown(theme.dispose);
-      final message = ChatMessage(
-        id: 3,
-        isOutgoing: false,
-        text: 'selectable',
-        date: 1,
-      );
-      ChatMessage? selected;
-
-      await tester.pumpWidget(
-        ChangeNotifierProvider<ThemeController>.value(
-          value: theme,
-          child: MaterialApp(
-            home: Scaffold(
-              body: MessageBubble(
-                message: message,
-                peerTitle: 'Test',
-                isGroup: false,
-                onDoubleTap: (value) => selected = value,
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final target = find.byKey(const ValueKey('messageTapTarget-3'));
-      await tester.tap(target);
-      await tester.pump(const Duration(milliseconds: 40));
-      await tester.tap(target);
-      await tester.pump();
-
-      expect(selected, same(message));
-    });
   });
 
   group('MessageBubble reply quote', () {
@@ -5789,6 +5763,42 @@ void main() {
       expect(dismissed.autoTranslateEnabledFor(42), isFalse);
       expect(dismissed.autoTranslateSuggestionDismissedFor(42), isTrue);
     });
+
+    test(
+      'keeps simplified and traditional Chinese exclusions independent',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final controller = TranslationController(prefs);
+        controller.targetLanguageCode = 'en';
+
+        controller.setIgnoredLanguage('zh-CN', true);
+        expect(controller.ignoredLanguageCodes, {'zh-Hans'});
+        controller.setIgnoredLanguage('zh-TW', true);
+        expect(controller.ignoredLanguageCodes, {'zh-Hans', 'zh-Hant'});
+        controller.setIgnoredLanguage('zh-Hans', false);
+        expect(controller.ignoredLanguageCodes, {'zh-Hant'});
+        expect(controller.shouldTranslateLanguage('zh-CN'), isTrue);
+        expect(controller.shouldTranslateLanguage('zh-HK'), isFalse);
+      },
+    );
+
+    test(
+      'migrates the legacy generic Chinese exclusion to both scripts',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'translation.ignoredLanguages': ['zh'],
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final controller = TranslationController(prefs);
+
+        expect(controller.ignoredLanguageCodes, {'zh-Hans', 'zh-Hant'});
+        expect(prefs.getStringList('translation.ignoredLanguages'), [
+          'zh-Hans',
+          'zh-Hant',
+        ]);
+      },
+    );
 
     test(
       'loads stored provider and falls back to Telegram for unavailable values',

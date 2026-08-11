@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/chat/image_media_album_bubble.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -196,5 +198,129 @@ void main() {
 
     await tester.tap(compact);
     expect(opened, same(messages[1]));
+  });
+
+  testWidgets('album text selection targets the caption, not media tiles', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final messages = [
+      ChatMessage(
+        id: 21,
+        isOutgoing: false,
+        text: '',
+        date: 1,
+        contentType: 'messagePhoto',
+        mediaAlbumId: 93,
+        image: TdFileRef(id: 121),
+        imageWidth: 1600,
+        imageHeight: 1200,
+      ),
+      ChatMessage(
+        id: 22,
+        isOutgoing: false,
+        text: 'Selectable album caption',
+        translationText: 'Translated album caption',
+        translationLanguageCode: 'en',
+        date: 1,
+        contentType: 'messagePhoto',
+        mediaAlbumId: 93,
+        image: TdFileRef(id: 122),
+        imageWidth: 1200,
+        imageHeight: 1600,
+      ),
+    ];
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    ChatMessage? actionTarget;
+    String? selectedText;
+    var selectionEnabled = false;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.iOS,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setHarnessState) => ImageMediaAlbumBubble(
+                messages: messages,
+                peerTitle: 'Design Circle',
+                isGroup: true,
+                translationDisplayStyle: TranslationDisplayStyle.both,
+                mobileTextSelectionAreaKey: selectionEnabled
+                    ? selectionKey
+                    : null,
+                onMobileTextSelectionChanged: (content) {
+                  selectedText = content?.plainText;
+                },
+                onLongPress: (message, _, _) {
+                  actionTarget = message;
+                  setHarnessState(() => selectionEnabled = true);
+                },
+                imageBuilder: (context, message, width, height) => ColoredBox(
+                  color: message.id == 21
+                      ? const Color(0xFFFFAE80)
+                      : const Color(0xFF45C4BE),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final caption = find.text('Selectable album caption', findRichText: true);
+    final translation = find.text(
+      'Translated album caption',
+      findRichText: true,
+    );
+    await tester.longPress(
+      find.byKey(const ValueKey('messageImageAlbumCaption-22')),
+    );
+    await tester.pump();
+    expect(actionTarget, same(messages[1]));
+
+    final captionPosition = tester.getCenter(caption);
+    final mediaPosition = tester.getCenter(
+      find.byKey(const ValueKey('messageImageAlbumTile-21')),
+    );
+    expect(
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: captionPosition,
+      ),
+      isTrue,
+    );
+    expect(
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: tester.getCenter(translation),
+      ),
+      isTrue,
+    );
+    expect(
+      selectionAreaContainsGlobalTextPosition(
+        selectionAreaKey: selectionKey,
+        globalPosition: mediaPosition,
+      ),
+      isFalse,
+    );
+
+    await tester.longPressAt(captionPosition);
+    await tester.pump();
+    expect(selectedText, 'album');
+
+    selectionKey.currentState!.selectableRegion.clearSelection();
+    await tester.pump();
+    selectedText = null;
+    await tester.longPressAt(tester.getCenter(translation));
+    await tester.pump();
+    expect(selectedText, 'album');
   });
 }

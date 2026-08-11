@@ -477,6 +477,11 @@ abstract final class AppStringKeys {
   static const appearanceManage = 'appearanceManage';
   static const appearanceMergeConsecutiveImages =
       'appearanceMergeConsecutiveImages';
+  static const appearanceMessageActionMenu = 'appearanceMessageActionMenu';
+  static const appearanceMessageActionMenuDropdown =
+      'appearanceMessageActionMenuDropdown';
+  static const appearanceMessageActionMenuGrid =
+      'appearanceMessageActionMenuGrid';
   static const appearanceMode = 'appearanceMode';
   static const appearanceNameColorAllUsers = 'appearanceNameColorAllUsers';
   static const appearanceNameColorAudience = 'appearanceNameColorAudience';

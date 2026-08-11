@@ -415,6 +415,9 @@
     <string name="appearanceLivePreviewUnavailable">Live preview unavailable</string>
     <string name="appearanceManage">Manage</string>
     <string name="appearanceMergeConsecutiveImages">Group Media Albums</string>
+    <string name="appearanceMessageActionMenu">Message action menu</string>
+    <string name="appearanceMessageActionMenuDropdown">Dropdown</string>
+    <string name="appearanceMessageActionMenuGrid">Grid</string>
     <string name="appearanceMessageBubbles">Message Bubbles</string>
     <string name="appearanceMode">Mode</string>
     <string name="appearanceMonospaceFont">Monospace Font</string>

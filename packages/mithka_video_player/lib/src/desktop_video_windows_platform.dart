@@ -10,6 +10,7 @@ abstract interface class MithkaDesktopVideoWindowsPlatform {
 
   Set<int> get activeWindowIds;
   ValueListenable<bool> get currentWindowFullscreen;
+  ValueListenable<int> get currentWindowCloseRevision;
 
   Future<MithkaDesktopVideoWindowArguments?> initialize(
     List<String> arguments, {
@@ -29,6 +30,8 @@ abstract interface class MithkaDesktopVideoWindowsPlatform {
   });
 
   Future<bool> focus(int windowId);
+  Future<void> focusCurrentWindow();
+  Future<void> hideCurrentWindow();
   Future<void> closeCurrentWindow();
   Future<void> close(int windowId);
   Future<void> closeAll();

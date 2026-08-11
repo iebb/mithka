@@ -9,6 +9,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_motion.dart';
@@ -214,30 +215,85 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
                 value: translation.translateChats,
                 onChanged: (value) => translation.translateChats = value,
               ),
-              SettingsRow(
+              SettingsSelectionRow<TranslationDisplayStyle>(
+                menuKey: const ValueKey('translation-display-style-menu'),
                 leading: const SettingsLeadingIcon(
                   icon: HeroAppIcons.quoteLeft,
                 ),
                 title: AppStringKeys.translationSettingsDisplayStyle,
                 value: translation.displayStyleLabel,
-                onTap: () => _showDisplayStylePicker(context),
+                options: [
+                  for (final style in TranslationDisplayStyle.values)
+                    SettingsSelectionOption(
+                      id: 'translation-display-style-${style.name}',
+                      value: style,
+                      label: style.label,
+                      icon: HeroAppIcons.quoteLeft,
+                    ),
+                ],
+                isSelected: (style) => translation.displayStyle == style,
+                onSelected: (style) => translation.displayStyle = style,
               ),
-              SettingsRow(
+              SettingsSelectionRow<TranslationLanguage>(
+                menuKey: const ValueKey('translation-target-language-menu'),
                 leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
                 title: AppStrings.t(
                   AppStringKeys.translationSettingsTargetLanguage,
                 ),
                 value: translation.targetLanguageLabel,
-                onTap: () => _showTargetPicker(context),
+                options: [
+                  for (final language in TranslationController.targetLanguages)
+                    SettingsSelectionOption(
+                      id: 'translation-target-language-${language.code}',
+                      value: language,
+                      label: language.label,
+                      icon: HeroAppIcons.globe,
+                    ),
+                ],
+                isSelected: (language) =>
+                    translation.targetLanguageCode == language.code,
+                onSelected: (language) =>
+                    translation.targetLanguageCode = language.code,
               ),
               if (translation.enabled || translation.translateChats)
-                SettingsRow(
+                SettingsSelectionRow<TranslationLanguage>(
+                  menuKey: const ValueKey('translation-ignored-languages-menu'),
                   leading: const SettingsLeadingIcon(icon: HeroAppIcons.ban),
                   title: AppStrings.t(
                     AppStringKeys.translationSettingsDoNotTranslate,
                   ),
                   value: _ignoredLanguagesSummary(translation),
-                  onTap: () => _showIgnoredLanguagesPicker(context),
+                  menuTitle: AppStringKeys.translationSettingsDoNotTranslate,
+                  dismissOnSelect: false,
+                  options: [
+                    for (final language
+                        in TranslationController.targetLanguages)
+                      SettingsSelectionOption(
+                        id: 'translation-ignored-language-${language.code}',
+                        value: language,
+                        label: language.label,
+                        icon: HeroAppIcons.ban,
+                      ),
+                  ],
+                  isSelected: (language) {
+                    final normalized =
+                        TranslationController.normalizeLanguageCode(
+                          language.code,
+                        );
+                    return normalized != null &&
+                        translation.ignoredLanguageCodes.contains(normalized);
+                  },
+                  onSelected: (language) {
+                    final normalized =
+                        TranslationController.normalizeLanguageCode(
+                          language.code,
+                        );
+                    if (normalized == null) return;
+                    translation.setIgnoredLanguage(
+                      language.code,
+                      !translation.ignoredLanguageCodes.contains(normalized),
+                    );
+                  },
                 ),
               SettingsRow(
                 leading: const SettingsLeadingIcon(
@@ -470,102 +526,6 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
     );
   }
 
-  void _showDisplayStylePicker(BuildContext context) {
-    showAppModalSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final translation = context.watch<TranslationController>();
-        return SafeArea(
-          child: SettingsPanel(
-            margin: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              0,
-              AppSpacing.lg,
-              AppSpacing.lg,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: TranslationDisplayStyle.values.length,
-              separatorBuilder: (_, _) => const SettingsDivider(),
-              itemBuilder: (context, index) {
-                final style = TranslationDisplayStyle.values[index];
-                final selected = translation.displayStyle == style;
-                return SettingsRow(
-                  key: ValueKey('translation-display-style-${style.name}'),
-                  title: style.label,
-                  leading: const SettingsLeadingIcon(
-                    icon: HeroAppIcons.quoteLeft,
-                  ),
-                  showChevron: false,
-                  trailing: selected
-                      ? AppIcon(
-                          HeroAppIcons.check,
-                          size: AppIconSize.lg,
-                          color: AppTheme.brand,
-                        )
-                      : null,
-                  onTap: () {
-                    translation.displayStyle = style;
-                    Navigator.of(context).pop();
-                  },
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showTargetPicker(BuildContext context) {
-    showAppModalSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final translation = context.watch<TranslationController>();
-        return SafeArea(
-          child: SettingsPanel(
-            margin: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              0,
-              AppSpacing.lg,
-              AppSpacing.lg,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: TranslationController.targetLanguages.length,
-              separatorBuilder: (_, _) => const SettingsDivider(),
-              itemBuilder: (context, i) {
-                final language = TranslationController.targetLanguages[i];
-                final selected =
-                    translation.targetLanguageCode == language.code;
-                return SettingsRow(
-                  title: language.label,
-                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
-                  showChevron: false,
-                  trailing: selected
-                      ? AppIcon(
-                          HeroAppIcons.check,
-                          size: AppIconSize.lg,
-                          color: AppTheme.brand,
-                        )
-                      : null,
-                  onTap: () {
-                    translation.targetLanguageCode = language.code;
-                    Navigator.of(context).pop();
-                  },
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   String _ignoredLanguagesSummary(TranslationController translation) {
     final ignored = translation.ignoredLanguageCodes;
     if (ignored.isEmpty) {
@@ -596,70 +556,4 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
         AiModelCandidateKind.telegramCocoon =>
           AppStringKeys.aiProviderTelegramCocoon.l10n(context),
       };
-
-  void _showIgnoredLanguagesPicker(BuildContext context) {
-    showAppModalSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        final translation = context.watch<TranslationController>();
-        return SafeArea(
-          child: SettingsPanel(
-            margin: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              0,
-              AppSpacing.lg,
-              AppSpacing.lg,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SettingsSectionHeader(
-                  AppStringKeys.translationSettingsDoNotTranslate,
-                ),
-                const SettingsDivider.text(),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: TranslationController.targetLanguages.length,
-                    separatorBuilder: (_, _) => const SettingsDivider(),
-                    itemBuilder: (context, i) {
-                      final language = TranslationController.targetLanguages[i];
-                      final normalized =
-                          TranslationController.normalizeLanguageCode(
-                            language.code,
-                          );
-                      final selected =
-                          normalized != null &&
-                          translation.ignoredLanguageCodes.contains(normalized);
-                      return SettingsRow(
-                        title: language.label,
-                        leading: const SettingsLeadingIcon(
-                          icon: HeroAppIcons.ban,
-                        ),
-                        showChevron: false,
-                        trailing: selected
-                            ? AppIcon(
-                                HeroAppIcons.check,
-                                size: AppIconSize.lg,
-                                color: AppTheme.brand,
-                              )
-                            : null,
-                        onTap: () => translation.setIgnoredLanguage(
-                          language.code,
-                          !selected,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 }

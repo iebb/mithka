@@ -46,7 +46,12 @@ class _CommunityLookup {
   final bool isBot;
 }
 
+typedef ChatListQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
 class ChatListViewModel extends ChangeNotifier {
+  ChatListViewModel({@visibleForTesting this._queryForTesting});
+
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
   List<ChatSummary> _filtered = [];
@@ -135,8 +140,9 @@ class ChatListViewModel extends ChangeNotifier {
   int? _meId;
   bool _prefetchingMain = false;
   final Set<String> _loadingChatLists = {};
-  final Map<String, int> _hydratingChatLists = {};
+  final Map<String, Future<bool>> _chatListLoadOperations = {};
   final Set<String> _exhaustedChatLists = {};
+  final ChatListQuery? _queryForTesting;
   static const _pageSize = 100;
   static const _initialPageSize = 36;
   static const _backgroundHydrateLimit = 60;
@@ -341,7 +347,7 @@ class ChatListViewModel extends ChangeNotifier {
     }
     _loadingChatLists.add(key);
     try {
-      await _client.query({
+      await _chatListQuery({
         '@type': 'loadChats',
         'chat_list': list,
         'limit': limit,
@@ -382,12 +388,11 @@ class ChatListViewModel extends ChangeNotifier {
           _listening &&
           passes < _backgroundPrefetchPasses) {
         passes += 1;
-        final loaded = await _loadChatList({
-          '@type': 'chatListMain',
-        }, _pageSize);
-        await _hydrateChatList({
-          '@type': 'chatListMain',
-        }, limit: _backgroundHydrateLimit);
+        final loaded = await _loadAndHydrateChatList(
+          {'@type': 'chatListMain'},
+          _pageSize,
+          hydrateLimit: _backgroundHydrateLimit,
+        );
         if (!loaded && !_loadingChatLists.contains('main')) break;
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }
@@ -415,12 +420,42 @@ class ChatListViewModel extends ChangeNotifier {
     _resort();
   }
 
-  Future<void> _loadAndHydrateChatList(
+  Future<bool> _loadAndHydrateChatList(
     Map<String, dynamic> list,
-    int limit,
-  ) async {
-    await _loadChatList(list, limit);
-    await _hydrateChatList(list, limit: limit);
+    int limit, {
+    int? hydrateLimit,
+  }) {
+    final key = _chatListKey(list);
+    final existing = _chatListLoadOperations[key];
+    if (existing != null) return existing;
+
+    late final Future<bool> tracked;
+    final operation = _performLoadAndHydrateChatList(
+      list,
+      loadLimit: limit,
+      hydrateLimit: hydrateLimit ?? limit,
+    );
+    tracked = operation.whenComplete(() {
+      if (identical(_chatListLoadOperations[key], tracked)) {
+        _chatListLoadOperations.remove(key);
+      }
+    });
+    _chatListLoadOperations[key] = tracked;
+    return tracked;
+  }
+
+  Future<bool> _performLoadAndHydrateChatList(
+    Map<String, dynamic> list, {
+    required int loadLimit,
+    required int hydrateLimit,
+  }) async {
+    // A scroll listener can request an older page as soon as the empty list is
+    // attached. Keep loadChats + getChats atomic for each list so that request
+    // cannot hydrate a stale pre-load snapshot and suppress the fresh startup
+    // page. The first visible page is therefore always TDLib's newest page.
+    final loaded = await _loadChatList(list, loadLimit);
+    await _hydrateChatList(list, limit: hydrateLimit);
+    return loaded;
   }
 
   Future<void> _hydrateChatList(
@@ -428,17 +463,8 @@ class ChatListViewModel extends ChangeNotifier {
     required int limit,
   }) async {
     if (_disposed) return;
-    // loadMore() runs from a scroll listener, so near the end of the list this
-    // is asked for once per frame. Collapse the duplicates onto the in-flight
-    // round trip instead of decoding the same 100 ids on every frame of a fling.
-    // A request for more ids than are in flight still goes out, so the startup
-    // race between _loadChats and _prefetchMainChats keeps the wider page.
-    final key = _chatListKey(list);
-    final inFlight = _hydratingChatLists[key];
-    if (inFlight != null && inFlight >= limit) return;
-    _hydratingChatLists[key] = limit;
     try {
-      final res = await _client.query({
+      final res = await _chatListQuery({
         '@type': 'getChats',
         'chat_list': list,
         'limit': limit,
@@ -451,10 +477,11 @@ class ChatListViewModel extends ChangeNotifier {
       }
     } catch (_) {
       _finishInitialLoadingIfNeeded(force: true);
-    } finally {
-      if (_hydratingChatLists[key] == limit) _hydratingChatLists.remove(key);
     }
   }
+
+  Future<Map<String, dynamic>> _chatListQuery(Map<String, dynamic> request) =>
+      _queryForTesting?.call(request) ?? _client.query(request);
 
   // MARK: - Row actions (swipe)
 

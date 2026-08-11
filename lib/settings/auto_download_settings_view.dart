@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
-import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'auto_download_media_controller.dart';
 
@@ -239,45 +239,23 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     Future<void> Function(int value) onChanged,
   ) {
     final selected = _sizes.contains(value) ? value : _closestSize(value);
-    return SettingsRow(
+    return SettingsSelectionRow<int>(
       leading: SettingsLeadingIcon(icon: icon),
       title: title,
       value: _sizeLabel(selected),
-      onTap: _controller.isApplying
-          ? null
-          : () => unawaited(_chooseSize(selected, onChanged)),
-    );
-  }
-
-  Future<void> _chooseSize(
-    int selected,
-    Future<void> Function(int value) onChanged,
-  ) async {
-    final value = await showAppModalSheet<int>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: SettingsCard.rows(
-            margin: const EdgeInsets.all(10),
-            dividerInset: AppMetric.settingsTextDividerInset,
-            rows: [
-              for (var index = 0; index < _sizes.length; index++)
-                SettingsRow(
-                  title: _sizeLabel(_sizes[index]),
-                  showChevron: false,
-                  trailing: _sizes[index] == selected
-                      ? const AppIcon(HeroAppIcons.check, size: 20)
-                      : null,
-                  onTap: () => Navigator.of(sheetContext).pop(_sizes[index]),
-                ),
-            ],
+      enabled: !_controller.isApplying,
+      options: [
+        for (final size in _sizes)
+          SettingsSelectionOption(
+            id: 'auto-download-size-$size',
+            value: size,
+            label: _sizeLabel(size),
+            icon: icon,
           ),
-        );
-      },
+      ],
+      isSelected: (size) => size == selected,
+      onSelected: onChanged,
     );
-    if (value != null && mounted) await onChanged(value);
   }
 
   Widget _toggle(

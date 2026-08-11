@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,11 +9,15 @@ import 'package:mithka/settings/ai_translation_prompt.dart';
 import 'package:mithka/settings/apple_pcc_api.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/settings/translation_settings_view.dart';
+import 'package:mithka/theme/app_motion.dart';
+import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  tearDown(() => debugDefaultTargetPlatformOverride = null);
+
   testWidgets('translation settings uses one sortable provider fallback list', (
     tester,
   ) async {
@@ -155,5 +160,112 @@ void main() {
     expect(translation.aiTranslationPrompt, defaultAiTranslationPrompt.trim());
     expect(translation.hasCustomAiTranslationPrompt, isFalse);
     expect(find.text('Default'), findsOneWidget);
+  });
+
+  testWidgets('desktop translation display opens beside its settings row', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final translation = TranslationController(preferences);
+    final ai = AiSettingsController(
+      preferences,
+      pccApi: ApplePccApi(
+        invokeMethod: (_, _) async => {
+          'sdkAvailable': false,
+          'available': false,
+          'reason': 'unavailable',
+        },
+      ),
+      secureRead: (_) async => null,
+      secureWrite: (_, _) async {},
+    );
+    final theme = ThemeController(preferences);
+    addTearDown(translation.dispose);
+    addTearDown(ai.dispose);
+    addTearDown(theme.dispose);
+    await ai.initialize();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: translation),
+          ChangeNotifierProvider.value(value: ai),
+          ChangeNotifierProvider.value(value: theme),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            platform: TargetPlatform.macOS,
+            extensions: [AppColors.light],
+          ),
+          home: const TranslationSettingsView(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final label = find.text('Translation Display');
+    final row = find.ancestor(of: label, matching: find.byType(SettingsRow));
+    final rowRect = tester.getRect(row);
+    await tester.tap(label);
+    await tester.pumpAndSettle();
+
+    final menu = find.byKey(const ValueKey('translation-display-style-menu'));
+    expect(menu, findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byKey(appCenteredModalFrameKey), findsNothing);
+    final menuRect = tester.getRect(menu);
+    expect(menuRect.top, greaterThanOrEqualTo(rowRect.bottom));
+    expect(menuRect.right, closeTo(rowRect.right, 0.01));
+
+    await tester.tap(
+      find.byKey(const ValueKey('translation-display-style-translatedOnly')),
+    );
+    await tester.pumpAndSettle();
+    expect(translation.displayStyle, TranslationDisplayStyle.translatedOnly);
+    expect(menu, findsNothing);
+
+    await tester.tap(find.text('Do Not Translate'));
+    await tester.pumpAndSettle();
+    final simplified = find.byKey(
+      const ValueKey('translation-ignored-language-zh-Hans'),
+    );
+    final traditional = find.byKey(
+      const ValueKey('translation-ignored-language-zh-Hant'),
+    );
+    await tester.tap(simplified);
+    await tester.pump();
+    expect(translation.ignoredLanguageCodes, {'zh-Hans'});
+    await tester.tap(traditional);
+    await tester.pump();
+    expect(translation.ignoredLanguageCodes, {'zh-Hans', 'zh-Hant'});
+    await tester.tap(simplified);
+    await tester.pump();
+    expect(translation.ignoredLanguageCodes, {'zh-Hant'});
+
+    final russian = find.byKey(
+      const ValueKey('translation-ignored-language-ru'),
+    );
+    await tester.scrollUntilVisible(
+      russian,
+      160,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('translation-ignored-languages-menu')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(russian);
+    await tester.pump();
+    expect(translation.ignoredLanguageCodes, {'zh-Hant', 'ru'});
+    debugDefaultTargetPlatformOverride = null;
   });
 }

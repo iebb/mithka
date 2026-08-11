@@ -29,6 +29,8 @@ void main() {
     expect(desktop, contains('mediaKey = (accountSlot: accountSlot'));
     expect(desktop, contains('retainAccountSlot(accountSlot)'));
     expect(desktop, contains('query: accountLease.query'));
+    expect(desktop, contains('fileName: session.video.fileName'));
+    expect(desktop, contains('mimeType: session.video.mimeType'));
     expect(desktop, contains('await accountLease.release()'));
     expect(desktopChat, contains('Map<int, TdAccountLease>'));
     expect(desktopChat, contains('accountLease.clientId'));
