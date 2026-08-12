@@ -143,6 +143,12 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
   final Map<int, Timer> _backlogTimers = {};
   final Set<int> _syncedClients = {};
 
+  /// Join status per (clientId, is-supergroup, group id). Keyed by group rather
+  /// than chat because the invalidating update carries only the group, and the
+  /// kind is part of the key because basic-group and supergroup identifiers are
+  /// separate TDLib id spaces whose values can collide.
+  final Map<(int, bool, int), bool> _groupJoinCache = {};
+
   bool get inAppBannersEnabled => _inAppBannersEnabled;
   InAppNotificationBannerData? get inAppBanner => _inAppBanner;
 
@@ -281,10 +287,18 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     }
     if (update.type == 'updateBasicGroup' ||
         update.type == 'updateSupergroup') {
+      final isSupergroupUpdate = update.type == 'updateSupergroup';
       final group = update.obj(
-        update.type == 'updateBasicGroup' ? 'basic_group' : 'supergroup',
+        isSupergroupUpdate ? 'supergroup' : 'basic_group',
       );
-      if (isActiveAccount && !isJoinedMemberStatus(group?.obj('status'))) {
+      final joined = isJoinedMemberStatus(group?.obj('status'));
+      // The update already carries the whole group, so membership never has to
+      // be re-queried per incoming message once the group has been seen once.
+      final groupId = group?.int64('id');
+      if (groupId != null) {
+        _groupJoinCache[(clientId, isSupergroupUpdate, groupId)] = joined;
+      }
+      if (isActiveAccount && !joined) {
         unawaited(_dismissBannerIfNoLongerJoined(clientId: clientId));
       }
       return;
@@ -348,52 +362,38 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     if (chat == null ||
         effective == null ||
         effective.muted ||
-        !await isJoinedGroupOrChannelChat(
-          chatId,
-          chat: chat,
-          clientId: clientId,
-        )) {
+        !await _isJoinedChat(chatId, chat, clientId: clientId)) {
       return;
     }
 
     final messageText = _notificationText(content);
     if (KeywordBlocker.shared.matches(messageText)) return;
-    String? preparedIOSChatIconPath;
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      preparedIOSChatIconPath = await _notificationChatIconPath(chat, clientId);
-      final path = preparedIOSChatIconPath;
-      if (path != null) {
-        unawaited(
-          _iosCommunicationNotifications.cacheChatIcon(
-            chatId: chatId,
-            path: path,
-          ),
-        );
-      }
-    }
     final surface = notificationSurfaceFor(
       lifecycleState: _state,
       inAppBannersEnabled: _inAppBannersEnabled,
       systemNotificationsAvailable: _notificationsAvailable,
     );
+    // Only the system notification needs the icon in hand. Every other surface
+    // still warms the app-group store the service extension reads for remote
+    // pushes — it just no longer holds the banner behind a file read and a
+    // possible avatar download.
+    String? preparedIOSChatIconPath;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final prepared = _prepareIOSChatIcon(chat, chatId, clientId);
+      if (surface == NotificationSurface.system) {
+        preparedIOSChatIconPath = await prepared;
+      } else {
+        unawaited(prepared);
+      }
+    }
     if (surface == NotificationSurface.inApp) {
       if (isActiveAccount && _isChatVisible(chatId)) return;
-      final sender =
-          effective.showPreview && _notificationPreferences.inAppPreview
+      final showPreview =
+          effective.showPreview && _notificationPreferences.inAppPreview;
+      final sender = showPreview
           ? await _senderLabel(raw, chat, clientId)
           : null;
-      final latestChat = await _chat(chatId, clientId: clientId);
-      final latestEffective = latestChat == null
-          ? null
-          : await _effectiveSettings(latestChat, clientId);
-      if (latestChat == null ||
-          latestEffective == null ||
-          latestEffective.muted) {
-        return;
-      }
-      final showPreview =
-          latestEffective.showPreview && _notificationPreferences.inAppPreview;
-      final chatTitle = latestChat.str('title') ?? 'Mithka';
+      final chatTitle = chat.str('title') ?? 'Mithka';
       final isTargetAccountActive = clientId == _client.activeClientId;
       final accountName = isTargetAccountActive
           ? null
@@ -404,8 +404,8 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
         targetAccountName: accountName,
       );
       final photo = isTargetAccountActive
-          ? notificationChatPhotoFromChat(latestChat)
-          : await _notificationChatPhoto(latestChat, clientId);
+          ? notificationChatPhotoFromChat(chat)
+          : await _notificationChatPhoto(chat, clientId);
       final body = showPreview
           ? messageText
           : AppStrings.t(AppStringKeys.notificationNewMessage);
@@ -422,7 +422,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
               ? body
               : '$sender: $body',
           photo: photo,
-          squarePhoto: switch (TDParse.chatKind(latestChat)) {
+          squarePhoto: switch (TDParse.chatKind(chat)) {
             ChatKind.group || ChatKind.channel => true,
             _ => false,
           },
@@ -437,16 +437,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       return;
     }
     if (surface != NotificationSurface.system) return;
-    final latestChat = await _chat(chatId, clientId: clientId);
-    final latestEffective = latestChat == null
-        ? null
-        : await _effectiveSettings(latestChat, clientId);
-    if (latestChat == null ||
-        latestEffective == null ||
-        latestEffective.muted) {
-      return;
-    }
-    final chatTitle = latestChat.str('title') ?? 'Mithka';
+    final chatTitle = chat.str('title') ?? 'Mithka';
     final isTargetAccountActive = clientId == _client.activeClientId;
     final accountName = isTargetAccountActive
         ? null
@@ -459,7 +450,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       isActiveAccount: isTargetAccountActive,
       targetAccountName: accountName,
     );
-    final showPreview = latestEffective.showPreview;
+    final showPreview = effective.showPreview;
     final body = showPreview
         ? messageText
         : AppStrings.t(AppStringKeys.notificationNewMessage);
@@ -471,14 +462,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     });
     final chatIconPath =
         preparedIOSChatIconPath ??
-        await _notificationChatIconPath(latestChat, clientId);
-    final groupConversation = switch (TDParse.chatKind(latestChat)) {
+        await _notificationChatIconPath(chat, clientId);
+    final groupConversation = switch (TDParse.chatKind(chat)) {
       ChatKind.group || ChatKind.channel => true,
       _ => false,
     };
     final senderName =
         groupConversation && _notificationPreferences.namesOnLockScreen
-        ? await _senderLabel(raw, latestChat, clientId) ?? title
+        ? await _senderLabel(raw, chat, clientId) ?? title
         : title;
 
     _notificationSeed = (_notificationSeed + 1) & 0x7fffffff;
@@ -492,7 +483,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           senderName: senderName,
           payload: payload,
           groupConversation: groupConversation,
-          playSound: latestEffective.soundEnabled,
+          playSound: effective.soundEnabled,
           chatId: chatId,
           chatIconPath: chatIconPath,
         );
@@ -507,7 +498,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           conversationTitle: title,
           messageBody: body,
           groupConversation: groupConversation,
-          playSound: latestEffective.soundEnabled,
+          playSound: effective.soundEnabled,
           showOnLockScreen: _notificationPreferences.namesOnLockScreen,
         ),
         payload: payload,
@@ -523,7 +514,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
         payload: payload,
         chatIconPath: chatIconPath,
         groupConversation: groupConversation,
-        playSound: latestEffective.soundEnabled,
+        playSound: effective.soundEnabled,
       );
     } on PlatformException catch (error) {
       if (_isNotificationAuthorizationError(error)) {
@@ -539,7 +530,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           payload: payload,
           chatIconPath: chatIconPath,
           groupConversation: groupConversation,
-          playSound: latestEffective.soundEnabled,
+          playSound: effective.soundEnabled,
         );
       }
     }
@@ -575,6 +566,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       }
       debugPrint('Fallback local notification display failed: $error');
     }
+  }
+
+  Future<String?> _prepareIOSChatIcon(
+    Map<String, dynamic> chat,
+    int chatId,
+    int clientId,
+  ) async {
+    final path = await _notificationChatIconPath(chat, clientId);
+    if (path == null) return null;
+    unawaited(
+      _iosCommunicationNotifications.cacheChatIcon(chatId: chatId, path: path),
+    );
+    return path;
   }
 
   Future<String?> _notificationChatIconPath(
@@ -929,6 +933,36 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Membership, answered from [_groupJoinCache] when the group's status has
+  /// already been delivered — otherwise every incoming group message pays a
+  /// getSupergroup/getBasicGroup round trip that the update stream repeats.
+  Future<bool> _isJoinedChat(
+    int chatId,
+    Map<String, dynamic> chat, {
+    required int clientId,
+  }) async {
+    final type = chat.obj('type');
+    final isSupergroup = type?.type == 'chatTypeSupergroup';
+    final groupId = switch (type?.type) {
+      'chatTypeBasicGroup' => type?.int64('basic_group_id'),
+      'chatTypeSupergroup' => type?.int64('supergroup_id'),
+      _ => null,
+    };
+    if (groupId == null) {
+      return isJoinedGroupOrChannelChat(chatId, chat: chat, clientId: clientId);
+    }
+    final key = (clientId, isSupergroup, groupId);
+    final cached = _groupJoinCache[key];
+    if (cached != null) return cached;
+    final joined = await isJoinedGroupOrChannelChat(
+      chatId,
+      chat: chat,
+      clientId: clientId,
+    );
+    _groupJoinCache[key] = joined;
+    return joined;
   }
 
   Future<Map<String, dynamic>> _query(

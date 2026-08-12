@@ -84,87 +84,67 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
     final totals = _byNetwork;
     final sent = totals.values.fold<int>(0, (sum, value) => sum + value.$1);
     final received = totals.values.fold<int>(0, (sum, value) => sum + value.$2);
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.networkUsageNetworkUsage),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _loading ? null : _reset,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                child: Text(
-                  AppStrings.t(AppStringKeys.networkUsageReset),
-                  style: TextStyle(
-                    color: _loading ? c.textTertiary : AppTheme.brand,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.networkUsageNetworkUsage),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _loading ? null : _reset,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Text(
+            AppStrings.t(AppStringKeys.networkUsageReset),
+            style: TextStyle(
+              color: _loading ? c.textTertiary : AppTheme.brand,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          Expanded(
-            child: _loading
-                ? const Center(child: AppActivityIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        ),
+      ),
+      child: _loading
+          ? const Center(child: AppActivityIndicator())
+          : SettingsListView(
+              children: [
+                SettingsPanel(
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
+                  child: Row(
                     children: [
-                      SettingsPanel(
-                        padding: const EdgeInsets.all(18),
-                        child: Row(
-                          children: [
-                            _metric(
-                              HeroAppIcons.arrowUp,
-                              AppStrings.t(AppStringKeys.networkUsageSent),
-                              _bytes(sent),
-                            ),
-                            Container(width: 1, height: 48, color: c.divider),
-                            _metric(
-                              HeroAppIcons.arrowDown,
-                              AppStrings.t(AppStringKeys.networkUsageReceived),
-                              _bytes(received),
-                            ),
-                          ],
-                        ),
+                      _metric(
+                        HeroAppIcons.arrowUp,
+                        AppStrings.t(AppStringKeys.networkUsageSent),
+                        _bytes(sent),
                       ),
-                      if (_sinceDate > 0) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          AppStrings.t(AppStringKeys.networkUsageSinceValue1, {
-                            'value1': DateText.messageDetailLabel(_sinceDate),
-                          }),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: c.textTertiary),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
-                      for (final network in totals.entries) ...[
-                        Text(
-                          _networkName(network.key),
-                          style: TextStyle(fontSize: 13, color: c.textTertiary),
-                        ),
-                        const SizedBox(height: 6),
-                        _networkCard(network.key, network.value),
-                        const SizedBox(height: 14),
-                      ],
-                      Text(
-                        AppStrings.t(AppStringKeys.networkUsageByMediaType),
-                        style: TextStyle(fontSize: 13, color: c.textTertiary),
+                      Container(width: 1, height: 48, color: c.divider),
+                      _metric(
+                        HeroAppIcons.arrowDown,
+                        AppStrings.t(AppStringKeys.networkUsageReceived),
+                        _bytes(received),
                       ),
-                      const SizedBox(height: 6),
-                      _typeCard(),
                     ],
                   ),
-          ),
-        ],
-      ),
+                ),
+                if (_sinceDate > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    AppStrings.t(AppStringKeys.networkUsageSinceValue1, {
+                      'value1': DateText.messageDetailLabel(_sinceDate),
+                    }),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                  ),
+                ],
+                for (final network in totals.entries)
+                  SettingsSection(
+                    title: _networkName(network.key),
+                    rows: _networkRows(network.value),
+                  ),
+                const SettingsSectionHeader(
+                  AppStringKeys.networkUsageByMediaType,
+                ),
+                _typeCard(),
+              ],
+            ),
     );
   }
 
@@ -189,30 +169,25 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
     );
   }
 
-  Widget _networkCard(String type, (int, int, double) value) {
-    return SettingsCard(
-      children: [
+  List<Widget> _networkRows((int, int, double) value) {
+    return [
+      SettingsRow(
+        title: AppStrings.t(AppStringKeys.messageInfoSent),
+        value: _bytes(value.$1),
+        showChevron: false,
+      ),
+      SettingsRow(
+        title: AppStrings.t(AppStringKeys.networkUsageReceived),
+        value: _bytes(value.$2),
+        showChevron: false,
+      ),
+      if (value.$3 > 0)
         SettingsRow(
-          title: AppStrings.t(AppStringKeys.messageInfoSent),
-          value: _bytes(value.$1),
+          title: AppStrings.t(AppStringKeys.networkUsageCallDuration),
+          value: _duration(value.$3.round()),
           showChevron: false,
         ),
-        const Divider(height: 1),
-        SettingsRow(
-          title: AppStrings.t(AppStringKeys.networkUsageReceived),
-          value: _bytes(value.$2),
-          showChevron: false,
-        ),
-        if (value.$3 > 0) ...[
-          const Divider(height: 1),
-          SettingsRow(
-            title: AppStrings.t(AppStringKeys.networkUsageCallDuration),
-            value: _duration(value.$3.round()),
-            showChevron: false,
-          ),
-        ],
-      ],
-    );
+    ];
   }
 
   Widget _typeCard() {
@@ -228,30 +203,26 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
         old.$2 + (entry.int64('received_bytes') ?? 0),
       );
     }
-    return SettingsPanel(
-      padding: const EdgeInsets.all(18),
-      clipBehavior: Clip.antiAlias,
-      child: totals.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(18),
-              child: Text(
-                AppStrings.t(AppStringKeys.networkUsageNoNetworkUsageRecorded),
-                style: TextStyle(color: c.textSecondary),
-              ),
-            )
-          : Column(
-              children: [
-                for (var index = 0; index < totals.length; index++) ...[
-                  SettingsRow(
-                    title:
-                        '${totals.keys.elementAt(index)} · ↑ ${_bytes(totals.values.elementAt(index).$1)}',
-                    value: '↓ ${_bytes(totals.values.elementAt(index).$2)}',
-                    showChevron: false,
-                  ),
-                  if (index != totals.length - 1) const Divider(height: 1),
-                ],
-              ],
-            ),
+    if (totals.isEmpty) {
+      return SettingsPanel(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Text(
+          AppStrings.t(AppStringKeys.networkUsageNoNetworkUsageRecorded),
+          style: TextStyle(color: c.textSecondary),
+        ),
+      );
+    }
+    return SettingsCard.rows(
+      dividerInset: AppMetric.settingsTextDividerInset,
+      rows: [
+        for (var index = 0; index < totals.length; index++)
+          SettingsRow(
+            title:
+                '${totals.keys.elementAt(index)} · ↑ ${_bytes(totals.values.elementAt(index).$1)}',
+            value: '↓ ${_bytes(totals.values.elementAt(index).$2)}',
+            showChevron: false,
+          ),
+      ],
     );
   }
 

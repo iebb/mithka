@@ -55,7 +55,7 @@ void main() {
           'small': {
             '@type': 'file',
             'id': 5522,
-            'local': {'path': '/tmp/ada.jpg'},
+            'local': {'path': '/tmp/ada.jpg', 'is_downloading_completed': true},
           },
         },
       },
@@ -81,7 +81,10 @@ void main() {
         'small': {
           '@type': 'file',
           'id': 6633,
-          'local': {'path': '/tmp/ada-new.jpg'},
+          'local': {
+            'path': '/tmp/ada-new.jpg',
+            'is_downloading_completed': true,
+          },
         },
       },
     };

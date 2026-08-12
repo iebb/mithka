@@ -11,12 +11,14 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/desktop_image_preview_window.dart';
 import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
 import '../chat/audio_search_view.dart';
@@ -38,6 +40,7 @@ import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
 import '../moments/story_management_view.dart';
 import '../moments/story_viewer_view.dart';
+import '../platform/adaptive_platform.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/edit_profile_view.dart';
 import '../tdlib/json_helpers.dart';
@@ -51,6 +54,13 @@ import 'profile_contact_service.dart';
 import 'profile_gifts.dart';
 import 'profile_identity_summary.dart';
 import 'profile_username_pill.dart';
+
+@visibleForTesting
+bool profileFeaturedPhotosUseDesktopWindow(
+  TargetPlatform platform, {
+  bool isWeb = kIsWeb,
+  bool hasProfileActions = false,
+}) => !isWeb && !hasProfileActions && isDesktopTargetPlatform(platform);
 
 class ProfileDetailView extends StatefulWidget {
   const ProfileDetailView({
@@ -1482,10 +1492,23 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       return;
     }
     final photos = List<_FeaturedProfilePhoto>.unmodifiable(_photos);
+    final items = photos.map((photo) => photo.file).toList(growable: false);
+    if (profileFeaturedPhotosUseDesktopWindow(
+      Theme.of(context).platform,
+      hasProfileActions: _isMe,
+    )) {
+      final opened = await DesktopImagePreviewWindowService.instance.open(
+        items,
+        startIndex: startIndex,
+        dark: Theme.of(context).brightness == Brightness.dark,
+      );
+      if (opened) return;
+      if (!mounted) return;
+    }
     await Navigator.of(context).push<void>(
       AppPageRoute<void>(
         pageBuilder: (previewContext, _, _) => FullImageViewer(
-          items: photos.map((photo) => photo.file).toList(growable: false),
+          items: items,
           startIndex: startIndex,
           primaryActionLabel: _isMe
               ? AppStrings.t(AppStringKeys.profilePhotoSetAsAvatar)

@@ -129,6 +129,8 @@ class _TdFileSnapshot {
   _TdFileSnapshot(TdFileRef file)
     : id = file.id,
       localPath = file.localPath,
+      fileName = file.fileName,
+      mimeType = file.mimeType,
       hasAnimation = file.hasAnimation,
       photoId = file.photoId,
       miniThumb = file.miniThumb == null
@@ -140,6 +142,8 @@ class _TdFileSnapshot {
 
   final int id;
   final String? localPath;
+  final String? fileName;
+  final String? mimeType;
   final bool hasAnimation;
   final int? photoId;
   final List<int>? miniThumb;
@@ -151,6 +155,8 @@ class _TdFileSnapshot {
       other is _TdFileSnapshot &&
           id == other.id &&
           localPath == other.localPath &&
+          fileName == other.fileName &&
+          mimeType == other.mimeType &&
           hasAnimation == other.hasAnimation &&
           photoId == other.photoId &&
           listEquals(miniThumb, other.miniThumb) &&
@@ -160,6 +166,8 @@ class _TdFileSnapshot {
   int get hashCode => Object.hash(
     id,
     localPath,
+    fileName,
+    mimeType,
     hasAnimation,
     photoId,
     miniThumb == null ? null : Object.hashAll(miniThumb!),

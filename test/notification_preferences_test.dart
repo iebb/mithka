@@ -101,4 +101,29 @@ void main() {
       expect(settings.accountMode, NotificationAccountMode.current);
     },
   );
+
+  test(
+    'reinitializing from changed storage notifies active consumers',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final initial = await SharedPreferences.getInstance();
+      final settings = NotificationPreferences.shared;
+      settings.initialize(initial);
+      var notifications = 0;
+      void listener() => notifications += 1;
+      settings.addListener(listener);
+      addTearDown(() => settings.removeListener(listener));
+
+      SharedPreferences.setMockInitialValues({
+        'mithka.notifications.accountMode.v2': 'current',
+        'mithka.notifications.inAppSounds.v1': false,
+      });
+      final changed = await SharedPreferences.getInstance();
+      settings.initialize(changed);
+
+      expect(settings.accountMode, NotificationAccountMode.current);
+      expect(settings.inAppSounds, isFalse);
+      expect(notifications, 1);
+    },
+  );
 }

@@ -16,7 +16,11 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../bot_api/bot_api_account.dart';
+import '../bot_api/bot_api_client.dart';
+import '../bot_api/bot_api_endpoint_config.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/country_flag.dart';
@@ -51,6 +55,8 @@ class _LoginViewState extends State<LoginView> {
   final _password = ObscuringController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+  final _botToken = ObscuringController();
+  final _botEndpoint = TextEditingController(text: 'https://api.telegram.org');
   Timer? _resendTimer;
   DateTime? _resendAvailableAt;
   int _resendRemainingSeconds = 0;
@@ -58,6 +64,9 @@ class _LoginViewState extends State<LoginView> {
   int _restorableBackupCount = 0;
   bool _backupConsent = false;
   bool _backupSupported = false;
+  bool _showBotLogin = false;
+  bool _botWorking = false;
+  String? _botError;
 
   // When true, show the phone-number step even though TDLib is still at a later
   // auth state — lets the user back out of QR / code / 2FA to fix the number.
@@ -70,6 +79,7 @@ class _LoginViewState extends State<LoginView> {
   void initState() {
     super.initState();
     _loadProxy();
+    unawaited(_loadBotEndpoint());
     if (Platform.isIOS || Platform.isAndroid) {
       unawaited(_initializeBackupConsent());
       unawaited(_loadRestorableBackupCount());
@@ -79,7 +89,16 @@ class _LoginViewState extends State<LoginView> {
   @override
   void dispose() {
     _resendTimer?.cancel();
-    for (final c in [_phone, _email, _code, _password, _firstName, _lastName]) {
+    for (final c in [
+      _phone,
+      _email,
+      _code,
+      _password,
+      _firstName,
+      _lastName,
+      _botToken,
+      _botEndpoint,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -88,6 +107,16 @@ class _LoginViewState extends State<LoginView> {
   Future<void> _loadProxy() async {
     final proxy = await ProxyConfig.load();
     if (mounted) setState(() => _proxy = proxy);
+  }
+
+  Future<void> _loadBotEndpoint() async {
+    final preferences = await SharedPreferences.getInstance();
+    final endpoint = BotApiEndpointConfig.load(
+      preferences,
+      legacyFallback: TdClient.shared.botApiEndpoint,
+    );
+    if (!mounted || _botEndpoint.text != 'https://api.telegram.org') return;
+    _botEndpoint.text = endpoint.toString();
   }
 
   Future<void> _loadRestorableBackupCount() async {
@@ -172,19 +201,26 @@ class _LoginViewState extends State<LoginView> {
         auth.step is AuthWaitRegistration;
     // True when the phone-entry step is on screen (the natural state, or because
     // the user chose to re-enter the number).
-    final showingPhone = _forcePhone || auth.step is AuthWaitPhoneNumber;
+    final showingPhone =
+        !_showBotLogin && (_forcePhone || auth.step is AuthWaitPhoneNumber);
     _syncResendCountdown(auth);
     // A back affordance is useful once past the phone step, or whenever another
     // account exists to switch to.
     final canGoBack =
+        _showBotLogin ||
         (beyondPhone && !_forcePhone) ||
         TdClient.shared.configuredSlots.length > 1;
-    final backToPhoneOnly = !_forcePhone && auth.step is AuthWaitQrCode;
+    final backToPhoneOnly =
+        _showBotLogin || (!_forcePhone && auth.step is AuthWaitQrCode);
     return PopScope(
       canPop: !backToPhoneOnly,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && backToPhoneOnly) {
-          _showPhoneEntry();
+          if (_showBotLogin) {
+            _hideBotLogin();
+          } else {
+            _showPhoneEntry();
+          }
         }
       },
       child: Scaffold(
@@ -204,6 +240,7 @@ class _LoginViewState extends State<LoginView> {
                         children: [
                           _stepFor(auth, accounts),
                           if (_backupSupported &&
+                              !_showBotLogin &&
                               auth.step is! AuthMissingCredentials &&
                               !accounts.isActiveSessionReplacementPending) ...[
                             const SizedBox(height: 18),
@@ -240,7 +277,9 @@ class _LoginViewState extends State<LoginView> {
                   // add-account at the phone step has nothing to re-enter, so
                   // go straight back to the previous account.
                   onTap: () => backToPhoneOnly
-                      ? _showPhoneEntry()
+                      ? _showBotLogin
+                            ? _hideBotLogin()
+                            : _showPhoneEntry()
                       : accounts.hasPendingAdd && showingPhone
                       ? accounts.cancelAddAccount(auth)
                       : _showBackOptions(auth),
@@ -425,6 +464,7 @@ class _LoginViewState extends State<LoginView> {
   }
 
   Widget _stepFor(AuthManager auth, AccountStore accounts) {
+    if (_showBotLogin) return _botAccountStep(auth, accounts);
     if (_forcePhone) return _phoneStep(auth);
     return switch (auth.step) {
       AuthMissingCredentials() => _credentialsNotice(auth),
@@ -575,6 +615,13 @@ class _LoginViewState extends State<LoginView> {
           const SizedBox(height: 12),
           _loginPasskeyButton(auth),
         ],
+        const SizedBox(height: 12),
+        _secondaryLoginButton(
+          label: AppStrings.t(AppStringKeys.loginWithBotToken),
+          icon: HeroAppIcons.code,
+          enabled: !auth.isWorking,
+          onTap: _openBotLogin,
+        ),
         const SizedBox(height: 20),
         Text(
           AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
@@ -589,6 +636,129 @@ class _LoginViewState extends State<LoginView> {
     final submitted = await auth.submitPhone('+$_phoneDigits');
     if (submitted && mounted && _forcePhone) {
       setState(() => _forcePhone = false);
+    }
+  }
+
+  Widget _botAccountStep(AuthManager auth, AccountStore accounts) {
+    final c = context.colors;
+    final enabled =
+        _botToken.text.trim().isNotEmpty &&
+        _botEndpoint.text.trim().isNotEmpty &&
+        !_botWorking;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          AppStrings.t(AppStringKeys.loginBotAccountTitle),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          AppStrings.t(AppStringKeys.loginBotAccountDescription),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, height: 1.4, color: c.textSecondary),
+        ),
+        const SizedBox(height: 22),
+        InputField(
+          systemImage: HeroAppIcons.key.data,
+          placeholder: AppStrings.t(AppStringKeys.loginBotToken),
+          controller: _botToken,
+          secure: true,
+          textInputAction: TextInputAction.next,
+          onChanged: (_) => setState(() => _botError = null),
+        ),
+        const SizedBox(height: 12),
+        InputField(
+          systemImage: HeroAppIcons.server.data,
+          placeholder: AppStrings.t(AppStringKeys.loginBotApiEndpoint),
+          controller: _botEndpoint,
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.done,
+          onChanged: (_) => setState(() => _botError = null),
+          onSubmitted: (_) {
+            if (enabled) unawaited(_submitBotAccount(auth, accounts));
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          AppStrings.t(AppStringKeys.loginBotApiEndpointHint),
+          style: TextStyle(fontSize: 12, color: c.textTertiary),
+        ),
+        if (_botError case final error?) ...[
+          const SizedBox(height: 14),
+          Text(
+            error,
+            style: TextStyle(fontSize: 13, color: AppTheme.unreadBadge),
+          ),
+        ],
+        const SizedBox(height: 20),
+        _primaryButton(
+          auth,
+          AppStrings.t(AppStringKeys.loginBotSubmit),
+          enabled,
+          () => unawaited(_submitBotAccount(auth, accounts)),
+          working: _botWorking,
+        ),
+        const SizedBox(height: 12),
+        _secondaryLoginButton(
+          label: AppStrings.t(AppStringKeys.loginWithPhoneNumber),
+          icon: HeroAppIcons.phone,
+          enabled: !_botWorking,
+          onTap: _hideBotLogin,
+        ),
+      ],
+    );
+  }
+
+  void _openBotLogin() {
+    setState(() {
+      _forcePhone = false;
+      _showBotLogin = true;
+      _botError = null;
+    });
+  }
+
+  void _hideBotLogin() {
+    if (_botWorking) return;
+    setState(() {
+      _showBotLogin = false;
+      _botError = null;
+    });
+  }
+
+  Future<void> _submitBotAccount(
+    AuthManager auth,
+    AccountStore accounts,
+  ) async {
+    if (_botWorking) return;
+    setState(() {
+      _botWorking = true;
+      _botError = null;
+    });
+    try {
+      await accounts.addBotAccount(
+        token: _botToken.text,
+        endpoint: _botEndpoint.text,
+        auth: auth,
+      );
+      _botToken.clear();
+    } on BotApiException catch (error) {
+      if (mounted) setState(() => _botError = error.message);
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _botError = error.message);
+    } on BotApiCredentialStoreException catch (error) {
+      if (mounted) setState(() => _botError = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _botError = AppStrings.t(AppStringKeys.loginBotFailed));
+      }
+    } finally {
+      if (mounted) setState(() => _botWorking = false);
     }
   }
 
@@ -854,7 +1024,7 @@ class _LoginViewState extends State<LoginView> {
             badgeCount: _restorableBackupCount,
             onTap: _openAccountRestore,
           ),
-        _proxyIconButton(),
+        if (!_showBotLogin) _proxyIconButton(),
       ],
     );
   }
@@ -1003,6 +1173,7 @@ class _LoginViewState extends State<LoginView> {
         semanticLabel: AppStrings.t(AppStringKeys.proxyTitle),
         onTap: _openProxySetup,
         onLongPress: enabled ? _disableProxy : null,
+        onSecondaryTap: enabled ? _disableProxy : null,
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -1430,6 +1601,13 @@ class _LoginViewState extends State<LoginView> {
             true,
             () => _openApiSetup(auth),
           ),
+          const SizedBox(height: 12),
+          _secondaryLoginButton(
+            label: AppStrings.t(AppStringKeys.loginWithBotToken),
+            icon: HeroAppIcons.code,
+            enabled: !auth.isWorking,
+            onTap: _openBotLogin,
+          ),
         ],
       ),
     );
@@ -1450,9 +1628,11 @@ class _LoginViewState extends State<LoginView> {
     AuthManager auth,
     String title,
     bool enabled,
-    VoidCallback action,
-  ) {
-    final on = enabled && !auth.isWorking;
+    VoidCallback action, {
+    bool? working,
+  }) {
+    final busy = working ?? auth.isWorking;
+    final on = enabled && !busy;
     return AppInteractiveSurface(
       semanticLabel: title,
       onTap: on ? action : null,
@@ -1465,7 +1645,7 @@ class _LoginViewState extends State<LoginView> {
           color: enabled ? AppTheme.brand : context.colors.textTertiary,
           borderRadius: BorderRadius.circular(25),
         ),
-        child: auth.isWorking
+        child: busy
             ? const SizedBox(
                 width: 22,
                 height: 22,
@@ -1482,6 +1662,56 @@ class _LoginViewState extends State<LoginView> {
                   color: Color(0xFFFFFFFF),
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _secondaryLoginButton({
+    required String label,
+    required AppIconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      enabled: enabled,
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(25),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: enabled ? 1 : 0.46,
+        child: Container(
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: c.divider, width: 0.8),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AppIcon(icon, size: 21, color: AppTheme.brand),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 30),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

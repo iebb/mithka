@@ -139,134 +139,115 @@ class _TwoStepPasswordViewState extends State<TwoStepPasswordView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(
-              AppStringKeys.accountSecurityTwoStepVerification,
-            ),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: AppActivityIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
-                    children: [
-                      _SecurityCard(
-                        children: [
-                          if (_hasPassword)
-                            _SecurityField(
-                              controller: _oldPassword,
-                              label: AppStrings.t(
-                                AppStringKeys.accountSecurityCurrentPassword,
-                              ),
-                              icon: HeroAppIcons.lock,
-                              obscureText: true,
-                            ),
-                          _SecurityField(
-                            controller: _newPassword,
-                            label: AppStrings.t(
-                              _hasPassword
-                                  ? AppStringKeys
-                                        .accountSecurityNewPasswordField
-                                  : AppStringKeys.accountSecurityCreatePassword,
-                            ),
-                            icon: HeroAppIcons.key,
-                            obscureText: true,
-                          ),
-                          _SecurityField(
-                            controller: _confirmPassword,
-                            label: AppStrings.t(
-                              AppStringKeys.accountSecurityConfirmNewPassword,
-                            ),
-                            icon: HeroAppIcons.circleCheck,
-                            obscureText: true,
-                          ),
-                          _SecurityField(
-                            controller: _hint,
-                            label: AppStrings.t(
-                              AppStringKeys.accountSecurityPasswordHint,
-                            ),
-                            icon: HeroAppIcons.circleInfo,
-                          ),
-                          if (!_hasRecoveryEmail)
-                            _SecurityField(
-                              controller: _recoveryEmail,
-                              label: AppStrings.t(
-                                AppStringKeys
-                                    .accountSecurityRecoveryEmailRecommended,
-                              ),
-                              icon: HeroAppIcons.at,
-                              keyboardType: TextInputType.emailAddress,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      _PrimarySecurityButton(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.accountSecurityTwoStepVerification),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator())
+          : SettingsListView(
+              children: [
+                _SecurityCard(
+                  children: [
+                    if (_hasPassword)
+                      _SecurityField(
+                        controller: _oldPassword,
                         label: AppStrings.t(
-                          _hasPassword
-                              ? AppStringKeys.accountSecurityChangePassword
-                              : AppStringKeys.accountSecurityCreatePassword,
+                          AppStringKeys.accountSecurityCurrentPassword,
                         ),
-                        working: _working,
-                        onTap: _save,
+                        icon: HeroAppIcons.lock,
+                        obscureText: true,
                       ),
-                      if (_hasPassword) ...[
-                        const SizedBox(height: 14),
-                        _SecurityCard(
-                          children: [
-                            _SecurityActionRow(
-                              icon: HeroAppIcons.at,
-                              title: AppStrings.t(
-                                _hasRecoveryEmail
-                                    ? AppStringKeys
-                                          .accountSecurityChangeRecoveryEmail
-                                    : AppStringKeys
-                                          .accountSecurityAddRecoveryEmail,
-                              ),
-                              subtitle: _loginEmailPattern,
-                              onTap: () => Navigator.of(context)
-                                  .push<void>(
-                                    MaterialPageRoute(
-                                      builder: (_) => const RecoveryEmailView(),
-                                    ),
-                                  )
-                                  .then((_) => _load()),
-                            ),
-                            if (_hasRecoveryEmail)
-                              _SecurityActionRow(
-                                icon: HeroAppIcons.restore,
-                                title: AppStrings.t(
-                                  AppStringKeys
-                                      .accountSecurityRecoverOrResetPassword,
-                                ),
-                                onTap: () => Navigator.of(context).push<void>(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const PasswordRecoveryView(),
-                                  ),
-                                ),
-                              ),
-                            _SecurityActionRow(
-                              icon: HeroAppIcons.trash,
-                              title: AppStrings.t(
-                                AppStringKeys.accountSecurityRemovePassword,
-                              ),
-                              destructive: true,
-                              onTap: _remove,
-                            ),
-                          ],
+                    _SecurityField(
+                      controller: _newPassword,
+                      label: AppStrings.t(
+                        _hasPassword
+                            ? AppStringKeys.accountSecurityNewPasswordField
+                            : AppStringKeys.accountSecurityCreatePassword,
+                      ),
+                      icon: HeroAppIcons.key,
+                      obscureText: true,
+                    ),
+                    _SecurityField(
+                      controller: _confirmPassword,
+                      label: AppStrings.t(
+                        AppStringKeys.accountSecurityConfirmNewPassword,
+                      ),
+                      icon: HeroAppIcons.circleCheck,
+                      obscureText: true,
+                    ),
+                    _SecurityField(
+                      controller: _hint,
+                      label: AppStrings.t(
+                        AppStringKeys.accountSecurityPasswordHint,
+                      ),
+                      icon: HeroAppIcons.circleInfo,
+                    ),
+                    if (!_hasRecoveryEmail)
+                      _SecurityField(
+                        controller: _recoveryEmail,
+                        label: AppStrings.t(
+                          AppStringKeys.accountSecurityRecoveryEmailRecommended,
                         ),
-                      ],
+                        icon: HeroAppIcons.at,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _PrimarySecurityButton(
+                  label: AppStrings.t(
+                    _hasPassword
+                        ? AppStringKeys.accountSecurityChangePassword
+                        : AppStringKeys.accountSecurityCreatePassword,
+                  ),
+                  working: _working,
+                  onTap: _save,
+                ),
+                if (_hasPassword) ...[
+                  const SizedBox(height: 14),
+                  _SecurityCard(
+                    children: [
+                      _SecurityActionRow(
+                        icon: HeroAppIcons.at,
+                        title: AppStrings.t(
+                          _hasRecoveryEmail
+                              ? AppStringKeys.accountSecurityChangeRecoveryEmail
+                              : AppStringKeys.accountSecurityAddRecoveryEmail,
+                        ),
+                        subtitle: _loginEmailPattern,
+                        onTap: () => Navigator.of(context)
+                            .push<void>(
+                              MaterialPageRoute(
+                                builder: (_) => const RecoveryEmailView(),
+                              ),
+                            )
+                            .then((_) => _load()),
+                      ),
+                      if (_hasRecoveryEmail)
+                        _SecurityActionRow(
+                          icon: HeroAppIcons.restore,
+                          title: AppStrings.t(
+                            AppStringKeys.accountSecurityRecoverOrResetPassword,
+                          ),
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => const PasswordRecoveryView(),
+                            ),
+                          ),
+                        ),
+                      _SecurityActionRow(
+                        icon: HeroAppIcons.trash,
+                        title: AppStrings.t(
+                          AppStringKeys.accountSecurityRemovePassword,
+                        ),
+                        destructive: true,
+                        onTap: _remove,
+                      ),
                     ],
                   ),
-          ),
-        ],
-      ),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -876,33 +857,16 @@ class _SecurityFormPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: title,
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(title: title, onBack: () => Navigator.of(context).pop()),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 28),
-              children: [
-                if (description != null) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
-                    child: Text(
-                      description!,
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.35,
-                        color: c.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
-                ...children,
-              ],
-            ),
-          ),
+          if (description != null) ...[
+            SettingsNote(text: description!),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          ...children,
         ],
       ),
     );
@@ -915,15 +879,7 @@ class _SecurityCard extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => SettingsCard(
-    children: [
-      for (var index = 0; index < children.length; index++) ...[
-        if (index > 0)
-          Divider(height: 1, indent: 52, color: context.colors.divider),
-        children[index],
-      ],
-    ],
-  );
+  Widget build(BuildContext context) => SettingsCard.rows(rows: children);
 }
 
 class _SecurityField extends StatelessWidget {

@@ -102,47 +102,36 @@ class _ChatThemeViewState extends State<ChatThemeView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.groupedBackground,
-      child: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.chatThemeTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loaded
-                ? ListView(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
-                    children: [
-                      _preview(),
-                      const SizedBox(height: 18),
-                      Text(
-                        AppStringKeys.chatThemeChoose.l10n(context),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: c.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        (_controller.isBoostedChat(widget.chatId)
-                                ? AppStringKeys
-                                      .chatWallpaperThemesSharedWithChat
-                                : AppStringKeys.chatWallpaperThemesShared)
-                            .l10n(context),
-                        style: TextStyle(fontSize: 12, color: c.textTertiary),
-                      ),
-                      const SizedBox(height: 10),
-                      _choices(),
-                    ],
-                  )
-                : const SizedBox.shrink(),
-          ),
-          _applyBar(),
-        ],
-      ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.chatThemeTitle,
+      onBack: () => Navigator.of(context).pop(),
+      bottomNavigationBar: _applyBar(),
+      child: _loaded
+          ? SettingsListView(
+              children: [
+                _preview(),
+                const SizedBox(height: AppSpacing.xxl),
+                Text(
+                  AppStringKeys.chatThemeChoose.l10n(context),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  (_controller.isBoostedChat(widget.chatId)
+                          ? AppStringKeys.chatWallpaperThemesSharedWithChat
+                          : AppStringKeys.chatWallpaperThemesShared)
+                      .l10n(context),
+                  style: TextStyle(fontSize: 12, color: c.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _choices(),
+              ],
+            )
+          : const SizedBox.shrink(),
     );
   }
 

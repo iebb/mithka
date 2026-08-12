@@ -249,6 +249,7 @@ Map<String, dynamic> _sanitizeTdObject(Map<String, dynamic> source) =>
 class _DesktopChatMainBridge with WindowListener {
   final DesktopChatWindowRegistry _registry = DesktopChatWindowRegistry();
   final Map<int, DesktopChatWindowArguments> _argumentsByWindow = {};
+  final Map<int, TdAccountLease> _accountLeasesByWindow = {};
   final Set<int> _subscribedWindows = {};
   final Map<int, List<Map<String, dynamic>>> _pendingUpdatesByWindow = {};
   StreamSubscription<Map<String, dynamic>>? _tdUpdates;
@@ -291,6 +292,10 @@ class _DesktopChatMainBridge with WindowListener {
     _pendingUpdatesByWindow.clear();
     _presentationChangedDebounce?.cancel();
     _presentationChangedDebounce = null;
+    for (final lease in _accountLeasesByWindow.values) {
+      unawaited(lease.release());
+    }
+    _accountLeasesByWindow.clear();
     _argumentsByWindow.clear();
     _subscribedWindows.clear();
     _registry.clear();
@@ -343,7 +348,9 @@ class _DesktopChatMainBridge with WindowListener {
         arguments.encode(),
       ]);
       if (createdWindow == null || createdWindow.id <= 0) return false;
-      _registerWindow(createdWindow.id, arguments);
+      if (!_registerWindow(createdWindow.id, arguments)) {
+        throw StateError('The source account is unavailable');
+      }
 
       await createdWindow.waitUntilReadyToShow(_windowOptions(arguments));
       await createdWindow.show();
@@ -367,14 +374,18 @@ class _DesktopChatMainBridge with WindowListener {
     }
   }
 
-  void _registerWindow(int windowId, DesktopChatWindowArguments arguments) {
+  bool _registerWindow(int windowId, DesktopChatWindowArguments arguments) {
     for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
       if (entry.key == windowId || entry.value.key == arguments.key) {
         _removeWindow(entry.key);
       }
     }
+    final lease = TdClient.shared.retainAccountSlot(arguments.accountSlot);
+    if (lease == null) return false;
     _argumentsByWindow[windowId] = arguments;
+    _accountLeasesByWindow[windowId] = lease;
     _registry.register(arguments.key, windowId);
+    return true;
   }
 
   @override
@@ -385,13 +396,15 @@ class _DesktopChatMainBridge with WindowListener {
   ) async {
     final registered = _registeredRequest(fromWindowId, arguments);
     if (registered == null) return null;
+    final accountLease = _accountLeasesByWindow[fromWindowId];
+    if (accountLease == null) return null;
 
     switch (eventName) {
       case _subscribeMethod:
         _subscribedWindows.add(fromWindowId);
         return {
           'ok': true,
-          'updates': _bootstrapUpdates(registered.accountSlot),
+          'updates': _bootstrapUpdates(accountLease.clientId),
         };
       case _queryMethod:
         final request = arguments is Map
@@ -403,13 +416,13 @@ class _DesktopChatMainBridge with WindowListener {
                 'code': 400,
                 'message': 'Unsupported desktop chat request',
               }
-            : _query(registered.accountSlot, request);
+            : _query(accountLease.clientId, request);
       case _sendMethod:
         final request = arguments is Map
             ? desktopChatSanitizeRequest(arguments['request'])
             : null;
         if (request == null) return const {'ok': false};
-        return _send(registered.accountSlot, request);
+        return _send(accountLease.clientId, request);
       case _openUtilityMethod:
         final encoded = arguments is Map ? arguments['utility'] : null;
         final utility = encoded is String
@@ -522,9 +535,7 @@ class _DesktopChatMainBridge with WindowListener {
     return DesktopChatWindowKey(accountSlot: accountSlot, chatId: chatId);
   }
 
-  List<Map<String, dynamic>> _bootstrapUpdates(int accountSlot) {
-    final clientId = TdClient.shared.clientId(accountSlot);
-    if (clientId == null) return const [];
+  List<Map<String, dynamic>> _bootstrapUpdates(int clientId) {
     return [
       TdClient.shared.latestChatFoldersUpdateForClient(clientId),
       TdClient.shared.latestEmojiChatThemesUpdateForClient(clientId),
@@ -534,17 +545,9 @@ class _DesktopChatMainBridge with WindowListener {
   }
 
   Future<Map<String, dynamic>> _query(
-    int accountSlot,
+    int clientId,
     Map<String, dynamic> request,
   ) async {
-    final clientId = TdClient.shared.clientId(accountSlot);
-    if (clientId == null) {
-      return const {
-        '@type': 'error',
-        'code': 503,
-        'message': 'Account is unavailable',
-      };
-    }
     try {
       return _sanitizeTdObject(
         await TdClient.shared.queryTo(request, clientId),
@@ -560,9 +563,7 @@ class _DesktopChatMainBridge with WindowListener {
     }
   }
 
-  Map<String, Object?> _send(int accountSlot, Map<String, dynamic> request) {
-    final clientId = TdClient.shared.clientId(accountSlot);
-    if (clientId == null) return const {'ok': false};
+  Map<String, Object?> _send(int clientId, Map<String, dynamic> request) {
     TdClient.shared.sendTo(request, clientId);
     return const {'ok': true};
   }
@@ -655,6 +656,8 @@ class _DesktopChatMainBridge with WindowListener {
 
   void _removeWindow(int windowId) {
     _argumentsByWindow.remove(windowId);
+    final lease = _accountLeasesByWindow.remove(windowId);
+    if (lease != null) unawaited(lease.release());
     _subscribedWindows.remove(windowId);
     _pendingUpdatesByWindow.remove(windowId);
     _registry.removeWindow(windowId);

@@ -58,6 +58,16 @@ void main() {
       find.text(AppStrings.tForLocale('en', AppStringKeys.generalStorage)),
       findsNothing,
     );
+    expect(
+      find.byType(SettingsLeadingIcon),
+      findsNWidgets(5),
+      reason: 'detail rows use the shared accent line-icon treatment',
+    );
+    expect(
+      find.byType(SettingsIconTile),
+      findsNothing,
+      reason: 'coloured destination tiles do not belong inside a detail page',
+    );
 
     await tester.tap(find.byKey(const ValueKey('chat-behavior-enter-to-send')));
     await tester.pump();

@@ -177,17 +177,29 @@ class _MessageInfoViewState extends State<MessageInfoView> {
           Expanded(
             child: _loading
                 ? const Center(child: AppActivityIndicator(size: 24))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
-                    children: [
-                      if (_error != null) _errorCard(),
-                      _summaryCard(),
-                      const SizedBox(height: 14),
-                      _deliveryCard(),
-                      if (_viewers.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        _viewersCard(),
-                      ],
+                : CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
+                        sliver: SliverMainAxisGroup(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_error != null) _errorCard(),
+                                  _summaryCard(),
+                                  const SizedBox(height: 14),
+                                  _deliveryCard(),
+                                  if (_viewers.isNotEmpty)
+                                    const SizedBox(height: 14),
+                                ],
+                              ),
+                            ),
+                            if (_viewers.isNotEmpty) _viewersCardSliver(),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
           ),
@@ -277,7 +289,7 @@ class _MessageInfoViewState extends State<MessageInfoView> {
           value: widget.message.viewCount.toString(),
         ),
         _InfoRow(
-          icon: HeroAppIcons.share,
+          icon: HeroAppIcons.forward,
           label: AppStringKeys.messageInfoForwards,
           value: widget.message.forwardCount.toString(),
         ),
@@ -285,32 +297,41 @@ class _MessageInfoViewState extends State<MessageInfoView> {
     );
   }
 
-  Widget _viewersCard() {
+  /// A sliver rather than a card of rows: TDLib reports up to 100 viewers for
+  /// the dozen that fit on screen, and every row carries an avatar that would
+  /// otherwise be fetched and decoded on open.
+  Widget _viewersCardSliver() {
     final c = context.colors;
-    return Container(
+    return DecoratedSliver(
       decoration: BoxDecoration(
         color: c.card,
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 7),
-            child: Text(
-              AppStringKeys.messageInfoViewers.l10n(context),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
+      sliver: SliverMainAxisGroup(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 7),
+              child: Text(
+                AppStringKeys.messageInfoViewers.l10n(context),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.textSecondary,
+                ),
               ),
             ),
           ),
-          for (var index = 0; index < _viewers.length; index++) ...[
-            if (index > 0) Divider(height: 1, indent: 64, color: c.divider),
-            _viewerRow(_viewers[index]),
-          ],
+          SliverList.builder(
+            itemCount: _viewers.length,
+            itemBuilder: (context, index) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (index > 0) Divider(height: 1, indent: 64, color: c.divider),
+                _viewerRow(_viewers[index]),
+              ],
+            ),
+          ),
         ],
       ),
     );

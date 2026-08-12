@@ -313,6 +313,7 @@ class _DesktopUtilityMainBridge with WindowListener {
   final DesktopUtilityWindowRegistry _registry = DesktopUtilityWindowRegistry();
   final Map<int, DesktopUtilityWindowArguments> _argumentsByWindow = {};
   final Map<int, int> _clientIdByWindow = {};
+  final Map<int, TdAccountLease> _accountLeasesByWindow = {};
   final Set<int> _subscribedWindows = {};
   final Map<int, List<Map<String, dynamic>>> _pendingUpdatesByWindow = {};
   StreamSubscription<Map<String, dynamic>>? _tdUpdates;
@@ -362,6 +363,10 @@ class _DesktopUtilityMainBridge with WindowListener {
     _pendingUpdatesByWindow.clear();
     _presentationChangedDebounce?.cancel();
     _presentationChangedDebounce = null;
+    for (final lease in _accountLeasesByWindow.values) {
+      unawaited(lease.release());
+    }
+    _accountLeasesByWindow.clear();
     _argumentsByWindow.clear();
     _clientIdByWindow.clear();
     _subscribedWindows.clear();
@@ -413,7 +418,9 @@ class _DesktopUtilityMainBridge with WindowListener {
         arguments.encode(),
       ]);
       if (createdWindow == null || createdWindow.id <= 0) return false;
-      _registerWindow(createdWindow.id, arguments);
+      if (!_registerWindow(createdWindow.id, arguments)) {
+        throw StateError('The source account is unavailable');
+      }
       await createdWindow.waitUntilReadyToShow(
         desktopUtilityWindowOptions(arguments),
       );
@@ -438,16 +445,19 @@ class _DesktopUtilityMainBridge with WindowListener {
     }
   }
 
-  void _registerWindow(int windowId, DesktopUtilityWindowArguments arguments) {
+  bool _registerWindow(int windowId, DesktopUtilityWindowArguments arguments) {
     for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
       if (entry.key == windowId || entry.value.key == arguments.key) {
         _removeWindow(entry.key);
       }
     }
+    final lease = TdClient.shared.retainAccountSlot(arguments.accountSlot);
+    if (lease == null) return false;
     _argumentsByWindow[windowId] = arguments;
-    final clientId = TdClient.shared.clientId(arguments.accountSlot);
-    if (clientId != null) _clientIdByWindow[windowId] = clientId;
+    _clientIdByWindow[windowId] = lease.clientId;
+    _accountLeasesByWindow[windowId] = lease;
     _registry.register(arguments.key, windowId);
+    return true;
   }
 
   @override
@@ -763,6 +773,8 @@ class _DesktopUtilityMainBridge with WindowListener {
   void _removeWindow(int windowId) {
     _argumentsByWindow.remove(windowId);
     _clientIdByWindow.remove(windowId);
+    final lease = _accountLeasesByWindow.remove(windowId);
+    if (lease != null) unawaited(lease.release());
     _subscribedWindows.remove(windowId);
     _pendingUpdatesByWindow.remove(windowId);
     _registry.removeWindow(windowId);

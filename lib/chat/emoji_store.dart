@@ -58,7 +58,7 @@ class EmojiStore extends ChangeNotifier {
       isPremium = opt.boolean('value') ?? false;
       notifyListeners();
     } catch (_) {}
-    if (!isPremium) return;
+    if (!isPremium && !await TdClient.shared.activeAccountUsesBotApi()) return;
 
     try {
       final sets = await TdClient.shared.query({

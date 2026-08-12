@@ -100,7 +100,27 @@ class TelegramAiPremiumRequired implements Exception {
   const TelegramAiPremiumRequired();
 
   @override
-  String toString() => 'Telegram Premium is required for more AI requests.';
+  String toString() => 'Telegram Premium is required for this AI feature.';
+}
+
+class TelegramAiDailyLimitReached extends TelegramAiPremiumRequired {
+  const TelegramAiDailyLimitReached();
+
+  @override
+  String toString() => 'The daily AI text editing limit has been reached.';
+}
+
+const telegramAiPremiumFloodCode = 'AICOMPOSE_FLOOD_PREMIUM';
+
+/// Telegram iOS treats this RPC error as a dedicated Premium limit state.
+/// Keep the matcher public so translation surfaces that call TDLib directly
+/// can avoid presenting the raw backend error code.
+bool isTelegramAiPremiumFlood(Object error) {
+  if (error is TelegramAiDailyLimitReached) return true;
+  final message = error is TdError ? error.message : error.toString();
+  return RegExp(
+    '(^|[^A-Z0-9_])$telegramAiPremiumFloodCode([^A-Z0-9_]|\$)',
+  ).hasMatch(message.toUpperCase());
 }
 
 Map<String, dynamic> buildComposeTextWithAiRequest({
@@ -709,9 +729,10 @@ class TelegramAiService extends ChangeNotifier {
         payload: request,
         stackTrace: stackTrace,
       );
-      if (error is TdError &&
-          (error.message.contains('AICOMPOSE_FLOOD_PREMIUM') ||
-              error.message.contains('TONES_SAVED_TOO_MANY'))) {
+      if (isTelegramAiPremiumFlood(error)) {
+        throw const TelegramAiDailyLimitReached();
+      }
+      if (error is TdError && error.message.contains('TONES_SAVED_TOO_MANY')) {
         throw const TelegramAiPremiumRequired();
       }
       rethrow;

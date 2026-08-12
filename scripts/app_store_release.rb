@@ -22,8 +22,8 @@ module MithkaAppStoreRelease
   DEFAULT_APP_ID = "6783830742"
   DEFAULT_KEY_ID = "BJYTRDQ86C"
   DEFAULT_RELEASE_NOTES = {
-    "en-US" => "Enjoy a redesigned video player with clearer controls, scrubbing previews, picture-in-picture, and more reliable first playback. This release also improves desktop and tablet layouts, image previews, chat performance, themes, and localization.",
-    "zh-Hans" => "全新视频播放器带来更清晰的操作、进度预览、画中画与更可靠的首次播放。本版本还改进了桌面端和平板布局、图片预览、聊天性能、主题与本地化。"
+    "en-US" => "Mithka 1.0 brings a redesigned video player with Picture in Picture, faster chats and search, richer bot and translation tools, improved multi-account reliability, and refined mobile, tablet, and desktop layouts. It also improves themes, media handling, notifications, localization, stability, and accessibility.",
+    "zh-Hans" => "Mithka 1.0 带来全新视频播放器与画中画、更快的聊天和搜索、更丰富的机器人及翻译工具、更可靠的多账号体验，并优化手机、平板和桌面布局。本版本还改进主题、媒体处理、通知、多语言、稳定性与无障碍体验。"
   }.freeze
   REVIEWABLE_VERSION_STATES = %w[
     DEVELOPER_REJECTED

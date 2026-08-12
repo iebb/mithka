@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/performance_metrics.dart';
+import '../l10n/app_localizations.dart';
 import '../media/looping_media_playback.dart';
 import '../tdlib/animated_avatar_repository.dart';
 import '../tdlib/td_client.dart';
@@ -24,6 +25,8 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'app_icons.dart';
+import 'app_interactive_surface.dart';
 
 /// Sizes its child to the avatar box, clips it to a circle or rounded square,
 /// and optionally fills the shape and centres the child inside it.
@@ -650,10 +653,18 @@ class _TDImageState extends State<TDImage> {
   int? _loadedSlot;
   TdFileProgress? _progress;
   StreamSubscription<TdFileProgress>? _progressSub;
+  Timer? _progressPaintTimer;
+  Timer? _downloadStallTimer;
+  Timer? _downloadRecoveryTimer;
   DateTime? _lastProgressPaint;
+  int? _stallWatchedDownloaded;
+  int? _resumedDownloaded;
+  bool _downloadStalled = false;
   int _missingFileRecoveries = 0;
 
   static const _maxMissingFileRecoveries = 2;
+  static const _progressPaintInterval = Duration(milliseconds: 120);
+  static const _downloadStallInterval = Duration(seconds: 15);
 
   @override
   void initState() {
@@ -669,6 +680,9 @@ class _TDImageState extends State<TDImage> {
 
   @override
   void dispose() {
+    _progressPaintTimer?.cancel();
+    _downloadStallTimer?.cancel();
+    _downloadRecoveryTimer?.cancel();
     _progressSub?.cancel();
     super.dispose();
   }
@@ -681,6 +695,15 @@ class _TDImageState extends State<TDImage> {
       _loadedId = null;
       _loadedThumbnailId = null;
       _loadedSlot = null;
+      _progressPaintTimer?.cancel();
+      _progressPaintTimer = null;
+      _downloadStallTimer?.cancel();
+      _downloadStallTimer = null;
+      _downloadRecoveryTimer?.cancel();
+      _downloadRecoveryTimer = null;
+      _stallWatchedDownloaded = null;
+      _resumedDownloaded = null;
+      _downloadStalled = false;
       _progressSub?.cancel();
       _progressSub = null;
       if (_file != null || _thumbnailFile != null || _progress != null) {
@@ -706,22 +729,66 @@ class _TDImageState extends State<TDImage> {
     _loadedSlot = slot;
     _progress = null;
     _lastProgressPaint = null;
+    _progressPaintTimer?.cancel();
+    _progressPaintTimer = null;
+    _downloadStallTimer?.cancel();
+    _downloadStallTimer = null;
+    _downloadRecoveryTimer?.cancel();
+    _downloadRecoveryTimer = null;
+    _stallWatchedDownloaded = null;
+    _resumedDownloaded = null;
+    _downloadStalled = false;
     _progressSub?.cancel();
     _progressSub = null;
     if (widget.showProgress) {
-      _progressSub = TdFileCenter.shared.progress(ref.id).listen((progress) {
-        if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
-        if (progress.isCompleted) return;
-        final now = DateTime.now();
-        final previous = _lastProgressPaint;
-        if (previous != null &&
-            now.difference(previous) < const Duration(milliseconds: 120)) {
-          _progress = progress;
-          return;
-        }
-        _lastProgressPaint = now;
-        setState(() => _progress = progress);
-      });
+      _progressSub = TdFileCenter.shared
+          .progress(ref.id, accountSlot: slot)
+          .listen((progress) {
+            if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
+            final now = DateTime.now();
+            if (progress.isCompleted || !progress.isActive) {
+              _progressPaintTimer?.cancel();
+              _progressPaintTimer = null;
+              _downloadStallTimer?.cancel();
+              _downloadStallTimer = null;
+              if (progress.isCompleted) {
+                _downloadRecoveryTimer?.cancel();
+                _downloadRecoveryTimer = null;
+                _downloadStalled = false;
+              }
+              _stallWatchedDownloaded = null;
+              _lastProgressPaint = now;
+              setState(() => _progress = progress);
+              if (progress.isCompleted && _file == null) {
+                unawaited(_resolveCompletedFile(ref, slot));
+              } else if (!progress.isCompleted) {
+                _resumeDownloadOnce(ref, slot, progress.downloaded);
+              }
+              return;
+            }
+            _watchForStalledDownload(ref, slot, progress);
+            final previous = _lastProgressPaint;
+            if (previous != null &&
+                now.difference(previous) < _progressPaintInterval) {
+              _progress = progress;
+              _progressPaintTimer ??= Timer(
+                _progressPaintInterval - now.difference(previous),
+                () {
+                  _progressPaintTimer = null;
+                  if (!mounted || _loadedId != ref.id || _loadedSlot != slot) {
+                    return;
+                  }
+                  _lastProgressPaint = DateTime.now();
+                  setState(() {});
+                },
+              );
+              return;
+            }
+            _progressPaintTimer?.cancel();
+            _progressPaintTimer = null;
+            _lastProgressPaint = now;
+            setState(() => _progress = progress);
+          });
     }
     if (_file != null || _thumbnailFile != null) {
       setState(() {
@@ -731,7 +798,7 @@ class _TDImageState extends State<TDImage> {
     }
     final thumbnail = ref.thumbnail;
     if (thumbnail != null && thumbnail.id != ref.id) {
-      TdFileCenter.shared.pathFor(thumbnail).then((path) {
+      TdFileCenter.shared.pathFor(thumbnail, accountSlot: slot).then((path) {
         if (!mounted ||
             _loadedId != ref.id ||
             _loadedThumbnailId != thumbnail.id ||
@@ -741,10 +808,105 @@ class _TDImageState extends State<TDImage> {
         if (path != null) setState(() => _thumbnailFile = File(path));
       });
     }
-    TdFileCenter.shared.pathFor(ref).then((path) {
+    TdFileCenter.shared.pathFor(ref, accountSlot: slot).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
-      if (path != null) setState(() => _file = File(path));
+      if (path != null) {
+        setState(() => _file = File(path));
+        return;
+      }
+      // The bounded resolver expired. Stop painting its last active percent
+      // and make one mounted-only, fire-and-forget resume request. A later
+      // completion event will resolve the cached file through
+      // _resolveCompletedFile without keeping another long waiter alive.
+      _progressPaintTimer?.cancel();
+      _progressPaintTimer = null;
+      final stalledDownloaded = _progress?.downloaded ?? -1;
+      if (_progress != null) setState(() => _progress = null);
+      _resumeDownloadOnce(ref, slot, stalledDownloaded);
     });
+  }
+
+  void _watchForStalledDownload(
+    TdFileRef ref,
+    int slot,
+    TdFileProgress progress,
+  ) {
+    final downloaded = progress.downloaded;
+    final resumed = _resumedDownloaded;
+    if (resumed != null && downloaded > resumed) {
+      _resumedDownloaded = null;
+      _downloadRecoveryTimer?.cancel();
+      _downloadRecoveryTimer = null;
+      _downloadStalled = false;
+    }
+    if (_stallWatchedDownloaded == downloaded && _downloadStallTimer != null) {
+      return;
+    }
+    _downloadStallTimer?.cancel();
+    _downloadStallTimer = null;
+    _stallWatchedDownloaded = downloaded;
+    if (_resumedDownloaded == downloaded) return;
+    _downloadStallTimer = Timer(_downloadStallInterval, () {
+      _downloadStallTimer = null;
+      _stallWatchedDownloaded = null;
+      if (!mounted ||
+          _loadedId != ref.id ||
+          _loadedSlot != slot ||
+          _progress?.isActive != true ||
+          _progress?.downloaded != downloaded) {
+        return;
+      }
+      _resumeDownloadOnce(ref, slot, downloaded);
+    });
+  }
+
+  void _resumeDownloadOnce(TdFileRef ref, int slot, int downloaded) {
+    if (_resumedDownloaded == downloaded) return;
+    _resumedDownloaded = downloaded;
+    _downloadRecoveryTimer?.cancel();
+    _downloadRecoveryTimer = Timer(_downloadStallInterval, () {
+      _downloadRecoveryTimer = null;
+      if (!mounted ||
+          _loadedId != ref.id ||
+          _loadedSlot != slot ||
+          _resumedDownloaded != downloaded ||
+          (_progress != null && _progress?.downloaded != downloaded)) {
+        return;
+      }
+      setState(() => _downloadStalled = true);
+    });
+    TdFileCenter.shared.resumeDownload(ref.id, accountSlot: slot);
+  }
+
+  void _retryStalledDownload() {
+    final ref = widget.photo;
+    final slot = _loadedSlot;
+    if (ref == null ||
+        slot == null ||
+        _loadedId != ref.id ||
+        !_downloadStalled) {
+      return;
+    }
+    final downloaded = _progress?.downloaded ?? _resumedDownloaded ?? -1;
+    _resumedDownloaded = null;
+    setState(() => _downloadStalled = false);
+    _resumeDownloadOnce(ref, slot, downloaded);
+  }
+
+  /// A completion can arrive after path()'s bounded waiter has returned null.
+  /// TdFileCenter has already cached the completed path before dispatching the
+  /// terminal progress event, so resolve it again instead of leaving the
+  /// minithumbnail and its last active percentage on screen forever.
+  Future<void> _resolveCompletedFile(TdFileRef ref, int slot) async {
+    final path = await TdFileCenter.shared.pathFor(ref, accountSlot: slot);
+    if (!mounted ||
+        path == null ||
+        _loadedId != ref.id ||
+        _loadedSlot != slot ||
+        _file?.path == path) {
+      return;
+    }
+    setState(() => _file = File(path));
   }
 
   bool oldProgressModeUnchanged() {
@@ -759,14 +921,22 @@ class _TDImageState extends State<TDImage> {
   Widget _recoverFromUnreadableFile(File file, {required bool isThumbnail}) {
     final ref = widget.photo;
     final target = isThumbnail ? ref?.thumbnail : ref;
-    if (target != null && _missingFileRecoveries < _maxMissingFileRecoveries) {
+    final slot = _loadedSlot;
+    if (target != null &&
+        slot != null &&
+        _missingFileRecoveries < _maxMissingFileRecoveries) {
       _missingFileRecoveries++;
-      TdFileCenter.shared.forget(target.id);
+      TdFileCenter.shared.forget(target.id, accountSlot: slot);
       // errorBuilder runs inside build, so the state change waits for the frame.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(
-          _reresolveMissingFile(file, target, isThumbnail: isThumbnail),
+          _reresolveMissingFile(
+            file,
+            target,
+            accountSlot: slot,
+            isThumbnail: isThumbnail,
+          ),
         );
       });
     }
@@ -780,13 +950,13 @@ class _TDImageState extends State<TDImage> {
   Future<void> _reresolveMissingFile(
     File missing,
     TdFileRef target, {
+    required int accountSlot,
     required bool isThumbnail,
   }) async {
-    final slot = _loadedSlot;
     final owned = isThumbnail
         ? _thumbnailFile?.path == missing.path
         : _file?.path == missing.path;
-    if (!owned) return;
+    if (!owned || _loadedSlot != accountSlot) return;
     setState(() {
       if (isThumbnail) {
         _thumbnailFile = null;
@@ -794,8 +964,11 @@ class _TDImageState extends State<TDImage> {
         _file = null;
       }
     });
-    final path = await TdFileCenter.shared.pathFor(target);
-    if (!mounted || path == null || _loadedSlot != slot) return;
+    final path = await TdFileCenter.shared.pathFor(
+      target,
+      accountSlot: accountSlot,
+    );
+    if (!mounted || path == null || _loadedSlot != accountSlot) return;
     if (isThumbnail ? _thumbnailFile != null : _file != null) return;
     setState(() {
       if (isThumbnail) {
@@ -870,14 +1043,22 @@ class _TDImageState extends State<TDImage> {
     } else {
       child = Container(color: context.colors.groupedBackground);
     }
+    final showRetry = widget.showProgress && _file == null && _downloadStalled;
     final showLoadingProgress =
-        widget.showProgress && _file == null && _progress?.isActive == true;
-    if (showLoadingProgress) {
+        widget.showProgress &&
+        _file == null &&
+        !showRetry &&
+        _progress?.isActive == true &&
+        _progress?.isCompleted != true;
+    if (showRetry || showLoadingProgress) {
       child = Stack(
         fit: StackFit.expand,
         children: [
           child,
-          _MediaLoadingProgress(progress: _progress),
+          if (showRetry)
+            _MediaDownloadRetry(onRetry: _retryStalledDownload)
+          else
+            _MediaLoadingProgress(progress: _progress),
         ],
       );
     }
@@ -966,6 +1147,38 @@ class _MediaLoadingProgress extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaDownloadRetry extends StatelessWidget {
+  const _MediaDownloadRetry({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AppInteractiveSurface(
+        key: const ValueKey('td-image-download-retry'),
+        onTap: onRetry,
+        semanticLabel: AppStringKeys.callsRetry.l10n(context),
+        borderRadius: BorderRadius.circular(29),
+        child: Container(
+          width: 58,
+          height: 58,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.46),
+            shape: BoxShape.circle,
+          ),
+          child: const AppIcon(
+            HeroAppIcons.arrowsRotate,
+            size: 27,
+            color: Colors.white,
           ),
         ),
       ),

@@ -57,11 +57,22 @@ class TdFileCenter {
   final Map<String, List<Completer<String?>>> _playbackWaiters = {};
   final Map<String, StreamController<TdFileProgress>> _progressControllers = {};
   bool _started = false;
+  static const _cacheCapacity = 4096;
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
   static const _priorityChunkSize = 512 * 1024;
   static const _priorityParallelism = 4;
 
   String _key(int slot, int fileId) => '$slot:$fileId';
+
+  /// Records a resolved path, dropping the oldest entries past [_cacheCapacity].
+  ///
+  /// This map lives on a process-lifetime singleton and used to grow by one
+  /// entry for every media item ever scrolled past. Eviction costs nothing: a
+  /// miss re-issues downloadFile, exactly what [forget] already relies on.
+  void _remember(String key, String path) {
+    _cache[key] = path;
+    if (_cache.length > _cacheCapacity) _cache.remove(_cache.keys.first);
+  }
 
   /// Resolves a file reference without downloading it again when the source
   /// file used for an outgoing message is still available locally.
@@ -71,7 +82,7 @@ class TdFileCenter {
     if (localPath != null && localPath.isNotEmpty) {
       final source = File(localPath);
       if (await source.exists()) {
-        _cache[_key(slot, ref.id)] = localPath;
+        _remember(_key(slot, ref.id), localPath);
         return localPath;
       }
     }
@@ -159,7 +170,7 @@ class TdFileCenter {
     final finished = _progressControllers.remove(k);
     unawaited(finished?.close());
 
-    _cache[k] = path;
+    _remember(k, path);
     final pending = _waiters.remove(k) ?? [];
     for (final c in pending) {
       if (!c.isCompleted) c.complete(path);
@@ -405,6 +416,26 @@ class TdFileCenter {
     }, clientId);
   }
 
+  /// Renews a visible whole-file download without allocating a query waiter.
+  ///
+  /// TDLib emits updateFile for the resumed transfer. Fire-and-forget matters
+  /// here: this is the bounded path waiter's one recovery attempt, and a lost
+  /// response must not accumulate another permanently pending query.
+  void resumeDownload(int fileId, {int? accountSlot}) {
+    _startIfNeeded();
+    final slot = accountSlot ?? _client.activeSlot;
+    final clientId = _client.clientId(slot);
+    if (clientId == null) return;
+    _client.sendTo({
+      '@type': 'downloadFile',
+      'file_id': fileId,
+      'priority': 32,
+      'offset': 0,
+      'limit': 0,
+      'synchronous': false,
+    }, clientId);
+  }
+
   /// Drops the remembered local path for a file id.
   ///
   /// TDLib deletes cached files on its own (storage optimizer, "clear cache",
@@ -414,6 +445,33 @@ class TdFileCenter {
   void forget(int fileId, {int? accountSlot}) {
     final slot = accountSlot ?? _client.activeSlot;
     _cache.remove(_key(slot, fileId));
+  }
+
+  Future<void> _requestPathDownload(int fileId, int accountSlot) async {
+    try {
+      final response = await _client.queryForSlot({
+        '@type': 'downloadFile',
+        'file_id': fileId,
+        'priority': 16,
+        'offset': 0,
+        'limit': 0,
+        'synchronous': false,
+      }, accountSlot);
+      _ingest(response, accountSlot: accountSlot);
+    } catch (_) {
+      // The completion waiter remains bounded and updateFile can still finish
+      // a request whose immediate response was lost.
+    }
+  }
+
+  void _removePathWaiter(
+    String key,
+    Completer<String?> completer,
+    List<Completer<String?>> waiters,
+  ) {
+    if (!identical(_waiters[key], waiters)) return;
+    waiters.remove(completer);
+    if (waiters.isEmpty) _waiters.remove(key);
   }
 
   /// Returns a local path for the file id, downloading if needed.
@@ -431,42 +489,21 @@ class TdFileCenter {
       return completer.future.timeout(
         const Duration(seconds: 180),
         onTimeout: () {
-          _waiters[k]?.remove(completer);
+          _removePathWaiter(k, completer, pending);
           return null;
         },
       );
     }
 
     final completer = Completer<String?>();
-    _waiters[k] = [completer];
+    final waiters = <Completer<String?>>[completer];
+    _waiters[k] = waiters;
 
-    // Kick the download. The immediate response reflects current state, so an
-    // already-complete file resolves without waiting for an update.
-    try {
-      final response = await _client.queryForSlot({
-        '@type': 'downloadFile',
-        'file_id': fileId,
-        'priority': 16,
-        'offset': 0,
-        'limit': 0,
-        'synchronous': false,
-      }, slot);
-      _ingest(response, accountSlot: slot);
-      final local = response.obj('local');
-      if (local?.boolean('is_downloading_completed') == true) {
-        final path = local?.str('path');
-        if (path != null && path.isNotEmpty) {
-          _cache[k] = path;
-          final pending = _waiters.remove(k) ?? [];
-          for (final c in pending) {
-            if (!c.isCompleted) c.complete(path);
-          }
-          return path;
-        }
-      }
-    } catch (_) {
-      // fall through to wait for updateFile
-    }
+    // Do not await the request response before installing the bounded wait.
+    // A lost TDLib response previously meant the first resolver never reached
+    // its 180-second timeout (only later joined callers did). _ingest handles
+    // both an immediate completed response and the eventual updateFile event.
+    unawaited(_requestPathDownload(fileId, slot));
 
     // Otherwise wait for the completing updateFile.
     final existing = _cache[k];
@@ -476,7 +513,7 @@ class TdFileCenter {
     return completer.future.timeout(
       const Duration(seconds: 180),
       onTimeout: () {
-        _waiters[k]?.remove(completer);
+        _removePathWaiter(k, completer, waiters);
         return null;
       },
     );
@@ -516,7 +553,7 @@ class TdFileCenter {
           path != null &&
           path.isNotEmpty &&
           await File(path).exists()) {
-        _cache[k] = path;
+        _remember(k, path);
         return path;
       }
     } catch (_) {}

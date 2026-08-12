@@ -42,6 +42,10 @@ TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/rele
 TGVOIP_RELEASE_TAG="tgvoip-telegram-ios-6e370e06d147"
 TGVOIP_URL="${TGVOIP_WEBRTC_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TGVOIP_RELEASE_TAG}/tgvoip-ios.xcframework.zip}"
 TGVOIP_SHA256="${TGVOIP_WEBRTC_XCFRAMEWORK_SHA256:-a1da44189af3802fcc0900696c5cdc549ffc2e53c5a2a0bab713a208aefe2737}"
+SQLITE3_VERSION="3.5.1"
+SQLITE3_IOS_ARM64_ASSET="libsqlite3.arm64.ios.dylib"
+SQLITE3_IOS_ARM64_SHA256="f1bc69a4304a21e472c15f849c34ae46539483cfa7ce901f54175c6d6cc17991"
+SQLITE3_IOS_ARM64_URL="https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-${SQLITE3_VERSION}/${SQLITE3_IOS_ARM64_ASSET}"
 CURL_RETRY_FLAGS="-fL --retry 5 --retry-delay 2 --connect-timeout 20"
 if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
   CURL_RETRY_FLAGS="$CURL_RETRY_FLAGS --retry-all-errors"
@@ -126,6 +130,59 @@ flutter_build_ios_config_with_retry() {
   done
 }
 
+prefetch_sqlite3_ios_arm64() {
+  locked_version="$(
+    awk '
+      $0 == "  sqlite3:" { in_sqlite3 = 1; next }
+      in_sqlite3 && $1 == "version:" {
+        gsub(/"/, "", $2)
+        print $2
+        exit
+      }
+      in_sqlite3 && /^  [[:alnum:]_]/ { exit }
+    ' pubspec.lock
+  )"
+  if [ "$locked_version" != "$SQLITE3_VERSION" ]; then
+    echo "error: sqlite3 lock version $locked_version does not match pinned iOS binary $SQLITE3_VERSION" >&2
+    return 1
+  fi
+
+  cache_key="$(printf '%s' "$SQLITE3_IOS_ARM64_SHA256" | cut -c 1-8)"
+  cache_dir="$REPO/.dart_tool/hooks_runner/shared/sqlite3/build/download-${cache_key}"
+  output="$cache_dir/libsqlite3.dylib"
+  tmp="${output}.tmp.$$"
+  mkdir -p "$cache_dir"
+
+  if [ -f "$output" ] &&
+    printf '%s  %s\n' "$SQLITE3_IOS_ARM64_SHA256" "$output" |
+      shasum -a 256 -c - >/dev/null 2>&1; then
+    echo "▸ using cached sqlite3 $SQLITE3_VERSION iOS arm64 binary"
+    return 0
+  fi
+
+  echo "▸ downloading sqlite3 $SQLITE3_VERSION iOS arm64 binary"
+  rm -f "$tmp"
+  # shellcheck disable=SC2086 # CURL_RETRY_FLAGS is intentionally split.
+  if ! retry 3 5 curl $CURL_RETRY_FLAGS --max-time 120 "$SQLITE3_IOS_ARM64_URL" -o "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! printf '%s  %s\n' "$SQLITE3_IOS_ARM64_SHA256" "$tmp" |
+    shasum -a 256 -c -; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! mv "$tmp" "$output"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! printf '%s  %s\n' "$SQLITE3_IOS_ARM64_SHA256" "$output" |
+    shasum -a 256 -c -; then
+    rm -f "$output"
+    return 1
+  fi
+}
+
 decode_base64_to_file() {
   data="$1"
   output="$2"
@@ -154,10 +211,17 @@ echo "▸ git commit: $GIT_COMMIT"
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
-APP_BUILD_NUMBER="${RAW_VERSION#*+}"
-if [ "$APP_BUILD_NUMBER" = "$RAW_VERSION" ] || [ -z "$APP_BUILD_NUMBER" ]; then
-  APP_BUILD_NUMBER=1
+SOURCE_BUILD_NUMBER="${RAW_VERSION#*+}"
+if [ "$SOURCE_BUILD_NUMBER" = "$RAW_VERSION" ] || [ -z "$SOURCE_BUILD_NUMBER" ]; then
+  SOURCE_BUILD_NUMBER=1
 fi
+APP_BUILD_NUMBER="${CI_BUILD_NUMBER:-$SOURCE_BUILD_NUMBER}"
+case "$APP_BUILD_NUMBER" in
+  ''|*[!0-9]*)
+    echo "error: expected a numeric iOS build number, got $APP_BUILD_NUMBER" >&2
+    exit 1
+    ;;
+esac
 XCODE_BUILD_NAME="$(
   printf '%s\n' "$APP_BUILD_NAME" |
     awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
@@ -239,6 +303,7 @@ echo "▸ generating Flutter iOS build inputs"
 flutter config --enable-swift-package-manager
 flutter precache --ios
 flutter pub get
+prefetch_sqlite3_ios_arm64
 flutter_build_ios_config_with_retry
 python3 - <<PY >> ios/Flutter/Generated.xcconfig
 import os

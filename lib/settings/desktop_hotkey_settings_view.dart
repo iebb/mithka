@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -54,19 +53,11 @@ class _DesktopHotkeySettingsViewState extends State<DesktopHotkeySettingsView> {
       builder: (context, snapshot) {
         final loaded = snapshot.data;
         if (loaded != null) return _content(context, loaded);
-        return Scaffold(
-          backgroundColor: context.colors.groupedBackground,
-          body: Column(
-            children: [
-              NavHeader(
-                title: AppStringKeys.desktopHotkeysTitle,
-                onBack: widget.showBackButton && Navigator.of(context).canPop()
-                    ? () => Navigator.of(context).pop()
-                    : null,
-              ),
-              const Expanded(child: Center(child: AppActivityIndicator())),
-            ],
-          ),
+        return SettingsPageScaffold(
+          title: AppStringKeys.desktopHotkeysTitle,
+          showBackButton: widget.showBackButton,
+          onBack: () => Navigator.of(context).pop(),
+          child: const Center(child: AppActivityIndicator()),
         );
       },
     );
@@ -76,85 +67,55 @@ class _DesktopHotkeySettingsViewState extends State<DesktopHotkeySettingsView> {
     final c = context.colors;
     final desktopDense = !kIsWeb && controller.available;
     final theme = context.watch<ThemeController>();
-    return Scaffold(
+    return SettingsPageScaffold(
       key: const ValueKey('desktop-hotkey-settings'),
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.desktopHotkeysTitle,
-            onBack: widget.showBackButton && Navigator.of(context).canPop()
-                ? () => Navigator.of(context).pop()
-                : null,
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              maxWidth: 860,
-              child: AnimatedBuilder(
-                animation: controller,
-                builder: (context, _) => ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    desktopDense ? 16 : 20,
-                    desktopDense ? 12 : 18,
-                    desktopDense ? 16 : 20,
-                    desktopDense ? 20 : 32,
-                  ),
-                  children: [
-                    Text(
-                      AppStringKeys.desktopHotkeysDescription.l10n(context),
-                      style: TextStyle(
-                        color: c.textSecondary,
-                        fontSize: desktopDense ? 13 : 15,
-                        height: 1.35,
-                      ),
-                    ),
-                    SizedBox(height: desktopDense ? 10 : 16),
-                    SettingsCard(
-                      children: [
-                        for (final (index, action)
-                            in DesktopHotkeyAction.values.indexed) ...[
-                          if (index != 0) const InsetDivider(leadingInset: 48),
-                          _hotkeyRow(
-                            context,
-                            controller,
-                            action,
-                            desktopDense: desktopDense,
-                          ),
-                        ],
-                      ],
-                    ),
-                    SizedBox(height: desktopDense ? 10 : 16),
-                    SettingsCard(
-                      children: [
-                        _resetRow(
-                          context,
-                          controller,
-                          desktopDense: desktopDense,
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: desktopDense ? 18 : 26),
-                    _sectionLabel(
-                      context,
-                      AppStringKeys.desktopHotkeysSendSection,
-                      desktopDense: desktopDense,
-                    ),
-                    SizedBox(height: desktopDense ? 6 : 9),
-                    SettingsCard(
-                      children: [
-                        _enterToSendRow(
-                          context,
-                          theme,
-                          desktopDense: desktopDense,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+      title: AppStringKeys.desktopHotkeysTitle,
+      showBackButton: widget.showBackButton,
+      onBack: () => Navigator.of(context).pop(),
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) => SettingsListView(
+          children: [
+            Text(
+              AppStringKeys.desktopHotkeysDescription.l10n(context),
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: desktopDense ? 13 : 15,
+                height: 1.35,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: desktopDense ? 10 : 16),
+            SettingsCard.rows(
+              rows: [
+                for (final action in DesktopHotkeyAction.values)
+                  _hotkeyRow(
+                    context,
+                    controller,
+                    action,
+                    desktopDense: desktopDense,
+                  ),
+              ],
+            ),
+            SizedBox(height: desktopDense ? 10 : 16),
+            SettingsCard(
+              children: [
+                _resetRow(context, controller, desktopDense: desktopDense),
+              ],
+            ),
+            SizedBox(height: desktopDense ? 18 : 26),
+            _sectionLabel(
+              context,
+              AppStringKeys.desktopHotkeysSendSection,
+              desktopDense: desktopDense,
+            ),
+            SizedBox(height: desktopDense ? 6 : 9),
+            SettingsCard(
+              children: [
+                _enterToSendRow(context, theme, desktopDense: desktopDense),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

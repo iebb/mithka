@@ -234,6 +234,7 @@ class _DirectMessagesTopicRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: onLongPress,
       child: Container(
         color: colors.card,
         padding: const EdgeInsets.fromLTRB(14, 10, 13, 10),

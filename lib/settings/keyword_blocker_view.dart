@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
@@ -80,40 +81,22 @@ class _KeywordBlockerViewState extends State<KeywordBlockerView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final keywords = _blocker.keywords;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.keywordBlockerTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.keywordBlockerTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-              children: [
-                _inputCard(),
-                const SizedBox(height: 14),
-                _urlCard(),
-                const SizedBox(height: 14),
-                if (keywords.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 20,
-                    ),
-                    child: Text(
-                      AppStrings.t(AppStringKeys.keywordBlockerDescription),
-                      style: TextStyle(fontSize: 14, color: c.textSecondary),
-                    ),
-                  )
-                else
-                  _keywordCard(keywords),
-              ],
-            ),
-          ),
+          _inputCard(),
+          const SizedBox(height: AppSpacing.lg),
+          _urlCard(),
+          const SizedBox(height: AppSpacing.lg),
+          if (keywords.isEmpty)
+            SettingsNote(
+              text: AppStrings.t(AppStringKeys.keywordBlockerDescription),
+            )
+          else
+            _keywordCard(keywords),
         ],
       ),
     );
@@ -226,48 +209,31 @@ class _KeywordBlockerViewState extends State<KeywordBlockerView> {
 
   Widget _keywordCard(List<String> keywords) {
     final c = context.colors;
-    return SettingsPanel(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (final keyword in keywords) ...[
-            SizedBox(
-              height: 52,
+    return SettingsCard.rows(
+      rows: [
+        for (final keyword in keywords)
+          SettingsRow(
+            title: keyword,
+            leading: SettingsLeadingIcon(
+              icon: HeroAppIcons.ban,
+              color: AppTheme.tagRed,
+            ),
+            showChevron: false,
+            trailing: AppInteractiveSurface(
+              semanticLabel: AppStrings.t(AppStringKeys.chatInfoRemove),
+              onTap: () => _blocker.remove(keyword),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    AppIcon(HeroAppIcons.ban, size: 19, color: AppTheme.tagRed),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        keyword,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 16, color: c.textPrimary),
-                      ),
-                    ),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _blocker.remove(keyword),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: AppIcon(
-                          HeroAppIcons.xmark,
-                          size: 16,
-                          color: c.textTertiary,
-                        ),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 16,
+                  color: c.textTertiary,
                 ),
               ),
             ),
-            if (keyword != keywords.last) const InsetDivider(leadingInset: 47),
-          ],
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

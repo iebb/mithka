@@ -11,19 +11,28 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class ActiveConversationScope {
-  const ActiveConversationScope({required this.chatId, required this.title});
+  const ActiveConversationScope({
+    required this.chatId,
+    required this.title,
+    this.accountSlot,
+    this.messageId,
+  });
 
   final int chatId;
   final String title;
+  final int? accountSlot;
+  final int? messageId;
 
   @override
   bool operator ==(Object other) =>
       other is ActiveConversationScope &&
       other.chatId == chatId &&
-      other.title == title;
+      other.title == title &&
+      other.accountSlot == accountSlot &&
+      other.messageId == messageId;
 
   @override
-  int get hashCode => Object.hash(chatId, title);
+  int get hashCode => Object.hash(chatId, title, accountSlot, messageId);
 }
 
 /// Registry of on-screen conversations.
@@ -31,7 +40,7 @@ class ActiveConversationScope {
 /// Registrations carry their own visibility predicate rather than a snapshot,
 /// so a chat parked behind a pushed route, a preview, or an inactive tab never
 /// claims to be the one in front.
-class ActiveConversation {
+class ActiveConversation extends ChangeNotifier {
   ActiveConversation._();
 
   static final ActiveConversation shared = ActiveConversation._();
@@ -43,15 +52,28 @@ class ActiveConversation {
     required int chatId,
     required String Function() title,
     required bool Function() isVisible,
+    int? accountSlot,
+    int? Function()? messageId,
   }) {
     _registrations[owner] = _ActiveConversationRegistration(
       chatId: chatId,
       title: title,
       isVisible: isVisible,
+      accountSlot: accountSlot,
+      messageId: messageId,
     );
+    notifyListeners();
   }
 
-  void unregister(Object owner) => _registrations.remove(owner);
+  void unregister(Object owner) {
+    if (_registrations.remove(owner) != null) notifyListeners();
+  }
+
+  /// Re-evaluates lazy visibility and position callbacks.
+  ///
+  /// Navigator transitions and a settled chat scroll can change the current
+  /// activity without replacing its registration.
+  void refresh() => notifyListeners();
 
   /// The frontmost visible conversation, or null when none is on screen.
   ///
@@ -66,13 +88,21 @@ class ActiveConversation {
       }
       final title = registration.title().trim();
       if (registration.chatId == 0) continue;
-      return ActiveConversationScope(chatId: registration.chatId, title: title);
+      return ActiveConversationScope(
+        chatId: registration.chatId,
+        title: title,
+        accountSlot: registration.accountSlot,
+        messageId: registration.messageId?.call(),
+      );
     }
     return null;
   }
 
   @visibleForTesting
-  void clearForTesting() => _registrations.clear();
+  void clearForTesting() {
+    _registrations.clear();
+    notifyListeners();
+  }
 }
 
 class _ActiveConversationRegistration {
@@ -80,9 +110,13 @@ class _ActiveConversationRegistration {
     required this.chatId,
     required this.title,
     required this.isVisible,
+    this.accountSlot,
+    this.messageId,
   });
 
   final int chatId;
   final String Function() title;
   final bool Function() isVisible;
+  final int? accountSlot;
+  final int? Function()? messageId;
 }

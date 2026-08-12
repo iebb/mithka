@@ -22,8 +22,9 @@ import 'sticker_preview.dart';
 import 'sticker_set_studio_view.dart';
 
 class StickerSetDetailView extends StatefulWidget {
-  const StickerSetDetailView({super.key, required this.setId});
+  const StickerSetDetailView({super.key, required this.setId, this.onClose});
   final int setId;
+  final VoidCallback? onClose;
 
   @override
   State<StickerSetDetailView> createState() => _StickerSetDetailViewState();
@@ -280,12 +281,20 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
                   )
                 else
                   Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        _setCard(c),
-                        const SizedBox(height: 18),
-                        _grid(),
+                    // A shrinkWrap grid under a ListView gets unbounded height
+                    // and lays out every cell, so all ~120 stickers used to
+                    // mount (and start) at once. A sliver keeps it lazy.
+                    child: CustomScrollView(
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          sliver: SliverToBoxAdapter(child: _setCard(c)),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          sliver: _grid(),
+                        ),
                       ],
                     ),
                   ),
@@ -381,7 +390,7 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
             alignment: Alignment.centerLeft,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
+              onTap: widget.onClose ?? () => Navigator.of(context).pop(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: AppIcon(
@@ -530,16 +539,27 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
   }
 
   Widget _grid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
+    return SliverLayoutBuilder(
+      builder: (context, constraints) => SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: stickerSetGridColumnCount(
+            constraints.crossAxisExtent,
+          ),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+        ),
+        itemCount: _stickers.length,
+        itemBuilder: (context, i) => StickerPreview(item: _stickers[i]),
       ),
-      itemCount: _stickers.length,
-      itemBuilder: (context, i) => StickerPreview(item: _stickers[i]),
     );
   }
+}
+
+/// Chooses the smallest number of columns that keeps every square sticker at
+/// or below 150 logical pixels. Grid spacing only makes the final cells
+/// smaller, so it does not need to be subtracted here.
+@visibleForTesting
+int stickerSetGridColumnCount(double width) {
+  if (!width.isFinite || width <= 0) return 1;
+  return (width / 150).ceil();
 }

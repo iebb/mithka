@@ -28,7 +28,27 @@ final Map<String, Future<Uint8List?>> _inflatedTgsCache = {};
 /// Releases inflated sticker JSON after an OS memory warning. Visible stickers
 /// retain their own bytes and continue rendering; reopened stickers inflate on
 /// demand away from the UI isolate.
-void clearAnimatedStickerMemoryCache() => _inflatedTgsCache.clear();
+void clearAnimatedStickerMemoryCache() {
+  _inflatedTgsCache.clear();
+  // Without this the parsed compositions — and, through their keys, the byte
+  // buffers we just dropped — stay pinned by lottie, so a memory warning frees
+  // nothing. Mounted widgets hold their own composition future and keep playing.
+  Lottie.cache.clear();
+}
+
+bool _lottieCacheBounded = false;
+
+/// lottie's shared composition cache holds 1000 entries by default and nothing
+/// ever trims it, so every sticker parsed this session is retained. Its key is
+/// the byte buffer's identity, so a sticker evicted from `_inflatedTgsCache`
+/// and re-inflated parks a *second* composition under a new key.
+void _boundLottieCache() {
+  if (_lottieCacheBounded) return;
+  _lottieCacheBounded = true;
+  Lottie.cache.maximumSize = defaultTargetPlatform == TargetPlatform.android
+      ? 128
+      : 256;
+}
 
 int get _maxInflatedTgsCacheEntries =>
     defaultTargetPlatform == TargetPlatform.android ? 32 : 80;
@@ -68,6 +88,7 @@ Future<void> _prewarmTgsComposition(
   Uint8List bytes,
   bool Function() stillWanted,
 ) async {
+  _boundLottieCache();
   if (_activeTgsParses >= _maxConcurrentTgsParses) {
     final turn = Completer<void>();
     _tgsParseQueue.add(turn);

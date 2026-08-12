@@ -1,9 +1,9 @@
 //
 //  video_sticker_view.dart
 //
-//  Plays a Telegram `.webm` (VP9 + alpha) video sticker, looping + muted when the
-//  MDK/FFmpeg backend is available. Android 14+ skips fvp because libmdk crashes
-//  during native load there, so those devices render TDLib's static thumbnail.
+//  Plays a Telegram `.webm` (VP9 + alpha) video sticker, looping + muted.
+//  Android routes files from TDLib's sticker cache through the scoped FVP
+//  software decoder so VP9 alpha is preserved without affecting normal video.
 //
 
 import 'dart:async';
@@ -11,7 +11,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/photo_avatar.dart';
@@ -49,8 +48,6 @@ class _VideoStickerViewState extends State<VideoStickerView>
   LoopingMediaPlayerLease? _lease;
   LoopingMediaPlayerWaiter? _leaseWaiter;
   VideoPlayerController? _initializingController;
-
-  static Future<bool>? _androidNeedsStaticFallback;
 
   @override
   void initState() {
@@ -332,21 +329,7 @@ class _VideoStickerViewState extends State<VideoStickerView>
     if (defaultTargetPlatform != TargetPlatform.android) {
       return Future.value(false);
     }
-    return _androidNeedsStaticFallback ??= _androidSdkInt().then(
-      (sdkInt) => sdkInt == null || sdkInt >= 34,
-    );
-  }
-
-  static Future<int?> _androidSdkInt() async {
-    try {
-      final info = await const MethodChannel(
-        'mithka/app_info',
-      ).invokeMapMethod<String, Object?>('info');
-      final sdkInt = info?['sdkInt'];
-      return sdkInt is int ? sdkInt : null;
-    } catch (_) {
-      return null;
-    }
+    return Future.value(false);
   }
 
   @override

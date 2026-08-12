@@ -73,56 +73,39 @@ class _QuickReactionSettingsViewState extends State<QuickReactionSettingsView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final controller = context.watch<ThemeController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.quickReactionsTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: AnimatedBuilder(
-              animation: EmojiStore.shared,
-              builder: (context, _) {
-                final selected = effectiveQuickReactions(
-                  controller.quickReactions,
-                  allowCustomEmoji: EmojiStore.shared.isPremium,
-                );
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.xl,
-                    AppSpacing.lg,
-                    AppSpacing.section,
-                  ),
-                  children: [
-                    const SettingsSectionHeader(
-                      AppStringKeys.quickReactionsSelected,
-                    ),
-                    _selectedStrip(selected),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.xxl,
-                        AppSpacing.sm,
-                        AppSpacing.xxl,
-                        AppSpacing.xl,
-                      ),
-                      child: Text(
-                        AppStrings.t(AppStringKeys.quickReactionsHint),
-                        style: AppTextStyle.footnote(c.textTertiary),
-                      ),
-                    ),
-                    const SettingsSectionHeader(
-                      AppStringKeys.quickReactionsAvailable,
-                    ),
-                    _picker(selected),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.quickReactionsTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: AnimatedBuilder(
+        animation: EmojiStore.shared,
+        builder: (context, _) {
+          final selected = effectiveQuickReactions(
+            controller.quickReactions,
+            allowCustomEmoji: EmojiStore.shared.isPremium,
+          );
+          return SettingsListView(
+            children: [
+              const SettingsSectionHeader(AppStringKeys.quickReactionsSelected),
+              _selectedStrip(selected),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xxl,
+                  AppSpacing.sm,
+                  AppSpacing.xxl,
+                  AppSpacing.xl,
+                ),
+                child: Text(
+                  AppStrings.t(AppStringKeys.quickReactionsHint),
+                  style: AppTextStyle.footnote(c.textTertiary),
+                ),
+              ),
+              const SettingsSectionHeader(
+                AppStringKeys.quickReactionsAvailable,
+              ),
+              _picker(selected),
+            ],
+          );
+        },
       ),
     );
   }

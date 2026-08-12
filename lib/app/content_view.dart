@@ -45,8 +45,14 @@ class ContentView extends StatelessWidget {
       AuthInitializing() || AuthLoggingOut() => const SplashView(),
       _ => const LoginView(),
     };
+    // Entering MainTabView is the one edge where the crossfade lands on the
+    // frames that inflate the tab stack and the first chat rows; wrapping that
+    // in a full-viewport opacity layer for 250 ms is the most expensive
+    // rasterisation of the launch. Splash <-> login still crossfades.
     final content = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
+      duration: child is MainTabView
+          ? Duration.zero
+          : const Duration(milliseconds: 250),
       child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
     );
     return content;
@@ -453,10 +459,13 @@ class _MacosTitleBarAvatar extends StatelessWidget {
   Widget _fallback() {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty || trimmedName == 'Mithka') {
+      // The icon is 1024x1024: 4 MB of RGBA for a 24 pt slot without a decode
+      // hint. Width only, so the square aspect survives.
       return Image.asset(
         'assets/app_icon.png',
         width: size,
         height: size,
+        cacheWidth: (size * 4).round(),
         fit: BoxFit.cover,
       );
     }
@@ -486,6 +495,10 @@ class _MacosTitleBarAvatar extends StatelessWidget {
       key: const ValueKey('macos-title-bar-account-avatar-file'),
       width: size,
       height: size,
+      // The branch a signed-in user actually renders: a full-size profile
+      // photo for a 24 pt slot. Width only, so the aspect BoxFit.cover crops
+      // against is unchanged.
+      cacheWidth: (size * 4).round(),
       fit: BoxFit.cover,
       errorBuilder: (_, _, _) => _fallback(),
     );
@@ -588,8 +601,10 @@ class SplashView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // The asset is 1254x1254 and would otherwise decode at full size
+            // (6.3 MB of RGBA) for a 192 pt slot. Width only keeps it square.
             Image(
-              image: AssetImage('assets/penguin.png'),
+              image: ResizeImage(AssetImage('assets/penguin.png'), width: 576),
               width: AppMetric.splashPenguinSize,
               height: AppMetric.splashPenguinSize,
             ),

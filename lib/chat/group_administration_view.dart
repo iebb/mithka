@@ -1493,26 +1493,32 @@ class _InviteLinkAnalyticsViewState extends State<InviteLinkAnalyticsView> {
     title: AppStrings.t(AppStringKeys.groupAdministrationInviteLinkAnalytics),
     child: _loading
         ? const Center(child: AppActivityIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              _AdminSection(
-                title: AppStrings.t(
-                  AppStringKeys.groupAdministrationValue1JoinedMembers,
-                  {'value1': _members.length},
-                ),
-                children: _members.isEmpty
-                    ? [
-                        _AdminEmptyRow(
-                          AppStrings.t(
-                            AppStringKeys
-                                .groupAdministrationNoMembersJoinedThroughLink,
-                          ),
+        : CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(14),
+                sliver: _members.isEmpty
+                    ? SliverToBoxAdapter(
+                        child: _AdminSection(
+                          title: _membersTitle,
+                          children: [
+                            _AdminEmptyRow(
+                              AppStrings.t(
+                                AppStringKeys
+                                    .groupAdministrationNoMembersJoinedThroughLink,
+                              ),
+                            ),
+                          ],
                         ),
-                      ]
-                    : [
-                        for (final member in _members)
-                          _AdminNavRow(
+                      )
+                    // The member list is whatever the link produced — the old
+                    // Column inflated every row of it.
+                    : _AdminSectionSliver(
+                        title: _membersTitle,
+                        itemCount: _members.length,
+                        itemBuilder: (context, index) {
+                          final member = _members[index];
+                          return _AdminNavRow(
                             title:
                                 _names[member.int64('user_id')] ??
                                 'User ${member.int64('user_id') ?? ''}',
@@ -1526,11 +1532,17 @@ class _InviteLinkAnalyticsViewState extends State<InviteLinkAnalyticsView> {
                                 : _dateLabel(
                                     member.integer('joined_chat_date') ?? 0,
                                   ),
-                          ),
-                      ],
+                          );
+                        },
+                      ),
               ),
             ],
           ),
+  );
+
+  String get _membersTitle => AppStrings.t(
+    AppStringKeys.groupAdministrationValue1JoinedMembers,
+    {'value1': _members.length},
   );
 }
 
@@ -1640,55 +1652,77 @@ class _ChatJoinRequestsAdministrationViewState
     title: AppStrings.t(AppStringKeys.groupAdministrationJoinRequests),
     child: _loading
         ? const Center(child: AppActivityIndicator())
-        : ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              if (_requests.isNotEmpty) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: _AdminActionButton(
-                        label: AppStrings.t(
-                          AppStringKeys.groupAdministrationApproveAll,
+        : CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(14),
+                sliver: SliverMainAxisGroup(
+                  slivers: [
+                    if (_requests.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _AdminActionButton(
+                                    label: AppStrings.t(
+                                      AppStringKeys
+                                          .groupAdministrationApproveAll,
+                                    ),
+                                    onTap: () => _processAll(true),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _AdminActionButton(
+                                    label: AppStrings.t(
+                                      AppStringKeys
+                                          .groupAdministrationDeclineAll,
+                                    ),
+                                    destructive: true,
+                                    onTap: () => _processAll(false),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                         ),
-                        onTap: () => _processAll(true),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _AdminActionButton(
-                        label: AppStrings.t(
-                          AppStringKeys.groupAdministrationDeclineAll,
+                    if (_requests.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _AdminSection(
+                          title: _pendingTitle,
+                          children: [
+                            _AdminEmptyRow(
+                              AppStrings.t(
+                                AppStringKeys
+                                    .groupAdministrationNoPendingJoinRequests,
+                              ),
+                            ),
+                          ],
                         ),
-                        destructive: true,
-                        onTap: () => _processAll(false),
+                      )
+                    else
+                      // A channel can hold thousands of pending requests; the
+                      // old Column inflated a row for every one of them.
+                      _AdminSectionSliver(
+                        title: _pendingTitle,
+                        itemCount: _requests.length,
+                        itemBuilder: (context, index) =>
+                            _joinRequestRow(_requests[index]),
                       ),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 16),
-              ],
-              _AdminSection(
-                title: AppStrings.t(
-                  AppStringKeys.groupAdministrationValue1Pending,
-                  {'value1': _requests.length},
-                ),
-                children: _requests.isEmpty
-                    ? [
-                        _AdminEmptyRow(
-                          AppStrings.t(
-                            AppStringKeys
-                                .groupAdministrationNoPendingJoinRequests,
-                          ),
-                        ),
-                      ]
-                    : [
-                        for (final request in _requests)
-                          _joinRequestRow(request),
-                      ],
               ),
             ],
           ),
+  );
+
+  String get _pendingTitle => AppStrings.t(
+    AppStringKeys.groupAdministrationValue1Pending,
+    {'value1': _requests.length},
   );
 
   Widget _joinRequestRow(Map<String, dynamic> request) {
@@ -2567,6 +2601,63 @@ class _AdminSection extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// Sliver twin of [_AdminSection] for the two pages whose row count is
+/// network-sized. Same card, but only the visible rows are inflated.
+class _AdminSectionSliver extends StatelessWidget {
+  const _AdminSectionSliver({
+    required this.title,
+    required this.itemCount,
+    required this.itemBuilder,
+  });
+
+  final String title;
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    const radius = Radius.circular(AppRadius.card);
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
+            child: Text(
+              title,
+              style: AppTextStyle.footnote(context.colors.textTertiary),
+            ),
+          ),
+        ),
+        SliverList.builder(
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            final body = ColoredBox(
+              color: context.colors.card,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (index > 0) const InsetDivider(leadingInset: 14),
+                  itemBuilder(context, index),
+                ],
+              ),
+            );
+            final first = index == 0;
+            final last = index == itemCount - 1;
+            if (!first && !last) return body;
+            return ClipRRect(
+              borderRadius: BorderRadius.vertical(
+                top: first ? radius : Radius.zero,
+                bottom: last ? radius : Radius.zero,
+              ),
+              child: body,
+            );
+          },
+        ),
+      ],
+    );
+  }
 }
 
 class _AdminNavRow extends StatelessWidget {

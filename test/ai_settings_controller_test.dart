@@ -33,6 +33,10 @@ void main() {
 
       expect(controller.initialized, isTrue);
       expect(controller.enabled, isFalse);
+      expect(
+        preferences.getBool(AiSettingsController.enabledPreferenceKey),
+        AiSettingsController.defaultUnreadSummaryEnabled,
+      );
       expect(controller.endpoint, isEmpty);
       expect(controller.model, isEmpty);
       expect(controller.apiKey, isEmpty);

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/chat_community_service_card.dart';
+import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/communities/community_models.dart';
 import 'package:mithka/communities/community_view.dart';
@@ -325,7 +327,11 @@ void main() {
     });
 
     test('recognizes community membership service messages', () {
-      final added = {'@type': 'messageChatAddedToCommunity'};
+      final added = <String, dynamic>{
+        '@type': 'messageChatAddedToCommunity',
+        'community_id': 42,
+        'community_name': 'Neko',
+      };
       final removed = {'@type': 'messageChatRemovedFromCommunity'};
 
       expect(TDParse.isServiceContent(added['@type']), isTrue);
@@ -338,6 +344,63 @@ void main() {
         TDParse.serviceText(removed),
         AppStrings.t(AppStringKeys.communityChatRemovedService),
       );
+      final message = TDParse.message({
+        '@type': 'message',
+        'id': 8,
+        'date': 1,
+        'sender_id': {'@type': 'messageSenderUser', 'user_id': 7},
+        'content': added,
+      })!;
+      expect(message.communityPreview?.id, 42);
+      expect(message.communityPreview?.name, 'Neko');
+      expect(message.serviceUserIds, [7]);
+      expect(
+        resolvedCommunityServiceText(
+          contentType: 'messageChatAddedToCommunity',
+          actorName: 'Miao',
+          communityName: 'Neko',
+        ),
+        'Miao added this group to the Neko community.',
+      );
+    });
+
+    testWidgets('renders a community service card with a view action', (
+      tester,
+    ) async {
+      var viewed = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(extensions: [AppColors.light]),
+          home: Scaffold(
+            body: ChatCommunityServiceCard(
+              preview: MessageCommunityPreview(id: 42, name: 'Neko'),
+              label: 'Miao added this group to the Neko community.',
+              onView: () => viewed = true,
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('chat-community-service-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Miao added this group to the Neko community.'),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('chat-community-service-view')),
+      );
+      expect(viewed, isTrue);
     });
 
     testWidgets('renders the iOS-style hub and toggles one-chat mode', (

@@ -22,9 +22,10 @@ import 'sticker_set_detail_view.dart';
 import 'video_sticker_view.dart';
 
 class StickerViewer extends StatefulWidget {
-  const StickerViewer({super.key, required this.message});
+  const StickerViewer({super.key, required this.message, this.onOpenSet});
 
   final ChatMessage message;
+  final ValueChanged<int>? onOpenSet;
 
   @override
   State<StickerViewer> createState() => _StickerViewerState();
@@ -66,6 +67,12 @@ class _StickerViewerState extends State<StickerViewer> {
   void _openSet() {
     final setId = _message.stickerSetId;
     if (setId == null || setId == 0) return;
+    final onOpenSet = widget.onOpenSet;
+    if (onOpenSet != null) {
+      Navigator.of(context).pop();
+      onOpenSet(setId);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => StickerSetDetailView(setId: setId)),
     );

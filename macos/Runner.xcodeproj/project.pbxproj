@@ -27,6 +27,9 @@
 		33CC10F32044A3C60003C045 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F22044A3C60003C045 /* Assets.xcassets */; };
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
+		A17D0FF631E1000100000001 /* MacOSAppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */; };
+		A17D0FF331E1000100000001 /* HandoffBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF231E1000100000001 /* HandoffBridge.swift */; };
+		A17D0FF431E1000100000001 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = A17D0FF531E1000100000001 /* Pengram.icon */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		B4123E067779DD82F7599FAD /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9D15C6CAC6426AD4E244CF98 /* Pods_Runner.framework */; };
 		FB83EC93C77EE9A4164859CD /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3BC0A394C0AFA857A5317183 /* Pods_RunnerTests.framework */; };
@@ -73,6 +76,9 @@
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		33CC10F72044A3C60003C045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Runner/Info.plist; sourceTree = "<group>"; };
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
+		A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOSAppIconPlugin.swift; sourceTree = "<group>"; };
+		A17D0FF231E1000100000001 /* HandoffBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = HandoffBridge.swift; path = ../../apple/HandoffBridge.swift; sourceTree = "<group>"; };
+		A17D0FF531E1000100000001 /* Pengram.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Pengram.icon; path = ../ios/Runner/Pengram.icon; sourceTree = SOURCE_ROOT; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -157,6 +163,7 @@
 			isa = PBXGroup;
 			children = (
 				33CC10F22044A3C60003C045 /* Assets.xcassets */,
+				A17D0FF531E1000100000001 /* Pengram.icon */,
 				33CC10F42044A3C60003C045 /* MainMenu.xib */,
 				33CC10F72044A3C60003C045 /* Info.plist */,
 			);
@@ -181,6 +188,8 @@
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */,
+				A17D0FF231E1000100000001 /* HandoffBridge.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -328,6 +337,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				33CC10F32044A3C60003C045 /* Assets.xcassets in Resources */,
+				A17D0FF431E1000100000001 /* Pengram.icon in Resources */,
 				33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -493,6 +503,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
+				A17D0FF631E1000100000001 /* MacOSAppIconPlugin.swift in Sources */,
+				A17D0FF331E1000100000001 /* HandoffBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
@@ -537,7 +549,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mithka";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mithka";
 			};
 			name = Debug;
 		};
@@ -552,7 +564,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mithka";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mithka";
 			};
 			name = Release;
 		};
@@ -567,7 +579,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ad.neko.mithka.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mithka";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Mithka.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mithka";
 			};
 			name = Profile;
 		};
@@ -624,7 +636,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -757,7 +769,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -778,7 +790,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Release.entitlements;
 				CODE_SIGN_STYLE = Automatic;

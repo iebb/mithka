@@ -314,9 +314,11 @@ void main() {
       expect(cardSemantics.label, contains('Alpine lake'));
       expect(cardSemantics.hasAction(SemanticsAction.tap), isTrue);
 
+      // The corner affordance is a painted circle now rather than a
+      // PopupMenuButton, and it opens the project's own action sheet.
       final cardMenu = find.descendant(
         of: first,
-        matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+        matching: find.byKey(const ValueKey('shared-media-overlay-menu-101-1')),
       );
       expect(cardMenu, findsOneWidget);
       await tester.tap(cardMenu);
@@ -331,13 +333,8 @@ void main() {
       expect(find.text(openOriginal), findsOneWidget);
       final deleteLabel = find.text(deleteCache);
       expect(deleteLabel, findsOneWidget);
-      final deleteItem = tester.widget<PopupMenuItem>(
-        find.ancestor(
-          of: deleteLabel,
-          matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
-        ),
-      );
-      expect(deleteItem.enabled, isTrue);
+      // A disabled row is greyed; this one has a cached file, so it is live.
+      expect(tester.widget<Text>(deleteLabel).style?.color, Colors.redAccent);
 
       await tester.tapAt(const Offset(4, 4));
       await tester.pumpAndSettle();

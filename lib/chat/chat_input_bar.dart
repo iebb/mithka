@@ -91,7 +91,7 @@ import 'voice_note_preview_view.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
 
-enum _RichTextSendMode { premium, botRelay }
+enum _RichTextSendMode { direct, botRelay }
 
 class _ReplyKeyboard {
   const _ReplyKeyboard({required this.message, required this.rows});
@@ -128,8 +128,15 @@ MentionQuery? activeMentionQuery(String text, TextSelection selection) {
   if (!selection.isValid || !selection.isCollapsed) return null;
   final cursor = selection.extentOffset;
   if (cursor < 0 || cursor > text.length) return null;
+  // Suggestions belong to the caret, not merely to an @ token somewhere
+  // before it. In particular, do not keep an old query active while the caret
+  // is in the middle of a token or immediately before punctuation.
+  if (cursor < text.length && text[cursor].trim().isNotEmpty) return null;
   final beforeCursor = text.substring(0, cursor);
-  final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCursor);
+  final match = RegExp(
+    r'(^|\s)@([\p{L}\p{M}\p{N}_]*)$',
+    unicode: true,
+  ).firstMatch(beforeCursor);
   if (match == null) return null;
   final leading = match.group(1)?.length ?? 0;
   return MentionQuery(
@@ -441,6 +448,7 @@ class ChatInputBar extends StatefulWidget {
     this.aiReplyHistoryLoader,
     this.desktopComposerHeightLoader,
     this.desktopComposerHeightSaver,
+    this.botPlatformForTesting,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -478,6 +486,8 @@ class ChatInputBar extends StatefulWidget {
   final DesktopComposerHeightLoader? desktopComposerHeightLoader;
   @visibleForTesting
   final DesktopComposerHeightSaver? desktopComposerHeightSaver;
+  @visibleForTesting
+  final BotPlatformService? botPlatformForTesting;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -557,7 +567,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   List<BotCommandOption> _botCommandCandidates = const [];
   OverlayEntry? _relayProgressEntry;
   RichMessageRelayProgress? _relayProgress;
-  final BotPlatformService _botPlatform = BotPlatformService();
+  late final BotPlatformService _botPlatform;
   StreamSubscription<Map<String, dynamic>>? _botPlatformUpdates;
   final List<BotGuestQuery> _guestQueries = [];
   Timer? _inlineBotTimer;
@@ -596,6 +606,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void initState() {
     super.initState();
+    _botPlatform = widget.botPlatformForTesting ?? BotPlatformService();
     DesktopChatComposerActions._register(
       _desktopActionOwner,
       captureScreenshot: _captureDesktopScreenshot,
@@ -624,10 +635,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
         needsRebuild = true;
         panelChanged = true;
       }
+      if (!_focus.hasFocus) {
+        _mentionSearchTimer?.cancel();
+        _mentionSearchGeneration++;
+        if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
+          _mentionQuery = null;
+          _mentionCandidates = const [];
+          needsRebuild = true;
+        }
+      }
       if (needsRebuild && mounted) {
         setState(() {});
         if (panelChanged) widget.onPanelGeometryChanged?.call();
       }
+      if (_focus.hasFocus) _updateMentionSuggestions();
     });
     vm.addListener(_syncFromVm);
     EmojiStore.shared.addListener(_onStore);
@@ -781,7 +802,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _updateMentionSuggestions() {
     final query = activeMentionQuery(_controller.text, _controller.selection);
-    if (query == null || !vm.isGroup) {
+    if (!_focus.hasFocus || query == null || !vm.isGroup) {
       _mentionSearchTimer?.cancel();
       _mentionSearchGeneration++;
       if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
@@ -808,7 +829,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
         _controller.text,
         _controller.selection,
       );
-      if (active == null ||
+      if (!_focus.hasFocus ||
+          active == null ||
           active.start != query.start ||
           active.end != query.end ||
           active.query != query.query) {
@@ -820,7 +842,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _selectMention(MentionCandidate candidate) {
     final query = activeMentionQuery(_controller.text, _controller.selection);
-    if (query == null) return;
+    final expected = _mentionQuery;
+    if (query == null ||
+        expected == null ||
+        query.start != expected.start ||
+        query.end != expected.end ||
+        query.query != expected.query) {
+      return;
+    }
     _mentionSearchTimer?.cancel();
     _mentionSearchGeneration++;
     _mentionQuery = null;
@@ -832,6 +861,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
       userId: candidate.userId,
     );
     _focus.requestFocus();
+  }
+
+  bool get _mentionSuggestionsVisible {
+    if (!_focus.hasFocus || _mentionCandidates.isEmpty) return false;
+    final expected = _mentionQuery;
+    final active = activeMentionQuery(_controller.text, _controller.selection);
+    return expected != null &&
+        active != null &&
+        active.start == expected.start &&
+        active.end == expected.end &&
+        active.query == expected.query;
   }
 
   void _updateBotCommandSuggestions({bool force = false, bool rebuild = true}) {
@@ -889,7 +929,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _queueInlineBotResults() {
-    final invocation = BotInlineInvocation.fromText(_controller.text);
+    final invocation = _controller.startsWithIdBackedMention
+        ? null
+        : BotInlineInvocation.fromText(_controller.text);
     _inlineBotTimer?.cancel();
     final generation = ++_inlineBotGeneration;
     if (invocation == null) {
@@ -2300,7 +2342,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       submitText: AppStringKeys.composerSend,
     );
     if (result == null || !mounted) return;
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     final canAttemptSend = await vm.prepareMessageSend();
     if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
@@ -2452,7 +2498,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     });
   }
 
-  Widget _desktopResizeHandle(AppColors colors) => MouseRegion(
+  Widget _desktopResizeHandle() => MouseRegion(
     cursor: SystemMouseCursors.resizeUpDown,
     child: GestureDetector(
       key: const ValueKey('desktopComposerResizeHandle'),
@@ -2461,21 +2507,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       onVerticalDragEnd: _persistDesktopComposerHeight,
       child: Semantics(
         label: AppStrings.t(AppStringKeys.chatInputResizeMessageInput),
-        child: SizedBox(
-          height: 9,
-          width: double.infinity,
-          child: Center(
-            child: Container(
-              key: const ValueKey('desktopComposerResizeIndicator'),
-              width: 38,
-              height: 3,
-              decoration: BoxDecoration(
-                color: colors.textTertiary.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
+        child: const SizedBox(height: 8, width: double.infinity),
       ),
     ),
   );
@@ -2508,17 +2540,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (desktopComposer) _desktopResizeHandle(c),
                 if (editingMessage != null)
                   _editBanner(editingMessage)
                 else if (vm.replyTo != null)
                   _replyBanner(vm.replyTo!),
                 if (editingMessage == null)
-                  if (_inlineBotLoading || _inlineBotResults != null)
+                  if (_inlineBotResults != null)
                     _inlineBotResultMenu()
                   else if (_botCommandCandidates.isNotEmpty)
                     _botCommandMenu()
-                  else if (_mentionCandidates.isNotEmpty)
+                  else if (_mentionSuggestionsVisible)
                     _mentionMenu()
                   else if (_quickReplyContextVisible &&
                       _quickReplies.isNotEmpty)
@@ -2528,7 +2559,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   _clipboardAttachmentStrip(desktop: desktopComposer),
                 if (desktopComposer) ...[
                   if (editingMessage == null)
-                    _desktopIconStrip(aiSettings: aiSettings),
+                    _desktopIconStrip(
+                      aiSettings: aiSettings,
+                      replyKeyboard: replyKeyboard,
+                    ),
                   _inputRow(
                     replyKeyboard,
                     aiSettings: aiSettings,
@@ -2560,6 +2594,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
               ],
             ),
           ),
+          if (desktopComposer)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: _desktopResizeHandle(),
+            ),
           // The base input surface is painted exactly once across the complete
           // composer. When a media/reply panel is open, extend that panel's
           // surface through the system inset with the same single overlay used
@@ -2590,22 +2631,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final c = context.colors;
     final results = _inlineBotResults?.results ?? const <BotInlineResult>[];
     Widget child;
-    if (_inlineBotLoading) {
-      child = SizedBox(
-        height: 54,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppActivityIndicator(size: 18, color: c.textSecondary),
-            const SizedBox(width: 10),
-            Text(
-              AppStrings.t(AppStringKeys.chatInputBarSearchingInlineResults),
-              style: TextStyle(color: c.textSecondary, fontSize: 14),
-            ),
-          ],
-        ),
-      );
-    } else if (results.isEmpty) {
+    if (results.isEmpty) {
       child = SizedBox(
         height: 54,
         child: Center(
@@ -2676,6 +2702,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     return Container(
+      key: const ValueKey('inlineBotResultMenu'),
       constraints: const BoxConstraints(maxHeight: 260),
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       decoration: BoxDecoration(
@@ -2840,78 +2867,71 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _mentionMenu() {
     final c = context.colors;
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 260),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(color: c.divider, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _mentionCandidates.length,
-        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
-        itemBuilder: (context, index) {
-          final candidate = _mentionCandidates[index];
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectMention(candidate),
-            child: SizedBox(
-              height: 52,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    PhotoAvatar(
-                      title: candidate.name,
-                      photo: candidate.photo,
-                      size: 34,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            candidate.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          if (candidate.username.isNotEmpty)
-                            Text(
-                              '@${candidate.username}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: c.textSecondary,
+    return TextFieldTapRegion(
+      child: Padding(
+        key: const ValueKey('mentionSuggestions'),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 260),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: _mentionCandidates.length,
+            separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+            itemBuilder: (context, index) {
+              final candidate = _mentionCandidates[index];
+              return GestureDetector(
+                key: ValueKey('mentionCandidate-${candidate.userId}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectMention(candidate),
+                child: SizedBox(
+                  height: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        PhotoAvatar(
+                          title: candidate.name,
+                          photo: candidate.photo,
+                          size: 34,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                candidate.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: c.textPrimary,
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
+                              if (candidate.username.isNotEmpty)
+                                Text(
+                                  '@${candidate.username}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -4310,7 +4330,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
         replyTarget != null &&
         _isAiReplyTargetEligible(replyTarget);
     final sender = vm.selectedMessageSender;
-    final webAppButton = editing ? null : _webAppButton(replyKeyboard);
+    final webAppButton = editing || desktop
+        ? null
+        : _webAppButton(replyKeyboard);
     final desktopCanvasHeight = clampDesktopComposerCanvasHeight(
       _desktopComposerCanvasHeight,
       viewportHeight: MediaQuery.sizeOf(context).height,
@@ -4330,13 +4352,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 : null,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // The bot-menu mini-app launcher lives in the chat header now
-              // (menu bar), not on the message row — bots with a menu web app
-              // fall through to the standard bot-menu icon here.
-              if (webAppButton != null && replyKeyboard != null) ...[
+              // Desktop utility actions live in the toolbar so the editor
+              // keeps the entire composer width.
+              if (!desktop &&
+                  webAppButton != null &&
+                  replyKeyboard != null) ...[
                 _replyKeyboardMiniAppAction(replyKeyboard, webAppButton),
                 const SizedBox(width: 8),
-              ] else if (!editing &&
+              ] else if (!desktop &&
+                  !editing &&
                   (vm.peerIsBot || _guestQueries.isNotEmpty)) ...[
                 Semantics(
                   button: true,
@@ -4603,13 +4627,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                 ),
                               ),
                             ),
-                            if (!hasText && replyKeyboard != null)
+                            if (!desktop && !hasText && replyKeyboard != null)
                               Semantics(
                                 button: true,
                                 label: _replyKeyboardVisible
                                     ? 'Hide bot keyboard'
                                     : 'Show bot keyboard',
                                 child: GestureDetector(
+                                  key: const ValueKey(
+                                    'composerReplyKeyboardToggle',
+                                  ),
                                   behavior: HitTestBehavior.opaque,
                                   onTap: _toggleReplyKeyboard,
                                   child: SizedBox(
@@ -4789,85 +4816,129 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final sendLabel =
         (editing ? AppStringKeys.messageActionEdit : AppStringKeys.composerSend)
             .l10n(context);
-    final radius = BorderRadius.circular(AppRadius.md);
-    return AppInteractiveSurface(
-      key: const ValueKey('composerSendButton'),
-      semanticLabel: '$sendLabel ($shortcut)',
-      enabled: !disabled,
-      onTap: disabled ? null : () => unawaited(_sendCurrentText()),
-      onLongPress: disabled || editing
-          ? null
-          : () => unawaited(_showTextSendOptions()),
-      borderRadius: radius,
-      child: Container(
-        key: const ValueKey('desktopComposerSendButton'),
-        constraints: const BoxConstraints(minWidth: 112),
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: disabled
-              ? AppTheme.brand.withValues(alpha: 0.42)
-              : editing
-              ? AppTheme.cloverGreen
-              : AppTheme.brand,
-          borderRadius: radius,
+    final color = disabled
+        ? AppTheme.brand.withValues(alpha: 0.42)
+        : editing
+        ? AppTheme.cloverGreen
+        : AppTheme.brand;
+    const splitRadius = Radius.circular(AppRadius.md);
+    final primaryRadius = editing
+        ? const BorderRadius.all(splitRadius)
+        : const BorderRadius.only(
+            topLeft: splitRadius,
+            bottomLeft: splitRadius,
+          );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppInteractiveSurface(
+          key: const ValueKey('composerSendButton'),
+          semanticLabel: '$sendLabel ($shortcut)',
+          enabled: !disabled,
+          onTap: disabled ? null : () => unawaited(_sendCurrentText()),
+          onLongPress: disabled || editing
+              ? null
+              : () => unawaited(_showTextSendOptions()),
+          borderRadius: primaryRadius,
+          child: Container(
+            key: const ValueKey('desktopComposerSendButton'),
+            constraints: const BoxConstraints(minWidth: 112),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: primaryRadius,
+            ),
+            child: !editing && vm.requiresPaidMessage
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const AppIcon(
+                        HeroAppIcons.solidStar,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        'x${vm.paidMessageStarCount}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (editing) ...[
+                        const AppIcon(
+                          HeroAppIcons.check,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        sendLabel,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        shortcut,
+                        key: const ValueKey('desktopComposerShortcutHint'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
-        child: !editing && vm.requiresPaidMessage
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const AppIcon(
-                    HeroAppIcons.solidStar,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    'x${vm.paidMessageStarCount}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (editing) ...[
-                    const AppIcon(
-                      HeroAppIcons.check,
-                      size: 15,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    sendLabel,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    shortcut,
-                    key: const ValueKey('desktopComposerShortcutHint'),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.78),
-                    ),
-                  ),
-                ],
+        if (!editing)
+          AppInteractiveSurface(
+            key: const ValueKey('desktopComposerSendOptionsButton'),
+            semanticLabel: AppStringKeys.messageSendOptionsTitle.l10n(context),
+            enabled: !disabled,
+            onTap: disabled ? null : () => unawaited(_showTextSendOptions()),
+            borderRadius: const BorderRadius.only(
+              topRight: splitRadius,
+              bottomRight: splitRadius,
+            ),
+            child: Container(
+              key: const ValueKey('desktopComposerSendOptionsControl'),
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color,
+                border: Border(
+                  left: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+                ),
+                borderRadius: const BorderRadius.only(
+                  topRight: splitRadius,
+                  bottomRight: splitRadius,
+                ),
               ),
-      ),
+              child: const AppIcon(
+                HeroAppIcons.chevronDown,
+                size: 12,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -5113,6 +5184,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       button: true,
       label: button.text,
       child: GestureDetector(
+        key: const ValueKey('composerReplyKeyboardMiniAppAction'),
         behavior: HitTestBehavior.opaque,
         onTap: () => unawaited(_openReplyKeyboardWebApp(keyboard, button)),
         onLongPress: () => _showBotMenu(forceMenu: true),
@@ -5218,9 +5290,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // MARK: - Icon strip
 
-  Widget _desktopIconStrip({required AiSettingsController? aiSettings}) {
+  Widget _desktopIconStrip({
+    required AiSettingsController? aiSettings,
+    required _ReplyKeyboard? replyKeyboard,
+  }) {
     final c = context.colors;
     final sender = vm.selectedMessageSender;
+    final webAppButton = _webAppButton(replyKeyboard);
+    final canToggleReplyKeyboard =
+        replyKeyboard != null &&
+        (_replyKeyboardVisible ||
+            (!_hasText && _pendingClipboardAttachments.isEmpty));
     final replyTarget = _currentAiReplyTarget();
     final aiReplyWorking = _aiReplyWorkingTargetId != null;
     final canUseAiReply =
@@ -5380,12 +5460,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     active: false,
                     onTap: _openScheduledMessages,
                   ),
-                  // In a bot chat the menu was only reachable from the round
-                  // button under the composer; it belongs with the other
-                  // composer actions too.
-                  if (vm.peerIsBot ||
-                      (vm.botMenu?.isWebApp ?? false) ||
-                      vm.botCommands.isNotEmpty)
+                  if (webAppButton != null && replyKeyboard != null)
+                    _desktopIcon(
+                      key: const ValueKey('desktopComposerMiniAppAction'),
+                      icon: HeroAppIcons.bot,
+                      semanticLabel: webAppButton.text,
+                      active: false,
+                      onTap: () => unawaited(
+                        _openReplyKeyboardWebApp(replyKeyboard, webAppButton),
+                      ),
+                      onLongPress: () => _showBotMenu(forceMenu: true),
+                    ),
+                  if (replyKeyboard != null)
+                    _desktopIcon(
+                      key: const ValueKey('desktopComposerReplyKeyboardAction'),
+                      icon: _replyKeyboardVisible
+                          ? HeroAppIcons.chevronDown
+                          : HeroAppIcons.tableCells,
+                      semanticLabel: _replyKeyboardVisible
+                          ? 'Hide bot keyboard'
+                          : 'Show bot keyboard',
+                      active: _replyKeyboardVisible,
+                      enabled: canToggleReplyKeyboard,
+                      onTap: _toggleReplyKeyboard,
+                    ),
+                  // A reply-keyboard Mini App takes the primary bot slot and
+                  // keeps the full command menu available on long press.
+                  if (webAppButton == null &&
+                      (vm.peerIsBot ||
+                          _guestQueries.isNotEmpty ||
+                          (vm.botMenu?.isWebApp ?? false) ||
+                          vm.botCommands.isNotEmpty))
                     _desktopIcon(
                       key: const ValueKey('desktopComposerBotMenuAction'),
                       icon: HeroAppIcons.bot,
@@ -6050,7 +6155,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (!mounted) return;
     try {
       var sentAny = false;
-      if (mode == _RichTextSendMode.premium) {
+      if (mode == _RichTextSendMode.direct) {
         for (var index = 0; index < result.segments.length; index++) {
           final segment = result.segments[index];
           if (segment.isHtml) {
@@ -6119,7 +6224,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
       submitText: AppStringKeys.composerSend,
     );
     if (result == null || !mounted) return;
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     final canAttemptSend = await vm.prepareMessageSend();
     if (!mounted || !canAttemptSend) return;
     if (vm.requiresPaidMessage) {
@@ -6163,6 +6272,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             targetChatId: widget.vm.chatId,
             tdClient: TdClient.shared,
             files: files,
+            blocks: segment.blocks,
             onProgress: _updateRelayProgress,
           );
           sentAny = true;
@@ -6234,8 +6344,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
+      if (await TdClient.shared.activeAccountUsesBotApi()) {
+        return _RichTextSendMode.direct;
+      }
       if (await widget.vm.currentUserIsPremium()) {
-        return _RichTextSendMode.premium;
+        return _RichTextSendMode.direct;
       }
       if (await RichMessageRelayConfig.isConfigured()) {
         return _RichTextSendMode.botRelay;

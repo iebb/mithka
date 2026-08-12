@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.media.AudioManager
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -21,6 +23,7 @@ import android.view.DragEvent
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.view.WindowCompat
+import ad.neko.mithka.system_picture_in_picture.SystemPictureInPicturePlugin
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.languageid.LanguageIdentifier
@@ -38,6 +41,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.LinkedHashSet
+import kotlin.math.roundToInt
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
@@ -61,6 +65,48 @@ class MainActivity : FlutterFragmentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         pendingSharePayload = parseIncomingShareIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SystemPictureInPicturePlugin.onActivityStarted(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SystemPictureInPicturePlugin.onActivityResumed(this)
+    }
+
+    override fun onPause() {
+        SystemPictureInPicturePlugin.onActivityPaused(this)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        SystemPictureInPicturePlugin.onActivityStopped(this)
+        super.onStop()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        SystemPictureInPicturePlugin.onUserLeaveHint(this)
+    }
+
+    @android.annotation.TargetApi(Build.VERSION_CODES.R)
+    override fun onPictureInPictureRequested(): Boolean =
+        SystemPictureInPicturePlugin.onPictureInPictureRequested(this) ||
+            super.onPictureInPictureRequested()
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        SystemPictureInPicturePlugin.onPictureInPictureModeChanged(
+            this,
+            isInPictureInPictureMode,
+            newConfig,
+        )
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -99,6 +145,9 @@ class MainActivity : FlutterFragmentActivity() {
                             "abis" to Build.SUPPORTED_ABIS.toList(),
                             "version" to (pkg.versionName ?: ""),
                             "sdkInt" to Build.VERSION.SDK_INT,
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL,
+                            "hardware" to Build.HARDWARE,
                         ),
                     )
                 } else {
@@ -225,6 +274,45 @@ class MainActivity : FlutterFragmentActivity() {
                             window.attributes = attributes
                         }
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/system_media_volume")
+            .setMethodCallHandler { call, result ->
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                when (call.method) {
+                    "get" -> result.success(systemMediaVolumeState(audioManager))
+                    "set" -> {
+                        val requested = (call.arguments as? Number)?.toDouble()
+                        if (requested == null || !requested.isFinite()) {
+                            result.error("invalid_volume", "Expected a finite numeric value", null)
+                            return@setMethodCallHandler
+                        }
+                        if (audioManager.isVolumeFixed) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        if (maximum <= 0) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val minimum = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            audioManager.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+                        } else {
+                            0
+                        }
+                        val index = (requested.coerceIn(0.0, 1.0) * maximum)
+                            .roundToInt()
+                            .coerceIn(minimum, maximum)
+                        try {
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
+                            result.success(systemMediaVolumeState(audioManager))
+                        } catch (error: SecurityException) {
+                            result.error("volume_change_denied", error.localizedMessage, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -714,6 +802,7 @@ class MainActivity : FlutterFragmentActivity() {
             add("com.baseflow.permissionhandler.PermissionHandlerPlugin")
             add("io.sentry.flutter.SentryFlutterPlugin")
             add("io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin")
+            add("ad.neko.mithka.system_picture_in_picture.SystemPictureInPicturePlugin")
             add("io.flutter.plugins.urllauncher.UrlLauncherPlugin")
             add("io.flutter.plugins.videoplayer.VideoPlayerPlugin")
         }
@@ -918,6 +1007,21 @@ class MainActivity : FlutterFragmentActivity() {
         return lower.substringBefore('-')
     }
 
+    private fun systemMediaVolumeState(audioManager: AudioManager): Map<String, Any> {
+        val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val minimum = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            audioManager.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+        } else {
+            0
+        }
+        return mapOf(
+            "index" to audioManager.getStreamVolume(AudioManager.STREAM_MUSIC),
+            "minimum" to minimum,
+            "maximum" to maximum,
+            "fixed" to audioManager.isVolumeFixed,
+        )
+    }
+
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         translators.values.forEach { it.close() }
         translators.clear()
@@ -933,5 +1037,10 @@ class MainActivity : FlutterFragmentActivity() {
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onDestroy() {
+        SystemPictureInPicturePlugin.onActivityDestroyed(this)
+        super.onDestroy()
     }
 }

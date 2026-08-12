@@ -22,6 +22,7 @@ import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../tdlib/td_user_index.dart';
 import 'chat_delete_policy.dart';
 
 class ChatFilterOption {
@@ -45,7 +46,12 @@ class _CommunityLookup {
   final bool isBot;
 }
 
+typedef ChatListQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
 class ChatListViewModel extends ChangeNotifier {
+  ChatListViewModel({@visibleForTesting this._queryForTesting});
+
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
   List<ChatSummary> _filtered = [];
@@ -116,6 +122,11 @@ class ChatListViewModel extends ChangeNotifier {
   final Map<int, int> _communityByChat = {};
   final Map<int, int> _chatBySupergroup = {};
   final Map<int, int> _chatByUser = {};
+
+  /// Every chat that fronts a given user — a peer can have both a private and a
+  /// secret chat. Lets `updateUser` touch only its own chats instead of
+  /// rescanning the whole account once per user during session restore.
+  final Map<int, List<int>> _chatsByPeerUser = {};
   final Set<int> _communityPreferencesLoaded = {};
   final Set<int> _loadingCommunityCatalogs = {};
   final Set<int> _queuedCommunityChats = {};
@@ -129,8 +140,9 @@ class ChatListViewModel extends ChangeNotifier {
   int? _meId;
   bool _prefetchingMain = false;
   final Set<String> _loadingChatLists = {};
-  final Map<String, int> _hydratingChatLists = {};
+  final Map<String, Future<bool>> _chatListLoadOperations = {};
   final Set<String> _exhaustedChatLists = {};
+  final ChatListQuery? _queryForTesting;
   static const _pageSize = 100;
   static const _initialPageSize = 36;
   static const _backgroundHydrateLimit = 60;
@@ -335,7 +347,7 @@ class ChatListViewModel extends ChangeNotifier {
     }
     _loadingChatLists.add(key);
     try {
-      await _client.query({
+      await _chatListQuery({
         '@type': 'loadChats',
         'chat_list': list,
         'limit': limit,
@@ -376,12 +388,11 @@ class ChatListViewModel extends ChangeNotifier {
           _listening &&
           passes < _backgroundPrefetchPasses) {
         passes += 1;
-        final loaded = await _loadChatList({
-          '@type': 'chatListMain',
-        }, _pageSize);
-        await _hydrateChatList({
-          '@type': 'chatListMain',
-        }, limit: _backgroundHydrateLimit);
+        final loaded = await _loadAndHydrateChatList(
+          {'@type': 'chatListMain'},
+          _pageSize,
+          hydrateLimit: _backgroundHydrateLimit,
+        );
         if (!loaded && !_loadingChatLists.contains('main')) break;
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }
@@ -409,12 +420,42 @@ class ChatListViewModel extends ChangeNotifier {
     _resort();
   }
 
-  Future<void> _loadAndHydrateChatList(
+  Future<bool> _loadAndHydrateChatList(
     Map<String, dynamic> list,
-    int limit,
-  ) async {
-    await _loadChatList(list, limit);
-    await _hydrateChatList(list, limit: limit);
+    int limit, {
+    int? hydrateLimit,
+  }) {
+    final key = _chatListKey(list);
+    final existing = _chatListLoadOperations[key];
+    if (existing != null) return existing;
+
+    late final Future<bool> tracked;
+    final operation = _performLoadAndHydrateChatList(
+      list,
+      loadLimit: limit,
+      hydrateLimit: hydrateLimit ?? limit,
+    );
+    tracked = operation.whenComplete(() {
+      if (identical(_chatListLoadOperations[key], tracked)) {
+        _chatListLoadOperations.remove(key);
+      }
+    });
+    _chatListLoadOperations[key] = tracked;
+    return tracked;
+  }
+
+  Future<bool> _performLoadAndHydrateChatList(
+    Map<String, dynamic> list, {
+    required int loadLimit,
+    required int hydrateLimit,
+  }) async {
+    // A scroll listener can request an older page as soon as the empty list is
+    // attached. Keep loadChats + getChats atomic for each list so that request
+    // cannot hydrate a stale pre-load snapshot and suppress the fresh startup
+    // page. The first visible page is therefore always TDLib's newest page.
+    final loaded = await _loadChatList(list, loadLimit);
+    await _hydrateChatList(list, limit: hydrateLimit);
+    return loaded;
   }
 
   Future<void> _hydrateChatList(
@@ -422,17 +463,8 @@ class ChatListViewModel extends ChangeNotifier {
     required int limit,
   }) async {
     if (_disposed) return;
-    // loadMore() runs from a scroll listener, so near the end of the list this
-    // is asked for once per frame. Collapse the duplicates onto the in-flight
-    // round trip instead of decoding the same 100 ids on every frame of a fling.
-    // A request for more ids than are in flight still goes out, so the startup
-    // race between _loadChats and _prefetchMainChats keeps the wider page.
-    final key = _chatListKey(list);
-    final inFlight = _hydratingChatLists[key];
-    if (inFlight != null && inFlight >= limit) return;
-    _hydratingChatLists[key] = limit;
     try {
-      final res = await _client.query({
+      final res = await _chatListQuery({
         '@type': 'getChats',
         'chat_list': list,
         'limit': limit,
@@ -445,10 +477,11 @@ class ChatListViewModel extends ChangeNotifier {
       }
     } catch (_) {
       _finishInitialLoadingIfNeeded(force: true);
-    } finally {
-      if (_hydratingChatLists[key] == limit) _hydratingChatLists.remove(key);
     }
   }
+
+  Future<Map<String, dynamic>> _chatListQuery(Map<String, dynamic> request) =>
+      _queryForTesting?.call(request) ?? _client.query(request);
 
   // MARK: - Row actions (swipe)
 
@@ -819,7 +852,7 @@ class ChatListViewModel extends ChangeNotifier {
         if (!needsReclassification) return;
         _client
             .query({'@type': 'getChat', 'chat_id': chatId})
-            .then((chat) => _ingestRawChat(chat, schedule: true))
+            .then(_ingestRawChat)
             .catchError((_) {});
 
       case 'updateSupergroupFullInfo':
@@ -892,14 +925,14 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed || _map.containsKey(id)) return;
     _client
         .query({'@type': 'getChat', 'chat_id': id})
-        .then((raw) => _ingestRawChat(raw, schedule: true))
+        .then(_ingestRawChat)
         .catchError((_) {});
   }
 
-  Future<void> _ingestRawChat(
-    Map<String, dynamic> raw, {
-    bool schedule = false,
-  }) async {
+  /// Folds a raw TDLib chat into the store. The resort is always coalesced:
+  /// session restore delivers one `updateNewChat` per chat, and a full sort
+  /// plus notify per chat lands squarely in the wait for the first chat list.
+  Future<void> _ingestRawChat(Map<String, dynamic> raw) async {
     if (_disposed) return;
     final summary = TDParse.chat(raw);
     if (summary == null) return;
@@ -908,36 +941,31 @@ class ChatListViewModel extends ChangeNotifier {
     _indexCommunityPeer(summary.id, raw);
     _resolveForumIfNeeded(summary, raw);
     _resolveCommunityIfNeeded(summary, raw);
-    _resolvePeerIfNeeded(summary);
     final joined = await _isJoinedSummary(summary, raw);
     if (_disposed) return;
     if (!joined) {
       _map.remove(summary.id);
       _communityDirectoryChats[summary.id] = summary;
+      // After the chat is in a map: the peer resolution can now complete
+      // synchronously off the user cache, and it looks the chat up by id.
+      _resolvePeerIfNeeded(summary);
       _applyPositions(summary.id, raw.objects('positions'));
       _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
       final communityId = _communityByChat[summary.id];
       if (communityId != null) {
         _verifyCommunityChatIsPublic(summary.id, communityId);
       }
-      if (schedule) {
-        _scheduleResort();
-      } else {
-        _resort();
-      }
+      _scheduleResort();
       return;
     }
     _communityDirectoryChats.remove(summary.id);
     _viewableCommunityChatIds.remove(summary.id);
     _checkingCommunityChatAccess.remove(summary.id);
     _map[summary.id] = summary;
+    _resolvePeerIfNeeded(summary);
     _applyPositions(summary.id, raw.objects('positions'));
     _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
-    if (schedule) {
-      _scheduleResort();
-    } else {
-      _resort();
-    }
+    _scheduleResort();
   }
 
   void _resolveForumIfNeeded(ChatSummary summary, Map<String, dynamic> raw) {
@@ -1010,7 +1038,7 @@ class ChatListViewModel extends ChangeNotifier {
                 '@type': 'getChat',
                 'chat_id': chatId,
               });
-              await _ingestRawChat(raw, schedule: true);
+              await _ingestRawChat(raw);
               if (_disposed) return;
               _applyChatCommunityId(chatId, communityId);
               if (entry.boolean('can_view_history') == true &&
@@ -1101,9 +1129,22 @@ class ChatListViewModel extends ChangeNotifier {
         final supergroupId = type?.int64('supergroup_id');
         if (supergroupId != null) _chatBySupergroup[supergroupId] = chatId;
       case 'chatTypePrivate':
-        final userId = type?.int64('user_id');
-        if (userId != null) _chatByUser[userId] = chatId;
+        final privateUserId = type?.int64('user_id');
+        if (privateUserId != null) {
+          _chatByUser[privateUserId] = chatId;
+          _indexPeerChat(privateUserId, chatId);
+        }
+      // A secret chat fronts a user too, so peer metadata has to reach it —
+      // but _chatByUser stays the private chat the full-info lookups want.
+      case 'chatTypeSecret':
+        final secretUserId = type?.int64('user_id');
+        if (secretUserId != null) _indexPeerChat(secretUserId, chatId);
     }
+  }
+
+  void _indexPeerChat(int userId, int chatId) {
+    final chats = _chatsByPeerUser.putIfAbsent(userId, () => <int>[]);
+    if (!chats.contains(chatId)) chats.add(chatId);
   }
 
   void _resolveCommunityIfNeeded(
@@ -1254,7 +1295,11 @@ class ChatListViewModel extends ChangeNotifier {
   void scheduleResortForTesting() => _scheduleResort();
 
   @visibleForTesting
-  void seedChatForTesting(ChatSummary chat) => _map[chat.id] = chat;
+  void seedChatForTesting(ChatSummary chat) {
+    _map[chat.id] = chat;
+    final userId = chat.peerUserId;
+    if (userId != null) _indexPeerChat(userId, chat.id);
+  }
 
   @visibleForTesting
   void applyUpdateForTesting(Map<String, dynamic> update) => _apply(update);
@@ -1281,6 +1326,14 @@ class ChatListViewModel extends ChangeNotifier {
   void _resolvePeerIfNeeded(ChatSummary summary) {
     final userId = summary.peerUserId;
     if (userId == null || _resolvingPeers.contains(userId)) return;
+    // TDLib emits updateUser before it exposes a user id, and TdUserIndex has
+    // been observing since process start — so the peer is normally already
+    // cached and the getUser is one round trip per private chat for nothing.
+    final cached = TdUserIndex.shared.userFor(_client.activeSlot, userId);
+    if (cached != null) {
+      _applyPeerUser(cached);
+      return;
+    }
     _resolvingPeers.add(userId);
     _client
         .query({'@type': 'getUser', 'user_id': userId})
@@ -1304,11 +1357,9 @@ class ChatListViewModel extends ChangeNotifier {
     final phoneNumber = user.str('phone_number');
     final accent = user.integer('accent_color_id') ?? -1;
     final status = TDParse.emojiStatusCustomEmojiId(user.obj('emoji_status'));
-    for (final chat in <ChatSummary>[
-      ..._map.values,
-      ..._communityDirectoryChats.values,
-    ]) {
-      if (chat.peerUserId != userId) continue;
+    for (final chatId in _chatsByPeerUser[userId] ?? const <int>[]) {
+      final chat = _map[chatId] ?? _communityDirectoryChats[chatId];
+      if (chat == null) continue;
       final nextKind = isBot
           ? ChatKind.bot
           : chat.kind == ChatKind.bot

@@ -53,6 +53,7 @@ void main() {
     expect(closed, 1);
 
     await windows.configureCurrentWindow(title: 'Ignored');
+    await windows.hideCurrentWindow();
     await windows.closeCurrentWindow();
     expect(await windows.setCurrentWindowFullscreen(true), isFalse);
     await windows.toggleCurrentWindowFullscreen();

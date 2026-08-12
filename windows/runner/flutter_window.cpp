@@ -7,7 +7,11 @@
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
-FlutterWindow::~FlutterWindow() {}
+FlutterWindow::~FlutterWindow() {
+  // Tear the engine down while virtual dispatch can still reach OnDestroy.
+  // Win32Window also guards finalization, so WM_DESTROY cannot clean it twice.
+  Destroy();
+}
 
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
@@ -51,6 +55,13 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // The primary window must hide before multi_window_manager observes close;
+  // that plugin's normal primary close path posts WM_QUIT for the process.
+  if (auto tray_result =
+          HandleBackgroundTrayMessage(hwnd, message, wparam, lparam)) {
+    return *tray_result;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

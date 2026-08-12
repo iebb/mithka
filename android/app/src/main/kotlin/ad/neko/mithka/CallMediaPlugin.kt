@@ -27,6 +27,7 @@ import org.webrtc.TextureViewRenderer
 import org.webrtc.VideoFrame
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 
 /**
@@ -71,6 +72,13 @@ class CallMediaPlugin(
     private val groupVideoEndpointBySsrc = ConcurrentHashMap<Long, String>()
     private val groupVideoSourcesByEndpoint = ConcurrentHashMap<String, String>()
 
+    // Recycled I420 staging buffers, one pool per renderer role. A 720p frame is
+    // 1.35 MB, so allocating one per decoded frame is ~41 MB/s of direct memory
+    // per stream that ART can only reclaim by forcing a GC. A buffer returns to
+    // its pool when the renderer releases the frame wrapping it — that callback
+    // runs on the renderer's EGL thread, hence the concurrent queue.
+    private val framePools = ConcurrentHashMap<String, ConcurrentLinkedQueue<ByteBuffer>>()
+
     // We capture our own camera (CameraCapture) and feed ntgcalls an EXTERNAL stream,
     // because ntgcalls' DEVICE capture never surfaces frames for a local preview.
     private var camera: CameraCapture? = null
@@ -87,6 +95,9 @@ class CallMediaPlugin(
         // is read (it must match the stream direction).
         private const val MIC_META = "{\"is_microphone\":true}"
         private const val SPK_META = "{\"is_microphone\":false}"
+
+        // Recycled staging buffers held per role while the renderer drains.
+        private const val FRAME_POOL_DEPTH = 4
 
         // ntgcalls reads org.webrtc.ApplicationContextProvider →
         // ContextUtils.getApplicationContext(); without this, camera enumeration
@@ -112,8 +123,9 @@ class CallMediaPlugin(
                 eventSink = null
             }
         })
-        // libntgcalls.so (~20MB WebRTC) loads lazily on the first call, when the
-        // NTgCalls instance is constructed — no startup cost for non-callers.
+        // The first NTgCalls touch — getProtocol included — dlopens libntgcalls.so
+        // (~20MB WebRTC). Dart schedules that warm-up on an idle frame so it stays
+        // off the launch path while still being ready before any call.
         methods.setMethodCallHandler { call, result ->
             if (call.method == "getProtocol") {
                 worker.execute {
@@ -233,7 +245,9 @@ class CallMediaPlugin(
     }
 
     fun unregisterRenderer(role: String, renderer: TextureViewRenderer) {
-        renderers.remove(role, renderer)
+        // Drop the staging buffers with the renderer; a departed group endpoint
+        // would otherwise pin FRAME_POOL_DEPTH x ~1.35 MB for the rest of the call.
+        if (renderers.remove(role, renderer)) framePools.remove(role)
     }
 
     // MARK: - ntgcalls lifecycle
@@ -288,7 +302,7 @@ class CallMediaPlugin(
                 )
             }
             val renderer = renderers["remote"] ?: return@setFrameCallback
-            for (f in frames) renderFrame(renderer, f)
+            for (f in frames) renderFrame("remote", renderer, f)
         }
         // TDLib already did the DH exchange and handed us the 256-byte shared key.
         instance.skipExchange(chatId, key, isOutgoing)
@@ -305,6 +319,7 @@ class CallMediaPlugin(
         }
         groupVideoEndpointBySsrc.clear()
         groupVideoSourcesByEndpoint.clear()
+        framePools.clear()
         isGroupCall = false
         val instance = ntg ?: return
         runCatching { instance.stop(chatId) }
@@ -395,8 +410,9 @@ class CallMediaPlugin(
                 val endpoint = groupVideoEndpointBySsrc[frame.ssrc]
                     ?: groupVideoEndpointBySsrc[frame.ssrc.toInt().toLong()]
                     ?: continue
-                val renderer = renderers["group:$endpoint"] ?: continue
-                renderFrame(renderer, frame)
+                val role = "group:$endpoint"
+                val renderer = renderers[role] ?: continue
+                renderFrame(role, renderer, frame)
             }
         }
 
@@ -502,7 +518,7 @@ class CallMediaPlugin(
     /** Wrap a tightly-packed-I420 ntgcalls Frame as a WebRTC VideoFrame and push it
      *  into the renderer. The renderer retains the frame if it needs it past
      *  onFrame; release() drops our reference. */
-    private fun renderFrame(renderer: TextureViewRenderer, f: Frame) {
+    private fun renderFrame(role: String, renderer: TextureViewRenderer, f: Frame) {
         val fd = f.frameData ?: return
         val data = f.data
         val w = fd.width
@@ -511,13 +527,18 @@ class CallMediaPlugin(
         val ySize = w * h
         val cSize = ySize / 4
         if (data.size < ySize + 2 * cSize) return
-        val buf = ByteBuffer.allocateDirect(data.size)
+        val pool = framePools.computeIfAbsent(role) { ConcurrentLinkedQueue<ByteBuffer>() }
+        val pooled = pool.poll()?.takeIf { it.capacity() >= data.size }
+        val buf = pooled?.apply { clear() } ?: ByteBuffer.allocateDirect(data.size)
         buf.put(data)
         buf.rewind()
         val y = buf.duplicate().apply { position(0); limit(ySize) }.slice()
         val u = buf.duplicate().apply { position(ySize); limit(ySize + cSize) }.slice()
         val v = buf.duplicate().apply { position(ySize + cSize); limit(ySize + 2 * cSize) }.slice()
-        val i420 = JavaI420Buffer.wrap(w, h, y, w, u, w / 2, v, w / 2, null)
+        val i420 = JavaI420Buffer.wrap(w, h, y, w, u, w / 2, v, w / 2) {
+            // Bounded: a stalled renderer must not pin more than a few frames.
+            if (pool.size < FRAME_POOL_DEPTH) pool.offer(buf)
+        }
         val frame = VideoFrame(i420, fd.rotation, fd.absoluteCaptureTimestampMs * 1_000_000L)
         renderer.onFrame(frame)
         frame.release()

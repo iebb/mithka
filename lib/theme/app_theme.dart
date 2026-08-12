@@ -271,6 +271,7 @@ abstract final class AppMetric {
   static const double settingsLeadingInset = AppSpacing.xxl;
   static const double settingsTrailingInset = AppSpacing.xl;
   static const double settingsIconDividerInset = 56;
+  static const double settingsTextDividerInset = AppSpacing.xxl;
   static const double maxBannerWidth = 300;
   static const double composerHeaderHeight = 64;
   static const double composerPublishButtonHeight = 38;
@@ -670,6 +671,91 @@ Color readableForeground(Color background) {
   }
 
   return contrast(dark) >= contrast(light) ? dark : light;
+}
+
+/// Keeps a body-sized link readable against [background] while retaining as
+/// much of the owned [preferred] link hue as the contrast threshold permits.
+///
+/// This surface-only primitive is used by [readableLinkStyle], which also
+/// accounts for the surrounding body text and supplies a non-colour fallback.
+Color readableLinkColor({
+  required Color background,
+  required Color preferred,
+  double minimumContrast = 4.5,
+}) {
+  assert(minimumContrast > 1);
+
+  double contrast(Color first, Color second) {
+    final firstLuminance = first.computeLuminance();
+    final secondLuminance = second.computeLuminance();
+    final lighter = math.max(firstLuminance, secondLuminance);
+    final darker = math.min(firstLuminance, secondLuminance);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  Color opaque(Color color) => Color(color.toARGB32() | 0xFF000000);
+
+  final surface = opaque(background);
+  final desired = opaque(Color.alphaBlend(preferred, surface));
+  if (contrast(desired, surface) >= minimumContrast) return desired;
+
+  const dark = Color(0xFF000000);
+  const light = Color(0xFFFFFFFF);
+  final anchor = contrast(dark, surface) >= contrast(light, surface)
+      ? dark
+      : light;
+  if (contrast(anchor, surface) < minimumContrast) return anchor;
+
+  var valid = anchor;
+  var lower = 0.0;
+  var upper = 1.0;
+  for (var iteration = 0; iteration < 16; iteration++) {
+    final amount = (lower + upper) / 2;
+    final candidate = opaque(Color.lerp(anchor, desired, amount)!);
+    if (contrast(candidate, surface) >= minimumContrast) {
+      valid = candidate;
+      lower = amount;
+    } else {
+      upper = amount;
+    }
+  }
+  return valid;
+}
+
+@immutable
+class ReadableLinkStyle {
+  const ReadableLinkStyle({required this.color, required this.underline});
+
+  final Color color;
+  final bool underline;
+}
+
+/// Resolves a message-link treatment that remains readable on its surface and
+/// distinguishable from adjacent body copy.
+///
+/// Body-sized text needs 4.5:1 contrast against its surface. When that safest
+/// palette colour is less than 3:1 from [body], a solid underline provides the
+/// second visual cue without introducing another derived colour policy.
+ReadableLinkStyle readableLinkStyle({
+  required Color background,
+  required Color body,
+  required Color preferred,
+}) {
+  Color opaque(Color color) => Color(color.toARGB32() | 0xFF000000);
+
+  final surface = opaque(background);
+  final bodyColor = opaque(Color.alphaBlend(body, surface));
+  final preferredColor = opaque(Color.alphaBlend(preferred, surface));
+  final color = readableLinkColor(
+    background: surface,
+    preferred: preferredColor,
+  );
+  final colorLuminance = color.computeLuminance();
+  final bodyLuminance = bodyColor.computeLuminance();
+  final lighter = math.max(colorLuminance, bodyLuminance);
+  final darker = math.min(colorLuminance, bodyLuminance);
+  final bodyContrast = (lighter + 0.05) / (darker + 0.05);
+  return ReadableLinkStyle(color: color, underline: bodyContrast < 3.0);
 }
 
 extension AppColorsContext on BuildContext {

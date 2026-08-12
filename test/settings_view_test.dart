@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
 import 'package:mithka/settings/about_view.dart';
@@ -13,6 +14,7 @@ import 'package:mithka/settings/developer_mode_controller.dart';
 import 'package:mithka/settings/general_settings_view.dart';
 import 'package:mithka/settings/settings_view.dart';
 import 'package:mithka/settings/storage_usage_view.dart';
+import 'package:mithka/settings/video_playback_settings_view.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -284,6 +286,19 @@ void main() {
       reason: 'the sidebar stays put while the detail pane changes',
     );
 
+    final backChevron = find.byWidgetPredicate(
+      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
+    );
+    expect(backChevron, findsNothing);
+    await tester.tap(find.widgetWithText(SettingsRow, 'Video playback'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VideoPlaybackSettingsView), findsOneWidget);
+    expect(backChevron, findsOneWidget);
+    await tester.tap(backChevron);
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatBehaviorSettingsView), findsOneWidget);
+    expect(backChevron, findsNothing);
+
     // Tapping the header again collapses it without changing the detail pane.
     await tester.ensureVisible(
       find.byKey(const ValueKey('settings-category-appearance')),
@@ -323,13 +338,7 @@ void main() {
     expect(find.byType(AboutView), findsOneWidget);
 
     // Nothing in the split layout pushes a route, so no back affordance.
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is AppIcon && widget.icon == HeroAppIcons.chevronLeft,
-      ),
-      findsNothing,
-    );
+    expect(backChevron, findsNothing);
 
     // Search replaces the tree with flat matches.
     await tester.enterText(

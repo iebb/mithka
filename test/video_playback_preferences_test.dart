@@ -55,6 +55,27 @@ void main() {
     expect(preferences.completionAction, VideoCompletionAction.autoplayNext);
   });
 
+  test('successful saves notify detached desktop settings listeners', () async {
+    SharedPreferences.setMockInitialValues({});
+    var notifications = 0;
+    void listener() => notifications += 1;
+    VideoPlaybackPreferences.changes.addListener(listener);
+    addTearDown(
+      () => VideoPlaybackPreferences.changes.removeListener(listener),
+    );
+
+    await VideoPlaybackPreferences.saveCompletionAction(
+      VideoCompletionAction.returnToChat,
+    );
+
+    expect(notifications, 1);
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      VideoPlaybackPreferences.fromPreferences(preferences).completionAction,
+      VideoCompletionAction.returnToChat,
+    );
+  });
+
   test('unknown saved values fall back safely', () async {
     SharedPreferences.setMockInitialValues({
       VideoPlaybackPreferences.horizontalSwipePreferenceKey: 'unknown',

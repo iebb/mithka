@@ -66,11 +66,13 @@ void main() {
       messageId: 77,
       accountSlot: 9,
       accountUserId: 88,
+      preserveChatStack: true,
     ).toDesktopIpcJson();
 
     expect(encoded, {'chatId': -10042, 'title': 'Group Name', 'messageId': 77});
     expect(encoded, isNot(contains('accountSlot')));
     expect(encoded, isNot(contains('accountUserId')));
+    expect(encoded, isNot(contains('preserveChatStack')));
 
     final parsed = ChatDeepLinkRequest.tryParseDesktopIpc(encoded);
     expect(parsed?.chatId, -10042);
@@ -78,6 +80,7 @@ void main() {
     expect(parsed?.messageId, 77);
     expect(parsed?.accountSlot, isNull);
     expect(parsed?.accountUserId, isNull);
+    expect(parsed?.preserveChatStack, isFalse);
 
     expect(
       ChatDeepLinkRequest.tryParseDesktopIpc({
@@ -507,6 +510,32 @@ void main() {
     expect(main, contains('await widget.prefs.reload()'));
     expect(mainTabs, contains("id: 'appearance'"));
     expect(mainTabs, contains('_openGlobalThemeSelector'));
+  });
+
+  test('detached settings synchronize notification and video preferences', () {
+    final child = File(
+      'lib/app/desktop_utility_window.dart',
+    ).readAsStringSync();
+    final main = File('lib/main.dart').readAsStringSync();
+
+    expect(
+      child,
+      contains('_notificationPreferences.initialize(widget.prefs);'),
+    );
+    expect(child, contains('_notificationPreferences,'));
+    expect(child, contains('VideoPlaybackPreferences.changes,'));
+    expect(
+      main,
+      contains('NotificationPreferences.shared.initialize(widget.prefs);'),
+    );
+    expect(
+      main.indexOf('await widget.prefs.reload();'),
+      lessThan(
+        main.indexOf(
+          'NotificationPreferences.shared.initialize(widget.prefs);',
+        ),
+      ),
+    );
   });
 
   test(

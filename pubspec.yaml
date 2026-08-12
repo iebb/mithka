@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 0.9.13+281
+version: 1.0.0+282
 
 environment:
   sdk: ^3.12.2
@@ -54,15 +54,19 @@ dependencies:
   # 11.x assumes AGP 9 built-in Kotlin is enabled and omits its Kotlin plugin;
   # this project keeps built-in Kotlin disabled for plugins that still apply KGP.
   file_picker: ^10.3.10
-  # 14.0.2+ pulls package_info_plus 10/win32 6, incompatible with the stable
-  # file_picker 10.x line's win32 5 constraint. 14.0.1 is the compatible major.
-  geolocator: 14.0.1
+  # Location services across mobile and desktop platforms.
+  geolocator: ^14.0.2
 
   # QR business card (二维码名片) rendering.
   qr_flutter: ^4.1.0
 
   # Proper international phone-number formatting (pure-Dart libphonenumber port).
   dlibphonenumber: ^1.1.69
+
+  # Bot API accounts keep the history they receive on-device. sqlite3 bundles
+  # SQLite through Dart native assets, so no platform plugin registration is
+  # needed on Android, iOS, macOS, Windows, or Linux.
+  sqlite3: ^3.1.4
 
   # Open downloaded files in the system viewer; open external (non-t.me) links.
   open_filex: ^4.5.0

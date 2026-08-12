@@ -132,10 +132,7 @@ void main() {
     final methodStart = source.indexOf(
       'Future<bool> _scrollToMessageAndReport(',
     );
-    final methodEnd = source.indexOf(
-      'void _openHashtagSearch(',
-      methodStart,
-    );
+    final methodEnd = source.indexOf('void _openHashtagSearch(', methodStart);
     expect(methodStart, greaterThanOrEqualTo(0));
     expect(methodEnd, greaterThan(methodStart));
 
@@ -309,8 +306,18 @@ void main() {
     expect(source, contains('_scrollToMessage(pinned.id, pinnedJump: true)'));
     expect(source, contains('await _scrollToMessage(messageId)'));
     // Search hits — including a tapped hashtag — jump through the cancelling
-    // wrapper rather than the raw reporting call.
-    expect(source, contains('await _scrollToMessage(result.id'));
+    // wrapper rather than the raw reporting call. Matched on the body of the
+    // jump rather than on one formatted line, so wrapping the argument list
+    // does not fail the check.
+    final searchJumpStart = source.indexOf('Future<void> _openSearchResult(');
+    expect(searchJumpStart, greaterThanOrEqualTo(0));
+    final searchJump = source.substring(
+      searchJumpStart,
+      source.indexOf('\n  }\n', searchJumpStart),
+    );
+    expect(searchJump, contains('await _scrollToMessage('));
+    expect(searchJump, contains('result.id'));
+    expect(searchJump, isNot(contains('_scrollToMessageAndReport(')));
   });
 
   group('oldest history pull', () {

@@ -70,6 +70,7 @@ void main() {
     expect(request?.chatId, 202);
     expect(request?.title, 'Chat source');
     expect(request?.messageId, 101);
+    expect(request?.preserveChatStack, isTrue);
     expect(deepLinks.consumePending(), isNull);
   });
 }

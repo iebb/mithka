@@ -21,6 +21,272 @@ import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'app_icons.dart';
 import 'app_interactive_surface.dart';
+import 'desktop_content_constraint.dart';
+
+/// Marks only the first route hosted by the settings split-detail pane.
+///
+/// Its first route is selected by the sidebar rather than pushed by history,
+/// so a back control is invalid there. Routes subsequently pushed inside the
+/// same navigator do not inherit this route-local marker and retain normal
+/// back navigation. Keeping the marker inside the route also avoids mistaking
+/// the Settings window's outer navigation history for detail-pane history.
+class SettingsSplitPaneScope extends InheritedWidget {
+  const SettingsSplitPaneScope({super.key, required super.child});
+
+  static bool isRootRoute(BuildContext context) {
+    return context
+            .dependOnInheritedWidgetOfExactType<SettingsSplitPaneScope>() !=
+        null;
+  }
+
+  @override
+  bool updateShouldNotify(SettingsSplitPaneScope oldWidget) => false;
+}
+
+/// Shared shell for every settings destination.
+///
+/// The header, grouped background and readable content lane are deliberately
+/// owned here so a page cannot drift by rebuilding those three pieces. The
+/// content lane is full-width on touch platforms and capped at 720 px on
+/// native desktop; the child supplies its scroll behavior.
+class SettingsPageScaffold extends StatelessWidget {
+  const SettingsPageScaffold({
+    super.key,
+    required this.title,
+    required this.child,
+    this.onBack,
+    this.trailingIcon,
+    this.onTrailing,
+    this.trailing,
+    this.constrainContent = true,
+    this.showBackButton = true,
+    this.resizeToAvoidBottomInset = true,
+    this.bottomNavigationBar,
+  });
+
+  final String title;
+  final Widget child;
+  final VoidCallback? onBack;
+  final AppIconData? trailingIcon;
+  final VoidCallback? onTrailing;
+  final Widget? trailing;
+
+  /// Full-canvas utilities such as a camera scanner can opt out explicitly.
+  final bool constrainContent;
+
+  /// The shell still verifies navigator history before it renders the control.
+  /// A settings destination embedded in the desktop split pane therefore has
+  /// a title but no dead back chevron, while the same widget on a pushed mobile
+  /// route gets its back action automatically.
+  final bool showBackButton;
+  final bool resizeToAvoidBottomInset;
+  final Widget? bottomNavigationBar;
+
+  @override
+  Widget build(BuildContext context) {
+    final navigator = Navigator.maybeOf(context);
+    final effectiveOnBack =
+        showBackButton &&
+            !SettingsSplitPaneScope.isRootRoute(context) &&
+            (navigator?.canPop() ?? false)
+        ? onBack ?? () => navigator!.pop()
+        : null;
+    final content = constrainContent
+        ? DesktopContentConstraint(child: child)
+        : child;
+    return Scaffold(
+      backgroundColor: context.colors.groupedBackground,
+      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+      bottomNavigationBar: bottomNavigationBar,
+      body: Column(
+        children: [
+          NavHeader(
+            title: title,
+            onBack: effectiveOnBack,
+            trailingIcon: trailingIcon,
+            onTrailing: onTrailing,
+            trailing: trailing,
+          ),
+          Expanded(child: content),
+        ],
+      ),
+    );
+  }
+}
+
+/// Canonical scrolling body for settings pages on every platform.
+///
+/// Page inset is intentionally not adaptive: mobile and desktop destinations
+/// share the same 12 / 14 / 12 / 24 outer rhythm. Desktop adaptation happens
+/// at the content-lane level in [SettingsPageScaffold].
+class SettingsListView extends StatelessWidget {
+  const SettingsListView({
+    super.key,
+    required this.children,
+    this.controller,
+    this.physics,
+    this.padding = AppInsets.screen,
+    this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
+  });
+
+  final List<Widget> children;
+  final ScrollController? controller;
+  final ScrollPhysics? physics;
+  final EdgeInsetsGeometry padding;
+  final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    controller: controller,
+    physics: physics,
+    padding: padding,
+    keyboardDismissBehavior: keyboardDismissBehavior,
+    children: children,
+  );
+}
+
+/// Project-owned search control shared by settings indexes and selectors.
+///
+/// It intentionally owns the glyphs, fill, radius, height and clear affordance
+/// so platform search widgets cannot introduce a second icon set or padding.
+class SettingsSearchField extends StatelessWidget {
+  const SettingsSearchField({
+    super.key,
+    required this.hintText,
+    this.controller,
+    this.focusNode,
+    this.onChanged,
+    this.onSubmitted,
+    this.textInputAction = TextInputAction.search,
+    this.compact = false,
+  });
+
+  final String hintText;
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction textInputAction;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final fontSize = compact ? 13.0 : AppTextSize.callout;
+    final iconSize = compact ? 16.0 : AppMetric.searchIcon;
+    final scaledLineHeight =
+        MediaQuery.textScalerOf(context).scale(fontSize) * 1.25;
+    final height = math.max(
+      compact ? 34.0 : AppMetric.searchHeight,
+      scaledLineHeight + AppSpacing.xxl,
+    );
+    final field = Container(
+      key: const ValueKey('settings-search-container'),
+      height: height,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? AppSpacing.md : AppSpacing.lg,
+      ),
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+      ),
+      child: Row(
+        children: [
+          AppIcon(
+            HeroAppIcons.magnifyingGlass,
+            size: iconSize,
+            color: c.textTertiary,
+          ),
+          SizedBox(width: compact ? AppSpacing.sm : AppSpacing.md),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('settings-search-field'),
+              controller: controller,
+              focusNode: focusNode,
+              textInputAction: textInputAction,
+              onChanged: onChanged,
+              onSubmitted: onSubmitted,
+              style: TextStyle(fontSize: fontSize, color: c.textPrimary),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                hintText: hintText.l10n(context),
+                hintStyle: TextStyle(fontSize: fontSize, color: c.textTertiary),
+              ),
+            ),
+          ),
+          if (controller != null)
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller!,
+              builder: (context, value, _) => value.text.isEmpty
+                  ? const SizedBox.shrink()
+                  : AppInteractiveSurface(
+                      semanticLabel: AppStringKeys.countryPickerCancel.l10n(
+                        context,
+                      ),
+                      onTap: () {
+                        controller!.clear();
+                        onChanged?.call('');
+                      },
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xs),
+                        child: AppIcon(
+                          HeroAppIcons.xmark,
+                          size: AppIconSize.md,
+                          color: c.textTertiary,
+                        ),
+                      ),
+                    ),
+            ),
+        ],
+      ),
+    );
+    return field;
+  }
+}
+
+/// Text action for the trailing side of [SettingsPageScaffold]'s header.
+class SettingsHeaderAction extends StatelessWidget {
+  const SettingsHeaderAction({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.enabled = true,
+    this.working = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool enabled;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      semanticLabel: label.l10n(context),
+      enabled: enabled && !working,
+      onTap: enabled && !working ? onTap : null,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.md,
+        ),
+        child: working
+            ? const AppActivityIndicator(size: 18)
+            : Text(
+                label.l10n(context),
+                style: AppTextStyle.body(
+                  enabled ? AppTheme.brand : c.textTertiary,
+                  weight: AppTextWeight.semibold,
+                ),
+              ),
+      ),
+    );
+  }
+}
 
 /// Flat reference-style header bar: optional back chevron, leading title,
 /// optional trailing icon.
@@ -46,6 +312,9 @@ class NavHeader extends StatelessWidget {
     final metrics = context.watch<ThemeController>();
     final pointerDense = isDesktopTargetPlatform();
     final headerHeight = metrics.navHeaderHeight;
+    final effectiveOnBack = SettingsSplitPaneScope.isRootRoute(context)
+        ? null
+        : onBack;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlayStyleForSurface(c.navBar),
       child: Container(
@@ -63,10 +332,10 @@ class NavHeader extends StatelessWidget {
           padding: AppInsets.navHeader,
           child: Row(
             children: [
-              if (onBack != null)
+              if (effectiveOnBack != null)
                 AppInteractiveSurface(
                   semanticLabel: AppStringKeys.navigationBack.l10n(context),
-                  onTap: onBack,
+                  onTap: effectiveOnBack,
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                   child: Padding(
                     padding: EdgeInsets.only(
@@ -442,6 +711,25 @@ class InsetDivider extends StatelessWidget {
   );
 }
 
+/// Divider aligned with the title column of a canonical settings row.
+///
+/// Use [SettingsDivider.text] for a text-only selection list. Keeping these
+/// two alignments named prevents pages from inventing nearly-identical magic
+/// numbers such as 47, 48, 52, 54, 58, or 62.
+class SettingsDivider extends StatelessWidget {
+  const SettingsDivider({super.key})
+    : leadingInset = AppMetric.settingsIconDividerInset;
+
+  const SettingsDivider.text({super.key})
+    : leadingInset = AppMetric.settingsTextDividerInset;
+
+  final double leadingInset;
+
+  @override
+  Widget build(BuildContext context) =>
+      InsetDivider(leadingInset: leadingInset);
+}
+
 /// Standard grouped settings card. Use this for left-label/right-value rows
 /// instead of duplicating per-screen private `_settingsCard` variants.
 /// Label above a group of settings rows.
@@ -451,18 +739,19 @@ class InsetDivider extends StatelessWidget {
 /// uppercased its text. This is the one shape they all share.
 class SettingsSectionHeader extends StatelessWidget {
   /// [titleKey] is an `AppStringKeys` constant.
-  const SettingsSectionHeader(this.titleKey, {super.key, this.text})
+  const SettingsSectionHeader(this.titleKey, {super.key, this.text, this.color})
     : assert(
         titleKey != null || text != null,
         'a section header needs a key or literal text',
       );
 
   /// For a label that is data rather than copy — a folder name, say.
-  const SettingsSectionHeader.text(String this.text, {super.key})
+  const SettingsSectionHeader.text(String this.text, {super.key, this.color})
     : titleKey = null;
 
   final String? titleKey;
   final String? text;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -479,7 +768,7 @@ class SettingsSectionHeader extends StatelessWidget {
           text ?? AppStrings.t(titleKey!),
           style: TextStyle(
             fontSize: AppTextSize.footnote,
-            color: context.colors.textTertiary,
+            color: color ?? context.colors.textTertiary,
           ),
         ),
       ),
@@ -488,23 +777,108 @@ class SettingsSectionHeader extends StatelessWidget {
 }
 
 class SettingsCard extends StatelessWidget {
-  const SettingsCard({super.key, required this.children, this.margin});
+  const SettingsCard({
+    super.key,
+    required this.children,
+    this.margin,
+    this.addDividers = false,
+    this.dividerInset = AppMetric.settingsIconDividerInset,
+  });
+
+  /// A grouped row card that owns divider placement as well as its surface.
+  const SettingsCard.rows({
+    super.key,
+    required List<Widget> rows,
+    this.margin,
+    this.dividerInset = AppMetric.settingsIconDividerInset,
+  }) : children = rows,
+       addDividers = true;
 
   final List<Widget> children;
   final EdgeInsetsGeometry? margin;
+  final bool addDividers;
+  final double dividerInset;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveChildren = addDividers && children.length > 1
+        ? <Widget>[
+            for (var index = 0; index < children.length; index++) ...[
+              if (index > 0) InsetDivider(leadingInset: dividerInset),
+              children[index],
+            ],
+          ]
+        : children;
     final card = Container(
       decoration: BoxDecoration(
         color: context.colors.card,
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(mainAxisSize: MainAxisSize.min, children: children),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: effectiveChildren,
+      ),
     );
     return margin == null ? card : Padding(padding: margin!, child: card);
   }
+}
+
+/// A complete settings section: optional label, canonical card, canonical
+/// row dividers. This is the preferred unit inside [SettingsListView].
+class SettingsSection extends StatelessWidget {
+  const SettingsSection({
+    super.key,
+    required this.rows,
+    this.titleKey,
+    this.title,
+    this.headerColor,
+    this.dividerInset = AppMetric.settingsIconDividerInset,
+  }) : assert(
+         titleKey == null || title == null,
+         'use either a localization key or literal section title',
+       );
+
+  final String? titleKey;
+  final String? title;
+  final Color? headerColor;
+  final List<Widget> rows;
+  final double dividerInset;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (titleKey != null)
+        SettingsSectionHeader(titleKey, color: headerColor)
+      else if (title != null)
+        SettingsSectionHeader.text(title!, color: headerColor),
+      SettingsCard.rows(rows: rows, dividerInset: dividerInset),
+    ],
+  );
+}
+
+/// Explanatory copy associated with the settings section immediately above.
+class SettingsNote extends StatelessWidget {
+  const SettingsNote({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsetsDirectional.fromSTEB(
+      AppSpacing.xs,
+      AppSpacing.sm,
+      AppSpacing.xs,
+      0,
+    ),
+    child: Text(
+      text.l10n(context),
+      style: AppTextStyle.footnote(
+        context.colors.textTertiary,
+      ).copyWith(height: 1.35),
+    ),
+  );
 }
 
 /// Card surface holding arbitrary content rather than a list of rows.
@@ -544,6 +918,22 @@ class SettingsPanel extends StatelessWidget {
     );
     return margin == null ? panel : Padding(padding: margin!, child: panel);
   }
+}
+
+/// Standard line icon for a settings row.
+///
+/// Detail screens use one accent-coloured glyph treatment. The coloured tile
+/// remains available for the top-level settings index, where it distinguishes
+/// destinations rather than controls within one screen.
+class SettingsLeadingIcon extends StatelessWidget {
+  const SettingsLeadingIcon({super.key, required this.icon, this.color});
+
+  final AppIconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) =>
+      AppIcon(icon, size: AppIconSize.xl, color: color ?? AppTheme.brand);
 }
 
 /// Colored settings glyph tile used by the main settings list and nested
@@ -599,6 +989,9 @@ class SettingsRow extends StatelessWidget {
     this.height = AppMetric.settingsRowHeight,
     this.leadingInset = AppMetric.settingsLeadingInset,
     this.trailing,
+    this.titleColor,
+    this.subtitle,
+    this.enabled = true,
   });
 
   final String title;
@@ -609,6 +1002,9 @@ class SettingsRow extends StatelessWidget {
   final double height;
   final double leadingInset;
   final Widget? trailing;
+  final Color? titleColor;
+  final String? subtitle;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -628,7 +1024,8 @@ class SettingsRow extends StatelessWidget {
         ? trailing! as AppSwitch
         : null;
     return AppInteractiveSurface(
-      onTap: onTap,
+      enabled: enabled,
+      onTap: enabled ? onTap : null,
       toggled: onTap == null ? null : trailingSwitch?.value,
       borderRadius: BorderRadius.circular(AppRadius.sm),
       child: ConstrainedBox(
@@ -650,11 +1047,34 @@ class SettingsRow extends StatelessWidget {
               ],
               Expanded(
                 flex: trailing == null && value.isNotEmpty ? 3 : 1,
-                child: Text(
-                  title.l10n(context),
-                  style: pointerDense
-                      ? AppTextStyle.callout(c.textPrimary)
-                      : AppTextStyle.body(c.textPrimary),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.l10n(context),
+                      style: pointerDense
+                          ? AppTextStyle.callout(
+                              enabled
+                                  ? titleColor ?? c.textPrimary
+                                  : c.textTertiary,
+                            )
+                          : AppTextStyle.body(
+                              enabled
+                                  ? titleColor ?? c.textPrimary
+                                  : c.textTertiary,
+                            ),
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        subtitle!.l10n(context),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.footnote(c.textTertiary),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               if (trailing != null || value.isNotEmpty) ...[
@@ -936,6 +1356,7 @@ class SettingsSwitchRow extends StatelessWidget {
     this.enabled = true,
     this.height = AppMetric.settingsRowHeight,
     this.leadingInset = AppMetric.settingsLeadingInset,
+    this.titleColor,
   });
 
   final String title;
@@ -953,6 +1374,7 @@ class SettingsSwitchRow extends StatelessWidget {
 
   final double height;
   final double leadingInset;
+  final Color? titleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -999,10 +1421,14 @@ class SettingsSwitchRow extends StatelessWidget {
                       title.l10n(context),
                       style: pointerDense
                           ? AppTextStyle.callout(
-                              enabled ? c.textPrimary : c.textTertiary,
+                              enabled
+                                  ? titleColor ?? c.textPrimary
+                                  : c.textTertiary,
                             )
                           : AppTextStyle.body(
-                              enabled ? c.textPrimary : c.textTertiary,
+                              enabled
+                                  ? titleColor ?? c.textPrimary
+                                  : c.textTertiary,
                             ),
                     ),
                     if (subtitle != null && subtitle!.isNotEmpty) ...[

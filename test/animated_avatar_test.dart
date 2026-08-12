@@ -43,7 +43,7 @@ void main() {
       'small': {
         '@type': 'file',
         'id': 2345,
-        'local': {'path': '/tmp/avatar.jpg'},
+        'local': {'path': '/tmp/avatar.jpg', 'is_downloading_completed': true},
       },
     });
 
@@ -90,7 +90,10 @@ void main() {
         'file': {
           '@type': 'file',
           'id': 8101,
-          'local': {'path': '/tmp/avatar-small.mp4'},
+          'local': {
+            'path': '/tmp/avatar-small.mp4',
+            'is_downloading_completed': true,
+          },
         },
       },
       'animation': {

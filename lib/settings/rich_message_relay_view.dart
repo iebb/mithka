@@ -88,129 +88,98 @@ class _RichMessageRelayViewState extends State<RichMessageRelayView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStringKeys.richTextRelayBotTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? Center(
-                    child: Text(
-                      AppStringKeys.contactsLoading.l10n(context),
-                      style: AppTextStyle.body(c.textSecondary),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.lg,
-                      AppSpacing.xl,
-                      AppSpacing.lg,
-                      AppSpacing.section,
-                    ),
+    return SettingsPageScaffold(
+      title: AppStringKeys.richTextRelayBotTitle,
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                const SettingsNote(
+                  text: AppStringKeys.richTextRelayBotDescription,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SettingsPanel(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                    vertical: AppSpacing.lg,
+                  ),
+                  child: Row(
                     children: [
-                      Text(
-                        AppStringKeys.richTextRelayBotDescription.l10n(context),
-                        style: AppTextStyle.footnote(c.textSecondary),
+                      AppIcon(
+                        HeroAppIcons.key,
+                        size: 20,
+                        color: c.textSecondary,
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      Container(
-                        height: 54,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: c.card,
-                          borderRadius: BorderRadius.circular(AppRadius.card),
-                          border: Border.all(color: c.divider),
-                        ),
-                        child: Row(
-                          children: [
-                            AppIcon(
-                              HeroAppIcons.key,
-                              size: 20,
-                              color: c.textSecondary,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                controller: _token,
-                                focusNode: _focusNode,
-                                style: AppTextStyle.body(c.textPrimary),
-                                cursorColor: AppTheme.brand,
-                                obscureText: _obscure,
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                keyboardType: TextInputType.visiblePassword,
-                                textInputAction: TextInputAction.done,
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  isCollapsed: true,
-                                ),
-                                contextMenuBuilder:
-                                    (context, editableTextState) =>
-                                        AdaptiveTextSelectionToolbar.editableText(
-                                          editableTextState: editableTextState,
-                                        ),
-                                onSubmitted: (_) => _save(),
-                              ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => setState(() => _obscure = !_obscure),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: AppIcon(
-                                  _obscure
-                                      ? HeroAppIcons.eye
-                                      : HeroAppIcons.eyeSlash,
-                                  size: 20,
-                                  color: c.textSecondary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        AppStringKeys.richTextRelayBotCreateDescription.l10n(
-                          context,
-                        ),
-                        style: AppTextStyle.footnote(c.textSecondary),
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      _botFatherLink(),
-                      if (_botLabel.isNotEmpty) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          AppStrings.t(
-                            AppStringKeys.richTextRelayBotConnected,
-                            {'value1': _botLabel},
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _token,
+                          focusNode: _focusNode,
+                          style: AppTextStyle.body(c.textPrimary),
+                          cursorColor: AppTheme.brand,
+                          obscureText: _obscure,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          keyboardType: TextInputType.visiblePassword,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isCollapsed: true,
                           ),
-                          style: AppTextStyle.footnote(const Color(0xFF34C759)),
+                          contextMenuBuilder: (context, editableTextState) =>
+                              AdaptiveTextSelectionToolbar.editableText(
+                                editableTextState: editableTextState,
+                              ),
+                          onSubmitted: (_) => _save(),
                         ),
-                      ],
-                      const SizedBox(height: AppSpacing.lg),
-                      _actionButton(
-                        AppStringKeys.richTextRelayBotSave.l10n(context),
-                        enabled: !_saving && _token.text.trim().isNotEmpty,
-                        onTap: _save,
                       ),
-                      if (_token.text.trim().isNotEmpty) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        _actionButton(
-                          AppStringKeys.richTextRelayBotRemove.l10n(context),
-                          destructive: true,
-                          onTap: _remove,
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _obscure = !_obscure),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: AppIcon(
+                            _obscure ? HeroAppIcons.eye : HeroAppIcons.eyeSlash,
+                            size: 20,
+                            color: c.textSecondary,
+                          ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
-          ),
-        ],
-      ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const SettingsNote(
+                  text: AppStringKeys.richTextRelayBotCreateDescription,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                _botFatherLink(),
+                if (_botLabel.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    AppStrings.t(AppStringKeys.richTextRelayBotConnected, {
+                      'value1': _botLabel,
+                    }),
+                    style: AppTextStyle.footnote(const Color(0xFF34C759)),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                _actionButton(
+                  AppStringKeys.richTextRelayBotSave.l10n(context),
+                  enabled: !_saving && _token.text.trim().isNotEmpty,
+                  onTap: _save,
+                ),
+                if (_token.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _actionButton(
+                    AppStringKeys.richTextRelayBotRemove.l10n(context),
+                    destructive: true,
+                    onTap: _remove,
+                  ),
+                ],
+              ],
+            ),
     );
   }
 

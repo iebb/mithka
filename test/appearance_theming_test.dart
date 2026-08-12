@@ -189,12 +189,21 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(ValueKey(entry.key)),
+          matching: find.byType(SettingsLeadingIcon),
+        ),
+        findsOneWidget,
+        reason: '${entry.key} does not use the shared line-icon treatment',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey(entry.key)),
           matching: find.byIcon(entry.value.data),
         ),
         findsOneWidget,
         reason: '${entry.key} does not use its owned icon',
       );
     }
+    expect(find.byType(SettingsIconTile), findsNothing);
   });
 
   testWidgets('Appearance summarizes hidden message bubbles as off', (
@@ -228,6 +237,60 @@ void main() {
 
     expect(find.text('Chat Folders'), findsOneWidget);
     expect(find.text('Manage folders'), findsNothing);
+  });
+
+  testWidgets('Chat View exposes the mobile message action menu selector', (
+    tester,
+  ) async {
+    final controller = await _pumpAppearance(
+      tester,
+      themingEnabled: true,
+      platform: TargetPlatform.iOS,
+    );
+
+    final chatViewRow = find.byKey(const ValueKey('chat-view-settings-row'));
+    await tester.ensureVisible(chatViewRow);
+    await tester.tap(chatViewRow);
+    await tester.pumpAndSettle();
+
+    final styleRow = find.byKey(
+      const ValueKey('mobile-message-action-menu-style-row'),
+    );
+    expect(styleRow, findsOneWidget);
+    expect(find.text('Grid'), findsOneWidget);
+    await tester.ensureVisible(styleRow);
+    await tester.tap(styleRow);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MobileMessageActionMenuSettingsView), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('mobile-message-action-menu-style-dropdown')),
+    );
+    await tester.pump();
+    expect(
+      controller.mobileMessageActionMenuStyle,
+      MobileMessageActionMenuStyle.dropdown,
+    );
+  });
+
+  testWidgets('desktop Chat View hides the mobile action menu selector', (
+    tester,
+  ) async {
+    await _pumpAppearance(
+      tester,
+      themingEnabled: true,
+      platform: TargetPlatform.macOS,
+    );
+
+    final chatViewRow = find.byKey(const ValueKey('chat-view-settings-row'));
+    await tester.ensureVisible(chatViewRow);
+    await tester.tap(chatViewRow);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('mobile-message-action-menu-style-row')),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -382,14 +445,14 @@ void main() {
       );
       expect(find.text('Hide Phone Number in Sidebar'), findsNothing);
 
-      final roundAvatarSwitch = find
+      final roundAvatarRow = find
           .descendant(
             of: find.byKey(const ValueKey('avatars-sidebar-controls')),
-            matching: find.byType(AppSwitch),
+            matching: find.byType(SettingsSwitchRow),
           )
           .first;
       final initiallyCircular = controller.circularGroupAvatars;
-      await tester.tap(roundAvatarSwitch);
+      await tester.tap(roundAvatarRow);
       await tester.pump();
       expect(controller.circularGroupAvatars, isNot(initiallyCircular));
     },
@@ -445,6 +508,43 @@ void main() {
     expect(find.text('Hide Phone Number in Sidebar'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'desktop keeps the Dock icon picker and hides touch-only controls',
+    (tester) async {
+      final controller = await _pumpAppearance(
+        tester,
+        themingEnabled: true,
+        platform: TargetPlatform.macOS,
+      );
+      controller.archivedChatsDisplayMode = ArchivedChatsDisplayMode.pullDown;
+      await tester.pump();
+
+      expect(find.text('App Icon'), findsOneWidget);
+
+      final chatListRow = find.byKey(const ValueKey('chat-list-settings-row'));
+      await tester.ensureVisible(chatListRow);
+      await tester.tap(chatListRow);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ChatListAppearanceSettingsView), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('chat-list-swipe-settings-row')),
+        findsNothing,
+      );
+      expect(find.text('Chat List Search'), findsNothing);
+      expect(find.text('Show on Pull Down'), findsNothing);
+      expect(find.text('First position (not sticky)'), findsOneWidget);
+
+      await tester.tap(find.text('Archived Chats'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ArchivedChatsSettingsView), findsOneWidget);
+      expect(find.text('Show on Pull Down'), findsNothing);
+      expect(find.text('First position (not sticky)'), findsOneWidget);
+      expect(find.text('First on second screen'), findsOneWidget);
+      expect(find.text('Do Not Show'), findsOneWidget);
+    },
+  );
 
   testWidgets('chat and chat-list name color pages use separate defaults', (
     tester,
@@ -591,6 +691,7 @@ Future<ThemeController> _pumpAppearance(
   WidgetTester tester, {
   required bool themingEnabled,
   Size surfaceSize = const Size(900, 1800),
+  TargetPlatform platform = TargetPlatform.android,
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -605,17 +706,24 @@ Future<ThemeController> _pumpAppearance(
         ChangeNotifierProvider.value(value: controller),
         ChangeNotifierProvider(create: (_) => AppIconController(prefs)),
       ],
-      child: _testApp(const AppearanceView()),
+      child: _testApp(const AppearanceView(), platform: platform),
     ),
   );
   await tester.pump();
   return controller;
 }
 
-Widget _testApp(Widget child) => MaterialApp(
+Widget _testApp(
+  Widget child, {
+  TargetPlatform platform = TargetPlatform.android,
+}) => MaterialApp(
   locale: const Locale('en'),
   supportedLocales: AppLocalizations.supportedLocales,
   localizationsDelegates: const [AppLocalizations.delegate],
-  theme: ThemeData(brightness: Brightness.light, extensions: [AppColors.light]),
+  theme: ThemeData(
+    brightness: Brightness.light,
+    platform: platform,
+    extensions: [AppColors.light],
+  ),
   home: child,
 );

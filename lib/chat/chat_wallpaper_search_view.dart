@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../components/app_icons.dart';
@@ -151,23 +150,30 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.groupedBackground,
+    return SettingsPageScaffold(
+      title: AppStringKeys.chatWallpaperSearchTitle,
+      onBack: () => Navigator.of(context).pop(),
       child: Column(
         children: [
-          NavHeader(
-            title: AppStringKeys.chatWallpaperSearchTitle,
-            onBack: () => Navigator.of(context).pop(),
-          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 9),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.md,
+            ),
             child: _searchField(),
           ),
           Expanded(child: _body()),
           if (_activeQuery.isNotEmpty)
             SafeArea(
               top: false,
-              minimum: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+              minimum: const EdgeInsets.fromLTRB(
+                AppSpacing.xxl,
+                AppSpacing.sm,
+                AppSpacing.xxl,
+                AppSpacing.md + AppSpacing.xxs,
+              ),
               child: Text(
                 context.l10n.t(AppStringKeys.chatWallpaperSearchPowered, {
                   'value1': '@$_provider',
@@ -181,55 +187,15 @@ class _ChatWallpaperSearchViewState extends State<ChatWallpaperSearchView> {
     );
   }
 
-  Widget _searchField() {
-    final c = context.colors;
-    return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: c.searchFill,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Row(
-        children: [
-          AppIcon(
-            HeroAppIcons.magnifyingGlass,
-            size: 18,
-            color: c.textTertiary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: EditableText(
-              controller: _textController,
-              focusNode: _focusNode,
-              style: TextStyle(fontSize: 16, color: c.textPrimary),
-              cursorColor: c.linkBlue,
-              backgroundCursorColor: c.textTertiary,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (value) {
-                _debounce?.cancel();
-                _search(value.trim());
-              },
-              selectionColor: c.linkBlue.withValues(alpha: 0.25),
-            ),
-          ),
-          if (_textController.text.isNotEmpty)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _textController.clear,
-              child: Padding(
-                padding: const EdgeInsets.all(5),
-                child: AppIcon(
-                  HeroAppIcons.solidCircleXmark,
-                  size: 17,
-                  color: c.textTertiary,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget _searchField() => SettingsSearchField(
+    hintText: AppStringKeys.chatWallpaperSearchHint,
+    controller: _textController,
+    focusNode: _focusNode,
+    onSubmitted: (value) {
+      _debounce?.cancel();
+      _search(value.trim());
+    },
+  );
 
   Widget _body() {
     final c = context.colors;

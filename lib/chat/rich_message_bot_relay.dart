@@ -202,6 +202,7 @@ class RichMessageBotRelay {
     required int targetChatId,
     required TdClient tdClient,
     List<RichMessageSendFile> files = const [],
+    List<Map<String, dynamic>> blocks = const [],
     RichMessageRelayProgressCallback? onProgress,
   }) async {
     final bot = await validateToken(token);
@@ -221,22 +222,7 @@ class RichMessageBotRelay {
         totalSteps: totalSteps,
       ),
     );
-    final richMessage = <String, dynamic>{
-      'html': html,
-      if (files.isNotEmpty)
-        'media': [
-          for (var index = 0; index < files.length; index++)
-            {
-              'id': files[index].id,
-              'media': botApiRichMessageMediaPayload(
-                files[index].attachment,
-                'attach://rich_media_$index',
-              ),
-            },
-        ],
-      'is_rtl': false,
-      'skip_entity_detection': false,
-    };
+    final richMessage = botApiRichMessagePayload(html, files, blocks: blocks);
     final sent = files.isEmpty
         ? await _call(token, 'sendRichMessage', {
             'chat_id': currentUserId,

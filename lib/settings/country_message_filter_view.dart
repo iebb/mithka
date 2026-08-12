@@ -80,117 +80,58 @@ class _CountryMessageFilterViewState extends State<CountryMessageFilterView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final selected = _filter.selectedCountries;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.blockingCountry.l10n(context),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          NavHeader(
-            title: AppStringKeys.blockingCountry.l10n(context),
-            onBack: () => Navigator.of(context).pop(),
+          SettingsSearchField(
+            controller: _search,
+            hintText: AppStringKeys.blockingCountrySearch,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-            child: Container(
-              height: AppMetric.searchHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: c.searchFill,
-                borderRadius: BorderRadius.circular(AppRadius.control),
-              ),
-              child: Row(
-                children: [
-                  AppIcon(
-                    HeroAppIcons.magnifyingGlass,
-                    size: AppMetric.searchIcon,
-                    color: c.textTertiary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _search,
-                      autocorrect: false,
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: AppStringKeys.blockingCountrySearch.l10n(
-                          context,
-                        ),
-                        hintStyle: TextStyle(color: c.textTertiary),
-                      ),
-                    ),
-                  ),
-                ],
+          const SizedBox(height: AppSpacing.lg),
+          SettingsCard.rows(
+            rows: [
+              for (final country in _countries)
+                _countryRow(country, selected.contains(country.iso), c),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _countryRow(Country country, bool isSelected, AppColors c) {
+    return SettingsRow(
+      title: _displayName(country),
+      leading: CountryFlag(iso: country.iso, size: 22),
+      showChevron: false,
+      onTap: () => _filter.setCountrySelected(country.iso, !isSelected),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '+${country.dial}',
+            style: TextStyle(fontSize: 14, color: c.textSecondary),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected ? AppTheme.brand : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(
+                color: isSelected ? AppTheme.brand : c.textTertiary,
+                width: 1.5,
               ),
             ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-              itemCount: _countries.length,
-              itemBuilder: (context, index) {
-                final country = _countries[index];
-                final isSelected = selected.contains(country.iso);
-                return Padding(
-                  padding: EdgeInsets.only(top: index == 0 ? 0 : 1),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () =>
-                        _filter.setCountrySelected(country.iso, !isSelected),
-                    child: SettingsPanel(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          CountryFlag(iso: country.iso, size: 22),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _displayName(country),
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            '+${country.dial}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 140),
-                            width: 22,
-                            height: 22,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppTheme.brand
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(AppRadius.sm),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppTheme.brand
-                                    : c.textTertiary,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: isSelected
-                                ? AppIcon(
-                                    HeroAppIcons.check,
-                                    size: 15,
-                                    color: AppTheme.onBrand,
-                                  )
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+            child: isSelected
+                ? AppIcon(HeroAppIcons.check, size: 15, color: AppTheme.onBrand)
+                : null,
           ),
         ],
       ),

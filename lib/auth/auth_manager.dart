@@ -188,6 +188,8 @@ class AuthManager extends ChangeNotifier {
   final PremiumAuthPurchaseService _premiumPurchases =
       const PremiumAuthPurchaseService();
   bool _started = false;
+  bool _subscribed = false;
+  bool _credentialsMissing = false;
 
   AuthStep _step = const AuthInitializing();
   String? _errorMessage;
@@ -209,24 +211,28 @@ class AuthManager extends ChangeNotifier {
 
   Future<void> _startAfterCredentialCheck() async {
     final customApi = await ApiCredentialsConfig.load();
-    if (!Secrets.isConfigured && !customApi.isUsable) {
+    _credentialsMissing = !Secrets.isConfigured && !customApi.isUsable;
+
+    // Subscribe before start so no early update is missed.
+    if (!_subscribed) {
+      _subscribed = true;
+      _client.subscribe().listen((update) {
+        if (update.type == 'updateOption' &&
+            update.str('name') == 'can_use_login_passkey') {
+          unawaited(_loadPasskeyAvailability());
+          return;
+        }
+        if (update.type != 'updateAuthorizationState') return;
+        final state = update.obj('authorization_state');
+        if (state != null) _handle(state);
+      });
+    }
+    await _client.start();
+    if (_credentialsMissing && !_client.activeIsBotApi) {
       _set(const AuthMissingCredentials());
       return;
     }
-
-    // Subscribe before start so no early update is missed.
-    final updates = _client.subscribe();
-    updates.listen((update) {
-      if (update.type == 'updateOption' &&
-          update.str('name') == 'can_use_login_passkey') {
-        unawaited(_loadPasskeyAvailability());
-        return;
-      }
-      if (update.type != 'updateAuthorizationState') return;
-      final state = update.obj('authorization_state');
-      if (state != null) _handle(state);
-    });
-    await _client.start();
+    if (!_client.activeIsBotApi) _client.sendParametersForActiveClient();
     unawaited(_loadPasskeyAvailability());
     await ScopeNotificationSettings.shared.load();
   }
@@ -241,6 +247,10 @@ class AuthManager extends ChangeNotifier {
   // MARK: - Authorization state machine
 
   void _handle(Map<String, dynamic> state) {
+    if (_credentialsMissing && !_client.activeIsBotApi) {
+      _set(const AuthMissingCredentials());
+      return;
+    }
     debugPrint('🔑 [Mithka] authorizationState → ${state.type ?? 'nil'}');
     final preserveWorking = _authorizationTransitionAction == _actionSerial;
     if (_isWorking && !preserveWorking) {
@@ -300,7 +310,9 @@ class AuthManager extends ChangeNotifier {
       case 'authorizationStateReady':
         _errorMessage = null;
         _set(const AuthReady());
-        unawaited(AccountBackupService.shared.backupActiveAccountIfEnabled());
+        if (!_client.activeIsBotApi) {
+          unawaited(AccountBackupService.shared.backupActiveAccountIfEnabled());
+        }
       case 'authorizationStateLoggingOut':
         // Slots are reused by whoever signs in next, and the cache is keyed by
         // slot — drop every strip rather than risk painting one account's

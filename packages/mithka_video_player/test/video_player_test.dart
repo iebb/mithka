@@ -753,6 +753,48 @@ void main() {
     await controller.dispose();
   });
 
+  testWidgets('desktop surface clicks hide controls until the pointer moves', (
+    tester,
+  ) async {
+    final controller = _FakeVideoPlayerController();
+
+    await tester.pumpWidget(
+      _frame(
+        MithkaVideoPlayer(
+          source: _source('desktop-surface-controls'),
+          controller: controller,
+          autoplay: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_controlOpacity(tester), 1);
+
+    final player = find.byType(MithkaVideoPlayer);
+    final surfacePoint = tester.getTopLeft(player) + const Offset(40, 120);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: surfacePoint);
+    await tester.pump();
+    await mouse.down(surfacePoint);
+    await mouse.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_controlOpacity(tester), 0);
+
+    await mouse.down(surfacePoint);
+    await mouse.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_controlOpacity(tester), 0);
+
+    await mouse.moveTo(surfacePoint + const Offset(20, 0));
+    await tester.pump();
+    expect(_controlOpacity(tester), 1);
+
+    await mouse.removePointer();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await controller.dispose();
+  });
+
   testWidgets(
     'controlled picture in picture coalesces requests and updates default chrome',
     (tester) async {

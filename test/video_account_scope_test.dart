@@ -10,6 +10,12 @@ void main() {
     final desktop = File(
       'lib/app/desktop_video_window.dart',
     ).readAsStringSync();
+    final desktopChat = File(
+      'lib/app/desktop_chat_window_io.dart',
+    ).readAsStringSync();
+    final desktopUtility = File(
+      'lib/app/desktop_utility_window_io.dart',
+    ).readAsStringSync();
 
     expect(chat, contains('accountSlot: _sessionKey.accountSlot'));
     expect(player, contains('accountSlot: item.accountSlot'));
@@ -21,9 +27,17 @@ void main() {
     expect(files, contains('.subscribeAll()'));
     expect(files, contains('.queryForSlot('));
     expect(desktop, contains('mediaKey = (accountSlot: accountSlot'));
+    expect(desktop, contains('retainAccountSlot(accountSlot)'));
+    expect(desktop, contains('query: accountLease.query'));
+    expect(desktop, contains('fileName: session.video.fileName'));
+    expect(desktop, contains('mimeType: session.video.mimeType'));
+    expect(desktop, contains('await accountLease.release()'));
+    expect(desktopChat, contains('Map<int, TdAccountLease>'));
+    expect(desktopChat, contains('accountLease.clientId'));
+    expect(desktopUtility, contains('Map<int, TdAccountLease>'));
     expect(
-      desktop,
-      contains('query: tdVideoStreamQueryForAccount(accountSlot)'),
+      desktopUtility,
+      contains('_clientIdByWindow[windowId] = lease.clientId'),
     );
   });
 }

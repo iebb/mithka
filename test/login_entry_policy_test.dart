@@ -54,13 +54,13 @@ void main() {
     );
   });
 
-  test('account backup uses a compact background-integrated header', () {
+  test('account backup reuses the shared settings page skeleton', () {
     final source = File(
       'lib/settings/account_backup_view.dart',
     ).readAsStringSync();
 
-    expect(source, contains("ValueKey('account-backup-header')"));
-    expect(source, contains('height: 56'));
-    expect(source, isNot(contains('NavHeader(')));
+    expect(source, contains('SettingsPageScaffold('));
+    expect(source, contains('SettingsListView('));
+    expect(source, isNot(contains("ValueKey('account-backup-header')")));
   });
 }

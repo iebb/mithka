@@ -74,30 +74,15 @@ Widget _businessChoiceRow(
   BuildContext context, {
   required String label,
   required VoidCallback onTap,
-}) => GestureDetector(
-  behavior: HitTestBehavior.opaque,
-  onTap: onTap,
-  child: SizedBox(
-    height: 52,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(color: context.colors.textPrimary, fontSize: 15),
-            ),
-          ),
-          AppIcon(
-            HeroAppIcons.chevronDown,
-            size: 15,
-            color: context.colors.textTertiary,
-          ),
-        ],
-      ),
-    ),
+}) => SettingsRow(
+  title: label,
+  showChevron: false,
+  trailing: AppIcon(
+    HeroAppIcons.chevronDown,
+    size: AppIconSize.md,
+    color: context.colors.textTertiary,
   ),
+  onTap: onTap,
 );
 
 class BusinessQuickRepliesView extends StatefulWidget {
@@ -156,14 +141,11 @@ class _BusinessIntroStickerPickerViewState
       if (pack.id == _activePackId) active = pack;
     }
     final stickers = active?.stickers ?? const <StickerItem>[];
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.businessToolsGreetingSticker),
+      onBack: () => Navigator.of(context).pop(),
+      child: Column(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.businessToolsGreetingSticker),
-            onBack: () => Navigator.of(context).pop(),
-          ),
           if (_store.packs.isNotEmpty)
             SizedBox(
               height: 58,
@@ -318,135 +300,104 @@ class _BusinessQuickRepliesViewState extends State<BusinessQuickRepliesView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final shortcuts = _service.shortcuts;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.businessToolsQuickReplies),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _edit(null),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: AppIcon(
-                  HeroAppIcons.plus,
-                  size: 22,
-                  color: AppTheme.brand,
-                ),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.businessToolsQuickReplies),
+      onBack: () => Navigator.of(context).pop(),
+      trailingIcon: HeroAppIcons.plus,
+      onTrailing: () => _edit(null),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : shortcuts.isEmpty
+          ? _emptyState(
+              context,
+              title: AppStrings.t(AppStringKeys.businessToolsNoQuickReplies),
+              detail: AppStrings.t(
+                AppStringKeys.businessToolsCreateReusableRepliesDescription,
               ),
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: AppActivityIndicator(size: 24))
-                : shortcuts.isEmpty
-                ? _emptyState(
+              onTap: () => _edit(null),
+              action: AppStrings.t(AppStringKeys.businessToolsCreateQuickReply),
+            )
+          : ReorderableListView.builder(
+              padding: AppInsets.screen,
+              buildDefaultDragHandles: false,
+              itemCount: shortcuts.length,
+              onReorderItem: _reorder,
+              itemBuilder: (context, index) {
+                final shortcut = shortcuts[index];
+                return Padding(
+                  key: ValueKey('quick-reply-${shortcut.id}'),
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: _surface(
                     context,
-                    title: AppStrings.t(
-                      AppStringKeys.businessToolsNoQuickReplies,
-                    ),
-                    detail: AppStrings.t(
-                      AppStringKeys
-                          .businessToolsCreateReusableRepliesDescription,
-                    ),
-                    onTap: () => _edit(null),
-                    action: AppStrings.t(
-                      AppStringKeys.businessToolsCreateQuickReply,
-                    ),
-                  )
-                : ReorderableListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                    buildDefaultDragHandles: false,
-                    itemCount: shortcuts.length,
-                    onReorderItem: _reorder,
-                    itemBuilder: (context, index) {
-                      final shortcut = shortcuts[index];
-                      return Padding(
-                        key: ValueKey('quick-reply-${shortcut.id}'),
-                        padding: const EdgeInsets.only(bottom: 9),
-                        child: _surface(
-                          context,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _edit(shortcut),
-                            child: SizedBox(
-                              height: 68,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: Row(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _edit(shortcut),
+                      child: SizedBox(
+                        height: 68,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Row(
+                            children: [
+                              AppIcon(
+                                HeroAppIcons.message,
+                                size: 20,
+                                color: AppTheme.brand,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    AppIcon(
-                                      HeroAppIcons.message,
-                                      size: 20,
-                                      color: AppTheme.brand,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '/${shortcut.name}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600,
-                                              color: c.textPrimary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            shortcut.preview.isEmpty
-                                                ? AppStrings.t(
-                                                    AppStringKeys
-                                                        .businessToolsMessageCount,
-                                                    {
-                                                      'value1':
-                                                          shortcut.messageCount,
-                                                    },
-                                                  )
-                                                : shortcut.preview,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: c.textSecondary,
-                                            ),
-                                          ),
-                                        ],
+                                    Text(
+                                      '/${shortcut.name}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: c.textPrimary,
                                       ),
                                     ),
-                                    ReorderableDragStartListener(
-                                      index: index,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(10),
-                                        child: AppIcon(
-                                          HeroAppIcons.grip,
-                                          size: 19,
-                                          color: c.textTertiary,
-                                        ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      shortcut.preview.isEmpty
+                                          ? AppStrings.t(
+                                              AppStringKeys
+                                                  .businessToolsMessageCount,
+                                              {'value1': shortcut.messageCount},
+                                            )
+                                          : shortcut.preview,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: c.textSecondary,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: AppIcon(
+                                    HeroAppIcons.grip,
+                                    size: 19,
+                                    color: c.textTertiary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
-          ),
-        ],
-      ),
+                );
+              },
+            ),
     );
   }
 }
@@ -681,144 +632,109 @@ class _BusinessQuickReplyEditorViewState
   Widget build(BuildContext context) {
     final c = context.colors;
     final existing = widget.shortcut != null;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(
+        existing
+            ? AppStringKeys.businessToolsEditQuickReply
+            : AppStringKeys.businessToolsNewQuickReply,
+      ),
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: _saving,
+        onTap: _save,
+      ),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(
-              existing
-                  ? AppStringKeys.businessToolsEditQuickReply
-                  : AppStringKeys.businessToolsNewQuickReply,
-            ),
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _saving ? null : _save,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 10,
+          _label(context, AppStringKeys.businessToolsShortcut),
+          _surface(
+            context,
+            child: CupertinoTextField(
+              controller: _name,
+              prefix: Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Text(
+                  '/',
+                  style: TextStyle(fontSize: 16, color: c.textSecondary),
                 ),
-                child: _saving
-                    ? const AppActivityIndicator(size: 18)
-                    : Text(
-                        AppStrings.t(AppStringKeys.addMembersDone),
-                        style: TextStyle(fontSize: 16, color: AppTheme.brand),
-                      ),
+              ),
+              maxLength: 32,
+              placeholder: AppStrings.t(AppStringKeys.businessToolsShortcut),
+              padding: const EdgeInsets.all(14),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              placeholderStyle: TextStyle(color: c.textTertiary),
+              decoration: const BoxDecoration(),
+            ),
+          ),
+          if (!existing) ...[
+            const SizedBox(height: 16),
+            _label(context, AppStringKeys.businessToolsMessage),
+            _surface(
+              context,
+              child: CupertinoTextField(
+                controller: _firstMessage,
+                maxLength: 4096,
+                minLines: 5,
+                maxLines: 10,
+                placeholder: AppStrings.t(
+                  AppStringKeys.businessToolsReusableResponse,
+                ),
+                padding: const EdgeInsets.all(14),
+                style: TextStyle(fontSize: 16, color: c.textPrimary),
+                placeholderStyle: TextStyle(color: c.textTertiary),
+                decoration: const BoxDecoration(),
               ),
             ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+          ] else ...[
+            const SizedBox(height: 20),
+            Row(
               children: [
-                _label(context, AppStringKeys.businessToolsShortcut),
-                _surface(
-                  context,
-                  child: CupertinoTextField(
-                    controller: _name,
-                    prefix: Padding(
-                      padding: const EdgeInsets.only(left: 14),
-                      child: Text(
-                        '/',
-                        style: TextStyle(fontSize: 16, color: c.textSecondary),
-                      ),
+                Expanded(
+                  child: _label(context, AppStringKeys.businessToolsMessages),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _addMessage,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 4, 4, 8),
+                    child: Text(
+                      AppStrings.t(AppStringKeys.businessToolsAddMessage),
+                      style: TextStyle(fontSize: 14, color: AppTheme.brand),
                     ),
-                    maxLength: 32,
-                    placeholder: AppStrings.t(
-                      AppStringKeys.businessToolsShortcut,
-                    ),
-                    padding: const EdgeInsets.all(14),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    placeholderStyle: TextStyle(color: c.textTertiary),
-                    decoration: const BoxDecoration(),
                   ),
                 ),
-                if (!existing) ...[
-                  const SizedBox(height: 16),
-                  _label(context, AppStringKeys.businessToolsMessage),
-                  _surface(
-                    context,
-                    child: CupertinoTextField(
-                      controller: _firstMessage,
-                      maxLength: 4096,
-                      minLines: 5,
-                      maxLines: 10,
-                      placeholder: AppStrings.t(
-                        AppStringKeys.businessToolsReusableResponse,
-                      ),
-                      padding: const EdgeInsets.all(14),
-                      style: TextStyle(fontSize: 16, color: c.textPrimary),
-                      placeholderStyle: TextStyle(color: c.textTertiary),
-                      decoration: const BoxDecoration(),
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _label(
-                          context,
-                          AppStringKeys.businessToolsMessages,
-                        ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _addMessage,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 4, 4, 8),
-                          child: Text(
-                            AppStrings.t(AppStringKeys.businessToolsAddMessage),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.brand,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: AppActivityIndicator(size: 22)),
-                    )
-                  else
-                    _surface(
-                      context,
-                      child: Column(
-                        children: [
-                          for (
-                            var index = 0;
-                            index < _messages.length;
-                            index++
-                          ) ...[
-                            _messageRow(_messages[index]),
-                            if (index < _messages.length - 1)
-                              const InsetDivider(leadingInset: 14),
-                          ],
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 22),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _deleteShortcut,
-                    child: Center(
-                      child: Text(
-                        AppStrings.t(
-                          AppStringKeys.businessToolsDeleteQuickReply,
-                        ),
-                        style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
-          ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: AppActivityIndicator(size: 22)),
+              )
+            else
+              _surface(
+                context,
+                child: Column(
+                  children: [
+                    for (var index = 0; index < _messages.length; index++) ...[
+                      _messageRow(_messages[index]),
+                      if (index < _messages.length - 1)
+                        const InsetDivider(leadingInset: 14),
+                    ],
+                  ],
+                ),
+              ),
+            const SizedBox(height: 22),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _deleteShortcut,
+              child: Center(
+                child: Text(
+                  AppStrings.t(AppStringKeys.businessToolsDeleteQuickReply),
+                  style: TextStyle(fontSize: 15, color: AppTheme.tagRed),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -952,100 +868,88 @@ class _BusinessQuickReplyPickerViewState
   Widget build(BuildContext context) {
     final c = context.colors;
     final shortcuts = _service.shortcuts;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: widget.chatTitle.isEmpty
-                ? AppStrings.t(AppStringKeys.businessToolsQuickReplies)
-                : AppStrings.t(AppStringKeys.businessToolsReplyToChat, {
-                    'value1': widget.chatTitle,
-                  }),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: AppActivityIndicator(size: 24))
-                : _unavailableReason.isNotEmpty
-                ? _emptyState(
-                    context,
-                    title: AppStrings.t(
-                      AppStringKeys.businessToolsQuickRepliesUnavailable,
-                    ),
-                    detail: _unavailableReason,
-                  )
-                : shortcuts.isEmpty
-                ? _emptyState(
-                    context,
-                    title: AppStrings.t(
-                      AppStringKeys.businessToolsNoQuickReplies,
-                    ),
-                    detail: AppStrings.t(
-                      AppStringKeys.businessToolsCreateQuickReplyLocation,
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                    itemCount: shortcuts.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 9),
-                    itemBuilder: (_, index) {
-                      final shortcut = shortcuts[index];
-                      return _surface(
-                        context,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _send(shortcut),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
+    return SettingsPageScaffold(
+      title: widget.chatTitle.isEmpty
+          ? AppStrings.t(AppStringKeys.businessToolsQuickReplies)
+          : AppStrings.t(AppStringKeys.businessToolsReplyToChat, {
+              'value1': widget.chatTitle,
+            }),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : _unavailableReason.isNotEmpty
+          ? _emptyState(
+              context,
+              title: AppStrings.t(
+                AppStringKeys.businessToolsQuickRepliesUnavailable,
+              ),
+              detail: _unavailableReason,
+            )
+          : shortcuts.isEmpty
+          ? _emptyState(
+              context,
+              title: AppStrings.t(AppStringKeys.businessToolsNoQuickReplies),
+              detail: AppStrings.t(
+                AppStringKeys.businessToolsCreateQuickReplyLocation,
+              ),
+            )
+          : ListView.separated(
+              padding: AppInsets.screen,
+              itemCount: shortcuts.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 9),
+              itemBuilder: (_, index) {
+                final shortcut = shortcuts[index];
+                return _surface(
+                  context,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _send(shortcut),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '/${shortcut.name}',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                          color: c.textPrimary,
-                                        ),
-                                      ),
-                                      if (shortcut.preview.isNotEmpty) ...[
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          shortcut.preview,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: c.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
+                                Text(
+                                  '/${shortcut.name}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: c.textPrimary,
                                   ),
                                 ),
-                                if (_sendingId == shortcut.id)
-                                  const AppActivityIndicator(size: 20)
-                                else
-                                  AppIcon(
-                                    HeroAppIcons.paperPlane,
-                                    size: 19,
-                                    color: AppTheme.brand,
+                                if (shortcut.preview.isNotEmpty) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    shortcut.preview,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: c.textSecondary,
+                                    ),
                                   ),
+                                ],
                               ],
                             ),
                           ),
-                        ),
-                      );
-                    },
+                          if (_sendingId == shortcut.id)
+                            const AppActivityIndicator(size: 20)
+                          else
+                            AppIcon(
+                              HeroAppIcons.paperPlane,
+                              size: 19,
+                              color: AppTheme.brand,
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-          ),
-        ],
-      ),
+                );
+              },
+            ),
     );
   }
 }
@@ -1096,87 +1000,66 @@ class _BusinessAutomationViewState extends State<BusinessAutomationView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final greeting = _businessInfo?.obj('greeting_message_settings');
     final away = _businessInfo?.obj('away_message_settings');
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.businessToolsAutomatedMessages),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: AppActivityIndicator(size: 24))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.businessToolsAutomatedMessages),
+      onBack: () => Navigator.of(context).pop(),
+      child: _loading
+          ? const Center(child: AppActivityIndicator(size: 24))
+          : SettingsListView(
+              children: [
+                _surface(
+                  context,
+                  child: Column(
                     children: [
-                      _surface(
+                      _navigationRow(
                         context,
-                        child: Column(
-                          children: [
-                            _navigationRow(
-                              context,
-                              icon: HeroAppIcons.thumbsUp,
-                              color: const Color(0xFF19A874),
-                              title: AppStrings.t(
-                                AppStringKeys.businessToolsGreetingMessage,
+                        icon: HeroAppIcons.thumbsUp,
+                        color: const Color(0xFF19A874),
+                        title: AppStrings.t(
+                          AppStringKeys.businessToolsGreetingMessage,
+                        ),
+                        subtitle: greeting == null
+                            ? AppStrings.t(AppStringKeys.groupAdminOff)
+                            : AppStrings.t(
+                                AppStringKeys.businessToolsAfterInactiveDays,
+                                {
+                                  'value1':
+                                      greeting.integer('inactivity_days') ?? 7,
+                                },
                               ),
-                              subtitle: greeting == null
-                                  ? AppStrings.t(AppStringKeys.groupAdminOff)
-                                  : AppStrings.t(
-                                      AppStringKeys
-                                          .businessToolsAfterInactiveDays,
-                                      {
-                                        'value1':
-                                            greeting.integer(
-                                              'inactivity_days',
-                                            ) ??
-                                            7,
-                                      },
-                                    ),
-                              onTap: () => _open(
-                                BusinessGreetingMessageView(initial: greeting),
-                              ),
-                            ),
-                            const InsetDivider(leadingInset: 58),
-                            _navigationRow(
-                              context,
-                              icon: HeroAppIcons.moon,
-                              color: const Color(0xFF675CE8),
-                              title: AppStrings.t(
-                                AppStringKeys.businessToolsAwayMessage,
-                              ),
-                              subtitle: AppStrings.t(
-                                away == null
-                                    ? AppStringKeys.groupAdminOff
-                                    : AppStringKeys.privacyEnabled,
-                              ),
-                              onTap: () =>
-                                  _open(BusinessAwayMessageView(initial: away)),
-                            ),
-                          ],
+                        onTap: () => _open(
+                          BusinessGreetingMessageView(initial: greeting),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        AppStrings.t(
-                          AppStringKeys
-                              .businessToolsAutomatedMessagesUseOneOfYourQuickReply,
+                      const SettingsDivider(),
+                      _navigationRow(
+                        context,
+                        icon: HeroAppIcons.moon,
+                        color: const Color(0xFF675CE8),
+                        title: AppStrings.t(
+                          AppStringKeys.businessToolsAwayMessage,
                         ),
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.35,
-                          color: c.textSecondary,
+                        subtitle: AppStrings.t(
+                          away == null
+                              ? AppStringKeys.groupAdminOff
+                              : AppStringKeys.privacyEnabled,
                         ),
+                        onTap: () =>
+                            _open(BusinessAwayMessageView(initial: away)),
                       ),
                     ],
                   ),
-          ),
-        ],
-      ),
+                ),
+                SettingsNote(
+                  text: AppStrings.t(
+                    AppStringKeys
+                        .businessToolsAutomatedMessagesUseOneOfYourQuickReply,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -1272,8 +1155,7 @@ class _BusinessGreetingMessageViewState
       onSave: _save,
       child: _loading
           ? const Center(child: AppActivityIndicator(size: 24))
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+          : SettingsListView(
               children: [
                 _surface(
                   context,
@@ -1487,8 +1369,7 @@ class _BusinessAwayMessageViewState extends State<BusinessAwayMessageView> {
       onSave: _save,
       child: _loading
           ? const Center(child: AppActivityIndicator(size: 24))
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+          : SettingsListView(
               children: [
                 _surface(
                   context,
@@ -1782,8 +1663,7 @@ class _BusinessConnectedBotViewState extends State<BusinessConnectedBotView> {
       onSave: _save,
       child: _loading
           ? const Center(child: AppActivityIndicator(size: 24))
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(12, 18, 12, 24),
+          : SettingsListView(
               children: [
                 _label(context, AppStringKeys.businessToolsBotUsername),
                 _surface(
@@ -2202,34 +2082,15 @@ class _BusinessToolScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
-        children: [
-          NavHeader(
-            title: title,
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: saving ? null : onSave,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 10,
-                ),
-                child: saving
-                    ? const AppActivityIndicator(size: 18)
-                    : Text(
-                        AppStrings.t(AppStringKeys.addMembersDone),
-                        style: TextStyle(fontSize: 16, color: AppTheme.brand),
-                      ),
-              ),
-            ),
-          ),
-          Expanded(child: child),
-        ],
+    return SettingsPageScaffold(
+      title: title,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        working: saving,
+        onTap: onSave,
       ),
+      child: child,
     );
   }
 }
@@ -2266,46 +2127,26 @@ class _BusinessTextEditorViewState extends State<_BusinessTextEditorView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: widget.title,
+      onBack: () => Navigator.of(context).pop(),
+      trailing: SettingsHeaderAction(
+        label: AppStringKeys.addMembersDone,
+        onTap: () => Navigator.of(context).pop(_controller.text),
+      ),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: widget.title,
-            onBack: () => Navigator.of(context).pop(),
-            trailing: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(_controller.text),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 10,
-                ),
-                child: Text(
-                  AppStrings.t(AppStringKeys.addMembersDone),
-                  style: TextStyle(fontSize: 16, color: AppTheme.brand),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                _surface(
-                  context,
-                  child: CupertinoTextField(
-                    controller: _controller,
-                    maxLength: widget.maxLength,
-                    minLines: widget.minLines,
-                    maxLines: 12,
-                    autofocus: true,
-                    padding: const EdgeInsets.all(14),
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                    decoration: const BoxDecoration(),
-                  ),
-                ),
-              ],
+          _surface(
+            context,
+            child: CupertinoTextField(
+              controller: _controller,
+              maxLength: widget.maxLength,
+              minLines: widget.minLines,
+              maxLines: 12,
+              autofocus: true,
+              padding: const EdgeInsets.all(14),
+              style: TextStyle(fontSize: 16, color: c.textPrimary),
+              decoration: const BoxDecoration(),
             ),
           ),
         ],
@@ -2378,13 +2219,8 @@ class _BusinessDateTimeSheetState extends State<_BusinessDateTimeSheet> {
 Widget _surface(BuildContext context, {required Widget child}) =>
     SettingsPanel(clipBehavior: Clip.antiAlias, child: child);
 
-Widget _label(BuildContext context, String value) => Padding(
-  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-  child: Text(
-    AppStrings.t(value),
-    style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
-  ),
-);
+Widget _label(BuildContext context, String value) =>
+    SettingsSectionHeader(value);
 
 Widget _emptyState(
   BuildContext context, {
@@ -2455,48 +2291,11 @@ Widget _navigationRow(
   required String subtitle,
   required VoidCallback onTap,
 }) {
-  final c = context.colors;
-  return GestureDetector(
-    behavior: HitTestBehavior.opaque,
+  return SettingsRow(
+    title: title,
+    subtitle: subtitle,
+    leading: SettingsLeadingIcon(icon: icon),
     onTap: onTap,
-    child: SizedBox(
-      height: 68,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Row(
-          children: [
-            SettingsIconTile(
-              icon: icon,
-              backgroundColor: color,
-              size: 32,
-              iconSize: 17,
-              radius: 8,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: c.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            AppIcon(HeroAppIcons.chevronRight, size: 17, color: c.textTertiary),
-          ],
-        ),
-      ),
-    ),
   );
 }
 
@@ -2505,47 +2304,22 @@ Widget _switchRow(
   required String title,
   required bool value,
   required ValueChanged<bool> onChanged,
-}) => Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-  child: Row(
-    children: [
-      Expanded(
-        child: Text(
-          title,
-          style: TextStyle(fontSize: 15, color: context.colors.textPrimary),
-        ),
-      ),
-      const SizedBox(width: 12),
-      AppSwitch(value: value, onChanged: onChanged),
-    ],
-  ),
-);
+}) => SettingsSwitchRow(title: title, value: value, onChanged: onChanged);
 
 Widget _actionRow(
   BuildContext context, {
   required String title,
   required VoidCallback onTap,
-}) => GestureDetector(
-  behavior: HitTestBehavior.opaque,
-  onTap: onTap,
-  child: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(fontSize: 15, color: AppTheme.brand),
-          ),
-        ),
-        AppIcon(
-          HeroAppIcons.plus,
-          size: 17,
-          color: context.colors.textTertiary,
-        ),
-      ],
-    ),
+}) => SettingsRow(
+  title: title,
+  titleColor: AppTheme.brand,
+  showChevron: false,
+  trailing: AppIcon(
+    HeroAppIcons.plus,
+    size: AppIconSize.lg,
+    color: context.colors.textTertiary,
   ),
+  onTap: onTap,
 );
 
 Widget _radioRow(
@@ -2553,44 +2327,32 @@ Widget _radioRow(
   required String title,
   required bool selected,
   required VoidCallback onTap,
-}) => GestureDetector(
-  behavior: HitTestBehavior.opaque,
-  onTap: onTap,
-  child: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(fontSize: 15, color: context.colors.textPrimary),
-          ),
-        ),
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? AppTheme.brand : context.colors.textTertiary,
-              width: 1.5,
-            ),
-          ),
-          alignment: Alignment.center,
-          child: selected
-              ? Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: AppTheme.brand,
-                    shape: BoxShape.circle,
-                  ),
-                )
-              : null,
-        ),
-      ],
+}) => SettingsRow(
+  title: title,
+  showChevron: false,
+  trailing: Container(
+    width: 20,
+    height: 20,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: selected ? AppTheme.brand : context.colors.textTertiary,
+        width: 1.5,
+      ),
     ),
+    alignment: Alignment.center,
+    child: selected
+        ? Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: AppTheme.brand,
+              shape: BoxShape.circle,
+            ),
+          )
+        : null,
   ),
+  onTap: onTap,
 );
 
 Widget _dateRow(
@@ -2598,27 +2360,12 @@ Widget _dateRow(
   required String title,
   required DateTime value,
   required VoidCallback onTap,
-}) => GestureDetector(
-  behavior: HitTestBehavior.opaque,
+}) => SettingsRow(
+  title: title,
+  value:
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}',
   onTap: onTap,
-  child: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(fontSize: 15, color: context.colors.textPrimary),
-          ),
-        ),
-        Text(
-          '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
-          '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}',
-          style: TextStyle(fontSize: 14, color: context.colors.textSecondary),
-        ),
-      ],
-    ),
-  ),
 );
 
 Widget _shortcutPicker(

@@ -12,6 +12,7 @@ dependencies:
   fvp: ^0.37.3
   mithka_video_player:
     path: ../mithka_video_player
+  video_player_platform_interface: any
 
 dev_dependencies:
   flutter_lints: ^6.0.0

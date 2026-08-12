@@ -14,6 +14,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -27,6 +28,7 @@ import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/sensitive_content_controller.dart';
+import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -47,7 +49,9 @@ import 'location_detail_view.dart';
 import 'looping_video_view.dart';
 import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
+import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
+import 'mobile_message_text_selection.dart';
 import 'music_player_controller.dart';
 import 'sensitive_content_reveal_prompt.dart';
 import 'stretchable_message_bubble_background.dart';
@@ -59,6 +63,8 @@ class MessageBubble extends StatefulWidget {
     super.key,
     required this.message,
     this.groupedMedia = const <ChatMessage>[],
+    this.translationDisplayStyle = TranslationDisplayStyle.quote,
+    this.showOriginalTranslationMessageIds = const <int>{},
     required this.peerTitle,
     this.peerPhoto,
     required this.isGroup,
@@ -69,7 +75,9 @@ class MessageBubble extends StatefulWidget {
     this.forceShowTimestamp = false,
     this.onRepeat,
     this.onLongPress,
-    this.onDoubleTap,
+    this.mobileTextSelectionAreaKey,
+    this.onMobileTextSelectionChanged,
+    this.onMobileTextSelectionDisposed,
     this.onReply,
     this.onAvatarTap,
     this.onAvatarLongPress,
@@ -110,6 +118,8 @@ class MessageBubble extends StatefulWidget {
   });
 
   final ChatMessage message;
+  final TranslationDisplayStyle translationDisplayStyle;
+  final Set<int> showOriginalTranslationMessageIds;
 
   /// Selected messages take their own bubble fill. Telegram keys this
   /// separately (chat_inBubbleSelected / chat_outBubbleSelected) rather than
@@ -132,7 +142,9 @@ class MessageBubble extends StatefulWidget {
     MessageActionSource source,
   )?
   onLongPress;
-  final ValueChanged<ChatMessage>? onDoubleTap;
+  final GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey;
+  final ValueChanged<SelectedContent?>? onMobileTextSelectionChanged;
+  final VoidCallback? onMobileTextSelectionDisposed;
   final ValueChanged<ChatMessage>? onReply;
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
@@ -197,12 +209,14 @@ class _MessageBubbleState extends State<MessageBubble>
   // a setState here rebuilt the entire bubble on every pointer crossing, and on
   // desktop the cursor crosses a bubble boundary on most scroll frames.
   final ValueNotifier<bool> _hoveringTimestamp = ValueNotifier(false);
-  DateTime? _lastTapAt;
-  bool _skipNextTap = false;
   double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
   bool _showRestrictedContent = false;
+  int? _desktopSecondaryPointer;
+  Offset? _desktopSecondaryPosition;
+  bool _desktopSecondaryHandled = false;
+  int _desktopSecondarySequence = 0;
 
   SensitiveContentController get _sensitiveContentController =>
       widget.sensitiveContentController ?? SensitiveContentController.shared;
@@ -216,10 +230,20 @@ class _MessageBubbleState extends State<MessageBubble>
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
+  Widget _mobileSelectableText(Widget child) {
+    final key = widget.mobileTextSelectionAreaKey;
+    if (key == null) return child;
+    return MobileMessageTextSelectionArea(
+      selectionAreaKey: key,
+      onSelectionChanged: widget.onMobileTextSelectionChanged,
+      onDisposed: widget.onMobileTextSelectionDisposed ?? () {},
+      child: child,
+    );
+  }
+
   void _handleLongPress([
     MessageActionSource source = MessageActionSource.normal,
   ]) {
-    _lastTapAt = null;
     if (_shouldOfferSensitiveContentUnblock) {
       unawaited(_showSensitiveContentUnblockPrompt(anchor: _bubbleBounds()));
       return;
@@ -235,8 +259,54 @@ class _MessageBubbleState extends State<MessageBubble>
     TapUpDetails details, [
     MessageActionSource source = MessageActionSource.normal,
   ]) {
-    _lastTapAt = null;
-    final position = details.globalPosition;
+    _markDesktopSecondaryHandled();
+    _handleSecondaryPress(details.globalPosition, source);
+  }
+
+  void _handleDesktopPointerDown(PointerDownEvent event) {
+    if ((event.buttons & kSecondaryMouseButton) == 0) return;
+    _desktopSecondarySequence += 1;
+    _desktopSecondaryPointer = event.pointer;
+    _desktopSecondaryPosition = event.position;
+    _desktopSecondaryHandled = false;
+  }
+
+  void _handleDesktopPointerUp(PointerUpEvent event) {
+    if (_desktopSecondaryPointer != event.pointer) return;
+    final sequence = _desktopSecondarySequence;
+    final position = _desktopSecondaryPosition ?? event.position;
+    scheduleMicrotask(() {
+      if (!mounted ||
+          sequence != _desktopSecondarySequence ||
+          _desktopSecondaryPointer != event.pointer) {
+        return;
+      }
+      final handled = _desktopSecondaryHandled;
+      _desktopSecondaryPointer = null;
+      _desktopSecondaryPosition = null;
+      _desktopSecondaryHandled = false;
+      if (!handled) _handleSecondaryPress(position);
+    });
+  }
+
+  void _handleDesktopPointerCancel(PointerCancelEvent event) {
+    if (_desktopSecondaryPointer != event.pointer) return;
+    _desktopSecondarySequence += 1;
+    _desktopSecondaryPointer = null;
+    _desktopSecondaryPosition = null;
+    _desktopSecondaryHandled = false;
+  }
+
+  void _markDesktopSecondaryHandled() {
+    if (_desktopSecondaryPointer != null) {
+      _desktopSecondaryHandled = true;
+    }
+  }
+
+  void _handleSecondaryPress(
+    Offset position, [
+    MessageActionSource source = MessageActionSource.normal,
+  ]) {
     if (_shouldOfferSensitiveContentUnblock) {
       unawaited(
         _showSensitiveContentUnblockPrompt(
@@ -294,25 +364,7 @@ class _MessageBubbleState extends State<MessageBubble>
     }
   }
 
-  void _handleTapDown(TapDownDetails details) {
-    if (widget.onDoubleTap == null) return;
-    final now = DateTime.now();
-    final previous = _lastTapAt;
-    _lastTapAt = now;
-    if (previous == null ||
-        now.difference(previous) > const Duration(milliseconds: 280)) {
-      return;
-    }
-    _lastTapAt = null;
-    _skipNextTap = true;
-    widget.onDoubleTap?.call(message);
-  }
-
   void _handleTap(bool alwaysShowTime) {
-    if (_skipNextTap) {
-      _skipNextTap = false;
-      return;
-    }
     if (!alwaysShowTime) {
       setState(() => _showTappedTimestamp = !_showTappedTimestamp);
     }
@@ -422,6 +474,9 @@ class _MessageBubbleState extends State<MessageBubble>
       color.withValues(alpha: color.a * _messageAccentFillOpacity);
 
   Color _messageLinkColor(bool outgoing) {
+    if (!_theme.themingEnabled) {
+      return _disabledThemeLinkStyle(outgoing).color;
+    }
     if (!_showsMessageBubbleSurface) return _colors.linkBlue;
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     if (_usesDecorativeBubbleBackground) return base;
@@ -431,6 +486,16 @@ class _MessageBubbleState extends State<MessageBubble>
     }
     return outgoing ? colors.outgoingLink : colors.incomingLink;
   }
+
+  ReadableLinkStyle _disabledThemeLinkStyle(bool outgoing) => readableLinkStyle(
+    background: outgoing ? _outgoingBubbleColor : _incomingBubbleColor,
+    body: outgoing ? _outgoingTextColor : _incomingTextColor,
+    preferred: _colors.linkBlue,
+  );
+
+  bool get _underlinesDisabledThemeLinks =>
+      !_theme.themingEnabled &&
+      _disabledThemeLinkStyle(message.isOutgoing).underline;
 
   Color _messageQuoteColor(bool outgoing) {
     if (_usesDecorativeBubbleBackground) {
@@ -534,6 +599,12 @@ class _MessageBubbleState extends State<MessageBubble>
       (message.hasCommentThread ||
           message.commentCount > 0 ||
           (widget.channelHasLinkedDiscussion && !message.isService));
+
+  bool get _showsCompactReplyCount =>
+      !message.isContentRestricted &&
+      widget.isGroup &&
+      !widget.showCommentAttachment &&
+      message.commentCount > 0;
 
   BorderRadius _messageBorderRadius(double radius) =>
       BorderRadius.circular(radius);
@@ -717,19 +788,42 @@ class _MessageBubbleState extends State<MessageBubble>
     final showDetailTime = alwaysShowTime || _showTappedTimestamp;
     final timeInSenderHeader =
         widget.isGroup && !outgoing && message.senderName != null;
+    final desktopInteraction = isDesktopTargetPlatform(
+      Theme.of(context).platform,
+    );
+    final mobileSelectionArmed = widget.mobileTextSelectionAreaKey != null;
+    final contentBody = _contentBody(outgoing);
     final body = GestureDetector(
       key: _bubbleKey,
       behavior: HitTestBehavior.opaque,
-      onTapDown: _handleTapDown,
       onTap: () => _handleTap(alwaysShowTime),
-      onLongPress: _handleLongPress,
-      onSecondaryTapUp: _handleSecondaryTapUp,
-      onHorizontalDragStart: (_) => _swipeController.stop(),
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
+      onLongPress: widget.mobileTextSelectionAreaKey == null
+          ? _handleLongPress
+          : null,
+      onSecondaryTapUp: desktopInteraction ? null : _handleSecondaryTapUp,
+      onHorizontalDragStart: desktopInteraction || mobileSelectionArmed
+          ? null
+          : (_) => _swipeController.stop(),
+      onHorizontalDragUpdate: desktopInteraction || mobileSelectionArmed
+          ? null
+          : _onDragUpdate,
+      onHorizontalDragEnd: desktopInteraction || mobileSelectionArmed
+          ? null
+          : _onDragEnd,
       child: KeyedSubtree(
         key: ValueKey('messageTapTarget-${message.id}'),
-        child: _contentBody(outgoing),
+        child: desktopInteraction
+            ? Listener(
+                onPointerDown: _handleDesktopPointerDown,
+                onPointerUp: _handleDesktopPointerUp,
+                onPointerCancel: _handleDesktopPointerCancel,
+                child: SelectionArea(
+                  key: ValueKey('messageTextSelectionArea-${message.id}'),
+                  contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                  child: contentBody,
+                ),
+              )
+            : contentBody,
       ),
     );
     final contentWidget = ConstrainedBox(
@@ -761,8 +855,6 @@ class _MessageBubbleState extends State<MessageBubble>
             ],
           )
         : contentWidget;
-    final ownPhotoRepeat = outgoing && message.isPhoto && widget.showRepeat;
-
     final messageRow = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       child: Row(
@@ -770,7 +862,7 @@ class _MessageBubbleState extends State<MessageBubble>
         children: outgoing
             ? [
                 Expanded(
-                  child: ownPhotoRepeat
+                  child: widget.showRepeat
                       ? Align(
                           alignment: Alignment.centerRight,
                           child: Row(
@@ -781,20 +873,6 @@ class _MessageBubbleState extends State<MessageBubble>
                               Flexible(child: content),
                             ],
                           ),
-                        )
-                      : widget.showRepeat
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            _repeatBadge(),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: content,
-                              ),
-                            ),
-                          ],
                         )
                       // Without a badge the Row and Flexible are pure overhead:
                       // the Align already fills the Expanded and puts the
@@ -1423,13 +1501,42 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _withFloatingMeta(Widget child, bool outgoing) {
-    final show = message.isEdited || outgoing;
+    final showReplies = _showsCompactReplyCount;
+    final show = message.isEdited || outgoing || showReplies;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        child,
-        Positioned(right: 2, bottom: 2, child: _floatingMeta(outgoing)),
+        if (showReplies)
+          Padding(padding: const EdgeInsets.only(bottom: 19), child: child)
+        else
+          child,
+        Positioned(
+          right: 2,
+          bottom: showReplies ? 0 : 2,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showReplies)
+                MessageReplyCountBadge(
+                  key: ValueKey('messageCompactReplies-${message.id}'),
+                  count: message.commentCount,
+                  foreground: outgoing
+                      ? _outgoingTextColor.withValues(alpha: 0.78)
+                      : _colors.textSecondary,
+                  background: outgoing
+                      ? _outgoingBubbleColor.withValues(alpha: 0.82)
+                      : _colors.card.withValues(alpha: 0.82),
+                  onTap: widget.onOpenComments == null
+                      ? null
+                      : () => widget.onOpenComments?.call(message),
+                ),
+              if (showReplies && (message.isEdited || outgoing))
+                const SizedBox(width: 4),
+              if (message.isEdited || outgoing) _floatingMeta(outgoing),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1738,10 +1845,26 @@ class _MessageBubbleState extends State<MessageBubble>
     bool outgoing, {
     bool includeForwardHeader = true,
     bool includeReplyQuote = true,
+    ChatMessage? source,
   }) {
-    final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = _messageLinkColor(outgoing);
-    final emojiOnly = _isEmojiOnlyText(text);
+    source ??= message;
+    final replacesOriginal = _translationReplacesOriginalFor(source);
+    final displayText = replacesOriginal ? source.translationText ?? '' : text;
+    final baseColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : outgoing
+        ? _outgoingTextColor
+        : _incomingTextColor;
+    final linkColor = replacesOriginal
+        ? Color.lerp(_messageLinkColor(outgoing), AppTheme.brand, 0.30)!
+        : _messageLinkColor(outgoing);
+    final displayEntities = replacesOriginal
+        ? source.translationEntities
+        : _activeTextEntities;
+    final displayRichBlocks = replacesOriginal
+        ? const <RichMessageBlock>[]
+        : _activeRichBlocks;
+    final emojiOnly = _isEmojiOnlyText(displayText);
     final textFontSize = emojiOnly ? 34.0 : AppTextSize.messageBody();
     final bubblePadding = emojiOnly
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
@@ -1756,6 +1879,77 @@ class _MessageBubbleState extends State<MessageBubble>
       1.0,
       _bubbleMaxWidth() - effectivePadding.horizontal,
     );
+    final selectableParts = <Widget>[
+      if (replacesOriginal)
+        KeyedSubtree(
+          key: const ValueKey('messageTranslatedOnlyText'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: _richTextWidgets(
+              displayText,
+              baseColor,
+              linkColor,
+              outgoing,
+              false,
+              displayEntities,
+              textFontSize,
+            ),
+          ),
+        )
+      else
+        ..._richTextWidgets(
+          displayText,
+          baseColor,
+          linkColor,
+          outgoing,
+          false,
+          displayEntities,
+          textFontSize,
+        ),
+      if (displayRichBlocks.isNotEmpty) ...[
+        if (displayText.isNotEmpty) const SizedBox(height: 8),
+        ..._richBlockWidgets(displayRichBlocks, outgoing),
+      ],
+      if (_showsTranslationBlockFor(source)) ...[
+        const SizedBox(height: 7),
+        _translationBlock(outgoing, source: source),
+      ],
+    ];
+    final selectableContent = selectableParts.length == 1
+        ? selectableParts.first
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: selectableParts,
+          );
+    final messageSelectableParts = <Widget>[
+      if (_activeLinkPreview?.showAboveText ?? false) ...[
+        _linkPreviewCard(
+          _activeLinkPreview!,
+          outgoing,
+          maxWidth: previewMaxWidth,
+        ),
+        if (displayText.isNotEmpty) const SizedBox(height: 6),
+      ],
+      selectableContent,
+      if (_activeLinkPreview != null && !_activeLinkPreview!.showAboveText) ...[
+        if (displayText.isNotEmpty || displayRichBlocks.isNotEmpty)
+          const SizedBox(height: 7),
+        _linkPreviewCard(
+          _activeLinkPreview!,
+          outgoing,
+          maxWidth: previewMaxWidth,
+        ),
+      ],
+    ];
+    final messageSelectableContent = messageSelectableParts.length == 1
+        ? messageSelectableParts.first
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: messageSelectableParts,
+          );
     final parts = <Widget>[
       if (includeForwardHeader && (message.forwardOrigin ?? '').isNotEmpty) ...[
         _forwardHeader(outgoing),
@@ -1765,40 +1959,7 @@ class _MessageBubbleState extends State<MessageBubble>
         _replyQuote(outgoing),
         const SizedBox(height: 5),
       ],
-      if (_activeLinkPreview?.showAboveText ?? false) ...[
-        _linkPreviewCard(
-          _activeLinkPreview!,
-          outgoing,
-          maxWidth: previewMaxWidth,
-        ),
-        if (text.isNotEmpty) const SizedBox(height: 6),
-      ],
-      ..._richTextWidgets(
-        text,
-        baseColor,
-        linkColor,
-        outgoing,
-        false,
-        _activeTextEntities,
-        textFontSize,
-      ),
-      if (_activeRichBlocks.isNotEmpty) ...[
-        if (text.isNotEmpty) const SizedBox(height: 8),
-        ..._richBlockWidgets(_activeRichBlocks, outgoing),
-      ],
-      if (_activeLinkPreview != null && !_activeLinkPreview!.showAboveText) ...[
-        if (text.isNotEmpty || _activeRichBlocks.isNotEmpty)
-          const SizedBox(height: 7),
-        _linkPreviewCard(
-          _activeLinkPreview!,
-          outgoing,
-          maxWidth: previewMaxWidth,
-        ),
-      ],
-      if (_showsTranslation) ...[
-        const SizedBox(height: 7),
-        _translationBlock(outgoing),
-      ],
+      _mobileSelectableText(messageSelectableContent),
       if (_showsAiSummary) ...[
         const SizedBox(height: 7),
         _aiSummaryBlock(outgoing),
@@ -1988,6 +2149,9 @@ class _MessageBubbleState extends State<MessageBubble>
         outgoing,
       ),
       RichMessageBlockKind.anchor => const SizedBox.shrink(),
+      RichMessageBlockKind.buttonRow => SelectionContainer.disabled(
+        child: _richButtonRowBlock(block, outgoing),
+      ),
       RichMessageBlockKind.list => _richListBlock(block, outgoing),
       RichMessageBlockKind.blockQuote ||
       RichMessageBlockKind.pullQuote => _richQuoteContainer(block, outgoing),
@@ -2002,6 +2166,30 @@ class _MessageBubbleState extends State<MessageBubble>
       RichMessageBlockKind.details => _richDetailsBlock(block, outgoing),
       RichMessageBlockKind.map => _richMapBlock(block, outgoing),
     };
+  }
+
+  Widget _richButtonRowBlock(RichMessageBlock block, bool outgoing) {
+    final alignment = switch (block.horizontalAlignment) {
+      'center' => WrapAlignment.center,
+      'right' => WrapAlignment.end,
+      _ => WrapAlignment.start,
+    };
+    return SizedBox(
+      key: const ValueKey('rich-message-button-row'),
+      width: _bubbleMaxWidth(),
+      child: Wrap(
+        alignment: alignment,
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final button in block.buttons)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 88, maxWidth: 220),
+              child: _buttonCell(button, outgoing),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _richTextBlock(
@@ -2523,12 +2711,14 @@ class _MessageBubbleState extends State<MessageBubble>
     RichMessageBlock block,
     bool outgoing,
   ) {
-    if (block.caption.trim().isEmpty) return media;
+    if (block.caption.trim().isEmpty) {
+      return SelectionContainer.disabled(child: media);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        media,
+        SelectionContainer.disabled(child: media),
         const SizedBox(height: 5),
         ..._richTextWidgets(
           block.caption,
@@ -2650,11 +2840,13 @@ class _MessageBubbleState extends State<MessageBubble>
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _MapThumbnail(
-              latitude: location.latitude,
-              longitude: location.longitude,
-              zoom: block.mapZoom,
-              height: previewHeight.toDouble(),
+            SelectionContainer.disabled(
+              child: _MapThumbnail(
+                latitude: location.latitude,
+                longitude: location.longitude,
+                zoom: block.mapZoom,
+                height: previewHeight.toDouble(),
+              ),
             ),
             if (block.caption.isNotEmpty)
               Padding(
@@ -2814,11 +3006,28 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  bool get _showsTranslation => _showsTranslationFor(message);
-
   bool _showsTranslationFor(ChatMessage source) =>
       source.isTranslating ||
       (source.translationText?.trim().isNotEmpty ?? false);
+
+  bool _showsTranslationBlockFor(ChatMessage source) {
+    if (source.isTranslating) return true;
+    if (!(source.translationText?.trim().isNotEmpty ?? false)) return false;
+    return widget.translationDisplayStyle !=
+        TranslationDisplayStyle.translatedOnly;
+  }
+
+  bool _translationReplacesOriginalFor(ChatMessage source) =>
+      widget.translationDisplayStyle ==
+          TranslationDisplayStyle.translatedOnly &&
+      !widget.showOriginalTranslationMessageIds.contains(source.id) &&
+      !source.isTranslating &&
+      (source.translationText?.trim().isNotEmpty ?? false);
+
+  Color _translatedOnlyTextColor(bool outgoing) {
+    final base = outgoing ? _outgoingTextColor : _incomingTextColor;
+    return Color.lerp(base, AppTheme.brand, outgoing ? 0.36 : 0.52)!;
+  }
 
   bool get _showsAiSummary =>
       message.aiSummaryLoading ||
@@ -2905,6 +3114,65 @@ class _MessageBubbleState extends State<MessageBubble>
         ? _outgoingTextColor.withValues(alpha: 0.70)
         : c.textSecondary;
     final link = _messageLinkColor(outgoing);
+    if (source.isTranslating) {
+      return SelectionContainer.disabled(
+        child: Container(
+          key: const ValueKey('messageTranslationBlock'),
+          width: width ?? _bubbleMaxWidth(),
+          decoration: BoxDecoration(
+            color: outgoing
+                ? _outgoingTextColor.withValues(alpha: 0.10)
+                : c.searchFill.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border(left: BorderSide(color: secondary, width: 2.5)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(secondary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppStringKeys.messageBubbleTranslating.l10n(context),
+                style: TextStyle(fontSize: 13, color: secondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (widget.translationDisplayStyle == TranslationDisplayStyle.both) {
+      final divider = outgoing
+          ? _outgoingTextColor.withValues(alpha: 0.22)
+          : c.divider;
+      return Container(
+        key: const ValueKey('messageTranslationBlock'),
+        width: width ?? _bubbleMaxWidth(),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: divider, width: 0.5)),
+        ),
+        padding: const EdgeInsets.only(top: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: _richTextWidgets(
+            source.translationText ?? '',
+            base,
+            link,
+            outgoing,
+            false,
+            source.translationEntities,
+          ),
+        ),
+      );
+    }
     return Container(
       key: const ValueKey('messageTranslationBlock'),
       width: width ?? _bubbleMaxWidth(),
@@ -2916,48 +3184,31 @@ class _MessageBubbleState extends State<MessageBubble>
         border: Border(left: BorderSide(color: secondary, width: 2.5)),
       ),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
-      child: source.isTranslating
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(secondary),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  AppStringKeys.messageBubbleTranslating.l10n(context),
-                  style: TextStyle(fontSize: 13, color: secondary),
-                ),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  AppStringKeys.messageActionTranslate.l10n(context),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: secondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                ..._richTextWidgets(
-                  source.translationText ?? '',
-                  base,
-                  link,
-                  outgoing,
-                  false,
-                  source.translationEntities,
-                ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SelectionContainer.disabled(
+            child: Text(
+              AppStringKeys.messageActionTranslate.l10n(context),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: secondary,
+              ),
             ),
+          ),
+          const SizedBox(height: 4),
+          ..._richTextWidgets(
+            source.translationText ?? '',
+            base,
+            link,
+            outgoing,
+            false,
+            source.translationEntities,
+          ),
+        ],
+      ),
     );
   }
 
@@ -2978,26 +3229,34 @@ class _MessageBubbleState extends State<MessageBubble>
       preview,
       math.max(1.0, maxWidth - accentWidth),
     );
+    Widget mobileSelectionDisabled(Widget child) =>
+        widget.mobileTextSelectionAreaKey == null
+        ? child
+        : SelectionContainer.disabled(child: child);
     final textChildren = <Widget>[
       if (preview.siteName.isNotEmpty)
-        Text(
-          preview.siteName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: _messageSiteNameColor(outgoing),
+        mobileSelectionDisabled(
+          Text(
+            preview.siteName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _messageSiteNameColor(outgoing),
+            ),
           ),
         ),
       if (preview.title.isNotEmpty)
-        Text(
-          preview.title,
-          style: TextStyle(
-            fontSize: 15,
-            height: 1.2,
-            fontWeight: FontWeight.w600,
-            color: base,
+        mobileSelectionDisabled(
+          Text(
+            preview.title,
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
+              color: base,
+            ),
           ),
         ),
       if (preview.description.isNotEmpty)
@@ -3010,11 +3269,13 @@ class _MessageBubbleState extends State<MessageBubble>
           preview.descriptionEntities,
         ),
       if (preview.displayUrl.isNotEmpty)
-        Text(
-          preview.displayUrl,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12, color: secondary),
+        mobileSelectionDisabled(
+          Text(
+            preview.displayUrl,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: secondary),
+          ),
         ),
     ];
 
@@ -3051,7 +3312,8 @@ class _MessageBubbleState extends State<MessageBubble>
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (media != null && preview.showMediaAboveDescription) media,
+            if (media != null && preview.showMediaAboveDescription)
+              mobileSelectionDisabled(media),
             if (textChildren.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -3066,7 +3328,8 @@ class _MessageBubbleState extends State<MessageBubble>
                   ],
                 ),
               ),
-            if (media != null && !preview.showMediaAboveDescription) media,
+            if (media != null && !preview.showMediaAboveDescription)
+              mobileSelectionDisabled(media),
           ],
         ),
       ),
@@ -3490,7 +3753,7 @@ class _MessageBubbleState extends State<MessageBubble>
       mainAxisSize: MainAxisSize.min,
       children: [
         AppIcon(
-          HeroAppIcons.share,
+          HeroAppIcons.forward,
           size: 11,
           color: accent.withValues(alpha: 0.9),
         ),
@@ -3779,15 +4042,22 @@ class _MessageBubbleState extends State<MessageBubble>
       link,
       entities ?? message.textEntities,
       effectiveFontSize,
+      outgoing,
     );
     if (appendMeta) children.add(_metaSpan(outgoing));
     final style = DefaultTextStyle.of(
       context,
     ).style.merge(TextStyle(fontSize: effectiveFontSize, color: base));
-    return RichText(
-      maxLines: maxLines,
-      overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
-      text: TextSpan(style: style, children: children),
+    return Builder(
+      builder: (context) => RichText(
+        maxLines: maxLines,
+        overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
+        text: TextSpan(style: style, children: children),
+        selectionRegistrar: SelectionContainer.maybeOf(context),
+        selectionColor:
+            Theme.of(context).textSelectionTheme.selectionColor ??
+            AppTheme.brand.withValues(alpha: 0.28),
+      ),
     );
   }
 
@@ -3848,16 +4118,18 @@ class _MessageBubbleState extends State<MessageBubble>
             ),
             if (quote.isExpandableBlockQuote) ...[
               const SizedBox(height: 4),
-              Text(
-                AppStrings.t(
-                  expanded
-                      ? AppStringKeys.messageBubbleCollapse
-                      : AppStringKeys.messageBubbleExpandQuote,
-                ),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: quoteColor,
-                  fontWeight: FontWeight.w600,
+              SelectionContainer.disabled(
+                child: Text(
+                  AppStrings.t(
+                    expanded
+                        ? AppStringKeys.messageBubbleCollapse
+                        : AppStringKeys.messageBubbleExpandQuote,
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: quoteColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -3897,22 +4169,24 @@ class _MessageBubbleState extends State<MessageBubble>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (language.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(10, 5, 10, 4),
-                color:
-                    (_brightness == Brightness.dark
-                            ? Colors.white
-                            : Colors.black)
-                        .withValues(alpha: 0.045),
-                child: Text(
-                  language,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: c.textSecondary,
-                    fontWeight: FontWeight.w600,
+              SelectionContainer.disabled(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(10, 5, 10, 4),
+                  color:
+                      (_brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black)
+                          .withValues(alpha: 0.045),
+                  child: Text(
+                    language,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: c.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -3959,6 +4233,7 @@ class _MessageBubbleState extends State<MessageBubble>
     Color link,
     List<MessageTextEntity> sourceEntities,
     double fontSize,
+    bool outgoing,
   ) {
     final entities =
         sourceEntities
@@ -3985,7 +4260,9 @@ class _MessageBubbleState extends State<MessageBubble>
         cursor = next;
         continue;
       }
-      spans.addAll(_textSegmentSpans(segment, active, base, link, fontSize));
+      spans.addAll(
+        _textSegmentSpans(segment, active, base, link, fontSize, outgoing),
+      );
       cursor = next;
     }
     return spans;
@@ -3997,6 +4274,7 @@ class _MessageBubbleState extends State<MessageBubble>
     Color base,
     Color link,
     double fontSize,
+    bool outgoing,
   ) {
     final spoilerKey = _spoilerKey(active);
     final spoilerHidden =
@@ -4023,6 +4301,18 @@ class _MessageBubbleState extends State<MessageBubble>
               .where((e) => e.type != 'textEntityTypeSpoiler')
               .toList(growable: false);
     final style = _entityStyle(effectiveActive, base, link);
+    final inlineButton = _inlineButton(effectiveActive);
+    if (inlineButton != null) {
+      return [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 88, maxWidth: 220),
+            child: _buttonCell(inlineButton, outgoing),
+          ),
+        ),
+      ];
+    }
     final customEmojiId = _customEmojiId(effectiveActive);
     if (customEmojiId != null) {
       return [
@@ -4030,8 +4320,9 @@ class _MessageBubbleState extends State<MessageBubble>
           alignment: PlaceholderAlignment.middle,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 0.5),
-            child: CustomEmojiView(
+            child: SelectableCustomEmojiView(
               id: customEmojiId,
+              fallbackText: segment,
               size: math.max(20, fontSize * 1.15),
               color: style.color ?? base,
             ),
@@ -4119,6 +4410,15 @@ class _MessageBubbleState extends State<MessageBubble>
     return active.any((e) => e.type == 'textEntityTypeCode');
   }
 
+  MessageButton? _inlineButton(List<MessageTextEntity> active) {
+    for (final entity in active.reversed) {
+      if (entity.type == 'textEntityTypeButton' && entity.button != null) {
+        return entity.button;
+      }
+    }
+    return null;
+  }
+
   int? _customEmojiId(List<MessageTextEntity> active) {
     for (final entity in active.reversed) {
       if (entity.isCustomEmoji && entity.customEmojiId != null) {
@@ -4157,6 +4457,7 @@ class _MessageBubbleState extends State<MessageBubble>
     var useCodeFont = false;
     var fontFeatures = const <FontFeature>[];
     final decorations = <TextDecoration>[];
+    var isLink = false;
     for (final e in active) {
       switch (e.type) {
         case 'textEntityTypeBold':
@@ -4186,9 +4487,11 @@ class _MessageBubbleState extends State<MessageBubble>
         case 'textEntityTypePhoneNumber':
         case 'textEntityTypeBankCardNumber':
           color = link;
+          isLink = true;
         case 'textEntityTypeMediaTimestamp':
           color = link;
           weight = FontWeight.w600;
+          isLink = true;
         case 'textEntityTypeMarked':
           backgroundColor = Colors.amber.withValues(alpha: 0.32);
         case 'textEntityTypeSubscript':
@@ -4197,7 +4500,15 @@ class _MessageBubbleState extends State<MessageBubble>
           fontFeatures = const [FontFeature.superscripts()];
         case 'textEntityTypeDateTime':
           color = link;
+          isLink = true;
       }
+    }
+    final fallbackUnderline =
+        isLink &&
+        !active.any((entity) => entity.type == 'textEntityTypeSpoiler') &&
+        _underlinesDisabledThemeLinks;
+    if (fallbackUnderline && !decorations.contains(TextDecoration.underline)) {
+      decorations.add(TextDecoration.underline);
     }
     final style = TextStyle(
       color: color,
@@ -4208,6 +4519,8 @@ class _MessageBubbleState extends State<MessageBubble>
           ? null
           : TextDecoration.combine(decorations),
       decorationColor: color,
+      decorationStyle: fallbackUnderline ? TextDecorationStyle.solid : null,
+      decorationThickness: fallbackUnderline ? 1.0 : null,
       fontFeatures: fontFeatures.isEmpty ? null : fontFeatures,
     );
     return useCodeFont ? _theme.codeTextStyle(style) : style;
@@ -4274,10 +4587,7 @@ class _MessageBubbleState extends State<MessageBubble>
           : matched;
       if (isHashtag && widget.onHashtagTap == null) {
         spans.add(
-          TextSpan(
-            text: matched,
-            style: baseStyle.copyWith(color: link),
-          ),
+          TextSpan(text: matched, style: _autoLinkStyle(baseStyle, link)),
         );
         last = m.end;
         continue;
@@ -4294,7 +4604,7 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(
         TextSpan(
           text: matched,
-          style: baseStyle.copyWith(color: link),
+          style: _autoLinkStyle(baseStyle, link),
           recognizer: recognizer,
         ),
       );
@@ -4304,6 +4614,25 @@ class _MessageBubbleState extends State<MessageBubble>
       spans.add(TextSpan(text: text.substring(last), style: baseStyle));
     }
     return spans;
+  }
+
+  TextStyle _autoLinkStyle(TextStyle baseStyle, Color link) {
+    if (!_underlinesDisabledThemeLinks) {
+      return baseStyle.copyWith(color: link);
+    }
+    final existing = baseStyle.decoration;
+    final decoration = existing == null || existing == TextDecoration.none
+        ? TextDecoration.underline
+        : existing == TextDecoration.underline
+        ? existing
+        : TextDecoration.combine([existing, TextDecoration.underline]);
+    return baseStyle.copyWith(
+      color: link,
+      decoration: decoration,
+      decorationColor: link,
+      decorationStyle: TextDecorationStyle.solid,
+      decorationThickness: 1.0,
+    );
   }
 
   String _normalizeHashtag(String tag) {
@@ -4532,8 +4861,21 @@ class _MessageBubbleState extends State<MessageBubble>
     }
 
     final c = _colors;
-    final baseColor = outgoing ? _outgoingTextColor : _incomingTextColor;
-    final linkColor = _messageLinkColor(outgoing);
+    final replacesOriginal = _translationReplacesOriginalFor(message);
+    final displayCaption = replacesOriginal
+        ? message.translationText ?? ''
+        : caption!;
+    final baseColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : outgoing
+        ? _outgoingTextColor
+        : _incomingTextColor;
+    final linkColor = replacesOriginal
+        ? Color.lerp(_messageLinkColor(outgoing), AppTheme.brand, 0.30)!
+        : _messageLinkColor(outgoing);
+    final captionEntities = replacesOriginal
+        ? message.translationEntities
+        : _activeTextEntities;
     return Container(
       decoration: _showsMessageBubbleSurface
           ? BoxDecoration(
@@ -4562,22 +4904,46 @@ class _MessageBubbleState extends State<MessageBubble>
           media,
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ..._richTextWidgets(
-                  caption!,
-                  baseColor,
-                  linkColor,
-                  outgoing,
-                  false,
-                ),
-                if (_showsTranslation) ...[
-                  const SizedBox(height: 7),
-                  _translationBlock(outgoing, width: double.infinity),
+            child: _mobileSelectableText(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (replacesOriginal)
+                    KeyedSubtree(
+                      key: const ValueKey('messageTranslatedOnlyText'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: _richTextWidgets(
+                          displayCaption,
+                          baseColor,
+                          linkColor,
+                          outgoing,
+                          false,
+                          captionEntities,
+                        ),
+                      ),
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _richTextWidgets(
+                        displayCaption,
+                        baseColor,
+                        linkColor,
+                        outgoing,
+                        false,
+                        captionEntities,
+                      ),
+                    ),
+                  if (_showsTranslationBlockFor(message)) ...[
+                    const SizedBox(height: 7),
+                    _translationBlock(outgoing, width: double.infinity),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -5100,6 +5466,20 @@ class _MessageBubbleState extends State<MessageBubble>
         }
       }
     }
+    final replacesOriginal =
+        captionSource != null && _translationReplacesOriginalFor(captionSource);
+    final displayCaption = replacesOriginal
+        ? captionSource.translationText ?? ''
+        : caption;
+    final displayCaptionEntities = replacesOriginal
+        ? captionSource.translationEntities
+        : captionSource?.textEntities ?? const <MessageTextEntity>[];
+    final displayCaptionColor = replacesOriginal
+        ? _translatedOnlyTextColor(outgoing)
+        : captionText;
+    final displayCaptionLink = replacesOriginal
+        ? Color.lerp(captionLink, AppTheme.brand, 0.30)!
+        : captionLink;
     final singleGif =
         sources.length == 1 && _isGifDocument(sources.single.document!);
     return Container(
@@ -5136,21 +5516,44 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _richTextWidgets(
-                  caption,
-                  captionText,
-                  captionLink,
-                  outgoing,
-                  false,
-                  captionSource.textEntities,
+              child: _mobileSelectableText(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    KeyedSubtree(
+                      key: replacesOriginal
+                          ? const ValueKey('messageTranslatedOnlyText')
+                          : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _richTextWidgets(
+                          displayCaption,
+                          displayCaptionColor,
+                          displayCaptionLink,
+                          outgoing,
+                          false,
+                          displayCaptionEntities,
+                        ),
+                      ),
+                    ),
+                    if (translationSource != null &&
+                        _showsTranslationBlockFor(translationSource)) ...[
+                      const SizedBox(height: 4),
+                      _translationBlock(
+                        outgoing,
+                        width: double.infinity,
+                        source: translationSource,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
           ],
-          if (translationSource != null &&
-              _showsTranslationFor(translationSource)) ...[
+          if (captionSource == null &&
+              translationSource != null &&
+              _showsTranslationBlockFor(translationSource)) ...[
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
@@ -5228,7 +5631,6 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   void _handleGroupedFileLongPress(ChatMessage source, GlobalKey itemKey) {
-    _lastTapAt = null;
     final box = itemKey.currentContext?.findRenderObject() as RenderBox?;
     final bounds = box != null && box.hasSize
         ? box.localToGlobal(Offset.zero) & box.size
@@ -5240,7 +5642,7 @@ class _MessageBubbleState extends State<MessageBubble>
     ChatMessage source,
     Offset globalPosition,
   ) {
-    _lastTapAt = null;
+    _markDesktopSecondaryHandled();
     widget.onLongPress?.call(
       source,
       Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),

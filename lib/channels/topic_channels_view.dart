@@ -614,7 +614,7 @@ class _TopicStats extends StatelessWidget {
           style: TextStyle(fontSize: 15, color: c.textPrimary),
         ),
         const SizedBox(width: 24),
-        AppIcon(HeroAppIcons.share, size: 27, color: c.textPrimary),
+        AppIcon(HeroAppIcons.forward, size: 27, color: c.textPrimary),
       ],
     );
   }

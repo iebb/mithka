@@ -19,6 +19,8 @@ class TdFileRef {
   TdFileRef({
     required this.id,
     this.localPath,
+    this.fileName,
+    this.mimeType,
     this.miniThumb,
     this.thumbnail,
     this.hasAnimation = false,
@@ -26,6 +28,8 @@ class TdFileRef {
   });
   final int id;
   final String? localPath;
+  final String? fileName;
+  final String? mimeType;
   final bool hasAnimation;
   final int? photoId;
   Uint8List? miniThumb; // decoded JPEG for instant placeholder
@@ -35,6 +39,8 @@ class TdFileRef {
     return TdFileRef(
       id: id,
       localPath: _usablePath(localPath) ?? _usablePath(previous?.localPath),
+      fileName: _usablePath(fileName) ?? _usablePath(previous?.fileName),
+      mimeType: _usablePath(mimeType) ?? _usablePath(previous?.mimeType),
       miniThumb: miniThumb ?? previous?.miniThumb,
       hasAnimation: hasAnimation || (previous?.hasAnimation ?? false),
       photoId: photoId ?? previous?.photoId,
@@ -120,6 +126,7 @@ class MessageTextEntity {
     this.userId,
     this.customEmojiId,
     this.language,
+    this.button,
     this.typeData = const {},
   });
 
@@ -130,6 +137,7 @@ class MessageTextEntity {
   final int? userId;
   final int? customEmojiId;
   final String? language;
+  final MessageButton? button;
 
   /// Full TDLib `TextEntityType` payload, including fields introduced after
   /// this client was built. Known convenience fields above remain available.
@@ -189,6 +197,7 @@ enum RichMessageBlockKind {
   divider,
   math,
   anchor,
+  buttonRow,
   list,
   blockQuote,
   pullQuote,
@@ -251,6 +260,8 @@ class RichMessageBlock {
     this.captionEntities = const [],
     this.isBordered = false,
     this.isStriped = false,
+    this.buttons = const [],
+    this.horizontalAlignment = 'left',
   });
 
   const RichMessageBlock.text({
@@ -329,6 +340,15 @@ class RichMessageBlock {
   const RichMessageBlock.math(String? expression)
     : this._(kind: RichMessageBlockKind.math, mathExpression: expression);
 
+  const RichMessageBlock.buttonRow(
+    List<MessageButton> buttons, {
+    String horizontalAlignment = 'left',
+  }) : this._(
+         kind: RichMessageBlockKind.buttonRow,
+         buttons: buttons,
+         horizontalAlignment: horizontalAlignment,
+       );
+
   const RichMessageBlock.map({
     required MessageLocation? mapLocation,
     int mapZoom = 16,
@@ -389,6 +409,8 @@ class RichMessageBlock {
   final List<MessageTextEntity> captionEntities;
   final bool isBordered;
   final bool isStriped;
+  final List<MessageButton> buttons;
+  final String horizontalAlignment;
 
   bool get isTable => kind == RichMessageBlockKind.table;
   bool get isMath => kind == RichMessageBlockKind.math;
@@ -435,6 +457,7 @@ class _RichTextBuilder {
     int? userId,
     int? customEmojiId,
     String? language,
+    MessageButton? button,
     Map<String, dynamic> typeData = const {},
   }) {
     final length = this.length - start;
@@ -448,6 +471,7 @@ class _RichTextBuilder {
         userId: userId,
         customEmojiId: customEmojiId,
         language: language,
+        button: button,
         typeData: typeData,
       ),
     );
@@ -598,6 +622,31 @@ class MessageAppearancePreview {
   final Map<String, dynamic>? chatTheme;
 }
 
+/// Community identity retained by a chat-added service message.
+///
+/// The Bot API intentionally supplies only an id and name. Native TDLib
+/// sessions can enrich the same model with a cached community photo later.
+class MessageCommunityPreview {
+  MessageCommunityPreview({required this.id, required this.name, this.photo});
+
+  static MessageCommunityPreview? fromContent(Map<String, dynamic>? content) {
+    if (content?.type != 'messageChatAddedToCommunity') return null;
+    final community = content?.obj('community');
+    return MessageCommunityPreview(
+      id: content?.int64('community_id') ?? community?.int64('id') ?? 0,
+      name:
+          content?.str('community_name') ??
+          community?.str('name') ??
+          community?.str('title') ??
+          '',
+    );
+  }
+
+  final int id;
+  String name;
+  TdFileRef? photo;
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -661,6 +710,7 @@ class ChatMessage {
     this.replyToImageHeight,
     this.serviceUserIds = const [],
     this.appearancePreview,
+    this.communityPreview,
     this.customEmoji = const [],
     this.textEntities = const [],
     this.linkPreview,
@@ -679,8 +729,13 @@ class ChatMessage {
     this.hasCommentThread = false,
     this.commentCount = 0,
     this.lastCommentMessageId,
+    bool? commentThreadMetadataKnown,
     this.blockedByUser = false,
-  });
+  }) : commentThreadMetadataKnown =
+           commentThreadMetadataKnown ??
+           (hasCommentThread ||
+               commentCount > 0 ||
+               lastCommentMessageId != null);
 
   final int id;
   final bool isOutgoing;
@@ -767,6 +822,9 @@ class ChatMessage {
   /// messages. Other service content remains text-only.
   final MessageAppearancePreview? appearancePreview;
 
+  /// Rich identity for community membership service events.
+  final MessageCommunityPreview? communityPreview;
+
   // Inline custom (premium) emoji spans within `text`.
   List<CustomEmojiEntity> customEmoji;
   List<MessageTextEntity> textEntities;
@@ -785,9 +843,16 @@ class ChatMessage {
   int viewCount;
   int forwardCount;
   bool hasCommentThread;
-  int
-  commentCount; // channel discussion replies/comments, when TDLib exposes it
+
+  /// TDLib `reply_info.reply_count`: channel comments or ordinary group
+  /// replies, depending on the containing chat.
+  int commentCount;
   int? lastCommentMessageId;
+
+  /// Whether this instance carries an authoritative reply-info snapshot.
+  /// False means a partial/cached message omitted interaction metadata, so a
+  /// same-ID merge must not erase newer thread information already in memory.
+  bool commentThreadMetadataKnown;
 
   /// When true, this message is from a Telegram-blocked user and the
   /// "hide blocked user messages" feature is on.
@@ -1471,7 +1536,8 @@ abstract final class TDParse {
         : null;
 
     final parsedEntities = messageTextEntities(content);
-    final replyInfo = message.obj('interaction_info')?.obj('reply_info');
+    final interactionInfo = message.obj('interaction_info');
+    final replyInfo = interactionInfo?.obj('reply_info');
     var contentDisplayText = contentText;
     var contentDisplayEntities = parsedEntities;
     final contentRichBlocks = <RichMessageBlock>[...richMessageBlocks(content)];
@@ -1560,6 +1626,9 @@ abstract final class TDParse {
         appearancePreview: isContentRestricted
             ? null
             : MessageAppearancePreview.fromContent(content),
+        communityPreview: isContentRestricted
+            ? null
+            : MessageCommunityPreview.fromContent(content),
         customEmoji: isContentRestricted
             ? const []
             : customEmojiEntitiesFrom(parsedEntities),
@@ -1575,9 +1644,8 @@ abstract final class TDParse {
             (content?.obj('message')?.boolean('is_full') ?? false),
         isEdited: (message.integer('edit_date') ?? 0) > 0,
         isSending: message.obj('sending_state') != null,
-        viewCount: message.obj('interaction_info')?.integer('view_count') ?? 0,
-        forwardCount:
-            message.obj('interaction_info')?.integer('forward_count') ?? 0,
+        viewCount: interactionInfo?.integer('view_count') ?? 0,
+        forwardCount: interactionInfo?.integer('forward_count') ?? 0,
         hasCommentThread: !isContentRestricted && replyInfo != null,
         commentCount: isContentRestricted
             ? 0
@@ -1587,6 +1655,7 @@ abstract final class TDParse {
         lastCommentMessageId: isContentRestricted
             ? null
             : replyInfo?.int64('last_message_id'),
+        commentThreadMetadataKnown: interactionInfo != null,
       )
       ..reactions = reactionsFrom(message)
       ..forwardOrigin = isContentRestricted ? null : fwdName
@@ -1772,7 +1841,11 @@ abstract final class TDParse {
     final mini = decodeMiniThumb(video.obj('minithumbnail'));
     return MediaAttachment(
       image: fileRef(video.obj('thumbnail')?.obj('file'), miniThumb: mini),
-      video: fileRef(video.obj('video')),
+      video: fileRef(
+        video.obj('video'),
+        fileName: video.str('file_name'),
+        mimeType: video.str('mime_type'),
+      ),
       videoDuration: video.integer('duration') ?? fallback?.integer('duration'),
       width: video.integer('width') ?? fallback?.integer('width'),
       height: video.integer('height') ?? fallback?.integer('height'),
@@ -1875,12 +1948,7 @@ abstract final class TDParse {
       requestId: type?.integer('id'),
       suggestedName: type?.str('suggested_name'),
       suggestedUsername: type?.str('suggested_username'),
-      style: switch (button.obj('style')?.type ?? button['style']) {
-        'buttonStylePrimary' => MessageButtonStyle.primary,
-        'buttonStyleDanger' => MessageButtonStyle.danger,
-        'buttonStyleSuccess' => MessageButtonStyle.success,
-        _ => MessageButtonStyle.standard,
-      },
+      style: _richButtonStyle(button['style']),
       iconCustomEmojiId: button.int64('icon_custom_emoji_id') ?? 0,
       isReplyKeyboard: isReplyKeyboard,
     );
@@ -1986,11 +2054,114 @@ abstract final class TDParse {
     if (parsed != null) out.add(parsed);
   }
 
+  static String? _richBlockType(Map<String, dynamic> block) {
+    final tdType = block.type;
+    if (tdType != null && tdType.isNotEmpty) return tdType;
+    final rawType = block['type'];
+    if (rawType is! String) return null;
+    return switch (rawType) {
+      'paragraph' => 'pageBlockParagraph',
+      'heading' || 'section_heading' => 'pageBlockSectionHeading',
+      'pre' || 'preformatted' => 'pageBlockPreformatted',
+      'footer' => 'pageBlockFooter',
+      'thinking' => 'pageBlockThinking',
+      'divider' => 'pageBlockDivider',
+      'anchor' => 'pageBlockAnchor',
+      'button_row' => 'pageBlockButtonRow',
+      'list' => 'pageBlockList',
+      'blockquote' || 'block_quote' => 'pageBlockBlockQuote',
+      'pullquote' || 'pull_quote' => 'pageBlockPullQuote',
+      'table' => 'pageBlockTable',
+      'mathematical_expression' => 'pageBlockMathematicalExpression',
+      'photo' => 'pageBlockPhoto',
+      'video' => 'pageBlockVideo',
+      'animation' => 'pageBlockAnimation',
+      'audio' => 'pageBlockAudio',
+      'voice_note' => 'pageBlockVoiceNote',
+      'map' => 'pageBlockMap',
+      'collage' => 'pageBlockCollage',
+      'slideshow' => 'pageBlockSlideshow',
+      'details' => 'pageBlockDetails',
+      'cover' => 'pageBlockCover',
+      _ => rawType,
+    };
+  }
+
+  static MessageButton? _richMessageButton(Map<String, dynamic> source) {
+    final nested = source.obj('button');
+    final button = nested ?? source;
+    final label = _richText(button['text']).text.trim();
+    if (label.isEmpty) return null;
+
+    final rawAction = button['type'];
+    final action = rawAction is Map<String, dynamic>
+        ? rawAction
+        : const <String, dynamic>{};
+    final webApp = button.obj('web_app') ?? action.obj('web_app');
+    final copyText = button.obj('copy_text') ?? action.obj('copy_text');
+    final actionType =
+        action.type ??
+        switch (button) {
+          {'url': final Object? url} when '$url'.isNotEmpty =>
+            'inlineKeyboardButtonTypeUrl',
+          {'web_app': final Object? webApp} when webApp != null =>
+            'inlineKeyboardButtonTypeWebApp',
+          {'callback_data': final Object? data} when data != null =>
+            'inlineKeyboardButtonTypeCallback',
+          {'copy_text': final Object? copy} when copy != null =>
+            'inlineKeyboardButtonTypeCopyText',
+          {'switch_inline_query_current_chat': final Object? query}
+              when query != null =>
+            'inlineKeyboardButtonTypeSwitchInline',
+          {'switch_inline_query': final Object? query} when query != null =>
+            'inlineKeyboardButtonTypeSwitchInline',
+          _ => '',
+        };
+    return MessageButton(
+      text: label,
+      type: actionType,
+      url: action.str('url') ?? button.str('url') ?? webApp?.str('url'),
+      data: action.str('data') ?? button.str('callback_data'),
+      userId: action.int64('user_id'),
+      copyText:
+          action.str('text') ??
+          copyText?.str('text') ??
+          button.str('copy_text'),
+      switchInlineQuery:
+          action.str('query') ??
+          button.str('switch_inline_query_current_chat') ??
+          button.str('switch_inline_query'),
+      style: _richButtonStyle(button['style']),
+      iconCustomEmojiId: button.int64('icon_custom_emoji_id') ?? 0,
+    );
+  }
+
+  static MessageButtonStyle _richButtonStyle(Object? value) {
+    final type = value is Map<String, dynamic> ? value.type : value;
+    return switch (type) {
+      'buttonStylePrimary' || 'primary' => MessageButtonStyle.primary,
+      'buttonStyleDanger' || 'danger' => MessageButtonStyle.danger,
+      'buttonStyleSuccess' || 'success' => MessageButtonStyle.success,
+      _ => MessageButtonStyle.standard,
+    };
+  }
+
+  static String _richHorizontalAlignment(Object? value) {
+    final type = value is Map<String, dynamic> ? value.type : value;
+    if (type == 'center' || '$type'.toLowerCase().contains('center')) {
+      return 'center';
+    }
+    if (type == 'right' || '$type'.toLowerCase().contains('right')) {
+      return 'right';
+    }
+    return 'left';
+  }
+
   static RichMessageBlock? _parseRichBlock(Map<String, dynamic> block) {
-    switch (block.type) {
+    switch (_richBlockType(block)) {
       case 'pageBlockParagraph':
       case 'RichBlockParagraph':
-        final text = _richBlockText(block.obj('text'));
+        final text = _richBlockText(block['text']);
         return RichMessageBlock.text(
           kind: RichMessageBlockKind.paragraph,
           text: text.text,
@@ -1998,7 +2169,7 @@ abstract final class TDParse {
         );
       case 'pageBlockSectionHeading':
       case 'RichBlockSectionHeading':
-        final text = _richBlockText(block.obj('text'));
+        final text = _richBlockText(block['text']);
         return RichMessageBlock.text(
           kind: RichMessageBlockKind.heading,
           text: text.text,
@@ -2007,7 +2178,7 @@ abstract final class TDParse {
         );
       case 'pageBlockPreformatted':
       case 'RichBlockPreformatted':
-        final text = _richBlockText(block.obj('text'));
+        final text = _richBlockText(block['text']);
         return RichMessageBlock.text(
           kind: RichMessageBlockKind.preformatted,
           text: text.text,
@@ -2016,7 +2187,7 @@ abstract final class TDParse {
         );
       case 'pageBlockFooter':
       case 'RichBlockFooter':
-        final text = _richBlockText(block.obj('footer') ?? block.obj('text'));
+        final text = _richBlockText(block['footer'] ?? block['text']);
         return RichMessageBlock.text(
           kind: RichMessageBlockKind.footer,
           text: text.text,
@@ -2024,7 +2195,7 @@ abstract final class TDParse {
         );
       case 'pageBlockThinking':
       case 'RichBlockThinking':
-        final text = _richBlockText(block.obj('text'));
+        final text = _richBlockText(block['text']);
         return RichMessageBlock.text(
           kind: RichMessageBlockKind.thinking,
           text: text.text,
@@ -2040,6 +2211,17 @@ abstract final class TDParse {
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.anchor,
           name: block.str('name') ?? '',
+        );
+      case 'pageBlockButtonRow':
+      case 'RichBlockButtonRow':
+        final buttons = (block.objects('buttons') ?? const [])
+            .map(_richMessageButton)
+            .whereType<MessageButton>()
+            .toList(growable: false);
+        if (buttons.isEmpty) return null;
+        return RichMessageBlock.buttonRow(
+          buttons,
+          horizontalAlignment: _richHorizontalAlignment(block['align']),
         );
       case 'pageBlockList':
       case 'RichBlockList':
@@ -2063,7 +2245,7 @@ abstract final class TDParse {
         );
       case 'pageBlockBlockQuote':
       case 'RichBlockBlockQuotation':
-        final credit = _richBlockText(block.obj('credit'));
+        final credit = _richBlockText(block['credit']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.blockQuote,
           children: _parseRichChildren(block.objects('blocks')),
@@ -2072,8 +2254,8 @@ abstract final class TDParse {
         );
       case 'pageBlockPullQuote':
       case 'RichBlockPullQuotation':
-        final text = _richBlockText(block.obj('text'));
-        final credit = _richBlockText(block.obj('credit'));
+        final text = _richBlockText(block['text']);
+        final credit = _richBlockText(block['credit']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.pullQuote,
           text: text.text,
@@ -2085,7 +2267,7 @@ abstract final class TDParse {
       case 'RichBlockTable':
         final rows = _richTableRows(block['cells'] ?? block['rows']);
         if (rows.isEmpty) return null;
-        final caption = _richBlockCaption(block.obj('caption'));
+        final caption = _richBlockCaption(block['caption']);
         return RichMessageBlock.captionedTable(
           tableRows: rows,
           caption: caption.text,
@@ -2137,7 +2319,7 @@ abstract final class TDParse {
         });
       case 'pageBlockVoiceNote':
       case 'RichBlockVoiceNote':
-        final caption = _richBlockCaption(block.obj('caption'));
+        final caption = _richBlockCaption(block['caption']);
         final voice = voiceAttachment({
           '@type': 'messageVoiceNote',
           'voice_note': block['voice_note'] ?? block['voice'],
@@ -2166,7 +2348,7 @@ abstract final class TDParse {
             block.dbl('long') ??
             block.dbl('lon');
         if (latitude == null || longitude == null) return null;
-        final caption = _richBlockCaption(block.obj('caption'));
+        final caption = _richBlockCaption(block['caption']);
         return RichMessageBlock.map(
           mapLocation: MessageLocation(
             latitude: latitude,
@@ -2181,7 +2363,7 @@ abstract final class TDParse {
         );
       case 'pageBlockCollage':
       case 'RichBlockCollage':
-        final caption = _richBlockCaption(block.obj('caption'));
+        final caption = _richBlockCaption(block['caption']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.collage,
           children: _parseRichChildren(block.objects('blocks')),
@@ -2190,7 +2372,7 @@ abstract final class TDParse {
         );
       case 'pageBlockSlideshow':
       case 'RichBlockSlideshow':
-        final caption = _richBlockCaption(block.obj('caption'));
+        final caption = _richBlockCaption(block['caption']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.slideshow,
           children: _parseRichChildren(block.objects('blocks')),
@@ -2199,7 +2381,7 @@ abstract final class TDParse {
         );
       case 'pageBlockDetails':
       case 'RichBlockDetails':
-        final header = _richBlockText(block.obj('header'));
+        final header = _richBlockText(block['header'] ?? block['summary']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.details,
           text: header.text,
@@ -2222,9 +2404,9 @@ abstract final class TDParse {
     return blocks.map(_parseRichBlock).whereType<RichMessageBlock>().toList();
   }
 
-  static _ParsedMarkdownText _richBlockText(Map<String, dynamic>? value) {
+  static _ParsedMarkdownText _richBlockText(Object? value) {
     if (value == null) return const _ParsedMarkdownText('', []);
-    return _ParsedMarkdownText(richTextText(value), richTextEntities(value));
+    return _richText(value);
   }
 
   static RichMessageBlock _richMediaBlock(
@@ -2233,7 +2415,7 @@ abstract final class TDParse {
     Map<String, dynamic> content,
   ) {
     final media = mediaAttachment(content);
-    final caption = _richBlockCaption(block.obj('caption'));
+    final caption = _richBlockCaption(block['caption']);
     return RichMessageBlock.media(
       kind: kind,
       image: media.image,
@@ -2248,8 +2430,9 @@ abstract final class TDParse {
     );
   }
 
-  static _ParsedMarkdownText _richBlockCaption(Map<String, dynamic>? caption) {
+  static _ParsedMarkdownText _richBlockCaption(Object? caption) {
     if (caption == null) return const _ParsedMarkdownText('', []);
+    if (caption is! Map<String, dynamic>) return _richText(caption);
     final builder = _RichTextBuilder();
     _appendRichText(builder, caption.obj('text') ?? caption);
     _appendCredit(builder, caption.obj('credit'));
@@ -2269,7 +2452,7 @@ abstract final class TDParse {
       final row = <RichMessageTableCell>[];
       for (final rawCell in rawCells) {
         if (rawCell is! Map<String, dynamic>) continue;
-        final parsed = _richText(rawCell.obj('text') ?? rawCell['content']);
+        final parsed = _richText(rawCell['text'] ?? rawCell['content']);
         row.add(
           RichMessageTableCell(
             text: parsed.text,
@@ -2388,6 +2571,7 @@ abstract final class TDParse {
           userId: entity.userId,
           customEmojiId: entity.customEmojiId,
           language: entity.language,
+          button: entity.button,
           typeData: entity.typeData,
         ),
       );
@@ -2470,7 +2654,7 @@ abstract final class TDParse {
     }
     if (value is! Map<String, dynamic>) return;
 
-    final type = value.type;
+    final type = _richTextType(value);
     final normalizedType = _normalizedRichTextType(type);
     switch (type) {
       case 'textEmpty':
@@ -2524,6 +2708,15 @@ abstract final class TDParse {
         builder.write(expression);
         builder.entity(start, 'textEntityTypeMathematicalExpression');
         return;
+      case 'richTextButton':
+      case 'RichTextButton':
+        final buttonSource = value.obj('button') ?? value;
+        final button = _richMessageButton(buttonSource);
+        if (button == null) return;
+        final start = builder.length;
+        builder.write('\uFFFC');
+        builder.entity(start, 'textEntityTypeButton', button: button);
+        return;
     }
 
     final child = value['text'];
@@ -2542,6 +2735,45 @@ abstract final class TDParse {
       userId: _richTextUserId(value),
       typeData: _richTextEntityTypeData(entityType, value),
     );
+  }
+
+  static String? _richTextType(Map<String, dynamic> value) {
+    final tdType = value.type;
+    if (tdType != null && tdType.isNotEmpty) return tdType;
+    final rawType = value['type'];
+    if (rawType is! String) return null;
+    return switch (rawType) {
+      'empty' => 'textEmpty',
+      'plain' => 'richTextPlain',
+      'concat' => 'richTexts',
+      'bold' => 'richTextBold',
+      'italic' => 'richTextItalic',
+      'underline' => 'richTextUnderline',
+      'strikethrough' => 'richTextStrikethrough',
+      'spoiler' => 'richTextSpoiler',
+      'date_time' => 'richTextDateTime',
+      'text_mention' => 'richTextMentionName',
+      'code' => 'richTextFixed',
+      'url' => 'richTextUrl',
+      'email_address' => 'richTextEmailAddress',
+      'phone_number' => 'richTextPhoneNumber',
+      'bank_card_number' => 'richTextBankCardNumber',
+      'mention' => 'richTextMention',
+      'hashtag' => 'richTextHashtag',
+      'cashtag' => 'richTextCashtag',
+      'bot_command' => 'richTextBotCommand',
+      'marked' => 'richTextMarked',
+      'subscript' => 'richTextSubscript',
+      'superscript' => 'richTextSuperscript',
+      'anchor' => 'richTextAnchor',
+      'anchor_link' => 'richTextAnchorLink',
+      'reference' => 'richTextReference',
+      'reference_link' => 'richTextReferenceLink',
+      'custom_emoji' => 'richTextCustomEmoji',
+      'mathematical_expression' => 'richTextMathematicalExpression',
+      'button' => 'richTextButton',
+      _ => rawType,
+    };
   }
 
   static Map<String, dynamic> _richTextEntityTypeData(
@@ -2718,6 +2950,7 @@ abstract final class TDParse {
             userId: entity.userId,
             customEmojiId: entity.customEmojiId,
             language: entity.language,
+            button: entity.button,
             typeData: entity.typeData,
           ),
         )
@@ -2731,7 +2964,7 @@ abstract final class TDParse {
     Map<String, dynamic> block,
   ) {
     final start = builder.length;
-    switch (block.type) {
+    switch (_richBlockType(block)) {
       case 'pageBlockTitle':
         _appendRichText(builder, block.obj('title'));
       case 'pageBlockSubtitle':
@@ -2745,13 +2978,13 @@ abstract final class TDParse {
       case 'pageBlockSectionHeading':
       case 'pageBlockParagraph':
       case 'pageBlockThinking':
-        _appendRichText(builder, block.obj('text'));
+        _appendRichText(builder, block['text']);
       case 'pageBlockKicker':
         _appendRichText(builder, block.obj('kicker'));
       case 'pageBlockFooter':
-        _appendRichText(builder, block.obj('footer'));
+        _appendRichText(builder, block['footer']);
       case 'pageBlockPreformatted':
-        _appendRichText(builder, block.obj('text'));
+        _appendRichText(builder, block['text']);
         builder.entity(
           start,
           'textEntityTypePreCode',
@@ -2766,7 +2999,7 @@ abstract final class TDParse {
         _appendCredit(builder, block.obj('credit'));
         builder.entity(start, 'textEntityTypeBlockQuote');
       case 'pageBlockPullQuote':
-        _appendRichText(builder, block.obj('text'));
+        _appendRichText(builder, block['text']);
         _appendCredit(builder, block.obj('credit'));
         builder.entity(start, 'textEntityTypeBlockQuote');
       case 'pageBlockAnimation':
@@ -2790,9 +3023,10 @@ abstract final class TDParse {
         _appendPageBlocks(builder, block.objects('blocks'));
         _appendCaption(builder, block.obj('caption'));
       case 'pageBlockTable':
+      case 'pageBlockButtonRow':
         return;
       case 'pageBlockDetails':
-        _appendRichText(builder, block.obj('header'));
+        _appendRichText(builder, block['header'] ?? block['summary']);
         builder.lineBreak();
         _appendPageBlocks(builder, block.objects('blocks'));
       case 'pageBlockRelatedArticles':
@@ -3362,7 +3596,12 @@ abstract final class TDParse {
           final thumb =
               fileRef(anim.obj('thumbnail')?.obj('file'), miniThumb: mini) ??
               fileRef(anim.obj('animation'), miniThumb: mini);
-          final animation = fileRef(anim.obj('animation'), miniThumb: mini);
+          final animation = fileRef(
+            anim.obj('animation'),
+            fileName: anim.str('file_name'),
+            mimeType: anim.str('mime_type'),
+            miniThumb: mini,
+          );
           return MediaAttachment(
             image: thumb,
             video: animation,
@@ -3381,7 +3620,11 @@ abstract final class TDParse {
               video.obj('thumbnail')?.obj('file'),
               miniThumb: mini,
             ),
-            video: fileRef(video.obj('video')),
+            video: fileRef(
+              video.obj('video'),
+              fileName: video.str('file_name'),
+              mimeType: video.str('mime_type'),
+            ),
             videoDuration: video.integer('duration'),
             videoFileSize: _fileSize(video.obj('video')),
             width: video.integer('width'),
@@ -3768,6 +4011,8 @@ abstract final class TDParse {
       case 'messageChatJoinByLink':
       case 'messageChatJoinByRequest':
       case 'messageChatBoost':
+      case 'messageChatAddedToCommunity':
+      case 'messageChatRemovedFromCommunity':
         return senderId != null && senderId > 0 ? [senderId] : const <int>[];
       case 'messageChatDeleteMember':
         final userId = content?.int64('user_id');
@@ -3826,15 +4071,28 @@ abstract final class TDParse {
 
   static TdFileRef? fileRef(
     Map<String, dynamic>? file, {
+    String? fileName,
+    String? mimeType,
     Uint8List? miniThumb,
     TdFileRef? thumbnail,
   }) {
     final id = file?.integer('id');
     if (file == null || id == null) return null;
     final normalizedThumbnail = thumbnail?.id == id ? null : thumbnail;
+    final local = file.obj('local');
+    // TDLib exposes `local.path` as soon as any prefix/range exists. That path
+    // is not a decodable whole file until the completion bit is set; treating
+    // it as an outgoing/local source bypasses TdFileCenter's download waiter
+    // and can leave message media displaying a permanently partial image.
+    final completedLocalPath =
+        local?.boolean('is_downloading_completed') == true
+        ? local?.str('path')
+        : null;
     return TdFileRef(
       id: id,
-      localPath: file.obj('local')?.str('path'),
+      localPath: completedLocalPath,
+      fileName: fileName,
+      mimeType: mimeType,
       miniThumb: miniThumb,
       thumbnail: normalizedThumbnail,
     );

@@ -41,6 +41,13 @@ class ChatSearchTokenSuggester {
 
   static const int _limit = 8;
 
+  /// How much history the sender fallback reads, and how many of its distinct
+  /// authors it will ever resolve. Both are per keystroke, so the page is kept
+  /// small enough to decode cheaply and the fan-out bounded well under the one
+  /// getUser per author a busy group would otherwise cost.
+  static const int _historyProbeLimit = 40;
+  static const int _historySenderCap = 32;
+
   final TdClient _client;
 
   Future<List<ChatSearchTokenSuggestion>> suggest(
@@ -192,7 +199,7 @@ class ChatSearchTokenSuggester {
         'sender_id': null,
         'from_message_id': 0,
         'offset': 0,
-        'limit': 100,
+        'limit': _historyProbeLimit,
         'filter': {'@type': 'searchMessagesFilterEmpty'},
       });
       final messages = response.objects('messages') ?? const [];
@@ -205,20 +212,27 @@ class ChatSearchTokenSuggester {
         if (userId == null || userId == 0 || !seen.add(userId)) continue;
         senderIds.add(userId);
       }
-      // The needle is matched against the resolved name, so every distinct
-      // sender has to be fetched anyway — fetch them concurrently.
-      final resolved = await Future.wait(senderIds.map(_user));
+      // The needle is only matchable against a resolved name, and each name is
+      // a round trip. Resolve a page's worth concurrently and stop as soon as
+      // the list is full, rather than fetching every author of the page.
+      final ids = senderIds.take(_historySenderCap).toList(growable: false);
       final out = <ChatSearchTokenSuggestion>[];
       final needle = query.toLowerCase();
-      for (final suggestion in resolved) {
-        if (out.length >= _limit) break;
-        if (suggestion == null) continue;
-        if (needle.isNotEmpty &&
-            !suggestion.title.toLowerCase().contains(needle) &&
-            !(suggestion.subtitle ?? '').toLowerCase().contains(needle)) {
-          continue;
+      var start = 0;
+      while (start < ids.length && out.length < _limit) {
+        final end = start + _limit > ids.length ? ids.length : start + _limit;
+        final resolved = await Future.wait(ids.sublist(start, end).map(_user));
+        for (final suggestion in resolved) {
+          if (out.length >= _limit) break;
+          if (suggestion == null) continue;
+          if (needle.isNotEmpty &&
+              !suggestion.title.toLowerCase().contains(needle) &&
+              !(suggestion.subtitle ?? '').toLowerCase().contains(needle)) {
+            continue;
+          }
+          out.add(suggestion);
         }
-        out.add(suggestion);
+        start = end;
       }
       return out;
     } catch (_) {

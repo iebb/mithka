@@ -270,6 +270,52 @@ class _CustomEmojiViewState extends State<CustomEmojiView> {
   }
 }
 
+/// Keeps the Unicode fallback of a message custom emoji in the surrounding
+/// selection region while rendering its resolved Telegram asset normally.
+///
+/// A bare [WidgetSpan] contributes no text to Flutter selection. The
+/// transparent paragraph is painted above the asset so its selection highlight
+/// remains visible and copying preserves [fallbackText].
+class SelectableCustomEmojiView extends StatelessWidget {
+  const SelectableCustomEmojiView({
+    super.key,
+    required this.id,
+    required this.fallbackText,
+    this.size = 20,
+    this.color,
+  });
+
+  final int id;
+  final String fallbackText;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        IgnorePointer(
+          child: CustomEmojiView(id: id, size: size, color: color),
+        ),
+        Text(
+          fallbackText,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.clip,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.transparent,
+            fontSize: size * 0.9,
+            height: 1,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// A custom emoji used specifically as an account or chat status. Status
 /// surfaces honor the battery-saving animation preference while other custom
 /// emoji, such as reactions and message entities, keep their normal behavior.

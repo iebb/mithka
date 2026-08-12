@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
+import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -17,6 +19,8 @@ import 'chat_appearance_preview.dart';
 import 'media_album_layout.dart';
 import 'media_preview_geometry.dart';
 import 'message_action_menu.dart';
+import 'message_reply_count_badge.dart';
+import 'mobile_message_text_selection.dart';
 import 'telegram_rich_text.dart';
 
 typedef MediaAlbumImageBuilder =
@@ -49,6 +53,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.incomingBubbleColor,
     this.incomingBubbleTextColor,
     this.messageColors,
+    this.translationDisplayStyle = TranslationDisplayStyle.quote,
+    this.showOriginalTranslationMessageIds = const <int>{},
     this.onAvatarTap,
     this.onAvatarLongPress,
     this.onOpenImage,
@@ -56,6 +62,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onEditCaption,
     this.onOpenComments,
     this.onLongPress,
+    this.mobileTextSelectionAreaKey,
+    this.onMobileTextSelectionChanged,
+    this.onMobileTextSelectionDisposed,
     this.onToggleSelection,
     this.onBotCommandTap,
     this.onHashtagTap,
@@ -79,6 +88,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final Color? incomingBubbleColor;
   final Color? incomingBubbleTextColor;
   final TelegramMessageColors? messageColors;
+  final TranslationDisplayStyle translationDisplayStyle;
+  final Set<int> showOriginalTranslationMessageIds;
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<ChatMessage>? onOpenImage;
@@ -91,6 +102,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     MessageActionSource source,
   )?
   onLongPress;
+  final GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey;
+  final ValueChanged<SelectedContent?>? onMobileTextSelectionChanged;
+  final VoidCallback? onMobileTextSelectionDisposed;
   final ValueChanged<ChatMessage>? onToggleSelection;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
@@ -305,8 +319,41 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         (interactionOwner.hasCommentThread ||
             interactionOwner.commentCount > 0 ||
             (channelHasLinkedDiscussion && !interactionOwner.isService));
+    final showCompactReplies =
+        isGroup &&
+        !showCommentAttachment &&
+        !interactionOwner.isContentRestricted &&
+        interactionOwner.commentCount > 0;
+    final baseTextColor = outgoing ? outgoingText : incomingText;
+    final baseLinkColor = outgoing
+        ? themedMessageColors?.outgoingLink ?? outgoingText
+        : themedMessageColors?.incomingLink ?? colors.linkBlue;
+    final replacesOriginal =
+        captionMessage != null &&
+        translationDisplayStyle == TranslationDisplayStyle.translatedOnly &&
+        !showOriginalTranslationMessageIds.contains(captionMessage.id) &&
+        !captionMessage.isTranslating &&
+        (captionMessage.translationText?.trim().isNotEmpty ?? false);
+    final captionText = replacesOriginal
+        ? captionMessage.translationText ?? ''
+        : captionMessage?.text ?? '';
+    final captionEntities = replacesOriginal
+        ? captionMessage.translationEntities
+        : captionMessage?.textEntities ?? const <MessageTextEntity>[];
+    final displayedTextColor = replacesOriginal
+        ? Color.lerp(baseTextColor, AppTheme.brand, outgoing ? 0.36 : 0.52)!
+        : baseTextColor;
+    final displayedLinkColor = replacesOriginal
+        ? Color.lerp(baseLinkColor, AppTheme.brand, 0.30)!
+        : baseLinkColor;
+    final showsTranslationBlock =
+        captionMessage != null &&
+        (captionMessage.isTranslating ||
+            ((captionMessage.translationText?.trim().isNotEmpty ?? false) &&
+                translationDisplayStyle !=
+                    TranslationDisplayStyle.translatedOnly));
 
-    return Container(
+    final card = Container(
       key: ValueKey('messageImageAlbumCard-${messages.first.id}'),
       constraints: BoxConstraints(maxWidth: width),
       decoration: showsSurface
@@ -351,28 +398,69 @@ class ImageMediaAlbumBubble extends StatelessWidget {
                   ),
                 ),
                 if (captionMessage != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: outgoing
-                        ? () => onEditCaption?.call(captionMessage)
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
-                      child: TelegramRichText(
-                        text: captionMessage.text,
-                        entities: captionMessage.textEntities,
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.25,
-                          color: outgoing ? outgoingText : incomingText,
+                  Builder(
+                    builder: (captionContext) => GestureDetector(
+                      key: ValueKey(
+                        'messageImageAlbumCaption-${captionMessage.id}',
+                      ),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: outgoing
+                          ? () => onEditCaption?.call(captionMessage)
+                          : null,
+                      onLongPress:
+                          selecting || mobileTextSelectionAreaKey != null
+                          ? null
+                          : () {
+                              final box =
+                                  captionContext.findRenderObject()
+                                      as RenderBox?;
+                              final bounds = box != null && box.hasSize
+                                  ? box.localToGlobal(Offset.zero) & box.size
+                                  : null;
+                              onLongPress?.call(
+                                captionMessage,
+                                bounds,
+                                MessageActionSource.normal,
+                              );
+                            },
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(6, 7, 6, 3),
+                        child: Builder(
+                          builder: (context) {
+                            final selectionContent = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _captionText(
+                                  captionText,
+                                  captionEntities,
+                                  displayedTextColor,
+                                  displayedLinkColor,
+                                  replacesOriginal: replacesOriginal,
+                                ),
+                                if (showsTranslationBlock) ...[
+                                  const SizedBox(height: 7),
+                                  _translationBlock(
+                                    context,
+                                    captionMessage,
+                                    outgoing: outgoing,
+                                    baseTextColor: baseTextColor,
+                                    linkColor: baseLinkColor,
+                                  ),
+                                ],
+                              ],
+                            );
+                            final selectionKey = mobileTextSelectionAreaKey;
+                            if (selectionKey == null) return selectionContent;
+                            return MobileMessageTextSelectionArea(
+                              selectionAreaKey: selectionKey,
+                              onSelectionChanged: onMobileTextSelectionChanged,
+                              onDisposed:
+                                  onMobileTextSelectionDisposed ?? () {},
+                              child: selectionContent,
+                            );
+                          },
                         ),
-                        linkColor: outgoing
-                            ? themedMessageColors?.outgoingLink ?? outgoingText
-                            : themedMessageColors?.incomingLink ??
-                                  colors.linkBlue,
-                        onBotCommandTap: onBotCommandTap,
-                        onHashtagTap: onHashtagTap,
-                        onMentionTap: onMentionTap,
                       ),
                     ),
                   ),
@@ -387,6 +475,148 @@ class ImageMediaAlbumBubble extends StatelessWidget {
               width: width,
               outgoingTextColor: outgoingText,
             ),
+        ],
+      ),
+    );
+    if (!showCompactReplies) return card;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(padding: const EdgeInsets.only(bottom: 19), child: card),
+        Positioned(
+          right: 2,
+          bottom: 0,
+          child: MessageReplyCountBadge(
+            key: ValueKey('messageCompactReplies-${interactionOwner.id}'),
+            count: interactionOwner.commentCount,
+            foreground: outgoing
+                ? outgoingText.withValues(alpha: 0.78)
+                : colors.textSecondary,
+            background: outgoing
+                ? outgoingColor.withValues(alpha: 0.82)
+                : colors.card.withValues(alpha: 0.82),
+            onTap: onOpenComments == null
+                ? null
+                : () => onOpenComments?.call(interactionOwner),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _captionText(
+    String text,
+    List<MessageTextEntity> entities,
+    Color textColor,
+    Color linkColor, {
+    required bool replacesOriginal,
+  }) => TelegramRichText(
+    key: replacesOriginal ? const ValueKey('messageTranslatedOnlyText') : null,
+    text: text,
+    entities: entities,
+    style: TextStyle(fontSize: 15, height: 1.25, color: textColor),
+    linkColor: linkColor,
+    onBotCommandTap: onBotCommandTap,
+    onHashtagTap: onHashtagTap,
+    onMentionTap: onMentionTap,
+  );
+
+  Widget _translationBlock(
+    BuildContext context,
+    ChatMessage source, {
+    required bool outgoing,
+    required Color baseTextColor,
+    required Color linkColor,
+  }) {
+    final colors = context.colors;
+    final secondary = outgoing
+        ? baseTextColor.withValues(alpha: 0.70)
+        : colors.textSecondary;
+    if (source.isTranslating) {
+      return SelectionContainer.disabled(
+        child: Container(
+          key: const ValueKey('messageTranslationBlock'),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: outgoing
+                ? baseTextColor.withValues(alpha: 0.10)
+                : colors.searchFill.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border(left: BorderSide(color: secondary, width: 2.5)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(secondary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppStringKeys.messageBubbleTranslating.l10n(context),
+                style: TextStyle(fontSize: 13, color: secondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final translatedText = TelegramRichText(
+      text: source.translationText ?? '',
+      entities: source.translationEntities,
+      style: TextStyle(fontSize: 15, height: 1.25, color: baseTextColor),
+      linkColor: linkColor,
+      onBotCommandTap: onBotCommandTap,
+      onHashtagTap: onHashtagTap,
+      onMentionTap: onMentionTap,
+    );
+    if (translationDisplayStyle == TranslationDisplayStyle.both) {
+      final divider = outgoing
+          ? baseTextColor.withValues(alpha: 0.22)
+          : colors.divider;
+      return Container(
+        key: const ValueKey('messageTranslationBlock'),
+        width: double.infinity,
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: divider, width: 0.5)),
+        ),
+        padding: const EdgeInsets.only(top: 7),
+        child: translatedText,
+      );
+    }
+    return Container(
+      key: const ValueKey('messageTranslationBlock'),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: outgoing
+            ? baseTextColor.withValues(alpha: 0.10)
+            : colors.searchFill.withValues(alpha: 0.80),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border(left: BorderSide(color: secondary, width: 2.5)),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SelectionContainer.disabled(
+            child: Text(
+              AppStringKeys.messageActionTranslate.l10n(context),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: secondary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          translatedText,
         ],
       ),
     );

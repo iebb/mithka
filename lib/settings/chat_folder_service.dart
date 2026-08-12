@@ -4,6 +4,8 @@ import '../tdlib/td_client.dart';
 typedef ChatFolderQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
+enum ChatFolderTagEntitlement { unavailable, locked, enabled }
+
 class ChatFolderRecord {
   const ChatFolderRecord({
     required this.id,
@@ -167,14 +169,23 @@ class ChatFolderService {
         folderUpdate?.objects('chat_folders') ??
         folderUpdate?.objects('chat_folder_infos') ??
         const <Map<String, dynamic>>[];
-    final records = <ChatFolderRecord>[];
+    final identified = <(int, Map<String, dynamic>)>[];
     for (final info in infos) {
       final id = info.integer('id') ?? info.integer('chat_folder_id');
       if (id == null) continue;
-      final raw = await _query({
-        '@type': 'getChatFolder',
-        'chat_folder_id': id,
-      });
+      identified.add((id, info));
+    }
+    // The folders are independent, and this reload runs on every
+    // updateChatFolders — awaiting them one at a time paid N round trips of
+    // latency per reorder.
+    final raws = await Future.wait([
+      for (final (id, _) in identified)
+        _query({'@type': 'getChatFolder', 'chat_folder_id': id}),
+    ]);
+    final records = <ChatFolderRecord>[];
+    for (var i = 0; i < identified.length; i++) {
+      final (id, info) = identified[i];
+      final raw = raws[i];
       records.add(
         ChatFolderRecord(
           id: id,
@@ -242,6 +253,20 @@ class ChatFolderService {
 
   Future<void> toggleTags(bool enabled) =>
       _query({'@type': 'toggleChatFolderTags', 'are_tags_enabled': enabled});
+
+  Future<ChatFolderTagEntitlement> folderTagEntitlement() async {
+    final options = await Future.wait([
+      _query({'@type': 'getOption', 'name': 'is_premium'}),
+      _query({'@type': 'getOption', 'name': 'is_premium_available'}),
+    ]);
+    final isPremium = options[0].boolean('value');
+    final isPremiumAvailable = options[1].boolean('value');
+    if (isPremium == true) return ChatFolderTagEntitlement.enabled;
+    if (isPremium == false && isPremiumAvailable == true) {
+      return ChatFolderTagEntitlement.locked;
+    }
+    return ChatFolderTagEntitlement.unavailable;
+  }
 
   Future<List<int>> shareableChats(int id) async {
     final result = await _query({

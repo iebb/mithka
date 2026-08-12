@@ -134,4 +134,15 @@ abstract final class MithkaFvpBackend {
     backend.register(configuration.toFvpOptions());
     _initialized = true;
   }
+
+  /// Routes only Telegram video-sticker files through FVP on Android.
+  ///
+  /// Regular videos remain on the official platform backend, while `.webm`
+  /// files in TDLib's sticker cache use FFmpeg so their VP9 alpha plane is
+  /// preserved. Calls on other platforms are harmless no-ops.
+  static void ensureAndroidStickerDecoderInitialized() {
+    if (_initialized) return;
+    backend.registerAndroidStickerDecoder();
+    _initialized = true;
+  }
 }

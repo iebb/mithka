@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph, SelectedContent;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_action_menu.dart';
@@ -12,6 +13,7 @@ import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/document_file_icon.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/message_bubble_background.dart';
@@ -35,6 +37,7 @@ void main() {
     WidgetTester tester,
     ChatMessage message, {
     List<ChatMessage> groupedMedia = const <ChatMessage>[],
+    bool isGroup = false,
     bool showCommentAttachment = false,
     bool channelHasLinkedDiscussion = false,
     bool themingEnabled = true,
@@ -46,7 +49,13 @@ void main() {
     TelegramMessageColors? messageColors,
     TelegramCloudTheme? cloudTheme,
     MessageBubbleBackground? bubbleBackground,
+    TranslationDisplayStyle translationDisplayStyle =
+        TranslationDisplayStyle.quote,
+    Set<int> showOriginalTranslationMessageIds = const <int>{},
+    GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey,
+    ValueChanged<SelectedContent?>? onMobileTextSelectionChanged,
     ValueChanged<ChatMessage>? onLongPress,
+    ValueChanged<ChatMessage>? onOpenComments,
     void Function(ChatMessage, Rect?, MessageActionSource)? onActionMenu,
   }) async {
     SharedPreferences.setMockInitialValues({
@@ -74,7 +83,7 @@ void main() {
               message: message,
               groupedMedia: groupedMedia,
               peerTitle: 'Test',
-              isGroup: false,
+              isGroup: isGroup,
               showCommentAttachment: showCommentAttachment,
               channelHasLinkedDiscussion: channelHasLinkedDiscussion,
               outgoingBubbleColor: outgoingBubbleColor,
@@ -82,6 +91,12 @@ void main() {
               incomingBubbleColor: incomingBubbleColor,
               incomingBubbleTextColor: incomingBubbleTextColor,
               messageColors: messageColors,
+              translationDisplayStyle: translationDisplayStyle,
+              showOriginalTranslationMessageIds:
+                  showOriginalTranslationMessageIds,
+              mobileTextSelectionAreaKey: mobileTextSelectionAreaKey,
+              onMobileTextSelectionChanged: onMobileTextSelectionChanged,
+              onOpenComments: onOpenComments,
               onLongPress:
                   onActionMenu ??
                   (onLongPress == null
@@ -117,6 +132,103 @@ void main() {
     incomingTime: Color(0xFF777788),
     outgoingTime: Color(0xFF887788),
   );
+
+  testWidgets('translation display styles replace, reveal, or divide text', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 901,
+      isOutgoing: false,
+      text: 'Original text',
+      date: 1,
+      contentType: 'messageText',
+      translationText: 'Translated text',
+      translationLanguageCode: 'en',
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.translatedOnly,
+    );
+
+    expect(find.text('Original text', findRichText: true), findsNothing);
+    expect(find.text('Translated text', findRichText: true), findsOneWidget);
+    expect(find.byKey(const ValueKey('messageTranslationBlock')), findsNothing);
+    final translatedOnly = tester.widget<RichText>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('messageTranslatedOnlyText')),
+            matching: find.byType(RichText),
+          )
+          .first,
+    );
+    expect(
+      (translatedOnly.text as TextSpan).style?.color,
+      Color.lerp(AppColors.light.bubbleIncomingText, AppTheme.brand, 0.52),
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.translatedOnly,
+      showOriginalTranslationMessageIds: const {901},
+    );
+
+    expect(find.text('Original text', findRichText: true), findsOneWidget);
+    expect(find.text('Translated text', findRichText: true), findsNothing);
+    expect(
+      find.byKey(const ValueKey('messageTranslatedOnlyText')),
+      findsNothing,
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.both,
+    );
+
+    expect(find.text('Original text', findRichText: true), findsOneWidget);
+    expect(find.text('Translated text', findRichText: true), findsOneWidget);
+    final bothBlock = tester.widget<Container>(
+      find.byKey(const ValueKey('messageTranslationBlock')),
+    );
+    final border = (bothBlock.decoration! as BoxDecoration).border! as Border;
+    expect(border.top.width, 0.5);
+    expect(border.left, BorderSide.none);
+  });
+
+  testWidgets('mobile selection includes each displayed translation text', (
+    tester,
+  ) async {
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    final message = ChatMessage(
+      id: 902,
+      isOutgoing: false,
+      text: 'Original selectable words',
+      date: 1,
+      contentType: 'messageText',
+      translationText: 'Translated selectable words',
+      translationLanguageCode: 'en',
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      translationDisplayStyle: TranslationDisplayStyle.both,
+      mobileTextSelectionAreaKey: selectionKey,
+    );
+
+    final original = tester.renderObject<RenderParagraph>(
+      find.text('Original selectable words', findRichText: true),
+    );
+    final translated = tester.renderObject<RenderParagraph>(
+      find.text('Translated selectable words', findRichText: true),
+    );
+    expect(selectionKey.currentState, isNotNull);
+    expect(original.registrar, isNotNull);
+    expect(translated.registrar, isNotNull);
+  });
 
   testWidgets('secondary mouse click invokes message action callback', (
     tester,
@@ -1139,11 +1251,19 @@ void main() {
     final quoteText = tester.widget<RichText>(
       find.descendant(of: quote, matching: find.byType(RichText)),
     );
+    final expectedLinkStyle = readableLinkStyle(
+      background: colors.bubbleIncoming,
+      body: colors.bubbleIncomingText,
+      preferred: colors.linkBlue,
+    );
+    final renderedLink = _textSpans(
+      quoteText.text,
+    ).singleWhere((span) => span.text == text);
+    expect(renderedLink.style?.color, expectedLinkStyle.color);
     expect(
-      _textSpans(
-        quoteText.text,
-      ).singleWhere((span) => span.text == text).style?.color,
-      colors.linkBlue,
+      renderedLink.style?.decoration?.contains(TextDecoration.underline) ??
+          false,
+      expectedLinkStyle.underline,
     );
     expect(
       contrast(colors.bubbleIncomingText, paintedBackground),
@@ -1182,6 +1302,45 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CustomEmojiView), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('mobile message selection preserves custom emoji fallback text', (
+    tester,
+  ) async {
+    const text = 'A🙂B';
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    String? selectedText;
+    final message = ChatMessage(
+      id: 42,
+      isOutgoing: false,
+      text: text,
+      date: 1,
+      contentType: 'messageText',
+      textEntities: const [
+        MessageTextEntity(
+          offset: 1,
+          length: 2,
+          type: 'textEntityTypeCustomEmoji',
+          customEmojiId: 456,
+        ),
+      ],
+    );
+
+    await pumpBubble(
+      tester,
+      message,
+      mobileTextSelectionAreaKey: selectionKey,
+      onMobileTextSelectionChanged: (content) {
+        selectedText = content?.plainText;
+      },
+    );
+    selectionKey.currentState!.selectableRegion.selectAll(
+      SelectionChangedCause.toolbar,
+    );
+    await tester.pump();
+
+    expect(selectedText, text);
     await tester.pump(const Duration(milliseconds: 50));
   });
 
@@ -1327,6 +1486,46 @@ void main() {
           .contains(tester.getRect(commentsFinder).bottomCenter),
       isTrue,
     );
+  });
+
+  testWidgets('normal group replies use only the compact bottom-right count', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final message = ChatMessage(
+      id: 121,
+      isOutgoing: false,
+      text: 'Group message',
+      date: 1,
+      contentType: 'messageText',
+      hasCommentThread: true,
+      commentCount: 7,
+    );
+
+    ChatMessage? opened;
+    await pumpBubble(
+      tester,
+      message,
+      isGroup: true,
+      onOpenComments: (message) => opened = message,
+    );
+
+    expect(
+      find.byKey(const ValueKey('messageCommentsAttachment-121')),
+      findsNothing,
+    );
+    expect(find.text('7 comments'), findsNothing);
+    final compact = find.byKey(const ValueKey('messageCompactReplies-121'));
+    expect(compact, findsOneWidget);
+    expect(
+      find.descendant(of: compact, matching: find.text('7')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(compact);
+    expect(opened, same(message));
   });
 
   testWidgets('linked channel discussion stays visible before first comment', (

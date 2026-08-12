@@ -477,6 +477,11 @@ abstract final class AppStringKeys {
   static const appearanceManage = 'appearanceManage';
   static const appearanceMergeConsecutiveImages =
       'appearanceMergeConsecutiveImages';
+  static const appearanceMessageActionMenu = 'appearanceMessageActionMenu';
+  static const appearanceMessageActionMenuDropdown =
+      'appearanceMessageActionMenuDropdown';
+  static const appearanceMessageActionMenuGrid =
+      'appearanceMessageActionMenuGrid';
   static const appearanceMode = 'appearanceMode';
   static const appearanceNameColorAllUsers = 'appearanceNameColorAllUsers';
   static const appearanceNameColorAudience = 'appearanceNameColorAudience';
@@ -1036,8 +1041,10 @@ abstract final class AppStringKeys {
   static const cloudThemeOfficialDescription = 'cloudThemeOfficialDescription';
   static const cloudThemePreviewTitle = 'cloudThemePreviewTitle';
   static const communityChatAddedService = 'communityChatAddedService';
+  static const communityChatAddedByService = 'communityChatAddedByService';
   static const communityChatCount = 'communityChatCount';
   static const communityChatRemovedService = 'communityChatRemovedService';
+  static const communityChatRemovedByService = 'communityChatRemovedByService';
   static const communityChatsYouAreIn = 'communityChatsYouAreIn';
   static const communityChatsYouCanView = 'communityChatsYouCanView';
   static const communityNoChats = 'communityNoChats';
@@ -1045,6 +1052,7 @@ abstract final class AppStringKeys {
   static const communityShowAsOneChatDescription =
       'communityShowAsOneChatDescription';
   static const communityTitle = 'communityTitle';
+  static const communityViewAction = 'communityViewAction';
   static const commonUiDraftBadge = 'commonUiDraftBadge';
   static const commonUiGroupOwner = 'commonUiGroupOwner';
   static const commonUiMentionedBySomeoneBadge =
@@ -1664,8 +1672,18 @@ abstract final class AppStringKeys {
   static const locationDetailFetchingLocation =
       'locationDetailFetchingLocation';
   static const locationPickerDragMapToChoose = 'locationPickerDragMapToChoose';
+  static const botApiPrivacyWarning = 'botApiPrivacyWarning';
+  static const botApiBotToBotWarning = 'botApiBotToBotWarning';
+  static const botApiWarningDismiss = 'botApiWarningDismiss';
   static const loginBackToAccount = 'loginBackToAccount';
   static const loginBackToPreviousAccount = 'loginBackToPreviousAccount';
+  static const loginBotAccountDescription = 'loginBotAccountDescription';
+  static const loginBotAccountTitle = 'loginBotAccountTitle';
+  static const loginBotApiEndpoint = 'loginBotApiEndpoint';
+  static const loginBotApiEndpointHint = 'loginBotApiEndpointHint';
+  static const loginBotFailed = 'loginBotFailed';
+  static const loginBotSubmit = 'loginBotSubmit';
+  static const loginBotToken = 'loginBotToken';
   static const loginCodeSentByEmail = 'loginCodeSentByEmail';
   static const loginCodeSentByFirebase = 'loginCodeSentByFirebase';
   static const loginCodeSentByFlashCall = 'loginCodeSentByFlashCall';
@@ -1711,12 +1729,17 @@ abstract final class AppStringKeys {
   static const loginVerificationCode = 'loginVerificationCode';
   static const loginVerify = 'loginVerify';
   static const loginWithQrCode = 'loginWithQrCode';
+  static const loginWithBotToken = 'loginWithBotToken';
   static const loginWithPasskey = 'loginWithPasskey';
+  static const loginWithPhoneNumber = 'loginWithPhoneNumber';
   static const markdownLabel = 'markdownLabel';
   static const mediaSendPreviewTitle = 'mediaSendPreviewTitle';
   static const messageActionBlock = 'messageActionBlock';
   static const messageActionBlockKeyword = 'messageActionBlockKeyword';
   static const messageActionCopy = 'messageActionCopy';
+  static const messageActionDisplayOriginal = 'messageActionDisplayOriginal';
+  static const messageActionDisplayTranslation =
+      'messageActionDisplayTranslation';
   static const messageActionEdit = 'messageActionEdit';
   static const messageActionFavorite = 'messageActionFavorite';
   static const messageActionForward = 'messageActionForward';
@@ -2206,6 +2229,7 @@ abstract final class AppStringKeys {
   static const richTextBlockAnimation = 'richTextBlockAnimation';
   static const richTextBlockAudio = 'richTextBlockAudio';
   static const richTextBlockBlockQuotation = 'richTextBlockBlockQuotation';
+  static const richTextBlockButtonRow = 'richTextBlockButtonRow';
   static const richTextBlockCollage = 'richTextBlockCollage';
   static const richTextBlockDetails = 'richTextBlockDetails';
   static const richTextBlockDivider = 'richTextBlockDivider';
@@ -2227,6 +2251,21 @@ abstract final class AppStringKeys {
   static const richTextComposerAddColumn = 'richTextComposerAddColumn';
   static const richTextComposerAddRow = 'richTextComposerAddRow';
   static const richTextComposerAnchorName = 'richTextComposerAnchorName';
+  static const richTextComposerButtonAdd = 'richTextComposerButtonAdd';
+  static const richTextComposerButtonDefaultLabel =
+      'richTextComposerButtonDefaultLabel';
+  static const richTextComposerButtonInvalid = 'richTextComposerButtonInvalid';
+  static const richTextComposerButtonLabel = 'richTextComposerButtonLabel';
+  static const richTextComposerButtonRemove = 'richTextComposerButtonRemove';
+  static const richTextComposerButtonStyleDanger =
+      'richTextComposerButtonStyleDanger';
+  static const richTextComposerButtonStyleDefault =
+      'richTextComposerButtonStyleDefault';
+  static const richTextComposerButtonStylePrimary =
+      'richTextComposerButtonStylePrimary';
+  static const richTextComposerButtonStyleSuccess =
+      'richTextComposerButtonStyleSuccess';
+  static const richTextComposerButtonUrl = 'richTextComposerButtonUrl';
   static const richTextComposerContentPlaceholder =
       'richTextComposerContentPlaceholder';
   static const richTextComposerDetailsContent =
@@ -2718,6 +2757,10 @@ abstract final class AppStringKeys {
   static const transferBoostUploadSection = 'transferBoostUploadSection';
   static const translationInternalNoExternalApi =
       'translationInternalNoExternalApi';
+  static const translationDisplayBoth = 'translationDisplayBoth';
+  static const translationDisplayQuote = 'translationDisplayQuote';
+  static const translationDisplayTranslatedOnly =
+      'translationDisplayTranslatedOnly';
   static const translationAiProviderUnavailable =
       'translationAiProviderUnavailable';
   static const translationLibreTranslateNoResult =
@@ -2725,6 +2768,9 @@ abstract final class AppStringKeys {
   static const translationLibreTranslateUrlRequired =
       'translationLibreTranslateUrlRequired';
   static const translationLingvaNoResult = 'translationLingvaNoResult';
+  static const translationGoogleCloudApiKeyRequired =
+      'translationGoogleCloudApiKeyRequired';
+  static const translationGoogleCloudPrivacy = 'translationGoogleCloudPrivacy';
   static const translationMlKitLocal = 'translationMlKitLocal';
   static const translationMyMemoryNoResult = 'translationMyMemoryNoResult';
   static const translationNativeCancelledOrTimedOut =
@@ -2760,9 +2806,17 @@ abstract final class AppStringKeys {
       'translationSettingsShowTranslateButton';
   static const translationSettingsDoNotTranslate =
       'translationSettingsDoNotTranslate';
+  static const translationSettingsDisplayStyle =
+      'translationSettingsDisplayStyle';
   static const translationSettingsLanguageCount =
       'translationSettingsLanguageCount';
   static const translationSettingsNone = 'translationSettingsNone';
+  static const translationSettingsFallbackDescription =
+      'translationSettingsFallbackDescription';
+  static const translationSettingsOptionsSection =
+      'translationSettingsOptionsSection';
+  static const translationSettingsOptionUnavailable =
+      'translationSettingsOptionUnavailable';
   static const translationSettingsTargetLanguage =
       'translationSettingsTargetLanguage';
   static const translationSettingsStandardSection =
@@ -3629,6 +3683,10 @@ abstract final class AppStringKeys {
   static const telegramAiEditorTelegramStyle = 'telegramAiEditorTelegramStyle';
   static const telegramAiEditorToLanguage = 'telegramAiEditorToLanguage';
   static const telegramAiEditorTranslate = 'telegramAiEditorTranslate';
+  static const telegramAiDailyLimitMessage = 'telegramAiDailyLimitMessage';
+  static const telegramAiDailyLimitReached = 'telegramAiDailyLimitReached';
+  static const telegramAiIncreaseLimit = 'telegramAiIncreaseLimit';
+  static const telegramAiIncreaseLimitValue = 'telegramAiIncreaseLimitValue';
   static const telegramInvoiceCheckoutAddressLine2 =
       'telegramInvoiceCheckoutAddressLine2';
   static const telegramInvoiceCheckoutBillingCountryCode =

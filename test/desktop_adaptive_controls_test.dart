@@ -151,7 +151,7 @@ void main() {
     expect(semantics.flagsCollection.isToggled, Tristate.isTrue);
   });
 
-  testWidgets('desktop modal sheets use a bounded rounded surface', (
+  testWidgets('desktop modals use a centered bounded rounded surface', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -159,6 +159,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    int? result;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -167,14 +168,26 @@ void main() {
             builder: (context) => GestureDetector(
               key: const ValueKey('open-sheet'),
               behavior: HitTestBehavior.opaque,
-              onTap: () => showAppModalSheet<void>(
-                context: context,
-                constraints: const BoxConstraints(maxHeight: 420),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-                ),
-                builder: (_) => const SizedBox(height: 120),
-              ),
+              onTap: () async {
+                result = await showAppModalSheet<int>(
+                  context: context,
+                  backgroundColor: const Color(0xff123456),
+                  elevation: 7,
+                  constraints: const BoxConstraints(maxHeight: 420),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(8),
+                    ),
+                    side: BorderSide(color: Color(0xffabcdef)),
+                  ),
+                  builder: (dialogContext) => GestureDetector(
+                    key: const ValueKey('close-centered-modal'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.pop(dialogContext, 7),
+                    child: const SizedBox(height: 120),
+                  ),
+                );
+              },
               child: const SizedBox(width: 80, height: 80),
             ),
           ),
@@ -185,14 +198,100 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('open-sheet')));
     await tester.pumpAndSettle();
 
-    final sheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
-    expect(sheet.constraints?.maxWidth, 560);
-    expect(sheet.constraints?.maxHeight, 420);
-    expect(sheet.clipBehavior, Clip.antiAlias);
-    expect(
-      (sheet.shape! as RoundedRectangleBorder).borderRadius,
-      BorderRadius.circular(20),
+    expect(find.byType(BottomSheet), findsNothing);
+    final frame = tester.widget<ConstrainedBox>(
+      find.byKey(appCenteredModalFrameKey),
     );
+    expect(frame.constraints.maxWidth, 560);
+    expect(frame.constraints.maxHeight, 420);
+    final surface = tester.widget<Material>(
+      find.byKey(appCenteredModalSurfaceKey),
+    );
+    expect(surface.color, const Color(0xff123456));
+    expect(surface.elevation, 7);
+    expect(surface.clipBehavior, Clip.antiAlias);
+    final surfaceRect = tester.getRect(find.byKey(appCenteredModalSurfaceKey));
+    expect(surfaceRect.center, const Offset(640, 400));
+    final surfaceShape = surface.shape! as RoundedRectangleBorder;
+    expect(surfaceShape.borderRadius, BorderRadius.circular(20));
+    expect(surfaceShape.side.color, const Color(0xffabcdef));
+
+    await tester.tap(find.byKey(const ValueKey('close-centered-modal')));
+    await tester.pumpAndSettle();
+    expect(result, 7);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('portrait touch layouts preserve the draggable bottom sheet', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.view.physicalSize = const Size(820, 1180);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => GestureDetector(
+            key: const ValueKey('open-touch-sheet'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showAppModalSheet<void>(
+              context: context,
+              showDragHandle: true,
+              builder: (_) => const SizedBox(height: 120),
+            ),
+            child: const SizedBox(width: 80, height: 80),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('open-touch-sheet')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.byKey(appCenteredModalSurfaceKey), findsNothing);
+    expect(
+      tester.widget<BottomSheet>(find.byType(BottomSheet)).enableDrag,
+      isTrue,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('landscape iPad uses the centered modal presentation', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.view.physicalSize = const Size(1180, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => GestureDetector(
+            key: const ValueKey('open-ipad-modal'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showAppModalSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => const SizedBox(height: 120),
+            ),
+            child: const SizedBox(width: 80, height: 80),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('open-ipad-modal')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byKey(appCenteredModalSurfaceKey), findsOneWidget);
+    expect(tester.getSize(find.byKey(appCenteredModalSurfaceKey)).width, 560);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -241,8 +340,9 @@ void main() {
       await tester.pump();
 
       await pumpFor(TargetPlatform.macOS);
-      final sheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
-      expect(sheet.constraints?.maxWidth, 560);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.byKey(appCenteredModalSurfaceKey), findsOneWidget);
+      expect(tester.getSize(find.byKey(appCenteredModalSurfaceKey)).width, 560);
       debugDefaultTargetPlatformOverride = null;
     },
   );

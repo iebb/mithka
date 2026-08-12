@@ -54,4 +54,23 @@ void main() {
   test('an explicit slot wins over a user id', () {
     expect(resolve(slot: 1, userId: 111), 1);
   });
+
+  test('account-switch replay preserves the Handoff destination', () {
+    const request = ChatDeepLinkRequest(
+      chatId: -100123,
+      title: 'Project room',
+      messageId: 88,
+      accountUserId: 222,
+      preserveChatStack: true,
+    );
+
+    final replay = request.scopedToAccountSlot(1);
+
+    expect(replay.chatId, request.chatId);
+    expect(replay.title, request.title);
+    expect(replay.messageId, request.messageId);
+    expect(replay.accountUserId, request.accountUserId);
+    expect(replay.accountSlot, 1);
+    expect(replay.preserveChatStack, isTrue);
+  });
 }

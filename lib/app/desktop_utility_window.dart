@@ -30,12 +30,14 @@ import '../chat/scheduled_messages_view.dart';
 import '../chat/shared_media_view.dart';
 import '../chat/telegram_ai_editor_view.dart';
 import '../chat/telegram_ai_service.dart';
+import '../chat/video_playback_preferences.dart';
 import '../chats/search_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
 import '../components/toast.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
+import '../notifications/notification_preferences.dart';
 import '../pro/mithka_pro_service.dart';
 import '../profile/profile_detail_view.dart';
 import '../security/local_app_lock_controller.dart';
@@ -159,6 +161,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   late final AppIconController _appIcons = AppIconController(widget.prefs);
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
+  late final NotificationPreferences _notificationPreferences =
+      NotificationPreferences.shared;
   late final DeveloperModeController _developer = DeveloperModeController(
     widget.prefs,
   );
@@ -200,6 +204,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     CountryMessageFilter.shared.initialize(widget.prefs);
     MusicPlayerController.shared.initialize(widget.prefs);
     _autoDownload.initialize(widget.prefs);
+    _notificationPreferences.initialize(widget.prefs);
     _performance.start();
     _theme.setActiveAccountSlot(
       widget.arguments.accountSlot,
@@ -220,6 +225,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
         _translation,
         _locale,
         _autoDownload,
+        _notificationPreferences,
+        VideoPlaybackPreferences.changes,
         _developer,
         _safetyNotice,
         KeywordBlocker.shared,
@@ -536,7 +543,11 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   }
 
   Future<void> _sendRichText(RichTextComposerResult result) async {
-    if (result.text.trim().isEmpty && result.attachments.isEmpty) return;
+    if (result.text.trim().isEmpty &&
+        result.attachments.isEmpty &&
+        result.segments.isEmpty) {
+      return;
+    }
     try {
       if (!await _pickerViewModel.prepareMessageSend() || !mounted) return;
       if (_pickerViewModel.requiresPaidMessage) {
@@ -551,7 +562,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
         if (!confirmed || !mounted) return;
       }
       var sentAny = false;
-      if (await _pickerViewModel.currentUserIsPremium()) {
+      if (await TdClient.shared.activeAccountUsesBotApi() ||
+          await _pickerViewModel.currentUserIsPremium()) {
         for (final segment in result.segments) {
           if (segment.isHtml) {
             final files = await Future.wait(
@@ -601,6 +613,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
                 targetChatId: widget.arguments.chatId!,
                 tdClient: TdClient.shared,
                 files: files,
+                blocks: segment.blocks,
               );
               sentAny = true;
             } else if (segment.attachments.isNotEmpty) {

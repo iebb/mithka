@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/telegram_ai_editor_view.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -181,6 +182,66 @@ void main() {
       expect(value, isNot(key));
       expect(value, isNot(contains('%1')));
     }
+  });
+
+  testWidgets('shows Telegram-style Premium limit state without raw RPC code', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final service = TelegramAiService(
+      queryOverride: (request) async {
+        if (request['@type'] == 'getOption') {
+          return _option(request['name'] as String);
+        }
+        if (request['@type'] == 'fixTextWithAi') {
+          throw TdError({
+            '@type': 'error',
+            'code': 429,
+            'message': 'AICOMPOSE_FLOOD_PREMIUM',
+          });
+        }
+        throw StateError('Unexpected request: $request');
+      },
+    );
+    addTearDown(service.dispose);
+    await service.capabilities();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: TelegramAiEditorView(
+            service: service,
+            source: const TelegramAiFormattedText(text: 'Fix this draft.'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('telegramAiMode-fix')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('telegramAiPrimaryAction')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Increase Limit'), findsOneWidget);
+    expect(find.text('50×'), findsOneWidget);
+    expect(find.textContaining('Daily limit reached'), findsOneWidget);
+    expect(find.textContaining('AICOMPOSE_FLOOD_PREMIUM'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
   });
 }
 

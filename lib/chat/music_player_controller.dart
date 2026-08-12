@@ -23,6 +23,7 @@ import '../components/toast.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'music_history.dart';
 import 'music_playlist_service.dart';
@@ -31,6 +32,9 @@ import 'voice_audio.dart';
 const Color musicPlayerAccent = Color(0xFF22C7A9);
 const Color _musicBlack = Color(0xFF000000);
 const Color _musicWhite = Color(0xFFFFFFFF);
+
+@visibleForTesting
+const musicSheetGrabberKey = ValueKey<String>('music-sheet-grabber');
 
 enum MusicPlaybackMode { sequence, reverseSequence, repeatOne, shuffle }
 
@@ -1040,20 +1044,26 @@ Future<T?> _showMusicBottomSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
 }) {
-  return showGeneralDialog<T>(
+  return showAppAdaptiveSheetDialog<T>(
     context: context,
-    barrierDismissible: true,
+    builder: (sheetContext) {
+      final sheet = builder(sheetContext);
+      if (appModalUsesCenteredPresentation(MediaQuery.sizeOf(sheetContext))) {
+        return sheet;
+      }
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: SizedBox(
+          width: MediaQuery.sizeOf(sheetContext).width,
+          child: sheet,
+        ),
+      );
+    },
     barrierLabel: AppStrings.t(AppStringKeys.countryPickerCancel),
     barrierColor: const Color(0x70000000),
     transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (sheetContext, _, _) => Align(
-      alignment: Alignment.bottomCenter,
-      child: SizedBox(
-        width: MediaQuery.sizeOf(sheetContext).width,
-        child: builder(sheetContext),
-      ),
-    ),
-    transitionBuilder: (sheetContext, animation, _, child) {
+    centeredBackgroundColor: context.colors.background,
+    mobileTransitionBuilder: (sheetContext, animation, _, child) {
       final curved = CurvedAnimation(
         parent: animation,
         curve: Curves.easeOutCubic,
@@ -1969,7 +1979,11 @@ class _SheetGrabber extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (appModalUsesCenteredPresentation(MediaQuery.sizeOf(context))) {
+      return const SizedBox(height: 8);
+    }
     return Padding(
+      key: musicSheetGrabberKey,
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Container(
         width: 38,
@@ -2127,6 +2141,7 @@ void _openOriginal(ChatMessage message) {
     chatId: chatId,
     title: message.senderName ?? '',
     messageId: message.id,
+    preserveChatStack: true,
   );
 }
 

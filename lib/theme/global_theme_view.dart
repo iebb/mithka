@@ -182,33 +182,22 @@ class _GlobalThemeViewState extends State<GlobalThemeView> {
     required ThemeController controller,
     required TelegramCloudTheme? theme,
   }) {
-    final c = _pageColors;
-    return ColoredBox(
-      color: c.groupedBackground,
-      child: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.globalThemeTitle,
+      onBack: () => Navigator.of(previewContext).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStringKeys.globalThemeTitle,
-            onBack: () => Navigator.of(previewContext).pop(),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-              children: [
-                _brightnessPicker(),
-                const SizedBox(height: 14),
-                _activeThemeCard(controller, theme),
-                const SizedBox(height: 22),
-                _sectionTitle(AppStringKeys.globalThemeOfficial),
-                const SizedBox(height: 9),
-                _themeStrip(controller, theme, builtInTelegramCloudThemes),
-                const SizedBox(height: 22),
-                _sectionTitle(AppStringKeys.globalThemeCommunity),
-                const SizedBox(height: 9),
-                _communityThemeStrip(controller, theme),
-              ],
-            ),
-          ),
+          _brightnessPicker(),
+          const SizedBox(height: AppSpacing.xl),
+          _activeThemeCard(controller, theme),
+          const SizedBox(height: AppSpacing.section),
+          _sectionTitle(AppStringKeys.globalThemeOfficial),
+          const SizedBox(height: AppSpacing.md),
+          _themeStrip(controller, theme, builtInTelegramCloudThemes),
+          const SizedBox(height: AppSpacing.section),
+          _sectionTitle(AppStringKeys.globalThemeCommunity),
+          const SizedBox(height: AppSpacing.md),
+          _communityThemeStrip(controller, theme),
         ],
       ),
     );

@@ -1693,6 +1693,11 @@ class _MithkaVideoPlayerState extends State<MithkaVideoPlayer>
   }
 
   void _handleSurfaceTap() {
+    if (_lastPointerKind == PointerDeviceKind.mouse ||
+        _lastPointerKind == PointerDeviceKind.trackpad) {
+      if (_controlsVisible) _toggleControls();
+      return;
+    }
     _toggleControls();
   }
 

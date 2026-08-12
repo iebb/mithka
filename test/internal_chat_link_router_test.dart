@@ -10,6 +10,7 @@ void main() {
     late BuildContext linkContext;
     final target = InternalChatLinkTarget(
       chatId: 42,
+      accountSlot: 3,
       openMessage: (_) async {},
     );
     await tester.pumpWidget(
@@ -43,6 +44,7 @@ void main() {
         messageId: 9001,
         source: InternalChatLinkTarget(
           chatId: 42,
+          accountSlot: 3,
           openMessage: (messageId) async => openedMessageId = messageId,
         ),
         controller: controller,
@@ -58,7 +60,7 @@ void main() {
   );
 
   test(
-    'different-chat links request adaptive replacement, not a route push',
+    'different-chat links request adaptive navigation preserving the source',
     () async {
       final controller = ChatDeepLinkController.shared;
       controller.consumePending();
@@ -70,6 +72,7 @@ void main() {
         messageId: 700,
         source: InternalChatLinkTarget(
           chatId: 42,
+          accountSlot: 3,
           openMessage: (_) async => fail('must not scroll the old transcript'),
         ),
         controller: controller,
@@ -77,12 +80,14 @@ void main() {
 
       expect(
         disposition,
-        InternalChatLinkDisposition.requestedAdaptiveReplacement,
+        InternalChatLinkDisposition.requestedAdaptiveNavigation,
       );
       final request = controller.consumePending();
       expect(request?.chatId, 84);
       expect(request?.title, 'Replacement chat');
       expect(request?.messageId, 700);
+      expect(request?.accountSlot, 3);
+      expect(request?.preserveChatStack, isTrue);
       expect(controller.consumePending(), isNull);
     },
   );

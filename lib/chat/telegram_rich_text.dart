@@ -94,6 +94,10 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         style: baseStyle,
         children: _memoizedSpans(context, baseStyle, linkColor),
       ),
+      selectionRegistrar: SelectionContainer.maybeOf(context),
+      selectionColor:
+          Theme.of(context).textSelectionTheme.selectionColor ??
+          AppTheme.brand.withValues(alpha: 0.28),
     );
   }
 
@@ -348,8 +352,9 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       return [
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: CustomEmojiView(
+          child: SelectableCustomEmojiView(
             id: customEmojiId,
+            fallbackText: segment,
             size: (style.fontSize ?? baseStyle.fontSize ?? 16) * 1.25,
             color: style.color,
           ),

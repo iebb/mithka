@@ -156,6 +156,87 @@ void main() {
     );
   });
 
+  test(
+    'Android enter, actions, restore, and dismissal retain one session',
+    () async {
+      final events = <String>[];
+      final snapshots = <SystemPictureInPictureSnapshot>[];
+      final actions = <SystemPictureInPictureAction>[];
+      SystemPictureInPicture.debugRegisterSession(
+        id: 'android-video',
+        usesActivePlayer: false,
+        onEntered: (snapshot) {
+          events.add('entered');
+          snapshots.add(snapshot);
+        },
+        onRestored: (snapshot) {
+          events.add('restored');
+          snapshots.add(snapshot);
+        },
+        onActionRequested: (action) {
+          events.add('action');
+          actions.add(action);
+        },
+        onStop: (_) => events.add('stopped'),
+      );
+      const started = MethodCall('didStart', {
+        'id': 'android-video',
+        'positionMs': 1200,
+        'playing': true,
+        'speed': 1.25,
+        'muted': false,
+      });
+
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        started,
+        fromActivePlayer: false,
+      );
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        started,
+        fromActivePlayer: false,
+      );
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        const MethodCall('actionRequested', {
+          'id': 'android-video',
+          'action': 'pause',
+        }),
+        fromActivePlayer: false,
+      );
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        const MethodCall('didRestore', {
+          'id': 'android-video',
+          'positionMs': 2400,
+          'playing': false,
+          'speed': 1.25,
+          'muted': false,
+        }),
+        fromActivePlayer: false,
+      );
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        started,
+        fromActivePlayer: false,
+      );
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        const MethodCall('didStop', {
+          'id': 'android-video',
+          'positionMs': 3600,
+        }),
+        fromActivePlayer: false,
+      );
+
+      expect(events, ['entered', 'action', 'restored', 'entered', 'stopped']);
+      expect(actions, [SystemPictureInPictureAction.pause]);
+      expect(snapshots[0].position, const Duration(milliseconds: 1200));
+      expect(snapshots[1].position, const Duration(milliseconds: 2400));
+
+      await SystemPictureInPicture.debugHandleNativeCallback(
+        started,
+        fromActivePlayer: false,
+      );
+      expect(events, ['entered', 'action', 'restored', 'entered', 'stopped']);
+    },
+  );
+
   testWidgets('accepted restore inserts the exact queue and snapshot', (
     tester,
   ) async {

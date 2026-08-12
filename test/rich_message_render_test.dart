@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -82,6 +83,8 @@ void main() {
       kind: RichMessageBlockKind.paragraph,
       text: 'Paragraph',
     );
+    final selectionKey = GlobalKey<SelectionAreaState>();
+    MessageButton? tappedButton;
     final message = ChatMessage(
       id: 900,
       chatId: 42,
@@ -115,6 +118,14 @@ void main() {
           kind: RichMessageBlockKind.anchor,
           name: 'chapter-1',
         ),
+        const RichMessageBlock.buttonRow([
+          MessageButton(
+            text: 'Open Mithka',
+            type: 'inlineKeyboardButtonTypeUrl',
+            url: 'https://mithka.app',
+            style: MessageButtonStyle.success,
+          ),
+        ], horizontalAlignment: 'center'),
         const RichMessageBlock.container(
           kind: RichMessageBlockKind.list,
           listItems: [
@@ -182,6 +193,8 @@ void main() {
                 message: message,
                 peerTitle: 'Test',
                 isGroup: false,
+                mobileTextSelectionAreaKey: selectionKey,
+                onButtonTap: (_, button) => tappedButton = button,
               ),
             ),
           ),
@@ -204,6 +217,32 @@ void main() {
         reason: 'Missing renderer for ${kind.name}',
       );
     }
+    expect(find.text('Open Mithka'), findsOneWidget);
+    expect(
+      tester
+          .renderObject<RenderParagraph>(
+            find.text('Paragraph', findRichText: true).first,
+          )
+          .registrar,
+      isNotNull,
+    );
+    expect(
+      tester
+          .renderObject<RenderParagraph>(
+            find.text('Open Mithka', findRichText: true),
+          )
+          .registrar,
+      isNull,
+    );
+    expect(
+      tester
+          .renderObject<RenderParagraph>(find.text('dart', findRichText: true))
+          .registrar,
+      isNull,
+    );
+    await tester.tap(find.text('Open Mithka'));
+    await tester.pump();
+    expect(tappedButton?.url, 'https://mithka.app');
     expect(tester.takeException(), isNull);
   });
 }

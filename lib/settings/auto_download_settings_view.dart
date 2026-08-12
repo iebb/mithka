@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
-import '../theme/app_motion.dart';
+import '../platform/adaptive_platform.dart';
 import '../theme/app_theme.dart';
 import 'auto_download_media_controller.dart';
 
@@ -49,6 +50,14 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
+      _network = 'networkTypeWiFi';
+    }
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_refresh);
     super.dispose();
@@ -74,132 +83,100 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final profile = _profile;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
+    return SettingsPageScaffold(
+      title: AppStrings.t(
+        AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
+      ),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(
-              AppStringKeys.autoDownloadSettingsAutomaticMediaDownload,
-            ),
-            onBack: () => Navigator.of(context).pop(),
+          if (!desktop) ...[
+            _networkSelector(),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          SettingsCard.rows(
+            rows: [
+              SettingsRow(
+                key: ValueKey('auto-download-profile-$_network'),
+                title: AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsAutomaticDownload,
+                ),
+                value: _networkLabel(_network),
+                showChevron: false,
+                onTap: _controller.isApplying
+                    ? null
+                    : () => unawaited(
+                        _save(profile.copyWith(enabled: !profile.enabled)),
+                      ),
+                trailing: AppSwitch(
+                  value: profile.enabled,
+                  enabled: !_controller.isApplying,
+                  onChanged: (value) =>
+                      unawaited(_save(profile.copyWith(enabled: value))),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              children: [
-                _networkSelector(),
-                const SizedBox(height: 14),
-                _card([
-                  SettingsRow(
-                    title: AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsAutomaticDownload,
-                    ),
-                    value: _networkLabel(_network),
-                    showChevron: false,
-                    onTap: _controller.isApplying
-                        ? null
-                        : () => unawaited(
-                            _save(profile.copyWith(enabled: !profile.enabled)),
-                          ),
-                    trailing: AppSwitch(
-                      value: profile.enabled,
-                      enabled: !_controller.isApplying,
-                      onChanged: (value) =>
-                          unawaited(_save(profile.copyWith(enabled: value))),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys.autoDownloadSettingsFileSizeLimits,
-                  ),
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
+          SettingsSection(
+            titleKey: AppStringKeys.autoDownloadSettingsFileSizeLimits,
+            rows: [
+              _sizeRow(
+                HeroAppIcons.image,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsPhotos),
+                profile.maxPhotoBytes,
+                (value) => _save(profile.copyWith(maxPhotoBytes: value)),
+              ),
+              _sizeRow(
+                HeroAppIcons.video,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsVideos),
+                profile.maxVideoBytes,
+                (value) => _save(profile.copyWith(maxVideoBytes: value)),
+              ),
+              _sizeRow(
+                HeroAppIcons.solidFolder,
+                AppStrings.t(AppStringKeys.autoDownloadSettingsFilesAndMusic),
+                profile.maxOtherBytes,
+                (value) => _save(profile.copyWith(maxOtherBytes: value)),
+              ),
+            ],
+          ),
+          SettingsSection(
+            titleKey: AppStringKeys.autoDownloadSettingsPreloadingAndCalls,
+            rows: [
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsPreloadLargeVideos,
                 ),
-                const SizedBox(height: 6),
-                _card([
-                  _sizeRow(
-                    HeroAppIcons.image,
-                    AppStrings.t(AppStringKeys.autoDownloadSettingsPhotos),
-                    profile.maxPhotoBytes,
-                    (value) => _save(profile.copyWith(maxPhotoBytes: value)),
-                  ),
-                  const Divider(height: 1),
-                  _sizeRow(
-                    HeroAppIcons.video,
-                    AppStrings.t(AppStringKeys.autoDownloadSettingsVideos),
-                    profile.maxVideoBytes,
-                    (value) => _save(profile.copyWith(maxVideoBytes: value)),
-                  ),
-                  const Divider(height: 1),
-                  _sizeRow(
-                    HeroAppIcons.solidFolder,
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsFilesAndMusic,
-                    ),
-                    profile.maxOtherBytes,
-                    (value) => _save(profile.copyWith(maxOtherBytes: value)),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys.autoDownloadSettingsPreloadingAndCalls,
-                  ),
-                  style: TextStyle(fontSize: 13, color: c.textTertiary),
+                profile.preloadLargeVideos,
+                (value) => _save(profile.copyWith(preloadLargeVideos: value)),
+              ),
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsPreloadNextAudio,
                 ),
-                const SizedBox(height: 6),
-                _card([
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadLargeVideos,
-                    ),
-                    profile.preloadLargeVideos,
-                    (value) =>
-                        _save(profile.copyWith(preloadLargeVideos: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadNextAudio,
-                    ),
-                    profile.preloadNextAudio,
-                    (value) => _save(profile.copyWith(preloadNextAudio: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsPreloadStories,
-                    ),
-                    profile.preloadStories,
-                    (value) => _save(profile.copyWith(preloadStories: value)),
-                  ),
-                  const Divider(height: 1),
-                  _toggle(
-                    AppStrings.t(
-                      AppStringKeys.autoDownloadSettingsUseLessDataForCalls,
-                    ),
-                    profile.useLessDataForCalls,
-                    (value) =>
-                        _save(profile.copyWith(useLessDataForCalls: value)),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Text(
-                  AppStrings.t(
-                    AppStringKeys
-                        .autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor,
-                  ),
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    color: c.textTertiary,
-                  ),
+                profile.preloadNextAudio,
+                (value) => _save(profile.copyWith(preloadNextAudio: value)),
+              ),
+              _toggle(
+                AppStrings.t(AppStringKeys.autoDownloadSettingsPreloadStories),
+                profile.preloadStories,
+                (value) => _save(profile.copyWith(preloadStories: value)),
+              ),
+              _toggle(
+                AppStrings.t(
+                  AppStringKeys.autoDownloadSettingsUseLessDataForCalls,
                 ),
-              ],
+                profile.useLessDataForCalls,
+                (value) => _save(profile.copyWith(useLessDataForCalls: value)),
+              ),
+            ],
+          ),
+          SettingsNote(
+            text: AppStrings.t(
+              AppStringKeys
+                  .autoDownloadSettingsTheseSettingsAreAppliedDirectlyToTDLibFor,
             ),
           ),
         ],
@@ -210,6 +187,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
   Widget _networkSelector() {
     final c = context.colors;
     return SettingsPanel(
+      key: const ValueKey('auto-download-network-selector'),
       padding: const EdgeInsets.all(4),
       child: Row(
         children: [
@@ -222,6 +200,7 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
           }.entries)
             Expanded(
               child: GestureDetector(
+                key: ValueKey('auto-download-network-${entry.key}'),
                 behavior: HitTestBehavior.opaque,
                 onTap: () => setState(() => _network = entry.key),
                 child: AnimatedContainer(
@@ -253,10 +232,6 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     );
   }
 
-  Widget _card(List<Widget> children) {
-    return SettingsCard(children: children);
-  }
-
   Widget _sizeRow(
     AppIconData icon,
     String title,
@@ -264,47 +239,23 @@ class _AutoDownloadSettingsViewState extends State<AutoDownloadSettingsView> {
     Future<void> Function(int value) onChanged,
   ) {
     final selected = _sizes.contains(value) ? value : _closestSize(value);
-    return SettingsRow(
-      leading: AppIcon(icon, size: 21, color: AppTheme.brand),
+    return SettingsSelectionRow<int>(
+      leading: SettingsLeadingIcon(icon: icon),
       title: title,
       value: _sizeLabel(selected),
-      onTap: _controller.isApplying
-          ? null
-          : () => unawaited(_chooseSize(selected, onChanged)),
-    );
-  }
-
-  Future<void> _chooseSize(
-    int selected,
-    Future<void> Function(int value) onChanged,
-  ) async {
-    final value = await showAppModalSheet<int>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        final c = sheetContext.colors;
-        return SafeArea(
-          top: false,
-          child: SettingsCard(
-            margin: const EdgeInsets.all(10),
-            children: [
-              for (var index = 0; index < _sizes.length; index++) ...[
-                if (index > 0) Divider(height: 1, color: c.divider),
-                SettingsRow(
-                  title: _sizeLabel(_sizes[index]),
-                  showChevron: false,
-                  trailing: _sizes[index] == selected
-                      ? const AppIcon(HeroAppIcons.check, size: 20)
-                      : null,
-                  onTap: () => Navigator.of(sheetContext).pop(_sizes[index]),
-                ),
-              ],
-            ],
+      enabled: !_controller.isApplying,
+      options: [
+        for (final size in _sizes)
+          SettingsSelectionOption(
+            id: 'auto-download-size-$size',
+            value: size,
+            label: _sizeLabel(size),
+            icon: icon,
           ),
-        );
-      },
+      ],
+      isSelected: (size) => size == selected,
+      onSelected: onChanged,
     );
-    if (value != null && mounted) await onChanged(value);
   }
 
   Widget _toggle(

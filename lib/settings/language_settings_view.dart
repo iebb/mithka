@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -14,63 +13,35 @@ class LanguageSettingsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final locale = context.watch<AppLocaleController>();
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStrings.t(AppStringKeys.languageTitle),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.languageTitle),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  SettingsCard(
-                    children: [
-                      SettingsRow(
-                        leading: AppIcon(
-                          HeroAppIcons.globe,
-                          size: AppIconSize.lg,
-                          color: AppTheme.brand,
-                        ),
-                        title: AppStringKeys.languageMithkaLanguage.l10n(
-                          context,
-                        ),
-                        value: locale.selectedLabel(context),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const AppLanguageSettingsView(),
-                          ),
-                        ),
-                      ),
-                      const InsetDivider(leadingInset: 56),
-                      SettingsRow(
-                        leading: AppIcon(
-                          HeroAppIcons.comment,
-                          size: AppIconSize.lg,
-                          color: AppTheme.brand,
-                        ),
-                        title: AppStrings.t(
-                          AppStringKeys.messageActionTranslate,
-                        ),
-                        value: AppStrings.t(
-                          AppStringKeys.translationSettingsTitle,
-                        ),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const TranslationSettingsView(),
-                          ),
-                        ),
-                      ),
-                    ],
+          SettingsCard.rows(
+            rows: [
+              SettingsRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
+                title: AppStringKeys.languageMithkaLanguage.l10n(context),
+                value: locale.selectedLabel(context),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AppLanguageSettingsView(),
                   ),
-                ],
+                ),
               ),
-            ),
+              SettingsRow(
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.comment),
+                title: AppStrings.t(AppStringKeys.messageActionTranslate),
+                value: AppStrings.t(AppStringKeys.translationSettingsTitle),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TranslationSettingsView(),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -83,51 +54,31 @@ class AppLanguageSettingsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final controller = context.watch<AppLocaleController>();
     const options = AppLocaleController.options;
-    return Scaffold(
-      backgroundColor: c.groupedBackground,
-      body: Column(
+    return SettingsPageScaffold(
+      title: AppStringKeys.languageMithkaLanguage.l10n(context),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
         children: [
-          NavHeader(
-            title: AppStringKeys.languageMithkaLanguage.l10n(context),
-            onBack: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: DesktopContentConstraint(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                children: [
-                  SettingsCard(
-                    children: [
-                      _LanguageRow(
-                        title: AppStringKeys.appLocaleFollowSystem.l10n(
-                          context,
-                        ),
-                        selected: controller.followsSystem,
-                        onTap: () => controller.locale = null,
-                      ),
-                      const InsetDivider(leadingInset: 16),
-                      for (final option in options) ...[
-                        _LanguageRow(
-                          title: AppStrings.t(option.label),
-                          selected:
-                              !controller.followsSystem &&
-                              AppLocaleController.labelFor(
-                                    controller.locale!,
-                                  ) ==
-                                  AppStrings.t(option.label),
-                          onTap: () => controller.locale = option.locale,
-                        ),
-                        if (option != options.last)
-                          const InsetDivider(leadingInset: 16),
-                      ],
-                    ],
-                  ),
-                ],
+          SettingsCard.rows(
+            dividerInset: AppMetric.settingsTextDividerInset,
+            rows: [
+              _LanguageRow(
+                title: AppStringKeys.appLocaleFollowSystem.l10n(context),
+                selected: controller.followsSystem,
+                onTap: () => controller.locale = null,
               ),
-            ),
+              for (final option in options)
+                _LanguageRow(
+                  title: AppStrings.t(option.label),
+                  selected:
+                      !controller.followsSystem &&
+                      AppLocaleController.labelFor(controller.locale!) ==
+                          AppStrings.t(option.label),
+                  onTap: () => controller.locale = option.locale,
+                ),
+            ],
           ),
         ],
       ),
