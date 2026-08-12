@@ -110,14 +110,12 @@ void main() {
     expect(runner, isNot(contains('AVPictureInPictureController')));
   });
 
-  test('scrub preview converts through the root overlay coordinates', () {
+  test('app scrub geometry is delegated to package default chrome', () {
     final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
-    expect(
-      player,
-      contains('Overlay.of(scrubberContext).context.findRenderObject()'),
-    );
-    expect(player, contains('overlayBox.globalToLocal(globalTarget)'));
-    expect(player, isNot(contains('ancestor: overlayBox')));
+    expect(player, contains('FVideoPlayer('));
+    expect(player, isNot(contains('Overlay.of(scrubberContext)')));
+    expect(player, isNot(contains('_buildScrubPreviewOverlay(')));
+    expect(player, isNot(contains('_showScrubPreviewOverlay(')));
   });
 }

@@ -46,16 +46,21 @@ void main() {
     expect(androidManifest, isNot(contains('SYSTEM_ALERT_WINDOW')));
   });
 
-  test('one display mode control owns split and PiP routing', () {
-    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+  test(
+    'package chrome owns presentation controls while the host routes them',
+    () {
+      final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
-    expect(player, contains('AppStringKeys.videoPlayerToggleDisplayMode'));
-    expect(player, contains('void _toggleModeMenu()'));
-    expect(player, contains('void _selectDisplayMode(VideoDisplayMode mode)'));
-    expect(player, contains('if (mode == VideoDisplayMode.pictureInPicture)'));
-    expect(player, contains('unawaited(_enterPictureInPicture());'));
-    expect(player, isNot(contains('Widget _modeSwitchButton(')));
-    expect(player, isNot(contains('Widget _systemPictureInPictureButton(')));
-    expect(player, isNot(contains('PopupMenuButton<VideoDisplayMode>')));
-  });
+      expect(player, contains('onPictureInPictureChanged:'));
+      expect(player, contains('bottomTrailingBuilder:'));
+      expect(player, contains('topTrailingBuilder:'));
+      expect(player, contains('VideoDisplayMode.split'));
+      expect(player, contains('FVideoPictureInPicture.startPrepared('));
+      expect(player, contains('FVideoPictureInPicture.start('));
+      expect(player, contains('Widget _playerBottomTrailing('));
+      expect(player, contains('Widget _displayModeButton('));
+      expect(player, isNot(contains('chromeBuilder:')));
+      expect(player, isNot(contains('FVideoInteractionMode.delegateToChrome')));
+    },
+  );
 }

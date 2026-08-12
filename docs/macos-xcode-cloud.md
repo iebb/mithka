@@ -38,7 +38,7 @@ The action uses Flutter 3.44.2 and delegates source preparation to
 `ci_scripts/macos_post_clone.sh`. The helper:
 
 1. writes `lib/config/secrets.dart` without logging its values;
-2. downloads the checksum-pinned universal TDLib artifact;
+2. runs the shared manifest-aware installer for the universal TDLib artifact;
 3. generates the release Flutter/Xcode configuration;
 4. restores the committed CocoaPods sandbox;
 5. repairs generated Swift-package resource directories; and
@@ -52,12 +52,11 @@ archive. GitHub's commit-height build number overrides the source build number
 while the marketing version continues to use the major and minor components
 from `pubspec.yaml` with a zero patch component.
 
-The published TDLib input remains:
-
-- Release: `tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1`
-- Asset: `tdjson-macos-universal.zip`
-- Archive SHA-256: `9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc`
-- Dylib SHA-256: `d543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482`
+The published TDLib release identity, source provenance, asset names, and
+checksums live only in `scripts/tdjson-manifest.json`. Both Apple post-clone
+hooks call the normal platform wrappers, which delegate download, extraction,
+and verification to `scripts/install-tdjson-artifact.py`. Updating the pin is
+therefore one manifest change rather than a set of workflow-specific edits.
 
 ## Repository configuration
 

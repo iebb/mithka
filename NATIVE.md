@@ -4,11 +4,12 @@ Mithka talks **only** to real TDLib via Dart FFI (`lib/tdlib/td_bindings.dart`),
 so each platform must ship the `tdjson` native library. There is no mock backend.
 
 The native TDLib artifacts and source patches are kept outside this app
-repository. Android and iOS release assets live in
+repository. Release assets for every supported platform live in
 [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson), so normal users do
-not see a large vendored TDLib binary in the app source tree. Desktop builds
-fetch the same pinned patch set and compile TDLib for the target operating
-system.
+not see a large vendored TDLib build tree in the app source. The checked-in
+[`scripts/tdjson-manifest.json`](scripts/tdjson-manifest.json) pins one release
+and its archive and payload checksums. All local and CI entry points delegate to
+the same manifest-aware installer.
 
 ## 1. Credentials
 
@@ -27,34 +28,31 @@ live under `android/app/src/main/jniLibs/<abi>/libtdjson.so` — the Gradle plug
 bundles them automatically.
 
 ```sh
-export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/<version>
-./scripts/build-tdjson-android.sh           # arm64-v8a armeabi-v7a x86_64
+./scripts/build-tdjson-android.sh arm64-v8a
+./scripts/build-tdjson-android.sh arm64-v8a armeabi-v7a x86_64
 ```
 
-(Building tdjson needs a cross-compiled OpenSSL + zlib per ABI — see the official
-guide: <https://tdlib.github.io/td/build.html>. `minSdk` is pinned to 23.)
-
-GitHub Actions does not run this source build in the app repo. It resolves the
-pinned `iebb/mithka-tdjson` release, caches by that release tag, and downloads
-`tdjson-android-<abi>.zip`.
+The helper downloads the requested manifest-pinned `tdjson-android-<abi>.zip`
+assets and verifies them before installation. No Android NDK, OpenSSL source
+tree, or local TDLib compilation is required. The packaged libraries target API
+23; the app's minimum is API 24 because of other platform features.
 
 ## 3. iOS
 
 On iOS the symbols are resolved from the app binary
 (`DynamicLibrary.process()`), so `tdjson` must be linked into the Runner target.
 
-1. Run `./scripts/build-tdjson-ios.sh`. It downloads the prebuilt
-   `tdjson.xcframework` from `iebb/mithka-tdjson` unless
-   `TDJSON_XCFRAMEWORK_URL` overrides the source.
+1. Run `./scripts/build-tdjson-ios.sh`. It installs the manifest-pinned
+   `tdjson.xcframework` from `iebb/mithka-tdjson` and verifies its contents.
 2. `cd ios && pod install` (needs CocoaPods: `brew install cocoapods`).
 
-Xcode Cloud uses the same pinned release artifact by default. Set
-`TDJSON_XCFRAMEWORK_URL` only when a build must pin a specific artifact.
+Xcode Cloud and GitHub Actions call this same helper, so the release identity and
+checksums are not duplicated in their setup scripts.
 
 ## 4. Desktop
 
-Windows, macOS, and Linux load `tdjson` from their application bundle. Build the
-matching patched library into the ignored `native-libs` directory:
+Windows, macOS, and Linux load `tdjson` from their application bundle. Install
+the matching prebuilt library into the ignored `native-libs` directory:
 
 ```sh
 ./scripts/build-tdjson-desktop.sh linux native-libs/libtdjson.so
@@ -62,13 +60,33 @@ matching patched library into the ignored `native-libs` directory:
 ./scripts/build-tdjson-desktop.sh windows native-libs/tdjson.dll
 ```
 
-The release workflow builds one host per runner, packages the library beside
-the Flutter executable (or under `Mithka.app/Contents/Frameworks` on macOS), and
-publishes Windows x64, universal macOS, and Linux x64 archives with each GitHub
-release. Local builds need the same final copy into the built bundle before the
-app starts. The macOS archive is ad-hoc signed and is not notarized.
+The release workflow packages the verified library beside the Flutter
+executable (or under `Mithka.app/Contents/Frameworks` on macOS). Local builds
+need the same final copy in the built bundle before the app starts. The macOS
+app archive is ad-hoc signed and is not notarized.
 
-## 5. Run
+## 5. Disk cleanup
+
+Only the installed runtime library for the platform being built is an active
+TDJSON input:
+
+- Android: `android/app/src/main/jniLibs/<abi>/libtdjson.so`
+- iOS: `ios/tdjson/tdjson.xcframework/`
+- desktop: the selected library under `native-libs/`
+
+Those paths are ignored because they are large and reproducible. Deleting one
+is safe when that platform is not being built; its helper restores it from the
+pinned release, at the cost of another download. Copies below Flutter's
+top-level `build/` directory are derived packaging output and are also safe to
+remove; Flutter or Gradle recreates them.
+
+The legacy `.tdlib-build/` directory is no longer used by these helpers. It was
+a TDLib source/build cache, and large files such as `libtdcore.a` inside it are
+intermediate static archives rather than app runtime dependencies. The entire
+directory can be removed without breaking the manifest-based build; it will not
+be downloaded or rebuilt by the current helpers.
+
+## 6. Run
 
 ```sh
 flutter run            # pick an available mobile or desktop target

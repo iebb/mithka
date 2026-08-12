@@ -1,44 +1,26 @@
 #!/usr/bin/env bash
 #
-# build-tdjson-ios.sh
-#
-# Fetches TDLib's `tdjson` XCFramework for iOS (device arm64 + simulator) and
-# installs it into the Runner app checkout, so the Dart FFI layer can resolve the
-# symbols at runtime.
-#
-# The prebuilt artifact lives in the sibling mithka-tdjson repo. By default this
-# downloads the pinned artifact with Mithka session string backup symbols; set
-# TDJSON_XCFRAMEWORK_URL to override the source.
+# Downloads the checksum-pinned TDLib XCFramework consumed by the iOS Runner.
 #
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="$REPO_ROOT/ios/tdjson"
-TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1"
-TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-ios.xcframework.zip}"
 
-download_tdjson() {
-  echo "  → downloading tdjson.xcframework"
-  mkdir -p "$DEST"
-  rm -rf "$DEST/tdjson.xcframework"
-  tmp="$(mktemp "${TMPDIR:-/tmp}/tdjson-ios.XXXXXX.zip")"
-  curl -fL "$TDJSON_URL" -o "$tmp"
-  unzip -q -o "$tmp" -d "$DEST"
-  rm -f "$tmp"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DESTINATION="$REPO_ROOT/ios/tdjson/tdjson.xcframework"
 
-echo "→ Expected: $DEST/tdjson.xcframework"
-if [[ -n "${TDJSON_XCFRAMEWORK_URL:-}" ]]; then
-  echo "  → replacing the installed framework with the requested override"
-  download_tdjson
-elif [[ -d "$DEST/tdjson.xcframework" ]]; then
-  echo "  ✓ tdjson.xcframework present"
-  if ! "$REPO_ROOT/scripts/check-tdjson-session-symbols.sh" "$DEST/tdjson.xcframework"; then
-    echo "  → existing tdjson.xcframework is stale; replacing it"
-    download_tdjson
-  fi
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON=python
 else
-  download_tdjson
+  echo "error: Python 3 is required to install tdjson artifacts" >&2
+  exit 1
 fi
-"$REPO_ROOT/scripts/wrap-tdjson-xcframework.sh" "$DEST/tdjson.xcframework"
-"$REPO_ROOT/scripts/check-tdjson-session-symbols.sh" "$DEST/tdjson.xcframework"
-echo "→ Now run: cd ios && pod install   (then: flutter run)"
+
+"$PYTHON" "$SCRIPT_DIR/install-tdjson-artifact.py" \
+  tdjson-ios.xcframework.zip \
+  "$DESTINATION"
+"$SCRIPT_DIR/check-tdjson-session-symbols.sh" "$DESTINATION"
+
+echo "Installed pinned iOS tdjson XCFramework."
+echo "Now run: cd ios && pod install   (then: flutter run)"

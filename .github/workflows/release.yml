@@ -3,8 +3,8 @@ name: 🚀 Multi-platform Releases
 # Builds per-ABI Android APKs and Windows, macOS, and Linux desktop archives
 # from nightly/release. Each Android ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
-# the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. A
-# desktop job compiles the same pinned, patched TDLib source for its host OS.
+# the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. Each
+# desktop job downloads the matching pinned prebuilt asset for its host OS.
 # A final job creates the version tag from pubspec.yaml and publishes every
 # package: nightly creates a dated pre-release, release creates a stable release.
 # Each Android ABI publishes one standard APK using the tracked Android release
@@ -40,14 +40,6 @@ concurrency:
 permissions:
   contents: write
   copilot-requests: write
-
-env:
-  # Keep each Mithka release reproducible by pinning an immutable TDLib build.
-  TDJSON_RELEASE_TAG: tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1
-  TDJSON_UPSTREAM_SHA: 1b08c83bc07888e4b0a6150d36c1364ff03cf930
-  TDJSON_ANDROID_ARM64_V8A_SHA256: cc7f46072ed11631dbd3c09d8c0fb7c9b352ad07a64a80e3c088153aa65111b1
-  TDJSON_ANDROID_ARMEABI_V7A_SHA256: 472371dfe8aea93ccb6b20bc32d35f3d0b1f1c97b1f9d98a4279703dbba2a042
-  TDJSON_ANDROID_X86_64_SHA256: d5615f73aad657ba9a40beca47fbc80504f87bddcf17d3d3471389b8de977b21
 
 jobs:
   prepare:
@@ -150,8 +142,6 @@ jobs:
             target: android-arm64
           - abi: armeabi-v7a
             target: android-arm
-    env:
-      TDJSON_REPO: iebb/mithka-tdjson
     steps:
       - uses: actions/checkout@v5
 
@@ -194,77 +184,14 @@ jobs:
           yes | sdkmanager "ndk;28.2.13676358" >/dev/null 2>&1 || true
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
-      - name: Resolve tdjson release
-        id: tdjson_release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ -n "${TDJSON_RELEASE_TAG:-}" ]; then
-            tag="$TDJSON_RELEASE_TAG"
-          else
-            tag="$(curl -fsSL \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/$TDJSON_REPO/releases?per_page=100" \
-              | python3 -c '
-          import json, sys
-          required = {
-              "tdjson-android-arm64-v8a.zip",
-              "tdjson-android-armeabi-v7a.zip",
-              "tdjson-android-x86_64.zip",
-          }
-          releases = json.load(sys.stdin)
-          print(next(
-              release["tag_name"]
-              for release in releases
-              if required.issubset({
-                  asset["name"] for asset in release.get("assets", [])
-              })
-          ))
-          ')"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "asset_url=https://github.com/$TDJSON_REPO/releases/download/$tag/tdjson-android-${{ matrix.abi }}.zip" >> "$GITHUB_OUTPUT"
-          echo "Using tdjson release $tag"
-
-      - name: Cache jniLibs (${{ matrix.abi }})
-        id: jnilibs-cache
+      - name: Cache tdjson (${{ matrix.abi }})
         uses: actions/cache@v5
         with:
           path: android/app/src/main/jniLibs/${{ matrix.abi }}
-          # Never restore a native database engine from another release tag.
-          # v2 also bypasses caches poisoned by the former broad restore key.
-          key: jnilibs-v2-${{ runner.os }}-${{ steps.tdjson_release.outputs.tag }}-${{ matrix.abi }}
+          key: tdjson-android-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('scripts/tdjson-manifest.json') }}
 
-      - name: Check cached tdjson
-        id: tdjson
-        run: |
-          if [ -s "android/app/src/main/jniLibs/${{ matrix.abi }}/libtdjson.so" ]; then
-            echo "cached=true" >> "$GITHUB_OUTPUT"
-            ls -lh "android/app/src/main/jniLibs/${{ matrix.abi }}/libtdjson.so"
-          else
-            echo "cached=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download prebuilt tdjson (${{ matrix.abi }})
-        if: steps.tdjson.outputs.cached != 'true'
-        run: |
-          mkdir -p "android/app/src/main/jniLibs/${{ matrix.abi }}"
-          curl -fsSL "${{ steps.tdjson_release.outputs.asset_url }}" -o /tmp/tdjson-android.zip
-          unzip -q -o /tmp/tdjson-android.zip -d /tmp/tdjson-android
-          install -m 0644 "/tmp/tdjson-android/${{ matrix.abi }}/libtdjson.so" \
-            "android/app/src/main/jniLibs/${{ matrix.abi }}/libtdjson.so"
-          ls -lh "android/app/src/main/jniLibs/${{ matrix.abi }}/libtdjson.so"
-
-      - name: Verify pinned tdjson binary (${{ matrix.abi }})
-        run: |
-          library="android/app/src/main/jniLibs/${{ matrix.abi }}/libtdjson.so"
-          case "${{ matrix.abi }}" in
-            arm64-v8a) expected="$TDJSON_ANDROID_ARM64_V8A_SHA256" ;;
-            armeabi-v7a) expected="$TDJSON_ANDROID_ARMEABI_V7A_SHA256" ;;
-            x86_64) expected="$TDJSON_ANDROID_X86_64_SHA256" ;;
-          esac
-          printf '%s  %s\n' "$expected" "$library" | sha256sum --check --strict
+      - name: Install pinned tdjson (${{ matrix.abi }})
+        run: scripts/build-tdjson-android.sh "${{ matrix.abi }}"
 
       - name: Flutter dependencies
         run: flutter pub get
@@ -420,18 +347,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check out pinned Mithka TDLib patches
-        uses: actions/checkout@v5
-        with:
-          repository: iebb/mithka-tdjson
-          ref: ${{ env.TDJSON_RELEASE_TAG }}
-          path: .tdlib-helper
-
-      - name: Normalize Windows TDLib patch line endings
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: sed -i 's/\r$//' .tdlib-helper/patches/*.patch
-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.2'
@@ -443,51 +358,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake gperf libavcodec-dev libavformat-dev libavutil-dev \
+            clang cmake libavcodec-dev libavformat-dev libavutil-dev \
             libcurl4-openssl-dev libgtk-3-dev libjpeg-dev liblzma-dev \
-            libkeybinder-3.0-dev libsecret-1-dev libssl-dev libswscale-dev \
-            ninja-build pkg-config zlib1g-dev
+            libkeybinder-3.0-dev libsecret-1-dev libswscale-dev \
+            ninja-build pkg-config
 
-      - name: Install macOS build dependencies
-        if: matrix.platform == 'macos'
-        run: brew install cmake ninja
-
-      - name: Install Windows native dependencies
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install `
-            gperf:x64-windows openssl:x64-windows-static zlib:x64-windows-static
-          $gperfTools = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\tools\gperf"
-          if (-not (Test-Path "$gperfTools\gperf.exe")) {
-            throw "vcpkg did not install gperf.exe"
-          }
-          $gperfTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Restore desktop TDLib cache
-        id: tdlib_cache
-        uses: actions/cache/restore@v5
+      - name: Cache desktop tdjson
+        uses: actions/cache@v5
         with:
-          path: .tdlib-build/desktop-${{ matrix.platform }}
-          key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
+          path: native-libs/${{ matrix.library }}
+          key: tdjson-desktop-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.architecture }}-${{ hashFiles('scripts/tdjson-manifest.json') }}
 
-      - name: Build patched desktop TDLib
+      - name: Install pinned desktop tdjson
         shell: bash
-        env:
-          NATIVE_HELPER_ROOT: .tdlib-helper
-          TD_COMMIT: ${{ env.TDJSON_UPSTREAM_SHA }}
-          TD_BUILD_JOBS: '2'
         run: |
           scripts/build-tdjson-desktop.sh \
             "${{ matrix.platform }}" \
             "native-libs/${{ matrix.library }}"
-
-      - name: Save desktop TDLib cache
-        if: steps.tdlib_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: .tdlib-build/desktop-${{ matrix.platform }}
-          key: tdjson-${{ matrix.platform }}-${{ matrix.architecture }}-${{ env.TDJSON_RELEASE_TAG }}-${{ hashFiles('scripts/build-tdjson-desktop.sh') }}
 
       - name: Enable Swift Package Manager for macOS
         if: matrix.platform == 'macos'

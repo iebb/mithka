@@ -18,7 +18,6 @@
 #   FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64
 #                      base64 of ios/Runner/GoogleService-Info.plist
 # Optional:
-#   TDJSON_XCFRAMEWORK_URL   override the prebuilt-framework download (see default below)
 #   TGVOIP_WEBRTC_XCFRAMEWORK_URL
 #                      override the pinned official Telegram iOS group-call XCFramework
 #   TGVOIP_WEBRTC_XCFRAMEWORK_SHA256
@@ -31,14 +30,12 @@
 #
 # The prebuilt tdjson.xcframework is hosted in the sibling mithka-tdjson repo
 # rather than rebuilt here, because building TDLib + OpenSSL for iOS takes
-# ~40 min. The default URL is pinned so Xcode Cloud cannot pick a stale latest
-# artifact without the Mithka session string backup symbols.
+# ~40 min. scripts/build-tdjson-ios.sh resolves the repository-pinned manifest,
+# verifies the archive and installed framework, and never follows "latest".
 
 set -e
 
 FLUTTER_VERSION="3.44.2"
-TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1"
-TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-ios.xcframework.zip}"
 TGVOIP_RELEASE_TAG="tgvoip-telegram-ios-6e370e06d147"
 TGVOIP_URL="${TGVOIP_WEBRTC_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TGVOIP_RELEASE_TAG}/tgvoip-ios.xcframework.zip}"
 TGVOIP_SHA256="${TGVOIP_WEBRTC_XCFRAMEWORK_SHA256:-a1da44189af3802fcc0900696c5cdc549ffc2e53c5a2a0bab713a208aefe2737}"
@@ -274,16 +271,9 @@ else
   exit 1
 fi
 
-# --- Native TDLib framework (git-ignored; prebuilt on a public release) ------
-echo "▸ downloading tdjson.xcframework"
-mkdir -p ios/tdjson
-rm -rf ios/tdjson/tdjson.xcframework /tmp/tdjson.zip
-# shellcheck disable=SC2086 # CURL_RETRY_FLAGS is intentionally split.
-retry 4 5 curl $CURL_RETRY_FLAGS "$TDJSON_URL" -o /tmp/tdjson.zip
-unzip -q -o /tmp/tdjson.zip -d ios/tdjson
-ls -d ios/tdjson/tdjson.xcframework
-"$REPO/scripts/wrap-tdjson-xcframework.sh" ios/tdjson/tdjson.xcframework
-"$REPO/scripts/check-tdjson-session-symbols.sh" ios/tdjson/tdjson.xcframework
+# --- Native TDLib framework (git-ignored; manifest-pinned release artifact) --
+echo "▸ preparing pinned tdjson.xcframework"
+"$REPO/scripts/build-tdjson-ios.sh"
 
 echo "▸ downloading TgVoipWebrtc.xcframework"
 rm -rf ios/LocalPods/tgvoip/TgVoipWebrtc.xcframework /tmp/tgvoip.zip

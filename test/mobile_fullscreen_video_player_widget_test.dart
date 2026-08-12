@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:flutter/foundation.dart';
@@ -130,7 +131,9 @@ void main() {
         final moreRect = tester.getRect(_semanticsWidget('More'));
         final timelineRect = tester.getRect(_timeline);
         final previousRect = tester.getRect(_semanticsWidget('Previous video'));
-        final pauseRect = tester.getRect(_semanticsWidget('Pause'));
+        final pauseControls = _semanticsWidget('Pause');
+        expect(pauseControls, findsOneWidget);
+        final primaryPauseRect = tester.getRect(pauseControls);
         final nextRect = tester.getRect(_semanticsWidget('Next video'));
         final volumeRect = tester.getRect(_volumeSlider);
 
@@ -142,16 +145,24 @@ void main() {
         expect(surfaceRect.center.dx, closeTo(playerRect.center.dx, 0.01));
         expect(surfaceRect.center.dy, closeTo(playerRect.center.dy, 0.01));
         expect(closeRect.top, greaterThanOrEqualTo(47));
-        expect(moreRect, const Rect.fromLTWH(338, 53, 44, 44));
+        expect(moreRect.size, const Size.square(44));
+        expect(playerRect.contains(closeRect.topLeft), isTrue);
+        expect(playerRect.contains(closeRect.bottomRight), isTrue);
+        expect(playerRect.contains(moreRect.topLeft), isTrue);
+        expect(playerRect.contains(moreRect.bottomRight), isTrue);
         expect(timelineRect.bottom, lessThanOrEqualTo(844 - 34));
         expect(playerRect.contains(timelineRect.bottomLeft), isTrue);
         expect(playerRect.contains(previousRect.topLeft), isTrue);
         expect(playerRect.contains(nextRect.bottomRight), isTrue);
-        expect(pauseRect.center.dy, closeTo(timelineRect.center.dy, 0.01));
-        expect(previousRect.center.dy, closeTo(nextRect.center.dy, 0.01));
-        expect(previousRect.bottom, lessThanOrEqualTo(pauseRect.top));
-        expect(nextRect.bottom, lessThanOrEqualTo(pauseRect.top));
+        expect(
+          previousRect.center.dy,
+          closeTo(primaryPauseRect.center.dy, 0.01),
+        );
+        expect(nextRect.center.dy, closeTo(primaryPauseRect.center.dy, 0.01));
+        expect(previousRect.right, lessThanOrEqualTo(primaryPauseRect.left));
+        expect(primaryPauseRect.right, lessThanOrEqualTo(nextRect.left));
         expect(volumeRect.height, 44);
+        expect(timelineRect.bottom, lessThanOrEqualTo(volumeRect.top));
         expect(playerRect.contains(volumeRect.topLeft), isTrue);
         expect(playerRect.contains(volumeRect.bottomRight), isTrue);
 
@@ -166,30 +177,28 @@ void main() {
         expect(platform.volumeValues.last, 0);
         await tester.tap(_semanticsWidget('Unmute'));
         await tester.pump();
-        expect(platform.volumeValues.last, closeTo(adjustedVolume, 0.001));
-
-        expect(_semanticsWidget('Play horizontally'), findsOneWidget);
-        await tester.tap(_semanticsWidget('Play horizontally'));
-        await tester.pumpAndSettle();
-        expect(_semanticsWidget('Use system orientation'), findsOneWidget);
-        expect(orientationCalls, hasLength(1));
         expect(
-          orientationCalls.single.arguments,
-          containsAll(<String>[
-            'DeviceOrientation.landscapeLeft',
-            'DeviceOrientation.landscapeRight',
-          ]),
+          platform.volumeValues.last,
+          closeTo(math.max(0.2, adjustedVolume), 0.001),
         );
-        await tester.tap(_semanticsWidget('Use system orientation'));
-        await tester.pumpAndSettle();
-        expect(_semanticsWidget('Play horizontally'), findsOneWidget);
-        expect(orientationCalls, hasLength(2));
 
-        await tester.tapAt(const Offset(195, 200));
+        // Orientation is a secondary action owned by the host overflow menu.
+        expect(_semanticsWidget('Play horizontally'), findsNothing);
+
+        final bareSurfacePoint = Offset(
+          playerRect.left + 40,
+          surfaceRect.top + 40,
+        );
+        await tester.tapAt(bareSurfacePoint);
         await tester.pump(const Duration(milliseconds: 400));
-        expect(_semanticsWidget('Pause'), findsNothing);
-        await tester.tapAt(const Offset(195, 200));
+        expect(_playerControlOpacity(tester), 0);
+        expect(_playerChromeIgnoresPointer(), isTrue);
+        expect(_playerChromeExcludesSemantics(), isTrue);
+        await tester.tapAt(bareSurfacePoint);
         await tester.pump(const Duration(milliseconds: 400));
+        expect(_playerControlOpacity(tester), 1);
+        expect(_playerChromeIgnoresPointer(), isFalse);
+        expect(_playerChromeExcludesSemantics(), isFalse);
         expect(_semanticsWidget('Pause'), findsOneWidget);
 
         await tester.tap(_semanticsWidget('More'));
@@ -204,10 +213,14 @@ void main() {
           const ValueKey('video-more-save-to-photos'),
         );
         final share = find.byKey(const ValueKey('video-more-share'));
+        final orientation = find.byKey(
+          const ValueKey('video-more-orientation'),
+        );
         expect(menuSurface, findsOneWidget);
         expect(download, findsOneWidget);
         expect(saveToPhotos, findsOneWidget);
         expect(share, findsOneWidget);
+        expect(orientation, findsOneWidget);
         expect(
           find.descendant(of: download, matching: find.text('Download')),
           findsOneWidget,
@@ -227,10 +240,12 @@ void main() {
         final downloadRect = tester.getRect(download);
         final saveRect = tester.getRect(saveToPhotos);
         final shareRect = tester.getRect(share);
-        expect(menuRect.left, 168);
-        expect(menuRect.top, 101);
         expect(menuRect.width, 212);
-        expect(menuRect.height, inInclusiveRange(158, 180));
+        expect(menuRect.height, inInclusiveRange(207, 232));
+        expect(menuRect.left, greaterThanOrEqualTo(8));
+        expect(menuRect.right, lessThanOrEqualTo(390 - 8));
+        expect(menuRect.top, greaterThanOrEqualTo(47));
+        expect(menuRect.bottom, lessThanOrEqualTo(844 - 34));
         expect(downloadRect.height, greaterThanOrEqualTo(48));
         expect(saveRect.height, greaterThanOrEqualTo(48));
         expect(shareRect.height, greaterThanOrEqualTo(48));
@@ -242,17 +257,38 @@ void main() {
         expect(downloadRect.bottom, lessThan(saveRect.top));
         expect(saveRect.bottom, lessThan(shareRect.top));
         expect(shareRect.bottom, lessThanOrEqualTo(844 - 34));
+
+        await tester.tap(_semanticsWidget('Play horizontally'));
+        await tester.pumpAndSettle();
+        expect(orientationCalls, hasLength(1));
+        expect(
+          orientationCalls.single.arguments,
+          containsAll(<String>[
+            'DeviceOrientation.landscapeLeft',
+            'DeviceOrientation.landscapeRight',
+          ]),
+        );
+        expect(menuSurface, findsNothing);
+
+        await tester.tap(_semanticsWidget('More'));
+        await tester.pump(const Duration(milliseconds: 160));
+        expect(_semanticsWidget('Use system orientation'), findsOneWidget);
+        await tester.tap(_semanticsWidget('Use system orientation'));
+        await tester.pumpAndSettle();
+        expect(orientationCalls, hasLength(2));
+
+        await tester.tap(_semanticsWidget('More'));
+        await tester.pump(const Duration(milliseconds: 160));
         await tester.tapAt(const Offset(20, 200));
         await tester.pump();
         expect(download, findsNothing);
         expect(saveToPhotos, findsNothing);
         expect(share, findsNothing);
-        expect(_semanticsWidget('Pause'), findsNothing);
-        expect(_semanticsWidget('Previous video'), findsNothing);
-        expect(_semanticsWidget('More'), findsNothing);
+        expect(_playerControlOpacity(tester), 0);
 
-        await tester.tapAt(const Offset(195, 200));
+        await tester.tapAt(bareSurfacePoint);
         await tester.pump(const Duration(milliseconds: 400));
+        expect(_playerControlOpacity(tester), 1);
         expect(_semanticsWidget('Pause'), findsOneWidget);
 
         await tester.tap(_semanticsWidget('Previous video'));
@@ -306,23 +342,21 @@ void main() {
           expect(_compactScrubPreview, findsOneWidget);
           final previewRect = tester.getRect(_compactScrubPreview);
           final expectedLeft =
-              (currentTimeline.left + currentTimeline.width * fraction - 64)
-                  .clamp(8.0, 390.0 - 128 - 8)
+              currentTimeline.left +
+              (6 + math.max(0, currentTimeline.width - 12) * fraction - 64)
+                  .clamp(0.0, math.max(0, currentTimeline.width - 128))
                   .toDouble();
           expect(previewRect.left, closeTo(expectedLeft, 0.01));
           expect(previewRect.right, lessThanOrEqualTo(390 - 8));
           expect(previewRect.top, greaterThanOrEqualTo(47));
           expect(previewRect.bottom, lessThan(currentTimeline.top));
           expect(
-            find.descendant(
-              of: _compactScrubPreview,
-              matching: find.text(
-                fraction == 0
-                    ? '00:00'
-                    : fraction == 0.5
-                    ? '01:00'
-                    : '02:00',
-              ),
+            find.text(
+              fraction == 0
+                  ? '0:00'
+                  : fraction == 0.5
+                  ? '1:00'
+                  : '2:00',
             ),
             findsOneWidget,
           );
@@ -365,7 +399,7 @@ void main() {
   );
 
   testWidgets(
-    'Android queue keeps play pause in the same bottom timeline position',
+    'Android queue uses one center transport and a separate bottom playback row',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(390, 844);
@@ -421,14 +455,22 @@ void main() {
 
         await tester.pumpWidget(player(withNeighbors: true));
         await _pumpUntilPlayerReady(tester);
-        final queuedPause = tester.getRect(_semanticsWidget('Pause'));
+        final queuedPauseControls = _semanticsWidget('Pause');
+        expect(queuedPauseControls, findsOneWidget);
+        final queuedPrimaryPause = tester.getRect(queuedPauseControls);
         final queuedTimeline = tester.getRect(_timeline);
+        final queuedVolume = tester.getRect(_volumeSlider);
         final previousRect = tester.getRect(_semanticsWidget('Previous video'));
         final nextRect = tester.getRect(_semanticsWidget('Next video'));
 
-        expect(queuedPause.center.dy, closeTo(queuedTimeline.center.dy, 0.01));
-        expect(previousRect.bottom, lessThanOrEqualTo(queuedPause.top));
-        expect(nextRect.bottom, lessThanOrEqualTo(queuedPause.top));
+        expect(
+          previousRect.center.dy,
+          closeTo(queuedPrimaryPause.center.dy, 0.01),
+        );
+        expect(nextRect.center.dy, closeTo(queuedPrimaryPause.center.dy, 0.01));
+        expect(previousRect.right, lessThanOrEqualTo(queuedPrimaryPause.left));
+        expect(queuedPrimaryPause.right, lessThanOrEqualTo(nextRect.left));
+        expect(queuedTimeline.bottom, lessThanOrEqualTo(queuedVolume.top));
         await tester.tap(_semanticsWidget('Previous video'));
         await tester.tap(_semanticsWidget('Next video'));
         expect(previousCalls, 1);
@@ -436,11 +478,14 @@ void main() {
 
         await tester.pumpWidget(player(withNeighbors: false));
         await tester.pump();
-        final singlePause = tester.getRect(_semanticsWidget('Pause'));
+        final singlePauseControls = _semanticsWidget('Pause');
+        expect(singlePauseControls, findsOneWidget);
+        final singlePrimaryPause = tester.getRect(singlePauseControls);
         final singleTimeline = tester.getRect(_timeline);
+        final singleVolume = tester.getRect(_volumeSlider);
 
-        expect(singlePause, queuedPause);
-        expect(singlePause.center.dy, closeTo(singleTimeline.center.dy, 0.01));
+        expect(singlePrimaryPause, queuedPrimaryPause);
+        expect(singleTimeline.bottom, lessThanOrEqualTo(singleVolume.top));
         expect(_semanticsWidget('Previous video'), findsNothing);
         expect(_semanticsWidget('Next video'), findsNothing);
         expect(tester.takeException(), isNull);
@@ -449,9 +494,10 @@ void main() {
         await tester.pumpWidget(player(withNeighbors: true));
         await tester.pump();
         expect(_semanticsWidget('Previous video'), findsOneWidget);
+        expect(_semanticsWidget('Pause'), findsOneWidget);
         expect(_semanticsWidget('Next video'), findsOneWidget);
         expect(_volumeSlider, findsOneWidget);
-        expect(_semanticsWidget('Switch display mode'), findsNothing);
+        expect(_semanticsWidget('Switch display mode'), findsOneWidget);
         expect(tester.takeException(), isNull);
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -464,7 +510,7 @@ void main() {
     },
   );
 
-  testWidgets('queued loading controls retain a semantic status', (
+  testWidgets('queued loading remains dismissible before chrome is ready', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -476,6 +522,7 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final fileResponse = Completer<Map<String, dynamic>>();
     final sourcePath = File('pubspec.yaml').absolute.path;
+    var closeCalls = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -490,7 +537,7 @@ void main() {
             previousVideo: VideoPlaybackItem(video: TdFileRef(id: 708)),
             nextVideo: VideoPlaybackItem(video: TdFileRef(id: 710)),
             onNavigate: (_) {},
-            onClose: () {},
+            onClose: () => closeCalls++,
             streamQuery: (_) => fileResponse.future,
           ),
         ),
@@ -499,8 +546,12 @@ void main() {
     await tester.pump();
 
     expect(_semanticsWidget('Loading video'), findsOneWidget);
-    expect(_semanticsWidget('Previous video'), findsOneWidget);
-    expect(_semanticsWidget('Next video'), findsOneWidget);
+    expect(_semanticsWidget('Close'), findsOneWidget);
+    expect(find.byType(FVideoPlayer), findsNothing);
+    expect(_semanticsWidget('Previous video'), findsNothing);
+    expect(_semanticsWidget('Next video'), findsNothing);
+    await tester.tap(_semanticsWidget('Close'));
+    expect(closeCalls, 1);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -538,6 +589,7 @@ void main() {
         final sourcePath = File('pubspec.yaml').absolute.path;
         var currentMode = VideoDisplayMode.fullscreen;
         final requestedModes = <VideoDisplayMode>[];
+        var fullscreenToggleCalls = 0;
         await tester.pumpWidget(
           MaterialApp(
             locale: const Locale('en'),
@@ -554,6 +606,7 @@ void main() {
                     requestedModes.add(mode);
                     setState(() => currentMode = mode);
                   },
+                  onToggleFullscreen: () => fullscreenToggleCalls++,
                   onClose: () {},
                   streamQuery: _completedVideoQuery(sourcePath, fileId: 704),
                 ),
@@ -563,6 +616,12 @@ void main() {
         );
         await _pumpUntilPlayerReady(tester);
 
+        final reusablePlayer = tester.widget<FVideoPlayer>(
+          find.byType(FVideoPlayer),
+        );
+        expect(reusablePlayer.showPictureInPictureButton, isFalse);
+        expect(reusablePlayer.showFullscreenButton, isFalse);
+        expect(reusablePlayer.bottomTrailingBuilder, isNotNull);
         final modeButton = _semanticsWidget('Switch display mode');
         expect(modeButton, findsOneWidget);
         var modeButtonSemantics = tester.widget<Semantics>(modeButton);
@@ -608,17 +667,6 @@ void main() {
         expect(modeButtonSemantics.properties.value, 'Split Screen');
         expect(_selectedSemanticsWidget('Split Screen'), findsOneWidget);
 
-        await tester.tapAt(const Offset(20, 200));
-        await tester.pump();
-        expect(_selectedSemanticsWidget('Split Screen'), findsNothing);
-        expect(modeButton, findsNothing);
-
-        await tester.tapAt(const Offset(195, 200));
-        await tester.pump(const Duration(milliseconds: 400));
-        expect(modeButton, findsOneWidget);
-        await tester.tap(modeButton);
-        await tester.pump(const Duration(milliseconds: 140));
-
         await tester.tap(_semanticsWidget('Picture in Picture'));
         await tester.pump();
         expect(requestedModes, [
@@ -626,6 +674,20 @@ void main() {
           VideoDisplayMode.pictureInPicture,
         ]);
         expect(_semanticsWidget('Picture in Picture'), findsNothing);
+        expect(fullscreenToggleCalls, 0);
+
+        expect(modeButton, findsOneWidget);
+        await tester.tap(modeButton);
+        await tester.pump(const Duration(milliseconds: 140));
+        expect(_selectedSemanticsWidget('Picture in Picture'), findsOneWidget);
+        await tester.tapAt(const Offset(20, 200));
+        await tester.pump();
+        expect(_selectedSemanticsWidget('Picture in Picture'), findsNothing);
+        expect(modeButton, findsOneWidget);
+        modeButtonSemantics = tester.widget<Semantics>(modeButton);
+        expect(modeButtonSemantics.properties.expanded, isFalse);
+        expect(_playerControlOpacity(tester), 0);
+        expect(modeButton.hitTestable(), findsNothing);
         expect(tester.takeException(), isNull);
 
         await tester.pumpWidget(const SizedBox.shrink());
@@ -896,6 +958,262 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets(
+    'Android package volume delegate recovers from controller-gain fallback',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      const volumeChannel = MethodChannel('mithka/system_media_volume');
+      final volumeCalls = <MethodCall>[];
+      var systemVolumeAvailable = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(volumeChannel, (call) async {
+            volumeCalls.add(call);
+            if (call.method == 'set' && systemVolumeAvailable) {
+              final requested = call.arguments as double;
+              return <String, Object>{
+                'index': requested <= 0.01 ? 0 : 12,
+                'minimum': 0,
+                'maximum': 15,
+                'fixed': false,
+              };
+            }
+            return null;
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(volumeChannel, null);
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        final sourcePath = File('pubspec.yaml').absolute.path;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: VideoPlayerView(
+                video: TdFileRef(id: 712, localPath: sourcePath),
+                width: 1920,
+                height: 1080,
+                initialVolume: 0.4,
+                onClose: () {},
+                streamQuery: _completedVideoQuery(sourcePath, fileId: 712),
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+
+        expect(volumeCalls.where((call) => call.method == 'get'), isNotEmpty);
+        expect(platform.volumeValues.last, 1);
+        final writesBefore = platform.volumeValues.length;
+        final sliderRect = tester.getRect(_volumeSlider);
+        const requested = 0.25;
+        await tester.tapAt(
+          Offset(
+            sliderRect.left + 5 + (sliderRect.width - 10) * requested,
+            sliderRect.center.dy,
+          ),
+        );
+        for (
+          var attempt = 0;
+          attempt < 20 && platform.volumeValues.length == writesBefore;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+
+        final setCalls = volumeCalls.where((call) => call.method == 'set');
+        expect(setCalls, isNotEmpty);
+        expect(setCalls.last.arguments as double, closeTo(requested, 0.001));
+        expect(platform.volumeValues, hasLength(writesBefore + 1));
+        expect(platform.volumeValues.last, closeTo(requested, 0.001));
+        expect(tester.widget<FVideoSlider>(_volumeSlider).value, requested);
+
+        // A real zero returned by the system keeps the platform media stream
+        // muted and must not replace the fallback gain yet.
+        systemVolumeAvailable = true;
+        final fallbackWrites = platform.volumeValues.length;
+        await tester.tapAt(Offset(sliderRect.left + 5, sliderRect.center.dy));
+        for (
+          var attempt = 0;
+          attempt < 20 &&
+              tester.widget<FVideoSlider>(_volumeSlider).value > 0.001;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+        expect(platform.volumeValues, hasLength(fallbackWrites));
+        expect(tester.widget<FVideoSlider>(_volumeSlider).value, 0);
+
+        // Once system volume becomes audible again, controller gain must
+        // return to unity. Otherwise the fallback gain and system volume
+        // multiply and make playback permanently too quiet.
+        await tester.tapAt(
+          Offset(
+            sliderRect.left + 5 + (sliderRect.width - 10) * 0.65,
+            sliderRect.center.dy,
+          ),
+        );
+        for (
+          var attempt = 0;
+          attempt < 20 && platform.volumeValues.length == fallbackWrites;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+        expect(platform.volumeValues, hasLength(fallbackWrites + 1));
+        expect(platform.volumeValues.last, 1);
+        expect(
+          tester.widget<FVideoSlider>(_volumeSlider).value,
+          closeTo(0.8, 0.001),
+        );
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets(
+    'a delayed Android volume read cannot overwrite a newer package control value',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      const volumeChannel = MethodChannel('mithka/system_media_volume');
+      final initialRead = Completer<Object?>();
+      final volumeCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(volumeChannel, (call) {
+            volumeCalls.add(call);
+            if (call.method == 'get') return initialRead.future;
+            if (call.method == 'set') {
+              return Future<Object?>.value(<String, Object>{
+                'index': 12,
+                'minimum': 0,
+                'maximum': 15,
+                'fixed': false,
+              });
+            }
+            return Future<Object?>.value();
+          });
+      addTearDown(() {
+        if (!initialRead.isCompleted) initialRead.complete(null);
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(volumeChannel, null);
+        tester.view.resetDevicePixelRatio();
+        tester.view.resetPhysicalSize();
+      });
+
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = _FakeMobileVideoPlatform();
+      final reportedVolumes = <double>[];
+      VideoPlayerPlatform.instance = platform;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        SharedPreferences.setMockInitialValues(const {});
+        final sourcePath = File('pubspec.yaml').absolute.path;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: VideoPlayerView(
+                video: TdFileRef(id: 713, localPath: sourcePath),
+                width: 1920,
+                height: 1080,
+                initialVolume: 0.4,
+                onVolumeChanged: reportedVolumes.add,
+                onClose: () {},
+                streamQuery: _completedVideoQuery(sourcePath, fileId: 713),
+              ),
+            ),
+          ),
+        );
+        await _pumpUntilPlayerReady(tester);
+        expect(volumeCalls.where((call) => call.method == 'get'), hasLength(1));
+
+        final sliderRect = tester.getRect(_volumeSlider);
+        await tester.tapAt(
+          Offset(
+            sliderRect.left + 5 + (sliderRect.width - 10) * 0.65,
+            sliderRect.center.dy,
+          ),
+        );
+        for (
+          var attempt = 0;
+          attempt < 20 && reportedVolumes.isEmpty;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+        await tester.pump();
+        expect(volumeCalls.where((call) => call.method == 'set'), hasLength(1));
+        expect(reportedVolumes.last, closeTo(0.8, 0.001));
+        expect(
+          tester.widget<FVideoSlider>(_volumeSlider).value,
+          closeTo(0.8, 0.001),
+        );
+        expect(platform.volumeValues.last, 1);
+
+        initialRead.complete(<String, Object>{
+          'index': 3,
+          'minimum': 0,
+          'maximum': 15,
+          'fixed': false,
+        });
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+
+        expect(reportedVolumes, hasLength(1));
+        expect(reportedVolumes.single, closeTo(0.8, 0.001));
+        expect(
+          tester.widget<FVideoSlider>(_volumeSlider).value,
+          closeTo(0.8, 0.001),
+        );
+        expect(platform.volumeValues.last, 1);
+        expect(tester.takeException(), isNull);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await _pumpUntilDisposed(tester, platform);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 
   testWidgets('iOS sparse files retain the loopback network controller', (
     tester,
@@ -1471,7 +1789,7 @@ void main() {
     }
   });
 
-  testWidgets('app scrub preview recovers after a thumbnail timeout', (
+  testWidgets('package scrub preview recovers on the next drag after timeout', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -1531,43 +1849,51 @@ void main() {
       await tester.pump();
 
       expect(_compactScrubPreview, findsOneWidget);
-      expect(thumbnailRequests, 1);
+      expect(thumbnailRequests, 0);
       expect(
-        find.descendant(
-          of: _compactScrubPreview,
-          matching: find.byType(RotationTransition),
-        ),
-        findsOneWidget,
+        find.descendant(of: _compactScrubPreview, matching: find.byType(Image)),
+        findsNothing,
       );
       expect(platform.seekPositions, hasLength(seeksBeforeDrag));
 
       await gesture.moveBy(const Offset(35, 0));
-      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 199));
+      expect(thumbnailRequests, 0);
+      await tester.pump(const Duration(milliseconds: 1));
       expect(thumbnailRequests, 1);
       expect(platform.seekPositions, hasLength(seeksBeforeDrag));
 
       await tester.pump(const Duration(seconds: 2, milliseconds: 1));
-      for (var attempt = 0; attempt < 10 && thumbnailRequests < 2; attempt++) {
-        await tester.pump(const Duration(milliseconds: 10));
-      }
-
-      expect(thumbnailRequests, 2);
-      expect(
-        find.descendant(
-          of: _compactScrubPreview,
-          matching: find.byType(RotationTransition),
-        ),
-        findsNothing,
-      );
+      expect(thumbnailRequests, 1);
       expect(
         find.descendant(of: _compactScrubPreview, matching: find.byType(Image)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(platform.seekPositions, hasLength(seeksBeforeDrag));
 
       await gesture.up();
       await _pumpUntilPreviewGone(tester);
       expect(platform.seekPositions, hasLength(seeksBeforeDrag + 1));
+      expect(_compactScrubPreview, findsNothing);
+
+      final secondTimeline = tester.getRect(_timeline);
+      final secondGesture = await tester.startGesture(
+        Offset(secondTimeline.center.dx - 20, secondTimeline.center.dy),
+      );
+      await secondGesture.moveBy(const Offset(40, 0));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(thumbnailRequests, 2);
+      await tester.pump();
+      expect(_compactScrubPreview, findsOneWidget);
+      expect(
+        find.descendant(of: _compactScrubPreview, matching: find.byType(Image)),
+        findsOneWidget,
+      );
+      expect(platform.seekPositions, hasLength(seeksBeforeDrag + 1));
+
+      await secondGesture.up();
+      await _pumpUntilPreviewGone(tester);
+      expect(platform.seekPositions, hasLength(seeksBeforeDrag + 2));
       expect(_compactScrubPreview, findsNothing);
       expect(tester.takeException(), isNull);
 
@@ -1706,12 +2032,35 @@ final Finder _timeline = find.byWidgetPredicate(
       widget is FVideoSlider && widget.semanticLabel == 'Adjust progress',
 );
 
-final Finder _volumeSlider = find.byKey(const ValueKey('video-volume-slider'));
+final Finder _volumeSlider = find.byWidgetPredicate(
+  (widget) => widget is FVideoSlider && widget.semanticLabel == 'Adjust volume',
+);
 
 final Finder _compactScrubPreview = find.byWidgetPredicate(
   (widget) =>
       widget is Positioned && widget.width == 128 && widget.height == 72,
 );
+
+final Finder _playerChromeFade = find.byWidgetPredicate(
+  (widget) =>
+      widget is AnimatedOpacity &&
+      widget.duration == const Duration(milliseconds: 170),
+);
+
+double _playerControlOpacity(WidgetTester tester) =>
+    tester.widget<AnimatedOpacity>(_playerChromeFade).opacity;
+
+bool _playerChromeIgnoresPointer() => _playerChromeFade
+    .evaluate()
+    .single
+    .findAncestorWidgetOfExactType<IgnorePointer>()!
+    .ignoring;
+
+bool _playerChromeExcludesSemantics() => _playerChromeFade
+    .evaluate()
+    .single
+    .findAncestorWidgetOfExactType<ExcludeSemantics>()!
+    .excluding;
 
 Finder _semanticsWidget(String label) => find.byWidgetPredicate(
   (widget) => widget is Semantics && widget.properties.label == label,

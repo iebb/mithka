@@ -67,27 +67,23 @@ void main() {
     );
   });
 
-  test('Xcode Cloud downloads and verifies pinned universal macOS TDLib', () {
+  test('Apple setup delegates macOS TDJSON to the shared wrapper', () {
     final script = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
 
-    expect(script, contains('tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1'));
-    expect(script, contains('tdjson-macos-universal.zip'));
     expect(
       script,
       contains(
-        '9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc',
+        r'"$REPO/scripts/build-tdjson-desktop.sh" macos '
+        'native-libs/libtdjson.dylib',
       ),
     );
-    expect(
-      script,
-      contains(
-        'd543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482',
-      ),
-    );
-    expect(script, contains('shasum -a 256 -c -'));
-    expect(script, contains('unzip -Z1'));
-    expect(script, contains('arm64 x86_64'));
-    expect(script, contains('_td_mithka_export_session_string'));
+    expect(script, isNot(contains('TDJSON_RELEASE_TAG=')));
+    expect(script, isNot(contains('TDJSON_ARCHIVE_SHA256=')));
+    expect(script, isNot(contains('TDJSON_BINARY_SHA256=')));
+    expect(script, isNot(contains('TDJSON_ASSET_URL=')));
+    expect(script, isNot(contains('tdjson-macos-universal.zip')));
+    expect(script, isNot(contains('shasum -a 256 -c -')));
+    expect(script, isNot(contains('unzip -Z1')));
     expect(script, contains('ensure_declared_plugin_resources'));
     expect(script, contains(r'for package_root in "$packages_root"/*'));
     expect(script, contains('grep -Fq \'.process("Resources")\''));
@@ -103,7 +99,6 @@ void main() {
         'macos/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved',
       ),
     );
-    expect(script, isNot(contains('scripts/build-tdjson-desktop.sh')));
     expect(script, isNot(contains('brew install cmake ninja')));
   });
 

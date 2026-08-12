@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/chat/video_player_view.dart';
+import 'package:mithka/chat/td_video_stream_server.dart';
 
 void main() {
   test(

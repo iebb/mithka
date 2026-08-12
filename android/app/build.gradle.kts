@@ -49,8 +49,8 @@ android {
         applicationId = "ad.neko.mithka"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // TDLib (tdjson) needs API 21+. jniLibs/<abi>/libtdjson.so is bundled
-        // automatically by the Android Gradle plugin (see scripts/build-tdjson-android.sh).
+        // The prebuilt TDLib (tdjson) artifacts target API 23. The manifest-aware
+        // helper installs jniLibs/<abi>/libtdjson.so for Gradle to bundle.
         // The owned video-message recorder uses Flutter's CameraX backend,
         // whose supported Android floor is API 24.
         minSdk = maxOf(24, flutter.minSdkVersion)

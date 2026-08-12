@@ -12,9 +12,6 @@ fi
 
 SRCROOT="${SRCROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../ios" && pwd)}"
 TDJSON_BINARY="$SRCROOT/tdjson/tdjson.xcframework/ios-arm64/tdjson.framework/tdjson"
-if [[ ! -f "$TDJSON_BINARY" ]]; then
-  TDJSON_BINARY="$SRCROOT/tdjson/tdjson.xcframework/ios-arm64/libtdjson.1.8.65.dylib"
-fi
 DSYM_DIR="${DWARF_DSYM_FOLDER_PATH:-}"
 DSYM_PATH="$DSYM_DIR/tdjson.framework.dSYM"
 
