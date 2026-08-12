@@ -16,6 +16,19 @@ class AppStoreReleaseTest < Minitest::Test
   TARGET_VERSION_ID = "3a297302-6ebd-499b-86aa-e57ae6da4766"
   SUBMISSION_ID = "51460acf-3238-49cc-bf75-1f4687bb73cd"
   UPLOADED_BUILD_ID = "28ad1b06-7884-4482-ae22-5c1b315e97c9"
+  GITHUB_RUN_ID = "31586409622"
+
+  class FakeGitHubVerifier
+    attr_reader :calls
+
+    def initialize
+      @calls = []
+    end
+
+    def verify!(**arguments)
+      @calls << arguments
+    end
+  end
 
   class FakeClient
     attr_reader :writes
@@ -151,6 +164,22 @@ class AppStoreReleaseTest < Minitest::Test
       assert_includes output.string, "declared source provenance #{SOURCE_SHA}"
       assert_empty client.writes
     end
+  end
+
+  def test_exact_github_actions_upload_resolves_by_run_and_build_id
+    client = FakeClient.new(uploaded_build_routes)
+    verifier = FakeGitHubVerifier.new
+    output = StringIO.new
+    runner = build_github_runner(client, output, verifier)
+
+    build = runner.send(:resolve_exact_build)
+
+    assert_equal UPLOADED_BUILD_ID, build.fetch("id")
+    assert_equal [{ run_id: GITHUB_RUN_ID, source_commit: SOURCE_SHA, build_number: "346" }], verifier.calls
+    assert_includes output.string, "GitHub Actions run #{GITHUB_RUN_ID}"
+    assert_includes output.string, "binary 0.7.41 (346)"
+    assert_includes output.string, "source #{SOURCE_SHA}"
+    assert_empty client.writes
   end
 
   def test_uploaded_artifact_sha256_must_match_before_build_is_used
@@ -451,6 +480,24 @@ class AppStoreReleaseTest < Minitest::Test
       uploaded_build_id: UPLOADED_BUILD_ID,
       artifact_path: artifact_path,
       artifact_sha256: artifact_sha256,
+      source_commit: SOURCE_SHA,
+      release_notes: MithkaAppStoreRelease::DEFAULT_RELEASE_NOTES,
+      apply: false,
+      submit: true,
+      out: output
+    )
+  end
+
+  def build_github_runner(client, output, verifier)
+    MithkaAppStoreRelease::Runner.new(
+      client: client,
+      app_id: APP_ID,
+      version: "0.7.41",
+      binary_version: "0.7.41",
+      build_number: "346",
+      github_run_id: GITHUB_RUN_ID,
+      github_verifier: verifier,
+      uploaded_build_id: UPLOADED_BUILD_ID,
       source_commit: SOURCE_SHA,
       release_notes: MithkaAppStoreRelease::DEFAULT_RELEASE_NOTES,
       apply: false,

@@ -10,13 +10,14 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:f_videoplayer/f_videoplayer.dart';
+import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka_video_player/mithka_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
@@ -29,7 +30,6 @@ import '../media/video_view_compatibility.dart';
 import '../platform/player_brightness.dart';
 import '../platform/player_system_volume.dart';
 import '../platform/screen_wakelock.dart';
-import '../platform/system_picture_in_picture.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -44,7 +44,7 @@ import 'video_playback_queue.dart';
 typedef TdVideoStreamQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 typedef VideoPictureInPictureRestoreCallback =
-    FutureOr<bool> Function(SystemPictureInPictureSnapshot snapshot);
+    FutureOr<bool> Function(FVideoPictureInPictureSnapshot snapshot);
 
 const _videoStreamExtensions = <String, String>{
   'video/mp4': 'mp4',
@@ -608,7 +608,7 @@ enum VideoDisplayMode { fullscreen, pictureInPicture, split }
 @visibleForTesting
 Future<bool> restoreVideoPlaybackFromPictureInPicture({
   required VideoPlaybackQueue queue,
-  required SystemPictureInPictureSnapshot snapshot,
+  required FVideoPictureInPictureSnapshot snapshot,
   @visibleForTesting TdVideoStreamQuery? streamQuery,
 }) async {
   final navigator = appNavigatorKey.currentState;
@@ -628,6 +628,7 @@ Future<bool> restoreVideoPlaybackFromPictureInPicture({
       queue: queue,
       initialPosition: restoredPosition,
       initialPlaying: snapshot.playing,
+      initialVolume: snapshot.volume,
       initialMuted: snapshot.muted,
       initialSpeed: snapshot.speed,
       streamQuery: streamQuery,
@@ -741,6 +742,8 @@ class VideoPlayerView extends StatefulWidget {
     this.messageId,
     this.currentMode = VideoDisplayMode.fullscreen,
     this.onSwitchMode,
+    this.onVolumeChanged,
+    this.initialVolume = 1,
     this.initialMuted = false,
     this.initialPlaying = true,
     this.initialSpeed = 1,
@@ -748,7 +751,7 @@ class VideoPlayerView extends StatefulWidget {
     this.previousVideo,
     this.nextVideo,
     this.onNavigate,
-    this.onSystemPictureInPictureRestore,
+    this.onFVideoPictureInPictureRestore,
     this.onToggleFullscreen,
     this.streamQuery,
   });
@@ -765,6 +768,8 @@ class VideoPlayerView extends StatefulWidget {
   final int? messageId;
   final VideoDisplayMode currentMode;
   final ValueChanged<VideoDisplayMode>? onSwitchMode;
+  final ValueChanged<double>? onVolumeChanged;
+  final double initialVolume;
   final bool initialMuted;
   final bool initialPlaying;
   final double initialSpeed;
@@ -772,7 +777,7 @@ class VideoPlayerView extends StatefulWidget {
   final VideoPlaybackItem? previousVideo;
   final VideoPlaybackItem? nextVideo;
   final ValueChanged<int>? onNavigate;
-  final VideoPictureInPictureRestoreCallback? onSystemPictureInPictureRestore;
+  final VideoPictureInPictureRestoreCallback? onFVideoPictureInPictureRestore;
 
   final VoidCallback? onToggleFullscreen;
 
@@ -797,6 +802,8 @@ class VideoPlaylistPlayerView extends StatefulWidget {
     this.currentMode = VideoDisplayMode.fullscreen,
     this.onSwitchMode,
     this.onQueueChanged,
+    this.onVolumeChanged,
+    this.initialVolume = 1,
     this.initialMuted = false,
     this.initialPlaying = true,
     this.initialSpeed = 1,
@@ -811,6 +818,8 @@ class VideoPlaylistPlayerView extends StatefulWidget {
   final VideoDisplayMode currentMode;
   final VideoPlaylistModeCallback? onSwitchMode;
   final ValueChanged<VideoPlaybackQueue>? onQueueChanged;
+  final ValueChanged<double>? onVolumeChanged;
+  final double initialVolume;
   final bool initialMuted;
   final bool initialPlaying;
   final double initialSpeed;
@@ -826,6 +835,18 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   late VideoPlaybackQueue _queue = widget.queue;
   late Duration? _initialPosition = widget.initialPosition;
   late bool _initialPlaying = widget.initialPlaying;
+  late double _lastAudibleVolume;
+  late bool _muted;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialVolume.isFinite
+        ? widget.initialVolume.clamp(0.0, 1.0).toDouble()
+        : 1.0;
+    _lastAudibleVolume = initial > 0.01 ? initial : 1.0;
+    _muted = widget.initialMuted || initial <= 0.01;
+  }
 
   @override
   void didUpdateWidget(covariant VideoPlaylistPlayerView oldWidget) {
@@ -853,6 +874,15 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
     widget.onQueueChanged?.call(next);
   }
 
+  void _handleVolumeChanged(double volume) {
+    final normalized = volume.isFinite
+        ? volume.clamp(0.0, 1.0).toDouble()
+        : 0.0;
+    _muted = normalized <= 0.01;
+    if (!_muted) _lastAudibleVolume = normalized;
+    widget.onVolumeChanged?.call(normalized);
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = _queue.current;
@@ -874,7 +904,9 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
       onSwitchMode: widget.onSwitchMode == null
           ? null
           : (mode) => widget.onSwitchMode!(_queue, mode),
-      initialMuted: widget.initialMuted,
+      onVolumeChanged: _handleVolumeChanged,
+      initialVolume: _lastAudibleVolume,
+      initialMuted: _muted,
       initialPlaying: _initialPlaying,
       initialSpeed: widget.initialSpeed,
       initialPosition: _initialPosition,
@@ -882,7 +914,7 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
       nextVideo: _queue.next,
       onNavigate: _navigate,
       streamQuery: widget.streamQuery,
-      onSystemPictureInPictureRestore: (snapshot) =>
+      onFVideoPictureInPictureRestore: (snapshot) =>
           restoreVideoPlaybackFromPictureInPicture(
             queue: _queue,
             snapshot: snapshot,
@@ -907,6 +939,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   TdFileProgress? _progress;
   double _speed = 1;
   double _volume = 1;
+  double _lastAudibleVolume = 1;
+  int _volumeControlRequestGeneration = 0;
   String? _localPath;
   int _lastSavedPositionMs = 0;
   TdVideoStreamServer? _streamServer;
@@ -937,7 +971,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   double? _lastSystemPiPSpeed;
   bool? _lastSystemPiPMuted;
   Rect? _lastSystemPiPSourceRect;
-  MithkaVideoActions? _reusablePlayerActions;
+  FVideoActions? _reusablePlayerActions;
   bool _wakelockActive = false;
   bool _landscapePlayback = false;
   bool _orientationChangeInFlight = false;
@@ -1006,6 +1040,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       defaultTargetPlatform == TargetPlatform.android &&
       widget.presentation == VideoPlayerPresentation.fullscreen;
 
+  double get _controllerGainForCurrentVolume =>
+      _usesAndroidSystemMediaVolume && _volume > 0.01 ? 1.0 : _volume;
+
   bool _isDecoderOrSurfaceFailure(Object? error) {
     if (!_canUseAndroidPlatformViewFallback || error == null) return false;
     final message = error.toString().toLowerCase();
@@ -1023,7 +1060,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     super.initState();
     _brightnessSession = PlayerBrightnessSession.capture();
     _lastKnownPlaybackWasPlaying = widget.initialPlaying;
-    if (widget.initialMuted) _volume = 0;
+    final initialVolume = widget.initialVolume.isFinite
+        ? widget.initialVolume.clamp(0.0, 1.0).toDouble()
+        : 1.0;
+    _lastAudibleVolume = initialVolume > 0.01 ? initialVolume : 1;
+    _volume = widget.initialMuted ? 0 : initialVolume;
     if (widget.initialSpeed.isFinite && widget.initialSpeed > 0) {
       _speed = widget.initialSpeed;
     }
@@ -1327,7 +1368,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       await c.initialize().timeout(const Duration(seconds: 45));
       await c.setLooping(false);
       await c.setPlaybackSpeed(_speed);
-      await c.setVolume(_volume);
+      await c.setVolume(_controllerGainForCurrentVolume);
       final resume = resumeOverride != null
           ? _clampPlaybackPosition(resumeOverride, c.value.duration)
           : widget.initialPosition == null
@@ -1353,13 +1394,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     }
     c.addListener(_onTick);
     setState(() => _controller = c);
+    if (_usesAndroidSystemMediaVolume) {
+      unawaited(_syncAndroidSystemVolume(c));
+    }
     _updateWakelock();
-    unawaited(_refreshSystemPictureInPictureSupport());
+    unawaited(_refreshFVideoPictureInPictureSupport());
     _scheduleHide();
     return true;
   }
 
-  void _handleReusablePlayerError(MithkaVideoPlayerError error) {
+  void _handleReusablePlayerError(FVideoPlayerError error) {
     _recoverAfterStreamFailure(error, requireControllerError: true);
   }
 
@@ -1692,11 +1736,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       _completionHandled = false;
     }
     if (value != null) {
-      _volume = value.volume.clamp(0.0, 1.0);
+      if (!_usesAndroidSystemMediaVolume) {
+        final controllerVolume = value.volume.clamp(0.0, 1.0);
+        if ((_volume - controllerVolume).abs() > 0.001) {
+          _volume = controllerVolume;
+          widget.onVolumeChanged?.call(controllerVolume);
+        }
+        if (controllerVolume > 0.01) {
+          _lastAudibleVolume = controllerVolume;
+        }
+      }
       _speed = value.playbackSpeed;
     }
     _storePlaybackPositionIfNeeded();
-    _syncSystemPictureInPictureIfNeeded();
+    _syncFVideoPictureInPictureIfNeeded();
     _updateWakelock();
     // The reusable player throttles its own chrome refreshes while the texture
     // renders independently. Avoid rebuilding the entire TDLib host for every
@@ -1773,17 +1826,17 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  void _syncSystemPictureInPictureIfNeeded() {
+  void _syncFVideoPictureInPictureIfNeeded() {
     final c = _controller;
     if (c == null || !c.value.isInitialized) {
       return;
     }
-    if (_usesAndroidSystemPictureInPicture &&
+    if (_usesAndroidFVideoPictureInPicture &&
         _systemPiPSupported &&
         c.value.isPlaying &&
         _systemPiPId == null &&
         _systemPiPPrepareOperation == null) {
-      unawaited(_prepareSystemPictureInPicture());
+      unawaited(_prepareFVideoPictureInPicture());
       return;
     }
     final id = _systemPiPId;
@@ -1812,10 +1865,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _lastSystemPiPMuted = muted;
     if (sourceRect != null) _lastSystemPiPSourceRect = sourceRect;
     unawaited(
-      SystemPictureInPicture.updatePrepared(
+      FVideoPictureInPicture.updatePrepared(
         id: id,
         position: c.value.position,
         speed: _speed,
+        volume: _pictureInPictureVolume,
         muted: muted,
         playing: playing,
         videoSize: c.value.size,
@@ -1826,8 +1880,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  bool get _usesAndroidSystemPictureInPicture =>
+  bool get _usesAndroidFVideoPictureInPicture =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  double get _pictureInPictureVolume =>
+      (_volume > 0.01 ? _volume : _lastAudibleVolume)
+          .clamp(0.0, 1.0)
+          .toDouble();
 
   Rect? _systemPictureInPictureSourceRect(VideoPlayerController controller) {
     final renderObject = context.findRenderObject();
@@ -1863,7 +1922,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     return clipped.isEmpty ? null : clipped;
   }
 
-  void _handleSystemPictureInPictureEntered(SystemPictureInPictureSnapshot _) {
+  void _handleFVideoPictureInPictureEntered(FVideoPictureInPictureSnapshot _) {
     if (!mounted || _systemPiPActive) return;
     _hideTimer?.cancel();
     setState(() {
@@ -1874,7 +1933,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     });
   }
 
-  void _handleSystemPictureInPictureRestored(SystemPictureInPictureSnapshot _) {
+  void _handleFVideoPictureInPictureRestored(FVideoPictureInPictureSnapshot _) {
     if (!mounted || !_systemPiPActive) return;
     _lastSystemPiPSourceRect = null;
     setState(() {
@@ -1886,16 +1945,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     });
   }
 
-  Future<void> _handleSystemPictureInPictureAction(
-    SystemPictureInPictureAction action,
+  Future<void> _handleFVideoPictureInPictureAction(
+    FVideoPictureInPictureAction action,
   ) async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     switch (action) {
-      case SystemPictureInPictureAction.play:
+      case FVideoPictureInPictureAction.play:
         await controller.play();
         return;
-      case SystemPictureInPictureAction.pause:
+      case FVideoPictureInPictureAction.pause:
         await controller.pause();
         return;
     }
@@ -2012,17 +2071,88 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _setVolume(double volume) {
     final next = volume.clamp(0.0, 1.0);
-    _controller?.setVolume(next);
+    if (next > 0.01) _lastAudibleVolume = next;
     if (!mounted) return;
     setState(() {
       _volume = next;
       _controlsVisible = true;
     });
+    widget.onVolumeChanged?.call(next);
+    final controller = _controller;
+    final request = ++_volumeControlRequestGeneration;
+    if (_usesAndroidSystemMediaVolume && controller != null) {
+      unawaited(_setAndroidSystemVolume(next, request, controller));
+    } else {
+      unawaited(controller?.setVolume(next));
+    }
+  }
+
+  Future<void> _setAndroidSystemVolume(
+    double requested,
+    int request,
+    VideoPlayerController controller,
+  ) async {
+    final current = await PlayerSystemVolume.setFraction(requested);
+    if (!mounted ||
+        request != _volumeControlRequestGeneration ||
+        _controller != controller) {
+      return;
+    }
+    if (current == null) {
+      await controller.setVolume(requested);
+      return;
+    }
+    // Android's visible control and vertical gesture both own STREAM_MUSIC.
+    // Keep the player gain open so a controller restored from a muted
+    // snapshot cannot remain inaudible after the system stream is raised.
+    if (requested > 0.01 && controller.value.volume <= 0.01) {
+      await controller.setVolume(1);
+      if (!mounted ||
+          request != _volumeControlRequestGeneration ||
+          _controller != controller) {
+        return;
+      }
+    }
+    final actual = current.fraction;
+    if (actual > 0.01) _lastAudibleVolume = actual;
+    setState(() {
+      _volume = actual;
+      _controlsVisible = true;
+    });
+    if ((actual - requested).abs() > 0.001) {
+      widget.onVolumeChanged?.call(actual);
+    }
+  }
+
+  Future<void> _syncAndroidSystemVolume(
+    VideoPlayerController controller,
+  ) async {
+    final request = _volumeControlRequestGeneration;
+    final current = await PlayerSystemVolume.current();
+    if (!mounted ||
+        request != _volumeControlRequestGeneration ||
+        _controller != controller ||
+        current == null) {
+      return;
+    }
+    final actual = current.fraction;
+    if (actual > 0.01) _lastAudibleVolume = actual;
+    // Preserve an explicitly muted playback snapshot while remembering the
+    // system level that the unmute action should restore.
+    if (_volume <= 0.01) return;
+    await controller.setVolume(1);
+    if (!mounted ||
+        request != _volumeControlRequestGeneration ||
+        _controller != controller) {
+      return;
+    }
+    setState(() => _volume = actual);
+    widget.onVolumeChanged?.call(actual);
   }
 
   void _toggleMute() {
     _hideTimer?.cancel();
-    _setVolume(_volume <= 0.01 ? 1 : 0);
+    _setVolume(_volume <= 0.01 ? _lastAudibleVolume : 0);
     _scheduleHide();
   }
 
@@ -2124,20 +2254,21 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  Future<bool> _restoreSystemPictureInPicture(
-    SystemPictureInPictureSnapshot snapshot,
+  Future<bool> _restoreFVideoPictureInPicture(
+    FVideoPictureInPictureSnapshot snapshot,
   ) {
     final c = _controller;
     final duration = c?.value.duration ?? Duration.zero;
     final normalized = _clampPlaybackPosition(snapshot.position, duration);
-    final normalizedSnapshot = SystemPictureInPictureSnapshot(
+    final normalizedSnapshot = FVideoPictureInPictureSnapshot(
       position: normalized,
       playing: snapshot.playing,
       speed: snapshot.speed,
+      volume: snapshot.volume,
       muted: snapshot.muted,
     );
     unawaited(_storeResumePosition(normalized, duration));
-    final callback = widget.onSystemPictureInPictureRestore;
+    final callback = widget.onFVideoPictureInPictureRestore;
     if (callback != null) {
       return Future<bool>.value(callback(normalizedSnapshot));
     }
@@ -2148,14 +2279,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  Future<bool> _startSystemPictureInPicture() {
+  Future<bool> _startFVideoPictureInPicture() {
     final pending = _systemPiPStartOperation;
     if (pending != null) return pending;
     late final Future<bool> tracked;
     tracked =
         (() async {
-          await _prepareSystemPictureInPicture();
-          return _performSystemPictureInPictureStart();
+          await _prepareFVideoPictureInPicture();
+          return _performFVideoPictureInPictureStart();
         })().whenComplete(() {
           if (identical(_systemPiPStartOperation, tracked)) {
             _systemPiPStartOperation = null;
@@ -2165,13 +2296,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     return tracked;
   }
 
-  Future<bool> _performSystemPictureInPictureStart() async {
+  Future<bool> _performFVideoPictureInPictureStart() async {
     final c = _controller;
     final uri = _systemPiPSourceUri();
     if (c == null || !c.value.isInitialized || uri == null) {
       return false;
     }
-    if (!await _isSystemPictureInPictureSupported()) {
+    if (!await _isFVideoPictureInPictureSupported()) {
       return false;
     }
     final pendingPrepare = _systemPiPPrepareOperation;
@@ -2185,10 +2316,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final playLabel = AppStringKeys.musicPlayerPlay.l10n(context);
     final pauseLabel = AppStringKeys.musicPlayerPause.l10n(context);
     if (id != null && _systemPiPPrepared) {
-      started = await SystemPictureInPicture.startPrepared(
+      started = await FVideoPictureInPicture.startPrepared(
         id: id,
         position: c.value.position,
         speed: _speed,
+        volume: _pictureInPictureVolume,
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
         videoSize: c.value.size,
@@ -2197,13 +2329,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         pauseLabel: pauseLabel,
       );
       if (!mounted) {
-        await SystemPictureInPicture.cancelPrepared(id);
+        await FVideoPictureInPicture.cancelPrepared(id);
         return false;
       }
     }
     if (!started) {
       if (id != null) {
-        await SystemPictureInPicture.cancelPrepared(id);
+        await FVideoPictureInPicture.cancelPrepared(id);
         _systemPiPPrepared = false;
         _systemPiPId = null;
       }
@@ -2214,11 +2346,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       final shouldCancelOnStop =
           !_openedCompletedLocalFile && _progress?.isCompleted != true;
       var restoreAccepted = false;
-      started = await SystemPictureInPicture.start(
+      started = await FVideoPictureInPicture.start(
         id: handoffId,
         uri: uri,
         position: c.value.position,
         speed: _speed,
+        volume: _pictureInPictureVolume,
         muted: _volume <= 0.01,
         playing: c.value.isPlaying,
         videoSize: c.value.size,
@@ -2226,16 +2359,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         playLabel: playLabel,
         pauseLabel: pauseLabel,
         playerId: c.fvpPlayerId,
-        onEntered: _handleSystemPictureInPictureEntered,
-        onRestored: _handleSystemPictureInPictureRestored,
-        onActionRequested: _handleSystemPictureInPictureAction,
+        onEntered: _handleFVideoPictureInPictureEntered,
+        onRestored: _handleFVideoPictureInPictureRestored,
+        onActionRequested: _handleFVideoPictureInPictureAction,
         onRestoreRequested: (position) async {
-          final accepted = await _restoreSystemPictureInPicture(position);
+          final accepted = await _restoreFVideoPictureInPicture(position);
           restoreAccepted = accepted;
           return accepted;
         },
         onStop: (finalPosition) async {
-          if (_usesAndroidSystemPictureInPicture && mounted) {
+          if (_usesAndroidFVideoPictureInPicture && mounted) {
             _systemPiPPrepared = false;
             _systemPiPId = null;
             _systemPiPActive = false;
@@ -2248,7 +2381,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           if (finalPosition != null) {
             await _storeResumePosition(finalPosition, c.value.duration);
           }
-          if (SystemPictureInPicture.usesActivePlayer(handoffId)) {
+          if (FVideoPictureInPicture.usesActivePlayer(handoffId)) {
             await c.dispose();
           }
           await server?.close();
@@ -2258,7 +2391,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         },
       );
       if (!mounted) {
-        await SystemPictureInPicture.cancelPrepared(id);
+        await FVideoPictureInPicture.cancelPrepared(id);
         return false;
       }
     }
@@ -2268,21 +2401,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       }
       return false;
     }
-    if (SystemPictureInPicture.keepsFlutterPlayerInActivity) {
+    if (FVideoPictureInPicture.keepsFlutterPlayerInActivity) {
       // Android PiP hosts this Activity. Keep the Flutter route and its video
       // texture mounted so the system captures the active player, not chat.
-      _handleSystemPictureInPictureEntered(
-        SystemPictureInPictureSnapshot(
+      _handleFVideoPictureInPictureEntered(
+        FVideoPictureInPictureSnapshot(
           position: c.value.position,
           playing: c.value.isPlaying,
           speed: _speed,
+          volume: _pictureInPictureVolume,
           muted: _volume <= 0.01,
         ),
       );
       return true;
     }
     _systemPiPUsesActivePlayer =
-        id != null && SystemPictureInPicture.usesActivePlayer(id);
+        id != null && FVideoPictureInPicture.usesActivePlayer(id);
     _systemPiPHandoff = true;
     _systemPiPPrepared = false;
     _streamServer = null;
@@ -2299,11 +2433,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         : Uri.file(source);
   }
 
-  Future<void> _prepareSystemPictureInPicture() {
+  Future<void> _prepareFVideoPictureInPicture() {
     final pending = _systemPiPPrepareOperation;
     if (pending != null) return pending;
     late final Future<void> tracked;
-    tracked = _performSystemPictureInPicturePreparation().whenComplete(() {
+    tracked = _performFVideoPictureInPicturePreparation().whenComplete(() {
       if (identical(_systemPiPPrepareOperation, tracked)) {
         _systemPiPPrepareOperation = null;
       }
@@ -2312,14 +2446,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     return tracked;
   }
 
-  Future<void> _performSystemPictureInPicturePreparation() async {
+  Future<void> _performFVideoPictureInPicturePreparation() async {
     if (_systemPiPPrepared || _systemPiPId != null) {
       return;
     }
     final c = _controller;
     final uri = _systemPiPSourceUri();
     if (c == null || !c.value.isInitialized || uri == null) return;
-    if (!await _isSystemPictureInPictureSupported()) return;
+    if (!await _isFVideoPictureInPictureSupported()) return;
     if (!mounted) return;
 
     final server = _streamServer;
@@ -2330,11 +2464,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final sourceRect = _systemPictureInPictureSourceRect(c);
     if (sourceRect != null) _lastSystemPiPSourceRect = sourceRect;
     var restoreAccepted = false;
-    final prepared = await SystemPictureInPicture.prepare(
+    final prepared = await FVideoPictureInPicture.prepare(
       id: id,
       uri: uri,
       position: c.value.position,
       speed: _speed,
+      volume: _pictureInPictureVolume,
       muted: _volume <= 0.01,
       playing: c.value.isPlaying,
       videoSize: c.value.size,
@@ -2342,16 +2477,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       playLabel: AppStringKeys.musicPlayerPlay.l10n(context),
       pauseLabel: AppStringKeys.musicPlayerPause.l10n(context),
       playerId: c.fvpPlayerId,
-      onEntered: _handleSystemPictureInPictureEntered,
-      onRestored: _handleSystemPictureInPictureRestored,
-      onActionRequested: _handleSystemPictureInPictureAction,
+      onEntered: _handleFVideoPictureInPictureEntered,
+      onRestored: _handleFVideoPictureInPictureRestored,
+      onActionRequested: _handleFVideoPictureInPictureAction,
       onRestoreRequested: (position) async {
-        final accepted = await _restoreSystemPictureInPicture(position);
+        final accepted = await _restoreFVideoPictureInPicture(position);
         restoreAccepted = accepted;
         return accepted;
       },
       onStop: (finalPosition) async {
-        if (_usesAndroidSystemPictureInPicture && mounted) {
+        if (_usesAndroidFVideoPictureInPicture && mounted) {
           _systemPiPPrepared = false;
           _systemPiPId = null;
           _systemPiPActive = false;
@@ -2364,7 +2499,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         if (finalPosition != null) {
           await _storeResumePosition(finalPosition, c.value.duration);
         }
-        if (SystemPictureInPicture.usesActivePlayer(id)) {
+        if (FVideoPictureInPicture.usesActivePlayer(id)) {
           await c.dispose();
         }
         await server?.close();
@@ -2374,30 +2509,30 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       },
     );
     if (!mounted || _systemPiPId != id) {
-      if (prepared) unawaited(SystemPictureInPicture.cancelPrepared(id));
+      if (prepared) unawaited(FVideoPictureInPicture.cancelPrepared(id));
       return;
     }
     if (prepared) {
       _systemPiPPrepared = true;
-      _syncSystemPictureInPictureIfNeeded();
+      _syncFVideoPictureInPictureIfNeeded();
     } else {
       _systemPiPId = null;
     }
   }
 
-  Future<void> _refreshSystemPictureInPictureSupport() async {
-    final supported = await _isSystemPictureInPictureSupported();
+  Future<void> _refreshFVideoPictureInPictureSupport() async {
+    final supported = await _isFVideoPictureInPictureSupported();
     if (supported &&
         mounted &&
-        _usesAndroidSystemPictureInPicture &&
+        _usesAndroidFVideoPictureInPicture &&
         (_controller?.value.isPlaying ?? false)) {
-      await _prepareSystemPictureInPicture();
+      await _prepareFVideoPictureInPicture();
     }
   }
 
-  Future<bool> _isSystemPictureInPictureSupported() async {
+  Future<bool> _isFVideoPictureInPictureSupported() async {
     if (_systemPiPSupported) return true;
-    final supported = await SystemPictureInPicture.isSupported();
+    final supported = await FVideoPictureInPicture.isSupported();
     if (mounted && _systemPiPSupported != supported) {
       setState(() => _systemPiPSupported = supported);
     }
@@ -2494,7 +2629,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       } catch (_) {}
     }
     if (preparedPiPId != null) {
-      await SystemPictureInPicture.cancelPrepared(preparedPiPId);
+      await FVideoPictureInPicture.cancelPrepared(preparedPiPId);
     }
     if (disposeController) {
       try {
@@ -2526,14 +2661,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Widget _reusableMobileFullscreenPlayer(VideoPlayerController controller) {
     final source = _reusablePlayerSource();
-    return MithkaVideoPlayer(
+    return FVideoPlayer(
       key: ValueKey('mobile-fullscreen-video-${widget.video.id}'),
       source: source,
       controller: controller,
       width: widget.width,
       height: widget.height,
       autoplay: false,
-      initialVolume: _volume,
+      initialVolume: _controllerGainForCurrentVolume,
       initialPlaybackSpeed: _speed,
       onClose: _close,
       onToggleFullscreen: widget.onToggleFullscreen,
@@ -2541,10 +2676,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ? null
           : () => _navigateFromControl(-1),
       onNext: widget.nextVideo == null ? null : () => _navigateFromControl(1),
-      lifecycleBehavior: MithkaVideoLifecycleBehavior.delegateToController,
+      lifecycleBehavior: FVideoLifecycleBehavior.delegateToController,
       controlsAutoHideDuration: const Duration(seconds: 5),
       positionUpdateInterval: const Duration(milliseconds: 200),
-      interactionMode: MithkaVideoInteractionMode.delegateToChrome,
+      interactionMode: FVideoInteractionMode.delegateToChrome,
       enableKeyboardShortcuts: !_showCompletionPrompt,
       showScrubPreview: false,
       isFullscreen: true,
@@ -2558,21 +2693,21 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  MithkaVideoSource _reusablePlayerSource() {
+  FVideoSource _reusablePlayerSource() {
     final path = _localPath;
     if (path != null &&
         (path.startsWith('http://') || path.startsWith('https://'))) {
-      return MithkaVideoSource.network(path);
+      return FVideoSource.network(path);
     }
     if (path != null && path.isNotEmpty) {
-      return MithkaVideoSource.file(path);
+      return FVideoSource.file(path);
     }
     throw StateError('An initialized mobile video must have a source');
   }
 
   Widget _mobileFullscreenChrome(
     VideoPlayerController controller,
-    MithkaVideoChromeScope scope,
+    FVideoChromeScope scope,
   ) {
     final controlsVisible =
         scope.snapshot.controlsVisible && !_showCompletionPrompt;
@@ -2630,7 +2765,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   void _handleMobileDoubleTap(
     TapDownDetails details,
     double width,
-    MithkaVideoActions actions,
+    FVideoActions actions,
   ) {
     final fraction = width <= 0 ? 0.5 : details.localPosition.dx / width;
     if (fraction < 0.42) {
@@ -2724,7 +2859,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       );
 
   bool get _isDesktopPlatform =>
-      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
   KeyEventResult _handleDesktopKey(
     KeyEvent event,
@@ -3006,8 +3141,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         _gestureNavigationDelta != 0 &&
         _canNavigate(_gestureNavigationDelta)) {
       widget.onNavigate?.call(_gestureNavigationDelta);
-    } else if (gesture == _PlayerGesture.volume && !_gestureUsesSystemVolume) {
+    } else if (gesture == _PlayerGesture.volume) {
       _volume = _gestureValue;
+      if (_volume > 0.01) {
+        _lastAudibleVolume = _volume;
+        if (_gestureUsesSystemVolume && controller.value.volume <= 0.01) {
+          unawaited(controller.setVolume(1));
+        }
+      }
+      widget.onVolumeChanged?.call(_volume);
     }
     _cancelPlaybackGesture();
     _scheduleHide();
@@ -3574,7 +3716,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     action();
   }
 
-  void _dismissMenusAndControls({MithkaVideoChromeScope? scope}) {
+  void _dismissMenusAndControls({FVideoChromeScope? scope}) {
     _hideTimer?.cancel();
     FocusManager.instance.primaryFocus?.unfocus();
     final hideReusableControls = scope?.snapshot.controlsVisible == true;
@@ -4219,6 +4361,38 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         final width = constraints.maxWidth;
         final actions = <Widget>[];
 
+        // A continuous level control remains the first compact action whenever
+        // there is enough space for a useful track. On exceptionally narrow
+        // embedded surfaces, retain the mute action rather than overflowing.
+        final navigationWidth = compact && _showsNavigationControls
+            ? math.max(48, layout.actionButtonSize) * 2 + layout.actionGap
+            : 0.0;
+        final availableForActions = math.max(0.0, width - navigationWidth);
+        final compactVolumeWidth = math.min(104.0, availableForActions);
+        final showCompactSlider = compactVolumeWidth >= 88;
+        var usedActionWidth = compact
+            ? (showCompactSlider ? compactVolumeWidth : 44.0)
+            : 152.0;
+
+        bool reserveAction(bool available) {
+          if (!available) return false;
+          const actionWidth = 44.0;
+          final nextWidth = usedActionWidth + layout.actionGap + actionWidth;
+          if (navigationWidth + nextWidth > width) return false;
+          usedActionWidth = nextWidth;
+          return true;
+        }
+
+        // Display mode is the most important secondary action after volume;
+        // reserve it first but keep the established visual order below.
+        final showDisplayMode = compact
+            ? reserveAction(_showsDisplayModeButton)
+            : _showsDisplayModeButton;
+        final showOrientation = compact
+            ? reserveAction(_showsOrientationButton)
+            : _showsOrientationButton;
+        final showSpeed = compact ? reserveAction(width >= 220) : true;
+
         void addAction(Widget action) {
           if (actions.isNotEmpty) {
             actions.add(SizedBox(width: layout.actionGap));
@@ -4226,22 +4400,25 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           actions.add(action);
         }
 
-        if (compact) {
+        if (compact && showCompactSlider) {
+          addAction(
+            SizedBox(
+              width: compactVolumeWidth,
+              child: _volumeSlider(compact: true),
+            ),
+          );
+        } else if (compact) {
           addAction(_muteButton(size: layout.actionButtonSize));
         } else {
           addAction(_secondaryVolumeSlider(layout));
         }
-        if (!compact || width >= 220) {
+        if (showSpeed) {
           addAction(_speedMenu(compact: compact));
         }
-        if (_showsOrientationButton && (!compact || width >= 272)) {
+        if (showOrientation) {
           addAction(_orientationButton(size: layout.actionButtonSize));
         }
-        final displayModeMinimumWidth = compact && _showsNavigationControls
-            ? 252.0
-            : 240.0;
-        if (_showsDisplayModeButton &&
-            (!compact || width >= displayModeMinimumWidth)) {
+        if (showDisplayMode) {
           addAction(_displayModeButton(size: layout.actionButtonSize));
         }
         final navigation = <Widget>[];
@@ -4257,7 +4434,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Widget _secondaryVolumeSlider(_VideoControlsLayout layout) {
     if (!layout.timelineCompact) return _volumeSlider();
-    return SizedBox(width: 82, child: _volumeSlider(compact: true));
+    return SizedBox(width: 104, child: _volumeSlider(compact: true));
   }
 
   List<Widget> _compactControls(VideoPlayerController c) {
@@ -4271,7 +4448,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         child: LayoutBuilder(
           builder: (context, constraints) {
             if (constraints.maxWidth < 220) {
-              return _scrubber(c);
+              return Row(
+                children: [
+                  Expanded(child: _scrubber(c)),
+                  const SizedBox(width: 8),
+                  _muteButton(size: 34),
+                ],
+              );
             }
             return Row(
               children: [
@@ -4286,7 +4469,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                   _muteButton(size: 34)
                 else if (constraints.maxWidth >= 320)
                   SizedBox(width: 104, child: _volumeSlider(compact: true)),
-                if (constraints.maxWidth >= 320) const SizedBox(width: 8),
+                if (!pip && constraints.maxWidth < 320) _muteButton(size: 34),
+                const SizedBox(width: 8),
                 if (constraints.maxWidth >= 280)
                   Text(
                     _speedText(_speed),
@@ -4345,7 +4529,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
               ),
             ),
           ),
-          MithkaVideoSlider(
+          FVideoSlider(
             value: duration <= 0 ? 0 : position / duration,
             trackHeight: compact ? 2.5 : 4,
             thumbRadius: compact ? 5 : 8,
@@ -4469,7 +4653,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final generation = _scrubPreviewGeneration;
     Uint8List? bytes;
     try {
-      bytes = await MithkaVideoThumbnail.generate(
+      bytes = await FVideoThumbnail.generate(
         source: source,
         position: position,
       ).timeout(const Duration(seconds: 2), onTimeout: () => null);
@@ -4661,8 +4845,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Widget _volumeSlider({bool compact = false}) {
     final iconSize = compact ? 15.0 : 18.0;
     return SizedBox(
+      key: const ValueKey('video-volume-control'),
       width: compact ? null : 152,
-      height: compact ? 36 : 38,
+      height: 44,
       child: Row(
         mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
         children: [
@@ -4675,7 +4860,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ),
           SizedBox(width: compact ? 0 : 7),
           Expanded(
-            child: MithkaVideoSlider(
+            child: FVideoSlider(
+              key: const ValueKey('video-volume-slider'),
               value: _volume,
               trackHeight: compact ? 2.5 : 3,
               thumbRadius: compact ? 5 : 7,
@@ -4775,7 +4961,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   bool get _canOfferPictureInPicture =>
       (widget.onSwitchMode != null ||
       _systemPiPSupported ||
-      SystemPictureInPicture.isSupportedPlatform);
+      FVideoPictureInPicture.isSupportedPlatform);
 
   bool get _showsDisplayModeButton =>
       widget.onSwitchMode != null || _canOfferPictureInPicture;
@@ -4868,9 +5054,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     // fallback (including while support probing is still in flight).
     if (_systemPiPSupported ||
         (widget.onSwitchMode == null &&
-            SystemPictureInPicture.isSupportedPlatform)) {
+            FVideoPictureInPicture.isSupportedPlatform)) {
       try {
-        await _startSystemPictureInPicture();
+        await _startFVideoPictureInPicture();
       } catch (_) {}
       if (!mounted) return;
       setState(() => _systemPiPBusy = false);

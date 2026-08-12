@@ -8,8 +8,6 @@ PODS:
   - flutter_sound_core (9.28.0)
   - open_filex (0.0.2):
     - Flutter
-  - system_picture_in_picture (0.1.0):
-    - Flutter
   - TgVoipWebrtc (1.0.0)
 
 DEPENDENCIES:
@@ -17,7 +15,6 @@ DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_sound (from `.symlinks/plugins/flutter_sound/ios`)
   - open_filex (from `.symlinks/plugins/open_filex/ios`)
-  - system_picture_in_picture (from `.symlinks/plugins/system_picture_in_picture/ios`)
   - TgVoipWebrtc (from `LocalPods/tgvoip`)
 
 SPEC REPOS:
@@ -33,8 +30,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_sound/ios"
   open_filex:
     :path: ".symlinks/plugins/open_filex/ios"
-  system_picture_in_picture:
-    :path: ".symlinks/plugins/system_picture_in_picture/ios"
   TgVoipWebrtc:
     :path: LocalPods/tgvoip
 
@@ -44,7 +39,6 @@ SPEC CHECKSUMS:
   flutter_sound: b9236a5875299aaa4cef1690afd2f01d52a3f890
   flutter_sound_core: 427465f72d07ab8c3edbe8ffdde709ddacd3763c
   open_filex: 432f3cd11432da3e39f47fcc0df2b1603854eff1
-  system_picture_in_picture: 47cb398c6f9dfe22a2c93e7264677f0bdece423b
   TgVoipWebrtc: f652492658e07add6d04f559286fc59ed7664b6c
 
 PODFILE CHECKSUM: 10b4a1ba12b8d4f035dfcfd84902dc2ec7709515

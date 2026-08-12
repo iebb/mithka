@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_bubble.dart';
+import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -245,4 +246,211 @@ void main() {
     expect(tappedButton?.url, 'https://mithka.app');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('rich collage opens its photo siblings at the tapped photo', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final first = TdFileRef(id: 101, localPath: 'assets/penguin.png');
+    final videoPoster = TdFileRef(id: 999, localPath: 'assets/penguin.png');
+    final second = TdFileRef(id: 102, localPath: 'assets/penguin.png');
+    final video = TdFileRef(id: 700, localPath: 'assets/penguin.png');
+    final message = ChatMessage(
+      id: 901,
+      chatId: 42,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageRichMessage',
+      richBlocks: [
+        RichMessageBlock.container(
+          kind: RichMessageBlockKind.collage,
+          children: [
+            RichMessageBlock.media(
+              kind: RichMessageBlockKind.photo,
+              image: first,
+            ),
+            RichMessageBlock.media(
+              kind: RichMessageBlockKind.video,
+              image: videoPoster,
+              video: video,
+            ),
+            RichMessageBlock.media(
+              kind: RichMessageBlockKind.photo,
+              image: second,
+            ),
+          ],
+        ),
+      ],
+    );
+    List<TdFileRef>? openedItems;
+    int? openedIndex;
+    ChatMessage? openedVideo;
+    ChatMessage? legacyImage;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              peerTitle: 'Test',
+              isGroup: false,
+              onOpenImage: (value) => legacyImage = value,
+              onOpenImageGallery:
+                  ({required List<TdFileRef> items, required int startIndex}) {
+                    openedItems = items;
+                    openedIndex = startIndex;
+                  },
+              onPlayVideo: (value) => openedVideo = value,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(_tdImageWithId(102));
+    await tester.pump();
+    expect(openedItems?.map((item) => item.id), [101, 102]);
+    expect(openedIndex, 1);
+    expect(legacyImage, isNull);
+
+    await tester.tapAt(
+      tester.getCenter(_tdImageWithId(999)) - const Offset(36, 0),
+    );
+    await tester.pump();
+    expect(openedVideo?.video?.id, 700);
+    expect(openedItems?.map((item) => item.id), [101, 102]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rich slideshow opens its photo siblings at the visible photo', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final first = TdFileRef(id: 201, localPath: 'assets/penguin.png');
+    final second = TdFileRef(id: 202, localPath: 'assets/penguin.png');
+    final message = ChatMessage(
+      id: 902,
+      chatId: 42,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageRichMessage',
+      richBlocks: [
+        RichMessageBlock.container(
+          kind: RichMessageBlockKind.slideshow,
+          children: [
+            RichMessageBlock.media(
+              kind: RichMessageBlockKind.photo,
+              image: first,
+            ),
+            RichMessageBlock.media(
+              kind: RichMessageBlockKind.photo,
+              image: second,
+            ),
+          ],
+        ),
+      ],
+    );
+    List<TdFileRef>? openedItems;
+    int? openedIndex;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              peerTitle: 'Test',
+              isGroup: false,
+              onOpenImageGallery:
+                  ({required List<TdFileRef> items, required int startIndex}) {
+                    openedItems = items;
+                    openedIndex = startIndex;
+                  },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.drag(find.byType(PageView), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(_tdImageWithId(202));
+    await tester.pump();
+    expect(openedItems?.map((item) => item.id), [201, 202]);
+    expect(openedIndex, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('standalone rich photo keeps the existing image callback', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final photo = TdFileRef(id: 301, localPath: 'assets/penguin.png');
+    final message = ChatMessage(
+      id: 903,
+      chatId: 42,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      contentType: 'messageRichMessage',
+      richBlocks: [
+        RichMessageBlock.media(kind: RichMessageBlockKind.photo, image: photo),
+      ],
+    );
+    ChatMessage? legacyImage;
+    var galleryOpened = false;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: message,
+              peerTitle: 'Test',
+              isGroup: false,
+              onOpenImage: (value) => legacyImage = value,
+              onOpenImageGallery:
+                  ({required List<TdFileRef> items, required int startIndex}) =>
+                      galleryOpened = true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(_tdImageWithId(301));
+    await tester.pump();
+    expect(legacyImage?.id, 903);
+    expect(legacyImage?.image?.id, 301);
+    expect(galleryOpened, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
 }
+
+Finder _tdImageWithId(int id) => find.byWidgetPredicate(
+  (widget) => widget is TDImage && widget.photo?.id == id,
+);

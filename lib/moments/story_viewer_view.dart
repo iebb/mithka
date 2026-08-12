@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'dart:io';
 
+import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,7 +37,15 @@ import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
-enum StoryViewerDesktopCommand { close, previous, next, togglePlayback }
+enum StoryViewerDesktopCommand {
+  close,
+  previous,
+  next,
+  togglePlayback,
+  toggleMute,
+  volumeUp,
+  volumeDown,
+}
 
 @visibleForTesting
 bool storyViewerUsesDesktopControls(
@@ -62,7 +71,29 @@ StoryViewerDesktopCommand? storyViewerDesktopCommandForKey(
   if (key == LogicalKeyboardKey.space) {
     return StoryViewerDesktopCommand.togglePlayback;
   }
+  if (key == LogicalKeyboardKey.keyM) {
+    return StoryViewerDesktopCommand.toggleMute;
+  }
+  if (key == LogicalKeyboardKey.arrowUp) {
+    return StoryViewerDesktopCommand.volumeUp;
+  }
+  if (key == LogicalKeyboardKey.arrowDown) {
+    return StoryViewerDesktopCommand.volumeDown;
+  }
   return null;
+}
+
+@visibleForTesting
+double storyViewerToggledVolume({
+  required double volume,
+  required double lastAudibleVolume,
+}) {
+  final normalizedVolume = volume.isFinite ? volume.clamp(0.0, 1.0) : 0.0;
+  if (normalizedVolume > 0.01) return 0;
+  final restored = lastAudibleVolume.isFinite
+      ? lastAudibleVolume.clamp(0.0, 1.0)
+      : 1.0;
+  return restored > 0.01 ? restored : 1.0;
 }
 
 class _StoryMedia {
@@ -132,6 +163,9 @@ class _StoryViewerViewState extends State<StoryViewerView>
   bool _sendingReply = false;
   bool _updatingReaction = false;
   bool _storyMuted = false;
+  double _videoVolume = 1;
+  double _lastAudibleVideoVolume = 1;
+  bool _volumePanelVisible = false;
   bool _desktopControlsHovered = false;
   int _stealthActiveUntil = 0;
   StreamSubscription<Map<String, dynamic>>? _updates;
@@ -231,6 +265,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
       _index = index;
       _current = null;
       _loadError = false;
+      _volumePanelVisible = false;
     });
 
     // Mark the story as viewed (best-effort).
@@ -354,6 +389,12 @@ class _StoryViewerViewState extends State<StoryViewerView>
     try {
       await c.initialize();
       await c.setLooping(false);
+      try {
+        await c.setVolume(_videoVolume);
+      } catch (_) {
+        // Volume support is best-effort on third-party video backends. A
+        // backend that cannot change gain must not make the story unplayable.
+      }
       if (!_holding && !_replyFocus.hasFocus) await c.play();
     } catch (_) {
       await c.dispose();
@@ -435,6 +476,38 @@ class _StoryViewerViewState extends State<StoryViewerView>
     }
   }
 
+  Future<void> _setVideoVolume(double value) async {
+    final next = value.isFinite ? value.clamp(0.0, 1.0) : 0.0;
+    if (next > 0.01) _lastAudibleVideoVolume = next;
+    if (mounted && _videoVolume != next) {
+      setState(() => _videoVolume = next);
+    }
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return;
+    try {
+      await controller.setVolume(next);
+    } catch (_) {
+      // Keep playback available even when a platform backend rejects gain.
+    }
+  }
+
+  void _toggleVideoMute() {
+    if (!(_current?.isVideo ?? false)) return;
+    unawaited(
+      _setVideoVolume(
+        storyViewerToggledVolume(
+          volume: _videoVolume,
+          lastAudibleVolume: _lastAudibleVideoVolume,
+        ),
+      ),
+    );
+  }
+
+  void _adjustVideoVolume(double delta) {
+    if (!(_current?.isVideo ?? false)) return;
+    unawaited(_setVideoVolume(_videoVolume + delta));
+  }
+
   KeyEventResult _handleDesktopKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent ||
         !TickerMode.valuesOf(context).enabled ||
@@ -454,6 +527,12 @@ class _StoryViewerViewState extends State<StoryViewerView>
         _goNext();
       case StoryViewerDesktopCommand.togglePlayback:
         _toggleDesktopPlayback();
+      case StoryViewerDesktopCommand.toggleMute:
+        _toggleVideoMute();
+      case StoryViewerDesktopCommand.volumeUp:
+        _adjustVideoVolume(0.05);
+      case StoryViewerDesktopCommand.volumeDown:
+        _adjustVideoVolume(-0.05);
       case null:
         return KeyEventResult.ignored;
     }
@@ -576,6 +655,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
                         ],
                       ),
                     ),
+                    if (_current?.isVideo ?? false) _headerVideoVolumeButton(),
                     GestureDetector(
                       key: const ValueKey('storyMoreActions'),
                       behavior: HitTestBehavior.opaque,
@@ -636,6 +716,10 @@ class _StoryViewerViewState extends State<StoryViewerView>
               key: const ValueKey('storyGestureSurface'),
               behavior: HitTestBehavior.translucent,
               onTapUp: (details) {
+                if (_volumePanelVisible) {
+                  setState(() => _volumePanelVisible = false);
+                  return;
+                }
                 final width = MediaQuery.sizeOf(context).width;
                 final x = details.localPosition.dx;
                 if (x < width * 0.3) {
@@ -702,6 +786,8 @@ class _StoryViewerViewState extends State<StoryViewerView>
               bottom: MediaQuery.of(context).padding.bottom + 88,
               child: _storyAreas(),
             ),
+          if ((_current?.isVideo ?? false) && _volumePanelVisible)
+            Positioned(top: top + 76, right: 14, child: _videoVolumePanel()),
           if (_current != null)
             Positioned(
               left: 12,
@@ -774,6 +860,135 @@ class _StoryViewerViewState extends State<StoryViewerView>
       ),
     ),
   );
+
+  Widget _headerVideoVolumeButton() {
+    final muted = _videoVolume <= 0.01;
+    return AppInteractiveSurface(
+      key: const ValueKey('storyVolumeButton'),
+      semanticLabel: AppStringKeys.videoPlaybackSwipeAdjustVolume.l10n(context),
+      semanticValue: '${(_videoVolume * 100).round()}%',
+      expanded: _volumePanelVisible,
+      onTap: () {
+        setState(() => _volumePanelVisible = !_volumePanelVisible);
+      },
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Center(
+          child: AppIcon(
+            muted ? HeroAppIcons.volumeXmark : HeroAppIcons.volumeHigh,
+            size: 21,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _videoVolumePanel() {
+    final width = (MediaQuery.sizeOf(context).width - 28)
+        .clamp(0.0, 236.0)
+        .toDouble();
+    final muted = _videoVolume <= 0.01;
+    return Semantics(
+      container: true,
+      label: AppStringKeys.videoPlaybackSwipeAdjustVolume.l10n(context),
+      child: Container(
+        key: const ValueKey('storyVolumePanel'),
+        width: width,
+        height: 56,
+        padding: const EdgeInsets.fromLTRB(7, 6, 12, 6),
+        decoration: BoxDecoration(
+          color: const Color(0xEB202023),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.24),
+            width: 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.32),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final showSlider = constraints.maxWidth >= 96;
+            final showValue = constraints.maxWidth >= 137;
+            return Row(
+              children: [
+                AppInteractiveSurface(
+                  key: const ValueKey('storyMuteButton'),
+                  semanticLabel:
+                      (muted
+                              ? AppStringKeys.chatUnmute
+                              : AppStringKeys.callMute)
+                          .l10n(context),
+                  semanticValue: '${(_videoVolume * 100).round()}%',
+                  toggled: muted,
+                  onTap: _toggleVideoMute,
+                  borderRadius: BorderRadius.circular(22),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: AppIcon(
+                        muted
+                            ? HeroAppIcons.volumeXmark
+                            : HeroAppIcons.volumeHigh,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                if (showSlider) ...[
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: FVideoSlider(
+                        key: const ValueKey('storyVolumeSlider'),
+                        value: _videoVolume,
+                        trackHeight: 3,
+                        thumbRadius: 7,
+                        activeColor: Colors.white,
+                        inactiveColor: Colors.white.withValues(alpha: 0.24),
+                        semanticLabel: AppStringKeys
+                            .videoPlaybackSwipeAdjustVolume
+                            .l10n(context),
+                        semanticValue: '${(_videoVolume * 100).round()}%',
+                        onChanged: (value) => unawaited(_setVideoVolume(value)),
+                      ),
+                    ),
+                  ),
+                ],
+                if (showValue) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      '${(_videoVolume * 100).round()}',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   Widget _storyAreas() {
     final areas = _current?.areas ?? const <Map<String, dynamic>>[];

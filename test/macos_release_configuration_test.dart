@@ -51,12 +51,13 @@ void main() {
     );
   });
 
-  test('macOS TestFlight is owned by Xcode Cloud', () {
-    expect(
-      File('.github/workflows/macos-testflight.yml').existsSync(),
-      isFalse,
-    );
+  test('macOS TestFlight is owned by GitHub Actions', () {
+    final workflow = File(
+      '.github/workflows/macos-testflight.yml',
+    ).readAsStringSync();
+    expect(workflow, contains('sh ci_scripts/macos_post_clone.sh'));
 
+    // Keep the old hook valid for a reversible Xcode Cloud rollback.
     final workspaceHook = File(
       'macos/ci_scripts/ci_post_clone.sh',
     ).readAsStringSync();

@@ -103,6 +103,7 @@ import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'message_bubble_repository_view.dart';
+import 'message_reaction_availability.dart';
 import 'message_replies_sheet.dart';
 import 'message_translation_cache.dart';
 import 'music_player_controller.dart';
@@ -1102,6 +1103,8 @@ class _ChatViewState extends State<ChatView> {
   MessageActionSource _actionSource = MessageActionSource.normal;
   bool _reactionExpanded = false; // full reaction picker vs. quick bar
   String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
+  MessageReactionAvailability? _actionReactionAvailability;
+  int _actionReactionAvailabilityGeneration = 0;
   int _lastCount = 0;
   bool _didInitialScroll = false; // one-time entry positioning has run
   bool _showJumpDown = false; // scrolled up → show jump-to-bottom button
@@ -3796,6 +3799,7 @@ class _ChatViewState extends State<ChatView> {
       ),
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
       onOpenImage: _openImage,
+      onOpenImageGallery: _openImageGallery,
       onApplyMessageBubble: offersMessageBubbleApplyAction(message)
           ? (message) => unawaited(
               applyMessageBubbleRepositoryPhoto(
@@ -3818,7 +3822,7 @@ class _ChatViewState extends State<ChatView> {
       incomingBubbleTextColor: _effectiveIncomingTextColor(),
       messageColors: _effectiveMessageColors(),
       hasCustomChatTheme: _hasCustomChatTheme,
-      onToggleReaction: (r) => _vm.toggleReaction(message, r),
+      onToggleReaction: (r) => unawaited(_toggleMessageReaction(message, r)),
       onShowReactionUsers: _showReactionUsers,
       onRedial: _startCall,
       onOpenContact: _openSharedContact,
@@ -4238,6 +4242,13 @@ class _ChatViewState extends State<ChatView> {
         startIndex: start < 0 ? 0 : start,
       ),
     );
+  }
+
+  void _openImageGallery({
+    required List<TdFileRef> items,
+    required int startIndex,
+  }) {
+    unawaited(openImagePreview(context, items: items, startIndex: startIndex));
   }
 
   void _openSticker(ChatMessage message) {
@@ -8471,6 +8482,7 @@ class _ChatViewState extends State<ChatView> {
     MessageActionSource source = MessageActionSource.normal,
   ]) {
     EmojiStore.shared.loadIfNeeded();
+    final reactionGeneration = ++_actionReactionAvailabilityGeneration;
     final overlayBox =
         _actionOverlayKey.currentContext?.findRenderObject() as RenderBox?;
     final platform = Theme.of(context).platform;
@@ -8508,8 +8520,37 @@ class _ChatViewState extends State<ChatView> {
       _actionSource = source;
       _reactionExpanded = false;
       _reactionTab = 'standard';
+      _actionReactionAvailability = null;
     });
     oldSelectionState?.selectableRegion.clearSelection();
+    if (!desktop && !message.isCall) {
+      unawaited(
+        _loadActionReactionAvailability(message.id, reactionGeneration),
+      );
+    }
+  }
+
+  Future<void> _loadActionReactionAvailability(
+    int messageId,
+    int generation,
+  ) async {
+    MessageReactionAvailability? availability;
+    try {
+      availability = await _vm.messageReactionAvailability(messageId);
+    } catch (_) {
+      // Fail closed. Offering the global defaults after a failed availability
+      // query recreates the exact MESSAGE_REACTION_INVALID bug this gate fixes.
+    }
+    if (!mounted ||
+        !messageReactionAvailabilityResultIsCurrent(
+          requestGeneration: generation,
+          currentGeneration: _actionReactionAvailabilityGeneration,
+          messageId: messageId,
+          targetMessageId: _actionTarget?.id,
+        )) {
+      return;
+    }
+    setState(() => _actionReactionAvailability = availability);
   }
 
   void _clearMobileTextSelectionState() {
@@ -8758,7 +8799,9 @@ class _ChatViewState extends State<ChatView> {
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
-    if (target != null) _vm.addReaction(target.id, emoji);
+    if (target != null) {
+      unawaited(_sendReaction(() => _vm.addReaction(target.id, emoji)));
+    }
   }
 
   void _reactQuick(QuickReactionChoice reaction) {
@@ -8778,8 +8821,27 @@ class _ChatViewState extends State<ChatView> {
       _actionSource = MessageActionSource.normal;
       _reactionExpanded = false;
     });
-    if (target != null) _vm.addCustomReaction(target.id, customEmojiId);
+    if (target != null) {
+      unawaited(
+        _sendReaction(() => _vm.addCustomReaction(target.id, customEmojiId)),
+      );
+    }
   }
+
+  Future<void> _sendReaction(Future<void> Function() send) async {
+    try {
+      await send();
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    }
+  }
+
+  Future<void> _toggleMessageReaction(
+    ChatMessage message,
+    MessageReaction reaction,
+  ) => _sendReaction(() => _vm.toggleReaction(message, reaction));
 
   Widget _actionMenuOverlay() {
     final overlayBox =
@@ -8803,7 +8865,12 @@ class _ChatViewState extends State<ChatView> {
     final verticalMenu = desktopMenu || mobileDropdown;
     final pointerAnchored =
         verticalMenu && rect != null && rect.width == 0 && rect.height == 0;
-    final showReactions = !desktopMenu && !_actionTarget!.isCall;
+    final reactionAvailability = _actionReactionAvailability;
+    final showReactions = messageActionShowsReactionControls(
+      isDesktop: desktopMenu,
+      isCall: _actionTarget!.isCall,
+      availability: reactionAvailability,
+    );
     final actionMenu = MessageActionMenu(
       message: _actionTarget!,
       isPinned: _vm.pinnedMessage?.id == _actionTarget!.id,
@@ -8902,16 +8969,20 @@ class _ChatViewState extends State<ChatView> {
                 child: AnimatedBuilder(
                   animation: EmojiStore.shared,
                   builder: (context, _) {
+                    final availability = reactionAvailability!;
                     if (_reactionExpanded) {
                       return Align(
                         alignment: align,
-                        child: _expandedReactionPicker(),
+                        child: _expandedReactionPicker(availability),
                       );
                     }
-                    final reactions = effectiveQuickReactions(
+                    final configured = effectiveQuickReactions(
                       context.watch<ThemeController>().quickReactions,
-                      allowCustomEmoji: EmojiStore.shared.isPremium,
+                      allowCustomEmoji:
+                          availability.allowArbitraryCustom ||
+                          availability.choices.any((choice) => choice.isCustom),
                     );
+                    final reactions = availability.quickChoices(configured);
                     return Align(
                       alignment: align,
                       child: QuickReactionBar(
@@ -8939,9 +9010,11 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _expandedReactionPicker() {
+  Widget _expandedReactionPicker(MessageReactionAvailability availability) {
     final store = EmojiStore.shared;
-    final packs = store.isPremium ? store.customPacks : const [];
+    final packs = availability.allowArbitraryCustom
+        ? store.customPacks
+        : const <CustomEmojiPack>[];
     return Container(
       width: 300,
       height: 268,
@@ -8955,14 +9028,17 @@ class _ChatViewState extends State<ChatView> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Expanded(child: _reactionContent(packs)),
+          Expanded(child: _reactionContent(packs, availability)),
           _reactionTabStrip(packs),
         ],
       ),
     );
   }
 
-  Widget _reactionContent(List packs) {
+  Widget _reactionContent(
+    List<CustomEmojiPack> packs,
+    MessageReactionAvailability availability,
+  ) {
     const reactionEmojiSize = 26.0;
     if (_reactionTab != 'standard') {
       final id = int.tryParse(_reactionTab);
@@ -8999,15 +9075,22 @@ class _ChatViewState extends State<ChatView> {
       crossAxisCount: 7,
       padding: const EdgeInsets.all(10),
       children: [
-        for (final e in availableStandardReactions)
+        for (final reaction in availability.choices)
           GestureDetector(
+            key: ValueKey('expanded-reaction-${reaction.storageValue}'),
             behavior: HitTestBehavior.opaque,
-            onTap: () => _react(e),
+            onTap: () => _reactQuick(reaction),
             child: Center(
-              child: Text(
-                e,
-                style: const TextStyle(fontSize: reactionEmojiSize),
-              ),
+              child: reaction.isCustom
+                  ? CustomEmojiView(
+                      id: reaction.customEmojiId,
+                      size: reactionEmojiSize,
+                      color: Colors.white,
+                    )
+                  : Text(
+                      reaction.emoji,
+                      style: const TextStyle(fontSize: reactionEmojiSize),
+                    ),
             ),
           ),
       ],

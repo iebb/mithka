@@ -64,89 +64,33 @@ void main() {
     },
   );
 
-  test(
-    'desktop player uses package windowing and native keyboard controls',
-    () {
-      final window = File(
-        'lib/app/desktop_video_window.dart',
-      ).readAsStringSync();
-      final packageWindow = File(
-        'packages/mithka_video_player/lib/src/desktop_video_windows.dart',
-      ).readAsStringSync();
-      final desktopWindowImplementation = File(
-        'packages/mithka_video_player/lib/src/desktop_video_windows_io.dart',
-      ).readAsStringSync();
-      final portableWindowStub = File(
-        'packages/mithka_video_player/lib/src/desktop_video_windows_stub.dart',
-      ).readAsStringSync();
-      final player = File(
-        'packages/mithka_video_player/lib/src/video_player.dart',
-      ).readAsStringSync();
-
-      expect(window, contains('package:mithka_video_player/'));
-      expect(window, contains('stream.prepareForPlayback'));
-      expect(
-        window.indexOf('stream.prepareForPlayback'),
-        lessThan(window.indexOf('MithkaDesktopVideoWindows.instance.open')),
-      );
-      // The window must appear while the bootstrap ranges are still filling:
-      // awaiting preparation here is what made a tapped video look ignored.
-      expect(window, contains('stream.holdRequestsUntilPrepared('));
-      expect(window, isNot(contains('await prepareDesktopVideoPlayback(')));
-      expect(
-        window,
-        isNot(
-          contains('onClose: MithkaDesktopVideoWindows.closeCurrentWindow'),
-        ),
-      );
-      expect(window, isNot(contains('package:multi_window_manager/')));
-      expect(packageWindow, isNot(contains('package:multi_window_manager/')));
-      expect(packageWindow, isNot(contains("import 'dart:io'")));
-      expect(
-        desktopWindowImplementation,
-        contains('package:multi_window_manager/'),
-      );
-      expect(portableWindowStub, isNot(contains('multi_window_manager')));
-      expect(window, isNot(contains('desktop_multi_window')));
-      expect(window, contains('currentWindowCloseRevision.addListener'));
-      expect(window, contains('unawaited(_controller?.pause())'));
-      expect(window, contains('SystemPictureInPicture.start('));
-      expect(window, contains('MithkaDesktopVideoWindows.focusCurrentWindow'));
-      expect(window, contains('MithkaDesktopVideoWindows.hideCurrentWindow'));
-      expect(window, contains('MithkaDesktopVideoWindows.closeCurrentWindow'));
-      expect(player, contains('LogicalKeyboardKey.space'));
-      expect(player, contains('LogicalKeyboardKey.arrowLeft'));
-      expect(player, contains('LogicalKeyboardKey.arrowRight'));
-      expect(player, contains('LogicalKeyboardKey.keyM'));
-      expect(player, contains('onDoubleTapDown:'));
-      expect(
-        player,
-        contains('textDirection == TextDirection.rtl\n        ? 1 - fraction'),
-      );
-      expect(
-        player,
-        contains('math.max(0, trackWidth - thumbRadius * 2) * visualFraction'),
-      );
-      expect(player, contains('thumbCenter - previewWidth / 2'));
-      expect(player, contains('math.max(0.0, trackWidth - previewWidth)'));
-      expect(
-        desktopWindowImplementation,
-        contains('await MultiWindowManager.ensureInitialized(windowId);'),
-      );
-      expect(
-        desktopWindowImplementation,
-        contains('_DeferredMacOSSecondaryWindowRenderFix'),
-      );
-      expect(
-        desktopWindowImplementation,
-        contains('_waitForFullscreenState(window, fullscreen)'),
-      );
-      expect(
-        desktopWindowImplementation,
-        contains('_currentWindowCloseRevision.value++'),
-      );
-    },
-  );
+  test('desktop player delegates windowing and controls to f_videoplayer', () {
+    final window = File('lib/app/desktop_video_window.dart').readAsStringSync();
+    expect(window, contains('package:f_videoplayer/f_videoplayer.dart'));
+    expect(window, contains('stream.prepareForPlayback'));
+    expect(
+      window.indexOf('stream.prepareForPlayback'),
+      lessThan(window.indexOf('FVideoDesktopWindows.instance.open')),
+    );
+    // The window must appear while the bootstrap ranges are still filling:
+    // awaiting preparation here is what made a tapped video look ignored.
+    expect(window, contains('stream.holdRequestsUntilPrepared('));
+    expect(window, isNot(contains('await prepareDesktopVideoPlayback(')));
+    expect(
+      window,
+      isNot(contains('onClose: FVideoDesktopWindows.closeCurrentWindow')),
+    );
+    expect(window, isNot(contains('package:multi_window_manager/')));
+    expect(window, isNot(contains('desktop_multi_window')));
+    expect(window, contains('currentWindowCloseRevision.addListener'));
+    expect(window, contains('unawaited(_controller?.pause())'));
+    expect(window, contains('FVideoPictureInPicture.start('));
+    expect(window, contains('FVideoDesktopWindows.focusCurrentWindow'));
+    expect(window, contains('FVideoDesktopWindows.hideCurrentWindow'));
+    expect(window, contains('FVideoDesktopWindows.closeCurrentWindow'));
+    expect(window, contains('FVideoPlayer('));
+    expect(window, contains('FVideoDesktopWindows.instance.open'));
+  });
 
   test('macOS keeps the primary Flutter window visible at launch', () {
     final runner = File(
@@ -162,11 +106,8 @@ void main() {
     );
     expect(runner, contains('RegisterGeneratedPlugins(registry: registry)'));
     expect(runner, contains('DesktopClipboardImagesPlugin.register('));
-    expect(runner, contains('MacOSSystemPictureInPicturePlugin.register('));
-    expect(
-      runner,
-      contains('AVPictureInPictureController(playerLayer: layer)'),
-    );
+    expect(runner, isNot(contains('MacOSSystemPictureInPicturePlugin')));
+    expect(runner, isNot(contains('AVPictureInPictureController')));
   });
 
   test('scrub preview converts through the root overlay coordinates', () {

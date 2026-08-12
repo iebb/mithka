@@ -27,9 +27,10 @@ in a deactivated state for rollback and configuration history.
 
 Those conditions mirror the former iOS Xcode Cloud workflow. It prepares the
 same pinned native dependencies as Xcode Cloud, archives
-`ios/Runner.xcworkspace`, validates the TDLib dSYM and exported IPA SwiftSupport,
-uploads an App Store-eligible iOS build, and assigns the processed build to the
-same Internal and External TestFlight groups.
+`ios/Runner.xcworkspace`, verifies that the TDLib binary and dSYM UUIDs match,
+and uploads the archive through Xcode's App Store Connect destination so Apple
+performs the authoritative distribution validation, and assigns the processed
+build to the same Internal and External TestFlight groups.
 
 ## Deterministic build preparation
 
@@ -47,9 +48,9 @@ The action uses Flutter 3.44.2 and delegates source preparation to
 The iOS action delegates preparation to `ios/ci_scripts/ci_post_clone.sh`. It
 recreates the ignored Firebase configuration, TDLib and TgVoip frameworks,
 Flutter generated inputs, Swift packages, and CocoaPods sandbox before the
-archive. GitHub's epoch build number overrides the source build number while
-the marketing version continues to use the major and minor components from
-`pubspec.yaml` with a zero patch component.
+archive. GitHub's commit-height build number overrides the source build number
+while the marketing version continues to use the major and minor components
+from `pubspec.yaml` with a zero patch component.
 
 The published TDLib input remains:
 
@@ -69,16 +70,23 @@ The workflow reads these encrypted GitHub Actions repository secrets:
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
+- `IOS_SIGNING_CERTIFICATE_P12`
+- `IOS_SIGNING_CERTIFICATE_PASSWORD`
 
 The App Store Connect private key is written only to the runner's temporary
-directory and removed in the final cleanup step. `TESTFLIGHT_INTERNAL_GROUP`
+directory and removed in the final cleanup step. The Apple signing identity is
+imported into a temporary keychain so ephemeral runners reuse one managed
+certificate instead of consuming the Apple Development certificate quota; the
+keychain and PKCS#12 are removed in the same cleanup step. `TESTFLIGHT_INTERNAL_GROUP`
 and `TESTFLIGHT_EXTERNAL_GROUP` may be set as repository variables; they
 default to `Internal` and `External`.
 
-The build number is an epoch timestamp so every GitHub upload is greater than
-the previous Xcode Cloud build number and remains monotonic across branches.
-The marketing version keeps the major and minor components from
-`pubspec.yaml` and forces the patch component to zero on both Apple platforms.
+The GitHub workflows use the full Git commit height as the build number with an
+offset of zero. This starts with the `1.0.0` train, after the temporary
+epoch-numbered migration builds on `0.10.0`. Xcode Cloud continues to supply
+its native `CI_BUILD_NUMBER` if either retained workflow is reactivated. The
+marketing version keeps the major and minor components from `pubspec.yaml` and
+forces the patch component to zero on both Apple platforms.
 
 ## App Store metadata prerequisite
 

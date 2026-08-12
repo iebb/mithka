@@ -28,12 +28,18 @@ module TestFlightGroupDistributor
     end
 
     def post(path, body)
-      request(:post, path, body: body, allow_conflict: true)
+      request(
+        :post,
+        path,
+        body: body,
+        allow_conflict: true,
+        allow_submission_limit: true
+      )
     end
 
     private
 
-    def request(method, path, params: {}, body: nil, allow_conflict: false)
+    def request(method, path, params: {}, body: nil, allow_conflict: false, allow_submission_limit: false)
       uri = URI("#{API_BASE}#{path}")
       uri.query = URI.encode_www_form(params) unless params.empty?
       request_class = method == :get ? Net::HTTP::Get : Net::HTTP::Post
@@ -53,9 +59,12 @@ module TestFlightGroupDistributor
         read_timeout: 60
       ) { |http| http.request(request) }
       status = response.code.to_i
+      payload = response.body.to_s.empty? ? {} : JSON.parse(response.body)
+      if allow_submission_limit && !status.between?(200, 299) && submission_limit_reached?(payload)
+        return { "submission_limit_reached" => true }
+      end
       return { "conflict" => true } if allow_conflict && status == 409
 
-      payload = response.body.to_s.empty? ? {} : JSON.parse(response.body)
       unless status.between?(200, 299)
         details = Array(payload["errors"]).map do |error|
           [error["code"], error["title"], error["detail"]].compact.join(": ")
@@ -65,6 +74,18 @@ module TestFlightGroupDistributor
       payload
     rescue JSON::ParserError => error
       raise Error, "App Store Connect returned invalid JSON: #{error.message}"
+    end
+
+    def submission_limit_reached?(payload)
+      Array(payload["errors"]).any? do |error|
+        message = [error["code"], error["title"], error["detail"]]
+                  .compact
+                  .join(" ")
+                  .downcase
+                  .gsub(/[^a-z0-9]+/, " ")
+                  .strip
+        message.match?(/\b(?:submission limit (?:has been )?reached|reached (?:the )?submission limit)\b/)
+      end
     end
 
     def token
@@ -114,9 +135,15 @@ module TestFlightGroupDistributor
     def run
       build = wait_for_build
       groups = @client.get("/apps/#{@app_id}/betaGroups", "limit" => "200").fetch("data")
-      assign(build.fetch("id"), find_group(groups, @internal_group, true))
-      assign(build.fetch("id"), find_group(groups, @external_group, false))
-      puts "Assigned #{platform_name} build #{@build_number} to internal and external TestFlight groups."
+      statuses = [
+        assign(build.fetch("id"), find_group(groups, @internal_group, true)),
+        assign(build.fetch("id"), find_group(groups, @external_group, false))
+      ]
+      if statuses.include?(:submission_limit_reached)
+        puts "Accepted #{platform_name} build #{@build_number}; the TestFlight submission limit is treated as success."
+      else
+        puts "Assigned #{platform_name} build #{@build_number} to internal and external TestFlight groups."
+      end
     end
 
     private
@@ -170,54 +197,63 @@ module TestFlightGroupDistributor
     def assign(build_id, group)
       if group.dig("attributes", "hasAccessToAllBuilds")
         puts "#{group.dig('attributes', 'name')}: automatic access to all builds"
-        return
+        return :automatic
       end
 
       result = @client.post(
         "/betaGroups/#{group.fetch('id')}/relationships/builds",
         "data" => [{ "type" => "builds", "id" => build_id }]
       )
+      if result["submission_limit_reached"]
+        puts "#{group.dig('attributes', 'name')}: submission limit reached; treating as success"
+        return :submission_limit_reached
+      end
+
       status = result["conflict"] ? "already assigned" : "assigned"
       puts "#{group.dig('attributes', 'name')}: #{status}"
+      status.tr(" ", "_").to_sym
     end
   end
+
 end
 
-options = {
-  app_id: "6783830742",
-  platform: "MAC_OS",
-  internal_group: "Internal",
-  external_group: "External",
-  wait_seconds: 2_700
-}
-OptionParser.new do |parser|
-  parser.on("--key-id VALUE") { |value| options[:key_id] = value }
-  parser.on("--issuer-id VALUE") { |value| options[:issuer_id] = value }
-  parser.on("--key-path VALUE") { |value| options[:key_path] = value }
-  parser.on("--app-id VALUE") { |value| options[:app_id] = value }
-  parser.on("--build-number VALUE") { |value| options[:build_number] = value }
-  parser.on("--platform VALUE") { |value| options[:platform] = value }
-  parser.on("--internal-group VALUE") { |value| options[:internal_group] = value }
-  parser.on("--external-group VALUE") { |value| options[:external_group] = value }
-  parser.on("--wait-seconds VALUE", Integer) { |value| options[:wait_seconds] = value }
-end.parse!
+if $PROGRAM_NAME == __FILE__
+  options = {
+    app_id: "6783830742",
+    platform: "MAC_OS",
+    internal_group: "Internal",
+    external_group: "External",
+    wait_seconds: 2_700
+  }
+  OptionParser.new do |parser|
+    parser.on("--key-id VALUE") { |value| options[:key_id] = value }
+    parser.on("--issuer-id VALUE") { |value| options[:issuer_id] = value }
+    parser.on("--key-path VALUE") { |value| options[:key_path] = value }
+    parser.on("--app-id VALUE") { |value| options[:app_id] = value }
+    parser.on("--build-number VALUE") { |value| options[:build_number] = value }
+    parser.on("--platform VALUE") { |value| options[:platform] = value }
+    parser.on("--internal-group VALUE") { |value| options[:internal_group] = value }
+    parser.on("--external-group VALUE") { |value| options[:external_group] = value }
+    parser.on("--wait-seconds VALUE", Integer) { |value| options[:wait_seconds] = value }
+  end.parse!
 
-required = %i[key_id issuer_id key_path app_id build_number platform internal_group external_group]
-missing = required.select { |key| options[key].to_s.empty? }
-raise TestFlightGroupDistributor::Error, "missing options: #{missing.join(', ')}" unless missing.empty?
-raise TestFlightGroupDistributor::Error, "build number must be numeric" unless options[:build_number].match?(/\A\d+\z/)
+  required = %i[key_id issuer_id key_path app_id build_number platform internal_group external_group]
+  missing = required.select { |key| options[key].to_s.empty? }
+  raise TestFlightGroupDistributor::Error, "missing options: #{missing.join(', ')}" unless missing.empty?
+  raise TestFlightGroupDistributor::Error, "build number must be numeric" unless options[:build_number].match?(/\A\d+\z/)
 
-client = TestFlightGroupDistributor::Client.new(
-  key_id: options[:key_id],
-  issuer_id: options[:issuer_id],
-  key_path: options[:key_path]
-)
-TestFlightGroupDistributor::Runner.new(
-  client: client,
-  app_id: options[:app_id],
-  build_number: options[:build_number],
-  platform: options[:platform],
-  internal_group: options[:internal_group],
-  external_group: options[:external_group],
-  wait_seconds: options[:wait_seconds]
-).run
+  client = TestFlightGroupDistributor::Client.new(
+    key_id: options[:key_id],
+    issuer_id: options[:issuer_id],
+    key_path: options[:key_path]
+  )
+  TestFlightGroupDistributor::Runner.new(
+    client: client,
+    app_id: options[:app_id],
+    build_number: options[:build_number],
+    platform: options[:platform],
+    internal_group: options[:internal_group],
+    external_group: options[:external_group],
+    wait_seconds: options[:wait_seconds]
+  ).run
+end

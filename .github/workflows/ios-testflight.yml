@@ -69,11 +69,44 @@ jobs:
           openssl pkey -in "$key_path" -noout -check >/dev/null
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
+      - name: Import persistent Apple signing identity
+        env:
+          SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${SIGNING_CERTIFICATE_P12:?missing IOS_SIGNING_CERTIFICATE_P12}"
+          : "${SIGNING_CERTIFICATE_PASSWORD:?missing IOS_SIGNING_CERTIFICATE_PASSWORD}"
+          signing_keychain="$RUNNER_TEMP/mithka-signing.keychain-db"
+          signing_p12="$RUNNER_TEMP/mithka-signing.p12"
+          keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$SIGNING_CERTIFICATE_P12" | base64 --decode > "$signing_p12"
+          security create-keychain -p "$keychain_password" "$signing_keychain"
+          security set-keychain-settings -lut 21600 "$signing_keychain"
+          security unlock-keychain -p "$keychain_password" "$signing_keychain"
+          security import "$signing_p12" \
+            -k "$signing_keychain" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$signing_keychain" >/dev/null
+          security list-keychains -d user -s "$signing_keychain"
+          security find-identity -v -p codesigning "$signing_keychain" | grep -q '1 valid identities found'
+          {
+            echo "CI_SIGNING_KEYCHAIN=$signing_keychain"
+            echo "CI_SIGNING_P12=$signing_p12"
+          } >> "$GITHUB_ENV"
+
       - name: Set build identity
         run: |
           set -euo pipefail
+          build_number="$(sh scripts/apple_ci_build_number.sh "$GITHUB_SHA")"
           {
-            echo "CI_BUILD_NUMBER=$(date -u '+%s')"
+            echo "CI_BUILD_NUMBER=$build_number"
             echo "CI_COMMIT=$GITHUB_SHA"
             echo "CI_PRIMARY_REPOSITORY_PATH=$GITHUB_WORKSPACE"
             echo "CI_DERIVED_DATA_PATH=$RUNNER_TEMP/MithkaDerivedData"
@@ -109,42 +142,14 @@ jobs:
           test "$dsym_uuid" = "$binary_uuid"
           echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
 
-      - name: Export and validate iOS IPA
-        run: |
-          set -euo pipefail
-          export_options="$RUNNER_TEMP/ExportOptions-iOS.plist"
-          export_path="$RUNNER_TEMP/iOSExport"
-          plutil -create xml1 "$export_options"
-          plutil -insert method -string app-store-connect "$export_options"
-          plutil -insert destination -string export "$export_options"
-          plutil -insert signingStyle -string automatic "$export_options"
-          plutil -insert teamID -string "$DEVELOPMENT_TEAM" "$export_options"
-          plutil -insert manageAppVersionAndBuildNumber -bool NO "$export_options"
-          plutil -insert stripSwiftSymbols -bool YES "$export_options"
-          plutil -insert uploadSymbols -bool YES "$export_options"
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$export_path" \
-            -exportOptionsPlist "$export_options" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-
-          ipa_path="$(find "$export_path" -maxdepth 1 -name '*.ipa' -print | sort | tail -1)"
-          test -n "$ipa_path"
-          ipa_listing="$RUNNER_TEMP/iOS-ipa-contents.txt"
-          unzip -Z1 "$ipa_path" > "$ipa_listing"
-          grep -Eq '^SwiftSupport/iphoneos/libswift.+\.dylib$' "$ipa_listing"
-
-      - name: Upload archive to App Store Connect
+      - name: Export and upload IPA to App Store Connect
         run: |
           set -euo pipefail
           export_options="$RUNNER_TEMP/UploadOptions-iOS.plist"
           upload_path="$RUNNER_TEMP/iOSUpload"
           plutil -create xml1 "$export_options"
           plutil -insert method -string app-store-connect "$export_options"
-          plutil -insert destination -string upload "$export_options"
+          plutil -insert destination -string export "$export_options"
           plutil -insert signingStyle -string automatic "$export_options"
           plutil -insert teamID -string "$DEVELOPMENT_TEAM" "$export_options"
           plutil -insert manageAppVersionAndBuildNumber -bool NO "$export_options"
@@ -158,6 +163,24 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+          ipa_count="$(find "$upload_path" -maxdepth 1 -type f -name '*.ipa' -print | wc -l | tr -d ' ')"
+          test "$ipa_count" -eq 1
+          ipa="$(find "$upload_path" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          API_PRIVATE_KEYS_DIR="$(dirname "$ASC_KEY_PATH")" \
+            xcrun altool --upload-package "$ipa" \
+              --api-key "$ASC_KEY_ID" \
+              --api-issuer "$ASC_ISSUER_ID" \
+              --wait \
+              --output-format json
+
+      - name: Retain uploaded IPA for release verification
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-app-store-ipa
+          path: ${{ runner.temp }}/iOSUpload/*.ipa
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Distribute to TestFlight groups
         env:
@@ -180,5 +203,11 @@ jobs:
         run: |
           if [[ -n "${ASC_KEY_PATH:-}" ]]; then
             rm -f "$ASC_KEY_PATH"
+          fi
+          if [[ -n "${CI_SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CI_SIGNING_KEYCHAIN" || true
+          fi
+          if [[ -n "${CI_SIGNING_P12:-}" ]]; then
+            rm -f "$CI_SIGNING_P12"
           fi
           rm -f lib/config/secrets.dart ios/Runner/GoogleService-Info.plist

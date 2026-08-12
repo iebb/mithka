@@ -7,6 +7,7 @@ import Foundation
 
 import app_links
 import audio_session
+import f_videoplayer_pip
 import fc_native_video_thumbnail
 import file_picker
 import file_selector_macos
@@ -33,6 +34,7 @@ import webview_flutter_wkwebview
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AppLinksMacosPlugin.register(with: registry.registrar(forPlugin: "AppLinksMacosPlugin"))
   AudioSessionPlugin.register(with: registry.registrar(forPlugin: "AudioSessionPlugin"))
+  FVideoPictureInPicturePlugin.register(with: registry.registrar(forPlugin: "FVideoPictureInPicturePlugin"))
   FcNativeVideoThumbnailPlugin.register(with: registry.registrar(forPlugin: "FcNativeVideoThumbnailPlugin"))
   FilePickerPlugin.register(with: registry.registrar(forPlugin: "FilePickerPlugin"))
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))

@@ -22,8 +22,8 @@ module MithkaAppStoreRelease
   DEFAULT_APP_ID = "6783830742"
   DEFAULT_KEY_ID = "BJYTRDQ86C"
   DEFAULT_RELEASE_NOTES = {
-    "en-US" => "Enjoy a redesigned video player with clearer controls, scrubbing previews, picture-in-picture, and more reliable first playback. This release also improves desktop and tablet layouts, image previews, chat performance, themes, and localization.",
-    "zh-Hans" => "全新视频播放器带来更清晰的操作、进度预览、画中画与更可靠的首次播放。本版本还改进了桌面端和平板布局、图片预览、聊天性能、主题与本地化。"
+    "en-US" => "Mithka 1.0 brings a redesigned video player with Picture in Picture, faster chats and search, richer bot and translation tools, improved multi-account reliability, and refined mobile, tablet, and desktop layouts. It also improves themes, media handling, notifications, localization, stability, and accessibility.",
+    "zh-Hans" => "Mithka 1.0 带来全新视频播放器与画中画、更快的聊天和搜索、更丰富的机器人及翻译工具、更可靠的多账号体验，并优化手机、平板和桌面布局。本版本还改进主题、媒体处理、通知、多语言、稳定性与无障碍体验。"
   }.freeze
   REVIEWABLE_VERSION_STATES = %w[
     DEVELOPER_REJECTED
@@ -157,6 +157,69 @@ module MithkaAppStoreRelease
     end
   end
 
+  class GitHubActionsVerifier
+    REQUIRED_STEPS = [
+      "Set build identity",
+      "Archive iOS app",
+      "Upload archive to App Store Connect"
+    ].freeze
+    ALLOWED_FAILED_STEPS = ["Retain uploaded IPA for release verification"].freeze
+
+    def initialize(repository: "iebb/mithka")
+      @repository = repository
+      raise Error, "GitHub repository must use owner/name format" unless @repository.match?(%r{\A[\w.-]+/[\w.-]+\z})
+    end
+
+    def verify!(run_id:, source_commit:, build_number:)
+      run = gh_json("repos/#{@repository}/actions/runs/#{run_id}")
+      actual_commit = run["head_sha"].to_s.downcase
+      unless actual_commit == source_commit
+        raise Error, "GitHub Actions run #{run_id} uses #{actual_commit.empty? ? 'no source commit' : actual_commit}, expected #{source_commit}"
+      end
+      raise Error, "GitHub Actions run #{run_id} is not complete" unless run["status"] == "completed"
+
+      jobs = gh_json("repos/#{@repository}/actions/runs/#{run_id}/jobs?per_page=100").fetch("jobs")
+      matches = jobs.select { |job| job["name"] == "Archive and upload iOS" }
+      raise Error, "GitHub Actions run #{run_id} has #{matches.length} iOS archive jobs" unless matches.length == 1
+
+      job = matches.first
+      step_results = job.fetch("steps", []).to_h { |step| [step["name"], step["conclusion"]] }
+      REQUIRED_STEPS.each do |step|
+        raise Error, "GitHub Actions run #{run_id} step #{step.inspect} did not succeed" unless step_results[step] == "success"
+      end
+      failed_steps = step_results.select { |_name, conclusion| conclusion == "failure" }.keys
+      unexpected_failures = failed_steps - ALLOWED_FAILED_STEPS
+      unless unexpected_failures.empty?
+        raise Error, "GitHub Actions run #{run_id} has unexpected failed steps: #{unexpected_failures.join(', ')}"
+      end
+
+      logs = gh("repos/#{@repository}/actions/jobs/#{job.fetch('id')}/logs")
+      unless logs.match?(/\bCI_BUILD_NUMBER:\s*#{Regexp.escape(build_number)}\b/)
+        raise Error, "GitHub Actions run #{run_id} does not prove build number #{build_number}"
+      end
+      unless logs.match?(/\bCI_COMMIT:\s*#{Regexp.escape(source_commit)}\b/i)
+        raise Error, "GitHub Actions run #{run_id} does not prove source commit #{source_commit}"
+      end
+    end
+
+    private
+
+    def gh_json(path)
+      JSON.parse(gh(path))
+    rescue JSON::ParserError => error
+      raise Error, "GitHub CLI returned invalid JSON for #{path}: #{error.message}"
+    end
+
+    def gh(path)
+      stdout, stderr, status = Open3.capture3("gh", "api", "--allow-escape-sequences", path)
+      return stdout if status.success?
+
+      detail = stderr.to_s.strip
+      detail = "exit #{status.exitstatus}" if detail.empty?
+      raise Error, "GitHub CLI failed for #{path}: #{detail}"
+    end
+  end
+
   class Runner
     VERSION_METADATA_KEYS = %w[
       description
@@ -180,6 +243,7 @@ module MithkaAppStoreRelease
 
     def initialize(client:, app_id:, version:, binary_version:, build_number:, source_commit:,
                    release_notes:, apply:, submit:, ci_build_run_id: nil,
+                   github_run_id: nil, github_verifier: nil,
                    uploaded_build_id: nil, artifact_path: nil, artifact_sha256: nil,
                    wait_seconds: 0, out: $stdout, sleeper: Kernel)
       @client = client
@@ -188,6 +252,8 @@ module MithkaAppStoreRelease
       @binary_version = binary_version
       @build_number = build_number.to_s
       @ci_build_run_id = ci_build_run_id
+      @github_run_id = github_run_id&.to_s
+      @github_verifier = github_verifier
       @uploaded_build_id = uploaded_build_id
       @artifact_path = artifact_path
       @artifact_sha256 = artifact_sha256&.downcase
@@ -241,6 +307,13 @@ module MithkaAppStoreRelease
       raise Error, "--build-number must be numeric" unless @build_number.match?(/\A\d+\z/)
       raise Error, "--source-commit must be the full 40-character SHA" unless @source_commit.match?(/\A[0-9a-f]{40}\z/)
       raise Error, "--wait-seconds cannot be negative" if @wait_seconds.negative?
+      if @github_run_id
+        raise Error, "--github-run-id must be numeric" unless @github_run_id.match?(/\A\d+\z/)
+        raise Error, "--github-run-id requires --uploaded-build-id" unless @uploaded_build_id&.match?(/\A[0-9a-fA-F-]{36}\z/)
+        raise Error, "use only one build provenance mode" if @ci_build_run_id || @artifact_path || @artifact_sha256
+        raise Error, "GitHub Actions verifier is missing" unless @github_verifier
+        return
+      end
       upload_fields = [@uploaded_build_id, @artifact_path, @artifact_sha256]
       if upload_fields.any? { |value| !value.to_s.empty? } && upload_fields.any? { |value| value.to_s.empty? }
         raise Error, "--uploaded-build-id, --artifact-path, and --artifact-sha256 must be supplied together"
@@ -272,6 +345,7 @@ module MithkaAppStoreRelease
     end
 
     def resolve_exact_build
+      return resolve_exact_github_upload if @github_run_id
       return resolve_exact_uploaded_build if @uploaded_build_id
 
       deadline = Time.now + @wait_seconds
@@ -309,6 +383,34 @@ module MithkaAppStoreRelease
           raise Error, "exact build is not ready: Xcode Cloud #{progress}/#{completion}; App Store build #{state}"
         end
         log("Waiting for exact Xcode Cloud/App Store build (run #{attributes['executionProgress']}, build #{build&.dig('attributes', 'processingState') || 'not uploaded'})")
+        @sleeper.sleep([30, [deadline - Time.now, 1].max].min)
+      end
+    end
+
+    def resolve_exact_github_upload
+      @github_verifier.verify!(
+        run_id: @github_run_id,
+        source_commit: @source_commit,
+        build_number: @build_number
+      )
+
+      deadline = Time.now + @wait_seconds
+      loop do
+        build = @client.get("/builds/#{@uploaded_build_id}").fetch("data")
+        actual_number = build.dig("attributes", "version").to_s
+        unless actual_number == @build_number
+          raise Error, "uploaded build #{@uploaded_build_id} is numbered #{actual_number}, expected #{@build_number}"
+        end
+        assert_build_identity!(build)
+        state = build.dig("attributes", "processingState")
+        if state == "VALID"
+          log("Resolved GitHub Actions run #{@github_run_id} to binary #{@binary_version} (#{@build_number}), build #{build['id']}, source #{@source_commit}; listing version #{@version}")
+          return build
+        end
+        raise Error, "uploaded build #{@build_number} entered terminal state #{state}" if %w[FAILED INVALID].include?(state)
+        raise Error, "exact uploaded build is not ready: App Store build #{state || 'not available'}" if Time.now >= deadline
+
+        log("Waiting for GitHub Actions App Store build #{@build_number} (#{state || 'not available'})")
         @sleeper.sleep([30, [deadline - Time.now, 1].max].min)
       end
     end
@@ -849,15 +951,16 @@ module MithkaAppStoreRelease
       wait_seconds: 0
     }
     parser = OptionParser.new do |opts|
-      opts.banner = "Usage: scripts/app_store_release.rb --version VERSION --binary-version VERSION --build-number NUMBER (--ci-build-run-id UUID | --uploaded-build-id UUID --artifact-path PATH --artifact-sha256 SHA256) --source-commit SHA [--apply --submit]"
+      opts.banner = "Usage: scripts/app_store_release.rb --version VERSION --binary-version VERSION --build-number NUMBER (--ci-build-run-id UUID | --github-run-id ID --uploaded-build-id UUID | --uploaded-build-id UUID --artifact-path PATH --artifact-sha256 SHA256) --source-commit SHA [--apply --submit]"
       opts.on("--version VERSION", "Exact App Store listing version, for example 0.7.41") { |value| options[:version] = value }
       opts.on("--binary-version VERSION", "Exact marketing version embedded in the compiled binary") { |value| options[:binary_version] = value }
       opts.on("--build-number NUMBER", "Exact CFBundleVersion/App Store build number") { |value| options[:build_number] = value }
       opts.on("--ci-build-run-id UUID", "Exact Xcode Cloud build run ID") { |value| options[:ci_build_run_id] = value }
-      opts.on("--uploaded-build-id UUID", "Exact App Store build resource ID for a locally uploaded artifact") { |value| options[:uploaded_build_id] = value }
+      opts.on("--github-run-id ID", "Exact GitHub Actions run that archived and uploaded the iOS build") { |value| options[:github_run_id] = value }
+      opts.on("--uploaded-build-id UUID", "Exact App Store build resource ID") { |value| options[:uploaded_build_id] = value }
       opts.on("--artifact-path PATH", "Local uploaded IPA path used to verify exact artifact identity") { |value| options[:artifact_path] = File.expand_path(value) }
       opts.on("--artifact-sha256 SHA256", "Expected SHA-256 of the locally uploaded IPA") { |value| options[:artifact_sha256] = value }
-      opts.on("--source-commit SHA", "Source SHA (verified for Xcode Cloud; declared provenance for an uploaded IPA)") { |value| options[:source_commit] = value }
+      opts.on("--source-commit SHA", "Source SHA (verified for CI; declared provenance for an uploaded IPA)") { |value| options[:source_commit] = value }
       opts.on("--release-notes-json PATH", "JSON object mapping en-US and zh-Hans to release notes") do |value|
         options[:release_notes] = JSON.parse(File.read(value, encoding: "UTF-8"))
       end
@@ -894,6 +997,8 @@ module MithkaAppStoreRelease
       binary_version: options[:binary_version],
       build_number: options[:build_number],
       ci_build_run_id: options[:ci_build_run_id],
+      github_run_id: options[:github_run_id],
+      github_verifier: options[:github_run_id] ? GitHubActionsVerifier.new : nil,
       uploaded_build_id: options[:uploaded_build_id],
       artifact_path: options[:artifact_path],
       artifact_sha256: options[:artifact_sha256],

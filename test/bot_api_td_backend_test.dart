@@ -912,6 +912,45 @@ void main() {
     await backend.close();
   });
 
+  test('maps an existing custom reaction add to setMessageReaction', () async {
+    Map<String, dynamic>? sent;
+    final api = _FakeBotApiClient((method, parameters) {
+      switch (method) {
+        case 'getWebhookInfo':
+          return <String, dynamic>{'url': 'https://example.test/webhook'};
+        case 'setMessageReaction':
+          sent = Map<String, dynamic>.from(parameters);
+          return true;
+        default:
+          throw BotApiException(400, 'Unexpected $method');
+      }
+    });
+    final backend = _backend(temporaryDirectory, api, emit: (_) {});
+    await backend.start();
+
+    await backend.query({
+      '@type': 'addMessageReaction',
+      'chat_id': -10042,
+      'message_id': 7,
+      'reaction_type': {
+        '@type': 'reactionTypeCustomEmoji',
+        'custom_emoji_id': 998877,
+      },
+      'is_big': false,
+      'update_recent_reactions': true,
+    });
+
+    expect(sent, {
+      'chat_id': -10042,
+      'message_id': 7,
+      'reaction': [
+        {'type': 'custom_emoji', 'custom_emoji_id': '998877'},
+      ],
+      'is_big': false,
+    });
+    await backend.close();
+  });
+
   test('maps TD profile changes to bot self-profile methods', () async {
     var photoSet = false;
     final api = _FakeBotApiClient((method, _) {

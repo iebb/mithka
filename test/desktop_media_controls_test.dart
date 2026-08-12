@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/moments/story_viewer_view.dart';
 import 'package:mithka/profile/profile_detail_view.dart';
 
@@ -77,6 +78,65 @@ void main() {
       ),
       isNull,
     );
+    expect(
+      storyViewerDesktopCommandForKey(
+        LogicalKeyboardKey.keyM,
+        replyHasFocus: false,
+      ),
+      StoryViewerDesktopCommand.toggleMute,
+    );
+    expect(
+      storyViewerDesktopCommandForKey(
+        LogicalKeyboardKey.arrowUp,
+        replyHasFocus: false,
+      ),
+      StoryViewerDesktopCommand.volumeUp,
+    );
+    expect(
+      storyViewerDesktopCommandForKey(
+        LogicalKeyboardKey.arrowDown,
+        replyHasFocus: false,
+      ),
+      StoryViewerDesktopCommand.volumeDown,
+    );
+    expect(
+      storyViewerDesktopCommandForKey(
+        LogicalKeyboardKey.keyM,
+        replyHasFocus: true,
+      ),
+      isNull,
+    );
+  });
+
+  test('story video mute restores the previous audible volume', () {
+    expect(storyViewerToggledVolume(volume: 0.72, lastAudibleVolume: 0.72), 0);
+    expect(storyViewerToggledVolume(volume: 0, lastAudibleVolume: 0.72), 0.72);
+    expect(storyViewerToggledVolume(volume: 0, lastAudibleVolume: 0), 1);
+  });
+
+  testWidgets('popover triggers expose expanded button semantics', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppInteractiveSurface(
+          semanticLabel: 'Adjust volume',
+          expanded: true,
+          onTap: () {},
+          child: const SizedBox.square(dimension: 44),
+        ),
+      ),
+    );
+
+    final semantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'Adjust volume',
+      ),
+    );
+    expect(semantics.properties.button, isTrue);
+    expect(semantics.properties.expanded, isTrue);
+    expect(semantics.properties.toggled, isNull);
   });
 
   testWidgets('desktop story navigation appears on pointer hover', (

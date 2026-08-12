@@ -68,11 +68,44 @@ jobs:
           openssl pkey -in "$key_path" -noout -check >/dev/null
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
+      - name: Import persistent Apple signing identity
+        env:
+          SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${SIGNING_CERTIFICATE_P12:?missing IOS_SIGNING_CERTIFICATE_P12}"
+          : "${SIGNING_CERTIFICATE_PASSWORD:?missing IOS_SIGNING_CERTIFICATE_PASSWORD}"
+          signing_keychain="$RUNNER_TEMP/mithka-signing.keychain-db"
+          signing_p12="$RUNNER_TEMP/mithka-signing.p12"
+          keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$SIGNING_CERTIFICATE_P12" | base64 --decode > "$signing_p12"
+          security create-keychain -p "$keychain_password" "$signing_keychain"
+          security set-keychain-settings -lut 21600 "$signing_keychain"
+          security unlock-keychain -p "$keychain_password" "$signing_keychain"
+          security import "$signing_p12" \
+            -k "$signing_keychain" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$signing_keychain" >/dev/null
+          security list-keychains -d user -s "$signing_keychain"
+          security find-identity -v -p codesigning "$signing_keychain" | grep -q '1 valid identities found'
+          {
+            echo "CI_SIGNING_KEYCHAIN=$signing_keychain"
+            echo "CI_SIGNING_P12=$signing_p12"
+          } >> "$GITHUB_ENV"
+
       - name: Set build identity
         run: |
           set -euo pipefail
+          build_number="$(sh scripts/apple_ci_build_number.sh "$GITHUB_SHA")"
           {
-            echo "CI_BUILD_NUMBER=$(date -u '+%s')"
+            echo "CI_BUILD_NUMBER=$build_number"
             echo "CI_COMMIT=$GITHUB_SHA"
             echo "CI_PRIMARY_REPOSITORY_PATH=$GITHUB_WORKSPACE"
             echo "CI_DERIVED_DATA_PATH=$RUNNER_TEMP/MithkaDerivedData"
@@ -146,5 +179,11 @@ jobs:
         run: |
           if [[ -n "${ASC_KEY_PATH:-}" ]]; then
             rm -f "$ASC_KEY_PATH"
+          fi
+          if [[ -n "${CI_SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CI_SIGNING_KEYCHAIN" || true
+          fi
+          if [[ -n "${CI_SIGNING_P12:-}" ]]; then
+            rm -f "$CI_SIGNING_P12"
           fi
           rm -f lib/config/secrets.dart

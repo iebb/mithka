@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../theme/app_theme.dart';
 import 'message_send_options.dart';
@@ -43,6 +45,8 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
   late final VideoPlayerController _controller;
   bool _ready = false;
   bool _exporting = false;
+  double _volume = 1;
+  double _lastAudibleVolume = 1;
   RangeValues _trimRange = const RangeValues(0, 0);
 
   @override
@@ -73,6 +77,25 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
       );
     }
     setState(() {});
+  }
+
+  void _setVolume(double value) {
+    final next = value.clamp(0.0, 1.0);
+    if (next > 0.01) _lastAudibleVolume = next;
+    unawaited(_applyVolume(next));
+    if (mounted && next != _volume) setState(() => _volume = next);
+  }
+
+  Future<void> _applyVolume(double value) async {
+    try {
+      await _controller.setVolume(value);
+    } catch (_) {
+      // An audio backend failure must not break recorded-video review.
+    }
+  }
+
+  void _toggleMute() {
+    _setVolume(_volume <= 0.01 ? _lastAudibleVolume : 0);
   }
 
   @override
@@ -238,6 +261,8 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+                    _volumeControl(colors),
                     Row(
                       children: [
                         Text(
@@ -289,4 +314,75 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
 
   String _duration(int seconds) =>
       '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+
+  Widget _volumeControl(AppColors colors) {
+    final muted = _volume <= 0.01;
+    final volumeLabel = AppStringKeys.videoPlaybackSwipeAdjustVolume.l10n(
+      context,
+    );
+    return SizedBox(
+      key: const ValueKey('videoNoteVolumeControl'),
+      height: 44,
+      child: Row(
+        children: [
+          AppInteractiveSurface(
+            key: const ValueKey('videoNoteMuteButton'),
+            semanticLabel:
+                (muted ? AppStringKeys.chatUnmute : AppStringKeys.callMute)
+                    .l10n(context),
+            semanticValue: '${(_volume * 100).round()}%',
+            toggled: muted,
+            onTap: _toggleMute,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.card,
+                shape: BoxShape.circle,
+                border: Border.all(color: colors.divider, width: 0.8),
+              ),
+              child: AppIcon(
+                muted ? HeroAppIcons.volumeXmark : HeroAppIcons.volumeHigh,
+                size: 20,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: FVideoSlider(
+                key: const ValueKey('videoNoteVolumeSlider'),
+                value: _volume,
+                trackHeight: 3,
+                thumbRadius: 7,
+                activeColor: AppTheme.brand,
+                inactiveColor: colors.divider,
+                semanticLabel: volumeLabel,
+                semanticValue: '${(_volume * 100).round()}%',
+                onChanged: _setVolume,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 36,
+            child: Text(
+              '${(_volume * 100).round()}',
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

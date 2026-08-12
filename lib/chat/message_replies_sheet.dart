@@ -1105,6 +1105,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
               widget.onOpenReply!(messageId);
             },
       onOpenImage: _openImage,
+      onOpenImageGallery: _openImageGallery,
       onOpenSticker: widget.onOpenSticker,
       onPlayVideo: widget.onPlayVideo,
       onPlayMusic: widget.onPlayMusic,
@@ -1136,6 +1137,13 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
       ),
     );
   }
+
+  void _openImageGallery({
+    required List<TdFileRef> items,
+    required int startIndex,
+  }) {
+    unawaited(openImagePreview(context, items: items, startIndex: startIndex));
+  }
 }
 
 /// A reply-sheet row that deliberately reuses the transcript renderer so
@@ -1153,6 +1161,7 @@ class MessageReplySheetItem extends StatelessWidget {
     this.onAvatarTap,
     this.onOpenReply,
     this.onOpenImage,
+    this.onOpenImageGallery,
     this.onOpenSticker,
     this.onPlayVideo,
     this.onPlayMusic,
@@ -1175,6 +1184,7 @@ class MessageReplySheetItem extends StatelessWidget {
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<int>? onOpenReply;
   final ValueChanged<ChatMessage>? onOpenImage;
+  final ImageGalleryOpenCallback? onOpenImageGallery;
   final ValueChanged<ChatMessage>? onOpenSticker;
   final ValueChanged<ChatMessage>? onPlayVideo;
   final ValueChanged<ChatMessage>? onPlayMusic;
@@ -1197,6 +1207,7 @@ class MessageReplySheetItem extends StatelessWidget {
       onAvatarTap: onAvatarTap,
       onOpenReply: onOpenReply,
       onOpenImage: onOpenImage,
+      onOpenImageGallery: onOpenImageGallery,
       onOpenSticker: onOpenSticker,
       onPlayVideo: onPlayVideo,
       onPlayMusic: onPlayMusic,

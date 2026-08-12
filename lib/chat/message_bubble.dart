@@ -58,6 +58,9 @@ import 'stretchable_message_bubble_background.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
 
+typedef ImageGalleryOpenCallback =
+    void Function({required List<TdFileRef> items, required int startIndex});
+
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
     super.key,
@@ -83,6 +86,7 @@ class MessageBubble extends StatefulWidget {
     this.onAvatarLongPress,
     this.onOpenReply,
     this.onOpenImage,
+    this.onOpenImageGallery,
     this.onApplyMessageBubble,
     this.onOpenSticker,
     this.onPlayVideo,
@@ -150,6 +154,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<int>? onOpenReply;
   final ValueChanged<ChatMessage>? onOpenImage;
+  final ImageGalleryOpenCallback? onOpenImageGallery;
   final ValueChanged<ChatMessage>? onApplyMessageBubble;
   final ValueChanged<ChatMessage>? onOpenSticker;
   final ValueChanged<ChatMessage>? onPlayVideo;
@@ -2628,17 +2633,23 @@ class _MessageBubbleState extends State<MessageBubble>
         .where((child) => _isRichMediaKind(child.kind))
         .toList();
     if (media.isEmpty) return _richMissingMedia(HeroAppIcons.images, outgoing);
+    final photoGallery = _richPhotoGallery(media);
     final width = _mediaMaxWidth();
     final cellWidth = media.length == 1 ? width : (width - 4) / 2;
     final collage = Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
-        for (final child in media)
+        for (final (index, child) in media.indexed)
           SizedBox(
             width: cellWidth,
             height: media.length == 1 ? width * 0.7 : cellWidth,
-            child: _richMediaThumbnail(child, outgoing),
+            child: _richMediaThumbnail(
+              child,
+              outgoing,
+              photoGalleryItems: photoGallery.items,
+              photoGalleryIndex: photoGallery.indexes[index],
+            ),
           ),
       ],
     );
@@ -2652,6 +2663,7 @@ class _MessageBubbleState extends State<MessageBubble>
     if (media.isEmpty) {
       return _richMissingMedia(HeroAppIcons.tableColumns, outgoing);
     }
+    final photoGallery = _richPhotoGallery(media);
     final width = _mediaMaxWidth();
     final slideshow = SizedBox(
       width: width,
@@ -2660,7 +2672,12 @@ class _MessageBubbleState extends State<MessageBubble>
         itemCount: media.length,
         itemBuilder: (_, index) => Padding(
           padding: EdgeInsets.only(right: index == media.length - 1 ? 0 : 4),
-          child: _richMediaThumbnail(media[index], outgoing),
+          child: _richMediaThumbnail(
+            media[index],
+            outgoing,
+            photoGalleryItems: photoGallery.items,
+            photoGalleryIndex: photoGallery.indexes[index],
+          ),
         ),
       ),
     );
@@ -2674,10 +2691,46 @@ class _MessageBubbleState extends State<MessageBubble>
       kind == RichMessageBlockKind.audio ||
       kind == RichMessageBlockKind.voiceNote;
 
-  Widget _richMediaThumbnail(RichMessageBlock block, bool outgoing) {
+  ({List<TdFileRef> items, List<int?> indexes}) _richPhotoGallery(
+    List<RichMessageBlock> media,
+  ) {
+    final items = <TdFileRef>[];
+    final indexes = <int?>[];
+    for (final child in media) {
+      final image = child.kind == RichMessageBlockKind.photo
+          ? child.image
+          : null;
+      if (image == null) {
+        indexes.add(null);
+        continue;
+      }
+      indexes.add(items.length);
+      items.add(image);
+    }
+    return (items: List.unmodifiable(items), indexes: indexes);
+  }
+
+  Widget _richMediaThumbnail(
+    RichMessageBlock block,
+    bool outgoing, {
+    List<TdFileRef> photoGalleryItems = const [],
+    int? photoGalleryIndex,
+  }) {
     if (block.kind == RichMessageBlockKind.photo && block.image != null) {
       return GestureDetector(
-        onTap: () => widget.onOpenImage?.call(_richMediaMessage(block)),
+        onTap: () {
+          final openGallery = widget.onOpenImageGallery;
+          if (openGallery != null &&
+              photoGalleryIndex != null &&
+              photoGalleryItems.isNotEmpty) {
+            openGallery(
+              items: photoGalleryItems,
+              startIndex: photoGalleryIndex,
+            );
+            return;
+          }
+          widget.onOpenImage?.call(_richMediaMessage(block));
+        },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: TDImage(photo: block.image),

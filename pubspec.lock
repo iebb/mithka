@@ -249,6 +249,33 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.1"
+  f_videoplayer:
+    dependency: "direct main"
+    description:
+      path: "packages/f_videoplayer"
+      ref: "v0.4.2"
+      resolved-ref: cd7a0ec8a5b4fb274bcf30c65a73e4db7485ccc1
+      url: "https://github.com/iebb/f-videoplayer.git"
+    source: git
+    version: "0.4.2"
+  f_videoplayer_fvp:
+    dependency: "direct main"
+    description:
+      path: "packages/f_videoplayer_fvp"
+      ref: "v0.4.2"
+      resolved-ref: cd7a0ec8a5b4fb274bcf30c65a73e4db7485ccc1
+      url: "https://github.com/iebb/f-videoplayer.git"
+    source: git
+    version: "0.4.2"
+  f_videoplayer_pip:
+    dependency: "direct main"
+    description:
+      path: "packages/f_videoplayer_pip"
+      ref: "v0.4.2"
+      resolved-ref: cd7a0ec8a5b4fb274bcf30c65a73e4db7485ccc1
+      url: "https://github.com/iebb/f-videoplayer.git"
+    source: git
+    version: "0.4.2"
   fake_async:
     dependency: transitive
     description:
@@ -571,9 +598,11 @@ packages:
     dependency: "direct main"
     description:
       path: "third_party/fvp"
-      relative: true
-    source: path
-    version: "0.37.3+mithka.1"
+      ref: "v0.4.2"
+      resolved-ref: cd7a0ec8a5b4fb274bcf30c65a73e4db7485ccc1
+      url: "https://github.com/iebb/f-videoplayer.git"
+    source: git
+    version: "0.37.3+fvideo.3"
   geoclue:
     dependency: transitive
     description:
@@ -1019,20 +1048,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
-  mithka_video_player:
-    dependency: "direct main"
-    description:
-      path: "packages/mithka_video_player"
-      relative: true
-    source: path
-    version: "0.3.0"
-  mithka_video_player_fvp:
-    dependency: "direct main"
-    description:
-      path: "packages/mithka_video_player_fvp"
-      relative: true
-    source: path
-    version: "0.1.0"
   mobile_scanner:
     dependency: "direct main"
     description:
@@ -1550,13 +1565,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.1+1"
-  system_picture_in_picture:
-    dependency: "direct main"
-    description:
-      path: "third_party/system_picture_in_picture"
-      relative: true
-    source: path
-    version: "0.1.0"
   term_glyph:
     dependency: transitive
     description:

@@ -34,9 +34,11 @@ import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
+import 'message_reaction_availability.dart';
 import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
+import 'quick_reaction_choice.dart';
 import 'rich_message_source.dart';
 import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
@@ -5122,52 +5124,101 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - Reactions
 
-  void addReaction(int messageId, String emoji) {
-    _client.send({
-      '@type': 'addMessageReaction',
-      'chat_id': chatId,
-      'message_id': messageId,
-      'reaction_type': {
-        '@type': 'reactionTypeEmoji',
-        'emoji': emoji.replaceAll(RegExp('[\uFE0E\uFE0F]'), ''),
-      },
-      'is_big': false,
-      'update_recent_reactions': true,
-    });
+  bool get _usesBotApiBackend =>
+      isBotApiAccount || _client.isBotApiSlot(_accountSlot);
+
+  Future<MessageReactionAvailability> messageReactionAvailability(
+    int messageId, {
+    int rowSize = 7,
+  }) async {
+    try {
+      final responses = await Future.wait([
+        _client.queryTo({
+          '@type': 'getMessageAvailableReactions',
+          'chat_id': chatId,
+          'message_id': messageId,
+          'row_size': rowSize.clamp(5, 25),
+        }, _accountClientId),
+        _client.queryTo({
+          '@type': 'getOption',
+          'name': 'is_premium',
+        }, _accountClientId),
+      ]);
+      return MessageReactionAvailability.fromTd(
+        responses.first,
+        isPremium: responses.last.boolean('value') ?? false,
+      );
+    } catch (_) {
+      if (!_usesBotApiBackend) rethrow;
+      // The direct Bot API has no per-message availability method. Keep the
+      // picker hidden instead of presenting reactions that this message may
+      // reject. Existing reaction buckets remain toggleable below, where the
+      // awaited Bot API send is the authoritative availability check.
+      return MessageReactionAvailability.fallback(
+        choices: const <QuickReactionChoice>[],
+        allowArbitraryCustom: false,
+      );
+    }
   }
+
+  Future<void> addReaction(int messageId, String emoji) =>
+      _addReactionChoice(messageId, QuickReactionChoice.emoji(emoji));
 
   /// Custom (premium) emoji reaction.
-  void addCustomReaction(int messageId, int customEmojiId) {
-    _client.send({
+  Future<void> addCustomReaction(int messageId, int customEmojiId) =>
+      _addReactionChoice(messageId, QuickReactionChoice.custom(customEmojiId));
+
+  Future<void> _addReactionChoice(
+    int messageId,
+    QuickReactionChoice requested,
+  ) async {
+    final availability = await messageReactionAvailability(messageId);
+    final reaction = availability.canonicalChoice(requested);
+    if (reaction == null) throw const MessageReactionUnavailableException();
+    await _sendReactionChoice(messageId, reaction);
+  }
+
+  Future<void> _sendReactionChoice(
+    int messageId,
+    QuickReactionChoice reaction,
+  ) async {
+    await _client.queryTo({
       '@type': 'addMessageReaction',
       'chat_id': chatId,
       'message_id': messageId,
-      'reaction_type': {
-        '@type': 'reactionTypeCustomEmoji',
-        'custom_emoji_id': customEmojiId,
-      },
+      'reaction_type': reaction.isCustom
+          ? {
+              '@type': 'reactionTypeCustomEmoji',
+              'custom_emoji_id': reaction.customEmojiId,
+            }
+          : {'@type': 'reactionTypeEmoji', 'emoji': reaction.emoji},
       'is_big': false,
       'update_recent_reactions': true,
-    });
+    }, _accountClientId);
   }
 
-  void toggleReaction(ChatMessage m, MessageReaction r) {
+  Future<void> toggleReaction(ChatMessage m, MessageReaction r) async {
     if (r.chosen) {
-      _client.send({
+      // TDLib guarantees that a chosen reaction remains removable even when
+      // the user can no longer add reactions to the message.
+      await _client.queryTo({
         '@type': 'removeMessageReaction',
         'chat_id': chatId,
         'message_id': m.id,
         'reaction_type': r.type,
-      });
+      }, _accountClientId);
     } else {
-      _client.send({
-        '@type': 'addMessageReaction',
-        'chat_id': chatId,
-        'message_id': m.id,
-        'reaction_type': r.type,
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
+      final reaction = r.customEmojiId != 0
+          ? QuickReactionChoice.custom(r.customEmojiId)
+          : QuickReactionChoice.emoji(r.emoji ?? '');
+      if (_usesBotApiBackend) {
+        // A Bot API message can expose a reaction bucket even though the API
+        // can't enumerate all reactions allowed for that individual message.
+        // Let the server accept or reject that exact existing bucket.
+        await _sendReactionChoice(m.id, reaction);
+      } else {
+        await _addReactionChoice(m.id, reaction);
+      }
     }
   }
 

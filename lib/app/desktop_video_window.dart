@@ -1,21 +1,21 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:f_videoplayer/f_videoplayer.dart';
+import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:mithka_video_player/mithka_video_player.dart';
 import 'package:video_player/video_player.dart';
 
 import '../chat/video_player_view.dart';
 import '../l10n/app_localizations.dart';
-import '../platform/system_picture_in_picture.dart';
 import '../tdlib/td_client.dart';
 import 'desktop_media_window_registry.dart';
 import 'video_split_controller.dart';
 
-bool get supportsDesktopVideoWindows => mithkaSupportsDesktopVideoWindows;
+bool get supportsDesktopVideoWindows => fVideoSupportsDesktopVideoWindows;
 
-typedef DesktopVideoWindowArguments = MithkaDesktopVideoWindowArguments;
+typedef DesktopVideoWindowArguments = FVideoDesktopWindowArguments;
 
 @visibleForTesting
 Future<bool> prepareDesktopVideoPlayback(
@@ -47,7 +47,7 @@ class DesktopVideoWindowService {
     if (_windows.isOpening(mediaKey)) return true;
     final existing = _windows.windowFor(mediaKey);
     if (existing != null) {
-      if (await MithkaDesktopVideoWindows.instance.focus(existing)) return true;
+      if (await FVideoDesktopWindows.instance.focus(existing)) return true;
       _windows.forget(mediaKey);
     }
     _windows.beginOpening(mediaKey);
@@ -79,7 +79,7 @@ class DesktopVideoWindowService {
       stream.holdRequestsUntilPrepared(
         prepareDesktopVideoPlayback(stream.prepareForPlayback),
       );
-      final windowId = await MithkaDesktopVideoWindows.instance.open(
+      final windowId = await FVideoDesktopWindows.instance.open(
         DesktopVideoWindowArguments(
           uri: uri,
           title: session.title,
@@ -122,7 +122,7 @@ class DesktopVideoWindowApp extends StatelessWidget {
       GlobalCupertinoLocalizations.delegate,
       GlobalWidgetsLocalizations.delegate,
     ],
-    home: MithkaDesktopVideoWindowHost(
+    home: FVideoDesktopWindowHost(
       initialArguments: arguments,
       builder: (context, arguments) =>
           _DesktopVideoWindowPlayer(arguments: arguments),
@@ -153,7 +153,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
   @override
   void initState() {
     super.initState();
-    MithkaDesktopVideoWindows.currentWindowCloseRevision.addListener(
+    FVideoDesktopWindows.currentWindowCloseRevision.addListener(
       _handleWindowClosing,
     );
     unawaited(_loadPictureInPictureSupport());
@@ -161,7 +161,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
 
   Future<void> _loadPictureInPictureSupport() async {
     if (!Platform.isMacOS) return;
-    final supported = await SystemPictureInPicture.isSupported();
+    final supported = await FVideoPictureInPicture.isSupported();
     if (mounted && supported != _pictureInPictureSupported) {
       setState(() => _pictureInPictureSupported = supported);
     }
@@ -169,7 +169,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
 
   void _handleWindowClosing() {
     unawaited(_controller?.pause());
-    if (_pictureInPicture) unawaited(SystemPictureInPicture.stop());
+    if (_pictureInPicture) unawaited(FVideoPictureInPicture.stop());
   }
 
   Future<void> _setPictureInPicture(bool enabled) async {
@@ -178,7 +178,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
     if (controller == null || !controller.value.isInitialized) return;
     setState(() => _pictureInPictureBusy = true);
     if (!enabled) {
-      await SystemPictureInPicture.stop();
+      await FVideoPictureInPicture.stop();
       if (mounted) setState(() => _pictureInPictureBusy = false);
       return;
     }
@@ -194,17 +194,18 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
             (arguments.height ?? 9).toDouble(),
           );
     final id = 'desktop-video:${arguments.uri}';
-    final started = await SystemPictureInPicture.start(
+    final started = await FVideoPictureInPicture.start(
       id: id,
       uri: arguments.uri,
       position: value.position,
       speed: value.playbackSpeed,
+      volume: value.volume,
       muted: value.volume <= 0.001,
       playing: value.isPlaying,
       videoSize: videoSize,
       onRestoreRequested: (_) async {
         _pictureInPictureRestoreRequested = true;
-        await MithkaDesktopVideoWindows.focusCurrentWindow();
+        await FVideoDesktopWindows.focusCurrentWindow();
         return true;
       },
       onStop: (finalPosition) async {
@@ -225,12 +226,12 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
             await activeController?.play();
           }
         } else {
-          await MithkaDesktopVideoWindows.closeCurrentWindow();
+          await FVideoDesktopWindows.closeCurrentWindow();
         }
       },
     );
     if (!mounted) {
-      if (started) await SystemPictureInPicture.stop();
+      if (started) await FVideoPictureInPicture.stop();
       return;
     }
     if (started) {
@@ -240,27 +241,27 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
       _pictureInPicture = started;
       _pictureInPictureBusy = false;
     });
-    if (started) await MithkaDesktopVideoWindows.hideCurrentWindow();
+    if (started) await FVideoDesktopWindows.hideCurrentWindow();
   }
 
   @override
   void dispose() {
-    MithkaDesktopVideoWindows.currentWindowCloseRevision.removeListener(
+    FVideoDesktopWindows.currentWindowCloseRevision.removeListener(
       _handleWindowClosing,
     );
     unawaited(_controller?.pause());
-    if (_pictureInPicture) unawaited(SystemPictureInPicture.stop());
+    if (_pictureInPicture) unawaited(FVideoPictureInPicture.stop());
     _controller = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<bool>(
-    valueListenable: MithkaDesktopVideoWindows.currentWindowFullscreen,
+    valueListenable: FVideoDesktopWindows.currentWindowFullscreen,
     builder: (context, fullscreen, _) => ColoredBox(
       color: Colors.black,
-      child: MithkaVideoPlayer(
-        source: MithkaVideoSource.uri(arguments.uri),
+      child: FVideoPlayer(
+        source: FVideoSource.uri(arguments.uri),
         width: arguments.width,
         height: arguments.height,
         initialMuted: arguments.muted,
@@ -271,9 +272,8 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
         onPictureInPictureChanged: _pictureInPictureSupported
             ? _setPictureInPicture
             : null,
-        onFullscreenChanged: (value) => unawaited(
-          MithkaDesktopVideoWindows.setCurrentWindowFullscreen(value),
-        ),
+        onFullscreenChanged: (value) =>
+            unawaited(FVideoDesktopWindows.setCurrentWindowFullscreen(value)),
       ),
     ),
   );

@@ -17,10 +17,13 @@ import 'package:provider/provider.dart';
 import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/custom_emoji.dart';
 import '../chat/forward_options.dart';
 import '../chat/image_preview.dart';
 import '../chat/media_album_layout.dart';
+import '../chat/message_reaction_availability.dart';
 import '../chat/outgoing_attachment.dart';
+import '../chat/quick_reaction_choice.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
 import '../chat/shared_media_view.dart';
@@ -177,6 +180,21 @@ Future<bool> _canPostToChannel(ChatSummary channel, int meId) async {
 
 Color _momentQuoteFill(AppColors c) =>
     c.groupedBackground.withValues(alpha: 0.88);
+
+@visibleForTesting
+enum MomentsReactionAction { hidden, sendThumbsUp, openSelector }
+
+@visibleForTesting
+MomentsReactionAction momentsReactionAction(
+  MessageReactionAvailability? availability,
+) {
+  if (availability == null || !availability.canAdd) {
+    return MomentsReactionAction.hidden;
+  }
+  return availability.allows(const QuickReactionChoice.emoji('👍'))
+      ? MomentsReactionAction.sendThumbsUp
+      : MomentsReactionAction.openSelector;
+}
 
 const double desktopMomentsFeedMaxWidth = 760;
 
@@ -2884,27 +2902,6 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
     }
   }
 
-  Future<void> _likeComment(ChannelPostComment comment) async {
-    try {
-      await TdClient.shared.query({
-        '@type': 'addMessageReaction',
-        'chat_id': comment.chatId,
-        'message_id': comment.messageId,
-        'reaction_type': {'@type': 'reactionTypeEmoji', 'emoji': '👍'},
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
-      unawaited(_loadComments());
-    } catch (e) {
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.momentsLikeFailed, {'value1': e}),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -2960,7 +2957,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
                     post: post,
                     comments: _comments,
                     onReply: _beginReply,
-                    onLike: _likeComment,
+                    onReactionSent: () => unawaited(_loadComments()),
                   ),
               ],
             ),
@@ -3103,13 +3100,13 @@ class _CommentThreadList extends StatelessWidget {
     required this.post,
     required this.comments,
     required this.onReply,
-    required this.onLike,
+    required this.onReactionSent,
   });
 
   final ChannelPost post;
   final List<ChannelPostComment> comments;
   final ValueChanged<ChannelPostComment> onReply;
-  final ValueChanged<ChannelPostComment> onLike;
+  final VoidCallback onReactionSent;
 
   @override
   Widget build(BuildContext context) {
@@ -3162,10 +3159,11 @@ class _CommentThreadList extends StatelessWidget {
           final entry = entries[index];
           final tile = _DetailCommentTile(
             comment: entry.comment,
+            accountSlot: post.accountSlot,
             prefix: entry.prefix,
             nested: entry.nested,
             onReply: onReply,
-            onLike: onLike,
+            onReactionSent: onReactionSent,
           );
           if (!entry.endsGroup) return tile;
           return Padding(
@@ -3216,17 +3214,19 @@ class _CommentThreadList extends StatelessWidget {
 class _DetailCommentTile extends StatelessWidget {
   const _DetailCommentTile({
     required this.comment,
+    required this.accountSlot,
     required this.onReply,
-    required this.onLike,
+    required this.onReactionSent,
     this.prefix,
     this.nested = false,
   });
 
   final ChannelPostComment comment;
+  final int accountSlot;
   final String? prefix;
   final bool nested;
   final ValueChanged<ChannelPostComment> onReply;
-  final ValueChanged<ChannelPostComment> onLike;
+  final VoidCallback onReactionSent;
 
   @override
   Widget build(BuildContext context) {
@@ -3308,32 +3308,40 @@ class _DetailCommentTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onLike(comment),
-              child: SizedBox(
-                width: 34,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AppIcon(
-                      HeroAppIcons.thumbsUp,
-                      size: 21,
-                      color: c.textTertiary,
-                    ),
-                    if (comment.reactionCount > 0) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        _compactCount(comment.reactionCount),
-                        style: TextStyle(fontSize: 12, color: c.textTertiary),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            _MomentsReactionControl(
+              accountSlot: accountSlot,
+              chatId: comment.chatId,
+              messageId: comment.messageId,
+              keyNamespace: 'moments-comment-reaction-${comment.messageId}',
+              onReactionSent: onReactionSent,
+              hiddenBuilder: _reactionContent,
+              contentBuilder: _reactionContent,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _reactionContent(BuildContext context, [AppIconData? icon]) {
+    final c = context.colors;
+    return SizedBox(
+      width: 34,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) AppIcon(icon, size: 21, color: c.textTertiary),
+          if (comment.reactionCount > 0) ...[
+            if (icon != null) const SizedBox(height: 3),
+            Text(
+              _compactCount(comment.reactionCount),
+              key: ValueKey(
+                'moments-comment-reaction-count-${comment.messageId}',
+              ),
+              style: TextStyle(fontSize: 12, color: c.textTertiary),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -4445,10 +4453,21 @@ class _PostActions extends StatelessWidget {
       children: [
         Text(likeText, style: TextStyle(fontSize: 13, color: c.linkBlue)),
         const Spacer(),
-        _actionButton(
-          context,
-          HeroAppIcons.thumbsUp,
-          onTap: () => _react(context),
+        _MomentsReactionControl(
+          accountSlot: post.accountSlot,
+          chatId: channel.id,
+          messageId: message.id,
+          keyNamespace: 'moments-reaction',
+          contentBuilder: (context, icon) => SizedBox.square(
+            dimension: _actionSize,
+            child: Center(
+              child: AppIcon(
+                icon,
+                size: _iconSize,
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
         ),
         if (canComment) ...[
           const SizedBox(width: _actionGap),
@@ -4513,29 +4532,6 @@ class _PostActions extends StatelessWidget {
     return AppStrings.t(AppStringKeys.momentsUserLiked, {'value1': shown});
   }
 
-  Future<void> _react(BuildContext context) async {
-    try {
-      await TdClient.shared.query({
-        '@type': 'addMessageReaction',
-        'chat_id': channel.id,
-        'message_id': message.id,
-        'reaction_type': {'@type': 'reactionTypeEmoji', 'emoji': '👍'},
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
-      if (context.mounted) {
-        showToast(context, AppStringKeys.momentsLiked);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.momentsLikeFailed, {'value1': e}),
-        );
-      }
-    }
-  }
-
   Future<void> _forward(BuildContext context) async {
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
@@ -4574,6 +4570,394 @@ class _PostActions extends StatelessWidget {
       }
     }
   }
+}
+
+class _MomentsReactionControl extends StatefulWidget {
+  const _MomentsReactionControl({
+    required this.accountSlot,
+    required this.chatId,
+    required this.messageId,
+    required this.keyNamespace,
+    required this.contentBuilder,
+    this.hiddenBuilder,
+    this.onReactionSent,
+  });
+
+  final int accountSlot;
+  final int chatId;
+  final int messageId;
+  final String keyNamespace;
+  final Widget Function(BuildContext context, AppIconData icon) contentBuilder;
+  final WidgetBuilder? hiddenBuilder;
+  final VoidCallback? onReactionSent;
+
+  @override
+  State<_MomentsReactionControl> createState() =>
+      _MomentsReactionControlState();
+}
+
+class _MomentsReactionControlState extends State<_MomentsReactionControl> {
+  static const _thumbsUp = QuickReactionChoice.emoji('👍');
+
+  MessageReactionAvailability? _availability;
+  List<QuickReactionChoice> _arbitraryCustomChoices = const [];
+  int _availabilityGeneration = 0;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailability();
+  }
+
+  @override
+  void didUpdateWidget(_MomentsReactionControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_matchesTarget(
+      oldWidget.accountSlot,
+      oldWidget.chatId,
+      oldWidget.messageId,
+    )) {
+      _availability = null;
+      _arbitraryCustomChoices = const [];
+      _sending = false;
+      _loadAvailability();
+    }
+  }
+
+  bool _matchesTarget(int accountSlot, int chatId, int messageId) =>
+      widget.accountSlot == accountSlot &&
+      widget.chatId == chatId &&
+      widget.messageId == messageId;
+
+  Future<MessageReactionAvailability> _fetchAvailability({
+    required int accountSlot,
+    required int chatId,
+    required int messageId,
+  }) async {
+    final client = TdClient.shared;
+    final responses = await Future.wait([
+      client.queryForSlot({
+        '@type': 'getMessageAvailableReactions',
+        'chat_id': chatId,
+        'message_id': messageId,
+        'row_size': 25,
+      }, accountSlot),
+      client.queryForSlot({
+        '@type': 'getOption',
+        'name': 'is_premium',
+      }, accountSlot),
+    ]);
+    return MessageReactionAvailability.fromTd(
+      responses.first,
+      isPremium: responses.last.boolean('value') ?? false,
+    );
+  }
+
+  Future<void> _loadAvailability() async {
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = ++_availabilityGeneration;
+    MessageReactionAvailability? availability;
+    var arbitraryCustomChoices = const <QuickReactionChoice>[];
+    try {
+      availability = await _fetchAvailability(
+        accountSlot: accountSlot,
+        chatId: chatId,
+        messageId: messageId,
+      );
+      if (availability.allowArbitraryCustom) {
+        arbitraryCustomChoices = await _cachedInstalledCustomReactionChoices(
+          accountSlot,
+        );
+      }
+    } catch (_) {
+      // Fail closed: global reaction defaults are not authoritative for this
+      // particular message and can trigger MESSAGE_REACTION_INVALID.
+    }
+    if (!mounted ||
+        !_matchesTarget(accountSlot, chatId, messageId) ||
+        generation != _availabilityGeneration) {
+      return;
+    }
+    setState(() {
+      _availability = availability;
+      _arbitraryCustomChoices = arbitraryCustomChoices;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var action = momentsReactionAction(_availability);
+    if (action == MomentsReactionAction.openSelector &&
+        _availability!.choices.isEmpty &&
+        _arbitraryCustomChoices.isEmpty) {
+      // TDLib permits arbitrary custom emoji, but this account has none to
+      // present. Do not expose a selector that contains zero choices.
+      action = MomentsReactionAction.hidden;
+    }
+    if (action == MomentsReactionAction.hidden) {
+      return widget.hiddenBuilder?.call(context) ?? const SizedBox.shrink();
+    }
+    final icon = action == MomentsReactionAction.sendThumbsUp
+        ? HeroAppIcons.thumbsUp
+        : HeroAppIcons.solidFaceSmile;
+    return GestureDetector(
+      key: ValueKey('${widget.keyNamespace}-action'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _sending
+          ? null
+          : action == MomentsReactionAction.sendThumbsUp
+          ? () => unawaited(_sendReaction(_thumbsUp))
+          : () => unawaited(_openSelector()),
+      onLongPress: _sending ? null : () => unawaited(_openSelector()),
+      child: widget.contentBuilder(context, icon),
+    );
+  }
+
+  Future<void> _openSelector() async {
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = _availabilityGeneration;
+    final availability = _availability;
+    if (availability == null) return;
+    final choices = <QuickReactionChoice>[
+      ...availability.choices,
+      for (final choice in _arbitraryCustomChoices)
+        if (!availability.choices.contains(choice)) choice,
+    ];
+    if (choices.isEmpty) return;
+    final selected = await showAppModalSheet<QuickReactionChoice>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MomentsReactionSelector(choices: choices),
+    );
+    if (selected == null ||
+        !mounted ||
+        !_matchesTarget(accountSlot, chatId, messageId) ||
+        generation != _availabilityGeneration) {
+      return;
+    }
+    await _sendReaction(selected);
+  }
+
+  Future<void> _sendReaction(QuickReactionChoice requested) async {
+    if (_sending) return;
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = _availabilityGeneration;
+    setState(() => _sending = true);
+    try {
+      // Availability can change while a row or selector is onscreen. Re-read
+      // it immediately before mutation and send TDLib's canonical value.
+      final fresh = await _fetchAvailability(
+        accountSlot: accountSlot,
+        chatId: chatId,
+        messageId: messageId,
+      );
+      final freshArbitraryCustomChoices = fresh.allowArbitraryCustom
+          ? await _cachedInstalledCustomReactionChoices(accountSlot)
+          : const <QuickReactionChoice>[];
+      if (!mounted ||
+          !_matchesTarget(accountSlot, chatId, messageId) ||
+          generation != _availabilityGeneration) {
+        return;
+      }
+      setState(() {
+        _availability = fresh;
+        // A message can become restricted while its selector is open. Never
+        // retain account-wide custom choices after the authoritative response
+        // stops allowing them for this message.
+        _arbitraryCustomChoices = freshArbitraryCustomChoices;
+      });
+      final reaction = fresh.canonicalChoice(requested);
+      if (reaction == null) return;
+      await TdClient.shared.queryForSlot({
+        '@type': 'addMessageReaction',
+        'chat_id': chatId,
+        'message_id': messageId,
+        'reaction_type': reaction.isCustom
+            ? {
+                '@type': 'reactionTypeCustomEmoji',
+                'custom_emoji_id': reaction.customEmojiId,
+              }
+            : {'@type': 'reactionTypeEmoji', 'emoji': reaction.emoji},
+        'is_big': false,
+        'update_recent_reactions': true,
+      }, accountSlot);
+      if (!mounted || !_matchesTarget(accountSlot, chatId, messageId)) return;
+      widget.onReactionSent?.call();
+      showToast(context, AppStringKeys.momentsLiked);
+    } catch (_) {
+      if (mounted && _matchesTarget(accountSlot, chatId, messageId)) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    } finally {
+      if (mounted && _matchesTarget(accountSlot, chatId, messageId)) {
+        setState(() => _sending = false);
+      }
+    }
+  }
+}
+
+class _MomentsReactionSelector extends StatelessWidget {
+  const _MomentsReactionSelector({required this.choices});
+
+  final List<QuickReactionChoice> choices;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      child: Container(
+        key: const ValueKey('moments-reaction-selector'),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 320),
+        margin: const EdgeInsets.all(AppSpacing.md),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: c.divider, width: AppMetric.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: GridView.builder(
+          shrinkWrap: true,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: AppSpacing.xs,
+            crossAxisSpacing: AppSpacing.xs,
+          ),
+          itemCount: choices.length,
+          itemBuilder: (context, index) {
+            final reaction = choices[index];
+            return GestureDetector(
+              key: ValueKey('moments-reaction-choice-${reaction.storageValue}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(reaction),
+              child: SizedBox.square(
+                dimension: 42,
+                child: Center(
+                  child: reaction.isCustom
+                      ? CustomEmojiView(
+                          id: reaction.customEmojiId,
+                          size: 29,
+                          color: c.textPrimary,
+                        )
+                      : Text(
+                          reaction.emoji,
+                          textScaler: TextScaler.noScaling,
+                          style: const TextStyle(fontSize: 29),
+                        ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+const _installedCustomReactionClientCacheLimit = 8;
+const _installedCustomReactionSetLimit = 24;
+const _installedCustomReactionChoiceLimit = 280;
+const _installedCustomReactionCacheLifetime = Duration(minutes: 10);
+
+class _InstalledCustomReactionChoiceCacheEntry {
+  const _InstalledCustomReactionChoiceCacheEntry({
+    required this.createdAt,
+    required this.value,
+  });
+
+  final DateTime createdAt;
+  final Future<List<QuickReactionChoice>> value;
+}
+
+final Map<int, _InstalledCustomReactionChoiceCacheEntry>
+_installedCustomReactionChoiceCache = {};
+
+@visibleForTesting
+void resetMomentsInstalledCustomReactionChoiceCache() {
+  _installedCustomReactionChoiceCache.clear();
+}
+
+Future<List<QuickReactionChoice>> _cachedInstalledCustomReactionChoices(
+  int accountSlot,
+) {
+  final clientId = TdClient.shared.clientId(accountSlot);
+  if (clientId == null) return Future.value(const <QuickReactionChoice>[]);
+  final now = DateTime.now();
+  final cached = _installedCustomReactionChoiceCache.remove(clientId);
+  if (cached != null &&
+      now.difference(cached.createdAt) <
+          _installedCustomReactionCacheLifetime) {
+    _installedCustomReactionChoiceCache[clientId] = cached;
+    return cached.value;
+  }
+
+  // Store the in-flight future before issuing pack requests. Every visible
+  // post/comment for this client then joins the same bounded load.
+  final value = _loadInstalledCustomReactionChoices(
+    accountSlot,
+  ).then((choices) => choices, onError: (_) => const <QuickReactionChoice>[]);
+  _installedCustomReactionChoiceCache[clientId] =
+      _InstalledCustomReactionChoiceCacheEntry(createdAt: now, value: value);
+  while (_installedCustomReactionChoiceCache.length >
+      _installedCustomReactionClientCacheLimit) {
+    _installedCustomReactionChoiceCache.remove(
+      _installedCustomReactionChoiceCache.keys.first,
+    );
+  }
+  return value;
+}
+
+Future<List<QuickReactionChoice>> _loadInstalledCustomReactionChoices(
+  int accountSlot,
+) async {
+  final client = TdClient.shared;
+  final installed = await client.queryForSlot({
+    '@type': 'getInstalledStickerSets',
+    'sticker_type': {'@type': 'stickerTypeCustomEmoji'},
+  }, accountSlot);
+  final infos = installed.objects('sets') ?? const <Map<String, dynamic>>[];
+  final sets = await Future.wait(
+    infos.take(_installedCustomReactionSetLimit).map((info) async {
+      final setId = info.int64('id');
+      if (setId == null) return null;
+      try {
+        return await client.queryForSlot({
+          '@type': 'getStickerSet',
+          'set_id': setId,
+        }, accountSlot);
+      } catch (_) {
+        return null;
+      }
+    }),
+  );
+  final choices = <QuickReactionChoice>[];
+  final seen = <int>{};
+  for (final set in sets.whereType<Map<String, dynamic>>()) {
+    for (final sticker
+        in set.objects('stickers') ?? const <Map<String, dynamic>>[]) {
+      final id = sticker.obj('full_type')?.int64('custom_emoji_id') ?? 0;
+      if (id != 0 && seen.add(id)) {
+        choices.add(QuickReactionChoice.custom(id));
+        if (choices.length >= _installedCustomReactionChoiceLimit) {
+          return List.unmodifiable(choices);
+        }
+      }
+    }
+  }
+  return List.unmodifiable(choices);
 }
 
 class StoryShelf extends StatelessWidget {

@@ -10,6 +10,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:f_videoplayer/f_videoplayer.dart';
+import 'package:f_videoplayer_fvp/f_videoplayer_fvp.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
@@ -19,8 +21,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mithka_video_player/mithka_video_player.dart';
-import 'package:mithka_video_player_fvp/mithka_video_player_fvp.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -104,9 +104,7 @@ Future<void> _preloadLocaleCatalogue([SharedPreferences? prefs]) {
 
 Future<void> main(List<String> arguments) async {
   if (supportsDesktopVideoWindows) {
-    final videoArguments = await MithkaDesktopVideoWindows.initialize(
-      arguments,
-    );
+    final videoArguments = await FVideoDesktopWindows.initialize(arguments);
     if (videoArguments != null) {
       _initializeVideoBackend(installGlobalLogHandler: false);
       await _preloadLocaleCatalogue();
@@ -269,17 +267,17 @@ bool _shouldUseFvp() {
 
 void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    MithkaFvpBackend.ensureAndroidStickerDecoderInitialized();
+    FVideoFvpBackend.ensureAndroidAlphaWebmDecoderInitialized();
     return;
   }
   if (!_shouldUseFvp()) return;
-  MithkaFvpBackend.ensureInitialized(
-    configuration: MithkaFvpConfiguration(
+  FVideoFvpBackend.ensureInitialized(
+    configuration: FVideoFvpConfiguration(
       platforms: {
-        MithkaFvpPlatform.ios,
-        MithkaFvpPlatform.linux,
-        MithkaFvpPlatform.macos,
-        MithkaFvpPlatform.windows,
+        FVideoFvpPlatform.ios,
+        FVideoFvpPlatform.linux,
+        FVideoFvpPlatform.macos,
+        FVideoFvpPlatform.windows,
       },
       installGlobalLogHandler: installGlobalLogHandler,
     ),
