@@ -152,9 +152,6 @@ jobs:
             target: android-arm
     env:
       TDJSON_REPO: iebb/mithka-tdjson
-      # fvp defaults Android MDK downloads to SourceForge nightly builds. Pin a
-      # stable MDK release to avoid native-load crashes from broken nightlies.
-      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
     steps:
       - uses: actions/checkout@v5
 
@@ -398,8 +395,6 @@ jobs:
     name: Build ${{ matrix.label }}
     needs: prepare
     runs-on: ${{ matrix.os }}
-    env:
-      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
     strategy:
       fail-fast: false
       matrix:

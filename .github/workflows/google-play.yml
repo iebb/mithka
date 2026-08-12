@@ -93,7 +93,6 @@ jobs:
     environment: google-play-production
     env:
       TDJSON_REPO: iebb/mithka-tdjson
-      FVP_DEPS_URL: https://github.com/wang-bin/mdk-sdk/releases/download/v0.36.0
     steps:
       - uses: actions/checkout@v5
 
