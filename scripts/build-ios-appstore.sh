@@ -27,11 +27,13 @@ echo "== Build IPA =="
 flutter build ipa --release --export-options-plist=ios/ExportOptions.app-store-connect.plist
 
 ARCHIVE="$REPO_ROOT/build/ios/archive/Runner.xcarchive"
-TDJSON_DSYM="$ARCHIVE/dSYMs/libtdjson.1.8.65.dylib.dSYM"
-EXPECTED_UUID="CE86A2AF-6906-3CDF-B0F1-5494F3271F7D"
+TDJSON_DSYM="$ARCHIVE/dSYMs/tdjson.framework.dSYM"
+TDJSON_BINARY="$ARCHIVE/Products/Applications/Runner.app/Frameworks/tdjson.framework/tdjson"
+BINARY_UUID="$(/usr/bin/dwarfdump --uuid "$TDJSON_BINARY" | awk 'NR == 1 { print $2 }')"
+DSYM_UUID="$(/usr/bin/dwarfdump --uuid "$TDJSON_DSYM" | awk 'NR == 1 { print $2 }')"
 
-if ! /usr/bin/dwarfdump --uuid "$TDJSON_DSYM" | grep -q "$EXPECTED_UUID"; then
-  echo "error: $TDJSON_DSYM does not contain expected UUID $EXPECTED_UUID" >&2
+if [[ -z "$BINARY_UUID" || "$DSYM_UUID" != "$BINARY_UUID" ]]; then
+  echo "error: tdjson binary and dSYM UUIDs do not match" >&2
   exit 1
 fi
 
@@ -48,11 +50,13 @@ if [[ -z "$IPA" ]]; then
   exit 1
 fi
 
-if ! unzip -Z1 "$IPA" | grep -Eq '^SwiftSupport/iphoneos/libswift.+\.dylib$'; then
+IPA_LISTING="$REPO_ROOT/build/ios/ipa-appstore/contents.txt"
+unzip -Z1 "$IPA" > "$IPA_LISTING"
+if ! grep -Eq '^SwiftSupport/iphoneos/libswift.+\.dylib$' "$IPA_LISTING"; then
   echo "error: exported IPA is missing SwiftSupport/iphoneos (ITMS-90426)" >&2
   exit 1
 fi
 
 echo "OK: $IPA"
-echo "OK: tdjson dSYM UUID $EXPECTED_UUID"
+echo "OK: tdjson binary and dSYM UUIDs match"
 echo "OK: SwiftSupport/iphoneos is present"

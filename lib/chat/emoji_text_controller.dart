@@ -96,11 +96,12 @@ class EmojiTextEditingController extends TextEditingController {
     if (start < 0 || end < start || end > text.length || userId <= 0) return;
     final mention = '@${label.trim()}';
     if (mention.length <= 1) return;
+    final replacement = '$mention ';
     final replaceEnd = end < text.length && _isWhitespace(text[end])
         ? end + 1
         : end;
-    final newText = text.replaceRange(start, replaceEnd, '$mention ');
-    _replaceEntityRange(start, replaceEnd, mention.length + 1);
+    final newText = text.replaceRange(start, replaceEnd, replacement);
+    _replaceEntityRange(start, replaceEnd, replacement.length);
     _entities.add(
       _ComposerTextEntity(
         offset: start,
@@ -111,7 +112,7 @@ class EmojiTextEditingController extends TextEditingController {
     _lastText = newText;
     super.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: start + mention.length + 1),
+      selection: TextSelection.collapsed(offset: start + replacement.length),
     );
     notifyListeners();
   }
@@ -144,6 +145,11 @@ class EmojiTextEditingController extends TextEditingController {
   }
 
   bool get hasContent => text.trim().isNotEmpty;
+
+  bool get startsWithIdBackedMention => _validEntities().any(
+    (entity) =>
+        entity.offset == 0 && entity.typeName == 'textEntityTypeMentionName',
+  );
 
   void setFormattedText(String source, List<Map<String, dynamic>> entities) {
     _byCode.clear();

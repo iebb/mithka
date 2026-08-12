@@ -1,80 +1,90 @@
-# macOS Xcode Cloud and TestFlight
+# Apple GitHub Actions and TestFlight
 
-Xcode Cloud is Mithka's only macOS TestFlight delivery path. A validated
-revision is pushed to `release-macos`; the macOS Xcode Cloud
-workflow archives that exact revision and distributes it to the external
-TestFlight group. There is no GitHub Actions TestFlight uploader, avoiding
-duplicate build numbers and permanently internal-only builds.
+Mithka's iOS and macOS TestFlight delivery runs on GitHub Actions. The former
+Xcode Cloud workflows remain in App Store Connect in a deactivated state for
+rollback and configuration history.
 
-The archive uses the version in `pubspec.yaml`, Flutter 3.44.2, Xcode Cloud's
-monotonically increasing build number, and a checksum-pinned universal TDLib
-artifact.
+`.github/workflows/macos-testflight.yml` starts for:
 
-## Repository-side setup
+- branches beginning with `nightly`;
+- the exact `release` branch;
+- branches beginning with `release-macos`;
+- an explicit manual dispatch.
 
-Xcode Cloud resolves custom scripts relative to each workspace root. The macOS
-workflow runs `macos/ci_scripts/ci_post_clone.sh`, which delegates to the shared
-`ci_scripts/macos_post_clone.sh` implementation. The existing iOS workflow
-continues to use `ios/ci_scripts/ci_post_clone.sh`.
+Those start conditions mirror the former macOS Xcode Cloud workflow. Runs for
+the same branch auto-cancel when a newer revision is pushed. A successful run
+archives `macos/Runner.xcworkspace`, uploads an App Store-eligible macOS build,
+and assigns the processed build to both `Internal` and `External` TestFlight
+groups. The former macOS Xcode Cloud workflow is retained in App Store Connect
+in a deactivated state for rollback and configuration history.
 
-The macOS helper:
+`.github/workflows/ios-testflight.yml` starts for:
 
-1. Installs the pinned Flutter SDK and CocoaPods when necessary.
-2. Writes `lib/config/secrets.dart` without logging secret values.
-3. Downloads the pinned `tdjson-macos-universal.zip`, verifies both the archive
-   and dylib SHA-256 checksums, architectures, patched exports, install name,
-   and portable dependencies.
-4. Generates the release Flutter/Xcode configuration.
-5. Restores the CocoaPods sandbox used by desktop-only plugins.
-6. Repairs missing resource directories declared by generated plugin packages
-   and resolves the committed workspace `Package.resolved` into Xcode Cloud's
-   shared Derived Data path, as required by the archive's locked dependency
-   mode.
+- branches beginning with `nightly`;
+- the exact `release` branch;
+- branches beginning with `release-ios`;
+- an explicit manual dispatch.
 
-The published artifact is:
+Those conditions mirror the former iOS Xcode Cloud workflow. It prepares the
+same pinned native dependencies as Xcode Cloud, archives
+`ios/Runner.xcworkspace`, validates the TDLib dSYM and exported IPA SwiftSupport,
+uploads an App Store-eligible iOS build, and assigns the processed build to the
+same Internal and External TestFlight groups.
+
+## Deterministic build preparation
+
+The action uses Flutter 3.44.2 and delegates source preparation to
+`ci_scripts/macos_post_clone.sh`. The helper:
+
+1. writes `lib/config/secrets.dart` without logging its values;
+2. downloads the checksum-pinned universal TDLib artifact;
+3. generates the release Flutter/Xcode configuration;
+4. restores the committed CocoaPods sandbox;
+5. repairs generated Swift-package resource directories; and
+6. resolves the committed workspace `Package.resolved` before the locked
+   archive.
+
+The iOS action delegates preparation to `ios/ci_scripts/ci_post_clone.sh`. It
+recreates the ignored Firebase configuration, TDLib and TgVoip frameworks,
+Flutter generated inputs, Swift packages, and CocoaPods sandbox before the
+archive. GitHub's epoch build number overrides the source build number while
+the marketing version continues to use the major and minor components from
+`pubspec.yaml` with a zero patch component.
+
+The published TDLib input remains:
 
 - Release: `tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1`
 - Asset: `tdjson-macos-universal.zip`
 - Archive SHA-256: `9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc`
 - Dylib SHA-256: `d543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482`
 
-## Xcode Cloud workflow
+## Repository configuration
 
-Use these settings:
-
-- Repository branch: `release-macos`.
-- Project or workspace: `macos/Runner.xcworkspace`.
-- Scheme: `Runner`.
-- Platform and destination: macOS, Any Mac.
-- Action: Archive using the Release configuration.
-- Xcode and macOS: a stable image compatible with Flutter 3.44.2; avoid beta images.
-- Distribution audience: App Store eligible; do not mark the build
-  internal-only.
-
-After App Store Connect finishes processing the exact macOS build, add it to
-the external group named `External`, populate its localized What to Test text,
-and submit it for Beta App Review when required. Xcode Cloud creates an
-external-capable build but does not assign it to tester groups automatically.
-
-Before the first distribution, open App Store Connect → Xcode Cloud → Settings
-→ Build Number and set **Next Build Number** to an integer greater than every
-macOS build already uploaded for Mithka. Xcode Cloud starts at `1` by default,
-but macOS build numbers must increase across app versions.
-
-Add these workflow environment variables and mark both as secret:
+The workflow reads these encrypted GitHub Actions repository secrets:
 
 - `TELEGRAM_API_ID`
 - `TELEGRAM_API_HASH`
+- `FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64` (iOS only)
+- `SENTRY_DSN` (optional)
+- `APP_STORE_CONNECT_KEY_ID`
+- `APP_STORE_CONNECT_ISSUER_ID`
+- `APP_STORE_CONNECT_PRIVATE_KEY`
 
-`MITHKA_CI_PLATFORM=macos` may be set as a fail-closed workflow guard but is not
-required for dispatch, because the macOS workspace owns its post-clone hook.
-`SENTRY_DSN` is optional and should be secret when configured. Xcode Cloud
-manages the signing certificate and provisioning profile; no App Store Connect
-private key is stored in GitHub for this workflow.
+The App Store Connect private key is written only to the runner's temporary
+directory and removed in the final cleanup step. `TESTFLIGHT_INTERNAL_GROUP`
+and `TESTFLIGHT_EXTERNAL_GROUP` may be set as repository variables; they
+default to `Internal` and `External`.
 
-The prebuilt TDLib download makes a cold Xcode Cloud archive independent of the
-GitHub Actions cache and avoids the long universal source compilation step.
+The build number is an epoch timestamp so every GitHub upload is greater than
+the previous Xcode Cloud build number and remains monotonic across branches.
+The marketing version keeps the major and minor components from
+`pubspec.yaml` and forces the patch component to zero on both Apple platforms.
 
 ## App Store metadata prerequisite
 
-The macOS target currently uses a temporary App Sandbox exception for interactive screen capture. Before App Review, App Store Connect must include App Sandbox Entitlement Usage Information that identifies the entitlement, explains how reviewers can exercise it, why it is required, and the related Feedback Assistant issue ID. TestFlight upload alone does not complete this review metadata.
+The macOS target currently uses a temporary App Sandbox exception for
+interactive screen capture. Before App Review, App Store Connect must include
+App Sandbox Entitlement Usage Information that identifies the entitlement,
+explains how reviewers can exercise it, why it is required, and the related
+Feedback Assistant issue ID. TestFlight upload alone does not complete this
+review metadata.

@@ -128,8 +128,15 @@ MentionQuery? activeMentionQuery(String text, TextSelection selection) {
   if (!selection.isValid || !selection.isCollapsed) return null;
   final cursor = selection.extentOffset;
   if (cursor < 0 || cursor > text.length) return null;
+  // Suggestions belong to the caret, not merely to an @ token somewhere
+  // before it. In particular, do not keep an old query active while the caret
+  // is in the middle of a token or immediately before punctuation.
+  if (cursor < text.length && text[cursor].trim().isNotEmpty) return null;
   final beforeCursor = text.substring(0, cursor);
-  final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCursor);
+  final match = RegExp(
+    r'(^|\s)@([\p{L}\p{M}\p{N}_]*)$',
+    unicode: true,
+  ).firstMatch(beforeCursor);
   if (match == null) return null;
   final leading = match.group(1)?.length ?? 0;
   return MentionQuery(
@@ -441,6 +448,7 @@ class ChatInputBar extends StatefulWidget {
     this.aiReplyHistoryLoader,
     this.desktopComposerHeightLoader,
     this.desktopComposerHeightSaver,
+    this.botPlatformForTesting,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -478,6 +486,8 @@ class ChatInputBar extends StatefulWidget {
   final DesktopComposerHeightLoader? desktopComposerHeightLoader;
   @visibleForTesting
   final DesktopComposerHeightSaver? desktopComposerHeightSaver;
+  @visibleForTesting
+  final BotPlatformService? botPlatformForTesting;
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -557,7 +567,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   List<BotCommandOption> _botCommandCandidates = const [];
   OverlayEntry? _relayProgressEntry;
   RichMessageRelayProgress? _relayProgress;
-  final BotPlatformService _botPlatform = BotPlatformService();
+  late final BotPlatformService _botPlatform;
   StreamSubscription<Map<String, dynamic>>? _botPlatformUpdates;
   final List<BotGuestQuery> _guestQueries = [];
   Timer? _inlineBotTimer;
@@ -596,6 +606,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void initState() {
     super.initState();
+    _botPlatform = widget.botPlatformForTesting ?? BotPlatformService();
     DesktopChatComposerActions._register(
       _desktopActionOwner,
       captureScreenshot: _captureDesktopScreenshot,
@@ -624,10 +635,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
         needsRebuild = true;
         panelChanged = true;
       }
+      if (!_focus.hasFocus) {
+        _mentionSearchTimer?.cancel();
+        _mentionSearchGeneration++;
+        if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
+          _mentionQuery = null;
+          _mentionCandidates = const [];
+          needsRebuild = true;
+        }
+      }
       if (needsRebuild && mounted) {
         setState(() {});
         if (panelChanged) widget.onPanelGeometryChanged?.call();
       }
+      if (_focus.hasFocus) _updateMentionSuggestions();
     });
     vm.addListener(_syncFromVm);
     EmojiStore.shared.addListener(_onStore);
@@ -781,7 +802,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _updateMentionSuggestions() {
     final query = activeMentionQuery(_controller.text, _controller.selection);
-    if (query == null || !vm.isGroup) {
+    if (!_focus.hasFocus || query == null || !vm.isGroup) {
       _mentionSearchTimer?.cancel();
       _mentionSearchGeneration++;
       if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
@@ -808,7 +829,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
         _controller.text,
         _controller.selection,
       );
-      if (active == null ||
+      if (!_focus.hasFocus ||
+          active == null ||
           active.start != query.start ||
           active.end != query.end ||
           active.query != query.query) {
@@ -820,7 +842,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _selectMention(MentionCandidate candidate) {
     final query = activeMentionQuery(_controller.text, _controller.selection);
-    if (query == null) return;
+    final expected = _mentionQuery;
+    if (query == null ||
+        expected == null ||
+        query.start != expected.start ||
+        query.end != expected.end ||
+        query.query != expected.query) {
+      return;
+    }
     _mentionSearchTimer?.cancel();
     _mentionSearchGeneration++;
     _mentionQuery = null;
@@ -832,6 +861,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
       userId: candidate.userId,
     );
     _focus.requestFocus();
+  }
+
+  bool get _mentionSuggestionsVisible {
+    if (!_focus.hasFocus || _mentionCandidates.isEmpty) return false;
+    final expected = _mentionQuery;
+    final active = activeMentionQuery(_controller.text, _controller.selection);
+    return expected != null &&
+        active != null &&
+        active.start == expected.start &&
+        active.end == expected.end &&
+        active.query == expected.query;
   }
 
   void _updateBotCommandSuggestions({bool force = false, bool rebuild = true}) {
@@ -889,7 +929,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _queueInlineBotResults() {
-    final invocation = BotInlineInvocation.fromText(_controller.text);
+    final invocation = _controller.startsWithIdBackedMention
+        ? null
+        : BotInlineInvocation.fromText(_controller.text);
     _inlineBotTimer?.cancel();
     final generation = ++_inlineBotGeneration;
     if (invocation == null) {
@@ -2503,11 +2545,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 else if (vm.replyTo != null)
                   _replyBanner(vm.replyTo!),
                 if (editingMessage == null)
-                  if (_inlineBotLoading || _inlineBotResults != null)
+                  if (_inlineBotResults != null)
                     _inlineBotResultMenu()
                   else if (_botCommandCandidates.isNotEmpty)
                     _botCommandMenu()
-                  else if (_mentionCandidates.isNotEmpty)
+                  else if (_mentionSuggestionsVisible)
                     _mentionMenu()
                   else if (_quickReplyContextVisible &&
                       _quickReplies.isNotEmpty)
@@ -2589,22 +2631,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final c = context.colors;
     final results = _inlineBotResults?.results ?? const <BotInlineResult>[];
     Widget child;
-    if (_inlineBotLoading) {
-      child = SizedBox(
-        height: 54,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppActivityIndicator(size: 18, color: c.textSecondary),
-            const SizedBox(width: 10),
-            Text(
-              AppStrings.t(AppStringKeys.chatInputBarSearchingInlineResults),
-              style: TextStyle(color: c.textSecondary, fontSize: 14),
-            ),
-          ],
-        ),
-      );
-    } else if (results.isEmpty) {
+    if (results.isEmpty) {
       child = SizedBox(
         height: 54,
         child: Center(
@@ -2675,6 +2702,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
 
     return Container(
+      key: const ValueKey('inlineBotResultMenu'),
       constraints: const BoxConstraints(maxHeight: 260),
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       decoration: BoxDecoration(
@@ -2839,78 +2867,71 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _mentionMenu() {
     final c = context.colors;
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 260),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(color: c.divider, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _mentionCandidates.length,
-        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
-        itemBuilder: (context, index) {
-          final candidate = _mentionCandidates[index];
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectMention(candidate),
-            child: SizedBox(
-              height: 52,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    PhotoAvatar(
-                      title: candidate.name,
-                      photo: candidate.photo,
-                      size: 34,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            candidate.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          if (candidate.username.isNotEmpty)
-                            Text(
-                              '@${candidate.username}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: c.textSecondary,
+    return TextFieldTapRegion(
+      child: Padding(
+        key: const ValueKey('mentionSuggestions'),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 260),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: _mentionCandidates.length,
+            separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
+            itemBuilder: (context, index) {
+              final candidate = _mentionCandidates[index];
+              return GestureDetector(
+                key: ValueKey('mentionCandidate-${candidate.userId}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectMention(candidate),
+                child: SizedBox(
+                  height: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        PhotoAvatar(
+                          title: candidate.name,
+                          photo: candidate.photo,
+                          size: 34,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                candidate.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: c.textPrimary,
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
+                              if (candidate.username.isNotEmpty)
+                                Text(
+                                  '@${candidate.username}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -4890,9 +4911,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             key: const ValueKey('desktopComposerSendOptionsButton'),
             semanticLabel: AppStringKeys.messageSendOptionsTitle.l10n(context),
             enabled: !disabled,
-            onTap: disabled
-                ? null
-                : () => unawaited(_showTextSendOptions()),
+            onTap: disabled ? null : () => unawaited(_showTextSendOptions()),
             borderRadius: const BorderRadius.only(
               topRight: splitRadius,
               bottomRight: splitRadius,
@@ -4905,9 +4924,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               decoration: BoxDecoration(
                 color: color,
                 border: Border(
-                  left: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.28),
-                  ),
+                  left: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
                 ),
                 borderRadius: const BorderRadius.only(
                   topRight: splitRadius,

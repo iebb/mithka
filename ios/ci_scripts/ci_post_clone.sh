@@ -211,10 +211,17 @@ echo "▸ git commit: $GIT_COMMIT"
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
-APP_BUILD_NUMBER="${RAW_VERSION#*+}"
-if [ "$APP_BUILD_NUMBER" = "$RAW_VERSION" ] || [ -z "$APP_BUILD_NUMBER" ]; then
-  APP_BUILD_NUMBER=1
+SOURCE_BUILD_NUMBER="${RAW_VERSION#*+}"
+if [ "$SOURCE_BUILD_NUMBER" = "$RAW_VERSION" ] || [ -z "$SOURCE_BUILD_NUMBER" ]; then
+  SOURCE_BUILD_NUMBER=1
 fi
+APP_BUILD_NUMBER="${CI_BUILD_NUMBER:-$SOURCE_BUILD_NUMBER}"
+case "$APP_BUILD_NUMBER" in
+  ''|*[!0-9]*)
+    echo "error: expected a numeric iOS build number, got $APP_BUILD_NUMBER" >&2
+    exit 1
+    ;;
+esac
 XCODE_BUILD_NAME="$(
   printf '%s\n' "$APP_BUILD_NAME" |
     awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
