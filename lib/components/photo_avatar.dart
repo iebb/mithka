@@ -444,7 +444,10 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
       if (!mounted || generation != _animationGeneration || path == null) {
         return;
       }
-      final controller = VideoPlayerController.file(File(path));
+      final controller = VideoPlayerController.file(
+        File(path),
+        videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
+      );
       try {
         await controller.initialize();
         await controller.setLooping(true);

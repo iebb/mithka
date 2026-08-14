@@ -64,6 +64,8 @@ const double _videoGridVerticalPadding = 16;
 const double _videoGridColumnGap = 16;
 const double _videoGridRowGap = 18;
 const double _videoGridMetadataHeight = 116;
+const int _sharedMediaPageSize = 80;
+const double _sharedMediaLoadMoreThreshold = 640;
 
 /// Music and Video are hosted by the surrounding tablet/desktop shell, so a
 /// second back/title bar is both redundant and unsafe there. The richer grid
@@ -157,7 +159,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   late int _tab = widget.initialTab;
   _MusicHubTab _musicHubTab = _MusicHubTab.music;
   final Map<int, List<ChatMessage>> _cache = {};
+  final Map<int, int> _nextFromMessageId = {};
   final Set<int> _loading = {};
+  final Set<int> _loadingMore = {};
   final Map<int, _SharedFileState> _files = {};
   final Set<int> _watchedFiles = {};
   final Map<int, String> _sourceTitles = {};
@@ -167,6 +171,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   StreamSubscription? _fileSub;
   Timer? _searchDebounce;
   String _query = '';
+  int _requestGeneration = 0;
   _SharedMediaFileFilter _fileFilter = _SharedMediaFileFilter.all;
 
   /// Minimum video duration for the video tab, persisted device-wide so the
@@ -266,9 +271,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     if (_cache.containsKey(tab) || _loading.contains(tab)) return;
     _loading.add(tab);
     final query = _query.trim();
+    final generation = _requestGeneration;
     try {
       if (_usesGlobalSearch(tab)) {
-        await _loadGlobalMessages(tab, query);
+        await _loadGlobalMessages(tab, query, generation: generation);
         return;
       }
       final res = await _client.queryForSlot({
@@ -278,7 +284,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         'sender_id': null,
         'from_message_id': 0,
         'offset': 0,
-        'limit': 80,
+        'limit': _sharedMediaPageSize,
         'filter': {'@type': _tabs[tab].filter},
       }, _accountSlot);
       final list = res.objects('messages') ?? const <Map<String, dynamic>>[];
@@ -286,9 +292,19 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           .map(TDParse.message)
           .whereType<ChatMessage>()
           .toList();
-      if (!mounted) return;
+      final nextFromMessageId = _nextCursor(res, parsed, rawCount: list.length);
+      if (!mounted) {
+        _loading.remove(tab);
+        return;
+      }
+      if (generation != _requestGeneration) {
+        _loading.remove(tab);
+        if (tab == _tab) unawaited(_load(tab));
+        return;
+      }
       setState(() {
         _cache[tab] = parsed;
+        _nextFromMessageId[tab] = nextFromMessageId;
         _loading.remove(tab);
       });
       _primeFileStates(parsed);
@@ -299,7 +315,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
 
   bool _usesGlobalSearch(int tab) => widget.chatId == 0;
 
-  Future<void> _loadGlobalMessages(int tab, String query) async {
+  Future<void> _loadGlobalMessages(
+    int tab,
+    String query, {
+    required int generation,
+  }) async {
     final list = <Map<String, dynamic>>[
       ...await _searchGlobalMessagesInList(
         query: query,
@@ -330,12 +350,84 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         in parsed.map((m) => m.chatId).whereType<int>().take(40)) {
       unawaited(_resolveSourceTitle(chatId));
     }
-    if (!mounted) return;
+    if (!mounted) {
+      _loading.remove(tab);
+      return;
+    }
+    if (generation != _requestGeneration) {
+      _loading.remove(tab);
+      if (tab == _tab) unawaited(_load(tab));
+      return;
+    }
     setState(() {
       _cache[tab] = parsed;
+      _nextFromMessageId[tab] = 0;
       _loading.remove(tab);
     });
     _primeFileStates(parsed);
+  }
+
+  int _nextCursor(
+    Map<String, dynamic> response,
+    List<ChatMessage> messages, {
+    required int rawCount,
+  }) {
+    final explicit = response.int64('next_from_message_id');
+    if (explicit != null) return explicit > 0 ? explicit : 0;
+    // Older TDLib builds do not include the cursor in foundChatMessages. A
+    // short page is then the only reliable end marker; when a page is full,
+    // continue from its oldest media message.
+    if (rawCount < _sharedMediaPageSize || messages.isEmpty) return 0;
+    return messages.last.id > 0 ? messages.last.id : 0;
+  }
+
+  Future<void> _loadMore(int tab) async {
+    if (_usesGlobalSearch(tab) ||
+        _loadingMore.contains(tab) ||
+        _loading.contains(tab)) {
+      return;
+    }
+    final current = _cache[tab];
+    final fromMessageId = _nextFromMessageId[tab] ?? 0;
+    if (current == null || fromMessageId <= 0) return;
+    final generation = _requestGeneration;
+    _loadingMore.add(tab);
+    try {
+      final res = await _client.queryForSlot({
+        '@type': 'searchChatMessages',
+        'chat_id': widget.chatId,
+        'query': _query.trim(),
+        'sender_id': null,
+        'from_message_id': fromMessageId,
+        'offset': 0,
+        'limit': _sharedMediaPageSize,
+        'filter': {'@type': _tabs[tab].filter},
+      }, _accountSlot);
+      final list = res.objects('messages') ?? const <Map<String, dynamic>>[];
+      final page = list
+          .map(TDParse.message)
+          .whereType<ChatMessage>()
+          .toList(growable: false);
+      final known = current.map((message) => message.id).toSet();
+      final merged = <ChatMessage>[
+        ...current,
+        ...page.where((message) => known.add(message.id)),
+      ];
+      final grew = merged.length > current.length;
+      final cursor = _nextCursor(res, page, rawCount: list.length);
+      if (!mounted || generation != _requestGeneration || tab != _tab) return;
+      setState(() {
+        _cache[tab] = merged;
+        // A repeated page must terminate even if an older TDLib returns the
+        // same cursor forever.
+        _nextFromMessageId[tab] = grew ? cursor : 0;
+      });
+      _primeFileStates(page);
+    } catch (_) {
+      // Keep the cursor so a later scroll can retry a transient TDLib error.
+    } finally {
+      _loadingMore.remove(tab);
+    }
   }
 
   Future<List<Map<String, dynamic>>> _searchGlobalMessagesInList({
@@ -385,8 +477,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _searchDebounce = Timer(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() {
+        _requestGeneration++;
         _query = value;
         _cache.clear();
+        _nextFromMessageId.clear();
       });
       _load(_tab);
     });
@@ -1198,12 +1292,20 @@ class _SharedMediaViewState extends State<SharedMediaView> {
         ),
       );
     }
-    if (_tabs[_tab].videoOnly && _usesWideMediaPresentation(context)) {
-      return _videoGrid(filtered);
-    }
-    return _tabs[_tab].grid && !_tabs[_tab].videoOnly
+    final content = _tabs[_tab].videoOnly && _usesWideMediaPresentation(context)
+        ? _videoGrid(filtered)
+        : _tabs[_tab].grid && !_tabs[_tab].videoOnly
         ? _grid(filtered)
         : _list(filtered);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter < _sharedMediaLoadMoreThreshold) {
+          unawaited(_loadMore(_tab));
+        }
+        return false;
+      },
+      child: content,
+    );
   }
 
   List<ChatMessage> _filteredItems(List<ChatMessage> items) {
@@ -1338,7 +1440,16 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          TDImage(photo: message.image),
+          ColoredBox(
+            color: const Color(0xFF111111),
+            child: message.image == null
+                ? const SizedBox.expand()
+                : TDImage(
+                    photo: message.image,
+                    cornerRadius: 0,
+                    fit: BoxFit.contain,
+                  ),
+          ),
           if (video != null) ...[
             Container(color: Colors.black.withValues(alpha: 0.16)),
             Center(
@@ -1485,7 +1596,16 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    TDImage(photo: message.image, cornerRadius: 0),
+                    ColoredBox(
+                      color: const Color(0xFF111111),
+                      child: message.image == null
+                          ? const SizedBox.expand()
+                          : TDImage(
+                              photo: message.image,
+                              cornerRadius: 0,
+                              fit: BoxFit.contain,
+                            ),
+                    ),
                     Container(color: Colors.black.withValues(alpha: 0.12)),
                     Center(
                       child: Container(
@@ -1906,7 +2026,16 @@ class _SharedMediaViewState extends State<SharedMediaView> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      TDImage(photo: message.image),
+                      ColoredBox(
+                        color: const Color(0xFF111111),
+                        child: message.image == null
+                            ? const SizedBox.expand()
+                            : TDImage(
+                                photo: message.image,
+                                cornerRadius: 0,
+                                fit: BoxFit.contain,
+                              ),
+                      ),
                       Container(color: Colors.black.withValues(alpha: 0.12)),
                       Center(
                         child: Container(

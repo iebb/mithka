@@ -7,6 +7,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/ui_components.dart';
+import '../media/looping_media_playback.dart';
 import '../platform/animated_avatar_preparer.dart';
 
 class AnimatedAvatarCropView extends StatefulWidget {
@@ -53,7 +54,10 @@ class _AnimatedAvatarCropViewState extends State<AnimatedAvatarCropView> {
   Future<void> _load() async {
     try {
       if (_isVideo) {
-        final controller = VideoPlayerController.file(File(widget.source.path));
+        final controller = VideoPlayerController.file(
+          File(widget.source.path),
+          videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
+        );
         await controller.initialize();
         await controller.setLooping(true);
         await controller.setVolume(0);

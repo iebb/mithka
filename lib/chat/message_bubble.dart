@@ -66,6 +66,8 @@ class MessageBubble extends StatefulWidget {
     super.key,
     required this.message,
     this.groupedMedia = const <ChatMessage>[],
+    this.targetMediaMessageId,
+    this.targetMediaKey,
     this.translationDisplayStyle = TranslationDisplayStyle.quote,
     this.showOriginalTranslationMessageIds = const <int>{},
     required this.peerTitle,
@@ -131,6 +133,8 @@ class MessageBubble extends StatefulWidget {
   final bool selected;
 
   final List<ChatMessage> groupedMedia;
+  final int? targetMediaMessageId;
+  final GlobalKey? targetMediaKey;
   final String peerTitle;
   final TdFileRef? peerPhoto;
   final bool isGroup;
@@ -5631,6 +5635,11 @@ class _MessageBubbleState extends State<MessageBubble>
     final doc = source.document!;
     final isGif = _isGifDocument(doc);
     final itemKey = GlobalKey();
+    final layoutKey =
+        source.id == widget.targetMediaMessageId &&
+            widget.targetMediaKey != null
+        ? widget.targetMediaKey
+        : itemKey;
     return GestureDetector(
       key: ValueKey('messageDocumentAlbumFile-${source.id}'),
       behavior: HitTestBehavior.opaque,
@@ -5642,7 +5651,7 @@ class _MessageBubbleState extends State<MessageBubble>
           _handleGroupedFileSecondaryTap(source, details.globalPosition),
       child: isGif && doc.file != null
           ? SizedBox(
-              key: itemKey,
+              key: layoutKey,
               width: 236,
               height: 180,
               child: TDImage(
@@ -5653,7 +5662,7 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             )
           : Padding(
-              key: itemKey,
+              key: layoutKey,
               padding: const EdgeInsets.all(8),
               child: Row(
                 children: [

@@ -70,6 +70,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onHashtagTap,
     this.onMentionTap,
     this.imageBuilder,
+    this.targetMessageId,
+    this.targetKey,
   }) : assert(messages.length >= 2);
 
   final List<ChatMessage> messages;
@@ -110,6 +112,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final ValueChanged<String>? onHashtagTap;
   final void Function(int userId, String name)? onMentionTap;
   final MediaAlbumImageBuilder? imageBuilder;
+  final int? targetMessageId;
+  final GlobalKey? targetKey;
 
   ChatMessage get _first => messages.first;
 
@@ -669,7 +673,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
               : (details) =>
                     showActions(pointerPosition: details.globalPosition),
           child: SizedBox(
-            key: ValueKey('messageImageAlbumTile-${message.id}'),
+            key: message.id == targetMessageId && targetKey != null
+                ? targetKey
+                : ValueKey('messageImageAlbumTile-${message.id}'),
             width: width,
             height: height,
             child: Stack(

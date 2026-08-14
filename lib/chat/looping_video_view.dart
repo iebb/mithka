@@ -176,6 +176,7 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
 
     final controller = VideoPlayerController.file(
       File(path),
+      videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
       viewType: preferredCompatibleVideoViewType,
     );
     _initializingController = controller;

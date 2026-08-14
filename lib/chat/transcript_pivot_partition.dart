@@ -117,12 +117,14 @@ bool shouldRebaseParkedShortTranscriptPivot({
   required bool hasMessageOlderThanPivot,
   required bool followingLatest,
   bool hasExplicitMessageTarget = false,
+  bool viewportClaimedByUser = false,
 }) {
   // An explicit message target (for example, "open original" from the
   // shared-files view) owns the initial viewport. Re-basing a short arm in
   // that case would immediately discard the target and return to the latest
   // messages before the user can inspect it.
   if (hasExplicitMessageTarget ||
+      viewportClaimedByUser ||
       !followingLatest ||
       pivotCutoffMessageId == null) {
     return false;
@@ -137,11 +139,13 @@ bool shouldRebaseForExpandedInitialWindow({
   required bool latestArmIsShort,
   required bool hasMessageOlderThanPivot,
   required bool followingLatest,
+  bool viewportClaimedByUser = false,
 }) =>
     transcriptChanged &&
     latestArmIsShort &&
     hasMessageOlderThanPivot &&
-    followingLatest;
+    followingLatest &&
+    !viewportClaimedByUser;
 
 /// Keeps the first-contact card at the absolute start of non-empty history.
 ///

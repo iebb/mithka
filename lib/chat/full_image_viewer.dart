@@ -269,11 +269,16 @@ class _ViewerPageState extends State<_ViewerPage> {
     final media = MediaQuery.of(context);
     final cacheWidth = (media.size.width * media.devicePixelRatio).ceil();
     final cacheHeight = (media.size.height * media.devicePixelRatio).ceil();
+    Widget fittedImage(ImageProvider<Object> image) => SizedBox(
+      width: media.size.width,
+      height: media.size.height,
+      child: Image(image: image, fit: BoxFit.contain),
+    );
     if (_file == null) {
       if (widget.ref.miniThumb != null) {
         return Center(
-          child: Image(
-            image: ResizeImage(
+          child: fittedImage(
+            ResizeImage(
               MemoryImage(widget.ref.miniThumb!),
               width: cacheWidth,
               height: cacheHeight,
@@ -290,18 +295,16 @@ class _ViewerPageState extends State<_ViewerPage> {
       transformationController: _controller,
       minScale: 1,
       maxScale: 5,
-      child: Center(
-        // Both dimensions come from the screen, and the default `exact` policy
-        // decodes to literally that box: a 4:3 photo decoded ~3x the pixels
-        // BoxFit.contain paints, stretched. `fit` keeps the source aspect.
-        child: Image(
-          image: ResizeImage(
-            FileImage(_file!),
-            width: cacheWidth,
-            height: cacheHeight,
-            policy: ResizeImagePolicy.fit,
-          ),
-          fit: BoxFit.contain,
+      // Give the image a finite viewport-sized box before InteractiveViewer
+      // applies its transform. Without that bound, an image decoded from a
+      // thumbnail can negotiate its intrinsic dimensions and appear stretched
+      // or clipped on narrow Android windows.
+      child: fittedImage(
+        ResizeImage(
+          FileImage(_file!),
+          width: cacheWidth,
+          height: cacheHeight,
+          policy: ResizeImagePolicy.fit,
         ),
       ),
     );
