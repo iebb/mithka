@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../auth/login_view.dart';
+import '../chat/link_handler.dart';
 import '../chats/search_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -344,6 +345,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                   controller: _searchController,
                   onSearchAll: _openSearchAll,
                   onSearchCategory: _openSearchCategory,
+                  onOpenTelegramLink: openLink,
                 ),
               ),
             ),

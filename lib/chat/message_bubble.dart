@@ -87,6 +87,7 @@ class MessageBubble extends StatefulWidget {
     this.onAvatarTap,
     this.onAvatarLongPress,
     this.onOpenReply,
+    this.onOpenForwarded,
     this.onOpenImage,
     this.onOpenImageGallery,
     this.onApplyMessageBubble,
@@ -157,6 +158,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<int>? onOpenReply;
+  final ValueChanged<ChatMessage>? onOpenForwarded;
   final ValueChanged<ChatMessage>? onOpenImage;
   final ImageGalleryOpenCallback? onOpenImageGallery;
   final ValueChanged<ChatMessage>? onApplyMessageBubble;
@@ -1960,7 +1962,7 @@ class _MessageBubbleState extends State<MessageBubble>
             children: messageSelectableParts,
           );
     final parts = <Widget>[
-      if (includeForwardHeader && (message.forwardOrigin ?? '').isNotEmpty) ...[
+      if (includeForwardHeader && message.hasForwardAttribution) ...[
         _forwardHeader(outgoing),
         const SizedBox(height: 3),
       ],
@@ -3805,31 +3807,42 @@ class _MessageBubbleState extends State<MessageBubble>
         : _messageColors == null && !outgoing
         ? AppTheme.brand
         : textColor;
-    return Row(
+    final canOpenOriginal =
+        widget.onOpenForwarded != null &&
+        message.forwardFromChatId != null &&
+        message.forwardFromMessageId != null &&
+        message.forwardFromMessageId! > 0;
+    return GestureDetector(
       key: ValueKey('messageForwardHeader-${message.id}'),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AppIcon(
-          HeroAppIcons.forward,
-          size: 11,
-          color: accent.withValues(alpha: 0.9),
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
-              'value1': message.forwardOrigin,
-            }),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: textColor,
+      behavior: HitTestBehavior.opaque,
+      onTap: canOpenOriginal
+          ? () => widget.onOpenForwarded!.call(message)
+          : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(
+            HeroAppIcons.forward,
+            size: 11,
+            color: accent.withValues(alpha: 0.9),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+                'value1': message.forwardDisplayName,
+              }),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -4859,7 +4872,7 @@ class _MessageBubbleState extends State<MessageBubble>
     required String? caption,
     required bool outgoing,
   }) {
-    final hasForwardHeader = message.forwardOrigin?.trim().isNotEmpty ?? false;
+    final hasForwardHeader = message.hasForwardAttribution;
     final hasReplyQuote = message.replyToPreview != null;
     if (!_groupsMediaCaption(caption)) {
       final attributedMedia = hasForwardHeader || hasReplyQuote

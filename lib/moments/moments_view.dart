@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
@@ -118,6 +119,24 @@ class ChannelPostThreadTarget {
 
   final int chatId;
   final int messageThreadId;
+}
+
+class _MomentsFeedScrollAnchor {
+  const _MomentsFeedScrollAnchor({required this.key, required this.leading});
+
+  final GlobalKey key;
+  final double leading;
+}
+
+final Map<String, double> _channelMomentsScrollOffsets = {};
+
+String _channelMomentsScrollKey({
+  required int accountSlot,
+  required bool isRootTab,
+  required List<ChatSummary> initialChannels,
+}) {
+  final ids = initialChannels.map((channel) => channel.id).toList()..sort();
+  return '$accountSlot:$isRootTab:${ids.join(',')}';
 }
 
 class ChannelPostComment {
@@ -719,6 +738,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   final _replyController = TextEditingController();
   final _replyFocus = FocusNode();
   final _scroll = ScrollController();
+  late final String _scrollSessionKey;
+  final Map<String, GlobalKey> _postWidgetKeys = {};
+  double? _pendingScrollOffset;
+  bool _scrollRestoreScheduled = false;
   StreamSubscription? _tdSub;
   Timer? _refreshTimer;
   Timer? _metadataHydrationTimer;
@@ -743,6 +766,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   bool _loadingPosts = false;
   bool _loadingPostableChannels = false;
   bool _refreshingLiveUpdates = false;
+  bool _refreshingLatest = false;
   bool _nonMutedOnly = false;
   int _feedLoadGeneration = 0;
   static const _perChannelPageSize = 30;
@@ -752,6 +776,12 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   @override
   void initState() {
     super.initState();
+    _scrollSessionKey = _channelMomentsScrollKey(
+      accountSlot: TdClient.shared.activeSlot,
+      isRootTab: widget.isRootTab,
+      initialChannels: widget.initialChannels,
+    );
+    _pendingScrollOffset = _channelMomentsScrollOffsets[_scrollSessionKey];
     _model.addListener(_onModel);
     _scroll.addListener(_onScroll);
     _tdSub = TdClient.shared.subscribe().listen(_handleTdUpdate);
@@ -762,10 +792,14 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         if (mounted) _loadChannelPosts();
       });
     }
+    _scheduleScrollRestore();
   }
 
   @override
   void dispose() {
+    if (_scroll.hasClients) {
+      _channelMomentsScrollOffsets[_scrollSessionKey] = _scroll.offset;
+    }
     _model.removeListener(_onModel);
     _model.dispose();
     _scroll.removeListener(_onScroll);
@@ -780,13 +814,87 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
+    _channelMomentsScrollOffsets[_scrollSessionKey] = _scroll.offset;
     if (_scroll.position.extentAfter < 600) _loadChannelPosts(loadOlder: true);
+  }
+
+  void _scheduleScrollRestore() {
+    if (_pendingScrollOffset == null || _scrollRestoreScheduled) return;
+    _scrollRestoreScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollRestoreScheduled = false;
+      if (!mounted || !_scroll.hasClients) return;
+      final pending = _pendingScrollOffset;
+      if (pending == null) return;
+      final position = _scroll.position;
+      // Initial history loads arrive asynchronously. Do not clamp a saved
+      // position to the first short page; wait for the feed to finish loading
+      // so reopening lands at the same history location.
+      if (pending > position.maxScrollExtent &&
+          (_loadingPosts || (_posts.isEmpty && _channels.isNotEmpty))) {
+        _scheduleScrollRestore();
+        return;
+      }
+      if (pending > position.maxScrollExtent &&
+          _channels.any(
+            (channel) => !_exhaustedChannels.contains(channel.id),
+          )) {
+        _loadChannelPosts(loadOlder: true);
+        _scheduleScrollRestore();
+        return;
+      }
+      final next = pending.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      _scroll.jumpTo(next);
+      _pendingScrollOffset = null;
+      _channelMomentsScrollOffsets[_scrollSessionKey] = next;
+    });
+  }
+
+  _MomentsFeedScrollAnchor? _captureFeedScrollAnchor() {
+    if (!_scroll.hasClients) return null;
+    final current = _scroll.offset;
+    final viewportExtent = _scroll.position.viewportDimension;
+    for (final post in _posts) {
+      final key = _postKey(post);
+      final render = key.currentContext?.findRenderObject();
+      if (render == null || !render.attached) continue;
+      final viewport = RenderAbstractViewport.of(render);
+      final leading = viewport.getOffsetToReveal(render, 0).offset - current;
+      final extent = render.paintBounds.height;
+      if (leading + extent > 0 && leading < viewportExtent) {
+        return _MomentsFeedScrollAnchor(key: key, leading: leading);
+      }
+    }
+    return null;
+  }
+
+  void _restoreFeedScrollAnchor(
+    _MomentsFeedScrollAnchor? anchor,
+    double fallbackOffset,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      var next = fallbackOffset;
+      final render = anchor?.key.currentContext?.findRenderObject();
+      if (render != null && render.attached) {
+        final viewport = RenderAbstractViewport.of(render);
+        next = viewport.getOffsetToReveal(render, 0).offset - anchor!.leading;
+      }
+      final position = _scroll.position;
+      next = next.clamp(position.minScrollExtent, position.maxScrollExtent);
+      _scroll.jumpTo(next);
+      _channelMomentsScrollOffsets[_scrollSessionKey] = next;
+    });
   }
 
   void _onModel() {
     _feedChatIds = null; // channel set may have changed
     _invalidateChannels();
     if (mounted) setState(() {});
+    _scheduleScrollRestore();
     _loadChannelPosts();
     _loadPostableChannels();
   }
@@ -924,6 +1032,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (mounted) setState(() {});
       return;
     }
+    final anchor = _captureFeedScrollAnchor();
+    final fallbackOffset = _scroll.hasClients ? _scroll.offset : 0.0;
     _refreshingLiveUpdates = true;
     _loadingPosts = true;
     if (mounted) setState(() {});
@@ -941,6 +1051,35 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _refreshingLiveUpdates = false;
       _loadingPosts = _loadingChannels.isNotEmpty;
       if (mounted) setState(() {});
+      _restoreFeedScrollAnchor(anchor, fallbackOffset);
+    }
+  }
+
+  Future<void> _refreshLatest() async {
+    if (_refreshingLatest || _refreshingLiveUpdates) return;
+    final channels = _channels;
+    if (channels.isEmpty) return;
+    final anchor = _captureFeedScrollAnchor();
+    final fallbackOffset = _scroll.hasClients ? _scroll.offset : 0.0;
+    _refreshingLatest = true;
+    _loadingPosts = true;
+    if (mounted) setState(() {});
+    final futures = <Future<void>>[];
+    for (final channel in channels) {
+      if (!await _isJoinedChannel(channel)) continue;
+      if (!_loadingChannels.add(channel.id)) continue;
+      futures.add(
+        _loadPostsForChannel(channel, fromMessageId: 0, notify: false),
+      );
+    }
+    try {
+      await Future.wait(futures);
+      _schedulePostMetadataHydration();
+    } finally {
+      _refreshingLatest = false;
+      _loadingPosts = _loadingChannels.isNotEmpty;
+      if (mounted) setState(() {});
+      _restoreFeedScrollAnchor(anchor, fallbackOffset);
     }
   }
 
@@ -993,8 +1132,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     return _postsCache = _groupPostAlbums(posts).take(_feedLimit).toList();
   }
 
-  static Key _postKey(ChannelPost post) =>
-      ValueKey('post-${post.channel.id}-${post.message.id}');
+  GlobalKey _postKey(ChannelPost post) {
+    final identity = 'post-${post.channel.id}-${post.message.id}';
+    return _postWidgetKeys.putIfAbsent(identity, GlobalKey.new);
+  }
 
   static const _composerHeaderKey = ValueKey('moments-composer-header');
 
@@ -1190,6 +1331,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _loadingPosts = _loadingChannels.isNotEmpty;
         // A batched refresh rebuilds once when the whole batch lands.
         if (notify && mounted) setState(() {});
+        _scheduleScrollRestore();
       }
     }
   }
@@ -1806,6 +1948,20 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                 ),
                 const SizedBox(width: AppSpacing.lg),
                 GestureDetector(
+                  key: const ValueKey('moments-refresh-latest'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _refreshingLatest ? null : _refreshLatest,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
+                    child: AppIcon(
+                      HeroAppIcons.arrowsRotate,
+                      size: 22,
+                      color: _refreshingLatest ? c.textTertiary : c.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _openSearch,
                   child: Padding(
@@ -1831,6 +1987,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final c = context.colors;
     final list = ListView.builder(
       controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: useDesktopLayout
           ? const EdgeInsets.symmetric(vertical: AppSpacing.lg)
           : EdgeInsets.zero,
@@ -1881,10 +2038,17 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         );
       },
     );
+    final refreshable = RefreshIndicator(
+      onRefresh: _refreshLatest,
+      color: AppTheme.brand,
+      backgroundColor: c.background,
+      notificationPredicate: (notification) => notification.depth == 0,
+      child: list,
+    );
     if (!useDesktopLayout) {
-      return ColoredBox(color: c.background, child: list);
+      return ColoredBox(color: c.background, child: refreshable);
     }
-    return MomentsDesktopFeedLane(child: list);
+    return MomentsDesktopFeedLane(child: refreshable);
   }
 
   Widget _desktopFeedCard(Widget child) {
@@ -4060,7 +4224,8 @@ class ChannelPostRow extends StatelessWidget {
 
   bool get _hasReplyQuote =>
       message.replyToMessageId != null &&
-      (message.replyToPreview?.trim().isNotEmpty ?? false);
+      ((message.replyToPreview?.trim().isNotEmpty ?? false) ||
+          message.replyToImage != null);
 }
 
 class _PostReplyQuote extends StatelessWidget {
@@ -4073,6 +4238,9 @@ class _PostReplyQuote extends StatelessWidget {
     final c = context.colors;
     final sender = message.replyToSender?.trim();
     final preview = message.replyToPreview?.trim() ?? '';
+    final image = message.replyToImage;
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final hasText = (sender?.isNotEmpty ?? false) || preview.isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
@@ -4080,23 +4248,49 @@ class _PostReplyQuote extends StatelessWidget {
         color: _momentQuoteFill(c),
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
-      child: RichText(
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-        text: TextSpan(
-          style: TextStyle(fontSize: 15, height: 1.35, color: c.textPrimary),
-          children: [
-            if (sender != null && sender.isNotEmpty)
-              TextSpan(
-                text: '$sender: ',
-                style: TextStyle(
-                  color: c.linkBlue,
-                  fontWeight: FontWeight.w500,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (image != null) ...[
+            SizedBox(
+              key: const ValueKey('momentsReplyMediaPreview'),
+              width: 52,
+              height: 52,
+              child: TDImage(
+                photo: image,
+                cornerRadius: 6,
+                cacheWidth: (52 * pixelRatio).round(),
+                cacheHeight: (52 * pixelRatio).round(),
+              ),
+            ),
+            if (hasText) const SizedBox(width: 10),
+          ],
+          if (hasText)
+            Expanded(
+              child: RichText(
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.35,
+                    color: c.textPrimary,
+                  ),
+                  children: [
+                    if (sender != null && sender.isNotEmpty)
+                      TextSpan(
+                        text: '$sender: ',
+                        style: TextStyle(
+                          color: c.linkBlue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    TextSpan(text: preview.replaceAll('\n', ' ')),
+                  ],
                 ),
               ),
-            TextSpan(text: preview.replaceAll('\n', ' ')),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -4280,6 +4474,7 @@ class _PostImageGroup extends StatelessWidget {
                     message: visible[i],
                     width: layout.tiles[i].width,
                     height: layout.tiles[i].height,
+                    accountSlot: accountSlot,
                     extraCount: i == visible.length - 1
                         ? math.max(0, messages.length - visible.length)
                         : 0,
@@ -4364,12 +4559,14 @@ class _PostImageTile extends StatelessWidget {
     required this.message,
     required this.width,
     required this.height,
+    required this.accountSlot,
     this.extraCount = 0,
   });
 
   final ChatMessage message;
   final double width;
   final double height;
+  final int accountSlot;
   final int extraCount;
 
   @override
@@ -4388,6 +4585,8 @@ class _PostImageTile extends StatelessWidget {
               cornerRadius: 3,
               cacheWidth: (width * pixelRatio).round(),
               cacheHeight: (height * pixelRatio).round(),
+              showProgress: true,
+              accountSlot: accountSlot,
             ),
             if (message.video != null)
               Center(

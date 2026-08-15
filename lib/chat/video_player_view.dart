@@ -23,6 +23,7 @@ import 'package:video_player/video_player.dart';
 import '../app/app_navigator.dart';
 import '../app/video_split_controller.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../media/video_view_compatibility.dart';
@@ -40,6 +41,7 @@ import 'media_library_saver.dart';
 import 'td_video_stream_server.dart';
 import 'video_playback_preferences.dart';
 import 'video_playback_queue.dart';
+import 'video_stream_debugger.dart';
 
 export 'td_video_stream_server.dart';
 
@@ -139,6 +141,7 @@ class VideoPlayerView extends StatefulWidget {
     required this.video,
     this.accountSlot,
     this.thumb,
+    this.title = '',
     this.width,
     this.height,
     this.presentation = VideoPlayerPresentation.fullscreen,
@@ -165,6 +168,7 @@ class VideoPlayerView extends StatefulWidget {
   final TdFileRef video;
   final int? accountSlot;
   final TdFileRef? thumb;
+  final String title;
   final int? width;
   final int? height;
   final VideoPlayerPresentation presentation;
@@ -299,6 +303,7 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
       video: item.video,
       accountSlot: item.accountSlot,
       thumb: item.thumb,
+      title: item.title,
       width: item.width,
       height: item.height,
       presentation: widget.presentation,
@@ -376,6 +381,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   bool? _lastSystemPiPMuted;
   Rect? _lastSystemPiPSourceRect;
   FVideoActions? _reusablePlayerActions;
+  bool _debuggerVisible = false;
+  bool _debugRecording = false;
+  final List<String> _debugEvents = <String>[];
+  int _lastDebugDownloaded = -1;
+  int _lastDebugPrefixDownloaded = -1;
+  int _lastDebugTotal = -1;
   bool _wakelockActive = false;
   bool _landscapePlayback = false;
   bool _orientationChangeInFlight = false;
@@ -493,6 +504,49 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     });
   }
 
+  void _recordDebugProgress(TdFileProgress progress) {
+    if (progress.downloaded == _lastDebugDownloaded &&
+        progress.prefixDownloaded == _lastDebugPrefixDownloaded &&
+        progress.total == _lastDebugTotal) {
+      return;
+    }
+    _lastDebugDownloaded = progress.downloaded;
+    _lastDebugPrefixDownloaded = progress.prefixDownloaded;
+    _lastDebugTotal = progress.total;
+    _recordDebugEvent(
+      '${_debugTimestamp()}  download ${_debugBytes(progress.downloaded)}'
+      ' / ${_debugBytes(progress.total)}',
+    );
+  }
+
+  void _recordDebugEvent(String event) {
+    _debugEvents.add(event);
+    if (_debugEvents.length > 80) {
+      _debugEvents.removeRange(0, _debugEvents.length - 80);
+    }
+  }
+
+  void _clearDebuggerEvents() {
+    if (mounted) setState(_debugEvents.clear);
+  }
+
+  String _debugTimestamp() {
+    final now = DateTime.now();
+    return '${now.minute.toString().padLeft(2, '0')}'
+        ':${now.second.toString().padLeft(2, '0')}';
+  }
+
+  String _debugBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
   Future<void> _load({Duration? resumeOverride, bool? playOverride}) async {
     final preferredViewType = preferredCompatibleVideoViewType;
     await _progressSub?.cancel();
@@ -501,6 +555,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         .listen((progress) {
           if (!mounted) return;
           _progress = progress;
+          _recordDebugProgress(progress);
           _progressUiTimer ??= Timer(const Duration(milliseconds: 250), () {
             _progressUiTimer = null;
             if (mounted) setState(() {});
@@ -784,6 +839,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       return true;
     }
     c.addListener(_onTick);
+    _recordDebugEvent(
+      '${_debugTimestamp()}  controller ready  ${_fmt(c.value.duration)}',
+    );
     setState(() => _controller = c);
     if (_usesAndroidSystemMediaVolume) {
       unawaited(_syncAndroidSystemVolume(c));
@@ -1962,7 +2020,76 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final ready = c != null && c.value.isInitialized;
     return ColoredBox(
       color: Colors.black,
-      child: ready ? _reusablePlayer(c) : _loadingState(),
+      child: _playbackSurface(ready ? c : null),
+    );
+  }
+
+  Widget _playbackSurface(VideoPlayerController? controller) {
+    final player = controller == null
+        ? _loadingState()
+        : _reusablePlayer(controller);
+    if (!_debuggerVisible ||
+        widget.presentation != VideoPlayerPresentation.fullscreen ||
+        controller == null) {
+      return player;
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final debugHeight = math
+            .min(500.0, math.max(280.0, constraints.maxHeight * 0.54))
+            .toDouble();
+        final playerHeight = math
+            .max(180.0, constraints.maxHeight - debugHeight - 8)
+            .toDouble();
+        final actualDebugHeight = constraints.maxHeight - playerHeight - 8;
+        return Column(
+          children: [
+            SizedBox(height: playerHeight, child: player),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: math.max(1, actualDebugHeight).toDouble(),
+              child: VideoStreamDebugger(
+                progress: _progress,
+                position: controller.value.position,
+                duration: controller.value.duration,
+                events: List<String>.unmodifiable(_debugEvents),
+                isLive: _streamServer != null || controller.value.isPlaying,
+                isRecording: _debugRecording,
+                onRecordingChanged: (recording) {
+                  if (!mounted) return;
+                  setState(() => _debugRecording = recording);
+                  _recordDebugEvent(
+                    '${_debugTimestamp()}  recording ${recording ? 'started' : 'stopped'}',
+                  );
+                },
+                onClear: _clearDebuggerEvents,
+                onExport: _exportDebuggerSnapshot,
+                onClose: () {
+                  if (mounted) setState(() => _debuggerVisible = false);
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _exportDebuggerSnapshot() async {
+    final progress = _progress;
+    final total = progress?.total ?? 0;
+    final downloaded = progress?.downloaded ?? 0;
+    await Clipboard.setData(
+      ClipboardData(
+        text: [
+          'Stream Inspector',
+          'video: ${widget.video.id}',
+          'downloaded: $downloaded / $total',
+          'prefix: ${progress?.prefixDownloaded ?? 0}',
+          'events:',
+          ..._debugEvents,
+        ].join('\n'),
+      ),
     );
   }
 
@@ -1996,6 +2123,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       lifecycleBehavior: FVideoLifecycleBehavior.delegateToController,
       controlsAutoHideDuration: const Duration(seconds: 5),
       positionUpdateInterval: const Duration(milliseconds: 200),
+      showScrubPreview:
+          widget.presentation != VideoPlayerPresentation.fullscreen,
       enableKeyboardShortcuts:
           !_showCompletionPrompt && !_moreMenuVisible && !_modeMenuVisible,
       enableScrollVolume: _isDesktopPlatform,
@@ -2014,6 +2143,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       onError: _handleReusablePlayerError,
       loadingBuilder: (_) => _loadingState(),
       surfaceInteractionBuilder: _playerSurfaceInteraction,
+      chromeBuilder: widget.presentation == VideoPlayerPresentation.fullscreen
+          ? _playerChrome
+          : null,
       overlayBuilder: _playerOverlay,
       topTrailingBuilder: _playerTopTrailing,
       bottomTrailingBuilder: _playerBottomTrailing,
@@ -2074,6 +2206,324 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       return FVideoSource.file(path);
     }
     throw StateError('An initialized video must have a source');
+  }
+
+  Widget _playerChrome(BuildContext context, FVideoChromeScope scope) {
+    _reusablePlayerActions = scope.actions;
+    final snapshot = scope.snapshot;
+    final safePadding = MediaQuery.paddingOf(context);
+    return ExcludeFocus(
+      excluding: !snapshot.controlsVisible,
+      child: ExcludeSemantics(
+        excluding: !snapshot.controlsVisible,
+        child: IgnorePointer(
+          ignoring: !snapshot.controlsVisible,
+          child: AnimatedOpacity(
+            key: const ValueKey('mithka-video-player-chrome'),
+            opacity: snapshot.controlsVisible ? 1 : 0,
+            duration: const Duration(milliseconds: 170),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide =
+                    MediaQuery.sizeOf(context).width >= 600 &&
+                    constraints.maxWidth >= 600;
+                final compactQueueNavigation =
+                    !wide && MediaQuery.sizeOf(context).width >= 320;
+                final title = _videoChromeTitle();
+                final subtitle = _videoChromeSubtitle(snapshot.value.duration);
+                final metadataAspect = _metadataAspectRatio();
+                final controllerAspect = snapshot.value.aspectRatio;
+                final aspect =
+                    metadataAspect ??
+                    (controllerAspect.isFinite && controllerAspect > 0
+                        ? controllerAspect
+                        : 16 / 9);
+                final buffered = math
+                    .max(
+                      snapshot.value.buffered.isEmpty
+                          ? 0.0
+                          : snapshot.value.buffered.last.end.inMilliseconds /
+                                math.max(
+                                  1,
+                                  snapshot.value.duration.inMilliseconds,
+                                ),
+                      _downloadedFraction ?? 0,
+                    )
+                    .clamp(0.0, 1.0)
+                    .toDouble();
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.72),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.88),
+                              ],
+                              stops: const [0, 0.46, 1],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    PositionedDirectional(
+                      top: safePadding.top + 12,
+                      start: safePadding.left + 14,
+                      end: safePadding.right + 14,
+                      child: Row(
+                        children: [
+                          _playerChromeIconButton(
+                            icon: HeroAppIcons.xmark,
+                            label: scope.labels.close,
+                            onTap: _close,
+                            size: 52,
+                            iconSize: 27,
+                            cornerRadius: 26,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.76),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _playerChromeIconButton(
+                            icon: HeroAppIcons.code,
+                            label: 'Stream inspector',
+                            onTap: () {
+                              setState(
+                                () => _debuggerVisible = !_debuggerVisible,
+                              );
+                              scope.actions.showControls();
+                            },
+                            size: 44,
+                            iconSize: 21,
+                            cornerRadius: 22,
+                            backgroundColor: _debuggerVisible
+                                ? const Color(0xD92C6565)
+                                : const Color(0xB82C2C2E),
+                          ),
+                          const SizedBox(width: 8),
+                          _playerChromeIconButton(
+                            icon: HeroAppIcons.ellipsisVertical,
+                            label: 'More',
+                            onTap: _toggleMoreMenu,
+                            size: 44,
+                            iconSize: 23,
+                            cornerRadius: 22,
+                            focusNode: _moreButtonFocusNode,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (wide && scope.previous != null)
+                      PositionedDirectional(
+                        start: safePadding.left + 18,
+                        top: safePadding.top + 96,
+                        bottom: safePadding.bottom + 132,
+                        child: Center(
+                          child: _MithkaVideoSideButton(
+                            icon: HeroAppIcons.chevronLeft,
+                            label: scope.labels.previous,
+                            onTap: scope.previous!,
+                          ),
+                        ),
+                      ),
+                    if (wide && scope.next != null)
+                      PositionedDirectional(
+                        end: safePadding.right + 18,
+                        top: safePadding.top + 96,
+                        bottom: safePadding.bottom + 132,
+                        child: Center(
+                          child: _MithkaVideoSideButton(
+                            icon: HeroAppIcons.chevronRight,
+                            label: scope.labels.next,
+                            onTap: scope.next!,
+                          ),
+                        ),
+                      ),
+                    Positioned.fill(
+                      top: safePadding.top + 72,
+                      bottom: safePadding.bottom + (wide ? 132 : 168),
+                      child: Center(
+                        child: wide
+                            ? _MithkaVideoCenterTransport(
+                                value: snapshot.value,
+                                scope: scope,
+                              )
+                            : _MithkaVideoCompactTransport(
+                                value: snapshot.value,
+                                scope: scope,
+                                showQueueNavigation: !compactQueueNavigation,
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      left: safePadding.left + (wide ? 28 : 14),
+                      right: safePadding.right + (wide ? 28 : 14),
+                      bottom: safePadding.bottom + (wide ? 14 : 10),
+                      child: _MithkaVideoBottomChrome(
+                        scope: scope,
+                        wide: wide,
+                        buffered: buffered,
+                        aspectRatio: aspect,
+                        thumbnailProvider: _provideScrubThumbnailAt,
+                        compactQueueNavigation: compactQueueNavigation,
+                        previousButton:
+                            compactQueueNavigation && scope.previous != null
+                            ? _MithkaVideoCompactNavButton(
+                                icon: HeroAppIcons.chevronLeft,
+                                label: scope.labels.previous,
+                                onTap: scope.previous!,
+                                size: 44,
+                              )
+                            : null,
+                        nextButton: compactQueueNavigation && scope.next != null
+                            ? _MithkaVideoCompactNavButton(
+                                icon: HeroAppIcons.chevronRight,
+                                label: scope.labels.next,
+                                onTap: scope.next!,
+                                size: 44,
+                              )
+                            : null,
+                        modeButton: _showsDisplayModeButton
+                            ? _displayModeButton(size: 44)
+                            : null,
+                        fullscreenButton:
+                            widget.onToggleFullscreen == null ||
+                                (widget.onSwitchMode != null && !wide)
+                            ? null
+                            : _playerChromeIconButton(
+                                icon: HeroAppIcons.expand,
+                                label: widget.onSwitchMode != null
+                                    ? 'Expand player'
+                                    : scope.labels.fullscreen,
+                                onTap: widget.onToggleFullscreen!,
+                                size: 44,
+                                iconSize: 20,
+                                cornerRadius: 10,
+                                backgroundColor: const Color(0x9A1B1D1E),
+                                borderColor: Colors.white.withValues(
+                                  alpha: 0.26,
+                                ),
+                              ),
+                        qualityLabel: _videoQualityLabel(),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _playerChromeIconButton({
+    required AppIconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required double size,
+    required double iconSize,
+    required double cornerRadius,
+    Color backgroundColor = const Color(0xB82C2C2E),
+    Color? borderColor,
+    FocusNode? focusNode,
+  }) {
+    return _FocusableVideoIconButton(
+      icon: icon,
+      label: label,
+      onPressed: onTap,
+      size: Size.square(size),
+      iconSize: iconSize,
+      backgroundColor: backgroundColor,
+      borderColor: borderColor ?? Colors.white.withValues(alpha: 0.15),
+      cornerRadius: cornerRadius,
+      focusNode: focusNode,
+    );
+  }
+
+  String _videoChromeTitle() {
+    final explicit = widget.title.trim();
+    if (explicit.isNotEmpty) return explicit;
+    final fileName = widget.video.fileName?.trim() ?? '';
+    if (fileName.isNotEmpty) {
+      final extension = fileName.lastIndexOf('.');
+      return extension > 0 ? fileName.substring(0, extension) : fileName;
+    }
+    return 'Video';
+  }
+
+  String _videoChromeSubtitle(Duration duration) {
+    final seconds = math.max(0, duration.inSeconds);
+    final unit = seconds == 1 ? 'sec' : 'secs';
+    return 'Video  •  $seconds $unit';
+  }
+
+  String _videoQualityLabel() {
+    final width = widget.width;
+    final height = widget.height;
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return '';
+    }
+    final shortEdge = math.min(width, height);
+    if (shortEdge >= 2160) return '4K';
+    if (shortEdge >= 1440) return '1440p';
+    if (shortEdge >= 1080) return '1080p';
+    if (shortEdge >= 720) return '720p';
+    return '${shortEdge}p';
+  }
+
+  Future<Uint8List?> _provideScrubThumbnailAt(Duration position) {
+    final path = _localPath;
+    if (!_openedCompletedLocalFile ||
+        path == null ||
+        path.startsWith('http://') ||
+        path.startsWith('https://')) {
+      return Future<Uint8List?>.value();
+    }
+    final controller = _controller;
+    final aspect = controller == null
+        ? 16 / 9
+        : _displayVideoSize(controller).aspectRatio;
+    return FVideoThumbnail.generateRequest(
+      FVideoThumbnailRequest(
+        source: FVideoSource.file(path),
+        position: position,
+        maxWidth: aspect >= 1 ? 320 : 240,
+        quality: 70,
+      ),
+    );
   }
 
   Widget _playerSurfaceInteraction(
@@ -3481,6 +3931,769 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
+}
+
+class _MithkaVideoCenterTransport extends StatelessWidget {
+  const _MithkaVideoCenterTransport({required this.value, required this.scope});
+
+  final VideoPlayerValue value;
+  final FVideoChromeScope scope;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _MithkaVideoSeekButton(
+          backwards: true,
+          label: 'Seek backward 10 seconds',
+          onTap: () =>
+              unawaited(scope.actions.seekBy(const Duration(seconds: -10))),
+        ),
+        const SizedBox(width: 18),
+        ExcludeSemantics(
+          child: _MithkaVideoPlayButton(
+            playing: value.isPlaying,
+            onTap: () => unawaited(scope.actions.togglePlayback()),
+            size: 86,
+            semanticLabel: 'Center playback',
+          ),
+        ),
+        const SizedBox(width: 18),
+        _MithkaVideoSeekButton(
+          backwards: false,
+          label: 'Seek forward 10 seconds',
+          onTap: () =>
+              unawaited(scope.actions.seekBy(const Duration(seconds: 10))),
+        ),
+      ],
+    );
+  }
+}
+
+class _MithkaVideoCompactTransport extends StatelessWidget {
+  const _MithkaVideoCompactTransport({
+    required this.value,
+    required this.scope,
+    required this.showQueueNavigation,
+  });
+
+  final VideoPlayerValue value;
+  final FVideoChromeScope scope;
+  final bool showQueueNavigation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showQueueNavigation && scope.previous != null)
+          _MithkaVideoCompactNavButton(
+            icon: HeroAppIcons.chevronLeft,
+            label: scope.labels.previous,
+            onTap: scope.previous!,
+          )
+        else
+          _MithkaVideoSeekButton(
+            backwards: true,
+            label: 'Seek backward 10 seconds',
+            compact: true,
+            onTap: () =>
+                unawaited(scope.actions.seekBy(const Duration(seconds: -10))),
+          ),
+        const SizedBox(width: 12),
+        ExcludeSemantics(
+          child: _MithkaVideoPlayButton(
+            playing: value.isPlaying,
+            onTap: () => unawaited(scope.actions.togglePlayback()),
+            size: 72,
+            semanticLabel: 'Center playback',
+          ),
+        ),
+        const SizedBox(width: 12),
+        if (showQueueNavigation && scope.next != null)
+          _MithkaVideoCompactNavButton(
+            icon: HeroAppIcons.chevronRight,
+            label: scope.labels.next,
+            onTap: scope.next!,
+          )
+        else
+          _MithkaVideoSeekButton(
+            backwards: false,
+            label: 'Seek forward 10 seconds',
+            compact: true,
+            onTap: () =>
+                unawaited(scope.actions.seekBy(const Duration(seconds: 10))),
+          ),
+      ],
+    );
+  }
+}
+
+class _MithkaVideoPlayButton extends StatelessWidget {
+  const _MithkaVideoPlayButton({
+    required this.playing,
+    required this.onTap,
+    required this.size,
+    this.semanticLabel,
+  });
+
+  final bool playing;
+  final VoidCallback onTap;
+  final double size;
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return _FocusableVideoIconButton(
+      icon: playing ? HeroAppIcons.pause : HeroAppIcons.play,
+      label: semanticLabel ?? (playing ? 'Pause' : 'Play'),
+      onPressed: onTap,
+      size: Size.square(size),
+      iconSize: size * 0.44,
+      backgroundColor: const Color(0xCC2C2C2E),
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      cornerRadius: size / 2,
+    );
+  }
+}
+
+class _MithkaVideoSeekButton extends StatelessWidget {
+  const _MithkaVideoSeekButton({
+    required this.backwards,
+    required this.label,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  final bool backwards;
+  final String label;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 62.0 : 78.0;
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(size / 2),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xA92C2C2E),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x42000000),
+              blurRadius: 14,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: SizedBox.square(
+          dimension: size,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AppIcon(
+                backwards ? HeroAppIcons.rotateLeft : HeroAppIcons.rotateRight,
+                color: Colors.white,
+                size: size * 0.61,
+              ),
+              Padding(
+                padding: EdgeInsets.only(top: size * 0.02),
+                child: Text(
+                  '10',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: compact ? 11 : 13,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MithkaVideoCompactNavButton extends StatelessWidget {
+  const _MithkaVideoCompactNavButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.size = 56,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => _FocusableVideoIconButton(
+    icon: icon,
+    label: label,
+    onPressed: onTap,
+    size: Size.square(size),
+    iconSize: size * 0.45,
+    backgroundColor: const Color(0xB82C2C2E),
+    borderColor: Colors.white.withValues(alpha: 0.18),
+    cornerRadius: size / 2,
+  );
+}
+
+class _MithkaVideoSideButton extends StatelessWidget {
+  const _MithkaVideoSideButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => _FocusableVideoIconButton(
+    icon: icon,
+    label: label,
+    onPressed: onTap,
+    size: const Size(52, 116),
+    iconSize: 25,
+    backgroundColor: const Color(0xA92C2C2E),
+    borderColor: Colors.white.withValues(alpha: 0.24),
+    cornerRadius: 26,
+  );
+}
+
+class _MithkaVideoBottomChrome extends StatelessWidget {
+  const _MithkaVideoBottomChrome({
+    required this.scope,
+    required this.wide,
+    required this.buffered,
+    required this.aspectRatio,
+    required this.thumbnailProvider,
+    required this.compactQueueNavigation,
+    required this.previousButton,
+    required this.nextButton,
+    required this.modeButton,
+    required this.fullscreenButton,
+    required this.qualityLabel,
+  });
+
+  final FVideoChromeScope scope;
+  final bool wide;
+  final double buffered;
+  final double aspectRatio;
+  final Future<Uint8List?> Function(Duration position) thumbnailProvider;
+  final bool compactQueueNavigation;
+  final Widget? previousButton;
+  final Widget? nextButton;
+  final Widget? modeButton;
+  final Widget? fullscreenButton;
+  final String qualityLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _MithkaVideoTimeline(
+          scope: scope,
+          wide: wide,
+          buffered: buffered,
+          aspectRatio: aspectRatio,
+          thumbnailProvider: thumbnailProvider,
+        ),
+        const SizedBox(height: 5),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final showVolumeSlider = width >= 220;
+            final showTime = !compactQueueNavigation && (width >= 330 || wide);
+            final showWaveform = wide && width >= 700;
+            final showSpeed = !compactQueueNavigation && (width >= 320 || wide);
+            final showQuality = qualityLabel.isNotEmpty && width >= 700;
+            return Row(
+              children: [
+                if (compactQueueNavigation) ...[
+                  previousButton ?? const SizedBox.square(dimension: 44),
+                  const SizedBox(width: 4),
+                ],
+                _FocusableVideoIconButton(
+                  icon: scope.snapshot.value.isPlaying
+                      ? HeroAppIcons.pause
+                      : HeroAppIcons.play,
+                  label: scope.snapshot.value.isPlaying
+                      ? scope.labels.pause
+                      : scope.labels.play,
+                  onPressed: () => unawaited(scope.actions.togglePlayback()),
+                  size: const Size.square(44),
+                  iconSize: 23,
+                ),
+                if (compactQueueNavigation) ...[
+                  const SizedBox(width: 4),
+                  nextButton ?? const SizedBox.square(dimension: 44),
+                ],
+                const SizedBox(width: 4),
+                _FocusableVideoIconButton(
+                  icon: scope.snapshot.volume <= 0.01
+                      ? HeroAppIcons.volumeXmark
+                      : HeroAppIcons.volumeHigh,
+                  label: scope.snapshot.volume <= 0.01
+                      ? scope.labels.unmute
+                      : scope.labels.mute,
+                  onPressed: () => unawaited(scope.actions.toggleMute()),
+                  size: const Size.square(44),
+                  iconSize: 23,
+                ),
+                if (showVolumeSlider) ...[
+                  const SizedBox(width: 2),
+                  SizedBox(
+                    width: wide ? 74 : 64,
+                    height: 44,
+                    child: FVideoSlider(
+                      value: scope.snapshot.volume.clamp(0.0, 1.0).toDouble(),
+                      trackHeight: 3,
+                      thumbRadius: 5,
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white.withValues(alpha: 0.26),
+                      semanticLabel: scope.labels.volume,
+                      semanticValue:
+                          '${(scope.snapshot.volume * 100).round()}%',
+                      onChanged: (value) =>
+                          unawaited(scope.actions.setVolume(value)),
+                    ),
+                  ),
+                ],
+                if (showTime) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: wide ? 78 : 70,
+                    child: Text(
+                      '${_formatTimelineDuration(scope.snapshot.displayPosition)} / ${_formatTimelineDuration(scope.snapshot.value.duration)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ],
+                if (showWaveform) ...[
+                  const SizedBox(width: 10),
+                  const Expanded(child: _MithkaVideoWaveform()),
+                  const SizedBox(width: 10),
+                ] else
+                  const Spacer(),
+                if (showSpeed)
+                  _MithkaVideoTextButton(
+                    text: _formatPlaybackSpeed(
+                      scope.snapshot.value.playbackSpeed,
+                    ),
+                    label: scope.labels.speed,
+                    onTap: () => unawaited(
+                      scope.actions.setPlaybackSpeed(
+                        _nextPlaybackSpeed(scope.snapshot.value.playbackSpeed),
+                      ),
+                    ),
+                  ),
+                if (showQuality)
+                  _MithkaVideoReadOnlyBadge(
+                    label: 'Video quality',
+                    value: qualityLabel,
+                  ),
+                if (modeButton != null) ...[
+                  const SizedBox(width: 6),
+                  modeButton!,
+                ],
+                if (fullscreenButton != null) ...[
+                  const SizedBox(width: 6),
+                  fullscreenButton!,
+                ],
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _MithkaVideoTextButton extends StatelessWidget {
+  const _MithkaVideoTextButton({
+    required this.text,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String text;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => AppInteractiveSurface(
+    semanticLabel: label,
+    semanticValue: text,
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(10),
+    child: Container(
+      constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0x8A1B1D1E),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          fontFeatures: [FontFeature.tabularFigures()],
+        ),
+      ),
+    ),
+  );
+}
+
+class _MithkaVideoReadOnlyBadge extends StatelessWidget {
+  const _MithkaVideoReadOnlyBadge({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    label: label,
+    value: value,
+    child: Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0x8A1B1D1E),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+  );
+}
+
+class _MithkaVideoTimeline extends StatefulWidget {
+  const _MithkaVideoTimeline({
+    required this.scope,
+    required this.wide,
+    required this.buffered,
+    required this.aspectRatio,
+    required this.thumbnailProvider,
+  });
+
+  final FVideoChromeScope scope;
+  final bool wide;
+  final double buffered;
+  final double aspectRatio;
+  final Future<Uint8List?> Function(Duration position) thumbnailProvider;
+
+  @override
+  State<_MithkaVideoTimeline> createState() => _MithkaVideoTimelineState();
+}
+
+class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
+  Timer? _thumbnailTimer;
+  Timer? _thumbnailTimeout;
+  int _thumbnailGeneration = 0;
+  double? _scrubFraction;
+  Uint8List? _thumbnail;
+
+  @override
+  void dispose() {
+    _thumbnailTimer?.cancel();
+    _thumbnailTimeout?.cancel();
+    super.dispose();
+  }
+
+  Duration _positionFor(double fraction) {
+    final duration = widget.scope.snapshot.value.duration;
+    return Duration(
+      microseconds: (duration.inMicroseconds * fraction.clamp(0.0, 1.0))
+          .round(),
+    );
+  }
+
+  void _beginScrub(double fraction) {
+    _thumbnailTimer?.cancel();
+    _thumbnailTimeout?.cancel();
+    widget.scope.actions.beginScrub(fraction);
+    setState(() {
+      _scrubFraction = fraction;
+      _thumbnail = null;
+    });
+    _scheduleThumbnail(fraction);
+  }
+
+  void _updateScrub(double fraction) {
+    widget.scope.actions.updateScrub(fraction);
+    setState(() => _scrubFraction = fraction);
+    _scheduleThumbnail(fraction);
+  }
+
+  void _endScrub(double fraction) {
+    _thumbnailTimer?.cancel();
+    _thumbnailTimeout?.cancel();
+    final finalFraction = _scrubFraction ?? fraction;
+    unawaited(_commitScrub(finalFraction));
+  }
+
+  Future<void> _commitScrub(double fraction) async {
+    await widget.scope.actions.endScrub(fraction);
+    if (!mounted) return;
+    setState(() {
+      _scrubFraction = null;
+      _thumbnail = null;
+    });
+  }
+
+  void _scheduleThumbnail(double fraction) {
+    _thumbnailTimer?.cancel();
+    _thumbnailTimeout?.cancel();
+    final generation = ++_thumbnailGeneration;
+    _thumbnailTimer = Timer(const Duration(milliseconds: 200), () async {
+      _thumbnailTimer = null;
+      try {
+        final result = await widget.thumbnailProvider(_positionFor(fraction));
+        if (!mounted || generation != _thumbnailGeneration) return;
+        setState(() => _thumbnail = result);
+      } catch (_) {
+        if (mounted && generation == _thumbnailGeneration) {
+          setState(() => _thumbnail = null);
+        }
+      }
+    });
+    _thumbnailTimeout = Timer(const Duration(seconds: 2), () {
+      if (!mounted || generation != _thumbnailGeneration) return;
+      _thumbnailTimer?.cancel();
+      setState(() => _thumbnail = null);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = widget.scope.snapshot.value.duration;
+    final durationMs = math.max(1, duration.inMilliseconds);
+    final position = widget.scope.snapshot.displayPosition;
+    final actualFraction = (position.inMilliseconds / durationMs)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final fraction = _scrubFraction ?? actualFraction;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final previewWidth = widget.wide ? 160.0 : 128.0;
+        final previewHeight = (previewWidth / widget.aspectRatio)
+            .clamp(widget.wide ? 78.0 : 72.0, widget.wide ? 110.0 : 72.0)
+            .toDouble();
+        final trackWidth = constraints.maxWidth;
+        final previewLeft = (fraction * trackWidth - previewWidth / 2)
+            .clamp(0.0, math.max(0.0, trackWidth - previewWidth))
+            .toDouble();
+        return SizedBox(
+          height: widget.wide ? 30 : 28,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: FVideoSlider(
+                  value: actualFraction,
+                  bufferedValue: widget.buffered,
+                  trackHeight: widget.wide ? 4 : 3,
+                  thumbRadius: widget.wide ? 7 : 6,
+                  activeColor: const Color(0xFF24DDD9),
+                  bufferedColor: Colors.white.withValues(alpha: 0.32),
+                  inactiveColor: Colors.white.withValues(alpha: 0.86),
+                  semanticLabel: widget.scope.labels.position,
+                  semanticValue:
+                      '${_formatTimelineDuration(position)} / ${_formatTimelineDuration(duration)}',
+                  semanticIncreasedValue: _formatTimelineDuration(
+                    position + const Duration(seconds: 10) > duration
+                        ? duration
+                        : position + const Duration(seconds: 10),
+                  ),
+                  semanticDecreasedValue: _formatTimelineDuration(
+                    position - const Duration(seconds: 10) < Duration.zero
+                        ? Duration.zero
+                        : position - const Duration(seconds: 10),
+                  ),
+                  keyboardStep: math.min(
+                    1,
+                    const Duration(seconds: 10).inMilliseconds / durationMs,
+                  ),
+                  onChangeStart: _beginScrub,
+                  onChanged: _updateScrub,
+                  onChangeEnd: _endScrub,
+                ),
+              ),
+              if (_scrubFraction != null)
+                Positioned(
+                  left: previewLeft,
+                  bottom: (widget.wide ? 30 : 28) + 8,
+                  width: previewWidth,
+                  height: previewHeight,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111315),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x99000000),
+                            blurRadius: 12,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (_thumbnail != null)
+                              Image.memory(
+                                _thumbnail!,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: DecoratedBox(
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Color(0x00000000),
+                                      Color(0xDD000000),
+                                    ],
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    6,
+                                    12,
+                                    6,
+                                    5,
+                                  ),
+                                  child: Text(
+                                    _formatTimelineDuration(
+                                      _positionFor(fraction),
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      fontFeatures: [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MithkaVideoWaveform extends StatelessWidget {
+  const _MithkaVideoWaveform();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    height: 30,
+    child: CustomPaint(painter: _MithkaVideoWaveformPainter()),
+  );
+}
+
+class _MithkaVideoWaveformPainter extends CustomPainter {
+  const _MithkaVideoWaveformPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.22)
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    final count = math.max(1, (size.width / 4).floor());
+    for (var index = 0; index < count; index++) {
+      final x = index * size.width / count;
+      final wave = (math.sin(index * 1.73) + math.sin(index * 0.43) * 0.5)
+          .abs();
+      final height = 4 + wave * (size.height - 8);
+      canvas.drawLine(
+        Offset(x, (size.height - height) / 2),
+        Offset(x, (size.height + height) / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MithkaVideoWaveformPainter oldDelegate) =>
+      false;
+}
+
+String _formatPlaybackSpeed(double speed) {
+  if (!speed.isFinite || speed <= 0) return '1x';
+  return '${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}x';
+}
+
+double _nextPlaybackSpeed(double speed) {
+  const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+  final index = speeds.indexWhere((value) => (value - speed).abs() < 0.001);
+  return speeds[(index + 1) % speeds.length];
+}
+
+String _formatTimelineDuration(Duration value) {
+  final seconds = math.max(0, value.inSeconds);
+  final hours = seconds ~/ 3600;
+  final minutes = (seconds ~/ 60) % 60;
+  final remainder = seconds % 60;
+  return hours > 0
+      ? '$hours:${minutes.toString().padLeft(2, '0')}:${remainder.toString().padLeft(2, '0')}'
+      : '$minutes:${remainder.toString().padLeft(2, '0')}';
 }
 
 class _VideoLoadingRing extends StatefulWidget {

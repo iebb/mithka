@@ -121,6 +121,7 @@ class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
         video: session.video,
         accountSlot: session.accountSlot,
         thumb: session.thumb,
+        title: session.title,
         width: session.width,
         height: session.height,
         presentation: VideoPlayerPresentation.embedded,

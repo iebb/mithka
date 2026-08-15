@@ -655,6 +655,7 @@ class TDImage extends StatefulWidget {
     this.cacheWidth,
     this.cacheHeight,
     this.showProgress = false,
+    this.accountSlot,
   });
   final TdFileRef? photo;
   final double cornerRadius;
@@ -662,6 +663,7 @@ class TDImage extends StatefulWidget {
   final int? cacheWidth;
   final int? cacheHeight;
   final bool showProgress;
+  final int? accountSlot;
 
   @override
   State<TDImage> createState() => _TDImageState();
@@ -711,7 +713,7 @@ class _TDImageState extends State<TDImage> {
 
   void _load() {
     final ref = widget.photo;
-    final slot = TdClient.shared.activeSlot;
+    final slot = widget.accountSlot ?? TdClient.shared.activeSlot;
     final thumbnailId = ref?.thumbnail?.id;
     if (ref == null) {
       _loadedId = null;

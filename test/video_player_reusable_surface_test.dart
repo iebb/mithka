@@ -64,7 +64,7 @@ void main() {
       ];
 
   for (final surface in cases) {
-    testWidgets('${surface.name} uses FVideoPlayer default chrome', (
+    testWidgets('${surface.name} wires the reusable FVideoPlayer surface', (
       tester,
     ) async {
       tester.view.devicePixelRatio = 1;
@@ -108,7 +108,12 @@ void main() {
         final playerFinder = find.byType(FVideoPlayer);
         expect(playerFinder, findsOneWidget);
         final player = tester.widget<FVideoPlayer>(playerFinder);
-        expect(player.chromeBuilder, isNull);
+        expect(
+          player.chromeBuilder,
+          surface.presentation == VideoPlayerPresentation.fullscreen
+              ? isNotNull
+              : isNull,
+        );
         expect(player.interactionMode, FVideoInteractionMode.builtIn);
         expect(player.autofocus, switch (surface.platform) {
           TargetPlatform.linux ||
@@ -116,7 +121,10 @@ void main() {
           TargetPlatform.windows => true,
           _ => false,
         });
-        expect(player.showScrubPreview, isTrue);
+        expect(
+          player.showScrubPreview,
+          surface.presentation != VideoPlayerPresentation.fullscreen,
+        );
         expect(player.showPictureInPictureButton, isFalse);
         expect(player.showFullscreenButton, isFalse);
         expect(player.bottomTrailingBuilder, isNotNull);

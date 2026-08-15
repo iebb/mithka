@@ -59,6 +59,7 @@ import 'internal_chat_link_router.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
 import 'telegram_invoice_checkout_view.dart';
+import 'telegram_link.dart';
 import 'telegram_link_details_view.dart';
 import 'telegram_mini_app_view.dart';
 import 'telegram_payment_service.dart';
@@ -77,7 +78,7 @@ Future<void> openLink(BuildContext context, String url) async {
       ? TdClient.shared.query
       : (Map<String, dynamic> request) =>
             TdClient.shared.queryForSlot(request, sourceChat.accountSlot);
-  final link = _normalizeTelegramLink(url);
+  final link = normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {
     await _external(url);
@@ -582,34 +583,6 @@ Future<void> _addProxyFromLink(BuildContext context, ProxyConfig config) async {
       showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));
     }
   }
-}
-
-String? _normalizeTelegramLink(String raw) {
-  final trimmed = raw.trim();
-  if (trimmed.isEmpty) return null;
-  final lower = trimmed.toLowerCase();
-  if (lower.startsWith('tg:')) return trimmed;
-  // The app's own schemes carry tg:// grammar — rewrite so TDLib's
-  // getInternalLinkType (which only knows tg:) can classify them. Without
-  // this they fell through to the external launcher, which bounced them
-  // right back to us via LaunchServices as a no-op activation.
-  if (lower.startsWith('mk:')) return 'tg:${trimmed.substring(3)}';
-  if (lower.startsWith('mithka:')) return 'tg:${trimmed.substring(7)}';
-
-  var candidate = trimmed;
-  if (!candidate.contains('://')) candidate = 'https://$candidate';
-  final uri = Uri.tryParse(candidate);
-  if (uri == null) return null;
-  final host = uri.host.toLowerCase();
-  if (host == 't.me' ||
-      host == 'telegram.me' ||
-      host == 'telegram.dog' ||
-      host == 'www.t.me' ||
-      host == 'www.telegram.me' ||
-      host == 'www.telegram.dog') {
-    return uri.replace(scheme: 'https').toString();
-  }
-  return null;
 }
 
 /// Converts the server-local post number carried by Telegram link syntax to

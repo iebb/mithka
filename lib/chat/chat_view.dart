@@ -3965,6 +3965,7 @@ class _ChatViewState extends State<ChatView> {
         }
       },
       onOpenReply: _scrollToMessage,
+      onOpenForwarded: _openForwardedMessage,
       onOpenComments: _openMessageComments,
       showCommentAttachment: chatTranscriptAllowsCommentAttachment(
         isChannel: _vm.isChannel,
@@ -4464,6 +4465,25 @@ class _ChatViewState extends State<ChatView> {
       onBotCommandTap: _sendCommand,
       onHashtagTap: _openHashtagSearch,
       onViewInChat: _viewMessageRepliesInChat,
+    );
+  }
+
+  Future<void> _openForwardedMessage(ChatMessage message) async {
+    final chatId = message.forwardFromChatId;
+    final messageId = message.forwardFromMessageId;
+    if (chatId == null || chatId == 0 || messageId == null || messageId <= 0) {
+      return;
+    }
+    if (chatId == widget.chatId) {
+      await _scrollToMessage(messageId);
+      return;
+    }
+    if (!mounted) return;
+    await openChatFromCurrentWindow(
+      context,
+      chatId: chatId,
+      title: message.forwardDisplayName,
+      initialMessageId: messageId,
     );
   }
 
@@ -9028,6 +9048,7 @@ class _ChatViewState extends State<ChatView> {
           _vm.insertMention(message);
         }
       },
+      onOpenForwarded: _openForwardedMessage,
       onOpenImage: _openImage,
       onPlayVideo: _playVideo,
       onEditCaption: (message) => unawaited(_editMessageText(message)),

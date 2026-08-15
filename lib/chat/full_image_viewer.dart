@@ -257,6 +257,12 @@ class _ViewerPageState extends State<_ViewerPage> {
     widget.onZoomChanged(_controller.value.getMaxScaleOnAxis() > 1.01);
   }
 
+  void _toggleZoom() {
+    final current = _controller.value.getMaxScaleOnAxis();
+    final next = current > 1.01 ? 1.0 : 2.0;
+    _controller.value = Matrix4.diagonal3Values(next, next, 1);
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onTransform);
@@ -274,15 +280,31 @@ class _ViewerPageState extends State<_ViewerPage> {
       height: media.size.height,
       child: Image(image: image, fit: BoxFit.contain),
     );
+    Widget interactive(Widget child) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _toggleZoom,
+      child: InteractiveViewer(
+        transformationController: _controller,
+        minScale: 1,
+        maxScale: 5,
+        // Keep a finite viewport-sized child for both the real image and its
+        // mini-thumbnail. Previously only a fully downloaded file was put in
+        // InteractiveViewer, so images still resolving from TDLib could not
+        // be zoomed at all.
+        child: child,
+      ),
+    );
     if (_file == null) {
       if (widget.ref.miniThumb != null) {
         return Center(
-          child: fittedImage(
-            ResizeImage(
-              MemoryImage(widget.ref.miniThumb!),
-              width: cacheWidth,
-              height: cacheHeight,
-              policy: ResizeImagePolicy.fit,
+          child: interactive(
+            fittedImage(
+              ResizeImage(
+                MemoryImage(widget.ref.miniThumb!),
+                width: cacheWidth,
+                height: cacheHeight,
+                policy: ResizeImagePolicy.fit,
+              ),
             ),
           ),
         );
@@ -291,15 +313,8 @@ class _ViewerPageState extends State<_ViewerPage> {
         child: AppActivityIndicator(size: 24, color: Color(0xFFFFFFFF)),
       );
     }
-    return InteractiveViewer(
-      transformationController: _controller,
-      minScale: 1,
-      maxScale: 5,
-      // Give the image a finite viewport-sized box before InteractiveViewer
-      // applies its transform. Without that bound, an image decoded from a
-      // thumbnail can negotiate its intrinsic dimensions and appear stretched
-      // or clipped on narrow Android windows.
-      child: fittedImage(
+    return interactive(
+      fittedImage(
         ResizeImage(
           FileImage(_file!),
           width: cacheWidth,
