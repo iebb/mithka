@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/media/app_asset_picker.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
@@ -76,6 +77,41 @@ void main() {
 
     expect(config?.gridCount, 6);
     expect(config?.pageSize, 120);
+  });
+
+  testWidgets('picker header uses owned icons without Material glyphs', (
+    tester,
+  ) async {
+    final provider = DefaultAssetPickerProvider.forTest(
+      requestType: RequestType.common,
+      maxAssets: 10,
+    );
+    final delegate = AppAssetPickerBuilderDelegate(
+      provider: provider,
+      initialPermission: PermissionState.authorized,
+      config: const AssetPickerConfig(maxAssets: 10),
+      locale: const Locale('en'),
+    );
+    addTearDown(delegate.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Builder(
+          builder: (context) => Column(
+            children: [
+              delegate.backButton(context),
+              delegate.pathEntitySelector(context),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final icons = tester.widgetList<AppIcon>(find.byType(AppIcon)).toList();
+    expect(icons.map((icon) => icon.icon), contains(HeroAppIcons.xmark));
+    expect(icons.map((icon) => icon.icon), contains(HeroAppIcons.chevronDown));
+    expect(tester.takeException(), isNull);
   });
 
   test('picked media type uses MIME type and file extension', () {

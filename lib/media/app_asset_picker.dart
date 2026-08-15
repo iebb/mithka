@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
+import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../theme/app_theme.dart';
 
 enum AppAssetPickerType { image, video, imageAndVideo }
@@ -77,9 +80,9 @@ abstract final class AppAssetPicker {
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
     try {
-      final assets = await AssetPicker.pickAssets(
+      final assets = await _pickAssets(
         context,
-        pickerConfig: buildConfig(
+        config: buildConfig(
           context,
           type: type,
           maxAssets: maxAssets,
@@ -131,9 +134,9 @@ abstract final class AppAssetPicker {
         if (!context.mounted) {
           return const AppAssetPickerSelection(assets: [], failedCount: 0);
         }
-        final assets = await AssetPicker.pickAssets(
+        final assets = await _pickAssets(
           context,
-          pickerConfig: buildConfig(
+          config: buildConfig(
             context,
             type: type,
             maxAssets: maxAssets,
@@ -166,6 +169,49 @@ abstract final class AppAssetPicker {
       }
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
+  }
+
+  static Future<List<AssetEntity>?> _pickAssets(
+    BuildContext context, {
+    required AssetPickerConfig config,
+  }) async {
+    final permissionRequestOption = PermissionRequestOption(
+      androidPermission: AndroidPermission(
+        type: config.requestType,
+        mediaLocation: false,
+      ),
+    );
+    final initialPermission = await AssetPicker.permissionCheck(
+      requestOption: permissionRequestOption,
+    );
+    if (!context.mounted) return null;
+
+    final provider = DefaultAssetPickerProvider(
+      maxAssets: config.maxAssets,
+      pageSize: config.pageSize,
+      pathThumbnailSize: config.pathThumbnailSize,
+      selectedAssets: config.selectedAssets,
+      requestType: config.requestType,
+      sortPathDelegate: config.sortPathDelegate,
+      sortPathsByModifiedDate: config.sortPathsByModifiedDate,
+      filterOptions: config.filterOptions,
+    );
+    final delegate = AppAssetPickerBuilderDelegate(
+      provider: provider,
+      initialPermission: initialPermission,
+      config: config,
+      locale: Localizations.maybeLocaleOf(context),
+    );
+    final picker =
+        AssetPicker<
+          AssetEntity,
+          AssetPathEntity,
+          AppAssetPickerBuilderDelegate
+        >(permissionRequestOption: permissionRequestOption, builder: delegate);
+    return Navigator.maybeOf(
+      context,
+      rootNavigator: true,
+    )?.push(AssetPickerPageRoute<List<AssetEntity>>(builder: (_) => picker));
   }
 
   static AssetPickerConfig buildConfig(
@@ -489,6 +535,154 @@ abstract final class AppAssetPicker {
       'video/quicktime' => 'mov',
       _ => type == AssetType.video ? 'mp4' : 'jpg',
     };
+  }
+}
+
+/// App-owned chrome for the third-party asset grid.
+///
+/// Mithka deliberately does not bundle Material Icons. The package defaults
+/// therefore resolve private-use icon codepoints through the user's text font,
+/// which produces corrupted letters or question marks on iOS. Keep the picker
+/// behavior while replacing its visible header glyphs with project icons.
+class AppAssetPickerBuilderDelegate
+    extends DefaultAssetPickerBuilderDelegate<DefaultAssetPickerProvider> {
+  AppAssetPickerBuilderDelegate({
+    required super.provider,
+    required super.initialPermission,
+    required AssetPickerConfig config,
+    required super.locale,
+  }) : super(
+         gridCount: config.gridCount,
+         pickerTheme: config.pickerTheme,
+         gridThumbnailSize: config.gridThumbnailSize,
+         previewThumbnailSize: config.previewThumbnailSize,
+         specialPickerType: config.specialPickerType,
+         specialItems: config.specialItems,
+         loadingIndicatorBuilder: config.loadingIndicatorBuilder,
+         selectPredicate: config.selectPredicate,
+         shouldRevertGrid: config.shouldRevertGrid,
+         limitedPermissionOverlayPredicate:
+             config.limitedPermissionOverlayPredicate,
+         pathNameBuilder: config.pathNameBuilder,
+         assetsChangeCallback: config.assetsChangeCallback,
+         assetsChangeRefreshPredicate: config.assetsChangeRefreshPredicate,
+         textDelegate: config.textDelegate,
+         themeColor: config.themeColor,
+         keepScrollOffset: config.keepScrollOffset,
+         shouldAutoplayPreview: config.shouldAutoplayPreview,
+         dragToSelect: config.dragToSelect,
+         enableLivePhoto: config.enableLivePhoto,
+       );
+
+  @override
+  Widget backButton(BuildContext context) {
+    final color = theme.iconTheme.color ?? theme.colorScheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: AppInteractiveSurface(
+        semanticLabel: MaterialLocalizations.of(context).closeButtonTooltip,
+        onTap: () => Navigator.maybeOf(context)?.maybePop(),
+        borderRadius: BorderRadius.circular(24),
+        showHover: false,
+        showFocusRing: false,
+        child: SizedBox.square(
+          dimension: 48,
+          child: Center(
+            child: AppIcon(HeroAppIcons.xmark, size: 22, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget pathEntitySelector(BuildContext context) {
+    Widget pathText(String text, String semanticsText) => Flexible(
+      child: Text(
+        text,
+        semanticsLabel: semanticsText,
+        maxLines: 1,
+        overflow: TextOverflow.fade,
+        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w400),
+      ),
+    );
+
+    return UnconstrainedBox(
+      child: GestureDetector(
+        onTap: () {
+          if (isPermissionLimited && provider.isAssetsEmpty) {
+            PhotoManager.presentLimited();
+            return;
+          }
+          if (provider.currentPath == null) return;
+          isSwitchingPath.value = !isSwitchingPath.value;
+        },
+        child: Container(
+          height: appBarItemHeight,
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+          ),
+          padding: const EdgeInsetsDirectional.only(start: 12, end: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: theme.focusColor,
+          ),
+          child: ListenableBuilder(
+            listenable: provider,
+            builder: (_, _) {
+              final path = provider.currentPath?.path;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (path == null && isPermissionLimited)
+                    pathText(
+                      textDelegate.changeAccessibleLimitedAssets,
+                      semanticsTextDelegate.changeAccessibleLimitedAssets,
+                    ),
+                  if (path != null)
+                    pathText(
+                      isPermissionLimited && path.isAll
+                          ? textDelegate.accessiblePathName
+                          : pathNameBuilder?.call(path) ?? path.name,
+                      isPermissionLimited && path.isAll
+                          ? semanticsTextDelegate.accessiblePathName
+                          : pathNameBuilder?.call(path) ?? path.name,
+                    ),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 5),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: (theme.iconTheme.color ?? Colors.black)
+                            .withValues(alpha: 0.5),
+                      ),
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: isSwitchingPath,
+                        builder: (_, isSwitchingPath, child) =>
+                            Transform.rotate(
+                              angle: isSwitchingPath ? math.pi : 0,
+                              child: child,
+                            ),
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: Center(
+                            child: AppIcon(
+                              HeroAppIcons.chevronDown,
+                              size: 14,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
 

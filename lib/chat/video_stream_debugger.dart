@@ -59,6 +59,23 @@ const int videoDownloadMinimumBlockBytes = 1024 * 1024;
 const int videoDownloadMaximumBlocks = 4096;
 const double _videoDownloadMinimumCellSize = 12;
 const double _videoDownloadCellGap = 4;
+const String _inspectorFontFamily = '.AppleSystemUIFont';
+const List<String> _inspectorFontFamilyFallback = <String>[
+  'Roboto',
+  'Segoe UI',
+  'Ubuntu',
+  'Noto Sans',
+  'Arial',
+];
+const TextStyle _inspectorDefaultTextStyle = TextStyle(
+  color: Colors.white,
+  fontFamily: _inspectorFontFamily,
+  fontFamilyFallback: _inspectorFontFamilyFallback,
+  fontSize: 12,
+  fontWeight: FontWeight.w400,
+  letterSpacing: 0,
+  decoration: TextDecoration.none,
+);
 
 int _ceilDivide(int value, int divisor) {
   if (value <= 0) return 0;
@@ -344,8 +361,8 @@ class VideoStreamDebugger extends StatefulWidget {
 class _VideoStreamDebuggerState extends State<VideoStreamDebugger> {
   @override
   Widget build(BuildContext context) {
-    return DefaultTextStyle.merge(
-      style: const TextStyle(fontWeight: FontWeight.w400),
+    return DefaultTextStyle(
+      style: _inspectorDefaultTextStyle,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xF20F1112),
@@ -594,9 +611,9 @@ class _NerdStatRow extends StatelessWidget {
             label,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.5),
-              fontFamily: 'monospace',
               fontSize: 10,
               fontWeight: FontWeight.w400,
+              letterSpacing: 0,
               height: 1.3,
             ),
           ),
@@ -609,9 +626,9 @@ class _NerdStatRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
-              fontFamily: 'monospace',
               fontSize: 10,
               fontWeight: FontWeight.w400,
+              letterSpacing: 0,
               height: 1.3,
               fontFeatures: [FontFeature.tabularFigures()],
             ),

@@ -189,6 +189,15 @@ void main() {
     expect(find.text('EXPORT'), findsNothing);
     expect(find.bySemanticsLabel('CLOSE'), findsOneWidget);
     expect(find.byKey(const ValueKey('video-debug-block-0')), findsOneWidget);
+    final inspectorTextStyle = DefaultTextStyle.of(
+      tester.element(find.text('Stream Inspector')),
+    ).style;
+    expect(inspectorTextStyle.fontFamily, '.AppleSystemUIFont');
+    expect(
+      inspectorTextStyle.fontFamilyFallback,
+      containsAll(<String>['Roboto', 'Segoe UI', 'Noto Sans']),
+    );
+    expect(inspectorTextStyle.letterSpacing, 0);
     final inspectorRect = tester.getRect(find.byType(VideoStreamDebugger));
     final closeRect = tester.getRect(find.bySemanticsLabel('CLOSE'));
     expect(closeRect.right, closeTo(inspectorRect.right - 10, 0.01));
@@ -204,6 +213,7 @@ void main() {
     ).readAsStringSync();
     expect(source, isNot(contains('layout.width * playhead')));
     expect(source, isNot(contains('per chunk')));
+    expect(source, isNot(contains("fontFamily: 'monospace'")));
     expect(tester.takeException(), isNull);
   });
 
