@@ -274,22 +274,30 @@ bool _shouldUseFvp() {
 }
 
 void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    FVideoFvpBackend.ensureAndroidAlphaWebmDecoderInitialized();
-    return;
+  try {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      FVideoFvpBackend.ensureAndroidAlphaWebmDecoderInitialized();
+      return;
+    }
+    if (!_shouldUseFvp()) return;
+    FVideoFvpBackend.ensureInitialized(
+      configuration: FVideoFvpConfiguration(
+        platforms: {
+          FVideoFvpPlatform.ios,
+          FVideoFvpPlatform.linux,
+          FVideoFvpPlatform.macos,
+          FVideoFvpPlatform.windows,
+        },
+        installGlobalLogHandler: installGlobalLogHandler,
+      ),
+    );
+  } catch (error, stackTrace) {
+    // Video is optional at launch. A missing or incompatible native backend
+    // must fall back to the platform player instead of aborting before
+    // runApp(), which otherwise leaves iOS displaying its empty white scene.
+    debugPrint('FVP unavailable; using the platform video backend: $error');
+    debugPrintStack(stackTrace: stackTrace);
   }
-  if (!_shouldUseFvp()) return;
-  FVideoFvpBackend.ensureInitialized(
-    configuration: FVideoFvpConfiguration(
-      platforms: {
-        FVideoFvpPlatform.ios,
-        FVideoFvpPlatform.linux,
-        FVideoFvpPlatform.macos,
-        FVideoFvpPlatform.windows,
-      },
-      installGlobalLogHandler: installGlobalLogHandler,
-    ),
-  );
 }
 
 Future<void> _initTelemetry() async {

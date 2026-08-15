@@ -65,6 +65,22 @@ void main() {
     );
   });
 
+  test('optional video backend failures cannot abort app startup', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final initializer = source.substring(
+      source.indexOf('void _initializeVideoBackend('),
+      source.indexOf('Future<void> _initTelemetry()'),
+    );
+
+    expect(initializer, contains('try {'));
+    expect(initializer, contains('catch (error, stackTrace)'));
+    expect(
+      initializer,
+      contains('FVP unavailable; using the platform video backend'),
+    );
+    expect(initializer, contains('instead of aborting before'));
+  });
+
   test('TDLib shutdown preserves accounts and joins its receive isolate', () {
     final source = File('lib/tdlib/td_client.dart').readAsStringSync();
     final shutdown = source.substring(
@@ -81,10 +97,7 @@ void main() {
       shutdown,
       contains('_startClosingSlotResult(slot, preserveBotApiAccount: true)'),
     );
-    expect(
-      shutdown,
-      contains('closing.timeout(const Duration(seconds: 16))'),
-    );
+    expect(shutdown, contains('closing.timeout(const Duration(seconds: 16))'));
     expect(shutdown, contains('await Future.wait(exits).timeout'));
     expect(close, contains('if (!preserveBotApiAccount)'));
     expect(close, contains('BotApiAccountRegistry.remove'));
