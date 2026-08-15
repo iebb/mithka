@@ -54,17 +54,16 @@ case "$SOURCE_VERSION" in
     ;;
 esac
 
-# Keep the major/minor from pubspec.yaml but force the patch component to
-# zero, matching iOS. The nightly job advances the patch for Android and the
-# desktop GitHub releases; without this TestFlight would see a new marketing
-# version for every one of them.
+# Preserve the complete semantic version from pubspec.yaml. The nightly job
+# advances the patch so Apple builds move to a new App Store Connect release
+# train when the previous train is closed.
 #
 # Unlike iOS, the macOS project does not hardcode FLUTTER_BUILD_NAME — it
 # reads the generated xcconfig — so passing --build-name below is the whole
 # fix, with no project file to rewrite.
 APP_VERSION="$(
   printf '%s\n' "$SOURCE_VERSION" |
-    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
+    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $0 }'
 )"
 if [ -z "$APP_VERSION" ]; then
   echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $SOURCE_VERSION" >&2

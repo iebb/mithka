@@ -202,9 +202,9 @@ GIT_COMMIT="$(git rev-parse --short HEAD)"
 echo "▸ git commit: $GIT_COMMIT"
 
 # Xcode Cloud runs xcodebuild after this script and can otherwise keep using
-# stale Flutter values from the checked-in project. Keep the major/minor version
-# from pubspec.yaml but force the iOS patch component to zero. Android nightlies
-# can therefore advance independently (for example 0.8.2 becomes 0.8.0 on iOS).
+# stale Flutter values from the checked-in project. Preserve the complete
+# semantic version from pubspec.yaml so nightly builds move to a new App Store
+# Connect release train when the previous train is closed.
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
@@ -221,7 +221,7 @@ case "$APP_BUILD_NUMBER" in
 esac
 XCODE_BUILD_NAME="$(
   printf '%s\n' "$APP_BUILD_NAME" |
-    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
+    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $0 }'
 )"
 if [ -z "$XCODE_BUILD_NAME" ]; then
   echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $APP_BUILD_NAME" >&2
