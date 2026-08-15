@@ -302,6 +302,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
   VideoPlayerController? _animationController;
   _AvatarPlayerLease? _animationLease;
   int? _loadedId;
+  int? _loadedPhotoId;
   int? _loadedSlot;
   bool _animateAvatars = false;
   bool _themeAllowsAnimation = true;
@@ -479,17 +480,33 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
     if (ref == null) {
       if (_file != null) setState(() => _file = null);
       _loadedId = null;
+      _loadedPhotoId = null;
       _loadedSlot = null;
       return;
     }
     // File ids are per-account; reload when either id or active account changes.
     if (_loadedId == ref.id && _loadedSlot == slot) return;
     _loadedId = ref.id;
+    final previousPhotoId = _loadedPhotoId;
+    _loadedPhotoId = ref.photoId;
     _loadedSlot = slot;
-    if (_file != null) {
+    // TDLib can replace the small-file id while it finishes hydrating the
+    // same profile photo. Keep the already sharp image in that case instead
+    // of flashing the low-resolution minithumbnail until the replacement
+    // download completes.
+    final samePhoto =
+        ref.photoId != null &&
+        previousPhotoId != null &&
+        ref.photoId == previousPhotoId;
+    if (!samePhoto && _file != null) {
       setState(() => _file = null); // reset to placeholder
     }
-    TdFileCenter.shared.pathFor(ref).then((path) {
+    final cachedPath = TdFileCenter.shared.cachedPath(ref, accountSlot: slot);
+    final initialPath = cachedPath ?? ref.localPath;
+    if (initialPath != null && initialPath.isNotEmpty) {
+      _file ??= File(initialPath);
+    }
+    TdFileCenter.shared.pathFor(ref, accountSlot: slot).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
       if (path != null) setState(() => _file = File(path));
     });
@@ -563,6 +580,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
         fit: BoxFit.cover,
         cacheWidth: cacheSize,
         cacheHeight: cacheSize,
+        filterQuality: FilterQuality.high,
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => _placeholder(),
       );
@@ -573,6 +591,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
         fit: BoxFit.cover,
         cacheWidth: cacheSize,
         cacheHeight: cacheSize,
+        filterQuality: FilterQuality.high,
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => _placeholder(),
       );

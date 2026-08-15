@@ -1177,6 +1177,8 @@
     <string name="composerGroupVideoCall">Gruppen-Videoanruf</string>
     <string name="composerGroupVoiceCall">Gruppen-Sprachanruf</string>
     <string name="composerHoldToTalk">Zum Sprechen gedrückt halten</string>
+    <string name="composerDesktopVoiceHoldSpace">Leertaste gedrückt halten zum Sprechen</string>
+    <string name="composerDesktopVoiceRelease">Leertaste loslassen zum Senden · Esc zum Abbrechen</string>
     <string name="composerImage">Bild</string>
     <string name="composerImagePreview">[Bild]</string>
     <string name="composerLoadingEmoji">emoji werden geladen…</string>

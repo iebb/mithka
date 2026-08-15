@@ -1177,6 +1177,8 @@
     <string name="composerGroupVideoCall">Appel vidéo de groupe</string>
     <string name="composerGroupVoiceCall">Appel vocal de groupe</string>
     <string name="composerHoldToTalk">Maintenir pour parler</string>
+    <string name="composerDesktopVoiceHoldSpace">Maintenez la barre d’espace pour parler</string>
+    <string name="composerDesktopVoiceRelease">Relâchez la barre d’espace pour envoyer · Échap pour annuler</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
     <string name="composerLoadingEmoji">Chargement des emoji…</string>

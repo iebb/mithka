@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -47,6 +48,14 @@ void main() {
     expect(find.text('联系人'), findsOneWidget);
     expect(find.text('定时消息'), findsOneWidget);
 
+    if (Platform.isMacOS) {
+      expect(
+        find.byKey(const ValueKey('desktopComposerVoiceAction')),
+        findsNothing,
+      );
+      return;
+    }
+
     await tester.tap(find.byIcon(HeroAppIcons.microphone.data));
     await tester.pump();
 
@@ -60,6 +69,39 @@ void main() {
     );
     expect(find.text('语音消息'), findsOneWidget);
     expect(find.text('视频消息'), findsOneWidget);
+  });
+
+  testWidgets('desktop voice mode replaces the text input', (tester) async {
+    final vm = ChatViewModel(
+      chatId: 3,
+      title: 'Desktop chat',
+      markReadOnOpen: false,
+    );
+    addTearDown(vm.dispose);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        ChatInputBar(
+          vm: vm,
+          onStartCall: (_) {},
+          onMessageSent: () {},
+          onVoicePanelOpenedForTesting: () {},
+        ),
+        platform: TargetPlatform.macOS,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('desktopComposerVoiceAction')));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('desktopVoiceMessagePanel')),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('voicePanelVoiceMessage')), findsNothing);
+    expect(find.byKey(const ValueKey('voicePanelVideoMessage')), findsNothing);
   });
 
   testWidgets('wide group header can own calls without a composer duplicate', (
@@ -220,8 +262,9 @@ void main() {
   });
 }
 
-Widget _localizedApp(Widget child) => MaterialApp(
+Widget _localizedApp(Widget child, {TargetPlatform? platform}) => MaterialApp(
   locale: const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
+  theme: ThemeData(platform: platform),
   localizationsDelegates: const [
     AppLocalizations.delegate,
     GlobalMaterialLocalizations.delegate,

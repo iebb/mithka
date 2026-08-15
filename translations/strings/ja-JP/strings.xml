@@ -1173,6 +1173,8 @@
     <string name="composerGroupVideoCall">グループビデオ通話</string>
     <string name="composerGroupVoiceCall">グループ音声通話</string>
     <string name="composerHoldToTalk">長押しして話す</string>
+    <string name="composerDesktopVoiceHoldSpace">スペースキーを押して話す</string>
+    <string name="composerDesktopVoiceRelease">スペースキーを離して送信 · Esc でキャンセル</string>
     <string name="composerImage">画像</string>
     <string name="composerImagePreview">[画像]</string>
     <string name="composerLoadingEmoji">絵文字を読み込み中…</string>

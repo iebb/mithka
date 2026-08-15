@@ -143,6 +143,12 @@ class _MessageSendResult {
   final TdError? error;
 }
 
+bool _isVoiceMessageRestrictionError(Object error) {
+  final normalized = error.toString().toUpperCase();
+  return normalized.contains('VOICE_MESSAGES_FORBIDDEN') ||
+      normalized.contains('CHAT_SEND_VOICES_FORBIDDEN');
+}
+
 class _ChatActionInfo {
   const _ChatActionInfo(this.name, this.actionType);
 
@@ -433,6 +439,7 @@ class ChatViewModel extends ChangeNotifier {
   // Membership / send permission. Defaults assume a normal, joined, sendable
   // chat; refined in _loadChatHeader once the chat type + member status load.
   bool canSendMessages = true; // composer enabled
+  bool canSendVoiceNotes = true;
   bool isMember = true; // gates 退出; false → join affordance
   bool canJoin = false; // not a member but joinable (public super/channel/left)
   bool joinByRequest = false; // joining needs approval → "申请加入"
@@ -2005,6 +2012,7 @@ class ChatViewModel extends ChangeNotifier {
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
   }) async {
+    if (!canSendMessages || !canSendVoiceNotes) return false;
     try {
       await _client.query(
         _withPaidMessageOptions({
@@ -2024,6 +2032,10 @@ class ChatViewModel extends ChangeNotifier {
       );
       return true;
     } catch (error) {
+      if (_isVoiceMessageRestrictionError(error)) {
+        canSendVoiceNotes = false;
+        notifyListeners();
+      }
       debugPrint('Failed to send voice note: $error');
       _publishSendFailure(
         ChatSendFailure.fromError(
@@ -3283,6 +3295,8 @@ class ChatViewModel extends ChangeNotifier {
     _chatCanSend =
         chat.obj('permissions')?.boolean('can_send_basic_messages') ?? true;
     canSendMessages = _chatCanSend;
+    canSendVoiceNotes =
+        chat.obj('permissions')?.boolean('can_send_voice_notes') ?? true;
     isMember = true;
     canJoin = false;
     joinByRequest = false;
@@ -3612,12 +3626,15 @@ class ChatViewModel extends ChangeNotifier {
     var next = 0;
     var restrictsNewChats = false;
     var isUnavailable = false;
+    var voiceMessagesForbidden = false;
     try {
       final full = await _client.query({
         '@type': 'getUserFullInfo',
         'user_id': userId,
       });
       next = _paidMessageStars(full);
+      voiceMessagesForbidden =
+          full.boolean('has_restricted_voice_and_video_note_messages') ?? false;
     } catch (_) {}
     try {
       final result = await _client.query({
@@ -3644,10 +3661,13 @@ class ChatViewModel extends ChangeNotifier {
     final requirementChanged =
         peerRequiresPremiumOrContact != restrictsNewChats ||
         peerIsUnavailable != isUnavailable;
+    final voiceRestrictionChanged =
+        canSendVoiceNotes != !voiceMessagesForbidden;
     peerRequiresPremiumOrContact = restrictsNewChats;
     peerIsUnavailable = isUnavailable;
+    canSendVoiceNotes = !voiceMessagesForbidden;
     _setPaidMessageStarCount(next, notify: false);
-    if (paidCountChanged || requirementChanged) {
+    if (paidCountChanged || requirementChanged || voiceRestrictionChanged) {
       notifyListeners();
     }
   }
@@ -3837,6 +3857,9 @@ class ChatViewModel extends ChangeNotifier {
         canSendMessages =
             status?.obj('permissions')?.boolean('can_send_basic_messages') ??
             false;
+        canSendVoiceNotes =
+            status?.obj('permissions')?.boolean('can_send_voice_notes') ??
+            canSendVoiceNotes;
         if (!isMember) canJoin = true;
         if (!canSendMessages) {
           sendDisabledReason = AppStrings.t(AppStringKeys.chatYouAreMuted);
@@ -3844,10 +3867,12 @@ class ChatViewModel extends ChangeNotifier {
       case 'chatMemberStatusLeft':
         isMember = false;
         canSendMessages = false;
+        canSendVoiceNotes = false;
         canJoin = true;
       case 'chatMemberStatusBanned':
         isMember = false;
         canSendMessages = false;
+        canSendVoiceNotes = false;
         sendDisabledReason = AppStrings.t(
           AppStringKeys.chatYouWereRemovedFromGroup,
         );
@@ -4765,6 +4790,9 @@ class ChatViewModel extends ChangeNotifier {
             };
         final error = TdError(errorData);
         debugPrint('Message $oldMessageId failed to send: $error');
+        if (_isVoiceMessageRestrictionError(error)) {
+          canSendVoiceNotes = false;
+        }
         _discardPendingMessage(oldMessageId);
         _recordMessageSendResult(
           oldMessageId,
@@ -4800,6 +4828,11 @@ class ChatViewModel extends ChangeNotifier {
         _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         hasProtectedContent =
             chat.boolean('has_protected_content') ?? hasProtectedContent;
+        if (chat.containsKey('permissions')) {
+          canSendVoiceNotes =
+              chat.obj('permissions')?.boolean('can_send_voice_notes') ??
+              canSendVoiceNotes;
+        }
         if (chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }

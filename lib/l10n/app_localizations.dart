@@ -1077,6 +1077,8 @@ abstract final class AppStringKeys {
   static const composerGroupVideoCall = 'composerGroupVideoCall';
   static const composerGroupVoiceCall = 'composerGroupVoiceCall';
   static const composerHoldToTalk = 'composerHoldToTalk';
+  static const composerDesktopVoiceHoldSpace = 'composerDesktopVoiceHoldSpace';
+  static const composerDesktopVoiceRelease = 'composerDesktopVoiceRelease';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';

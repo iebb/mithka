@@ -193,7 +193,15 @@ Future<void> _bootstrapAndRunApp() async {
   // Register before AuthManager starts TDLib. Flutter's macOS delegate waits
   // for this cancelable exit response, so even a very early Quit drains native
   // clients before AppKit unloads libtdjson.
-  await ApplicationExitCoordinator.install();
+  try {
+    await ApplicationExitCoordinator.install().timeout(
+      const Duration(seconds: 5),
+    );
+  } catch (error) {
+    // A broken lifecycle channel must not prevent Flutter from presenting the
+    // login screen. The native bridge still has a mandatory-exit fallback.
+    debugPrint('Application exit coordination unavailable at startup: $error');
+  }
   GoogleFonts.config.allowRuntimeFetching = true;
   // Bring TDLib up first: session restore is the longest serial chain in a
   // launch, and nothing below depends on it — the widget tree attaches to

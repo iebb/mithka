@@ -13,6 +13,7 @@
 #include <gtk/gtk_plugin.h>
 #include <hotkey_manager_linux/hotkey_manager_linux_plugin.h>
 #include <multi_window_manager/multi_window_manager_plugin.h>
+#include <record_linux/record_linux_plugin.h>
 #include <screen_capturer_linux/screen_capturer_linux_plugin.h>
 #include <sentry_flutter/sentry_flutter_plugin.h>
 #include <url_launcher_linux/url_launcher_plugin.h>
@@ -39,6 +40,9 @@ void fl_register_plugins(FlPluginRegistry* registry) {
   g_autoptr(FlPluginRegistrar) multi_window_manager_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "MultiWindowManagerPlugin");
   multi_window_manager_plugin_register_with_registrar(multi_window_manager_registrar);
+  g_autoptr(FlPluginRegistrar) record_linux_registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry, "RecordLinuxPlugin");
+  record_linux_plugin_register_with_registrar(record_linux_registrar);
   g_autoptr(FlPluginRegistrar) screen_capturer_linux_registrar =
       fl_plugin_registry_get_registrar_for_plugin(registry, "ScreenCapturerLinuxPlugin");
   screen_capturer_linux_plugin_register_with_registrar(screen_capturer_linux_registrar);

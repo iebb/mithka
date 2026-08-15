@@ -1177,6 +1177,8 @@
     <string name="composerGroupVideoCall">Videollamada grupal</string>
     <string name="composerGroupVoiceCall">Llamada de voz grupal</string>
     <string name="composerHoldToTalk">Mantén pulsado para hablar</string>
+    <string name="composerDesktopVoiceHoldSpace">Mantén pulsada la barra espaciadora para hablar</string>
+    <string name="composerDesktopVoiceRelease">Suelta la barra espaciadora para enviar · Esc para cancelar</string>
     <string name="composerImage">Imagen</string>
     <string name="composerImagePreview">[Imagen]</string>
     <string name="composerLoadingEmoji">Cargando emoji…</string>

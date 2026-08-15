@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.0.4+282
+version: 1.0.5+282
 
 environment:
   sdk: ^3.12.2
@@ -44,6 +44,9 @@ dependencies:
   # only release so desktop builds compile and voice notes remain mobile-only.
   flutter_sound: 9.28.0
   logger: ^2.7.0
+  # macOS voice messages use AVFoundation through record and send AAC/M4A,
+  # which TDLib accepts as a voice-note input alongside OGG/Opus.
+  record: ^7.1.1
   # 13.x hardcodes Android compileSdk 37, which is not installed in the pinned
   # Flutter/Android toolchain. Keep the newest SDK-36-compatible release.
   permission_handler: ^12.0.3

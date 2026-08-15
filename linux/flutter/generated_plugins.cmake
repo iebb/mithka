@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   gtk
   hotkey_manager_linux
   multi_window_manager
+  record_linux
   screen_capturer_linux
   sentry_flutter
   url_launcher_linux
