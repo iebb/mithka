@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/desktop_video_window.dart';
+import 'package:mithka/chat/video_player_view.dart';
 
 void main() {
   test('desktop video window arguments round-trip independently', () {
@@ -41,6 +42,8 @@ void main() {
     final progress = decodeDesktopVideoProgress(
       '{"file_id":42,"downloaded":3145728,'
       '"prefix_downloaded":2097152,"total":8388608,'
+      '"downloaded_ranges":[{"start":0,"end":2097152},'
+      '{"start":6291456,"end":7340032}],'
       '"is_active":true,"is_completed":false}',
     );
 
@@ -49,6 +52,11 @@ void main() {
     expect(progress?.prefixDownloaded, 2 * 1024 * 1024);
     expect(progress?.total, 8 * 1024 * 1024);
     expect(progress?.isActive, isTrue);
+    expect(progress?.downloadedRanges, hasLength(2));
+    expect(progress?.downloadedRanges?[0].start, 0);
+    expect(progress?.downloadedRanges?[0].end, 2 * 1024 * 1024);
+    expect(progress?.downloadedRanges?[1].start, 6 * 1024 * 1024);
+    expect(progress?.downloadedRanges?[1].end, 7 * 1024 * 1024);
     expect(decodeDesktopVideoProgress('{"path":"private"}'), isNull);
     expect(decodeDesktopVideoProgress('not json'), isNull);
   });
@@ -108,9 +116,70 @@ void main() {
     expect(window, contains('chromeBuilder:'));
     expect(window, contains('MithkaDesktopVideoChrome('));
     expect(window, contains('VideoStreamDebugger('));
+    expect(window, contains('VideoStreamDebuggerOverlay('));
+    expect(window, isNot(contains('if (!_debuggerVisible')));
+    expect(window, isNot(contains('SizedBox(height: playerHeight')));
+    expect(window, contains('debugPaintBaselinesEnabled = false'));
+    expect(window, contains('debugPaintSizeEnabled = false'));
+    expect(window, contains('DefaultTextStyle.merge('));
+    expect(window, contains('decoration: TextDecoration.none'));
     expect(window, contains('tdVideoStreamProgressUri(arguments.uri)'));
     expect(window, contains("HeroAppIcons.pictureInPicture"));
     expect(window, contains('FVideoDesktopWindows.instance.open'));
+  });
+
+  test('video duration labels use clock formatting', () {
+    expect(formatVideoPlayerDuration(Duration.zero), '0:00');
+    expect(formatVideoPlayerDuration(const Duration(seconds: 4)), '0:04');
+    expect(formatVideoPlayerDuration(const Duration(seconds: 7841)), '2:10:41');
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+    expect(player, isNot(contains("seconds == 1 ? 'sec' : 'secs'")));
+    expect(player, contains('duration.inHours > 0'));
+    expect(player, contains('? 140.0'));
+  });
+
+  test('desktop video controls omit the decorative waveform', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+
+    expect(player, isNot(contains('_MithkaVideoWaveform')));
+    expect(player, isNot(contains('showWaveform')));
+  });
+
+  test('video seek controls use the owned ten-second glyph', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+
+    expect(player, contains('AppSeekTenIcon('));
+    expect(player, isNot(contains('HeroAppIcons.rotateLeft')));
+    expect(player, isNot(contains('HeroAppIcons.rotateRight')));
+  });
+
+  test('desktop video controls omit read-only quality badges', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+    final window = File('lib/app/desktop_video_window.dart').readAsStringSync();
+
+    expect(player, isNot(contains('_MithkaVideoReadOnlyBadge')));
+    expect(player, isNot(contains('qualityLabel')));
+    expect(window, isNot(contains('qualityLabel')));
+  });
+
+  test('player and inspector typography never use bold weights', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+    final inspector = File(
+      'lib/chat/video_stream_debugger.dart',
+    ).readAsStringSync();
+    final forbiddenWeight = RegExp(r'FontWeight\.(?:bold|w[5-9]00)');
+
+    expect(forbiddenWeight.allMatches(player), isEmpty);
+    expect(forbiddenWeight.allMatches(inspector), isEmpty);
+    expect(player, contains('fontWeight: FontWeight.w400'));
+    expect(inspector, contains('fontWeight: FontWeight.w400'));
+  });
+
+  test('every stream inspector floats over its player surface', () {
+    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+
+    expect(player, contains('VideoStreamDebuggerOverlay('));
+    expect(player, isNot(contains('SizedBox(height: playerHeight')));
   });
 
   test('macOS keeps the primary Flutter window visible at launch', () {

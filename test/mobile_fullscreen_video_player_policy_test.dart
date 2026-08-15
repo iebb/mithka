@@ -34,8 +34,15 @@ void main() {
       );
     });
 
-    test('app player uses package default chrome', () {
-      expect(appPlayerSource, isNot(contains('chromeBuilder:')));
+    test('app player uses one owned fullscreen chrome', () {
+      expect(
+        appPlayerSource,
+        contains(
+          'chromeBuilder: widget.presentation == '
+          'VideoPlayerPresentation.fullscreen',
+        ),
+      );
+      expect(appPlayerSource, contains('? _playerChrome'));
       expect(
         appPlayerSource,
         isNot(contains('FVideoInteractionMode.delegateToChrome')),
@@ -64,7 +71,7 @@ void main() {
       expect(appPlayerSource, contains('onError:'));
     });
 
-    test('desktop child windows also use package default chrome', () {
+    test('desktop child windows use the same owned chrome language', () {
       expect(
         desktopPlayerSource,
         contains("package:f_videoplayer/f_videoplayer.dart"),
@@ -74,7 +81,8 @@ void main() {
         hasLength(1),
       );
       expect(desktopPlayerSource, isNot(matches(RegExp(r'\bVideoPlayer\('))));
-      expect(desktopPlayerSource, isNot(contains('chromeBuilder:')));
+      expect(desktopPlayerSource, contains('chromeBuilder:'));
+      expect(desktopPlayerSource, contains('MithkaDesktopVideoChrome('));
       expect(
         desktopPlayerSource,
         isNot(contains('FVideoInteractionMode.delegateToChrome')),

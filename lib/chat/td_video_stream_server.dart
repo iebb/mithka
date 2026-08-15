@@ -110,6 +110,7 @@ class TdVideoStreamServer {
   int _downloadedPrefixSize = 0;
   int _downloadedHeadPrefixSize = 0;
   int _downloadedSize = 0;
+  final List<({int start, int end})> _downloadedRanges = [];
   bool _downloadActive = false;
   bool _downloadComplete = false;
   bool _closed = false;
@@ -249,6 +250,9 @@ class TdVideoStreamServer {
     _downloadOffset = local?.integer('download_offset') ?? _downloadOffset;
     final prefix = local?.integer('downloaded_prefix_size') ?? 0;
     _downloadedPrefixSize = prefix;
+    if (prefix > 0) {
+      _rememberDownloadedRange(_downloadOffset, _downloadOffset + prefix);
+    }
     if (_downloadOffset == 0) {
       _downloadedHeadPrefixSize = math.max(_downloadedHeadPrefixSize, prefix);
     }
@@ -264,6 +268,9 @@ class TdVideoStreamServer {
       _downloadedPrefixSize = _total;
       _downloadedHeadPrefixSize = _total;
       _downloadedSize = _total;
+      _downloadedRanges
+        ..clear()
+        ..add((start: 0, end: _total));
       _downloadActive = false;
       _continuousDownloadOffset = null;
     }
@@ -414,6 +421,10 @@ class TdVideoStreamServer {
         'file_id': fileId,
         'downloaded': downloaded.clamp(0, _total),
         'prefix_downloaded': _downloadedHeadPrefixSize.clamp(0, _total),
+        'downloaded_ranges': [
+          for (final range in _downloadedRanges)
+            {'start': range.start, 'end': range.end},
+        ],
         'total': _total,
         'is_active':
             !_downloadComplete &&
@@ -490,6 +501,7 @@ class TdVideoStreamServer {
     }
     final bytes = await _readRange(start, end);
     if (isCancelled() || bytes.length != end - start + 1) return null;
+    _rememberDownloadedRange(start, end + 1);
     return bytes;
   }
 
@@ -615,10 +627,38 @@ class TdVideoStreamServer {
         'file_id': fileId,
         'offset': start,
       });
-      return (prefix.integer('size') ?? 0) >= end - start + 1;
+      final readable = (prefix.integer('size') ?? 0) >= end - start + 1;
+      if (readable) _rememberDownloadedRange(start, end + 1);
+      return readable;
     } catch (_) {
       return false;
     }
+  }
+
+  void _rememberDownloadedRange(int start, int end) {
+    if (_total <= 0) return;
+    final boundedStart = start.clamp(0, _total);
+    final boundedEnd = end.clamp(boundedStart, _total);
+    if (boundedEnd <= boundedStart) return;
+    final ranges = <({int start, int end})>[
+      ..._downloadedRanges,
+      (start: boundedStart, end: boundedEnd),
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    final merged = <({int start, int end})>[];
+    for (final range in ranges) {
+      if (merged.isEmpty || range.start > merged.last.end) {
+        merged.add(range);
+        continue;
+      }
+      final previous = merged.removeLast();
+      merged.add((
+        start: previous.start,
+        end: math.max(previous.end, range.end),
+      ));
+    }
+    _downloadedRanges
+      ..clear()
+      ..addAll(merged);
   }
 
   Future<List<int>> _readRange(int start, int end) async {

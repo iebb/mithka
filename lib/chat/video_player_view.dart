@@ -382,7 +382,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Rect? _lastSystemPiPSourceRect;
   FVideoActions? _reusablePlayerActions;
   bool _debuggerVisible = false;
-  bool _debugRecording = false;
   final List<String> _debugEvents = <String>[];
   int _lastDebugDownloaded = -1;
   int _lastDebugPrefixDownloaded = -1;
@@ -524,10 +523,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     if (_debugEvents.length > 80) {
       _debugEvents.removeRange(0, _debugEvents.length - 80);
     }
-  }
-
-  void _clearDebuggerEvents() {
-    if (mounted) setState(_debugEvents.clear);
   }
 
   String _debugTimestamp() {
@@ -2028,67 +2023,27 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final player = controller == null
         ? _loadingState()
         : _reusablePlayer(controller);
-    if (!_debuggerVisible ||
-        widget.presentation != VideoPlayerPresentation.fullscreen ||
+    if (widget.presentation != VideoPlayerPresentation.fullscreen ||
         controller == null) {
       return player;
     }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final debugHeight = math
-            .min(500.0, math.max(280.0, constraints.maxHeight * 0.54))
-            .toDouble();
-        final playerHeight = math
-            .max(180.0, constraints.maxHeight - debugHeight - 8)
-            .toDouble();
-        final actualDebugHeight = constraints.maxHeight - playerHeight - 8;
-        return Column(
-          children: [
-            SizedBox(height: playerHeight, child: player),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: math.max(1, actualDebugHeight).toDouble(),
-              child: VideoStreamDebugger(
-                progress: _progress,
-                position: controller.value.position,
-                duration: controller.value.duration,
-                events: List<String>.unmodifiable(_debugEvents),
-                isLive: _streamServer != null || controller.value.isPlaying,
-                isRecording: _debugRecording,
-                onRecordingChanged: (recording) {
-                  if (!mounted) return;
-                  setState(() => _debugRecording = recording);
-                  _recordDebugEvent(
-                    '${_debugTimestamp()}  recording ${recording ? 'started' : 'stopped'}',
-                  );
-                },
-                onClear: _clearDebuggerEvents,
-                onExport: _exportDebuggerSnapshot,
-                onClose: () {
-                  if (mounted) setState(() => _debuggerVisible = false);
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _exportDebuggerSnapshot() async {
-    final progress = _progress;
-    final total = progress?.total ?? 0;
-    final downloaded = progress?.downloaded ?? 0;
-    await Clipboard.setData(
-      ClipboardData(
-        text: [
-          'Stream Inspector',
-          'video: ${widget.video.id}',
-          'downloaded: $downloaded / $total',
-          'prefix: ${progress?.prefixDownloaded ?? 0}',
-          'events:',
-          ..._debugEvents,
-        ].join('\n'),
+    return VideoStreamDebuggerOverlay(
+      player: player,
+      visible: _debuggerVisible,
+      inspectorBuilder: (_, constraints) => VideoStreamDebugger(
+        progress: _progress,
+        position: controller.value.position,
+        duration: controller.value.duration,
+        events: List<String>.unmodifiable(_debugEvents),
+        isLive: _streamServer != null || controller.value.isPlaying,
+        viewportSize: Size(constraints.maxWidth, constraints.maxHeight),
+        videoSize: controller.value.size,
+        volume: controller.value.volume,
+        playbackSpeed: controller.value.playbackSpeed,
+        bufferedAhead: _bufferedAhead(controller.value),
+        onClose: () {
+          if (mounted) setState(() => _debuggerVisible = false);
+        },
       ),
     );
   }
@@ -2213,7 +2168,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final snapshot = scope.snapshot;
     final safePadding = MediaQuery.paddingOf(context);
     return DefaultTextStyle.merge(
-      style: const TextStyle(decoration: TextDecoration.none),
+      style: const TextStyle(
+        decoration: TextDecoration.none,
+        fontWeight: FontWeight.w400,
+      ),
       child: ExcludeFocus(
         excluding: !snapshot.controlsVisible,
         child: ExcludeSemantics(
@@ -2302,7 +2260,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 17,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w400,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -2443,7 +2401,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     alpha: 0.26,
                                   ),
                                 ),
-                          qualityLabel: _videoQualityLabel(),
                         ),
                       ),
                     ],
@@ -2493,23 +2450,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   String _videoChromeSubtitle(Duration duration) {
-    final seconds = math.max(0, duration.inSeconds);
-    final unit = seconds == 1 ? 'sec' : 'secs';
-    return 'Video  •  $seconds $unit';
-  }
-
-  String _videoQualityLabel() {
-    final width = widget.width;
-    final height = widget.height;
-    if (width == null || height == null || width <= 0 || height <= 0) {
-      return '';
-    }
-    final shortEdge = math.min(width, height);
-    if (shortEdge >= 2160) return '4K';
-    if (shortEdge >= 1440) return '1440p';
-    if (shortEdge >= 1080) return '1080p';
-    if (shortEdge >= 720) return '720p';
-    return '${shortEdge}p';
+    return 'Video  •  ${formatVideoPlayerDuration(duration)}';
   }
 
   Future<Uint8List?> _provideScrubThumbnailAt(Duration position) {
@@ -2970,7 +2911,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 17,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
@@ -3039,7 +2980,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ],
@@ -3096,7 +3037,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: compact ? 20 : 26,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                     if (next != null) ...[
@@ -3152,7 +3093,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w400,
                                       shadows: [Shadow(blurRadius: 8)],
                                     ),
                                   ),
@@ -3939,6 +3880,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
+
+  Duration _bufferedAhead(VideoPlayerValue value) {
+    var bufferedEnd = value.position;
+    for (final range in value.buffered) {
+      if (range.end.compareTo(bufferedEnd) > 0) bufferedEnd = range.end;
+    }
+    final ahead = bufferedEnd - value.position;
+    return ahead.isNegative ? Duration.zero : ahead;
+  }
 }
 
 /// The full Mithka player chrome used by detached desktop video windows.
@@ -3959,7 +3909,6 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
     this.downloadedFraction,
     this.modeButton,
     this.fullscreenButton,
-    this.qualityLabel = '',
     this.topInset = 0,
   });
 
@@ -3973,157 +3922,178 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
   final double? downloadedFraction;
   final Widget? modeButton;
   final Widget? fullscreenButton;
-  final String qualityLabel;
   final double topInset;
 
   @override
   Widget build(BuildContext context) {
     final snapshot = scope.snapshot;
     final safePadding = MediaQuery.paddingOf(context);
-    return ExcludeFocus(
-      excluding: !snapshot.controlsVisible,
-      child: ExcludeSemantics(
+    return DefaultTextStyle.merge(
+      style: const TextStyle(
+        decoration: TextDecoration.none,
+        fontWeight: FontWeight.w400,
+      ),
+      child: ExcludeFocus(
         excluding: !snapshot.controlsVisible,
-        child: IgnorePointer(
-          ignoring: !snapshot.controlsVisible,
-          child: AnimatedOpacity(
-            key: const ValueKey('mithka-desktop-video-player-chrome'),
-            opacity: snapshot.controlsVisible ? 1 : 0,
-            duration: const Duration(milliseconds: 170),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 600;
-                final compactQueueNavigation =
-                    !wide && MediaQuery.sizeOf(context).width >= 320;
-                final duration = snapshot.value.duration;
-                final seconds = math.max(0, duration.inSeconds);
-                final subtitle =
-                    'Video  •  $seconds ${seconds == 1 ? 'sec' : 'secs'}';
-                final packageBuffered = snapshot.value.buffered.isEmpty
-                    ? 0.0
-                    : snapshot.value.buffered.last.end.inMilliseconds /
-                          math.max(1, duration.inMilliseconds);
-                final buffered = math
-                    .max(packageBuffered, downloadedFraction ?? 0)
-                    .clamp(0.0, 1.0)
-                    .toDouble();
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.72),
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.88),
-                              ],
-                              stops: const [0, 0.46, 1],
+        child: ExcludeSemantics(
+          excluding: !snapshot.controlsVisible,
+          child: IgnorePointer(
+            ignoring: !snapshot.controlsVisible,
+            child: AnimatedOpacity(
+              key: const ValueKey('mithka-desktop-video-player-chrome'),
+              opacity: snapshot.controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 170),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 600;
+                  final compactQueueNavigation =
+                      !wide && MediaQuery.sizeOf(context).width >= 320;
+                  final duration = snapshot.value.duration;
+                  final subtitle =
+                      'Video  •  ${formatVideoPlayerDuration(duration)}';
+                  final packageBuffered = snapshot.value.buffered.isEmpty
+                      ? 0.0
+                      : snapshot.value.buffered.last.end.inMilliseconds /
+                            math.max(1, duration.inMilliseconds);
+                  final buffered = math
+                      .max(packageBuffered, downloadedFraction ?? 0)
+                      .clamp(0.0, 1.0)
+                      .toDouble();
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.72),
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.88),
+                                ],
+                                stops: const [0, 0.46, 1],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    PositionedDirectional(
-                      top: safePadding.top + topInset + 12,
-                      start: safePadding.left + 14,
-                      end: safePadding.right + 14,
-                      child: Row(
-                        children: [
-                          MithkaVideoChromeAction(
-                            icon: HeroAppIcons.xmark,
-                            label: scope.labels.close,
-                            onTap: onClose,
-                            size: 52,
-                            iconSize: 27,
-                            cornerRadius: 26,
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title.trim().isEmpty ? 'Video' : title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.76),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
+                      PositionedDirectional(
+                        top: safePadding.top + topInset + 12,
+                        start: safePadding.left + 14,
+                        end: safePadding.right + 14,
+                        child: Row(
+                          children: [
+                            MithkaVideoChromeAction(
+                              icon: HeroAppIcons.xmark,
+                              label: scope.labels.close,
+                              onTap: onClose,
+                              size: 52,
+                              iconSize: 27,
+                              cornerRadius: 26,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          MithkaVideoChromeAction(
-                            icon: HeroAppIcons.code,
-                            label: 'Stream inspector',
-                            onTap: () {
-                              onToggleInspector();
-                              scope.actions.showControls();
-                            },
-                            cornerRadius: 22,
-                            backgroundColor: inspectorVisible
-                                ? const Color(0xD92C6565)
-                                : const Color(0xB82C2C2E),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned.fill(
-                      top: safePadding.top + topInset + 72,
-                      bottom: safePadding.bottom + (wide ? 132 : 168),
-                      child: Center(
-                        child: wide
-                            ? _MithkaVideoCenterTransport(
-                                value: snapshot.value,
-                                scope: scope,
-                              )
-                            : _MithkaVideoCompactTransport(
-                                value: snapshot.value,
-                                scope: scope,
-                                showQueueNavigation: false,
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title.trim().isEmpty ? 'Video' : title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      decoration: TextDecoration.none,
+                                      fontSize: 18,
+                                      height: 1.12,
+                                      letterSpacing: -0.25,
+                                      fontWeight: FontWeight.w400,
+                                      shadows: [
+                                        Shadow(
+                                          color: Color(0xB3000000),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.76,
+                                      ),
+                                      decoration: TextDecoration.none,
+                                      fontSize: 13,
+                                      height: 1.18,
+                                      letterSpacing: 0.1,
+                                      fontWeight: FontWeight.w400,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
+                            ),
+                            const SizedBox(width: 12),
+                            MithkaVideoChromeAction(
+                              icon: HeroAppIcons.code,
+                              label: 'Stream inspector',
+                              onTap: () {
+                                onToggleInspector();
+                                scope.actions.showControls();
+                              },
+                              cornerRadius: 22,
+                              backgroundColor: inspectorVisible
+                                  ? const Color(0xD92C6565)
+                                  : const Color(0xB82C2C2E),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      left: safePadding.left + (wide ? 28 : 14),
-                      right: safePadding.right + (wide ? 28 : 14),
-                      bottom: safePadding.bottom + (wide ? 14 : 10),
-                      child: _MithkaVideoBottomChrome(
-                        scope: scope,
-                        wide: wide,
-                        buffered: buffered,
-                        aspectRatio: aspectRatio,
-                        thumbnailProvider: thumbnailProvider,
-                        compactQueueNavigation: compactQueueNavigation,
-                        previousButton: null,
-                        nextButton: null,
-                        modeButton: modeButton,
-                        fullscreenButton: fullscreenButton,
-                        qualityLabel: qualityLabel,
+                      Positioned.fill(
+                        top: safePadding.top + topInset + 72,
+                        bottom: safePadding.bottom + (wide ? 132 : 168),
+                        child: Center(
+                          child: wide
+                              ? _MithkaVideoCenterTransport(
+                                  value: snapshot.value,
+                                  scope: scope,
+                                )
+                              : _MithkaVideoCompactTransport(
+                                  value: snapshot.value,
+                                  scope: scope,
+                                  showQueueNavigation: false,
+                                ),
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                      Positioned(
+                        left: safePadding.left + (wide ? 28 : 14),
+                        right: safePadding.right + (wide ? 28 : 14),
+                        bottom: safePadding.bottom + (wide ? 14 : 10),
+                        child: _MithkaVideoBottomChrome(
+                          scope: scope,
+                          wide: wide,
+                          buffered: buffered,
+                          aspectRatio: aspectRatio,
+                          thumbnailProvider: thumbnailProvider,
+                          compactQueueNavigation: compactQueueNavigation,
+                          previousButton: null,
+                          nextButton: null,
+                          modeButton: modeButton,
+                          fullscreenButton: fullscreenButton,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -4332,27 +4302,12 @@ class _MithkaVideoSeekButton extends StatelessWidget {
         ),
         child: SizedBox.square(
           dimension: size,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AppIcon(
-                backwards ? HeroAppIcons.rotateLeft : HeroAppIcons.rotateRight,
-                color: Colors.white,
-                size: size * 0.61,
-              ),
-              Padding(
-                padding: EdgeInsets.only(top: size * 0.02),
-                child: Text(
-                  '10',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: compact ? 11 : 13,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-            ],
+          child: Center(
+            child: AppSeekTenIcon(
+              backwards: backwards,
+              color: Colors.white,
+              size: size * 0.64,
+            ),
           ),
         ),
       ),
@@ -4422,7 +4377,6 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
     required this.nextButton,
     required this.modeButton,
     required this.fullscreenButton,
-    required this.qualityLabel,
   });
 
   final FVideoChromeScope scope;
@@ -4435,7 +4389,6 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
   final Widget? nextButton;
   final Widget? modeButton;
   final Widget? fullscreenButton;
-  final String qualityLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -4455,9 +4408,12 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
             final width = constraints.maxWidth;
             final showVolumeSlider = width >= 220;
             final showTime = !compactQueueNavigation && (width >= 330 || wide);
-            final showWaveform = wide && width >= 700;
+            final timeWidth = scope.snapshot.value.duration.inHours > 0
+                ? 140.0
+                : wide
+                ? 78.0
+                : 70.0;
             final showSpeed = !compactQueueNavigation && (width >= 320 || wide);
-            final showQuality = qualityLabel.isNotEmpty && width >= 700;
             return Row(
               children: [
                 if (compactQueueNavigation) ...[
@@ -4513,9 +4469,9 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
                 if (showTime) ...[
                   const SizedBox(width: 8),
                   SizedBox(
-                    width: wide ? 78 : 70,
+                    width: timeWidth,
                     child: Text(
-                      '${_formatTimelineDuration(scope.snapshot.displayPosition)} / ${_formatTimelineDuration(scope.snapshot.value.duration)}',
+                      '${formatVideoPlayerDuration(scope.snapshot.displayPosition)} / ${formatVideoPlayerDuration(scope.snapshot.value.duration)}',
                       maxLines: 1,
                       overflow: TextOverflow.fade,
                       softWrap: false,
@@ -4527,12 +4483,7 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (showWaveform) ...[
-                  const SizedBox(width: 10),
-                  const Expanded(child: _MithkaVideoWaveform()),
-                  const SizedBox(width: 10),
-                ] else
-                  const Spacer(),
+                const Spacer(),
                 if (showSpeed)
                   _MithkaVideoTextButton(
                     text: _formatPlaybackSpeed(
@@ -4544,11 +4495,6 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
                         _nextPlaybackSpeed(scope.snapshot.value.playbackSpeed),
                       ),
                     ),
-                  ),
-                if (showQuality)
-                  _MithkaVideoReadOnlyBadge(
-                    label: 'Video quality',
-                    value: qualityLabel,
                   ),
                 if (modeButton != null) ...[
                   const SizedBox(width: 6),
@@ -4583,7 +4529,7 @@ class _MithkaVideoTextButton extends StatelessWidget {
     semanticLabel: label,
     semanticValue: text,
     onTap: onTap,
-    borderRadius: BorderRadius.circular(10),
+    borderRadius: BorderRadius.circular(AppRadius.control),
     child: Container(
       constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -4591,47 +4537,15 @@ class _MithkaVideoTextButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x8A1B1D1E),
         border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Text(
         text,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w400,
           fontFeatures: [FontFeature.tabularFigures()],
-        ),
-      ),
-    ),
-  );
-}
-
-class _MithkaVideoReadOnlyBadge extends StatelessWidget {
-  const _MithkaVideoReadOnlyBadge({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: label,
-    value: value,
-    child: Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 11),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0x8A1B1D1E),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        value,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
         ),
       ),
     ),
@@ -4770,13 +4684,13 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
                   inactiveColor: Colors.white.withValues(alpha: 0.86),
                   semanticLabel: widget.scope.labels.position,
                   semanticValue:
-                      '${_formatTimelineDuration(position)} / ${_formatTimelineDuration(duration)}',
-                  semanticIncreasedValue: _formatTimelineDuration(
+                      '${formatVideoPlayerDuration(position)} / ${formatVideoPlayerDuration(duration)}',
+                  semanticIncreasedValue: formatVideoPlayerDuration(
                     position + const Duration(seconds: 10) > duration
                         ? duration
                         : position + const Duration(seconds: 10),
                   ),
-                  semanticDecreasedValue: _formatTimelineDuration(
+                  semanticDecreasedValue: formatVideoPlayerDuration(
                     position - const Duration(seconds: 10) < Duration.zero
                         ? Duration.zero
                         : position - const Duration(seconds: 10),
@@ -4800,7 +4714,7 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: const Color(0xFF111315),
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.55),
                         ),
@@ -4813,7 +4727,7 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -4846,14 +4760,14 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
                                     5,
                                   ),
                                   child: Text(
-                                    _formatTimelineDuration(
+                                    formatVideoPlayerDuration(
                                       _positionFor(fraction),
                                     ),
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w400,
                                       fontFeatures: [
                                         FontFeature.tabularFigures(),
                                       ],
@@ -4876,44 +4790,6 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
   }
 }
 
-class _MithkaVideoWaveform extends StatelessWidget {
-  const _MithkaVideoWaveform();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-    height: 30,
-    child: CustomPaint(painter: _MithkaVideoWaveformPainter()),
-  );
-}
-
-class _MithkaVideoWaveformPainter extends CustomPainter {
-  const _MithkaVideoWaveformPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.22)
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    final count = math.max(1, (size.width / 4).floor());
-    for (var index = 0; index < count; index++) {
-      final x = index * size.width / count;
-      final wave = (math.sin(index * 1.73) + math.sin(index * 0.43) * 0.5)
-          .abs();
-      final height = 4 + wave * (size.height - 8);
-      canvas.drawLine(
-        Offset(x, (size.height - height) / 2),
-        Offset(x, (size.height + height) / 2),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _MithkaVideoWaveformPainter oldDelegate) =>
-      false;
-}
-
 String _formatPlaybackSpeed(double speed) {
   if (!speed.isFinite || speed <= 0) return '1x';
   return '${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}x';
@@ -4925,7 +4801,8 @@ double _nextPlaybackSpeed(double speed) {
   return speeds[(index + 1) % speeds.length];
 }
 
-String _formatTimelineDuration(Duration value) {
+@visibleForTesting
+String formatVideoPlayerDuration(Duration value) {
   final seconds = math.max(0, value.inSeconds);
   final hours = seconds ~/ 3600;
   final minutes = (seconds ~/ 60) % 60;
@@ -5074,7 +4951,7 @@ class _FocusableVideoTextButtonState extends State<_FocusableVideoTextButton> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: widget.fontSize,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -5290,7 +5167,7 @@ class _FocusableVideoActionButtonState
                   style: TextStyle(
                     color: foreground,
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ],
@@ -5431,7 +5308,7 @@ class _FocusableVideoMenuItemState extends State<_FocusableVideoMenuItem> {
                       color: Colors.white.withValues(alpha: 0.96),
                       fontSize: 14.5,
                       height: 1.2,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),

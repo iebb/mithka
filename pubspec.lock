@@ -253,29 +253,29 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer"
-      ref: "v0.5.4"
-      resolved-ref: "9b09fb3587675010826cdac95dc8060d721521e8"
+      ref: "v0.5.5"
+      resolved-ref: ae479874b624209aae2bfe1e473a637aa5691980
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.4"
+    version: "0.5.5"
   f_videoplayer_fvp:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_fvp"
-      ref: "v0.5.4"
-      resolved-ref: "9b09fb3587675010826cdac95dc8060d721521e8"
+      ref: "v0.5.5"
+      resolved-ref: ae479874b624209aae2bfe1e473a637aa5691980
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.4"
+    version: "0.5.5"
   f_videoplayer_pip:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_pip"
-      ref: "v0.5.4"
-      resolved-ref: "9b09fb3587675010826cdac95dc8060d721521e8"
+      ref: "v0.5.5"
+      resolved-ref: ae479874b624209aae2bfe1e473a637aa5691980
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.4"
+    version: "0.5.5"
   fake_async:
     dependency: transitive
     description:
@@ -598,11 +598,11 @@ packages:
     dependency: "direct main"
     description:
       path: "third_party/fvp"
-      ref: "v0.5.4"
-      resolved-ref: "9b09fb3587675010826cdac95dc8060d721521e8"
+      ref: "v0.5.5"
+      resolved-ref: ae479874b624209aae2bfe1e473a637aa5691980
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.37.3+fvideo.7"
+    version: "0.37.3+fvideo.8"
   geoclue:
     dependency: transitive
     description:

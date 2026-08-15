@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/td_video_stream_server.dart';
@@ -29,6 +30,12 @@ void main() {
       expect(payload, containsPair('prefix_downloaded', 2 * 1024 * 1024));
       expect(payload, containsPair('downloaded', 2 * 1024 * 1024));
       expect(payload, containsPair('total', 4 * 1024 * 1024));
+      expect(
+        payload['downloaded_ranges'],
+        contains(
+          allOf(containsPair('start', 0), containsPair('end', 2 * 1024 * 1024)),
+        ),
+      );
       expect(payload, containsPair('is_completed', false));
       expect(payload, isNot(contains('path')));
       expect(payload, isNot(contains('account')));
@@ -104,6 +111,40 @@ void main() {
         'bytes 16-31/1000000',
       );
       expect(await _readBody(response), fixture.bytes.sublist(16, 32));
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test('served seek ranges keep their non-contiguous byte offsets', () async {
+    late _SparseRangeBackend backend;
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(128, (index) => index),
+      totalBytes: 128,
+      maxResponseBytes: 16,
+      queryBuilder: (file) {
+        backend = _SparseRangeBackend(file: file, totalBytes: 128);
+        return backend.query;
+      },
+    );
+    try {
+      final seekResponse = await fixture.get(range: 'bytes=64-79');
+      expect(await _readBody(seekResponse), fixture.bytes.sublist(64, 80));
+
+      final progressResponse = await fixture.getUri(
+        tdVideoStreamProgressUri(fixture.uri),
+      );
+      final payload = jsonDecode(
+        utf8.decode(await _readBody(progressResponse)),
+      );
+      expect(
+        payload['downloaded_ranges'],
+        contains(allOf(containsPair('start', 64), containsPair('end', 80))),
+      );
+      expect(
+        payload['downloaded_ranges'],
+        isNot(contains(containsPair('start', 0))),
+      );
     } finally {
       await fixture.close();
     }
@@ -644,6 +685,67 @@ final class _FakeTdVideoBackend {
       'is_downloading_completed': false,
     },
   };
+}
+
+final class _SparseRangeBackend {
+  _SparseRangeBackend({required this.file, required this.totalBytes});
+
+  final File file;
+  final int totalBytes;
+  final List<({int start, int end})> ranges = [];
+  ({int start, int end})? lastRange;
+
+  Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
+    switch (request['@type']) {
+      case 'getFile':
+        return _fileInfo();
+      case 'getFileDownloadedPrefixSize':
+        final offset = request['offset'] as int? ?? 0;
+        var size = 0;
+        for (final range in ranges) {
+          if (range.start <= offset && offset < range.end) {
+            size = range.end - offset;
+            break;
+          }
+        }
+        return {'@type': 'fileDownloadedPrefixSize', 'size': size};
+      case 'downloadFile':
+        final offset = request['offset'] as int? ?? 0;
+        final limit = request['limit'] as int? ?? 0;
+        if (limit > 0) {
+          final range = (
+            start: offset,
+            end: math.min(totalBytes, offset + limit),
+          );
+          ranges.add(range);
+          lastRange = range;
+        }
+        return _fileInfo();
+      default:
+        throw UnsupportedError('Unexpected TDLib query ${request['@type']}');
+    }
+  }
+
+  Map<String, dynamic> _fileInfo() {
+    final range = lastRange;
+    return {
+      '@type': 'file',
+      'id': 42,
+      'size': totalBytes,
+      'expected_size': totalBytes,
+      'local': {
+        '@type': 'localFile',
+        'path': file.path,
+        'download_offset': range?.start ?? 0,
+        'downloaded_prefix_size': range == null ? 0 : range.end - range.start,
+        'downloaded_size': ranges.fold<int>(
+          0,
+          (sum, value) => sum + value.end - value.start,
+        ),
+        'is_downloading_completed': false,
+      },
+    };
+  }
 }
 
 final class _ControlledRangeBackend {

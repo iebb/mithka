@@ -2,11 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart'
+    show
+        debugPaintBaselinesEnabled,
+        debugPaintLayerBordersEnabled,
+        debugPaintPointersEnabled,
+        debugPaintSizeEnabled,
+        debugRepaintRainbowEnabled;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:video_player/video_player.dart';
 
@@ -56,6 +63,21 @@ TdFileProgress? decodeDesktopVideoProgress(String source) {
         total < 0) {
       return null;
     }
+    final downloadedRanges = <TdFileByteRange>[];
+    final rawRanges = value['downloaded_ranges'];
+    if (rawRanges is List) {
+      for (final rawRange in rawRanges) {
+        if (rawRange is! Map) continue;
+        final startValue = rawRange['start'];
+        final endValue = rawRange['end'];
+        if (startValue is! num || endValue is! num) continue;
+        final start = startValue.toInt().clamp(0, total);
+        final end = endValue.toInt().clamp(start, total);
+        if (end > start) {
+          downloadedRanges.add(TdFileByteRange(start: start, end: end));
+        }
+      }
+    }
     return TdFileProgress(
       fileId: fileId,
       downloaded: downloaded.clamp(0, total),
@@ -63,6 +85,7 @@ TdFileProgress? decodeDesktopVideoProgress(String source) {
       total: total,
       isActive: value['is_active'] == true,
       isCompleted: value['is_completed'] == true,
+      downloadedRanges: List<TdFileByteRange>.unmodifiable(downloadedRanges),
     );
   } catch (_) {
     return null;
@@ -151,23 +174,38 @@ class DesktopVideoWindowApp extends StatelessWidget {
   final DesktopVideoWindowArguments arguments;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: arguments.title,
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-    supportedLocales: AppLocalizations.supportedLocales,
-    localizationsDelegates: const [
-      AppLocalizations.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-    ],
-    home: FVideoDesktopWindowHost(
-      initialArguments: arguments,
-      builder: (context, arguments) =>
-          _DesktopVideoWindowPlayer(arguments: arguments),
-    ),
-  );
+  Widget build(BuildContext context) {
+    // Flutter's service extensions are isolate-scoped. A debug-paint toggle on
+    // a detached engine must never leak into the product chrome as yellow text
+    // baselines or layout outlines. Reassert this on every child rebuild so a
+    // restored inspector setting cannot turn the overlays back on.
+    debugPaintSizeEnabled = false;
+    debugPaintBaselinesEnabled = false;
+    debugPaintLayerBordersEnabled = false;
+    debugPaintPointersEnabled = false;
+    debugRepaintRainbowEnabled = false;
+    return MaterialApp(
+      title: arguments.title,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+      builder: (context, child) => DefaultTextStyle.merge(
+        style: const TextStyle(decoration: TextDecoration.none),
+        child: child ?? const SizedBox.shrink(),
+      ),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      home: FVideoDesktopWindowHost(
+        initialArguments: arguments,
+        builder: (context, arguments) =>
+            _DesktopVideoWindowPlayer(arguments: arguments),
+      ),
+    );
+  }
 }
 
 class _DesktopVideoWindowPlayer extends StatefulWidget {
@@ -186,9 +224,11 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
   final List<String> _debugEvents = <String>[];
   Timer? _progressTimer;
   TdFileProgress? _progress;
+  DateTime? _progressSampleAt;
+  int? _progressSampleBytes;
+  double _downloadBytesPerSecond = 0;
   bool _progressRequestInFlight = false;
   bool _debuggerVisible = false;
-  bool _debugRecording = false;
   bool _pictureInPictureSupported = false;
   bool _pictureInPicture = false;
   bool _pictureInPictureBusy = false;
@@ -229,8 +269,23 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
       final next = decodeDesktopVideoProgress(source);
       if (next == null || !mounted) return;
       final previous = _progress;
+      final sampleAt = DateTime.now();
+      final previousSampleAt = _progressSampleAt;
+      final previousSampleBytes = _progressSampleBytes;
+      final elapsedSeconds = previousSampleAt == null
+          ? 0.0
+          : sampleAt.difference(previousSampleAt).inMicroseconds / 1000000;
+      final byteDelta = previousSampleBytes == null
+          ? 0
+          : math.max(0, next.downloaded - previousSampleBytes);
+      final transferRate = elapsedSeconds > 0
+          ? byteDelta / elapsedSeconds
+          : 0.0;
       setState(() {
         _progress = next;
+        _progressSampleAt = sampleAt;
+        _progressSampleBytes = next.downloaded;
+        _downloadBytesPerSecond = transferRate;
         if (previous?.downloaded != next.downloaded ||
             previous?.prefixDownloaded != next.prefixDownloaded ||
             previous?.total != next.total) {
@@ -387,43 +442,11 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
   Widget _playerAndInspector(bool fullscreen) {
     final player = _player(fullscreen);
     final controller = _controller;
-    if (!_debuggerVisible || controller == null) return player;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final debugHeight = math
-            .min(500.0, math.max(280.0, constraints.maxHeight * 0.54))
-            .toDouble();
-        final playerHeight = math
-            .min(
-              constraints.maxHeight,
-              math.max(180.0, constraints.maxHeight - debugHeight - 8),
-            )
-            .toDouble();
-        final actualDebugHeight = constraints.maxHeight - playerHeight - 8;
-        if (actualDebugHeight < 180) {
-          return Stack(
-            children: [
-              Positioned.fill(child: player),
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 8,
-                height: math
-                    .min(500.0, math.max(1.0, constraints.maxHeight - 16))
-                    .toDouble(),
-                child: _inspector(controller),
-              ),
-            ],
-          );
-        }
-        return Column(
-          children: [
-            SizedBox(height: playerHeight, child: player),
-            const SizedBox(height: 8),
-            SizedBox(height: actualDebugHeight, child: _inspector(controller)),
-          ],
-        );
-      },
+    return VideoStreamDebuggerOverlay(
+      player: player,
+      visible: _debuggerVisible && controller != null,
+      inspectorBuilder: (_, _) =>
+          controller == null ? const SizedBox.shrink() : _inspector(controller),
     );
   }
 
@@ -433,38 +456,23 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
     position: controller.value.position,
     duration: controller.value.duration,
     events: List<String>.unmodifiable(_debugEvents),
+    viewportSize: MediaQuery.sizeOf(context),
+    videoSize: controller.value.size,
+    volume: controller.value.volume,
+    playbackSpeed: controller.value.playbackSpeed,
+    bufferedAhead: _bufferedAhead(controller.value),
+    downloadBytesPerSecond: _downloadBytesPerSecond,
     isLive: _progress?.isActive == true || controller.value.isPlaying,
-    isRecording: _debugRecording,
-    onRecordingChanged: (recording) {
-      if (!mounted) return;
-      setState(() {
-        _debugRecording = recording;
-        _recordDebugEvent(
-          recording ? 'recording started' : 'recording stopped',
-        );
-      });
-    },
-    onClear: () => setState(_debugEvents.clear),
-    onExport: _exportDebuggerSnapshot,
     onClose: () => setState(() => _debuggerVisible = false),
   );
 
-  Future<void> _exportDebuggerSnapshot() async {
-    final progress = _progress;
-    final controller = _controller;
-    await Clipboard.setData(
-      ClipboardData(
-        text: [
-          'Stream Inspector',
-          'downloaded: ${progress?.downloaded ?? 0} / ${progress?.total ?? 0}',
-          'prefix: ${progress?.prefixDownloaded ?? 0}',
-          'position_ms: ${controller?.value.position.inMilliseconds ?? 0}',
-          'duration_ms: ${controller?.value.duration.inMilliseconds ?? 0}',
-          'events:',
-          ..._debugEvents,
-        ].join('\n'),
-      ),
-    );
+  Duration _bufferedAhead(VideoPlayerValue value) {
+    var bufferedEnd = value.position;
+    for (final range in value.buffered) {
+      if (range.end.compareTo(bufferedEnd) > 0) bufferedEnd = range.end;
+    }
+    final ahead = bufferedEnd - value.position;
+    return ahead.isNegative ? Duration.zero : ahead;
   }
 
   Widget _player(bool fullscreen) {
@@ -515,7 +523,6 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
             FVideoDesktopWindows.setCurrentWindowFullscreen(!fullscreen),
           ),
         ),
-        qualityLabel: _videoQualityLabel(),
         topInset: Platform.isMacOS ? 28 : 0,
       ),
     );
@@ -544,19 +551,5 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
         quality: 70,
       ),
     );
-  }
-
-  String _videoQualityLabel() {
-    final width = arguments.width;
-    final height = arguments.height;
-    if (width == null || height == null || width <= 0 || height <= 0) {
-      return '';
-    }
-    final shortEdge = width < height ? width : height;
-    if (shortEdge >= 2160) return '4K';
-    if (shortEdge >= 1440) return '1440p';
-    if (shortEdge >= 1080) return '1080p';
-    if (shortEdge >= 720) return '720p';
-    return '${shortEdge}p';
   }
 }

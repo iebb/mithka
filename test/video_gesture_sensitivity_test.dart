@@ -26,7 +26,14 @@ void main() {
       ).allMatches(playerSource),
       hasLength(2),
     );
-    expect(playerSource, isNot(contains('chromeBuilder:')));
+    expect(
+      playerSource,
+      contains(
+        'chromeBuilder: widget.presentation == '
+        'VideoPlayerPresentation.fullscreen',
+      ),
+    );
+    expect(playerSource, contains('? _playerChrome'));
     expect(
       playerSource,
       isNot(contains('FVideoInteractionMode.delegateToChrome')),

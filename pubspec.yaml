@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.0.8+282
+version: 1.0.9+282
 
 environment:
   sdk: ^3.12.2
@@ -88,7 +88,7 @@ dependencies:
   f_videoplayer:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.4
+      ref: v0.5.5
       path: packages/f_videoplayer
   # Main-window chrome uses DragToMoveArea on desktop. Keep this direct rather
   # than relying on the video-player package's transitive dependency.
@@ -97,7 +97,7 @@ dependencies:
   f_videoplayer_fvp:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.4
+      ref: v0.5.5
       path: packages/f_videoplayer_fvp
   # Story video preparation: native 60-second segmentation and mobile-friendly
   # re-encoding before TDLib's inputStoryContentVideo upload.
@@ -107,7 +107,7 @@ dependencies:
   f_videoplayer_pip:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.4
+      ref: v0.5.5
       path: packages/f_videoplayer_pip
   flutter_local_notifications: ^22.2.0
   google_fonts: ^8.2.1
@@ -152,7 +152,7 @@ dependency_overrides:
   fvp:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.4
+      ref: v0.5.5
       path: third_party/fvp
 
 flutter_launcher_icons:

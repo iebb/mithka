@@ -48,9 +48,14 @@ class _CommunityLookup {
 
 typedef ChatListQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+typedef ChatMembershipResolver =
+    Future<bool> Function(ChatSummary summary, Map<String, dynamic> raw);
 
 class ChatListViewModel extends ChangeNotifier {
-  ChatListViewModel({@visibleForTesting this._queryForTesting});
+  ChatListViewModel({
+    @visibleForTesting this._queryForTesting,
+    @visibleForTesting this._membershipForTesting,
+  });
 
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
@@ -141,8 +146,10 @@ class ChatListViewModel extends ChangeNotifier {
   bool _prefetchingMain = false;
   final Set<String> _loadingChatLists = {};
   final Map<String, Future<bool>> _chatListLoadOperations = {};
+  final Map<int, Future<void>> _chatLoadOperations = {};
   final Set<String> _exhaustedChatLists = {};
   final ChatListQuery? _queryForTesting;
+  final ChatMembershipResolver? _membershipForTesting;
   static const _pageSize = 100;
   static const _initialPageSize = 36;
   static const _backgroundHydrateLimit = 60;
@@ -449,20 +456,37 @@ class ChatListViewModel extends ChangeNotifier {
     required int loadLimit,
     required int hydrateLimit,
   }) async {
-    // A scroll listener can request an older page as soon as the empty list is
-    // attached. Keep loadChats + getChats atomic for each list so that request
-    // cannot hydrate a stale pre-load snapshot and suppress the fresh startup
-    // page. The first visible page is therefore always TDLib's newest page.
-    final loaded = await _loadChatList(list, loadLimit);
-    await _hydrateChatList(list, limit: hydrateLimit);
+    final listKey = _chatListKey(list);
+    final isInitialActiveLoad =
+        _initialLoading && listKey == _chatListKey(_activeChatList);
+    // `loadChats` may wait on a reconnect even though TDLib already has a
+    // current local page. Hydrate that page concurrently so launch can paint
+    // real rows immediately, then hydrate once more after loadChats settles.
+    // The per-list operation still stays atomic, so scroll pagination cannot
+    // insert an older getChats snapshot between these two passes.
+    final load = _loadChatList(list, loadLimit);
+    if (isInitialActiveLoad) {
+      await _hydrateChatList(list, limit: hydrateLimit, refreshExisting: true);
+    }
+    final loaded = await load;
+    await _hydrateChatList(
+      list,
+      limit: hydrateLimit,
+      refreshExisting: isInitialActiveLoad,
+    );
     return loaded;
   }
 
   Future<void> _hydrateChatList(
     Map<String, dynamic> list, {
     required int limit,
+    bool refreshExisting = false,
   }) async {
     if (_disposed) return;
+    final listKey = _chatListKey(list);
+    final isActiveHydration = listKey == _chatListKey(_activeChatList);
+    final shouldRefreshExisting =
+        isActiveHydration && (_initialLoading || refreshExisting);
     try {
       final res = await _chatListQuery({
         '@type': 'getChats',
@@ -471,12 +495,21 @@ class ChatListViewModel extends ChangeNotifier {
       });
       if (_disposed) return;
       final ids = res.int64Array('chat_ids') ?? const <int>[];
-      if (ids.isEmpty) _finishInitialLoadingIfNeeded(force: true);
-      for (final id in ids) {
-        _ensureChatLoaded(id);
+      await Future.wait<void>([
+        for (final id in ids)
+          _ensureChatLoaded(id, refresh: shouldRefreshExisting),
+      ]);
+      if (_disposed || listKey != _chatListKey(_activeChatList)) return;
+      if (_initialLoading) {
+        _finishInitialLoadingIfNeeded();
+        _resort();
       }
     } catch (_) {
-      _finishInitialLoadingIfNeeded(force: true);
+      if (_disposed || listKey != _chatListKey(_activeChatList)) return;
+      if (_initialLoading) {
+        _finishInitialLoadingIfNeeded();
+        _resort();
+      }
     }
   }
 
@@ -682,7 +715,7 @@ class ChatListViewModel extends ChangeNotifier {
       case 'updateNewChat':
         final chat = update.obj('chat');
         if (chat == null) return;
-        unawaited(_ingestRawChat(chat));
+        unawaited(_ingestRawChat(chat, preserveExistingIfNotNewer: true));
 
       case 'updateChatFolders':
         _applyChatFolders(update);
@@ -718,7 +751,7 @@ class ChatListViewModel extends ChangeNotifier {
         final position = update.obj('position');
         if (id == null || position == null) return;
         _applyPosition(id, position);
-        _ensureChatLoaded(id);
+        unawaited(_ensureChatLoaded(id));
         _scheduleResort();
 
       case 'updateChatAddedToList':
@@ -726,7 +759,7 @@ class ChatListViewModel extends ChangeNotifier {
         final list = update.obj('chat_list');
         if (id == null || list == null) return;
         _joinedChatCache.remove(id);
-        _ensureChatLoaded(id);
+        unawaited(_ensureChatLoaded(id));
         if (list.type == 'chatListFolder') {
           final folderId = list.integer('chat_folder_id');
           if (folderId != null) {
@@ -921,29 +954,54 @@ class ChatListViewModel extends ChangeNotifier {
     }
   }
 
-  void _ensureChatLoaded(int id) {
-    if (_disposed || _map.containsKey(id)) return;
-    _client
-        .query({'@type': 'getChat', 'chat_id': id})
-        .then(_ingestRawChat)
-        .catchError((_) {});
+  Future<void> _ensureChatLoaded(int id, {bool refresh = false}) {
+    if (_disposed || (!refresh && _map.containsKey(id))) {
+      return Future<void>.value();
+    }
+    final existing = _chatLoadOperations[id];
+    if (existing != null) return existing;
+
+    Future<void> load() async {
+      try {
+        final raw = await _chatListQuery({'@type': 'getChat', 'chat_id': id});
+        await _ingestRawChat(raw);
+      } catch (_) {}
+    }
+
+    late final Future<void> tracked;
+    tracked = load().whenComplete(() {
+      if (identical(_chatLoadOperations[id], tracked)) {
+        _chatLoadOperations.remove(id);
+      }
+    });
+    _chatLoadOperations[id] = tracked;
+    return tracked;
   }
 
   /// Folds a raw TDLib chat into the store. The resort is always coalesced:
   /// session restore delivers one `updateNewChat` per chat, and a full sort
   /// plus notify per chat lands squarely in the wait for the first chat list.
-  Future<void> _ingestRawChat(Map<String, dynamic> raw) async {
+  Future<void> _ingestRawChat(
+    Map<String, dynamic> raw, {
+    bool preserveExistingIfNotNewer = false,
+  }) async {
     if (_disposed) return;
     final summary = TDParse.chat(raw);
     if (summary == null) return;
+    final existing = _map[summary.id];
+    if (existing != null) {
+      final recency = _compareChatSnapshotRecency(summary, existing);
+      if (recency < 0 || (preserveExistingIfNotNewer && recency == 0)) {
+        return;
+      }
+    }
     if (_meId != null) summary.isSavedMessages = summary.peerUserId == _meId;
     summary.lastMessage = _previewText(summary.lastMessage);
     _indexCommunityPeer(summary.id, raw);
     _resolveForumIfNeeded(summary, raw);
     _resolveCommunityIfNeeded(summary, raw);
-    final joined = await _isJoinedSummary(summary, raw);
-    if (_disposed) return;
-    if (!joined) {
+    final cachedJoined = _joinedChatCache[summary.id];
+    if (cachedJoined == false) {
       _map.remove(summary.id);
       _communityDirectoryChats[summary.id] = summary;
       // After the chat is in a map: the peer resolution can now complete
@@ -958,6 +1016,12 @@ class ChatListViewModel extends ChangeNotifier {
       _scheduleResort();
       return;
     }
+
+    // Publish the TDLib snapshot before the asynchronous membership lookup.
+    // During session restore, live last-message/position updates can arrive
+    // while getSupergroup/getBasicGroup is in flight. Keeping this exact
+    // summary in the map lets those updates mutate it instead of being dropped
+    // and later overwritten by an old startup snapshot.
     _communityDirectoryChats.remove(summary.id);
     _viewableCommunityChatIds.remove(summary.id);
     _checkingCommunityChatAccess.remove(summary.id);
@@ -965,6 +1029,26 @@ class ChatListViewModel extends ChangeNotifier {
     _resolvePeerIfNeeded(summary);
     _applyPositions(summary.id, raw.objects('positions'));
     _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
+    _scheduleResort();
+
+    if (summary.kind != ChatKind.group && summary.kind != ChatKind.channel) {
+      return;
+    }
+    unawaited(_verifyMembershipAfterIngest(summary, raw));
+  }
+
+  Future<void> _verifyMembershipAfterIngest(
+    ChatSummary summary,
+    Map<String, dynamic> raw,
+  ) async {
+    final joined = await _isJoinedSummary(summary, raw);
+    if (_disposed || joined || !identical(_map[summary.id], summary)) return;
+    _map.remove(summary.id);
+    _communityDirectoryChats[summary.id] = summary;
+    final communityId = _communityByChat[summary.id];
+    if (communityId != null) {
+      _verifyCommunityChatIsPublic(summary.id, communityId);
+    }
     _scheduleResort();
   }
 
@@ -995,7 +1079,9 @@ class ChatListViewModel extends ChangeNotifier {
     }
     final cached = _joinedChatCache[summary.id];
     if (cached != null) return cached;
-    final joined = await isJoinedGroupOrChannelChat(summary.id, chat: raw);
+    final joined =
+        await (_membershipForTesting?.call(summary, raw) ??
+            isJoinedGroupOrChannelChat(summary.id, chat: raw));
     _joinedChatCache[summary.id] = joined;
     return joined;
   }
@@ -1268,7 +1354,6 @@ class ChatListViewModel extends ChangeNotifier {
         });
     }
     _entriesCache = null;
-    _finishInitialLoadingIfNeeded();
     stopwatch.stop();
     AppPerformanceMetrics.chatListResorted(
       elapsed: stopwatch.elapsed,
@@ -1304,14 +1389,26 @@ class ChatListViewModel extends ChangeNotifier {
   @visibleForTesting
   void applyUpdateForTesting(Map<String, dynamic> update) => _apply(update);
 
+  @visibleForTesting
+  Future<void> ingestRawChatForTesting(Map<String, dynamic> raw) =>
+      _ingestRawChat(raw);
+
   void _notifyIfAlive() {
     if (!_disposed) notifyListeners();
   }
 
-  void _finishInitialLoadingIfNeeded({bool force = false}) {
-    if (_initialLoading && (force || _map.isNotEmpty)) {
-      _initialLoading = false;
+  void _finishInitialLoadingIfNeeded() {
+    _initialLoading = false;
+  }
+
+  static int _compareChatSnapshotRecency(
+    ChatSummary candidate,
+    ChatSummary existing,
+  ) {
+    if (candidate.date != existing.date) {
+      return candidate.date.compareTo(existing.date);
     }
+    return candidate.lastMessageId.compareTo(existing.lastMessageId);
   }
 
   static int _compare(ChatSummary a, ChatSummary b) {
