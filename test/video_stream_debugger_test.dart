@@ -39,6 +39,22 @@ void main() {
     expect(layout.blocks.length, lessThanOrEqualTo(layout.capacity));
   });
 
+  test('unknown size does not imply a downloaded block', () {
+    final layout = videoDownloadBlockLayout(
+      totalBytes: 0,
+      downloadedBytes: 0,
+      prefixDownloadedBytes: 0,
+      completed: false,
+      maxWidth: 320,
+      maxHeight: 120,
+    );
+
+    expect(layout.blockSizeBytes, videoDownloadMinimumBlockBytes);
+    expect(layout.blocks, isEmpty);
+    expect(layout.width, lessThanOrEqualTo(320.001));
+    expect(layout.height, lessThanOrEqualTo(120.001));
+  });
+
   test(
     'download blocks expose downloaded, partial, and undownloaded states',
     () {

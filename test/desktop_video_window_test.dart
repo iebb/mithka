@@ -37,6 +37,22 @@ void main() {
     expect(DesktopVideoWindowArguments.tryParse('not json'), isNull);
   });
 
+  test('desktop byte progress is validated before reaching the inspector', () {
+    final progress = decodeDesktopVideoProgress(
+      '{"file_id":42,"downloaded":3145728,'
+      '"prefix_downloaded":2097152,"total":8388608,'
+      '"is_active":true,"is_completed":false}',
+    );
+
+    expect(progress?.fileId, 42);
+    expect(progress?.downloaded, 3 * 1024 * 1024);
+    expect(progress?.prefixDownloaded, 2 * 1024 * 1024);
+    expect(progress?.total, 8 * 1024 * 1024);
+    expect(progress?.isActive, isTrue);
+    expect(decodeDesktopVideoProgress('{"path":"private"}'), isNull);
+    expect(decodeDesktopVideoProgress('not json'), isNull);
+  });
+
   test('desktop playback preparation retries a transient range miss', () async {
     var attempts = 0;
 
@@ -64,7 +80,7 @@ void main() {
     },
   );
 
-  test('desktop player delegates windowing and controls to f_videoplayer', () {
+  test('desktop player uses the redesigned chrome and live inspector', () {
     final window = File('lib/app/desktop_video_window.dart').readAsStringSync();
     expect(window, contains('package:f_videoplayer/f_videoplayer.dart'));
     expect(window, contains('stream.prepareForPlayback'));
@@ -89,6 +105,11 @@ void main() {
     expect(window, contains('FVideoDesktopWindows.hideCurrentWindow'));
     expect(window, contains('FVideoDesktopWindows.closeCurrentWindow'));
     expect(window, contains('FVideoPlayer('));
+    expect(window, contains('chromeBuilder:'));
+    expect(window, contains('MithkaDesktopVideoChrome('));
+    expect(window, contains('VideoStreamDebugger('));
+    expect(window, contains('tdVideoStreamProgressUri(arguments.uri)'));
+    expect(window, contains("HeroAppIcons.pictureInPicture"));
     expect(window, contains('FVideoDesktopWindows.instance.open'));
   });
 
@@ -110,10 +131,11 @@ void main() {
     expect(runner, isNot(contains('AVPictureInPictureController')));
   });
 
-  test('app scrub geometry is delegated to package default chrome', () {
+  test('redesigned scrub preview stays inside the package slider surface', () {
     final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
     expect(player, contains('FVideoPlayer('));
+    expect(player, contains('FVideoSlider('));
     expect(player, isNot(contains('Overlay.of(scrubberContext)')));
     expect(player, isNot(contains('_buildScrubPreviewOverlay(')));
     expect(player, isNot(contains('_showScrubPreviewOverlay(')));

@@ -1,10 +1,42 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/td_video_stream_server.dart';
 
 void main() {
+  test('detached windows receive sanitized live byte progress', () async {
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 4 * 1024 * 1024,
+      maxResponseBytes: 16,
+      reportedReadableBytes: 2 * 1024 * 1024,
+    );
+    try {
+      final progressUri = tdVideoStreamProgressUri(fixture.uri);
+      expect(progressUri.path, '${fixture.uri.path}.progress.json');
+
+      final response = await fixture.getUri(progressUri);
+      final payload = jsonDecode(utf8.decode(await _readBody(response)));
+
+      expect(response.statusCode, HttpStatus.ok);
+      expect(response.headers.contentType?.mimeType, 'application/json');
+      expect(
+        response.headers.value(HttpHeaders.cacheControlHeader),
+        'no-store',
+      );
+      expect(payload, containsPair('prefix_downloaded', 2 * 1024 * 1024));
+      expect(payload, containsPair('downloaded', 2 * 1024 * 1024));
+      expect(payload, containsPair('total', 4 * 1024 * 1024));
+      expect(payload, containsPair('is_completed', false));
+      expect(payload, isNot(contains('path')));
+      expect(payload, isNot(contains('account')));
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test(
     'a large request without Range returns one bounded exact body',
     () async {
@@ -541,10 +573,14 @@ final class _VideoServerFixture {
   }
 
   Future<HttpClientResponse> get({String? range}) async {
+    return getUri(uri, range: range);
+  }
+
+  Future<HttpClientResponse> getUri(Uri target, {String? range}) async {
     final client = HttpClient();
     _clients.add(client);
     try {
-      final request = await client.getUrl(uri);
+      final request = await client.getUrl(target);
       if (range != null) {
         request.headers.set(HttpHeaders.rangeHeader, range);
       }

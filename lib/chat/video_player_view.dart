@@ -2212,236 +2212,244 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _reusablePlayerActions = scope.actions;
     final snapshot = scope.snapshot;
     final safePadding = MediaQuery.paddingOf(context);
-    return ExcludeFocus(
-      excluding: !snapshot.controlsVisible,
-      child: ExcludeSemantics(
+    return DefaultTextStyle.merge(
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: ExcludeFocus(
         excluding: !snapshot.controlsVisible,
-        child: IgnorePointer(
-          ignoring: !snapshot.controlsVisible,
-          child: AnimatedOpacity(
-            key: const ValueKey('mithka-video-player-chrome'),
-            opacity: snapshot.controlsVisible ? 1 : 0,
-            duration: const Duration(milliseconds: 170),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide =
-                    MediaQuery.sizeOf(context).width >= 600 &&
-                    constraints.maxWidth >= 600;
-                final compactQueueNavigation =
-                    !wide && MediaQuery.sizeOf(context).width >= 320;
-                final title = _videoChromeTitle();
-                final subtitle = _videoChromeSubtitle(snapshot.value.duration);
-                final metadataAspect = _metadataAspectRatio();
-                final controllerAspect = snapshot.value.aspectRatio;
-                final aspect =
-                    metadataAspect ??
-                    (controllerAspect.isFinite && controllerAspect > 0
-                        ? controllerAspect
-                        : 16 / 9);
-                final buffered = math
-                    .max(
-                      snapshot.value.buffered.isEmpty
-                          ? 0.0
-                          : snapshot.value.buffered.last.end.inMilliseconds /
-                                math.max(
-                                  1,
-                                  snapshot.value.duration.inMilliseconds,
-                                ),
-                      _downloadedFraction ?? 0,
-                    )
-                    .clamp(0.0, 1.0)
-                    .toDouble();
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.72),
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.88),
-                              ],
-                              stops: const [0, 0.46, 1],
+        child: ExcludeSemantics(
+          excluding: !snapshot.controlsVisible,
+          child: IgnorePointer(
+            ignoring: !snapshot.controlsVisible,
+            child: AnimatedOpacity(
+              key: const ValueKey('mithka-video-player-chrome'),
+              opacity: snapshot.controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 170),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide =
+                      MediaQuery.sizeOf(context).width >= 600 &&
+                      constraints.maxWidth >= 600;
+                  final compactQueueNavigation =
+                      !wide && MediaQuery.sizeOf(context).width >= 320;
+                  final title = _videoChromeTitle();
+                  final subtitle = _videoChromeSubtitle(
+                    snapshot.value.duration,
+                  );
+                  final metadataAspect = _metadataAspectRatio();
+                  final controllerAspect = snapshot.value.aspectRatio;
+                  final aspect =
+                      metadataAspect ??
+                      (controllerAspect.isFinite && controllerAspect > 0
+                          ? controllerAspect
+                          : 16 / 9);
+                  final buffered = math
+                      .max(
+                        snapshot.value.buffered.isEmpty
+                            ? 0.0
+                            : snapshot.value.buffered.last.end.inMilliseconds /
+                                  math.max(
+                                    1,
+                                    snapshot.value.duration.inMilliseconds,
+                                  ),
+                        _downloadedFraction ?? 0,
+                      )
+                      .clamp(0.0, 1.0)
+                      .toDouble();
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.72),
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.88),
+                                ],
+                                stops: const [0, 0.46, 1],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    PositionedDirectional(
-                      top: safePadding.top + 12,
-                      start: safePadding.left + 14,
-                      end: safePadding.right + 14,
-                      child: Row(
-                        children: [
-                          _playerChromeIconButton(
-                            icon: HeroAppIcons.xmark,
-                            label: scope.labels.close,
-                            onTap: _close,
-                            size: 52,
-                            iconSize: 27,
-                            cornerRadius: 26,
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w600,
+                      PositionedDirectional(
+                        top: safePadding.top + 12,
+                        start: safePadding.left + 14,
+                        end: safePadding.right + 14,
+                        child: Row(
+                          children: [
+                            _playerChromeIconButton(
+                              icon: HeroAppIcons.xmark,
+                              label: scope.labels.close,
+                              onTap: _close,
+                              size: 52,
+                              iconSize: 27,
+                              cornerRadius: 26,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.76),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.76,
+                                      ),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w400,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            _playerChromeIconButton(
+                              icon: HeroAppIcons.code,
+                              label: 'Stream inspector',
+                              onTap: () {
+                                setState(
+                                  () => _debuggerVisible = !_debuggerVisible,
+                                );
+                                scope.actions.showControls();
+                              },
+                              size: 44,
+                              iconSize: 21,
+                              cornerRadius: 22,
+                              backgroundColor: _debuggerVisible
+                                  ? const Color(0xD92C6565)
+                                  : const Color(0xB82C2C2E),
+                            ),
+                            const SizedBox(width: 8),
+                            _playerChromeIconButton(
+                              icon: HeroAppIcons.ellipsisVertical,
+                              label: 'More',
+                              onTap: _toggleMoreMenu,
+                              size: 44,
+                              iconSize: 23,
+                              cornerRadius: 22,
+                              focusNode: _moreButtonFocusNode,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (wide && scope.previous != null)
+                        PositionedDirectional(
+                          start: safePadding.left + 18,
+                          top: safePadding.top + 96,
+                          bottom: safePadding.bottom + 132,
+                          child: Center(
+                            child: _MithkaVideoSideButton(
+                              icon: HeroAppIcons.chevronLeft,
+                              label: scope.labels.previous,
+                              onTap: scope.previous!,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          _playerChromeIconButton(
-                            icon: HeroAppIcons.code,
-                            label: 'Stream inspector',
-                            onTap: () {
-                              setState(
-                                () => _debuggerVisible = !_debuggerVisible,
-                              );
-                              scope.actions.showControls();
-                            },
-                            size: 44,
-                            iconSize: 21,
-                            cornerRadius: 22,
-                            backgroundColor: _debuggerVisible
-                                ? const Color(0xD92C6565)
-                                : const Color(0xB82C2C2E),
-                          ),
-                          const SizedBox(width: 8),
-                          _playerChromeIconButton(
-                            icon: HeroAppIcons.ellipsisVertical,
-                            label: 'More',
-                            onTap: _toggleMoreMenu,
-                            size: 44,
-                            iconSize: 23,
-                            cornerRadius: 22,
-                            focusNode: _moreButtonFocusNode,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (wide && scope.previous != null)
-                      PositionedDirectional(
-                        start: safePadding.left + 18,
-                        top: safePadding.top + 96,
-                        bottom: safePadding.bottom + 132,
-                        child: Center(
-                          child: _MithkaVideoSideButton(
-                            icon: HeroAppIcons.chevronLeft,
-                            label: scope.labels.previous,
-                            onTap: scope.previous!,
+                        ),
+                      if (wide && scope.next != null)
+                        PositionedDirectional(
+                          end: safePadding.right + 18,
+                          top: safePadding.top + 96,
+                          bottom: safePadding.bottom + 132,
+                          child: Center(
+                            child: _MithkaVideoSideButton(
+                              icon: HeroAppIcons.chevronRight,
+                              label: scope.labels.next,
+                              onTap: scope.next!,
+                            ),
                           ),
                         ),
-                      ),
-                    if (wide && scope.next != null)
-                      PositionedDirectional(
-                        end: safePadding.right + 18,
-                        top: safePadding.top + 96,
-                        bottom: safePadding.bottom + 132,
+                      Positioned.fill(
+                        top: safePadding.top + 72,
+                        bottom: safePadding.bottom + (wide ? 132 : 168),
                         child: Center(
-                          child: _MithkaVideoSideButton(
-                            icon: HeroAppIcons.chevronRight,
-                            label: scope.labels.next,
-                            onTap: scope.next!,
-                          ),
-                        ),
-                      ),
-                    Positioned.fill(
-                      top: safePadding.top + 72,
-                      bottom: safePadding.bottom + (wide ? 132 : 168),
-                      child: Center(
-                        child: wide
-                            ? _MithkaVideoCenterTransport(
-                                value: snapshot.value,
-                                scope: scope,
-                              )
-                            : _MithkaVideoCompactTransport(
-                                value: snapshot.value,
-                                scope: scope,
-                                showQueueNavigation: !compactQueueNavigation,
-                              ),
-                      ),
-                    ),
-                    Positioned(
-                      left: safePadding.left + (wide ? 28 : 14),
-                      right: safePadding.right + (wide ? 28 : 14),
-                      bottom: safePadding.bottom + (wide ? 14 : 10),
-                      child: _MithkaVideoBottomChrome(
-                        scope: scope,
-                        wide: wide,
-                        buffered: buffered,
-                        aspectRatio: aspect,
-                        thumbnailProvider: _provideScrubThumbnailAt,
-                        compactQueueNavigation: compactQueueNavigation,
-                        previousButton:
-                            compactQueueNavigation && scope.previous != null
-                            ? _MithkaVideoCompactNavButton(
-                                icon: HeroAppIcons.chevronLeft,
-                                label: scope.labels.previous,
-                                onTap: scope.previous!,
-                                size: 44,
-                              )
-                            : null,
-                        nextButton: compactQueueNavigation && scope.next != null
-                            ? _MithkaVideoCompactNavButton(
-                                icon: HeroAppIcons.chevronRight,
-                                label: scope.labels.next,
-                                onTap: scope.next!,
-                                size: 44,
-                              )
-                            : null,
-                        modeButton: _showsDisplayModeButton
-                            ? _displayModeButton(size: 44)
-                            : null,
-                        fullscreenButton:
-                            widget.onToggleFullscreen == null ||
-                                (widget.onSwitchMode != null && !wide)
-                            ? null
-                            : _playerChromeIconButton(
-                                icon: HeroAppIcons.expand,
-                                label: widget.onSwitchMode != null
-                                    ? 'Expand player'
-                                    : scope.labels.fullscreen,
-                                onTap: widget.onToggleFullscreen!,
-                                size: 44,
-                                iconSize: 20,
-                                cornerRadius: 10,
-                                backgroundColor: const Color(0x9A1B1D1E),
-                                borderColor: Colors.white.withValues(
-                                  alpha: 0.26,
+                          child: wide
+                              ? _MithkaVideoCenterTransport(
+                                  value: snapshot.value,
+                                  scope: scope,
+                                )
+                              : _MithkaVideoCompactTransport(
+                                  value: snapshot.value,
+                                  scope: scope,
+                                  showQueueNavigation: !compactQueueNavigation,
                                 ),
-                              ),
-                        qualityLabel: _videoQualityLabel(),
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                      Positioned(
+                        left: safePadding.left + (wide ? 28 : 14),
+                        right: safePadding.right + (wide ? 28 : 14),
+                        bottom: safePadding.bottom + (wide ? 14 : 10),
+                        child: _MithkaVideoBottomChrome(
+                          scope: scope,
+                          wide: wide,
+                          buffered: buffered,
+                          aspectRatio: aspect,
+                          thumbnailProvider: _provideScrubThumbnailAt,
+                          compactQueueNavigation: compactQueueNavigation,
+                          previousButton:
+                              compactQueueNavigation && scope.previous != null
+                              ? _MithkaVideoCompactNavButton(
+                                  icon: HeroAppIcons.chevronLeft,
+                                  label: scope.labels.previous,
+                                  onTap: scope.previous!,
+                                  size: 44,
+                                )
+                              : null,
+                          nextButton:
+                              compactQueueNavigation && scope.next != null
+                              ? _MithkaVideoCompactNavButton(
+                                  icon: HeroAppIcons.chevronRight,
+                                  label: scope.labels.next,
+                                  onTap: scope.next!,
+                                  size: 44,
+                                )
+                              : null,
+                          modeButton: _showsDisplayModeButton
+                              ? _displayModeButton(size: 44)
+                              : null,
+                          fullscreenButton:
+                              widget.onToggleFullscreen == null ||
+                                  (widget.onSwitchMode != null && !wide)
+                              ? null
+                              : _playerChromeIconButton(
+                                  icon: HeroAppIcons.expand,
+                                  label: widget.onSwitchMode != null
+                                      ? 'Expand player'
+                                      : scope.labels.fullscreen,
+                                  onTap: widget.onToggleFullscreen!,
+                                  size: 44,
+                                  iconSize: 20,
+                                  cornerRadius: 10,
+                                  backgroundColor: const Color(0x9A1B1D1E),
+                                  borderColor: Colors.white.withValues(
+                                    alpha: 0.26,
+                                  ),
+                                ),
+                          qualityLabel: _videoQualityLabel(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -3931,6 +3939,237 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
+}
+
+/// The full Mithka player chrome used by detached desktop video windows.
+///
+/// Detached windows run in their own Flutter engine, so they cannot reuse the
+/// parent [VideoPlayerView] state. This widget keeps the same concrete chrome
+/// and package-owned playback actions without depending on that state object.
+class MithkaDesktopVideoChrome extends StatelessWidget {
+  const MithkaDesktopVideoChrome({
+    super.key,
+    required this.scope,
+    required this.title,
+    required this.onClose,
+    required this.inspectorVisible,
+    required this.onToggleInspector,
+    required this.aspectRatio,
+    required this.thumbnailProvider,
+    this.downloadedFraction,
+    this.modeButton,
+    this.fullscreenButton,
+    this.qualityLabel = '',
+    this.topInset = 0,
+  });
+
+  final FVideoChromeScope scope;
+  final String title;
+  final VoidCallback onClose;
+  final bool inspectorVisible;
+  final VoidCallback onToggleInspector;
+  final double aspectRatio;
+  final Future<Uint8List?> Function(Duration position) thumbnailProvider;
+  final double? downloadedFraction;
+  final Widget? modeButton;
+  final Widget? fullscreenButton;
+  final String qualityLabel;
+  final double topInset;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = scope.snapshot;
+    final safePadding = MediaQuery.paddingOf(context);
+    return ExcludeFocus(
+      excluding: !snapshot.controlsVisible,
+      child: ExcludeSemantics(
+        excluding: !snapshot.controlsVisible,
+        child: IgnorePointer(
+          ignoring: !snapshot.controlsVisible,
+          child: AnimatedOpacity(
+            key: const ValueKey('mithka-desktop-video-player-chrome'),
+            opacity: snapshot.controlsVisible ? 1 : 0,
+            duration: const Duration(milliseconds: 170),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 600;
+                final compactQueueNavigation =
+                    !wide && MediaQuery.sizeOf(context).width >= 320;
+                final duration = snapshot.value.duration;
+                final seconds = math.max(0, duration.inSeconds);
+                final subtitle =
+                    'Video  •  $seconds ${seconds == 1 ? 'sec' : 'secs'}';
+                final packageBuffered = snapshot.value.buffered.isEmpty
+                    ? 0.0
+                    : snapshot.value.buffered.last.end.inMilliseconds /
+                          math.max(1, duration.inMilliseconds);
+                final buffered = math
+                    .max(packageBuffered, downloadedFraction ?? 0)
+                    .clamp(0.0, 1.0)
+                    .toDouble();
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.72),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.88),
+                              ],
+                              stops: const [0, 0.46, 1],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    PositionedDirectional(
+                      top: safePadding.top + topInset + 12,
+                      start: safePadding.left + 14,
+                      end: safePadding.right + 14,
+                      child: Row(
+                        children: [
+                          MithkaVideoChromeAction(
+                            icon: HeroAppIcons.xmark,
+                            label: scope.labels.close,
+                            onTap: onClose,
+                            size: 52,
+                            iconSize: 27,
+                            cornerRadius: 26,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title.trim().isEmpty ? 'Video' : title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.76),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          MithkaVideoChromeAction(
+                            icon: HeroAppIcons.code,
+                            label: 'Stream inspector',
+                            onTap: () {
+                              onToggleInspector();
+                              scope.actions.showControls();
+                            },
+                            cornerRadius: 22,
+                            backgroundColor: inspectorVisible
+                                ? const Color(0xD92C6565)
+                                : const Color(0xB82C2C2E),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned.fill(
+                      top: safePadding.top + topInset + 72,
+                      bottom: safePadding.bottom + (wide ? 132 : 168),
+                      child: Center(
+                        child: wide
+                            ? _MithkaVideoCenterTransport(
+                                value: snapshot.value,
+                                scope: scope,
+                              )
+                            : _MithkaVideoCompactTransport(
+                                value: snapshot.value,
+                                scope: scope,
+                                showQueueNavigation: false,
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      left: safePadding.left + (wide ? 28 : 14),
+                      right: safePadding.right + (wide ? 28 : 14),
+                      bottom: safePadding.bottom + (wide ? 14 : 10),
+                      child: _MithkaVideoBottomChrome(
+                        scope: scope,
+                        wide: wide,
+                        buffered: buffered,
+                        aspectRatio: aspectRatio,
+                        thumbnailProvider: thumbnailProvider,
+                        compactQueueNavigation: compactQueueNavigation,
+                        previousButton: null,
+                        nextButton: null,
+                        modeButton: modeButton,
+                        fullscreenButton: fullscreenButton,
+                        qualityLabel: qualityLabel,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Owned-icon action styling shared with detached-window chrome controls.
+class MithkaVideoChromeAction extends StatelessWidget {
+  const MithkaVideoChromeAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.size = 44,
+    this.iconSize = 21,
+    this.cornerRadius = 10,
+    this.backgroundColor = const Color(0xB82C2C2E),
+    this.borderColor,
+    this.enabled = true,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final double size;
+  final double iconSize;
+  final double cornerRadius;
+  final Color backgroundColor;
+  final Color? borderColor;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) => _FocusableVideoIconButton(
+    icon: icon,
+    label: label,
+    onPressed: onTap,
+    size: Size.square(size),
+    iconSize: iconSize,
+    enabled: enabled,
+    opacity: enabled ? 1 : 0.48,
+    backgroundColor: backgroundColor,
+    borderColor: borderColor ?? Colors.white.withValues(alpha: 0.15),
+    cornerRadius: cornerRadius,
+  );
 }
 
 class _MithkaVideoCenterTransport extends StatelessWidget {

@@ -111,7 +111,7 @@ VideoDownloadBlockLayout videoDownloadBlockLayout({
   final safeTotal = math.max(0, totalBytes);
   final capacity = math.max(1, columns * rows);
   final blockSize = _roundUpToMiB(_ceilDivide(safeTotal, capacity));
-  final blockCount = math.max(1, _ceilDivide(safeTotal, blockSize));
+  final blockCount = safeTotal == 0 ? 0 : _ceilDivide(safeTotal, blockSize);
   final int actualRows = math.max(1, _ceilDivide(blockCount, columns));
   final widthCellSize =
       (safeWidth - math.max(0, columns - 1) * safeGap) / columns;

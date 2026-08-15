@@ -6,6 +6,7 @@
 //
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -65,6 +66,13 @@ TdVideoStreamQuery tdVideoStreamQueryForAccount(int? accountSlot) {
   return (request) => TdClient.shared.queryForSlot(request, accountSlot);
 }
 
+/// The private loopback endpoint exposed to detached desktop player engines.
+///
+/// It reports byte counts only; no Telegram account, path, or media metadata
+/// crosses into the child window.
+Uri tdVideoStreamProgressUri(Uri videoUri) =>
+    videoUri.replace(path: '${videoUri.path}.progress.json');
+
 /// A loopback range server for partially downloaded TDLib videos.
 ///
 /// The class is public only so its HTTP behavior can be exercised without a
@@ -100,6 +108,9 @@ class TdVideoStreamServer {
   int _total = 0;
   int _downloadOffset = 0;
   int _downloadedPrefixSize = 0;
+  int _downloadedHeadPrefixSize = 0;
+  int _downloadedSize = 0;
+  bool _downloadActive = false;
   bool _downloadComplete = false;
   bool _closed = false;
   bool _backgroundDownloadRequested = false;
@@ -238,11 +249,22 @@ class TdVideoStreamServer {
     _downloadOffset = local?.integer('download_offset') ?? _downloadOffset;
     final prefix = local?.integer('downloaded_prefix_size') ?? 0;
     _downloadedPrefixSize = prefix;
+    if (_downloadOffset == 0) {
+      _downloadedHeadPrefixSize = math.max(_downloadedHeadPrefixSize, prefix);
+    }
+    _downloadedSize = math.max(
+      _downloadedSize,
+      math.max(local?.integer('downloaded_size') ?? 0, prefix),
+    );
+    _downloadActive = local?.boolean('is_downloading_active') == true;
     _downloadComplete =
         local?.boolean('is_downloading_completed') == true && _total > 0;
     if (_downloadComplete) {
       _downloadOffset = 0;
       _downloadedPrefixSize = _total;
+      _downloadedHeadPrefixSize = _total;
+      _downloadedSize = _total;
+      _downloadActive = false;
       _continuousDownloadOffset = null;
     }
   }
@@ -286,6 +308,17 @@ class TdVideoStreamServer {
       if (request.method != 'GET' && request.method != 'HEAD') {
         request.response.statusCode = HttpStatus.methodNotAllowed;
         await request.response.close();
+        return;
+      }
+
+      final videoPath = '/video/$fileId.$_extension';
+      final progressPath = '$videoPath.progress.json';
+      if (request.uri.path == progressPath) {
+        await _writeProgressResponse(request);
+        return;
+      }
+      if (request.uri.path != videoPath) {
+        await _closeEmptyResponse(request.response, HttpStatus.notFound);
         return;
       }
 
@@ -360,6 +393,45 @@ class TdVideoStreamServer {
         // The client already closed the response.
       }
     }
+  }
+
+  Future<void> _writeProgressResponse(HttpRequest request) async {
+    try {
+      final file = await _query({
+        '@type': 'getFile',
+        'file_id': fileId,
+      }).timeout(const Duration(seconds: 1));
+      _updateFileInfo(file);
+    } catch (_) {
+      // Last-known progress is still useful if TDLib is momentarily busy.
+    }
+
+    final downloaded = _downloadComplete
+        ? _total
+        : math.max(_downloadedSize, _downloadedHeadPrefixSize);
+    final body = utf8.encode(
+      jsonEncode({
+        'file_id': fileId,
+        'downloaded': downloaded.clamp(0, _total),
+        'prefix_downloaded': _downloadedHeadPrefixSize.clamp(0, _total),
+        'total': _total,
+        'is_active':
+            !_downloadComplete &&
+            (_downloadActive ||
+                _backgroundDownloadRequested ||
+                _rangeDownloads.isNotEmpty ||
+                _continuousDownloadOffset != null),
+        'is_completed': _downloadComplete,
+      }),
+    );
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..contentLength = body.length;
+    request.response.headers
+      ..contentType = ContentType.json
+      ..set(HttpHeaders.cacheControlHeader, 'no-store');
+    if (request.method == 'GET') request.response.add(body);
+    await request.response.close();
   }
 
   int _boundedEnd(int start, int requestedEnd) => math.min(
