@@ -1,7 +1,47 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/desktop_voice_message_controller.dart';
 
 void main() {
+  test('permission preparation resumes the held microphone press', () async {
+    final permission = Completer<void>();
+    const held = true;
+    var starts = 0;
+
+    final recording = prepareDesktopVoiceRecording(
+      prepare: () => permission.future,
+      shouldStart: () => held,
+      start: () async => starts++,
+    );
+
+    await Future<void>.delayed(Duration.zero);
+    expect(starts, 0);
+    permission.complete();
+    await recording;
+    expect(starts, 1);
+  });
+
+  test(
+    'releasing during the permission sheet cancels the pending start',
+    () async {
+      final permission = Completer<void>();
+      var held = true;
+      var starts = 0;
+
+      final recording = prepareDesktopVoiceRecording(
+        prepare: () => permission.future,
+        shouldStart: () => held,
+        start: () async => starts++,
+      );
+
+      held = false;
+      permission.complete();
+      await recording;
+      expect(starts, 0);
+    },
+  );
+
   test('Space down starts a desktop voice recording', () {
     expect(
       desktopVoiceMessageAction(

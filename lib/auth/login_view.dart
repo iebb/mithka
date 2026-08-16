@@ -39,6 +39,27 @@ import 'auth_manager.dart';
 import 'country_picker.dart';
 import 'terms_sheet.dart';
 
+/// Whether the login flow owns the back action instead of allowing the root
+/// app route to hand it to the platform as an app/window exit.
+bool loginHasBackAction({
+  required bool showBotLogin,
+  required bool forcePhone,
+  required AuthStep step,
+  required int configuredAccountCount,
+}) {
+  final beyondPhone =
+      step is AuthWaitCode ||
+      step is AuthWaitPremiumPurchase ||
+      step is AuthWaitEmailAddress ||
+      step is AuthWaitEmailCode ||
+      step is AuthWaitQrCode ||
+      step is AuthWaitPassword ||
+      step is AuthWaitRegistration;
+  return showBotLogin ||
+      (beyondPhone && !forcePhone) ||
+      configuredAccountCount > 1;
+}
+
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
@@ -191,14 +212,6 @@ class _LoginViewState extends State<LoginView> {
     final auth = context.watch<AuthManager>();
     final accounts = context.watch<AccountStore>();
     final c = context.colors;
-    final beyondPhone =
-        auth.step is AuthWaitCode ||
-        auth.step is AuthWaitPremiumPurchase ||
-        auth.step is AuthWaitEmailAddress ||
-        auth.step is AuthWaitEmailCode ||
-        auth.step is AuthWaitQrCode ||
-        auth.step is AuthWaitPassword ||
-        auth.step is AuthWaitRegistration;
     // True when the phone-entry step is on screen (the natural state, or because
     // the user chose to re-enter the number).
     final showingPhone =
@@ -206,21 +219,27 @@ class _LoginViewState extends State<LoginView> {
     _syncResendCountdown(auth);
     // A back affordance is useful once past the phone step, or whenever another
     // account exists to switch to.
-    final canGoBack =
-        _showBotLogin ||
-        (beyondPhone && !_forcePhone) ||
-        TdClient.shared.configuredSlots.length > 1;
+    final canGoBack = loginHasBackAction(
+      showBotLogin: _showBotLogin,
+      forcePhone: _forcePhone,
+      step: auth.step,
+      configuredAccountCount: TdClient.shared.configuredSlots.length,
+    );
     final backToPhoneOnly =
         _showBotLogin || (!_forcePhone && auth.step is AuthWaitQrCode);
     return PopScope(
-      canPop: !backToPhoneOnly,
+      // LoginView is the root content, so allowing the platform back action
+      // through while the visible back affordance exists exits the app instead
+      // of moving within the authentication flow.
+      canPop: !canGoBack,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && backToPhoneOnly) {
-          if (_showBotLogin) {
-            _hideBotLogin();
-          } else {
-            _showPhoneEntry();
-          }
+        if (!didPop && canGoBack) {
+          _handleBack(
+            auth,
+            accounts,
+            backToPhoneOnly: backToPhoneOnly,
+            showingPhone: showingPhone,
+          );
         }
       },
       child: Scaffold(
@@ -276,13 +295,12 @@ class _LoginViewState extends State<LoginView> {
                   // QR back returns to the phone-number form. Aborting an
                   // add-account at the phone step has nothing to re-enter, so
                   // go straight back to the previous account.
-                  onTap: () => backToPhoneOnly
-                      ? _showBotLogin
-                            ? _hideBotLogin()
-                            : _showPhoneEntry()
-                      : accounts.hasPendingAdd && showingPhone
-                      ? accounts.cancelAddAccount(auth)
-                      : _showBackOptions(auth),
+                  onTap: () => _handleBack(
+                    auth,
+                    accounts,
+                    backToPhoneOnly: backToPhoneOnly,
+                    showingPhone: showingPhone,
+                  ),
                   borderRadius: BorderRadius.circular(AppRadius.card),
                   child: Padding(
                     padding: const EdgeInsets.all(10),
@@ -384,6 +402,27 @@ class _LoginViewState extends State<LoginView> {
         ),
       ),
     );
+  }
+
+  void _handleBack(
+    AuthManager auth,
+    AccountStore accounts, {
+    required bool backToPhoneOnly,
+    required bool showingPhone,
+  }) {
+    if (backToPhoneOnly) {
+      if (_showBotLogin) {
+        _hideBotLogin();
+      } else {
+        _showPhoneEntry();
+      }
+      return;
+    }
+    if (accounts.hasPendingAdd && showingPhone) {
+      accounts.cancelAddAccount(auth);
+      return;
+    }
+    _showBackOptions(auth);
   }
 
   /// Back affordance for QR / code / 2FA / registration steps: re-enter the

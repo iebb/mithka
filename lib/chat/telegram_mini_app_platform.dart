@@ -256,6 +256,7 @@ class MiniAppPlatformService {
   }
 
   Future<Map<String, dynamic>> checkLocation() async {
+    if (Platform.isMacOS) return const {'available': false};
     final enabled = await Geolocator.isLocationServiceEnabled();
     final permission = await Geolocator.checkPermission();
     return {
@@ -269,6 +270,7 @@ class MiniAppPlatformService {
   }
 
   Future<Map<String, dynamic>> requestLocation() async {
+    if (Platform.isMacOS) return const {'available': false};
     if (!await Geolocator.isLocationServiceEnabled()) {
       return const {'available': false};
     }
@@ -295,7 +297,8 @@ class MiniAppPlatformService {
     };
   }
 
-  Future<void> openLocationSettings() => Geolocator.openAppSettings();
+  Future<void> openLocationSettings() =>
+      Platform.isMacOS ? Future<void>.value() : Geolocator.openAppSettings();
 
   Future<void> setInlineDraft({
     required int chatId,

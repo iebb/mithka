@@ -544,6 +544,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   // Mobile voice recording uses flutter_sound/Opus; macOS uses record/AAC.
   FlutterSoundRecorder? _recorder;
   desktop_record.AudioRecorder? _desktopRecorder;
+  Future<void>? _desktopRecorderPreparation;
   StreamSubscription<desktop_record.Amplitude>? _desktopRecProgress;
   final _desktopVoiceFocus = FocusNode(debugLabel: 'desktopVoiceMessage');
   bool _desktopSpaceHeld = false;
@@ -1004,6 +1005,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<Map<String, dynamic>?> _inlineBotLocation() async {
+    if (Platform.isMacOS) return null;
     if (!await Geolocator.isLocationServiceEnabled()) return null;
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -1528,6 +1530,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Future<void> _prepareDesktopRecorder() async {
     if (_desktopRecorder != null) return;
+    final pending = _desktopRecorderPreparation;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    late final Future<void> preparation;
+    preparation = _createDesktopRecorder().whenComplete(() {
+      if (identical(_desktopRecorderPreparation, preparation)) {
+        _desktopRecorderPreparation = null;
+      }
+    });
+    _desktopRecorderPreparation = preparation;
+    await preparation;
+  }
+
+  Future<void> _createDesktopRecorder() async {
     final recorder = desktop_record.AudioRecorder();
     bool allowed;
     try {
@@ -1551,6 +1569,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     setState(() => _desktopRecorder = recorder);
   }
+
+  Future<void> _beginDesktopVoiceRecording() => prepareDesktopVoiceRecording(
+    prepare: _prepareDesktopRecorder,
+    shouldStart: () =>
+        mounted &&
+        _desktopRecorder != null &&
+        !_recording &&
+        (_desktopSpaceHeld || _desktopPointerHeld),
+    start: _startDesktopRec,
+  );
 
   /// Telegram voice notes want OGG/Opus, but not every Android encoder supports
   /// it — pick the first codec the device can actually record.
@@ -1841,11 +1869,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       case DesktopVoiceMessageAction.start:
         _desktopSpaceHeld = true;
         _desktopStopAfterStart = false;
-        if (_desktopRecorder == null) {
-          unawaited(_prepareRecorder());
-        } else {
-          unawaited(_startRec());
-        }
+        unawaited(_beginDesktopVoiceRecording());
         return KeyEventResult.handled;
       case DesktopVoiceMessageAction.stop:
         _desktopSpaceHeld = false;
@@ -1875,11 +1899,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (_recording || _desktopPointerHeld) return;
     _desktopPointerHeld = true;
     _desktopStopAfterStart = false;
-    if (_desktopRecorder == null) {
-      unawaited(_prepareRecorder());
-    } else {
-      unawaited(_startRec());
-    }
+    unawaited(_beginDesktopVoiceRecording());
   }
 
   void _desktopVoicePointerUp(PointerEvent event) {
@@ -5701,13 +5721,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     active: false,
                     onTap: _pickAudio,
                   ),
-                  _desktopIcon(
-                    key: const ValueKey('desktopComposerLocationAction'),
-                    icon: HeroAppIcons.locationDot,
-                    semanticLabel: AppStringKeys.composerLocation.l10n(context),
-                    active: false,
-                    onTap: _sendLocation,
-                  ),
+                  if (!Platform.isMacOS)
+                    _desktopIcon(
+                      key: const ValueKey('desktopComposerLocationAction'),
+                      icon: HeroAppIcons.locationDot,
+                      semanticLabel: AppStringKeys.composerLocation.l10n(
+                        context,
+                      ),
+                      active: false,
+                      onTap: _sendLocation,
+                    ),
                   _desktopIcon(
                     key: const ValueKey('desktopComposerContactAction'),
                     icon: HeroAppIcons.idBadge,
@@ -6902,7 +6925,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _functionPanel() {
     final items = [
-      if (widget.showCallAction)
+      if (widget.showCallAction && !Platform.isMacOS)
         (
           HeroAppIcons.phone.data,
           AppStrings.t(
@@ -6912,11 +6935,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
           () => widget.onStartCall(false),
         ),
-      (
-        HeroAppIcons.locationDot.data,
-        AppStrings.t(AppStringKeys.composerLocation),
-        _sendLocation,
-      ),
+      if (!Platform.isMacOS)
+        (
+          HeroAppIcons.locationDot.data,
+          AppStrings.t(AppStringKeys.composerLocation),
+          _sendLocation,
+        ),
       (
         HeroAppIcons.idBadge.data,
         AppStrings.t(AppStringKeys.composerContact),
@@ -7426,39 +7450,44 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     else
                       const SizedBox(height: 34),
                     const SizedBox(height: 14),
-                    Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: _desktopVoicePointerDown,
-                      onPointerUp: _desktopVoicePointerUp,
-                      onPointerCancel: _desktopVoicePointerCancel,
-                      child: AnimatedScale(
-                        scale: _recording ? 1.08 : 1,
-                        duration: const Duration(milliseconds: 150),
-                        child: AnimatedContainer(
+                    Semantics(
+                      button: true,
+                      label: label,
+                      child: Listener(
+                        key: const ValueKey('desktopVoiceRecordButton'),
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: _desktopVoicePointerDown,
+                        onPointerUp: _desktopVoicePointerUp,
+                        onPointerCancel: _desktopVoicePointerCancel,
+                        child: AnimatedScale(
+                          scale: _recording ? 1.08 : 1,
                           duration: const Duration(milliseconds: 150),
-                          width: 96,
-                          height: 96,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: granted
-                                ? AppTheme.brand
-                                : AppTheme.brand.withValues(alpha: 0.35),
-                            shape: BoxShape.circle,
-                            boxShadow: _recording
-                                ? [
-                                    BoxShadow(
-                                      color: AppTheme.brand.withValues(
-                                        alpha: 0.28,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            width: 96,
+                            height: 96,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: granted
+                                  ? AppTheme.brand
+                                  : AppTheme.brand.withValues(alpha: 0.35),
+                              shape: BoxShape.circle,
+                              boxShadow: _recording
+                                  ? [
+                                      BoxShadow(
+                                        color: AppTheme.brand.withValues(
+                                          alpha: 0.28,
+                                        ),
+                                        spreadRadius: 8,
                                       ),
-                                      spreadRadius: 8,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: const AppIcon(
-                            HeroAppIcons.microphone,
-                            size: 34,
-                            color: Colors.white,
+                                    ]
+                                  : null,
+                            ),
+                            child: const AppIcon(
+                              HeroAppIcons.microphone,
+                              size: 34,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),

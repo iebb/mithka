@@ -333,8 +333,8 @@ void main() {
     expect(accepted, isTrue);
     await tester.pump();
 
-    final restored = tester.widget<VideoPlaylistPlayerView>(
-      find.byType(VideoPlaylistPlayerView),
+    final restored = tester.widget<VideoOnDemandPlayerView>(
+      find.byType(VideoOnDemandPlayerView),
     );
     expect(restored.queue, same(queue));
     expect(restored.initialPosition, const Duration(seconds: 37));

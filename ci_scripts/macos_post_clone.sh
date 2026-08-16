@@ -47,28 +47,14 @@ fi
 
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 SOURCE_VERSION="${RAW_VERSION%%+*}"
-case "$SOURCE_VERSION" in
-  ''|*[!0-9.]*|.*|*.)
-    echo "error: expected a numeric macOS version in pubspec.yaml" >&2
-    exit 1
-    ;;
-esac
-
-# Preserve the complete semantic version from pubspec.yaml. The nightly job
-# advances the patch so Apple builds move to a new App Store Connect release
-# train when the previous train is closed.
+# Keep the major/minor from pubspec.yaml but force the patch component to zero.
+# Nightly patch increments can therefore advance Android and desktop release
+# artifacts without creating a new macOS TestFlight marketing-version train.
 #
 # Unlike iOS, the macOS project does not hardcode FLUTTER_BUILD_NAME — it
 # reads the generated xcconfig — so passing --build-name below is the whole
 # fix, with no project file to rewrite.
-APP_VERSION="$(
-  printf '%s\n' "$SOURCE_VERSION" |
-    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $0 }'
-)"
-if [ -z "$APP_VERSION" ]; then
-  echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $SOURCE_VERSION" >&2
-  exit 1
-fi
+APP_VERSION="$(sh "$REPO/scripts/macos_marketing_version.sh" "$RAW_VERSION")"
 
 # Xcode Cloud replaces distributed products' build number with its own
 # monotonically increasing CI build number. Use the same value in the archive

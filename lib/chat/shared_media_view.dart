@@ -1417,7 +1417,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             MaterialPageRoute(
               fullscreenDialog: true,
               builder: (_) =>
-                  VideoPlaylistPlayerView(queue: _videoQueue(media, message)),
+                  VideoOnDemandPlayerView(queue: _videoQueue(media, message)),
             ),
           );
           return;
@@ -2127,7 +2127,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) =>
-            VideoPlaylistPlayerView(queue: _videoQueue(items, message)),
+            VideoOnDemandPlayerView(queue: _videoQueue(items, message)),
       ),
     );
   }
@@ -2523,6 +2523,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
+            durationSeconds: message.videoDuration,
             sourceChatId: _sourceChatIdFor(message),
             messageId: message.id,
             title: _videoTitle(message),

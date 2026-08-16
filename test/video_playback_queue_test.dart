@@ -35,6 +35,16 @@ void main() {
       expect(queue.next, isNull);
       expect(queue.moveBy(1), isNull);
     });
+
+    test('moves directly to an on-demand item', () {
+      final queue = VideoPlaybackQueue(items: items, index: 1, revision: 6);
+
+      expect(queue.moveTo(2)?.current.video.id, 3);
+      expect(queue.moveTo(2)?.revision, 6);
+      expect(queue.moveTo(1), same(queue));
+      expect(queue.moveTo(-1), isNull);
+      expect(queue.moveTo(3), isNull);
+    });
   });
 
   group('VideoPlaybackQueue value snapshots', () {
@@ -133,6 +143,19 @@ void main() {
       expect(secondAccount, isNot(firstAccount));
       expect(firstAccount.current.accountSlot, 0);
       expect(secondAccount.current.accountSlot, 1);
+    });
+
+    test('duration participates in queue identity', () {
+      final short = VideoPlaybackQueue.single(
+        VideoPlaybackItem(video: TdFileRef(id: 2), durationSeconds: 62),
+      );
+      final long = VideoPlaybackQueue.single(
+        VideoPlaybackItem(video: TdFileRef(id: 2), durationSeconds: 3723),
+      );
+
+      expect(long, isNot(short));
+      expect(short.current.durationSeconds, 62);
+      expect(long.current.durationSeconds, 3723);
     });
   });
 }

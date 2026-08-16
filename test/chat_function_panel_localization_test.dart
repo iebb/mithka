@@ -40,9 +40,9 @@ void main() {
     await tester.tap(find.byIcon(HeroAppIcons.circlePlus.data));
     await tester.pump();
 
-    expect(find.text('位置'), findsOneWidget);
+    expect(find.text('位置'), Platform.isMacOS ? findsNothing : findsOneWidget);
     expect(find.text('场所'), findsNothing);
-    expect(find.text('群通话'), findsOneWidget);
+    expect(find.text('群通话'), Platform.isMacOS ? findsNothing : findsOneWidget);
     expect(find.text('群视频'), findsNothing);
     expect(find.text('视频消息'), findsNothing);
     expect(find.text('联系人'), findsOneWidget);
@@ -99,6 +99,10 @@ void main() {
       find.byKey(const ValueKey('desktopVoiceMessagePanel')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('desktopVoiceRecordButton')),
+      findsOneWidget,
+    );
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const ValueKey('voicePanelVoiceMessage')), findsNothing);
     expect(find.byKey(const ValueKey('voicePanelVideoMessage')), findsNothing);
@@ -133,7 +137,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('群通话'), findsNothing);
-    expect(find.text('位置'), findsOneWidget);
+    expect(find.text('位置'), Platform.isMacOS ? findsNothing : findsOneWidget);
     expect(find.text('联系人'), findsOneWidget);
   });
 

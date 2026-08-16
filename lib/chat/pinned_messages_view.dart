@@ -353,7 +353,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
       Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => VideoPlaylistPlayerView(queue: _videoQueue(message)),
+          builder: (_) => VideoOnDemandPlayerView(queue: _videoQueue(message)),
         ),
       );
       return;
@@ -375,6 +375,7 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
+            durationSeconds: message.videoDuration,
             sourceChatId: widget.chatId,
             messageId: message.id,
             title: _caption(message) ?? widget.title,

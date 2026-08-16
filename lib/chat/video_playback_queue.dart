@@ -9,6 +9,7 @@ class VideoPlaybackItem {
     this.thumb,
     this.width,
     this.height,
+    this.durationSeconds,
     this.sourceChatId,
     this.messageId,
     this.title = '',
@@ -19,6 +20,7 @@ class VideoPlaybackItem {
   final TdFileRef? thumb;
   final int? width;
   final int? height;
+  final int? durationSeconds;
   final int? sourceChatId;
   final int? messageId;
   final String title;
@@ -61,6 +63,12 @@ class VideoPlaybackQueue {
     return VideoPlaybackQueue(items: items, index: target, revision: revision);
   }
 
+  VideoPlaybackQueue? moveTo(int target) {
+    if (target < 0 || target >= items.length) return null;
+    if (target == index) return this;
+    return VideoPlaybackQueue(items: items, index: target, revision: revision);
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -85,6 +93,7 @@ class _VideoPlaybackItemSnapshot {
       thumb = item.thumb == null ? null : _TdFileSnapshot(item.thumb!),
       width = item.width,
       height = item.height,
+      durationSeconds = item.durationSeconds,
       sourceChatId = item.sourceChatId,
       messageId = item.messageId,
       title = item.title;
@@ -94,6 +103,7 @@ class _VideoPlaybackItemSnapshot {
   final _TdFileSnapshot? thumb;
   final int? width;
   final int? height;
+  final int? durationSeconds;
   final int? sourceChatId;
   final int? messageId;
   final String title;
@@ -107,6 +117,7 @@ class _VideoPlaybackItemSnapshot {
           thumb == other.thumb &&
           width == other.width &&
           height == other.height &&
+          durationSeconds == other.durationSeconds &&
           sourceChatId == other.sourceChatId &&
           messageId == other.messageId &&
           title == other.title;
@@ -118,6 +129,7 @@ class _VideoPlaybackItemSnapshot {
     thumb,
     width,
     height,
+    durationSeconds,
     sourceChatId,
     messageId,
     title,

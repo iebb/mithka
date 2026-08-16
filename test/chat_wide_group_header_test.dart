@@ -104,6 +104,49 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('wide group actions can omit unsupported macOS calls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          brightness: Brightness.light,
+          extensions: [AppColors.light],
+        ),
+        home: Scaffold(
+          body: WideGroupChatHeaderActions(
+            showCallActions: false,
+            onStartCall: (_) {},
+            onToggleContext: () {},
+            onOpenFullInfo: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('chatHeaderGroupVoiceCall')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('chatHeaderGroupVideoCall')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('chatHeaderGroupContextToggle')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('chatHeaderFullInfo')), findsOneWidget);
+  });
+
   testWidgets(
     'full-width chat header leaves no blank gutter above trailing context',
     (tester) async {

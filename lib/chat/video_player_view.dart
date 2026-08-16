@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
@@ -75,7 +76,7 @@ Future<bool> restoreVideoPlaybackFromPictureInPicture({
     fullscreenDialog: true,
     transitionDuration: Duration.zero,
     reverseTransitionDuration: Duration.zero,
-    pageBuilder: (routeContext, _, _) => VideoPlaylistPlayerView(
+    pageBuilder: (routeContext, _, _) => VideoOnDemandPlayerView(
       queue: queue,
       initialPosition: restoredPosition,
       initialPlaying: snapshot.playing,
@@ -144,6 +145,7 @@ class VideoPlayerView extends StatefulWidget {
     this.title = '',
     this.width,
     this.height,
+    this.durationSeconds,
     this.presentation = VideoPlayerPresentation.fullscreen,
     this.onClose,
     this.compactControls = false,
@@ -160,6 +162,8 @@ class VideoPlayerView extends StatefulWidget {
     this.previousVideo,
     this.nextVideo,
     this.onNavigate,
+    this.onDemandQueue,
+    this.onDemandSelect,
     this.onFVideoPictureInPictureRestore,
     this.onToggleFullscreen,
     this.streamQuery,
@@ -171,6 +175,7 @@ class VideoPlayerView extends StatefulWidget {
   final String title;
   final int? width;
   final int? height;
+  final int? durationSeconds;
   final VideoPlayerPresentation presentation;
   final VoidCallback? onClose;
   final bool compactControls;
@@ -187,6 +192,8 @@ class VideoPlayerView extends StatefulWidget {
   final VideoPlaybackItem? previousVideo;
   final VideoPlaybackItem? nextVideo;
   final ValueChanged<int>? onNavigate;
+  final VideoPlaybackQueue? onDemandQueue;
+  final ValueChanged<int>? onDemandSelect;
   final VideoPictureInPictureRestoreCallback? onFVideoPictureInPictureRestore;
 
   final VoidCallback? onToggleFullscreen;
@@ -199,11 +206,11 @@ class VideoPlayerView extends StatefulWidget {
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
 }
 
-typedef VideoPlaylistModeCallback =
+typedef VideoOnDemandModeCallback =
     void Function(VideoPlaybackQueue queue, VideoDisplayMode mode);
 
-class VideoPlaylistPlayerView extends StatefulWidget {
-  const VideoPlaylistPlayerView({
+class VideoOnDemandPlayerView extends StatefulWidget {
+  const VideoOnDemandPlayerView({
     super.key,
     required this.queue,
     this.presentation = VideoPlayerPresentation.fullscreen,
@@ -226,7 +233,7 @@ class VideoPlaylistPlayerView extends StatefulWidget {
   final VoidCallback? onClose;
   final bool compactControls;
   final VideoDisplayMode currentMode;
-  final VideoPlaylistModeCallback? onSwitchMode;
+  final VideoOnDemandModeCallback? onSwitchMode;
   final ValueChanged<VideoPlaybackQueue>? onQueueChanged;
   final ValueChanged<double>? onVolumeChanged;
   final double initialVolume;
@@ -237,11 +244,11 @@ class VideoPlaylistPlayerView extends StatefulWidget {
   final TdVideoStreamQuery? streamQuery;
 
   @override
-  State<VideoPlaylistPlayerView> createState() =>
-      _VideoPlaylistPlayerViewState();
+  State<VideoOnDemandPlayerView> createState() =>
+      _VideoOnDemandPlayerViewState();
 }
 
-class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
+class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
   late VideoPlaybackQueue _queue = widget.queue;
   late Duration? _initialPosition = widget.initialPosition;
   late bool _initialPlaying = widget.initialPlaying;
@@ -259,7 +266,7 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   }
 
   @override
-  void didUpdateWidget(covariant VideoPlaylistPlayerView oldWidget) {
+  void didUpdateWidget(covariant VideoOnDemandPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.queue != oldWidget.queue) {
       _queue = widget.queue;
@@ -276,6 +283,17 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
   void _navigate(int delta) {
     final next = _queue.moveBy(delta);
     if (next == null) return;
+    setState(() {
+      _queue = next;
+      _initialPosition = null;
+      _initialPlaying = true;
+    });
+    widget.onQueueChanged?.call(next);
+  }
+
+  void _selectOnDemandItem(int index) {
+    final next = _queue.moveTo(index);
+    if (next == null || identical(next, _queue)) return;
     setState(() {
       _queue = next;
       _initialPosition = null;
@@ -306,6 +324,7 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
       title: item.title,
       width: item.width,
       height: item.height,
+      durationSeconds: item.durationSeconds,
       presentation: widget.presentation,
       onClose: widget.onClose,
       compactControls: widget.compactControls,
@@ -324,6 +343,8 @@ class _VideoPlaylistPlayerViewState extends State<VideoPlaylistPlayerView> {
       previousVideo: _queue.previous,
       nextVideo: _queue.next,
       onNavigate: _navigate,
+      onDemandQueue: _queue,
+      onDemandSelect: _selectOnDemandItem,
       streamQuery: widget.streamQuery,
       onFVideoPictureInPictureRestore: (snapshot) =>
           restoreVideoPlaybackFromPictureInPicture(
@@ -382,6 +403,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Rect? _lastSystemPiPSourceRect;
   FVideoActions? _reusablePlayerActions;
   bool _debuggerVisible = false;
+  bool _onDemandPanelVisible = false;
   final List<String> _debugEvents = <String>[];
   int _lastDebugDownloaded = -1;
   int _lastDebugPrefixDownloaded = -1;
@@ -1602,8 +1624,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       thumb: widget.thumb,
       width: widget.width,
       height: widget.height,
+      durationSeconds:
+          widget.durationSeconds ?? _controller?.value.duration.inSeconds,
       sourceChatId: widget.sourceChatId,
       messageId: widget.messageId,
+      title: widget.title,
     );
     final items = <VideoPlaybackItem>[
       ?widget.previousVideo,
@@ -2107,22 +2132,50 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
+  bool _showsOnDemandLayout(BuildContext context) {
+    if (widget.presentation != VideoPlayerPresentation.fullscreen ||
+        !_hasOnDemandQueue ||
+        !_onDemandPanelVisible) {
+      return false;
+    }
+    final size = MediaQuery.sizeOf(context);
+    final wide =
+        size.width >= 900 && size.height >= 560 && size.width > size.height;
+    final portrait = size.width >= 320 && size.height >= 640;
+    return wide || portrait;
+  }
+
+  bool get _hasOnDemandQueue => (widget.onDemandQueue?.items.length ?? 0) >= 2;
+
+  bool _usesStandaloneFullscreenLayout(BuildContext context) {
+    if (widget.presentation != VideoPlayerPresentation.fullscreen) {
+      return false;
+    }
+    final size = MediaQuery.sizeOf(context);
+    return size.width >= 600 && size.height >= 320 && size.width > size.height;
+  }
+
+  double _resolvedVideoAspectRatio(VideoPlayerValue value) {
+    final controllerAspect = value.aspectRatio;
+    if (controllerAspect.isFinite && controllerAspect > 0) {
+      return controllerAspect;
+    }
+    return _metadataAspectRatio() ?? 16 / 9;
+  }
+
   double? get _downloadedFraction {
     final value = _progress?.prefixFraction ?? _progress?.fraction;
     return value?.clamp(0.0, 1.0).toDouble();
   }
 
   Future<Uint8List?> _provideScrubThumbnail(FVideoThumbnailRequest request) {
-    final path = _localPath;
-    if (!_openedCompletedLocalFile ||
-        path == null ||
-        path.startsWith('http://') ||
-        path.startsWith('https://')) {
+    final source = _scrubThumbnailSource();
+    if (source == null) {
       return Future<Uint8List?>.value();
     }
     return FVideoThumbnail.generateRequest(
       FVideoThumbnailRequest(
-        source: FVideoSource.file(path),
+        source: source,
         position: request.position,
         maxWidth: request.maxWidth,
         quality: request.quality,
@@ -2167,6 +2220,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _reusablePlayerActions = scope.actions;
     final snapshot = scope.snapshot;
     final safePadding = MediaQuery.paddingOf(context);
+    if (_showsOnDemandLayout(context)) {
+      return _playerOnDemandChrome(context, scope, safePadding);
+    }
+    final standalone = _usesStandaloneFullscreenLayout(context);
     return DefaultTextStyle.merge(
       style: const TextStyle(
         decoration: TextDecoration.none,
@@ -2260,7 +2317,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 17,
-                                      fontWeight: FontWeight.w400,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -2337,7 +2394,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                         ),
                       Positioned.fill(
                         top: safePadding.top + 72,
-                        bottom: safePadding.bottom + (wide ? 132 : 168),
+                        bottom:
+                            safePadding.bottom +
+                            (wide ? (standalone ? 158 : 132) : 168),
                         child: Center(
                           child: wide
                               ? _MithkaVideoCenterTransport(
@@ -2355,53 +2414,89 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                         left: safePadding.left + (wide ? 28 : 14),
                         right: safePadding.right + (wide ? 28 : 14),
                         bottom: safePadding.bottom + (wide ? 14 : 10),
-                        child: _MithkaVideoBottomChrome(
-                          scope: scope,
-                          wide: wide,
-                          buffered: buffered,
-                          aspectRatio: aspect,
-                          thumbnailProvider: _provideScrubThumbnailAt,
-                          compactQueueNavigation: compactQueueNavigation,
-                          previousButton:
-                              compactQueueNavigation && scope.previous != null
-                              ? _MithkaVideoCompactNavButton(
-                                  icon: HeroAppIcons.chevronLeft,
-                                  label: scope.labels.previous,
-                                  onTap: scope.previous!,
-                                  size: 44,
-                                )
-                              : null,
-                          nextButton:
-                              compactQueueNavigation && scope.next != null
-                              ? _MithkaVideoCompactNavButton(
-                                  icon: HeroAppIcons.chevronRight,
-                                  label: scope.labels.next,
-                                  onTap: scope.next!,
-                                  size: 44,
-                                )
-                              : null,
-                          modeButton: _showsDisplayModeButton
-                              ? _displayModeButton(size: 44)
-                              : null,
-                          fullscreenButton:
-                              widget.onToggleFullscreen == null ||
-                                  (widget.onSwitchMode != null && !wide)
-                              ? null
-                              : _playerChromeIconButton(
-                                  icon: HeroAppIcons.expand,
-                                  label: widget.onSwitchMode != null
-                                      ? 'Expand player'
-                                      : scope.labels.fullscreen,
-                                  onTap: widget.onToggleFullscreen!,
-                                  size: 44,
-                                  iconSize: 20,
-                                  cornerRadius: 10,
-                                  backgroundColor: const Color(0x9A1B1D1E),
-                                  borderColor: Colors.white.withValues(
-                                    alpha: 0.26,
-                                  ),
-                                ),
-                        ),
+                        child: standalone
+                            ? _MithkaVideoStandaloneBottomChrome(
+                                scope: scope,
+                                buffered: buffered,
+                                aspectRatio: aspect,
+                                thumbnailProvider: _provideScrubThumbnailAt,
+                                modeButton: _showsDisplayModeButton
+                                    ? _displayModeButton(size: 44)
+                                    : null,
+                                onDemandButton: _hasOnDemandQueue
+                                    ? _onDemandToggleButton()
+                                    : null,
+                                fullscreenButton:
+                                    widget.onToggleFullscreen == null
+                                    ? null
+                                    : _playerChromeIconButton(
+                                        icon: HeroAppIcons.expand,
+                                        label: scope.labels.fullscreen,
+                                        onTap: widget.onToggleFullscreen!,
+                                        size: 44,
+                                        iconSize: 20,
+                                        cornerRadius: 10,
+                                        backgroundColor: const Color(
+                                          0x9A1B1D1E,
+                                        ),
+                                        borderColor: Colors.white.withValues(
+                                          alpha: 0.26,
+                                        ),
+                                      ),
+                              )
+                            : _MithkaVideoBottomChrome(
+                                scope: scope,
+                                wide: wide,
+                                buffered: buffered,
+                                aspectRatio: aspect,
+                                thumbnailProvider: _provideScrubThumbnailAt,
+                                compactQueueNavigation: compactQueueNavigation,
+                                previousButton:
+                                    compactQueueNavigation &&
+                                        scope.previous != null
+                                    ? _MithkaVideoCompactNavButton(
+                                        icon: HeroAppIcons.chevronLeft,
+                                        label: scope.labels.previous,
+                                        onTap: scope.previous!,
+                                        size: 44,
+                                      )
+                                    : null,
+                                nextButton:
+                                    compactQueueNavigation && scope.next != null
+                                    ? _MithkaVideoCompactNavButton(
+                                        icon: HeroAppIcons.chevronRight,
+                                        label: scope.labels.next,
+                                        onTap: scope.next!,
+                                        size: 44,
+                                      )
+                                    : null,
+                                modeButton: _showsDisplayModeButton
+                                    ? _displayModeButton(size: 44)
+                                    : null,
+                                onDemandButton: _hasOnDemandQueue
+                                    ? _onDemandToggleButton()
+                                    : null,
+                                fullscreenButton:
+                                    widget.onToggleFullscreen == null ||
+                                        (widget.onSwitchMode != null && !wide)
+                                    ? null
+                                    : _playerChromeIconButton(
+                                        icon: HeroAppIcons.expand,
+                                        label: widget.onSwitchMode != null
+                                            ? 'Expand player'
+                                            : scope.labels.fullscreen,
+                                        onTap: widget.onToggleFullscreen!,
+                                        size: 44,
+                                        iconSize: 20,
+                                        cornerRadius: 10,
+                                        backgroundColor: const Color(
+                                          0x9A1B1D1E,
+                                        ),
+                                        borderColor: Colors.white.withValues(
+                                          alpha: 0.26,
+                                        ),
+                                      ),
+                              ),
                       ),
                     ],
                   );
@@ -2410,6 +2505,285 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _playerOnDemandChrome(
+    BuildContext context,
+    FVideoChromeScope scope,
+    EdgeInsets safePadding,
+  ) {
+    final snapshot = scope.snapshot;
+    final queue = widget.onDemandQueue!;
+    final metadataAspect = _metadataAspectRatio();
+    final controllerAspect = snapshot.value.aspectRatio;
+    final aspect =
+        metadataAspect ??
+        (controllerAspect.isFinite && controllerAspect > 0
+            ? controllerAspect
+            : 16 / 9);
+    final buffered = math
+        .max(
+          snapshot.value.buffered.isEmpty
+              ? 0.0
+              : snapshot.value.buffered.last.end.inMilliseconds /
+                    math.max(1, snapshot.value.duration.inMilliseconds),
+          _downloadedFraction ?? 0,
+        )
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final title = _videoChromeTitle();
+    final subtitle =
+        'On-demand  •  '
+        '${formatVideoPlayerDuration(snapshot.value.duration)}';
+
+    return DefaultTextStyle.merge(
+      style: const TextStyle(
+        decoration: TextDecoration.none,
+        fontWeight: FontWeight.w400,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final geometry = _VideoOnDemandGeometry.resolve(
+            size: Size(constraints.maxWidth, constraints.maxHeight),
+            safePadding: safePadding,
+            aspectRatio: aspect,
+          );
+          final modeButton = _showsDisplayModeButton
+              ? _displayModeButton(size: 44)
+              : null;
+          final onDemandButton = _onDemandToggleButton();
+          final fullscreenButton = widget.onToggleFullscreen == null
+              ? null
+              : _playerChromeIconButton(
+                  icon: HeroAppIcons.expand,
+                  label: scope.labels.fullscreen,
+                  onTap: widget.onToggleFullscreen!,
+                  size: 44,
+                  iconSize: 20,
+                  cornerRadius: 10,
+                  backgroundColor: const Color(0x9A1B1D1E),
+                  borderColor: Colors.white.withValues(alpha: 0.26),
+                );
+          final controls = Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.54),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.48),
+                        ],
+                        stops: const [0, 0.42, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fromRect(
+                rect: geometry.headerRect,
+                child: Row(
+                  children: [
+                    _playerChromeIconButton(
+                      icon: HeroAppIcons.xmark,
+                      label: scope.labels.close,
+                      onTap: _close,
+                      size: 52,
+                      iconSize: 27,
+                      cornerRadius: 26,
+                    ),
+                    if (geometry.wide) ...[
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.74),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else
+                      const Spacer(),
+                    const SizedBox(width: 10),
+                    _playerChromeIconButton(
+                      icon: HeroAppIcons.code,
+                      label: 'Stream inspector',
+                      onTap: () {
+                        setState(() => _debuggerVisible = !_debuggerVisible);
+                        scope.actions.showControls();
+                      },
+                      size: 44,
+                      iconSize: 21,
+                      cornerRadius: 22,
+                      backgroundColor: _debuggerVisible
+                          ? const Color(0xD92C6565)
+                          : const Color(0xB82C2C2E),
+                    ),
+                    const SizedBox(width: 8),
+                    _playerChromeIconButton(
+                      icon: HeroAppIcons.ellipsisVertical,
+                      label: 'More',
+                      onTap: _toggleMoreMenu,
+                      size: 44,
+                      iconSize: 23,
+                      cornerRadius: 22,
+                      focusNode: _moreButtonFocusNode,
+                    ),
+                  ],
+                ),
+              ),
+              Positioned.fromRect(
+                rect: geometry.videoRect,
+                child: Center(
+                  child: geometry.wide
+                      ? _MithkaVideoCenterTransport(
+                          value: snapshot.value,
+                          scope: scope,
+                        )
+                      : _MithkaVideoCompactTransport(
+                          value: snapshot.value,
+                          scope: scope,
+                          showQueueNavigation: false,
+                        ),
+                ),
+              ),
+              Positioned.fromRect(
+                rect: geometry.bottomChromeRect,
+                child: geometry.wide
+                    ? Align(
+                        alignment: Alignment.bottomCenter,
+                        child: _MithkaVideoBottomChrome(
+                          scope: scope,
+                          wide: true,
+                          buffered: buffered,
+                          aspectRatio: aspect,
+                          thumbnailProvider: _provideScrubThumbnailAt,
+                          compactQueueNavigation: false,
+                          previousButton: null,
+                          nextButton: null,
+                          modeButton: modeButton,
+                          onDemandButton: onDemandButton,
+                          fullscreenButton: fullscreenButton,
+                        ),
+                      )
+                    : _MithkaVideoOnDemandBottomChrome(
+                        scope: scope,
+                        buffered: buffered,
+                        aspectRatio: aspect,
+                        thumbnailProvider: _provideScrubThumbnailAt,
+                        title: title,
+                        subtitle: subtitle,
+                        modeButton: modeButton,
+                        onDemandButton: onDemandButton,
+                        fullscreenButton: fullscreenButton,
+                      ),
+              ),
+            ],
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fromRect(
+                rect: geometry.panelRect,
+                child: _MithkaVideoOnDemandPanel(
+                  key: const ValueKey('video-on-demand-panel'),
+                  queue: queue,
+                  wide: geometry.wide,
+                  onSelect: widget.onDemandSelect,
+                  autoplay:
+                      _completionAction == VideoCompletionAction.autoplayNext,
+                  onAutoplayChanged: _setOnDemandAutoplay,
+                ),
+              ),
+              ExcludeFocus(
+                excluding: !snapshot.controlsVisible,
+                child: ExcludeSemantics(
+                  excluding: !snapshot.controlsVisible,
+                  child: IgnorePointer(
+                    ignoring: !snapshot.controlsVisible,
+                    child: AnimatedOpacity(
+                      key: const ValueKey('mithka-video-player-chrome'),
+                      opacity: snapshot.controlsVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 170),
+                      child: controls,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _setOnDemandAutoplay(bool enabled) async {
+    final action = enabled
+        ? VideoCompletionAction.autoplayNext
+        : VideoCompletionAction.prompt;
+    if (_completionAction == action) return;
+    setState(() {
+      _completionAction = action;
+      _completionHandled = false;
+      _showCompletionPrompt = false;
+    });
+    await VideoPlaybackPreferences.saveCompletionAction(action);
+  }
+
+  void _toggleOnDemandPanel() {
+    if (!_hasOnDemandQueue) return;
+    setState(() {
+      _onDemandPanelVisible = !_onDemandPanelVisible;
+      _moreMenuVisible = false;
+      _modeMenuVisible = false;
+    });
+    _reusablePlayerActions?.showControls();
+  }
+
+  Widget _onDemandToggleButton() {
+    return KeyedSubtree(
+      key: const ValueKey('video-on-demand-toggle'),
+      child: _FocusableVideoIconButton(
+        icon: HeroAppIcons.listCheck,
+        label: 'On-demand',
+        onPressed: _toggleOnDemandPanel,
+        size: const Size.square(44),
+        iconSize: 21,
+        backgroundColor: _onDemandPanelVisible
+            ? const Color(0xD92C6565)
+            : const Color(0x8A1B1D1E),
+        borderColor: Colors.white.withValues(
+          alpha: _onDemandPanelVisible ? 0.32 : 0.24,
+        ),
+        expanded: _onDemandPanelVisible,
       ),
     );
   }
@@ -2454,11 +2828,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<Uint8List?> _provideScrubThumbnailAt(Duration position) {
-    final path = _localPath;
-    if (!_openedCompletedLocalFile ||
-        path == null ||
-        path.startsWith('http://') ||
-        path.startsWith('https://')) {
+    final source = _scrubThumbnailSource();
+    if (source == null) {
       return Future<Uint8List?>.value();
     }
     final controller = _controller;
@@ -2467,12 +2838,21 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         : _displayVideoSize(controller).aspectRatio;
     return FVideoThumbnail.generateRequest(
       FVideoThumbnailRequest(
-        source: FVideoSource.file(path),
+        source: source,
         position: position,
         maxWidth: aspect >= 1 ? 320 : 240,
         quality: 70,
       ),
     );
+  }
+
+  FVideoSource? _scrubThumbnailSource() {
+    final path = _localPath;
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return FVideoSource.network(path);
+    }
+    return _openedCompletedLocalFile ? FVideoSource.file(path) : null;
   }
 
   Widget _playerSurfaceInteraction(
@@ -2482,19 +2862,120 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   ) {
     _reusablePlayerActions = scope.actions;
     final controller = _controller;
-    if (!_supportsPlaybackGestures || controller == null) return child;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanDown: (details) => _gestureOrigin = details.localPosition,
-      onPanStart: (details) {
-        scope.actions.showControls();
-        _startPlaybackGesture(details, controller);
-      },
-      onPanUpdate: (details) => _updatePlaybackGesture(details, controller),
-      onPanEnd: (_) => _finishPlaybackGesture(controller),
-      onPanCancel: _cancelPlaybackGesture,
-      child: child,
-    );
+    Widget surface = child;
+    if (_showsOnDemandLayout(context)) {
+      final videoChild = surface;
+      surface = LayoutBuilder(
+        builder: (context, constraints) {
+          final geometry = _VideoOnDemandGeometry.resolve(
+            size: Size(constraints.maxWidth, constraints.maxHeight),
+            safePadding: MediaQuery.paddingOf(context),
+            aspectRatio: _resolvedVideoAspectRatio(scope.snapshot.value),
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Colors.black),
+              if (widget.thumb != null)
+                Positioned.fill(
+                  child: ClipRect(
+                    child: ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: Transform.scale(
+                        scale: 1.12,
+                        child: Opacity(
+                          opacity: 0.42,
+                          child: TDImage(photo: widget.thumb, cornerRadius: 0),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.34),
+                        Colors.black.withValues(alpha: 0.12),
+                        Colors.black.withValues(alpha: 0.72),
+                      ],
+                      stops: const [0, 0.48, 1],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fromRect(
+                rect: geometry.videoRect,
+                child: ClipRRect(
+                  key: const ValueKey('video-on-demand-surface'),
+                  borderRadius: BorderRadius.circular(geometry.wide ? 12 : 10),
+                  child: ColoredBox(color: Colors.black, child: videoChild),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } else if (_usesStandaloneFullscreenLayout(context)) {
+      final videoChild = surface;
+      surface = Stack(
+        key: const ValueKey('video-standalone-surface'),
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Colors.black),
+          if (widget.thumb != null)
+            Positioned.fill(
+              child: ClipRect(
+                child: ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                  child: Transform.scale(
+                    scale: 1.14,
+                    child: Opacity(
+                      opacity: 0.46,
+                      child: TDImage(photo: widget.thumb, cornerRadius: 0),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.28),
+                    Colors.black.withValues(alpha: 0.04),
+                    Colors.black.withValues(alpha: 0.48),
+                  ],
+                  stops: const [0, 0.48, 1],
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(child: videoChild),
+        ],
+      );
+    }
+    if (_supportsPlaybackGestures && controller != null) {
+      surface = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanDown: (details) => _gestureOrigin = details.localPosition,
+        onPanStart: (details) {
+          scope.actions.showControls();
+          _startPlaybackGesture(details, controller);
+        },
+        onPanUpdate: (details) => _updatePlaybackGesture(details, controller),
+        onPanEnd: (_) => _finishPlaybackGesture(controller),
+        onPanCancel: _cancelPlaybackGesture,
+        child: surface,
+      );
+    }
+    return surface;
   }
 
   Widget _playerOverlay(BuildContext context, FVideoChromeScope scope) {
@@ -4142,6 +4623,547 @@ class MithkaVideoChromeAction extends StatelessWidget {
   );
 }
 
+class _VideoOnDemandGeometry {
+  const _VideoOnDemandGeometry({
+    required this.wide,
+    required this.headerRect,
+    required this.videoRect,
+    required this.bottomChromeRect,
+    required this.panelRect,
+  });
+
+  final bool wide;
+  final Rect headerRect;
+  final Rect videoRect;
+  final Rect bottomChromeRect;
+  final Rect panelRect;
+
+  static _VideoOnDemandGeometry resolve({
+    required Size size,
+    required EdgeInsets safePadding,
+    required double aspectRatio,
+  }) {
+    final aspect = aspectRatio.isFinite && aspectRatio > 0
+        ? aspectRatio
+        : 16 / 9;
+    final wide =
+        size.width >= 900 && size.height >= 560 && size.width > size.height;
+    if (wide) {
+      const outer = 24.0;
+      final panelWidth = (size.width * 0.29).clamp(330.0, 420.0).toDouble();
+      final panelRight = size.width - safePadding.right - outer;
+      final panelLeft = panelRight - panelWidth;
+      final panelTop = safePadding.top + 92;
+      final panelBottom = size.height - safePadding.bottom - 58;
+      final contentLeft = safePadding.left + 28;
+      final contentRight = panelLeft - 22;
+      final videoBounds = Rect.fromLTRB(
+        contentLeft,
+        safePadding.top + 88,
+        contentRight,
+        size.height - safePadding.bottom - 126,
+      );
+      return _VideoOnDemandGeometry(
+        wide: true,
+        headerRect: Rect.fromLTWH(
+          safePadding.left + 18,
+          safePadding.top + 12,
+          math.max(0, contentRight - safePadding.left - 18),
+          52,
+        ),
+        videoRect: _containVideoRect(videoBounds, aspect),
+        bottomChromeRect: Rect.fromLTRB(
+          contentLeft,
+          size.height - safePadding.bottom - 116,
+          contentRight,
+          size.height - safePadding.bottom - 12,
+        ),
+        panelRect: Rect.fromLTRB(
+          panelLeft,
+          panelTop,
+          panelRight,
+          math.max(panelTop + 180, panelBottom),
+        ),
+      );
+    }
+
+    const side = 14.0;
+    final videoTop = math.max(safePadding.top + 88, size.height * 0.15);
+    final maxVideoHeight = math.min(
+      (size.width - side * 2) / aspect,
+      size.height * 0.29,
+    );
+    final videoBounds = Rect.fromLTWH(
+      side,
+      videoTop,
+      math.max(0, size.width - side * 2),
+      math.max(1, maxVideoHeight),
+    );
+    final videoRect = _containVideoRect(videoBounds, aspect);
+    final minimumPanelTop = videoRect.bottom + 154;
+    final preferredPanelTop = math.max(size.height * 0.64, minimumPanelTop);
+    final latestPanelTop = math.max(
+      minimumPanelTop,
+      size.height - safePadding.bottom - 190,
+    );
+    final panelTop = preferredPanelTop
+        .clamp(minimumPanelTop, latestPanelTop)
+        .toDouble();
+    final panelBottom = math.max(
+      panelTop + 150,
+      size.height - safePadding.bottom - 8,
+    );
+    return _VideoOnDemandGeometry(
+      wide: false,
+      headerRect: Rect.fromLTWH(
+        safePadding.left + 14,
+        safePadding.top + 10,
+        math.max(0, size.width - safePadding.horizontal - 28),
+        52,
+      ),
+      videoRect: videoRect,
+      bottomChromeRect: Rect.fromLTRB(
+        side + 14,
+        videoRect.bottom + 8,
+        size.width - side - 14,
+        panelTop - 10,
+      ),
+      panelRect: Rect.fromLTRB(side, panelTop, size.width - side, panelBottom),
+    );
+  }
+
+  static Rect _containVideoRect(Rect bounds, double aspectRatio) {
+    var width = bounds.width;
+    var height = width / aspectRatio;
+    if (height > bounds.height) {
+      height = bounds.height;
+      width = height * aspectRatio;
+    }
+    return Rect.fromCenter(
+      center: bounds.center,
+      width: math.max(1, width),
+      height: math.max(1, height),
+    );
+  }
+}
+
+class _MithkaVideoOnDemandBottomChrome extends StatelessWidget {
+  const _MithkaVideoOnDemandBottomChrome({
+    required this.scope,
+    required this.buffered,
+    required this.aspectRatio,
+    required this.thumbnailProvider,
+    required this.title,
+    required this.subtitle,
+    required this.modeButton,
+    required this.onDemandButton,
+    required this.fullscreenButton,
+  });
+
+  final FVideoChromeScope scope;
+  final double buffered;
+  final double aspectRatio;
+  final Future<Uint8List?> Function(Duration position) thumbnailProvider;
+  final String title;
+  final String subtitle;
+  final Widget? modeButton;
+  final Widget onDemandButton;
+  final Widget? fullscreenButton;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dense = constraints.maxHeight < 150;
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _MithkaVideoTimeline(
+              scope: scope,
+              wide: false,
+              buffered: buffered,
+              aspectRatio: aspectRatio,
+              thumbnailProvider: thumbnailProvider,
+            ),
+            SizedBox(height: dense ? 3 : 7),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                height: 1.15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (!dense) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 12,
+                  height: 1.15,
+                  fontWeight: FontWeight.w400,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+            SizedBox(height: dense ? 4 : 8),
+            SizedBox(
+              height: 44,
+              child: LayoutBuilder(
+                builder: (context, rowConstraints) {
+                  final showVolumeSlider = rowConstraints.maxWidth >= 300;
+                  final showSpeed = rowConstraints.maxWidth >= 330;
+                  return Row(
+                    children: [
+                      _FocusableVideoIconButton(
+                        icon: scope.snapshot.volume <= 0.01
+                            ? HeroAppIcons.volumeXmark
+                            : HeroAppIcons.volumeHigh,
+                        label: scope.snapshot.volume <= 0.01
+                            ? scope.labels.unmute
+                            : scope.labels.mute,
+                        onPressed: () => unawaited(scope.actions.toggleMute()),
+                        size: const Size.square(44),
+                        iconSize: 22,
+                        backgroundColor: const Color(0x8A1B1D1E),
+                        borderColor: Colors.white.withValues(alpha: 0.24),
+                      ),
+                      if (showVolumeSlider) ...[
+                        const SizedBox(width: 4),
+                        SizedBox(
+                          width: 60,
+                          height: 44,
+                          child: FVideoSlider(
+                            value: scope.snapshot.volume
+                                .clamp(0.0, 1.0)
+                                .toDouble(),
+                            trackHeight: 3,
+                            thumbRadius: 5,
+                            activeColor: Colors.white,
+                            inactiveColor: Colors.white.withValues(alpha: 0.26),
+                            semanticLabel: scope.labels.volume,
+                            semanticValue:
+                                '${(scope.snapshot.volume * 100).round()}%',
+                            onChanged: (value) =>
+                                unawaited(scope.actions.setVolume(value)),
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (showSpeed) ...[
+                        const SizedBox(width: 6),
+                        _MithkaVideoTextButton(
+                          text: _formatPlaybackSpeed(
+                            scope.snapshot.value.playbackSpeed,
+                          ),
+                          label: scope.labels.speed,
+                          onTap: () => unawaited(
+                            scope.actions.setPlaybackSpeed(
+                              _nextPlaybackSpeed(
+                                scope.snapshot.value.playbackSpeed,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (modeButton != null) ...[
+                        const SizedBox(width: 6),
+                        modeButton!,
+                      ],
+                      const SizedBox(width: 6),
+                      onDemandButton,
+                      if (fullscreenButton != null) ...[
+                        const SizedBox(width: 6),
+                        fullscreenButton!,
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MithkaVideoOnDemandPanel extends StatefulWidget {
+  const _MithkaVideoOnDemandPanel({
+    super.key,
+    required this.queue,
+    required this.wide,
+    required this.onSelect,
+    required this.autoplay,
+    required this.onAutoplayChanged,
+  });
+
+  final VideoPlaybackQueue queue;
+  final bool wide;
+  final ValueChanged<int>? onSelect;
+  final bool autoplay;
+  final ValueChanged<bool> onAutoplayChanged;
+
+  @override
+  State<_MithkaVideoOnDemandPanel> createState() =>
+      _MithkaVideoOnDemandPanelState();
+}
+
+class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
+  late final ScrollController _scrollController = ScrollController(
+    initialScrollOffset: math.max(0, widget.queue.index - 1) * 100.0,
+  );
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xEB111315),
+        borderRadius: BorderRadius.circular(widget.wide ? 16 : 20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(widget.wide ? 15 : 19),
+        child: Column(
+          children: [
+            if (!widget.wide)
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 2),
+                child: Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: EdgeInsets.fromLTRB(
+                  widget.wide ? 10 : 8,
+                  widget.wide ? 10 : 6,
+                  widget.wide ? 10 : 8,
+                  8,
+                ),
+                itemExtent: 100,
+                itemCount: widget.queue.items.length,
+                itemBuilder: (context, index) => _item(index),
+              ),
+            ),
+            if (widget.wide)
+              Container(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Autoplay',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const Spacer(),
+                    _autoplayToggle(),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(int index) {
+    final item = widget.queue.items[index];
+    final current = index == widget.queue.index;
+    final title = item.title.trim().isEmpty ? 'Video ${index + 1}' : item.title;
+    final duration = (item.durationSeconds ?? 0) > 0
+        ? formatVideoPlayerDuration(Duration(seconds: item.durationSeconds!))
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppInteractiveSurface(
+        key: ValueKey('video-on-demand-item-${item.video.id}'),
+        semanticLabel: title,
+        semanticValue: current ? 'Playing' : duration,
+        selected: current,
+        onTap: current || widget.onSelect == null
+            ? null
+            : () => widget.onSelect!(index),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: current
+                ? const Color(0xD8273436)
+                : Colors.white.withValues(alpha: 0.018),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: current
+                  ? const Color(0xFF24DDD9)
+                  : Colors.white.withValues(alpha: 0.07),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (current) ...[
+                const SizedBox(
+                  width: 18,
+                  child: AppIcon(
+                    HeroAppIcons.play,
+                    size: 14,
+                    color: Color(0xFF24DDD9),
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: widget.wide ? 116 : 102,
+                  height: widget.wide ? 66 : 58,
+                  child: ColoredBox(
+                    color: const Color(0xFF24272A),
+                    child: item.thumb == null
+                        ? const Center(
+                            child: AppIcon(
+                              HeroAppIcons.play,
+                              size: 20,
+                              color: Color(0x99FFFFFF),
+                            ),
+                          )
+                        : TDImage(photo: item.thumb, cornerRadius: 0),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: current ? const Color(0xFF24DDD9) : Colors.white,
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    if (duration != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        duration,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
+                    if (current) ...[
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Playing',
+                        style: TextStyle(
+                          color: Color(0xFF24DDD9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _autoplayToggle() {
+    return AppInteractiveSurface(
+      semanticLabel: 'Autoplay',
+      semanticValue: widget.autoplay ? 'On' : 'Off',
+      toggled: widget.autoplay,
+      onTap: () => widget.onAutoplayChanged(!widget.autoplay),
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 50,
+        height: 30,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: widget.autoplay
+              ? const Color(0xFF24CFCB)
+              : Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 160),
+          alignment: widget.autoplay
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x55000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MithkaVideoCenterTransport extends StatelessWidget {
   const _MithkaVideoCenterTransport({required this.value, required this.scope});
 
@@ -4365,6 +5387,127 @@ class _MithkaVideoSideButton extends StatelessWidget {
   );
 }
 
+class _MithkaVideoStandaloneBottomChrome extends StatelessWidget {
+  const _MithkaVideoStandaloneBottomChrome({
+    required this.scope,
+    required this.buffered,
+    required this.aspectRatio,
+    required this.thumbnailProvider,
+    required this.modeButton,
+    required this.onDemandButton,
+    required this.fullscreenButton,
+  });
+
+  final FVideoChromeScope scope;
+  final double buffered;
+  final double aspectRatio;
+  final Future<Uint8List?> Function(Duration position) thumbnailProvider;
+  final Widget? modeButton;
+  final Widget? onDemandButton;
+  final Widget? fullscreenButton;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showVolumeSlider = constraints.maxWidth >= 420;
+        final showSpeed = constraints.maxWidth >= 520;
+        return Column(
+          key: const ValueKey('video-standalone-bottom-chrome'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _MithkaVideoTimeline(
+              scope: scope,
+              wide: true,
+              buffered: buffered,
+              aspectRatio: aspectRatio,
+              thumbnailProvider: thumbnailProvider,
+            ),
+            const SizedBox(height: 5),
+            SizedBox(
+              height: 44,
+              child: Row(
+                children: [
+                  _FocusableVideoIconButton(
+                    icon: scope.snapshot.value.isPlaying
+                        ? HeroAppIcons.pause
+                        : HeroAppIcons.play,
+                    label: scope.snapshot.value.isPlaying
+                        ? scope.labels.pause
+                        : scope.labels.play,
+                    onPressed: () => unawaited(scope.actions.togglePlayback()),
+                    size: const Size.square(44),
+                    iconSize: 23,
+                  ),
+                  const SizedBox(width: 4),
+                  _FocusableVideoIconButton(
+                    icon: scope.snapshot.volume <= 0.01
+                        ? HeroAppIcons.volumeXmark
+                        : HeroAppIcons.volumeHigh,
+                    label: scope.snapshot.volume <= 0.01
+                        ? scope.labels.unmute
+                        : scope.labels.mute,
+                    onPressed: () => unawaited(scope.actions.toggleMute()),
+                    size: const Size.square(44),
+                    iconSize: 23,
+                  ),
+                  if (showVolumeSlider) ...[
+                    const SizedBox(width: 2),
+                    SizedBox(
+                      width: 86,
+                      height: 44,
+                      child: FVideoSlider(
+                        value: scope.snapshot.volume.clamp(0.0, 1.0).toDouble(),
+                        trackHeight: 3,
+                        thumbRadius: 5,
+                        activeColor: Colors.white,
+                        inactiveColor: Colors.white.withValues(alpha: 0.26),
+                        semanticLabel: scope.labels.volume,
+                        semanticValue:
+                            '${(scope.snapshot.volume * 100).round()}%',
+                        onChanged: (value) =>
+                            unawaited(scope.actions.setVolume(value)),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (showSpeed)
+                    _MithkaVideoTextButton(
+                      text: _formatPlaybackSpeed(
+                        scope.snapshot.value.playbackSpeed,
+                      ),
+                      label: scope.labels.speed,
+                      onTap: () => unawaited(
+                        scope.actions.setPlaybackSpeed(
+                          _nextPlaybackSpeed(
+                            scope.snapshot.value.playbackSpeed,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (modeButton != null) ...[
+                    const SizedBox(width: 6),
+                    modeButton!,
+                  ],
+                  if (onDemandButton != null) ...[
+                    const SizedBox(width: 6),
+                    onDemandButton!,
+                  ],
+                  if (fullscreenButton != null) ...[
+                    const SizedBox(width: 6),
+                    fullscreenButton!,
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _MithkaVideoBottomChrome extends StatelessWidget {
   const _MithkaVideoBottomChrome({
     required this.scope,
@@ -4376,6 +5519,7 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
     required this.previousButton,
     required this.nextButton,
     required this.modeButton,
+    this.onDemandButton,
     required this.fullscreenButton,
   });
 
@@ -4388,6 +5532,7 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
   final Widget? previousButton;
   final Widget? nextButton;
   final Widget? modeButton;
+  final Widget? onDemandButton;
   final Widget? fullscreenButton;
 
   @override
@@ -4407,12 +5552,6 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final showVolumeSlider = width >= 220;
-            final showTime = !compactQueueNavigation && (width >= 330 || wide);
-            final timeWidth = scope.snapshot.value.duration.inHours > 0
-                ? 140.0
-                : wide
-                ? 78.0
-                : 70.0;
             final showSpeed = !compactQueueNavigation && (width >= 320 || wide);
             return Row(
               children: [
@@ -4466,23 +5605,6 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (showTime) ...[
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: timeWidth,
-                    child: Text(
-                      '${formatVideoPlayerDuration(scope.snapshot.displayPosition)} / ${formatVideoPlayerDuration(scope.snapshot.value.duration)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.fade,
-                      softWrap: false,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontFeatures: [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                ],
                 const Spacer(),
                 if (showSpeed)
                   _MithkaVideoTextButton(
@@ -4499,6 +5621,10 @@ class _MithkaVideoBottomChrome extends StatelessWidget {
                 if (modeButton != null) ...[
                   const SizedBox(width: 6),
                   modeButton!,
+                ],
+                if (onDemandButton != null) ...[
+                  const SizedBox(width: 6),
+                  onDemandButton!,
                 ],
                 if (fullscreenButton != null) ...[
                   const SizedBox(width: 6),
@@ -4575,13 +5701,14 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
   Timer? _thumbnailTimer;
   Timer? _thumbnailTimeout;
   int _thumbnailGeneration = 0;
+  bool _thumbnailRequestInFlight = false;
+  double? _pendingThumbnailFraction;
   double? _scrubFraction;
   Uint8List? _thumbnail;
 
   @override
   void dispose() {
-    _thumbnailTimer?.cancel();
-    _thumbnailTimeout?.cancel();
+    _cancelThumbnailWork();
     super.dispose();
   }
 
@@ -4594,25 +5721,23 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
   }
 
   void _beginScrub(double fraction) {
-    _thumbnailTimer?.cancel();
-    _thumbnailTimeout?.cancel();
+    _cancelThumbnailWork();
     widget.scope.actions.beginScrub(fraction);
     setState(() {
       _scrubFraction = fraction;
       _thumbnail = null;
     });
-    _scheduleThumbnail(fraction);
+    _queueThumbnail(fraction);
   }
 
   void _updateScrub(double fraction) {
     widget.scope.actions.updateScrub(fraction);
     setState(() => _scrubFraction = fraction);
-    _scheduleThumbnail(fraction);
+    _queueThumbnail(fraction);
   }
 
   void _endScrub(double fraction) {
-    _thumbnailTimer?.cancel();
-    _thumbnailTimeout?.cancel();
+    _cancelThumbnailWork();
     final finalFraction = _scrubFraction ?? fraction;
     unawaited(_commitScrub(finalFraction));
   }
@@ -4626,26 +5751,68 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
     });
   }
 
-  void _scheduleThumbnail(double fraction) {
+  void _cancelThumbnailWork() {
     _thumbnailTimer?.cancel();
+    _thumbnailTimer = null;
     _thumbnailTimeout?.cancel();
-    final generation = ++_thumbnailGeneration;
-    _thumbnailTimer = Timer(const Duration(milliseconds: 200), () async {
+    _thumbnailTimeout = null;
+    _thumbnailRequestInFlight = false;
+    _pendingThumbnailFraction = null;
+    _thumbnailGeneration++;
+  }
+
+  void _queueThumbnail(double fraction) {
+    _pendingThumbnailFraction = fraction.clamp(0.0, 1.0).toDouble();
+    if (_thumbnailRequestInFlight || _thumbnailTimer != null) return;
+    _thumbnailTimer = Timer(const Duration(milliseconds: 80), () {
       _thumbnailTimer = null;
-      try {
-        final result = await widget.thumbnailProvider(_positionFor(fraction));
-        if (!mounted || generation != _thumbnailGeneration) return;
-        setState(() => _thumbnail = result);
-      } catch (_) {
-        if (mounted && generation == _thumbnailGeneration) {
-          setState(() => _thumbnail = null);
-        }
-      }
+      unawaited(_requestPendingThumbnail());
     });
+  }
+
+  Future<void> _requestPendingThumbnail() async {
+    final fraction = _pendingThumbnailFraction;
+    if (fraction == null || _scrubFraction == null) return;
+    _pendingThumbnailFraction = null;
+    _thumbnailRequestInFlight = true;
+    final generation = ++_thumbnailGeneration;
     _thumbnailTimeout = Timer(const Duration(seconds: 2), () {
       if (!mounted || generation != _thumbnailGeneration) return;
-      _thumbnailTimer?.cancel();
+      _thumbnailGeneration++;
+      _thumbnailTimeout = null;
+      _thumbnailRequestInFlight = false;
       setState(() => _thumbnail = null);
+      _schedulePendingThumbnail();
+    });
+
+    Uint8List? result;
+    try {
+      result = await widget.thumbnailProvider(_positionFor(fraction));
+    } catch (_) {
+      result = null;
+    }
+    if (!mounted || generation != _thumbnailGeneration) return;
+    _thumbnailTimeout?.cancel();
+    _thumbnailTimeout = null;
+    _thumbnailRequestInFlight = false;
+    final pending = _pendingThumbnailFraction;
+    if (pending != null && (pending - fraction).abs() < 0.0001) {
+      _pendingThumbnailFraction = null;
+    }
+    setState(() => _thumbnail = result);
+    _schedulePendingThumbnail();
+  }
+
+  void _schedulePendingThumbnail() {
+    if (_scrubFraction == null ||
+        _pendingThumbnailFraction == null ||
+        _thumbnailRequestInFlight ||
+        _thumbnailTimer != null) {
+      return;
+    }
+    _thumbnailTimer = Timer(const Duration(milliseconds: 80), () {
+      _thumbnailTimer = null;
+      unawaited(_requestPendingThumbnail());
     });
   }
 
@@ -4668,122 +5835,147 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
         final previewLeft = (fraction * trackWidth - previewWidth / 2)
             .clamp(0.0, math.max(0.0, trackWidth - previewWidth))
             .toDouble();
-        return SizedBox(
-          height: widget.wide ? 30 : 28,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: FVideoSlider(
-                  value: actualFraction,
-                  bufferedValue: widget.buffered,
-                  trackHeight: widget.wide ? 4 : 3,
-                  thumbRadius: widget.wide ? 7 : 6,
-                  activeColor: const Color(0xFF24DDD9),
-                  bufferedColor: Colors.white.withValues(alpha: 0.32),
-                  inactiveColor: Colors.white.withValues(alpha: 0.86),
-                  semanticLabel: widget.scope.labels.position,
-                  semanticValue:
-                      '${formatVideoPlayerDuration(position)} / ${formatVideoPlayerDuration(duration)}',
-                  semanticIncreasedValue: formatVideoPlayerDuration(
-                    position + const Duration(seconds: 10) > duration
-                        ? duration
-                        : position + const Duration(seconds: 10),
-                  ),
-                  semanticDecreasedValue: formatVideoPlayerDuration(
-                    position - const Duration(seconds: 10) < Duration.zero
-                        ? Duration.zero
-                        : position - const Duration(seconds: 10),
-                  ),
-                  keyboardStep: math.min(
-                    1,
-                    const Duration(seconds: 10).inMilliseconds / durationMs,
-                  ),
-                  onChangeStart: _beginScrub,
-                  onChanged: _updateScrub,
-                  onChangeEnd: _endScrub,
-                ),
-              ),
-              if (_scrubFraction != null)
-                Positioned(
-                  left: previewLeft,
-                  bottom: (widget.wide ? 30 : 28) + 8,
-                  width: previewWidth,
-                  height: previewHeight,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF111315),
-                        borderRadius: BorderRadius.circular(AppRadius.control),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.55),
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x99000000),
-                            blurRadius: 12,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
+        final sliderHeight = widget.wide ? 30.0 : 28.0;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: sliderHeight,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: FVideoSlider(
+                      value: actualFraction,
+                      bufferedValue: widget.buffered,
+                      trackHeight: widget.wide ? 4 : 3,
+                      thumbRadius: widget.wide ? 7 : 6,
+                      activeColor: const Color(0xFF24DDD9),
+                      bufferedColor: Colors.white.withValues(alpha: 0.32),
+                      inactiveColor: Colors.white.withValues(alpha: 0.86),
+                      semanticLabel: widget.scope.labels.position,
+                      semanticValue:
+                          '${formatVideoPlayerDuration(position)} / ${formatVideoPlayerDuration(duration)}',
+                      semanticIncreasedValue: formatVideoPlayerDuration(
+                        position + const Duration(seconds: 10) > duration
+                            ? duration
+                            : position + const Duration(seconds: 10),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (_thumbnail != null)
-                              Image.memory(
-                                _thumbnail!,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                              ),
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: DecoratedBox(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Color(0x00000000),
-                                      Color(0xDD000000),
-                                    ],
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    6,
-                                    12,
-                                    6,
-                                    5,
-                                  ),
-                                  child: Text(
-                                    formatVideoPlayerDuration(
-                                      _positionFor(fraction),
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w400,
-                                      fontFeatures: [
-                                        FontFeature.tabularFigures(),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                      semanticDecreasedValue: formatVideoPlayerDuration(
+                        position - const Duration(seconds: 10) < Duration.zero
+                            ? Duration.zero
+                            : position - const Duration(seconds: 10),
+                      ),
+                      keyboardStep: math.min(
+                        1,
+                        const Duration(seconds: 10).inMilliseconds / durationMs,
+                      ),
+                      onChangeStart: _beginScrub,
+                      onChanged: _updateScrub,
+                      onChangeEnd: _endScrub,
+                    ),
+                  ),
+                  if (_scrubFraction != null)
+                    Positioned(
+                      left: previewLeft,
+                      bottom: sliderHeight + 8,
+                      width: previewWidth,
+                      height: previewHeight,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111315),
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.control,
                             ),
-                          ],
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.55),
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x99000000),
+                                blurRadius: 12,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                if (_thumbnail != null)
+                                  Image.memory(
+                                    _thumbnail!,
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                  ),
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  child: DecoratedBox(
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Color(0x00000000),
+                                          Color(0xDD000000),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        6,
+                                        12,
+                                        6,
+                                        5,
+                                      ),
+                                      child: Text(
+                                        formatVideoPlayerDuration(
+                                          _positionFor(fraction),
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w400,
+                                          fontFeatures: [
+                                            FontFeature.tabularFigures(),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
-          ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              key: const ValueKey('video-playback-time'),
+              '${formatVideoPlayerDuration(_positionFor(fraction))} / '
+              '${formatVideoPlayerDuration(duration)}',
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: widget.wide ? 13 : 12,
+                height: 1.25,
+                fontWeight: FontWeight.w400,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
         );
       },
     );

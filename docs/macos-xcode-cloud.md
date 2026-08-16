@@ -14,9 +14,11 @@ rollback and configuration history.
 Those start conditions mirror the former macOS Xcode Cloud workflow. Runs for
 the same branch auto-cancel when a newer revision is pushed. A successful run
 archives `macos/Runner.xcworkspace`, uploads an App Store-eligible macOS build,
-and assigns the processed build to both `Internal` and `External` TestFlight
-groups. The former macOS Xcode Cloud workflow is retained in App Store Connect
-in a deactivated state for rollback and configuration history.
+assigns the processed build to both `Internal` and `External` TestFlight groups,
+creates the required Beta App Review submission for external testing, and
+verifies that App Store Connect reports internal testing plus an external review
+or testing state. The former macOS Xcode Cloud workflow is retained in App Store
+Connect in a deactivated state for rollback and configuration history.
 
 `.github/workflows/ios-testflight.yml` starts for:
 
@@ -30,7 +32,8 @@ same pinned native dependencies as Xcode Cloud, archives
 `ios/Runner.xcworkspace`, verifies that the TDLib binary and dSYM UUIDs match,
 and uploads the archive through Xcode's App Store Connect destination so Apple
 performs the authoritative distribution validation, and assigns the processed
-build to the same Internal and External TestFlight groups.
+build to the same Internal and External TestFlight groups. It also creates and
+verifies the external Beta App Review submission.
 
 ## Deterministic build preparation
 
@@ -84,9 +87,11 @@ The GitHub workflows use the full Git commit height as the build number with an
 offset of zero. This starts with the `1.0.0` train, after the temporary
 epoch-numbered migration builds on `0.10.0`. Xcode Cloud continues to supply
 its native `CI_BUILD_NUMBER` if either retained workflow is reactivated. The
-marketing version preserves the complete semantic version from `pubspec.yaml`;
-nightly patch increments therefore move Apple builds to a new App Store Connect
-release train when the previous train is closed.
+macOS marketing version keeps the major and minor components from
+`pubspec.yaml` and always forces the patch component to `0`. The shared hook
+applies this rule in both GitHub Actions and the retained Xcode Cloud workflow,
+and GitHub verifies the archived app's `CFBundleShortVersionString` before
+uploading it to App Store Connect.
 
 ## App Store metadata prerequisite
 

@@ -182,7 +182,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Distribute to TestFlight groups
+      - name: Distribute internally and submit external Beta App Review
         env:
           TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP || 'Internal' }}
           TESTFLIGHT_EXTERNAL_GROUP: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP || 'External' }}

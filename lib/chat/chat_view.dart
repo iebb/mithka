@@ -927,28 +927,32 @@ class WideGroupChatHeaderActions extends StatelessWidget {
     required this.onStartCall,
     required this.onOpenFullInfo,
     this.onToggleContext,
+    this.showCallActions = true,
   });
 
   final ValueChanged<bool> onStartCall;
   final VoidCallback? onToggleContext;
   final VoidCallback onOpenFullInfo;
+  final bool showCallActions;
 
   @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      _ChatHeaderAction(
-        key: const ValueKey('chatHeaderGroupVoiceCall'),
-        label: AppStringKeys.composerGroupVoiceCall.l10n(context),
-        icon: HeroAppIcons.phone,
-        onTap: () => onStartCall(false),
-      ),
-      _ChatHeaderAction(
-        key: const ValueKey('chatHeaderGroupVideoCall'),
-        label: AppStringKeys.composerGroupVideoCall.l10n(context),
-        icon: HeroAppIcons.video,
-        onTap: () => onStartCall(true),
-      ),
+      if (showCallActions) ...[
+        _ChatHeaderAction(
+          key: const ValueKey('chatHeaderGroupVoiceCall'),
+          label: AppStringKeys.composerGroupVoiceCall.l10n(context),
+          icon: HeroAppIcons.phone,
+          onTap: () => onStartCall(false),
+        ),
+        _ChatHeaderAction(
+          key: const ValueKey('chatHeaderGroupVideoCall'),
+          label: AppStringKeys.composerGroupVideoCall.l10n(context),
+          icon: HeroAppIcons.video,
+          onTap: () => onStartCall(true),
+        ),
+      ],
       if (onToggleContext != null)
         _ChatHeaderAction(
           key: const ValueKey('chatHeaderGroupContextToggle'),
@@ -4205,7 +4209,11 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _openSharedContact(ChatMessage message) async {
     final contact = message.contact;
     if (contact == null) return;
-    final action = await showSharedContactActions(context, contact);
+    final action = await showSharedContactActions(
+      context,
+      contact,
+      showCallAction: Theme.of(context).platform != TargetPlatform.macOS,
+    );
     if (action == null || !mounted) return;
     switch (action) {
       case SharedContactAction.viewProfile:
@@ -4324,7 +4332,7 @@ class _ChatViewState extends State<ChatView> {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (routeContext) => VideoPlaylistPlayerView(
+        builder: (routeContext) => VideoOnDemandPlayerView(
           queue: session.queue,
           initialMuted: muted,
           onSwitchMode: (queue, mode) =>
@@ -4362,6 +4370,7 @@ class _ChatViewState extends State<ChatView> {
           thumb: candidate.image,
           width: candidate.imageWidth,
           height: candidate.imageHeight,
+          durationSeconds: candidate.videoDuration,
           sourceChatId: widget.chatId,
           messageId: candidate.id,
           title: _videoPlaybackTitle(candidate),
@@ -7230,6 +7239,8 @@ class _ChatViewState extends State<ChatView> {
                   if (wideGroupHeader)
                     WideGroupChatHeaderActions(
                       onStartCall: (isVideo) => unawaited(_startCall(isVideo)),
+                      showCallActions:
+                          Theme.of(context).platform != TargetPlatform.macOS,
                       onToggleContext: widget.onInfoPressed == null
                           ? null
                           : _handleInfoPressed,

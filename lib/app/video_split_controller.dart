@@ -19,6 +19,7 @@ class VideoSplitSession {
     this.thumb,
     this.width,
     this.height,
+    this.durationSeconds,
     this.messageId,
   }) : queue = VideoPlaybackQueue.single(
          VideoPlaybackItem(
@@ -27,6 +28,7 @@ class VideoSplitSession {
            thumb: thumb,
            width: width,
            height: height,
+           durationSeconds: durationSeconds,
            sourceChatId: chatId,
            messageId: messageId,
            title: title,
@@ -41,6 +43,7 @@ class VideoSplitSession {
       thumb = queue.current.thumb,
       width = queue.current.width,
       height = queue.current.height,
+      durationSeconds = queue.current.durationSeconds,
       messageId = queue.current.messageId;
 
   final int chatId;
@@ -50,6 +53,7 @@ class VideoSplitSession {
   final TdFileRef? thumb;
   final int? width;
   final int? height;
+  final int? durationSeconds;
   final int? messageId;
   final VideoPlaybackQueue queue;
 

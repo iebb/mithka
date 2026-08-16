@@ -1173,8 +1173,8 @@
     <string name="composerGroupVideoCall">그룹 영상 통화</string>
     <string name="composerGroupVoiceCall">그룹 음성 통화</string>
     <string name="composerHoldToTalk">길게 눌러 말하기</string>
-    <string name="composerDesktopVoiceHoldSpace">스페이스바를 눌러 말하기</string>
-    <string name="composerDesktopVoiceRelease">스페이스바를 놓아 전송 · Esc로 취소</string>
+    <string name="composerDesktopVoiceHoldSpace">스페이스바 또는 마이크를 길게 눌러 녹음</string>
+    <string name="composerDesktopVoiceRelease">손을 떼면 전송 · Esc로 취소</string>
     <string name="composerImage">이미지</string>
     <string name="composerImagePreview">[이미지]</string>
     <string name="composerLoadingEmoji">emoji 불러오는 중…</string>

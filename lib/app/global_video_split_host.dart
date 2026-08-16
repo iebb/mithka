@@ -124,6 +124,7 @@ class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
         title: session.title,
         width: session.width,
         height: session.height,
+        durationSeconds: session.durationSeconds,
         presentation: VideoPlayerPresentation.embedded,
         onClose: _videoSplit.close,
         sourceChatId: session.chatId,
@@ -184,7 +185,7 @@ class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
         Navigator.of(context, rootNavigator: true).push(
           MaterialPageRoute(
             fullscreenDialog: true,
-            builder: (_) => VideoPlaylistPlayerView(queue: session.queue),
+            builder: (_) => VideoOnDemandPlayerView(queue: session.queue),
           ),
         );
     }

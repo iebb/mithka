@@ -21,6 +21,27 @@ void main() {
     }
   });
 
+  test('macOS requests only capabilities implemented by the release app', () {
+    for (final path in [
+      'macos/Runner/DebugProfile.entitlements',
+      'macos/Runner/Release.entitlements',
+    ]) {
+      final entitlements = File(path).readAsStringSync();
+      expect(entitlements, contains('com.apple.security.device.audio-input'));
+      expect(entitlements, isNot(contains('com.apple.security.device.camera')));
+      expect(
+        entitlements,
+        isNot(contains('com.apple.security.personal-information.location')),
+      );
+    }
+
+    final info = File('macos/Runner/Info.plist').readAsStringSync();
+    expect(info, contains('NSMicrophoneUsageDescription'));
+    expect(info, contains('record voice messages you choose to send'));
+    expect(info, isNot(contains('NSCameraUsageDescription')));
+    expect(info, isNot(contains('NSLocationWhenInUseUsageDescription')));
+  });
+
   test('Apple targets share one app identifier for iCloud Keychain', () {
     final appInfo = File(
       'macos/Runner/Configs/AppInfo.xcconfig',
@@ -64,6 +85,73 @@ void main() {
     expect(
       workspaceHook,
       contains(r'exec "$SCRIPT_DIR/../../ci_scripts/macos_post_clone.sh"'),
+    );
+  });
+
+  test('Apple GitHub workflows submit both TestFlight audiences', () {
+    for (final path in const [
+      '.github/workflows/ios-testflight.yml',
+      '.github/workflows/macos-testflight.yml',
+    ]) {
+      final workflow = File(path).readAsStringSync();
+      expect(
+        workflow,
+        contains('ruby scripts/distribute_testflight_groups.rb'),
+      );
+      expect(
+        workflow,
+        contains(r'--internal-group "$TESTFLIGHT_INTERNAL_GROUP"'),
+      );
+      expect(
+        workflow,
+        contains(r'--external-group "$TESTFLIGHT_EXTERNAL_GROUP"'),
+      );
+      expect(
+        workflow,
+        contains('Distribute internally and submit external Beta App Review'),
+      );
+    }
+  });
+
+  test('macOS TestFlight always uses a zero patch marketing version', () {
+    for (final testCase in const {
+      '0.8.14': '0.8.0',
+      '1.0.0+282': '1.0.0',
+      '12.34.56+789': '12.34.0',
+    }.entries) {
+      final result = Process.runSync('sh', [
+        'scripts/macos_marketing_version.sh',
+        testCase.key,
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      expect(result.stdout.toString().trim(), testCase.value);
+    }
+
+    final invalid = Process.runSync('sh', [
+      'scripts/macos_marketing_version.sh',
+      '1.2',
+    ]);
+    expect(invalid.exitCode, isNonZero);
+
+    final postClone = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
+    expect(
+      postClone,
+      contains(
+        r'APP_VERSION="$(sh "$REPO/scripts/macos_marketing_version.sh" '
+        r'"$RAW_VERSION")"',
+      ),
+    );
+    expect(postClone, contains(r'--build-name="$APP_VERSION"'));
+
+    final workflow = File(
+      '.github/workflows/macos-testflight.yml',
+    ).readAsStringSync();
+    expect(workflow, contains('- name: Verify macOS marketing version'));
+    expect(workflow, contains('scripts/macos_marketing_version.sh'));
+    expect(workflow, contains('CFBundleShortVersionString'));
+    expect(
+      workflow,
+      contains(r'if [[ "$actual_version" != "$expected_version" ]]; then'),
     );
   });
 

@@ -10,20 +10,26 @@ enum SharedContactAction { viewProfile, message, call, copyNumber, addContact }
 
 Future<SharedContactAction?> showSharedContactActions(
   BuildContext context,
-  MessageContactCard contact,
-) {
+  MessageContactCard contact, {
+  bool showCallAction = true,
+}) {
   return showAppModalSheet<SharedContactAction>(
     context: context,
     backgroundColor: Colors.transparent,
     useSafeArea: true,
-    builder: (context) => _SharedContactSheet(contact: contact),
+    builder: (context) =>
+        _SharedContactSheet(contact: contact, showCallAction: showCallAction),
   );
 }
 
 class _SharedContactSheet extends StatelessWidget {
-  const _SharedContactSheet({required this.contact});
+  const _SharedContactSheet({
+    required this.contact,
+    required this.showCallAction,
+  });
 
   final MessageContactCard contact;
+  final bool showCallAction;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +47,7 @@ class _SharedContactSheet extends StatelessWidget {
           HeroAppIcons.message,
           AppStringKeys.sharedContactMessage,
         ),
-      if (contact.userId > 0)
+      if (showCallAction && contact.userId > 0)
         (
           SharedContactAction.call,
           HeroAppIcons.phone,

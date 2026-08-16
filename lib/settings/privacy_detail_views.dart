@@ -1576,6 +1576,7 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
   }
 
   Future<void> _scanLoginQr() async {
+    if (Platform.isMacOS) return;
     final accepted = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const QrLoginScannerView()));
@@ -1590,14 +1591,20 @@ class _ActiveSessionsViewState extends State<ActiveSessionsView> {
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.privacyLoggedInDevices),
       onBack: () => Navigator.of(context).pop(),
-      trailing: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _scanLoginQr,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 12),
-          child: AppIcon(HeroAppIcons.qrcode, size: 24, color: c.textPrimary),
-        ),
-      ),
+      trailing: Platform.isMacOS
+          ? null
+          : GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _scanLoginQr,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: AppIcon(
+                  HeroAppIcons.qrcode,
+                  size: 24,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
       child: _loading
           ? const Center(child: AppActivityIndicator(size: 24))
           : SettingsListView(

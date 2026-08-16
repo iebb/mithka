@@ -4505,7 +4505,7 @@ class _PostImageGroup extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => VideoPlaylistPlayerView(queue: _videoQueue(message)),
+          builder: (_) => VideoOnDemandPlayerView(queue: _videoQueue(message)),
         ),
       );
       return;
@@ -4526,6 +4526,7 @@ class _PostImageGroup extends StatelessWidget {
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
+            durationSeconds: message.videoDuration,
             sourceChatId: sourceChatId,
             messageId: message.id,
             title: message.text.trim().replaceAll('\n', ' '),

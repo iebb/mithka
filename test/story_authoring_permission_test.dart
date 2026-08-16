@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +40,12 @@ void main() {
 
     expect(find.text('选择照片或视频'), findsOneWidget);
     expect(find.byType(StoryCameraView), findsNothing);
+
+    if (Platform.isMacOS) {
+      expect(find.text('相机'), findsNothing);
+      expect(find.text('相册'), findsOneWidget);
+      return;
+    }
 
     await tester.tap(find.text('相机'));
     await tester.pump();
