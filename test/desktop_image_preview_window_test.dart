@@ -30,6 +30,12 @@ void main() {
       find.byKey(const ValueKey('desktop-image-preview-toolbar')),
       findsOneWidget,
     );
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    expect(viewer.panEnabled, isTrue);
+    expect(viewer.scaleEnabled, isTrue);
+    expect(viewer.trackpadScrollCausesScale, isTrue);
     expect(tester.takeException(), isNull);
   });
 

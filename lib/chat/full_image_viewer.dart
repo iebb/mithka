@@ -243,13 +243,51 @@ class _ViewerPage extends StatefulWidget {
 class _ViewerPageState extends State<_ViewerPage> {
   final _controller = TransformationController();
   File? _file;
+  File? _thumbnailFile;
+  int _resolutionGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onTransform);
-    TdFileCenter.shared.pathFor(widget.ref).then((path) {
-      if (mounted && path != null) setState(() => _file = File(path));
+    _resolveFiles();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ViewerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isSameFile(oldWidget.ref, widget.ref)) {
+      _file = null;
+      _thumbnailFile = null;
+      _controller.value = Matrix4.identity();
+      widget.onZoomChanged(false);
+      _resolveFiles();
+    }
+  }
+
+  bool _isSameFile(TdFileRef a, TdFileRef b) =>
+      a.id == b.id &&
+      a.localPath == b.localPath &&
+      a.thumbnail?.id == b.thumbnail?.id &&
+      a.thumbnail?.localPath == b.thumbnail?.localPath;
+
+  void _resolveFiles() {
+    final generation = ++_resolutionGeneration;
+    final ref = widget.ref;
+    TdFileCenter.shared.pathFor(ref).then((path) {
+      if (!mounted || generation != _resolutionGeneration || path == null) {
+        return;
+      }
+      setState(() => _file = File(path));
+    });
+
+    final thumbnail = ref.thumbnail;
+    if (thumbnail == null || thumbnail.id == ref.id) return;
+    TdFileCenter.shared.pathFor(thumbnail).then((path) {
+      if (!mounted || generation != _resolutionGeneration || path == null) {
+        return;
+      }
+      setState(() => _thumbnailFile = File(path));
     });
   }
 
@@ -287,14 +325,27 @@ class _ViewerPageState extends State<_ViewerPage> {
         transformationController: _controller,
         minScale: 1,
         maxScale: 5,
+        trackpadScrollCausesScale: true,
         // Keep a finite viewport-sized child for both the real image and its
-        // mini-thumbnail. Previously only a fully downloaded file was put in
-        // InteractiveViewer, so images still resolving from TDLib could not
-        // be zoomed at all.
+        // full image and every thumbnail. Previously only a fully downloaded
+        // file or an in-memory mini-thumbnail was put in InteractiveViewer,
+        // so images still resolving from TDLib could not be zoomed at all.
         child: child,
       ),
     );
     if (_file == null) {
+      if (_thumbnailFile != null) {
+        return interactive(
+          fittedImage(
+            ResizeImage(
+              FileImage(_thumbnailFile!),
+              width: cacheWidth,
+              height: cacheHeight,
+              policy: ResizeImagePolicy.fit,
+            ),
+          ),
+        );
+      }
       if (widget.ref.miniThumb != null) {
         return Center(
           child: interactive(

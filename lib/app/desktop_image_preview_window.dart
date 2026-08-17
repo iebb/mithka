@@ -341,6 +341,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
                 transformationController: _transformation,
                 minScale: 0.75,
                 maxScale: 5,
+                trackpadScrollCausesScale: true,
                 child: Center(
                   child: RotatedBox(
                     quarterTurns: _quarterTurns,
