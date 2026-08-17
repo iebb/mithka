@@ -57,6 +57,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.showOriginalTranslationMessageIds = const <int>{},
     this.onAvatarTap,
     this.onAvatarLongPress,
+    this.onOpenForwarded,
     this.onOpenImage,
     this.onPlayVideo,
     this.onEditCaption,
@@ -70,6 +71,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onHashtagTap,
     this.onMentionTap,
     this.imageBuilder,
+    this.targetMessageId,
+    this.targetKey,
   }) : assert(messages.length >= 2);
 
   final List<ChatMessage> messages;
@@ -92,6 +95,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final Set<int> showOriginalTranslationMessageIds;
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
+  final ValueChanged<ChatMessage>? onOpenForwarded;
   final ValueChanged<ChatMessage>? onOpenImage;
   final ValueChanged<ChatMessage>? onPlayVideo;
   final ValueChanged<ChatMessage>? onEditCaption;
@@ -110,6 +114,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final ValueChanged<String>? onHashtagTap;
   final void Function(int userId, String name)? onMentionTap;
   final MediaAlbumImageBuilder? imageBuilder;
+  final int? targetMessageId;
+  final GlobalKey? targetKey;
 
   ChatMessage get _first => messages.first;
 
@@ -370,6 +376,11 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_first.hasForwardAttribution)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
+              child: _forwardHeader(context, _first),
+            ),
           Padding(
             padding: const EdgeInsets.all(padding),
             child: Column(
@@ -521,6 +532,45 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     onMentionTap: onMentionTap,
   );
 
+  Widget _forwardHeader(BuildContext context, ChatMessage message) {
+    final colors = context.colors;
+    final canOpenOriginal =
+        onOpenForwarded != null &&
+        message.forwardFromChatId != null &&
+        message.forwardFromMessageId != null &&
+        message.forwardFromMessageId! > 0;
+    return GestureDetector(
+      key: ValueKey('messageForwardHeader-${message.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: canOpenOriginal ? () => onOpenForwarded!.call(message) : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(
+            HeroAppIcons.forward,
+            size: 11,
+            color: colors.linkBlue.withValues(alpha: 0.9),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+                'value1': message.forwardDisplayName,
+              }),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: colors.linkBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _translationBlock(
     BuildContext context,
     ChatMessage source, {
@@ -669,7 +719,9 @@ class ImageMediaAlbumBubble extends StatelessWidget {
               : (details) =>
                     showActions(pointerPosition: details.globalPosition),
           child: SizedBox(
-            key: ValueKey('messageImageAlbumTile-${message.id}'),
+            key: message.id == targetMessageId && targetKey != null
+                ? targetKey
+                : ValueKey('messageImageAlbumTile-${message.id}'),
             width: width,
             height: height,
             child: Stack(

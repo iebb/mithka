@@ -12,15 +12,6 @@ void main() {
       'lib/app/video_split_controller.dart',
     ).readAsStringSync();
     final chat = File('lib/chat/chat_view.dart').readAsStringSync();
-    final bridge = File(
-      'lib/platform/system_picture_in_picture.dart',
-    ).readAsStringSync();
-    final android = File(
-      'third_party/system_picture_in_picture/android/src/main/kotlin/ad/neko/mithka/system_picture_in_picture/SystemPictureInPicturePlugin.kt',
-    ).readAsStringSync();
-    final iosPlugin = File(
-      'third_party/system_picture_in_picture/ios/Classes/SystemPictureInPicturePlugin.swift',
-    ).readAsStringSync();
     final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
     final mainActivity = File(
       'android/app/src/main/kotlin/ad/neko/mithka/MainActivity.kt',
@@ -29,32 +20,21 @@ void main() {
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
 
-    expect(player, contains('SystemPictureInPicture.startPrepared('));
-    expect(player, contains('SystemPictureInPicture.start('));
+    expect(player, contains('FVideoPictureInPicture.startPrepared('));
+    expect(player, contains('FVideoPictureInPicture.start('));
     expect(splitHost, isNot(contains('OverlayEntry')));
     expect(controller, isNot(contains('VideoPiPController')));
     expect(chat, isNot(contains('_showVideoPictureInPicture')));
-    expect(bridge, contains('Platform.isIOS || Platform.isAndroid'));
-    expect(android, contains('enterPictureInPictureMode'));
-    expect(android, contains('setAspectRatio'));
-    expect(android, contains('setExpandedAspectRatio'));
-    expect(android, contains('setSourceRectHint'));
-    expect(android, contains('setAutoEnterEnabled'));
-    expect(android, contains('RemoteAction'));
-    expect(android, contains('AppOpsManager.MODE_DEFAULT'));
-    expect(android, contains('"actionRequested"'));
-    expect(android, contains('"didRestore"'));
-    expect(iosPlugin, contains('AVPictureInPictureController'));
-    expect(appDelegate, isNot(contains('SystemPictureInPictureBridge')));
+    expect(appDelegate, isNot(contains('FVideoPictureInPictureBridge')));
     expect(
       mainActivity,
-      contains('SystemPictureInPicturePlugin.onUserLeaveHint'),
+      contains('FVideoPictureInPicturePlugin.onUserLeaveHint'),
     );
     expect(
       mainActivity,
       contains(
-        'add("ad.neko.mithka.system_picture_in_picture.'
-        'SystemPictureInPicturePlugin")',
+        'add("com.iebb.f_videoplayer_pip.'
+        'FVideoPictureInPicturePlugin")',
       ),
     );
     expect(mainActivity, contains('onPictureInPictureRequested'));
@@ -66,38 +46,21 @@ void main() {
     expect(androidManifest, isNot(contains('SYSTEM_ALERT_WINDOW')));
   });
 
-  test('one display mode control owns split and PiP routing', () {
-    final player = File('lib/chat/video_player_view.dart').readAsStringSync();
+  test(
+    'package chrome owns presentation controls while the host routes them',
+    () {
+      final player = File('lib/chat/video_player_view.dart').readAsStringSync();
 
-    expect(player, contains('AppStringKeys.videoPlayerToggleDisplayMode'));
-    expect(player, contains('void _toggleModeMenu()'));
-    expect(player, contains('void _selectDisplayMode(VideoDisplayMode mode)'));
-    expect(player, contains('if (mode == VideoDisplayMode.pictureInPicture)'));
-    expect(player, contains('unawaited(_enterPictureInPicture());'));
-    expect(player, isNot(contains('Widget _modeSwitchButton(')));
-    expect(player, isNot(contains('Widget _systemPictureInPictureButton(')));
-    expect(player, isNot(contains('PopupMenuButton<VideoDisplayMode>')));
-  });
-
-  test('Apple PiP backends share the restore and final-position contract', () {
-    final fallback = File(
-      'third_party/system_picture_in_picture/ios/Classes/SystemPictureInPicturePlugin.swift',
-    ).readAsStringSync();
-    final fvpIos = File(
-      'third_party/fvp/ios/Classes/FvpPlugin.mm',
-    ).readAsStringSync();
-    final fvpDarwin = File(
-      'third_party/fvp/darwin/Classes/FvpPlugin.mm',
-    ).readAsStringSync();
-    final fvpSpm = File(
-      'third_party/fvp/darwin/fvp/Sources/fvp/FvpPlugin.mm',
-    ).readAsStringSync();
-
-    expect(fallback, contains('"restoreRequested"'));
-    expect(fallback, contains('"positionMs": stoppedPositionMs'));
-    expect(fvpSpm, contains('invokeMethod:@"restoreRequested"'));
-    expect(fvpSpm, contains('@"positionMs": @(stoppedPositionMs)'));
-    expect(fvpIos, fvpSpm);
-    expect(fvpDarwin, fvpSpm);
-  });
+      expect(player, contains('onPictureInPictureChanged:'));
+      expect(player, contains('bottomTrailingBuilder:'));
+      expect(player, contains('topTrailingBuilder:'));
+      expect(player, contains('VideoDisplayMode.split'));
+      expect(player, contains('FVideoPictureInPicture.startPrepared('));
+      expect(player, contains('FVideoPictureInPicture.start('));
+      expect(player, contains('Widget _playerBottomTrailing('));
+      expect(player, contains('Widget _displayModeButton('));
+      expect(player, isNot(contains('chromeBuilder:')));
+      expect(player, isNot(contains('FVideoInteractionMode.delegateToChrome')));
+    },
+  );
 }

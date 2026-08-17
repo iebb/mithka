@@ -7,6 +7,7 @@ import Foundation
 
 import app_links
 import audio_session
+import f_videoplayer_pip
 import fc_native_video_thumbnail
 import file_picker
 import file_selector_macos
@@ -23,6 +24,7 @@ import mobile_scanner
 import multi_window_manager
 import package_info_plus
 import photo_manager
+import record_macos
 import screen_capturer_macos
 import sentry_flutter
 import shared_preferences_foundation
@@ -33,6 +35,7 @@ import webview_flutter_wkwebview
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AppLinksMacosPlugin.register(with: registry.registrar(forPlugin: "AppLinksMacosPlugin"))
   AudioSessionPlugin.register(with: registry.registrar(forPlugin: "AudioSessionPlugin"))
+  FVideoPictureInPicturePlugin.register(with: registry.registrar(forPlugin: "FVideoPictureInPicturePlugin"))
   FcNativeVideoThumbnailPlugin.register(with: registry.registrar(forPlugin: "FcNativeVideoThumbnailPlugin"))
   FilePickerPlugin.register(with: registry.registrar(forPlugin: "FilePickerPlugin"))
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))
@@ -49,6 +52,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   MultiWindowManagerPlugin.register(with: registry.registrar(forPlugin: "MultiWindowManagerPlugin"))
   FPPPackageInfoPlusPlugin.register(with: registry.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))
   PhotoManagerPlugin.register(with: registry.registrar(forPlugin: "PhotoManagerPlugin"))
+  RecordMacOsPlugin.register(with: registry.registrar(forPlugin: "RecordMacOsPlugin"))
   ScreenCapturerMacosPlugin.register(with: registry.registrar(forPlugin: "ScreenCapturerMacosPlugin"))
   SentryFlutterPlugin.register(with: registry.registrar(forPlugin: "SentryFlutterPlugin"))
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))

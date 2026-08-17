@@ -2,6 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/media/looping_media_playback.dart';
 
 void main() {
+  test('muted looping media does not take external audio focus', () {
+    expect(mutedLoopingVideoPlayerOptions().mixWithOthers, isTrue);
+  });
+
   test('production looping media budget is four players', () {
     expect(loopingMediaPlayerPool.maximumPlayers, 4);
   });

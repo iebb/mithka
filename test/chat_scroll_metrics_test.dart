@@ -28,6 +28,24 @@ void main() {
     );
   });
 
+  test('user-owned transcript scroll cancels async latest corrections', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final followStart = source.indexOf('bool _canFollowLoadedBottom()');
+    final followEnd = source.indexOf(
+      'void _scheduleBottomGeometryFollow(',
+      followStart,
+    );
+
+    expect(followStart, greaterThanOrEqualTo(0));
+    expect(followEnd, greaterThan(followStart));
+    expect(
+      source.substring(followStart, followEnd),
+      contains('!_transcriptViewportClaimedByUser'),
+    );
+    expect(source, contains('_initialTranscriptPositionCancelled = true;'));
+    expect(source, contains('_initialTranscriptPositioningAborted'));
+  });
+
   test('targeted chats persist the position reached before exit', () {
     final source = File('lib/chat/chat_view.dart').readAsStringSync();
     final saveStart = source.indexOf(
@@ -178,7 +196,7 @@ void main() {
     expect(targetLoad, greaterThanOrEqualTo(0));
     expect(
       sessionScroll.substring(targetLoad, targetLoadEnd),
-      contains('isCancelled: isCancelled'),
+      contains('isCancelled: targetCancelled'),
     );
 
     final modelSource = File(
@@ -256,7 +274,7 @@ void main() {
       unreadWrapperEnd,
     );
     final unreadCancellation = unreadWrapper.indexOf(
-      '_cancelSessionReopenNavigation(userClaimedViewport: true);',
+      '_claimTranscriptViewport();',
     );
     final unreadDelegate = unreadWrapper.indexOf(
       'await _jumpToFirstUnreadImpl();',
@@ -287,7 +305,7 @@ void main() {
       targetWrapperEnd,
     );
     final targetCancellation = targetWrapper.indexOf(
-      '_cancelSessionReopenNavigation(userClaimedViewport: true);',
+      '_claimTranscriptViewport();',
     );
     final targetDelegate = targetWrapper.indexOf(
       'await _scrollToMessageAndReport(',
@@ -318,6 +336,88 @@ void main() {
     expect(searchJump, contains('await _scrollToMessage('));
     expect(searchJump, contains('result.id'));
     expect(searchJump, isNot(contains('_scrollToMessageAndReport(')));
+  });
+
+  test('transcript touches cancel target, anchor, and restore corrections', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final start = source.indexOf('void _onTranscriptPointerDown(');
+    final end = source.indexOf('void _onTranscriptPointerEnd(', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final pointerDown = source.substring(start, end);
+    expect(pointerDown, contains('++_transcriptGestureGeneration;'));
+    expect(pointerDown, contains('_invalidateScrollNavigation'));
+    expect(pointerDown, contains('_cancelSessionScrollAnchorMaintenance();'));
+    expect(pointerDown, contains('_maintainRestoredBottom = false;'));
+  });
+
+  test('message navigation owns one target key for every async pass', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final start = source.indexOf('Future<bool> _scrollToMessageAndReport(');
+    final end = source.indexOf('void _openHashtagSearch(', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final method = source.substring(start, end);
+    expect(method, contains('forceNavigation: true'));
+    expect(method, contains('final navigationGeneration'));
+    expect(method, contains('bool targetCancelled()'));
+    expect(method, contains('isCancelled: targetCancelled'));
+    expect(method, contains('navigationGeneration: navigationGeneration'));
+
+    final ensureStart = source.indexOf(
+      'Future<bool> _ensureMessageVisibleAndReport(',
+    );
+    final ensureEnd = source.indexOf('bool _isKeyMostlyVisible(', ensureStart);
+    final ensure = source.substring(ensureStart, ensureEnd);
+    expect(ensure, contains('final activeKey = _targetKey;'));
+    expect(ensure, isNot(contains('_pinnedKey')));
+    expect(ensure, contains('!_isCurrentScrollTarget'));
+  });
+
+  test('short transcript positioning is awaited and cancelable', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    expect(
+      source,
+      contains('if (loadedAny) await _positionAfterShortFill(generation);'),
+    );
+    final start = source.indexOf('Future<void> _positionAfterShortFill(');
+    final end = source.indexOf('bool _isUnreadBoundaryLoaded(', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final method = source.substring(start, end);
+    expect(method, contains('int generation'));
+    expect(method, contains('_canContinueShortTranscriptFill(generation)'));
+    expect(method, contains('await Scrollable.ensureVisible('));
+  });
+
+  test('older-page reveal yields to a later user scroll direction', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final userScrollStart = source.indexOf(
+      'bool _onTranscriptUserScroll(UserScrollNotification notification)',
+    );
+    final userScrollEnd = source.indexOf(
+      'bool _onTranscriptScrollNotification(',
+      userScrollStart,
+    );
+    expect(userScrollStart, greaterThanOrEqualTo(0));
+    expect(userScrollEnd, greaterThan(userScrollStart));
+    final userScroll = source.substring(userScrollStart, userScrollEnd);
+    expect(userScroll, contains('ScrollDirection.reverse'));
+    expect(userScroll, contains('_revealLoadedOlderPage = false;'));
+    expect(userScroll, contains('_loadedOlderRevealPending = false;'));
+
+    final revealStart = source.indexOf('void _scheduleLoadedOlderReveal()');
+    final revealEnd = source.indexOf(
+      'bool get _hasTranscriptPointerDown',
+      revealStart,
+    );
+    expect(revealStart, greaterThanOrEqualTo(0));
+    expect(revealEnd, greaterThan(revealStart));
+    final reveal = source.substring(revealStart, revealEnd);
+    expect(reveal, contains('_loadedOlderRevealGestureGeneration'));
+    expect(reveal, contains('_scrollTargetId != null'));
+    expect(reveal, contains('_maintainSessionScrollAnchor'));
+    expect(reveal, contains('_maintainRestoredBottom'));
   });
 
   group('oldest history pull', () {

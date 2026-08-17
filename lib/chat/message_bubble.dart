@@ -58,11 +58,16 @@ import 'stretchable_message_bubble_background.dart';
 import 'video_sticker_view.dart';
 import 'voice_audio.dart';
 
+typedef ImageGalleryOpenCallback =
+    void Function({required List<TdFileRef> items, required int startIndex});
+
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
     super.key,
     required this.message,
     this.groupedMedia = const <ChatMessage>[],
+    this.targetMediaMessageId,
+    this.targetMediaKey,
     this.translationDisplayStyle = TranslationDisplayStyle.quote,
     this.showOriginalTranslationMessageIds = const <int>{},
     required this.peerTitle,
@@ -82,7 +87,9 @@ class MessageBubble extends StatefulWidget {
     this.onAvatarTap,
     this.onAvatarLongPress,
     this.onOpenReply,
+    this.onOpenForwarded,
     this.onOpenImage,
+    this.onOpenImageGallery,
     this.onApplyMessageBubble,
     this.onOpenSticker,
     this.onPlayVideo,
@@ -127,6 +134,8 @@ class MessageBubble extends StatefulWidget {
   final bool selected;
 
   final List<ChatMessage> groupedMedia;
+  final int? targetMediaMessageId;
+  final GlobalKey? targetMediaKey;
   final String peerTitle;
   final TdFileRef? peerPhoto;
   final bool isGroup;
@@ -149,7 +158,9 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<int>? onOpenReply;
+  final ValueChanged<ChatMessage>? onOpenForwarded;
   final ValueChanged<ChatMessage>? onOpenImage;
+  final ImageGalleryOpenCallback? onOpenImageGallery;
   final ValueChanged<ChatMessage>? onApplyMessageBubble;
   final ValueChanged<ChatMessage>? onOpenSticker;
   final ValueChanged<ChatMessage>? onPlayVideo;
@@ -1951,7 +1962,7 @@ class _MessageBubbleState extends State<MessageBubble>
             children: messageSelectableParts,
           );
     final parts = <Widget>[
-      if (includeForwardHeader && (message.forwardOrigin ?? '').isNotEmpty) ...[
+      if (includeForwardHeader && message.hasForwardAttribution) ...[
         _forwardHeader(outgoing),
         const SizedBox(height: 3),
       ],
@@ -2628,17 +2639,23 @@ class _MessageBubbleState extends State<MessageBubble>
         .where((child) => _isRichMediaKind(child.kind))
         .toList();
     if (media.isEmpty) return _richMissingMedia(HeroAppIcons.images, outgoing);
+    final photoGallery = _richPhotoGallery(media);
     final width = _mediaMaxWidth();
     final cellWidth = media.length == 1 ? width : (width - 4) / 2;
     final collage = Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
-        for (final child in media)
+        for (final (index, child) in media.indexed)
           SizedBox(
             width: cellWidth,
             height: media.length == 1 ? width * 0.7 : cellWidth,
-            child: _richMediaThumbnail(child, outgoing),
+            child: _richMediaThumbnail(
+              child,
+              outgoing,
+              photoGalleryItems: photoGallery.items,
+              photoGalleryIndex: photoGallery.indexes[index],
+            ),
           ),
       ],
     );
@@ -2652,6 +2669,7 @@ class _MessageBubbleState extends State<MessageBubble>
     if (media.isEmpty) {
       return _richMissingMedia(HeroAppIcons.tableColumns, outgoing);
     }
+    final photoGallery = _richPhotoGallery(media);
     final width = _mediaMaxWidth();
     final slideshow = SizedBox(
       width: width,
@@ -2660,7 +2678,12 @@ class _MessageBubbleState extends State<MessageBubble>
         itemCount: media.length,
         itemBuilder: (_, index) => Padding(
           padding: EdgeInsets.only(right: index == media.length - 1 ? 0 : 4),
-          child: _richMediaThumbnail(media[index], outgoing),
+          child: _richMediaThumbnail(
+            media[index],
+            outgoing,
+            photoGalleryItems: photoGallery.items,
+            photoGalleryIndex: photoGallery.indexes[index],
+          ),
         ),
       ),
     );
@@ -2674,10 +2697,46 @@ class _MessageBubbleState extends State<MessageBubble>
       kind == RichMessageBlockKind.audio ||
       kind == RichMessageBlockKind.voiceNote;
 
-  Widget _richMediaThumbnail(RichMessageBlock block, bool outgoing) {
+  ({List<TdFileRef> items, List<int?> indexes}) _richPhotoGallery(
+    List<RichMessageBlock> media,
+  ) {
+    final items = <TdFileRef>[];
+    final indexes = <int?>[];
+    for (final child in media) {
+      final image = child.kind == RichMessageBlockKind.photo
+          ? child.image
+          : null;
+      if (image == null) {
+        indexes.add(null);
+        continue;
+      }
+      indexes.add(items.length);
+      items.add(image);
+    }
+    return (items: List.unmodifiable(items), indexes: indexes);
+  }
+
+  Widget _richMediaThumbnail(
+    RichMessageBlock block,
+    bool outgoing, {
+    List<TdFileRef> photoGalleryItems = const [],
+    int? photoGalleryIndex,
+  }) {
     if (block.kind == RichMessageBlockKind.photo && block.image != null) {
       return GestureDetector(
-        onTap: () => widget.onOpenImage?.call(_richMediaMessage(block)),
+        onTap: () {
+          final openGallery = widget.onOpenImageGallery;
+          if (openGallery != null &&
+              photoGalleryIndex != null &&
+              photoGalleryItems.isNotEmpty) {
+            openGallery(
+              items: photoGalleryItems,
+              startIndex: photoGalleryIndex,
+            );
+            return;
+          }
+          widget.onOpenImage?.call(_richMediaMessage(block));
+        },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: TDImage(photo: block.image),
@@ -3748,31 +3807,42 @@ class _MessageBubbleState extends State<MessageBubble>
         : _messageColors == null && !outgoing
         ? AppTheme.brand
         : textColor;
-    return Row(
+    final canOpenOriginal =
+        widget.onOpenForwarded != null &&
+        message.forwardFromChatId != null &&
+        message.forwardFromMessageId != null &&
+        message.forwardFromMessageId! > 0;
+    return GestureDetector(
       key: ValueKey('messageForwardHeader-${message.id}'),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AppIcon(
-          HeroAppIcons.forward,
-          size: 11,
-          color: accent.withValues(alpha: 0.9),
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
-              'value1': message.forwardOrigin,
-            }),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: textColor,
+      behavior: HitTestBehavior.opaque,
+      onTap: canOpenOriginal
+          ? () => widget.onOpenForwarded!.call(message)
+          : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(
+            HeroAppIcons.forward,
+            size: 11,
+            color: accent.withValues(alpha: 0.9),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+                'value1': message.forwardDisplayName,
+              }),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -4802,7 +4872,7 @@ class _MessageBubbleState extends State<MessageBubble>
     required String? caption,
     required bool outgoing,
   }) {
-    final hasForwardHeader = message.forwardOrigin?.trim().isNotEmpty ?? false;
+    final hasForwardHeader = message.hasForwardAttribution;
     final hasReplyQuote = message.replyToPreview != null;
     if (!_groupsMediaCaption(caption)) {
       final attributedMedia = hasForwardHeader || hasReplyQuote
@@ -5578,6 +5648,11 @@ class _MessageBubbleState extends State<MessageBubble>
     final doc = source.document!;
     final isGif = _isGifDocument(doc);
     final itemKey = GlobalKey();
+    final layoutKey =
+        source.id == widget.targetMediaMessageId &&
+            widget.targetMediaKey != null
+        ? widget.targetMediaKey
+        : itemKey;
     return GestureDetector(
       key: ValueKey('messageDocumentAlbumFile-${source.id}'),
       behavior: HitTestBehavior.opaque,
@@ -5589,7 +5664,7 @@ class _MessageBubbleState extends State<MessageBubble>
           _handleGroupedFileSecondaryTap(source, details.globalPosition),
       child: isGif && doc.file != null
           ? SizedBox(
-              key: itemKey,
+              key: layoutKey,
               width: 236,
               height: 180,
               child: TDImage(
@@ -5600,7 +5675,7 @@ class _MessageBubbleState extends State<MessageBubble>
               ),
             )
           : Padding(
-              key: itemKey,
+              key: layoutKey,
               padding: const EdgeInsets.all(8),
               child: Row(
                 children: [

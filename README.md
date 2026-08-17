@@ -53,7 +53,8 @@ moments-style stories, settings, and a 1:1 call UI.
 
 - **Flutter** UI (`lib/`), state via `provider` + `ChangeNotifier`.
 - **TDLib** linked through Dart FFI (`lib/tdlib/`); the native `libtdjson`
-  binary is downloaded/built per platform (see below) and is **not** committed.
+  binary is installed from a pinned release per platform (see below) and is
+  **not** committed.
 - All theming is adaptive (light / dark); UI components are Cupertino/custom —
   no Material dialogs, snackbars, or switches.
 
@@ -72,15 +73,14 @@ class Secrets {
 ```
 
 The TDLib native library is prepared with helper scripts (output is git-ignored).
-CI downloads pinned prebuilt Android, iOS, and universal macOS artifacts from
-[`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The Android
-source-build script is kept for local fallback/debug builds. Desktop release
-jobs compile and cache the matching pinned source when no published artifact is
-available; Xcode Cloud verifies and bundles the published macOS dylib instead
-of compiling TDLib during every archive.
+[`scripts/tdjson-manifest.json`](scripts/tdjson-manifest.json) is the single pin
+for the matching prebuilt Android, iOS, macOS, Linux, and Windows release assets
+from [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The helpers
+download and verify those artifacts; this app repository no longer compiles
+TDLib from source.
 
 ```bash
-# Android local fallback (per ABI) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
+# Android (one or more ABIs) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
 scripts/build-tdjson-android.sh arm64-v8a
 
 # iOS — downloads ios/tdjson/tdjson.xcframework consumed by the Runner
@@ -89,6 +89,13 @@ scripts/build-tdjson-ios.sh
 # Desktop — writes the library to the requested path (linux, macos, or windows)
 scripts/build-tdjson-desktop.sh macos /tmp/libtdjson.dylib
 ```
+
+The installed libraries are reproducible local build inputs. Keep the one for
+the platform you are building, or delete it and rerun the corresponding helper
+when disk space matters more than avoiding another download. Legacy
+`.tdlib-build/` source-build trees, including large `libtdcore.a` archives, are
+not runtime inputs and can be removed. See [NATIVE.md](NATIVE.md) for the exact
+paths and cleanup tradeoffs.
 
 Then run:
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
 import 'package:mithka/chat/message_action_menu.dart';
+import 'package:mithka/chat/message_reaction_availability.dart';
 import 'package:mithka/chat/quick_reaction_choice.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -151,6 +152,43 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('quick-reaction-bar'))).width,
       MessageActionMenu.preferredWidth,
     );
+    expect(find.byKey(const ValueKey('quick-reaction-expand')), findsOneWidget);
+  });
+
+  testWidgets('quick bar renders only reactions allowed for the message', (
+    tester,
+  ) async {
+    final availability = MessageReactionAvailability.fromTd({
+      '@type': 'availableReactions',
+      'top_reactions': [
+        {
+          '@type': 'availableReaction',
+          'type': {'@type': 'reactionTypeEmoji', 'emoji': '👍'},
+          'needs_premium': false,
+        },
+      ],
+      'recent_reactions': <Map<String, dynamic>>[],
+      'popular_reactions': <Map<String, dynamic>>[],
+      'allow_custom_emoji': false,
+      'are_tags': false,
+      'unavailability_reason': null,
+    }, isPremium: false);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QuickReactionBar(
+          reactions: availability.quickChoices(defaultQuickReactions),
+          onReaction: (_) {},
+          onExpand: () {},
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('quick-reaction-emoji:👍')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('quick-reaction-emoji:❤️')), findsNothing);
     expect(find.byKey(const ValueKey('quick-reaction-expand')), findsOneWidget);
   });
 

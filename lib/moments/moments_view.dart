@@ -12,15 +12,19 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/custom_emoji.dart';
 import '../chat/forward_options.dart';
 import '../chat/image_preview.dart';
 import '../chat/media_album_layout.dart';
+import '../chat/message_reaction_availability.dart';
 import '../chat/outgoing_attachment.dart';
+import '../chat/quick_reaction_choice.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
 import '../chat/shared_media_view.dart';
@@ -117,6 +121,24 @@ class ChannelPostThreadTarget {
   final int messageThreadId;
 }
 
+class _MomentsFeedScrollAnchor {
+  const _MomentsFeedScrollAnchor({required this.key, required this.leading});
+
+  final GlobalKey key;
+  final double leading;
+}
+
+final Map<String, double> _channelMomentsScrollOffsets = {};
+
+String _channelMomentsScrollKey({
+  required int accountSlot,
+  required bool isRootTab,
+  required List<ChatSummary> initialChannels,
+}) {
+  final ids = initialChannels.map((channel) => channel.id).toList()..sort();
+  return '$accountSlot:$isRootTab:${ids.join(',')}';
+}
+
 class ChannelPostComment {
   const ChannelPostComment({
     required this.chatId,
@@ -177,6 +199,21 @@ Future<bool> _canPostToChannel(ChatSummary channel, int meId) async {
 
 Color _momentQuoteFill(AppColors c) =>
     c.groupedBackground.withValues(alpha: 0.88);
+
+@visibleForTesting
+enum MomentsReactionAction { hidden, sendThumbsUp, openSelector }
+
+@visibleForTesting
+MomentsReactionAction momentsReactionAction(
+  MessageReactionAvailability? availability,
+) {
+  if (availability == null || !availability.canAdd) {
+    return MomentsReactionAction.hidden;
+  }
+  return availability.allows(const QuickReactionChoice.emoji('👍'))
+      ? MomentsReactionAction.sendThumbsUp
+      : MomentsReactionAction.openSelector;
+}
 
 const double desktopMomentsFeedMaxWidth = 760;
 
@@ -701,6 +738,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   final _replyController = TextEditingController();
   final _replyFocus = FocusNode();
   final _scroll = ScrollController();
+  late final String _scrollSessionKey;
+  final Map<String, GlobalKey> _postWidgetKeys = {};
+  double? _pendingScrollOffset;
+  bool _scrollRestoreScheduled = false;
   StreamSubscription? _tdSub;
   Timer? _refreshTimer;
   Timer? _metadataHydrationTimer;
@@ -725,6 +766,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   bool _loadingPosts = false;
   bool _loadingPostableChannels = false;
   bool _refreshingLiveUpdates = false;
+  bool _refreshingLatest = false;
   bool _nonMutedOnly = false;
   int _feedLoadGeneration = 0;
   static const _perChannelPageSize = 30;
@@ -734,6 +776,12 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   @override
   void initState() {
     super.initState();
+    _scrollSessionKey = _channelMomentsScrollKey(
+      accountSlot: TdClient.shared.activeSlot,
+      isRootTab: widget.isRootTab,
+      initialChannels: widget.initialChannels,
+    );
+    _pendingScrollOffset = _channelMomentsScrollOffsets[_scrollSessionKey];
     _model.addListener(_onModel);
     _scroll.addListener(_onScroll);
     _tdSub = TdClient.shared.subscribe().listen(_handleTdUpdate);
@@ -744,10 +792,14 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         if (mounted) _loadChannelPosts();
       });
     }
+    _scheduleScrollRestore();
   }
 
   @override
   void dispose() {
+    if (_scroll.hasClients) {
+      _channelMomentsScrollOffsets[_scrollSessionKey] = _scroll.offset;
+    }
     _model.removeListener(_onModel);
     _model.dispose();
     _scroll.removeListener(_onScroll);
@@ -762,13 +814,87 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
+    _channelMomentsScrollOffsets[_scrollSessionKey] = _scroll.offset;
     if (_scroll.position.extentAfter < 600) _loadChannelPosts(loadOlder: true);
+  }
+
+  void _scheduleScrollRestore() {
+    if (_pendingScrollOffset == null || _scrollRestoreScheduled) return;
+    _scrollRestoreScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollRestoreScheduled = false;
+      if (!mounted || !_scroll.hasClients) return;
+      final pending = _pendingScrollOffset;
+      if (pending == null) return;
+      final position = _scroll.position;
+      // Initial history loads arrive asynchronously. Do not clamp a saved
+      // position to the first short page; wait for the feed to finish loading
+      // so reopening lands at the same history location.
+      if (pending > position.maxScrollExtent &&
+          (_loadingPosts || (_posts.isEmpty && _channels.isNotEmpty))) {
+        _scheduleScrollRestore();
+        return;
+      }
+      if (pending > position.maxScrollExtent &&
+          _channels.any(
+            (channel) => !_exhaustedChannels.contains(channel.id),
+          )) {
+        _loadChannelPosts(loadOlder: true);
+        _scheduleScrollRestore();
+        return;
+      }
+      final next = pending.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      _scroll.jumpTo(next);
+      _pendingScrollOffset = null;
+      _channelMomentsScrollOffsets[_scrollSessionKey] = next;
+    });
+  }
+
+  _MomentsFeedScrollAnchor? _captureFeedScrollAnchor() {
+    if (!_scroll.hasClients) return null;
+    final current = _scroll.offset;
+    final viewportExtent = _scroll.position.viewportDimension;
+    for (final post in _posts) {
+      final key = _postKey(post);
+      final render = key.currentContext?.findRenderObject();
+      if (render == null || !render.attached) continue;
+      final viewport = RenderAbstractViewport.of(render);
+      final leading = viewport.getOffsetToReveal(render, 0).offset - current;
+      final extent = render.paintBounds.height;
+      if (leading + extent > 0 && leading < viewportExtent) {
+        return _MomentsFeedScrollAnchor(key: key, leading: leading);
+      }
+    }
+    return null;
+  }
+
+  void _restoreFeedScrollAnchor(
+    _MomentsFeedScrollAnchor? anchor,
+    double fallbackOffset,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      var next = fallbackOffset;
+      final render = anchor?.key.currentContext?.findRenderObject();
+      if (render != null && render.attached) {
+        final viewport = RenderAbstractViewport.of(render);
+        next = viewport.getOffsetToReveal(render, 0).offset - anchor!.leading;
+      }
+      final position = _scroll.position;
+      next = next.clamp(position.minScrollExtent, position.maxScrollExtent);
+      _scroll.jumpTo(next);
+      _channelMomentsScrollOffsets[_scrollSessionKey] = next;
+    });
   }
 
   void _onModel() {
     _feedChatIds = null; // channel set may have changed
     _invalidateChannels();
     if (mounted) setState(() {});
+    _scheduleScrollRestore();
     _loadChannelPosts();
     _loadPostableChannels();
   }
@@ -906,6 +1032,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (mounted) setState(() {});
       return;
     }
+    final anchor = _captureFeedScrollAnchor();
+    final fallbackOffset = _scroll.hasClients ? _scroll.offset : 0.0;
     _refreshingLiveUpdates = true;
     _loadingPosts = true;
     if (mounted) setState(() {});
@@ -923,6 +1051,35 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _refreshingLiveUpdates = false;
       _loadingPosts = _loadingChannels.isNotEmpty;
       if (mounted) setState(() {});
+      _restoreFeedScrollAnchor(anchor, fallbackOffset);
+    }
+  }
+
+  Future<void> _refreshLatest() async {
+    if (_refreshingLatest || _refreshingLiveUpdates) return;
+    final channels = _channels;
+    if (channels.isEmpty) return;
+    final anchor = _captureFeedScrollAnchor();
+    final fallbackOffset = _scroll.hasClients ? _scroll.offset : 0.0;
+    _refreshingLatest = true;
+    _loadingPosts = true;
+    if (mounted) setState(() {});
+    final futures = <Future<void>>[];
+    for (final channel in channels) {
+      if (!await _isJoinedChannel(channel)) continue;
+      if (!_loadingChannels.add(channel.id)) continue;
+      futures.add(
+        _loadPostsForChannel(channel, fromMessageId: 0, notify: false),
+      );
+    }
+    try {
+      await Future.wait(futures);
+      _schedulePostMetadataHydration();
+    } finally {
+      _refreshingLatest = false;
+      _loadingPosts = _loadingChannels.isNotEmpty;
+      if (mounted) setState(() {});
+      _restoreFeedScrollAnchor(anchor, fallbackOffset);
     }
   }
 
@@ -975,8 +1132,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     return _postsCache = _groupPostAlbums(posts).take(_feedLimit).toList();
   }
 
-  static Key _postKey(ChannelPost post) =>
-      ValueKey('post-${post.channel.id}-${post.message.id}');
+  GlobalKey _postKey(ChannelPost post) {
+    final identity = 'post-${post.channel.id}-${post.message.id}';
+    return _postWidgetKeys.putIfAbsent(identity, GlobalKey.new);
+  }
 
   static const _composerHeaderKey = ValueKey('moments-composer-header');
 
@@ -1172,6 +1331,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _loadingPosts = _loadingChannels.isNotEmpty;
         // A batched refresh rebuilds once when the whole batch lands.
         if (notify && mounted) setState(() {});
+        _scheduleScrollRestore();
       }
     }
   }
@@ -1788,6 +1948,20 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
                 ),
                 const SizedBox(width: AppSpacing.lg),
                 GestureDetector(
+                  key: const ValueKey('moments-refresh-latest'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _refreshingLatest ? null : _refreshLatest,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
+                    child: AppIcon(
+                      HeroAppIcons.arrowsRotate,
+                      size: 22,
+                      color: _refreshingLatest ? c.textTertiary : c.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _openSearch,
                   child: Padding(
@@ -1813,6 +1987,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final c = context.colors;
     final list = ListView.builder(
       controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: useDesktopLayout
           ? const EdgeInsets.symmetric(vertical: AppSpacing.lg)
           : EdgeInsets.zero,
@@ -1863,10 +2038,17 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         );
       },
     );
+    final refreshable = RefreshIndicator(
+      onRefresh: _refreshLatest,
+      color: AppTheme.brand,
+      backgroundColor: c.background,
+      notificationPredicate: (notification) => notification.depth == 0,
+      child: list,
+    );
     if (!useDesktopLayout) {
-      return ColoredBox(color: c.background, child: list);
+      return ColoredBox(color: c.background, child: refreshable);
     }
-    return MomentsDesktopFeedLane(child: list);
+    return MomentsDesktopFeedLane(child: refreshable);
   }
 
   Widget _desktopFeedCard(Widget child) {
@@ -2884,27 +3066,6 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
     }
   }
 
-  Future<void> _likeComment(ChannelPostComment comment) async {
-    try {
-      await TdClient.shared.query({
-        '@type': 'addMessageReaction',
-        'chat_id': comment.chatId,
-        'message_id': comment.messageId,
-        'reaction_type': {'@type': 'reactionTypeEmoji', 'emoji': '👍'},
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
-      unawaited(_loadComments());
-    } catch (e) {
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.momentsLikeFailed, {'value1': e}),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -2960,7 +3121,7 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
                     post: post,
                     comments: _comments,
                     onReply: _beginReply,
-                    onLike: _likeComment,
+                    onReactionSent: () => unawaited(_loadComments()),
                   ),
               ],
             ),
@@ -3103,13 +3264,13 @@ class _CommentThreadList extends StatelessWidget {
     required this.post,
     required this.comments,
     required this.onReply,
-    required this.onLike,
+    required this.onReactionSent,
   });
 
   final ChannelPost post;
   final List<ChannelPostComment> comments;
   final ValueChanged<ChannelPostComment> onReply;
-  final ValueChanged<ChannelPostComment> onLike;
+  final VoidCallback onReactionSent;
 
   @override
   Widget build(BuildContext context) {
@@ -3162,10 +3323,11 @@ class _CommentThreadList extends StatelessWidget {
           final entry = entries[index];
           final tile = _DetailCommentTile(
             comment: entry.comment,
+            accountSlot: post.accountSlot,
             prefix: entry.prefix,
             nested: entry.nested,
             onReply: onReply,
-            onLike: onLike,
+            onReactionSent: onReactionSent,
           );
           if (!entry.endsGroup) return tile;
           return Padding(
@@ -3216,17 +3378,19 @@ class _CommentThreadList extends StatelessWidget {
 class _DetailCommentTile extends StatelessWidget {
   const _DetailCommentTile({
     required this.comment,
+    required this.accountSlot,
     required this.onReply,
-    required this.onLike,
+    required this.onReactionSent,
     this.prefix,
     this.nested = false,
   });
 
   final ChannelPostComment comment;
+  final int accountSlot;
   final String? prefix;
   final bool nested;
   final ValueChanged<ChannelPostComment> onReply;
-  final ValueChanged<ChannelPostComment> onLike;
+  final VoidCallback onReactionSent;
 
   @override
   Widget build(BuildContext context) {
@@ -3308,32 +3472,40 @@ class _DetailCommentTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onLike(comment),
-              child: SizedBox(
-                width: 34,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AppIcon(
-                      HeroAppIcons.thumbsUp,
-                      size: 21,
-                      color: c.textTertiary,
-                    ),
-                    if (comment.reactionCount > 0) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        _compactCount(comment.reactionCount),
-                        style: TextStyle(fontSize: 12, color: c.textTertiary),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            _MomentsReactionControl(
+              accountSlot: accountSlot,
+              chatId: comment.chatId,
+              messageId: comment.messageId,
+              keyNamespace: 'moments-comment-reaction-${comment.messageId}',
+              onReactionSent: onReactionSent,
+              hiddenBuilder: _reactionContent,
+              contentBuilder: _reactionContent,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _reactionContent(BuildContext context, [AppIconData? icon]) {
+    final c = context.colors;
+    return SizedBox(
+      width: 34,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) AppIcon(icon, size: 21, color: c.textTertiary),
+          if (comment.reactionCount > 0) ...[
+            if (icon != null) const SizedBox(height: 3),
+            Text(
+              _compactCount(comment.reactionCount),
+              key: ValueKey(
+                'moments-comment-reaction-count-${comment.messageId}',
+              ),
+              style: TextStyle(fontSize: 12, color: c.textTertiary),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -4052,7 +4224,8 @@ class ChannelPostRow extends StatelessWidget {
 
   bool get _hasReplyQuote =>
       message.replyToMessageId != null &&
-      (message.replyToPreview?.trim().isNotEmpty ?? false);
+      ((message.replyToPreview?.trim().isNotEmpty ?? false) ||
+          message.replyToImage != null);
 }
 
 class _PostReplyQuote extends StatelessWidget {
@@ -4065,6 +4238,9 @@ class _PostReplyQuote extends StatelessWidget {
     final c = context.colors;
     final sender = message.replyToSender?.trim();
     final preview = message.replyToPreview?.trim() ?? '';
+    final image = message.replyToImage;
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final hasText = (sender?.isNotEmpty ?? false) || preview.isNotEmpty;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
@@ -4072,23 +4248,49 @@ class _PostReplyQuote extends StatelessWidget {
         color: _momentQuoteFill(c),
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
-      child: RichText(
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-        text: TextSpan(
-          style: TextStyle(fontSize: 15, height: 1.35, color: c.textPrimary),
-          children: [
-            if (sender != null && sender.isNotEmpty)
-              TextSpan(
-                text: '$sender: ',
-                style: TextStyle(
-                  color: c.linkBlue,
-                  fontWeight: FontWeight.w500,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (image != null) ...[
+            SizedBox(
+              key: const ValueKey('momentsReplyMediaPreview'),
+              width: 52,
+              height: 52,
+              child: TDImage(
+                photo: image,
+                cornerRadius: 6,
+                cacheWidth: (52 * pixelRatio).round(),
+                cacheHeight: (52 * pixelRatio).round(),
+              ),
+            ),
+            if (hasText) const SizedBox(width: 10),
+          ],
+          if (hasText)
+            Expanded(
+              child: RichText(
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.35,
+                    color: c.textPrimary,
+                  ),
+                  children: [
+                    if (sender != null && sender.isNotEmpty)
+                      TextSpan(
+                        text: '$sender: ',
+                        style: TextStyle(
+                          color: c.linkBlue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    TextSpan(text: preview.replaceAll('\n', ' ')),
+                  ],
                 ),
               ),
-            TextSpan(text: preview.replaceAll('\n', ' ')),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -4272,6 +4474,7 @@ class _PostImageGroup extends StatelessWidget {
                     message: visible[i],
                     width: layout.tiles[i].width,
                     height: layout.tiles[i].height,
+                    accountSlot: accountSlot,
                     extraCount: i == visible.length - 1
                         ? math.max(0, messages.length - visible.length)
                         : 0,
@@ -4302,7 +4505,7 @@ class _PostImageGroup extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => VideoPlaylistPlayerView(queue: _videoQueue(message)),
+          builder: (_) => VideoOnDemandPlayerView(queue: _videoQueue(message)),
         ),
       );
       return;
@@ -4323,6 +4526,7 @@ class _PostImageGroup extends StatelessWidget {
             thumb: message.image,
             width: message.imageWidth,
             height: message.imageHeight,
+            durationSeconds: message.videoDuration,
             sourceChatId: sourceChatId,
             messageId: message.id,
             title: message.text.trim().replaceAll('\n', ' '),
@@ -4356,12 +4560,14 @@ class _PostImageTile extends StatelessWidget {
     required this.message,
     required this.width,
     required this.height,
+    required this.accountSlot,
     this.extraCount = 0,
   });
 
   final ChatMessage message;
   final double width;
   final double height;
+  final int accountSlot;
   final int extraCount;
 
   @override
@@ -4380,6 +4586,8 @@ class _PostImageTile extends StatelessWidget {
               cornerRadius: 3,
               cacheWidth: (width * pixelRatio).round(),
               cacheHeight: (height * pixelRatio).round(),
+              showProgress: true,
+              accountSlot: accountSlot,
             ),
             if (message.video != null)
               Center(
@@ -4445,10 +4653,21 @@ class _PostActions extends StatelessWidget {
       children: [
         Text(likeText, style: TextStyle(fontSize: 13, color: c.linkBlue)),
         const Spacer(),
-        _actionButton(
-          context,
-          HeroAppIcons.thumbsUp,
-          onTap: () => _react(context),
+        _MomentsReactionControl(
+          accountSlot: post.accountSlot,
+          chatId: channel.id,
+          messageId: message.id,
+          keyNamespace: 'moments-reaction',
+          contentBuilder: (context, icon) => SizedBox.square(
+            dimension: _actionSize,
+            child: Center(
+              child: AppIcon(
+                icon,
+                size: _iconSize,
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
         ),
         if (canComment) ...[
           const SizedBox(width: _actionGap),
@@ -4513,29 +4732,6 @@ class _PostActions extends StatelessWidget {
     return AppStrings.t(AppStringKeys.momentsUserLiked, {'value1': shown});
   }
 
-  Future<void> _react(BuildContext context) async {
-    try {
-      await TdClient.shared.query({
-        '@type': 'addMessageReaction',
-        'chat_id': channel.id,
-        'message_id': message.id,
-        'reaction_type': {'@type': 'reactionTypeEmoji', 'emoji': '👍'},
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
-      if (context.mounted) {
-        showToast(context, AppStringKeys.momentsLiked);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.momentsLikeFailed, {'value1': e}),
-        );
-      }
-    }
-  }
-
   Future<void> _forward(BuildContext context) async {
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
@@ -4574,6 +4770,394 @@ class _PostActions extends StatelessWidget {
       }
     }
   }
+}
+
+class _MomentsReactionControl extends StatefulWidget {
+  const _MomentsReactionControl({
+    required this.accountSlot,
+    required this.chatId,
+    required this.messageId,
+    required this.keyNamespace,
+    required this.contentBuilder,
+    this.hiddenBuilder,
+    this.onReactionSent,
+  });
+
+  final int accountSlot;
+  final int chatId;
+  final int messageId;
+  final String keyNamespace;
+  final Widget Function(BuildContext context, AppIconData icon) contentBuilder;
+  final WidgetBuilder? hiddenBuilder;
+  final VoidCallback? onReactionSent;
+
+  @override
+  State<_MomentsReactionControl> createState() =>
+      _MomentsReactionControlState();
+}
+
+class _MomentsReactionControlState extends State<_MomentsReactionControl> {
+  static const _thumbsUp = QuickReactionChoice.emoji('👍');
+
+  MessageReactionAvailability? _availability;
+  List<QuickReactionChoice> _arbitraryCustomChoices = const [];
+  int _availabilityGeneration = 0;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailability();
+  }
+
+  @override
+  void didUpdateWidget(_MomentsReactionControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_matchesTarget(
+      oldWidget.accountSlot,
+      oldWidget.chatId,
+      oldWidget.messageId,
+    )) {
+      _availability = null;
+      _arbitraryCustomChoices = const [];
+      _sending = false;
+      _loadAvailability();
+    }
+  }
+
+  bool _matchesTarget(int accountSlot, int chatId, int messageId) =>
+      widget.accountSlot == accountSlot &&
+      widget.chatId == chatId &&
+      widget.messageId == messageId;
+
+  Future<MessageReactionAvailability> _fetchAvailability({
+    required int accountSlot,
+    required int chatId,
+    required int messageId,
+  }) async {
+    final client = TdClient.shared;
+    final responses = await Future.wait([
+      client.queryForSlot({
+        '@type': 'getMessageAvailableReactions',
+        'chat_id': chatId,
+        'message_id': messageId,
+        'row_size': 25,
+      }, accountSlot),
+      client.queryForSlot({
+        '@type': 'getOption',
+        'name': 'is_premium',
+      }, accountSlot),
+    ]);
+    return MessageReactionAvailability.fromTd(
+      responses.first,
+      isPremium: responses.last.boolean('value') ?? false,
+    );
+  }
+
+  Future<void> _loadAvailability() async {
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = ++_availabilityGeneration;
+    MessageReactionAvailability? availability;
+    var arbitraryCustomChoices = const <QuickReactionChoice>[];
+    try {
+      availability = await _fetchAvailability(
+        accountSlot: accountSlot,
+        chatId: chatId,
+        messageId: messageId,
+      );
+      if (availability.allowArbitraryCustom) {
+        arbitraryCustomChoices = await _cachedInstalledCustomReactionChoices(
+          accountSlot,
+        );
+      }
+    } catch (_) {
+      // Fail closed: global reaction defaults are not authoritative for this
+      // particular message and can trigger MESSAGE_REACTION_INVALID.
+    }
+    if (!mounted ||
+        !_matchesTarget(accountSlot, chatId, messageId) ||
+        generation != _availabilityGeneration) {
+      return;
+    }
+    setState(() {
+      _availability = availability;
+      _arbitraryCustomChoices = arbitraryCustomChoices;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var action = momentsReactionAction(_availability);
+    if (action == MomentsReactionAction.openSelector &&
+        _availability!.choices.isEmpty &&
+        _arbitraryCustomChoices.isEmpty) {
+      // TDLib permits arbitrary custom emoji, but this account has none to
+      // present. Do not expose a selector that contains zero choices.
+      action = MomentsReactionAction.hidden;
+    }
+    if (action == MomentsReactionAction.hidden) {
+      return widget.hiddenBuilder?.call(context) ?? const SizedBox.shrink();
+    }
+    final icon = action == MomentsReactionAction.sendThumbsUp
+        ? HeroAppIcons.thumbsUp
+        : HeroAppIcons.solidFaceSmile;
+    return GestureDetector(
+      key: ValueKey('${widget.keyNamespace}-action'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _sending
+          ? null
+          : action == MomentsReactionAction.sendThumbsUp
+          ? () => unawaited(_sendReaction(_thumbsUp))
+          : () => unawaited(_openSelector()),
+      onLongPress: _sending ? null : () => unawaited(_openSelector()),
+      child: widget.contentBuilder(context, icon),
+    );
+  }
+
+  Future<void> _openSelector() async {
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = _availabilityGeneration;
+    final availability = _availability;
+    if (availability == null) return;
+    final choices = <QuickReactionChoice>[
+      ...availability.choices,
+      for (final choice in _arbitraryCustomChoices)
+        if (!availability.choices.contains(choice)) choice,
+    ];
+    if (choices.isEmpty) return;
+    final selected = await showAppModalSheet<QuickReactionChoice>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MomentsReactionSelector(choices: choices),
+    );
+    if (selected == null ||
+        !mounted ||
+        !_matchesTarget(accountSlot, chatId, messageId) ||
+        generation != _availabilityGeneration) {
+      return;
+    }
+    await _sendReaction(selected);
+  }
+
+  Future<void> _sendReaction(QuickReactionChoice requested) async {
+    if (_sending) return;
+    final accountSlot = widget.accountSlot;
+    final chatId = widget.chatId;
+    final messageId = widget.messageId;
+    final generation = _availabilityGeneration;
+    setState(() => _sending = true);
+    try {
+      // Availability can change while a row or selector is onscreen. Re-read
+      // it immediately before mutation and send TDLib's canonical value.
+      final fresh = await _fetchAvailability(
+        accountSlot: accountSlot,
+        chatId: chatId,
+        messageId: messageId,
+      );
+      final freshArbitraryCustomChoices = fresh.allowArbitraryCustom
+          ? await _cachedInstalledCustomReactionChoices(accountSlot)
+          : const <QuickReactionChoice>[];
+      if (!mounted ||
+          !_matchesTarget(accountSlot, chatId, messageId) ||
+          generation != _availabilityGeneration) {
+        return;
+      }
+      setState(() {
+        _availability = fresh;
+        // A message can become restricted while its selector is open. Never
+        // retain account-wide custom choices after the authoritative response
+        // stops allowing them for this message.
+        _arbitraryCustomChoices = freshArbitraryCustomChoices;
+      });
+      final reaction = fresh.canonicalChoice(requested);
+      if (reaction == null) return;
+      await TdClient.shared.queryForSlot({
+        '@type': 'addMessageReaction',
+        'chat_id': chatId,
+        'message_id': messageId,
+        'reaction_type': reaction.isCustom
+            ? {
+                '@type': 'reactionTypeCustomEmoji',
+                'custom_emoji_id': reaction.customEmojiId,
+              }
+            : {'@type': 'reactionTypeEmoji', 'emoji': reaction.emoji},
+        'is_big': false,
+        'update_recent_reactions': true,
+      }, accountSlot);
+      if (!mounted || !_matchesTarget(accountSlot, chatId, messageId)) return;
+      widget.onReactionSent?.call();
+      showToast(context, AppStringKeys.momentsLiked);
+    } catch (_) {
+      if (mounted && _matchesTarget(accountSlot, chatId, messageId)) {
+        showToast(context, AppStringKeys.topicPostContentActionFailed);
+      }
+    } finally {
+      if (mounted && _matchesTarget(accountSlot, chatId, messageId)) {
+        setState(() => _sending = false);
+      }
+    }
+  }
+}
+
+class _MomentsReactionSelector extends StatelessWidget {
+  const _MomentsReactionSelector({required this.choices});
+
+  final List<QuickReactionChoice> choices;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SafeArea(
+      child: Container(
+        key: const ValueKey('moments-reaction-selector'),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 320),
+        margin: const EdgeInsets.all(AppSpacing.md),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: c.divider, width: AppMetric.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: GridView.builder(
+          shrinkWrap: true,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: AppSpacing.xs,
+            crossAxisSpacing: AppSpacing.xs,
+          ),
+          itemCount: choices.length,
+          itemBuilder: (context, index) {
+            final reaction = choices[index];
+            return GestureDetector(
+              key: ValueKey('moments-reaction-choice-${reaction.storageValue}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(reaction),
+              child: SizedBox.square(
+                dimension: 42,
+                child: Center(
+                  child: reaction.isCustom
+                      ? CustomEmojiView(
+                          id: reaction.customEmojiId,
+                          size: 29,
+                          color: c.textPrimary,
+                        )
+                      : Text(
+                          reaction.emoji,
+                          textScaler: TextScaler.noScaling,
+                          style: const TextStyle(fontSize: 29),
+                        ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+const _installedCustomReactionClientCacheLimit = 8;
+const _installedCustomReactionSetLimit = 24;
+const _installedCustomReactionChoiceLimit = 280;
+const _installedCustomReactionCacheLifetime = Duration(minutes: 10);
+
+class _InstalledCustomReactionChoiceCacheEntry {
+  const _InstalledCustomReactionChoiceCacheEntry({
+    required this.createdAt,
+    required this.value,
+  });
+
+  final DateTime createdAt;
+  final Future<List<QuickReactionChoice>> value;
+}
+
+final Map<int, _InstalledCustomReactionChoiceCacheEntry>
+_installedCustomReactionChoiceCache = {};
+
+@visibleForTesting
+void resetMomentsInstalledCustomReactionChoiceCache() {
+  _installedCustomReactionChoiceCache.clear();
+}
+
+Future<List<QuickReactionChoice>> _cachedInstalledCustomReactionChoices(
+  int accountSlot,
+) {
+  final clientId = TdClient.shared.clientId(accountSlot);
+  if (clientId == null) return Future.value(const <QuickReactionChoice>[]);
+  final now = DateTime.now();
+  final cached = _installedCustomReactionChoiceCache.remove(clientId);
+  if (cached != null &&
+      now.difference(cached.createdAt) <
+          _installedCustomReactionCacheLifetime) {
+    _installedCustomReactionChoiceCache[clientId] = cached;
+    return cached.value;
+  }
+
+  // Store the in-flight future before issuing pack requests. Every visible
+  // post/comment for this client then joins the same bounded load.
+  final value = _loadInstalledCustomReactionChoices(
+    accountSlot,
+  ).then((choices) => choices, onError: (_) => const <QuickReactionChoice>[]);
+  _installedCustomReactionChoiceCache[clientId] =
+      _InstalledCustomReactionChoiceCacheEntry(createdAt: now, value: value);
+  while (_installedCustomReactionChoiceCache.length >
+      _installedCustomReactionClientCacheLimit) {
+    _installedCustomReactionChoiceCache.remove(
+      _installedCustomReactionChoiceCache.keys.first,
+    );
+  }
+  return value;
+}
+
+Future<List<QuickReactionChoice>> _loadInstalledCustomReactionChoices(
+  int accountSlot,
+) async {
+  final client = TdClient.shared;
+  final installed = await client.queryForSlot({
+    '@type': 'getInstalledStickerSets',
+    'sticker_type': {'@type': 'stickerTypeCustomEmoji'},
+  }, accountSlot);
+  final infos = installed.objects('sets') ?? const <Map<String, dynamic>>[];
+  final sets = await Future.wait(
+    infos.take(_installedCustomReactionSetLimit).map((info) async {
+      final setId = info.int64('id');
+      if (setId == null) return null;
+      try {
+        return await client.queryForSlot({
+          '@type': 'getStickerSet',
+          'set_id': setId,
+        }, accountSlot);
+      } catch (_) {
+        return null;
+      }
+    }),
+  );
+  final choices = <QuickReactionChoice>[];
+  final seen = <int>{};
+  for (final set in sets.whereType<Map<String, dynamic>>()) {
+    for (final sticker
+        in set.objects('stickers') ?? const <Map<String, dynamic>>[]) {
+      final id = sticker.obj('full_type')?.int64('custom_emoji_id') ?? 0;
+      if (id != 0 && seen.add(id)) {
+        choices.add(QuickReactionChoice.custom(id));
+        if (choices.length >= _installedCustomReactionChoiceLimit) {
+          return List.unmodifiable(choices);
+        }
+      }
+    }
+  }
+  return List.unmodifiable(choices);
 }
 
 class StoryShelf extends StatelessWidget {

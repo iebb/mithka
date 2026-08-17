@@ -169,6 +169,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   }
 
   Future<void> _openCamera() async {
+    if (Platform.isMacOS) {
+      await _pickGallery();
+      return;
+    }
     final result = await Navigator.of(context).push<StoryCameraResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -937,8 +941,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
                                   color: AppTheme.brand.withValues(alpha: 0.16),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const AppIcon(
-                                  HeroAppIcons.camera,
+                                child: AppIcon(
+                                  Platform.isMacOS
+                                      ? HeroAppIcons.images
+                                      : HeroAppIcons.camera,
                                   size: 38,
                                   color: Colors.white,
                                 ),
@@ -991,12 +997,13 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
                   AppStringKeys.storyGallery.l10n(context),
                   _pickGallery,
                 ),
-                _captureAction(
-                  HeroAppIcons.camera,
-                  AppStringKeys.storyCamera.l10n(context),
-                  _openCamera,
-                  prominent: true,
-                ),
+                if (!Platform.isMacOS)
+                  _captureAction(
+                    HeroAppIcons.camera,
+                    AppStringKeys.storyCamera.l10n(context),
+                    _openCamera,
+                    prominent: true,
+                  ),
               ],
             ),
           ],
@@ -1178,8 +1185,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
             child: Row(
               children: [
                 _darkRoundButton(HeroAppIcons.images, _pickGallery),
-                const SizedBox(width: 10),
-                _darkRoundButton(HeroAppIcons.camera, _openCamera),
+                if (!Platform.isMacOS) ...[
+                  const SizedBox(width: 10),
+                  _darkRoundButton(HeroAppIcons.camera, _openCamera),
+                ],
                 const SizedBox(width: 10),
                 _darkRoundButton(
                   _areas.isEmpty ? HeroAppIcons.link : HeroAppIcons.check,

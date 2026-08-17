@@ -21,6 +21,27 @@ void main() {
     }
   });
 
+  test('macOS requests only capabilities implemented by the release app', () {
+    for (final path in [
+      'macos/Runner/DebugProfile.entitlements',
+      'macos/Runner/Release.entitlements',
+    ]) {
+      final entitlements = File(path).readAsStringSync();
+      expect(entitlements, contains('com.apple.security.device.audio-input'));
+      expect(entitlements, isNot(contains('com.apple.security.device.camera')));
+      expect(
+        entitlements,
+        isNot(contains('com.apple.security.personal-information.location')),
+      );
+    }
+
+    final info = File('macos/Runner/Info.plist').readAsStringSync();
+    expect(info, contains('NSMicrophoneUsageDescription'));
+    expect(info, contains('record voice messages you choose to send'));
+    expect(info, isNot(contains('NSCameraUsageDescription')));
+    expect(info, isNot(contains('NSLocationWhenInUseUsageDescription')));
+  });
+
   test('Apple targets share one app identifier for iCloud Keychain', () {
     final appInfo = File(
       'macos/Runner/Configs/AppInfo.xcconfig',
@@ -67,27 +88,90 @@ void main() {
     );
   });
 
-  test('Xcode Cloud downloads and verifies pinned universal macOS TDLib', () {
+  test('Apple GitHub workflows submit both TestFlight audiences', () {
+    for (final path in const [
+      '.github/workflows/ios-testflight.yml',
+      '.github/workflows/macos-testflight.yml',
+    ]) {
+      final workflow = File(path).readAsStringSync();
+      expect(
+        workflow,
+        contains('ruby scripts/distribute_testflight_groups.rb'),
+      );
+      expect(
+        workflow,
+        contains(r'--internal-group "$TESTFLIGHT_INTERNAL_GROUP"'),
+      );
+      expect(
+        workflow,
+        contains(r'--external-group "$TESTFLIGHT_EXTERNAL_GROUP"'),
+      );
+      expect(
+        workflow,
+        contains('Distribute internally and submit external Beta App Review'),
+      );
+    }
+  });
+
+  test('macOS TestFlight always uses a zero patch marketing version', () {
+    for (final testCase in const {
+      '0.8.14': '0.8.0',
+      '1.0.0+282': '1.0.0',
+      '12.34.56+789': '12.34.0',
+    }.entries) {
+      final result = Process.runSync('sh', [
+        'scripts/macos_marketing_version.sh',
+        testCase.key,
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      expect(result.stdout.toString().trim(), testCase.value);
+    }
+
+    final invalid = Process.runSync('sh', [
+      'scripts/macos_marketing_version.sh',
+      '1.2',
+    ]);
+    expect(invalid.exitCode, isNonZero);
+
+    final postClone = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
+    expect(
+      postClone,
+      contains(
+        r'APP_VERSION="$(sh "$REPO/scripts/macos_marketing_version.sh" '
+        r'"$RAW_VERSION")"',
+      ),
+    );
+    expect(postClone, contains(r'--build-name="$APP_VERSION"'));
+
+    final workflow = File(
+      '.github/workflows/macos-testflight.yml',
+    ).readAsStringSync();
+    expect(workflow, contains('- name: Verify macOS marketing version'));
+    expect(workflow, contains('scripts/macos_marketing_version.sh'));
+    expect(workflow, contains('CFBundleShortVersionString'));
+    expect(
+      workflow,
+      contains(r'if [[ "$actual_version" != "$expected_version" ]]; then'),
+    );
+  });
+
+  test('Apple setup delegates macOS TDJSON to the shared wrapper', () {
     final script = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
 
-    expect(script, contains('tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1'));
-    expect(script, contains('tdjson-macos-universal.zip'));
     expect(
       script,
       contains(
-        '9520190747fe1f855d8445996cf92f1a57fca303a15cd3ec7c0849d9a49aaabc',
+        r'"$REPO/scripts/build-tdjson-desktop.sh" macos '
+        'native-libs/libtdjson.dylib',
       ),
     );
-    expect(
-      script,
-      contains(
-        'd543b42be66306dded64b55b980ec8cf88ae1d43bebf019cc3fa0ca4bb7e5482',
-      ),
-    );
-    expect(script, contains('shasum -a 256 -c -'));
-    expect(script, contains('unzip -Z1'));
-    expect(script, contains('arm64 x86_64'));
-    expect(script, contains('_td_mithka_export_session_string'));
+    expect(script, isNot(contains('TDJSON_RELEASE_TAG=')));
+    expect(script, isNot(contains('TDJSON_ARCHIVE_SHA256=')));
+    expect(script, isNot(contains('TDJSON_BINARY_SHA256=')));
+    expect(script, isNot(contains('TDJSON_ASSET_URL=')));
+    expect(script, isNot(contains('tdjson-macos-universal.zip')));
+    expect(script, isNot(contains('shasum -a 256 -c -')));
+    expect(script, isNot(contains('unzip -Z1')));
     expect(script, contains('ensure_declared_plugin_resources'));
     expect(script, contains(r'for package_root in "$packages_root"/*'));
     expect(script, contains('grep -Fq \'.process("Resources")\''));
@@ -103,7 +187,6 @@ void main() {
         'macos/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved',
       ),
     );
-    expect(script, isNot(contains('scripts/build-tdjson-desktop.sh')));
     expect(script, isNot(contains('brew install cmake ninja')));
   });
 

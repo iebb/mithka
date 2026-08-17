@@ -158,6 +158,13 @@ class LoopingMediaPlayerLease {
 /// Muted looping media never needs an audio decoder. FVP exposes track
 /// selection beyond video_player's portable API; official platform players
 /// throw here and safely retain the volume-zero fallback.
+///
+/// Android's [video_player] backend otherwise enables audio focus for every
+/// player, including a muted avatar or sticker. That pauses music from another
+/// app as soon as a chat containing one of these surfaces is opened.
+VideoPlayerOptions mutedLoopingVideoPlayerOptions() =>
+    VideoPlayerOptions(mixWithOthers: true);
+
 void disableLoopingMediaAudioTracks(VideoPlayerController controller) {
   try {
     controller.setAudioTracks(const <int>[]);

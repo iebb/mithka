@@ -68,6 +68,38 @@ jobs:
           openssl pkey -in "$key_path" -noout -check >/dev/null
           echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
+      - name: Import persistent Apple signing identity
+        env:
+          SIGNING_CERTIFICATE_P12: ${{ secrets.IOS_SIGNING_CERTIFICATE_P12 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.IOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${SIGNING_CERTIFICATE_P12:?missing IOS_SIGNING_CERTIFICATE_P12}"
+          : "${SIGNING_CERTIFICATE_PASSWORD:?missing IOS_SIGNING_CERTIFICATE_PASSWORD}"
+          signing_keychain="$RUNNER_TEMP/mithka-signing.keychain-db"
+          signing_p12="$RUNNER_TEMP/mithka-signing.p12"
+          keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$SIGNING_CERTIFICATE_P12" | base64 --decode > "$signing_p12"
+          security create-keychain -p "$keychain_password" "$signing_keychain"
+          security set-keychain-settings -lut 21600 "$signing_keychain"
+          security unlock-keychain -p "$keychain_password" "$signing_keychain"
+          security import "$signing_p12" \
+            -k "$signing_keychain" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$signing_keychain" >/dev/null
+          security list-keychains -d user -s "$signing_keychain"
+          security find-identity -v -p codesigning "$signing_keychain" | grep -q '1 valid identities found'
+          {
+            echo "CI_SIGNING_KEYCHAIN=$signing_keychain"
+            echo "CI_SIGNING_P12=$signing_p12"
+          } >> "$GITHUB_ENV"
+
       - name: Set build identity
         run: |
           set -euo pipefail
@@ -105,6 +137,19 @@ jobs:
             ONLY_ACTIVE_ARCH=NO
           echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
 
+      - name: Verify macOS marketing version
+        run: |
+          set -euo pipefail
+          raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          expected_version="$(sh scripts/macos_marketing_version.sh "$raw_version")"
+          info_plist="$ARCHIVE_PATH/Products/Applications/Mithka.app/Contents/Info.plist"
+          actual_version="$(plutil -extract CFBundleShortVersionString raw "$info_plist")"
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "::error::Expected macOS marketing version $expected_version, got $actual_version"
+            exit 1
+          fi
+          echo "Verified macOS marketing version $actual_version"
+
       - name: Upload archive to App Store Connect
         run: |
           set -euo pipefail
@@ -126,7 +171,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Distribute to TestFlight groups
+      - name: Distribute internally and submit external Beta App Review
         env:
           TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP || 'Internal' }}
           TESTFLIGHT_EXTERNAL_GROUP: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP || 'External' }}
@@ -147,5 +192,11 @@ jobs:
         run: |
           if [[ -n "${ASC_KEY_PATH:-}" ]]; then
             rm -f "$ASC_KEY_PATH"
+          fi
+          if [[ -n "${CI_SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CI_SIGNING_KEYCHAIN" || true
+          fi
+          if [[ -n "${CI_SIGNING_P12:-}" ]]; then
+            rm -f "$CI_SIGNING_P12"
           fi
           rm -f lib/config/secrets.dart

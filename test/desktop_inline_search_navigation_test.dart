@@ -111,6 +111,83 @@ void main() {
     expect(identical(opened, app), isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a Telegram link is the first candidate and opens directly', (
+    tester,
+  ) async {
+    final controller = DesktopInlineSearchController(
+      miniAppSearch: (_) async => const [],
+    );
+    addTearDown(controller.dispose);
+    String? openedLink;
+
+    await tester.pumpWidget(
+      _frameHarness(
+        controller,
+        onOpenTelegramLink: (_, link) => openedLink = link,
+      ),
+    );
+    await _search(tester, 'telegram.me/example_chat');
+
+    final firstCandidate = find.byKey(
+      const ValueKey('desktop-inline-search-deeplink'),
+    );
+    expect(firstCandidate, findsOneWidget);
+    expect(
+      tester.getTopLeft(firstCandidate).dy,
+      lessThan(tester.getTopLeft(find.text('Needle chat')).dy),
+    );
+
+    await tester.tap(firstCandidate);
+    await tester.pumpAndSettle();
+
+    expect(openedLink, 'https://telegram.me/example_chat');
+    expect(controller.panelVisible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a discovered chat with no message history still opens', (
+    tester,
+  ) async {
+    handler = (request) async {
+      if (request['@type'] == 'searchPublicChats') {
+        return {
+          '@type': 'chats',
+          'chat_ids': [300],
+        };
+      }
+      if (request['@type'] == 'getChat' && request['chat_id'] == 300) {
+        return {
+          '@type': 'chat',
+          'id': 300,
+          'title': 'Fresh chat',
+          'type': {'@type': 'chatTypeSupergroup', 'is_channel': false},
+          'positions': <Map<String, dynamic>>[],
+          'unread_count': 0,
+          // Deliberately no last_message: this chat has no history yet.
+        };
+      }
+      return _searchResponse(request);
+    };
+
+    final controller = DesktopInlineSearchController(
+      miniAppSearch: (_) async => const [],
+    );
+    addTearDown(controller.dispose);
+    final deepLinks = _DeepLinkHost();
+    addTearDown(deepLinks.dispose);
+
+    await tester.pumpWidget(_frameHarness(controller));
+    await _search(tester, 'fresh');
+    await tester.tap(find.text('Fresh chat'));
+    await tester.pumpAndSettle();
+
+    final request = ChatDeepLinkController.shared.consumePending();
+    expect(request?.chatId, 300);
+    expect(request?.title, 'Fresh chat');
+    expect(controller.panelVisible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _search(WidgetTester tester, String query) async {
@@ -141,6 +218,7 @@ class _DeepLinkHost {
 Widget _frameHarness(
   DesktopInlineSearchController controller, {
   FutureOr<void> Function(TelegramMiniAppRecent app)? onOpenMiniApp,
+  DesktopTelegramLinkOpener? onOpenTelegramLink,
 }) => MaterialApp(
   navigatorKey: appNavigatorKey,
   theme: ThemeData(extensions: [AppColors.light]),
@@ -179,6 +257,7 @@ Widget _frameHarness(
                     controller: controller,
                     onSearchAll: (_) {},
                     onOpenMiniApp: onOpenMiniApp,
+                    onOpenTelegramLink: onOpenTelegramLink,
                   ),
                 ),
               ),

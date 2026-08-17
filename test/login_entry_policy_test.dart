@@ -1,12 +1,65 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/auth/auth_manager.dart';
+import 'package:mithka/auth/login_view.dart';
 
 import 'support/l10n_fixtures.dart';
 
 final fixtures = L10nFixtures.load();
 
 void main() {
+  test(
+    'system back stays inside login when the page exposes back navigation',
+    () {
+      expect(
+        loginHasBackAction(
+          showBotLogin: false,
+          forcePhone: false,
+          step: const AuthWaitCode(AuthCodeInfo.fallback),
+          configuredAccountCount: 1,
+        ),
+        isTrue,
+      );
+      expect(
+        loginHasBackAction(
+          showBotLogin: false,
+          forcePhone: false,
+          step: const AuthWaitPhoneNumber(),
+          configuredAccountCount: 1,
+        ),
+        isFalse,
+      );
+      expect(
+        loginHasBackAction(
+          showBotLogin: false,
+          forcePhone: true,
+          step: const AuthWaitCode(AuthCodeInfo.fallback),
+          configuredAccountCount: 1,
+        ),
+        isFalse,
+      );
+      expect(
+        loginHasBackAction(
+          showBotLogin: false,
+          forcePhone: true,
+          step: const AuthWaitPhoneNumber(),
+          configuredAccountCount: 2,
+        ),
+        isTrue,
+      );
+      expect(
+        loginHasBackAction(
+          showBotLogin: true,
+          forcePhone: false,
+          step: const AuthWaitPhoneNumber(),
+          configuredAccountCount: 1,
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('login exposes passkeys as an Android-only labeled button', () {
     final source = File('lib/auth/login_view.dart').readAsStringSync();
     expect(

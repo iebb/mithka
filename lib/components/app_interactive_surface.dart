@@ -22,6 +22,7 @@ class AppInteractiveSurface extends StatefulWidget {
     this.selected,
     this.toggled,
     this.checked,
+    this.expanded,
     this.isButton,
     this.enabled = true,
     this.autofocus = false,
@@ -41,6 +42,7 @@ class AppInteractiveSurface extends StatefulWidget {
   final bool? selected;
   final bool? toggled;
   final bool? checked;
+  final bool? expanded;
   final bool? isButton;
   final bool enabled;
   final bool autofocus;
@@ -68,6 +70,7 @@ class _AppInteractiveSurfaceState extends State<AppInteractiveSurface> {
       widget.selected != null ||
       widget.toggled != null ||
       widget.checked != null ||
+      widget.expanded != null ||
       widget.isButton != null;
   bool get _isInteractive =>
       widget.enabled &&
@@ -135,6 +138,7 @@ class _AppInteractiveSurfaceState extends State<AppInteractiveSurface> {
       selected: widget.selected,
       toggled: widget.toggled,
       checked: widget.checked,
+      expanded: widget.expanded,
       onTap: _canActivate ? widget.onTap : null,
       child: FocusableActionDetector(
         enabled: _canActivate,

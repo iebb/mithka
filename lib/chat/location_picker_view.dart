@@ -27,6 +27,9 @@ import '../theme/app_theme.dart';
 const defaultLocationPickerCenter = LatLng(35.681236, 139.767125);
 
 Future<LatLng> resolveLocationPickerStart() async {
+  // The Mac App Store build intentionally has no location entitlement. macOS
+  // pickers remain useful as manual maps, starting from a deterministic point.
+  if (Platform.isMacOS) return defaultLocationPickerCenter;
   try {
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -148,6 +151,7 @@ class _LocationPickerViewState extends State<LocationPickerView> {
   }
 
   Future<void> _myLocation() async {
+    if (Platform.isMacOS) return;
     try {
       final p = await resolveLocationPickerStart();
       if (Platform.isIOS) {
@@ -352,32 +356,34 @@ class _LocationPickerViewState extends State<LocationPickerView> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _myLocation,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: AppIcon(
-                            HeroAppIcons.locationDot,
-                            size: 20,
-                            color: AppTheme.brand,
+                      if (!Platform.isMacOS) ...[
+                        const SizedBox(height: 10),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _myLocation,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: c.card,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: AppIcon(
+                              HeroAppIcons.locationDot,
+                              size: 20,
+                              color: AppTheme.brand,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

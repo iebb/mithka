@@ -14,6 +14,8 @@ void main() {
   late StreamController<Map<String, dynamic>> updates;
   var messages = <Map<String, dynamic>>[];
   Completer<Map<String, dynamic>>? blockedSearch;
+  Map<int, Map<String, dynamic>>? pagedChatResponses;
+  final requestedChatCursors = <int>[];
 
   setUpAll(() {
     updates = StreamController<Map<String, dynamic>>.broadcast();
@@ -32,6 +34,10 @@ void main() {
                 'messages': isArchive ? <Map<String, dynamic>>[] : messages,
               };
             case 'searchChatMessages':
+              final cursor = request['from_message_id'] as int? ?? 0;
+              requestedChatCursors.add(cursor);
+              final paged = pagedChatResponses?[cursor];
+              if (paged != null) return paged;
               return {'@type': 'foundChatMessages', 'messages': messages};
             case 'getFile':
               final fileId = request['file_id'] as int;
@@ -70,6 +76,8 @@ void main() {
   setUp(() {
     messages = _videoMessages();
     blockedSearch = null;
+    pagedChatResponses = null;
+    requestedChatCursors.clear();
   });
 
   tearDownAll(() async {
@@ -398,6 +406,61 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('chat media pages older videos when the grid reaches its end', (
+    tester,
+  ) async {
+    _configureView(tester, const Size(760, 720), TargetPlatform.macOS);
+    pagedChatResponses = {
+      0: {
+        '@type': 'foundChatMessages',
+        'messages': [
+          for (var id = 1; id <= 80; id++)
+            _videoMessage(id, 500 + id, 'Video $id', 30),
+        ],
+        'next_from_message_id': 81,
+      },
+      81: {
+        '@type': 'foundChatMessages',
+        'messages': [_videoMessage(81, 581, 'Older video', 31)],
+      },
+    };
+
+    await tester.pumpWidget(
+      _app(
+        const SharedMediaView(
+          chatId: 101,
+          title: 'Videos',
+          initialTab: 4,
+          displayTitle: AppStringKeys.sharedMediaVideos,
+          lockedTab: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('shared-video-card-101-81')),
+      findsNothing,
+    );
+
+    await tester.drag(
+      find.byKey(const ValueKey('shared-video-grid')),
+      const Offset(0, -12000),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.pumpAndSettle();
+
+    expect(requestedChatCursors, contains(81));
+    final grid = tester.widget<GridView>(
+      find.byKey(const ValueKey('shared-video-grid')),
+    );
+    expect(
+      (grid.childrenDelegate as SliverChildBuilderDelegate).childCount,
+      81,
+    );
     debugDefaultTargetPlatformOverride = null;
   });
 }

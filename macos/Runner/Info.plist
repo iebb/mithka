@@ -44,12 +44,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Mithka uses the camera for photos and videos you choose to send, Telegram video calls, and login QR codes.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Mithka needs your location to share where you are.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Mithka uses the microphone for voice messages and Telegram voice or video calls.</string>
+	<string>Mithka uses the microphone to record voice messages you choose to send.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Mithka needs permission to save images and videos to Photos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -861,6 +861,23 @@ class ChatMessage {
   String? forwardOrigin; // name of the original author when forwarded
   int? forwardFromUserId; // origin user, resolved lazily to forwardOrigin
   int? forwardFromChatId; // origin chat/channel, resolved lazily
+  int? forwardFromMessageId; // original channel message when TDLib exposes it
+
+  /// Whether TDLib supplied enough forwarding metadata to render an
+  /// attribution header, even while the display name is still being resolved.
+  bool get hasForwardAttribution =>
+      (forwardOrigin?.trim().isNotEmpty ?? false) ||
+      (forwardFromUserId != null && forwardFromUserId! > 0) ||
+      (forwardFromChatId != null && forwardFromChatId != 0) ||
+      (forwardFromMessageId != null && forwardFromMessageId! > 0);
+
+  /// Stable text for the header while an asynchronous user/chat lookup is in
+  /// flight or when Telegram intentionally hides the original name.
+  String get forwardDisplayName {
+    final name = forwardOrigin?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return AppStrings.t(AppStringKeys.groupManagementLogUnknownActor);
+  }
 
   /// A plain text message (messageText) — not an audio/poll/contact placeholder.
   bool get isPlainText => contentType == 'messageText';
@@ -1513,9 +1530,11 @@ abstract final class TDParse {
     final media = mediaAttachment(content);
 
     // 转发: forward_info.origin identifies the original author.
-    final origin = message.obj('forward_info')?.obj('origin');
+    final forwardInfo = message.obj('forward_info');
+    final origin = forwardInfo?.obj('origin');
+    final forwardSource = forwardInfo?.obj('source');
     String? fwdName;
-    int? fwdUserId, fwdChatId;
+    int? fwdUserId, fwdChatId, fwdMessageId;
     switch (origin?.type) {
       case 'messageOriginUser':
         fwdUserId = origin?.int64('sender_user_id');
@@ -1524,10 +1543,19 @@ abstract final class TDParse {
         fwdName = origin?.str('author_signature');
       case 'messageOriginChannel':
         fwdChatId = origin?.int64('chat_id');
+        fwdMessageId = origin?.int64('message_id');
         fwdName = origin?.str('author_signature');
       case 'messageOriginHiddenUser':
         fwdName = origin?.str('sender_name');
     }
+    // A few TDLib versions put the navigable source in forward_info.source
+    // instead of repeating it in messageOriginChannel. Keep both forms so a
+    // forwarded channel post remains actionable across cached message shapes.
+    fwdChatId ??=
+        forwardSource?.int64('chat_id') ??
+        forwardSource?.int64('sender_chat_id');
+    fwdMessageId ??= forwardSource?.int64('message_id');
+    if (fwdMessageId != null && fwdMessageId <= 0) fwdMessageId = null;
 
     // 引用: reply_to is messageReplyToMessage { chat_id, message_id, … }.
     final replyTo = message.obj('reply_to');
@@ -1660,7 +1688,8 @@ abstract final class TDParse {
       ..reactions = reactionsFrom(message)
       ..forwardOrigin = isContentRestricted ? null : fwdName
       ..forwardFromUserId = isContentRestricted ? null : fwdUserId
-      ..forwardFromChatId = isContentRestricted ? null : fwdChatId;
+      ..forwardFromChatId = isContentRestricted ? null : fwdChatId
+      ..forwardFromMessageId = isContentRestricted ? null : fwdMessageId;
   }
 
   /// Returns the server-provided reason that makes a chat or message

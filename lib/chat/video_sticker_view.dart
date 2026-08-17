@@ -190,7 +190,10 @@ class _VideoStickerViewState extends State<VideoStickerView>
       return;
     }
 
-    final c = VideoPlayerController.file(File(path));
+    final c = VideoPlayerController.file(
+      File(path),
+      videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
+    );
     _initializingController = c;
     try {
       await c.initialize();

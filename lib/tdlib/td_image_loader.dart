@@ -14,6 +14,16 @@ import 'json_helpers.dart';
 import 'td_client.dart';
 import 'td_models.dart';
 
+class TdFileByteRange {
+  const TdFileByteRange({required this.start, required this.end});
+
+  /// Inclusive start byte.
+  final int start;
+
+  /// Exclusive end byte.
+  final int end;
+}
+
 class TdFileProgress {
   const TdFileProgress({
     required this.fileId,
@@ -22,6 +32,7 @@ class TdFileProgress {
     required this.total,
     required this.isActive,
     required this.isCompleted,
+    this.downloadedRanges,
   });
 
   final int fileId;
@@ -30,6 +41,10 @@ class TdFileProgress {
   final int total;
   final bool isActive;
   final bool isCompleted;
+
+  /// Known byte intervals, when the producer can report sparse downloads.
+  /// `null` means only aggregate TDLib counters are available.
+  final List<TdFileByteRange>? downloadedRanges;
 
   double? get fraction {
     if (isCompleted) return 1;
@@ -56,6 +71,7 @@ class TdFileCenter {
   final Map<String, List<Completer<String?>>> _waiters = {};
   final Map<String, List<Completer<String?>>> _playbackWaiters = {};
   final Map<String, StreamController<TdFileProgress>> _progressControllers = {};
+  final Map<String, List<TdFileByteRange>> _downloadedRanges = {};
   bool _started = false;
   static const _cacheCapacity = 4096;
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
@@ -142,9 +158,28 @@ class TdFileCenter {
     final total = expectedSize > 0 ? expectedSize : fileSize;
     final downloadedSize = local.integer('downloaded_size') ?? 0;
     final downloadedPrefix = local.integer('downloaded_prefix_size') ?? 0;
+    final downloadOffset = local.integer('download_offset') ?? 0;
     final downloaded = completed
         ? total
         : math.max(downloadedSize, downloadedPrefix);
+    // Lifecycle is map-owned: closed on completion below and via onCancel
+    // when the last listener detaches.
+    // ignore: close_sinks
+    final controller = _progressControllers[k];
+    if (controller != null) {
+      if (completed && total > 0) {
+        _downloadedRanges[k] = <TdFileByteRange>[
+          TdFileByteRange(start: 0, end: total),
+        ];
+      } else if (downloadedPrefix > 0 && total > 0) {
+        _rememberDownloadedRange(
+          k,
+          start: downloadOffset,
+          end: downloadOffset + downloadedPrefix,
+          total: total,
+        );
+      }
+    }
     final progress = TdFileProgress(
       fileId: id,
       downloaded: downloaded,
@@ -152,11 +187,10 @@ class TdFileCenter {
       total: total,
       isActive: local.boolean('is_downloading_active') == true,
       isCompleted: completed,
+      downloadedRanges: List<TdFileByteRange>.unmodifiable(
+        _downloadedRanges[k] ?? const <TdFileByteRange>[],
+      ),
     );
-    // Lifecycle is map-owned: closed on completion below and via onCancel
-    // when the last listener detaches.
-    // ignore: close_sinks
-    final controller = _progressControllers[k];
     if (controller != null && !controller.isClosed) {
       controller.add(progress);
     }
@@ -168,6 +202,7 @@ class TdFileCenter {
     // so per-file controllers don't accumulate over a session. A re-download
     // gets a fresh controller from the next progress() call.
     final finished = _progressControllers.remove(k);
+    _downloadedRanges.remove(k);
     unawaited(finished?.close());
 
     _remember(k, path);
@@ -190,6 +225,7 @@ class TdFileCenter {
         onCancel: () {
           if (identical(_progressControllers[k], created)) {
             _progressControllers.remove(k);
+            _downloadedRanges.remove(k);
           }
           created.close();
         },
@@ -206,6 +242,36 @@ class TdFileCenter {
       } catch (_) {}
     });
     return controller.stream;
+  }
+
+  void _rememberDownloadedRange(
+    String key, {
+    required int start,
+    required int end,
+    required int total,
+  }) {
+    final boundedStart = start.clamp(0, total);
+    final boundedEnd = end.clamp(boundedStart, total);
+    if (boundedEnd <= boundedStart) return;
+    final ranges = <TdFileByteRange>[
+      ...?_downloadedRanges[key],
+      TdFileByteRange(start: boundedStart, end: boundedEnd),
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    final merged = <TdFileByteRange>[];
+    for (final range in ranges) {
+      if (merged.isEmpty || range.start > merged.last.end) {
+        merged.add(range);
+        continue;
+      }
+      final previous = merged.removeLast();
+      merged.add(
+        TdFileByteRange(
+          start: previous.start,
+          end: math.max(previous.end, range.end),
+        ),
+      );
+    }
+    _downloadedRanges[key] = merged;
   }
 
   /// Returns the local path as soon as TDLib exposes one, without waiting for

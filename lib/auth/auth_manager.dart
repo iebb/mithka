@@ -183,6 +183,8 @@ Map<String, dynamic> authenticationEmailCodeRequest(String code) => {
 };
 
 class AuthManager extends ChangeNotifier {
+  static const _startupTimeout = Duration(seconds: 20);
+
   final TdClient _client = TdClient.shared;
   final TelegramPasskeyService _passkeys = TelegramPasskeyService.shared;
   final PremiumAuthPurchaseService _premiumPurchases =
@@ -190,6 +192,7 @@ class AuthManager extends ChangeNotifier {
   bool _started = false;
   bool _subscribed = false;
   bool _credentialsMissing = false;
+  Timer? _startupWatchdog;
 
   AuthStep _step = const AuthInitializing();
   String? _errorMessage;
@@ -203,45 +206,95 @@ class AuthManager extends ChangeNotifier {
   bool get isWorking => _isWorking;
   bool get canUseLoginPasskey => _canUseLoginPasskey;
 
+  @override
+  void dispose() {
+    _cancelStartupWatchdog();
+    super.dispose();
+  }
+
   void start() {
     if (_started) return;
     _started = true;
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(_startupTimeout, _handleStartupTimeout);
     unawaited(_startAfterCredentialCheck());
   }
 
   Future<void> _startAfterCredentialCheck() async {
-    final customApi = await ApiCredentialsConfig.load();
-    _credentialsMissing = !Secrets.isConfigured && !customApi.isUsable;
+    try {
+      final customApi = await ApiCredentialsConfig.load().timeout(
+        const Duration(seconds: 8),
+      );
+      _credentialsMissing = !Secrets.isConfigured && !customApi.isUsable;
 
-    // Subscribe before start so no early update is missed.
-    if (!_subscribed) {
-      _subscribed = true;
-      _client.subscribe().listen((update) {
-        if (update.type == 'updateOption' &&
-            update.str('name') == 'can_use_login_passkey') {
-          unawaited(_loadPasskeyAvailability());
-          return;
-        }
-        if (update.type != 'updateAuthorizationState') return;
-        final state = update.obj('authorization_state');
-        if (state != null) _handle(state);
-      });
+      // Subscribe before start so no early update is missed.
+      if (!_subscribed) {
+        _subscribed = true;
+        _client.subscribe().listen((update) {
+          if (update.type == 'updateOption' &&
+              update.str('name') == 'can_use_login_passkey') {
+            unawaited(_loadPasskeyAvailability());
+            return;
+          }
+          if (update.type != 'updateAuthorizationState') return;
+          final state = update.obj('authorization_state');
+          if (state != null) _handle(state);
+        });
+      }
+      await _client.start().timeout(_startupTimeout);
+      if (_credentialsMissing && !_client.activeIsBotApi) {
+        _cancelStartupWatchdog();
+        _set(const AuthMissingCredentials());
+        return;
+      }
+      if (!_client.activeIsBotApi) _client.sendParametersForActiveClient();
+      unawaited(_loadPasskeyAvailability());
+      await ScopeNotificationSettings.shared.load().timeout(
+        const Duration(seconds: 8),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Auth startup failed: $error\n$stackTrace');
+      _showStartupFailure(error);
     }
-    await _client.start();
-    if (_credentialsMissing && !_client.activeIsBotApi) {
-      _set(const AuthMissingCredentials());
-      return;
-    }
-    if (!_client.activeIsBotApi) _client.sendParametersForActiveClient();
-    unawaited(_loadPasskeyAvailability());
-    await ScopeNotificationSettings.shared.load();
   }
 
   void retryStart() {
     if (_step is! AuthMissingCredentials) return;
     _started = false;
+    _cancelStartupWatchdog();
     _set(const AuthInitializing());
     start();
+  }
+
+  void _handleStartupTimeout() {
+    if (!_started || _step is! AuthInitializing) return;
+    debugPrint('Auth startup timed out; showing the login screen.');
+    try {
+      if (!_client.activeIsBotApi) _client.sendParametersForActiveClient();
+    } catch (error) {
+      debugPrint('Auth startup retry failed: $error');
+    }
+    _showStartupFailure(
+      StateError(
+        'Mithka is taking longer than expected to connect. '
+        'Check your internet connection and try again.',
+      ),
+    );
+  }
+
+  void _showStartupFailure(Object error) {
+    if (!_started || _step is! AuthInitializing) return;
+    _cancelStartupWatchdog();
+    _errorMessage = error is StateError
+        ? error.message.toString()
+        : 'Mithka could not finish connecting. Check your internet connection '
+              'and try again.';
+    _set(const AuthWaitPhoneNumber());
+  }
+
+  void _cancelStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    _startupWatchdog = null;
   }
 
   // MARK: - Authorization state machine
@@ -252,6 +305,9 @@ class AuthManager extends ChangeNotifier {
       return;
     }
     debugPrint('🔑 [Mithka] authorizationState → ${state.type ?? 'nil'}');
+    if (state.type != 'authorizationStateWaitTdlibParameters') {
+      _cancelStartupWatchdog();
+    }
     final preserveWorking = _authorizationTransitionAction == _actionSerial;
     if (_isWorking && !preserveWorking) {
       _actionSerial += 1;

@@ -243,18 +243,62 @@ class _ViewerPage extends StatefulWidget {
 class _ViewerPageState extends State<_ViewerPage> {
   final _controller = TransformationController();
   File? _file;
+  File? _thumbnailFile;
+  int _resolutionGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onTransform);
-    TdFileCenter.shared.pathFor(widget.ref).then((path) {
-      if (mounted && path != null) setState(() => _file = File(path));
+    _resolveFiles();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ViewerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isSameFile(oldWidget.ref, widget.ref)) {
+      _file = null;
+      _thumbnailFile = null;
+      _controller.value = Matrix4.identity();
+      widget.onZoomChanged(false);
+      _resolveFiles();
+    }
+  }
+
+  bool _isSameFile(TdFileRef a, TdFileRef b) =>
+      a.id == b.id &&
+      a.localPath == b.localPath &&
+      a.thumbnail?.id == b.thumbnail?.id &&
+      a.thumbnail?.localPath == b.thumbnail?.localPath;
+
+  void _resolveFiles() {
+    final generation = ++_resolutionGeneration;
+    final ref = widget.ref;
+    TdFileCenter.shared.pathFor(ref).then((path) {
+      if (!mounted || generation != _resolutionGeneration || path == null) {
+        return;
+      }
+      setState(() => _file = File(path));
+    });
+
+    final thumbnail = ref.thumbnail;
+    if (thumbnail == null || thumbnail.id == ref.id) return;
+    TdFileCenter.shared.pathFor(thumbnail).then((path) {
+      if (!mounted || generation != _resolutionGeneration || path == null) {
+        return;
+      }
+      setState(() => _thumbnailFile = File(path));
     });
   }
 
   void _onTransform() {
     widget.onZoomChanged(_controller.value.getMaxScaleOnAxis() > 1.01);
+  }
+
+  void _toggleZoom() {
+    final current = _controller.value.getMaxScaleOnAxis();
+    final next = current > 1.01 ? 1.0 : 2.0;
+    _controller.value = Matrix4.diagonal3Values(next, next, 1);
   }
 
   @override
@@ -269,15 +313,49 @@ class _ViewerPageState extends State<_ViewerPage> {
     final media = MediaQuery.of(context);
     final cacheWidth = (media.size.width * media.devicePixelRatio).ceil();
     final cacheHeight = (media.size.height * media.devicePixelRatio).ceil();
+    Widget fittedImage(ImageProvider<Object> image) => SizedBox(
+      width: media.size.width,
+      height: media.size.height,
+      child: Image(image: image, fit: BoxFit.contain),
+    );
+    Widget interactive(Widget child) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _toggleZoom,
+      child: InteractiveViewer(
+        transformationController: _controller,
+        minScale: 1,
+        maxScale: 5,
+        trackpadScrollCausesScale: true,
+        // Keep a finite viewport-sized child for both the real image and its
+        // full image and every thumbnail. Previously only a fully downloaded
+        // file or an in-memory mini-thumbnail was put in InteractiveViewer,
+        // so images still resolving from TDLib could not be zoomed at all.
+        child: child,
+      ),
+    );
     if (_file == null) {
-      if (widget.ref.miniThumb != null) {
-        return Center(
-          child: Image(
-            image: ResizeImage(
-              MemoryImage(widget.ref.miniThumb!),
+      if (_thumbnailFile != null) {
+        return interactive(
+          fittedImage(
+            ResizeImage(
+              FileImage(_thumbnailFile!),
               width: cacheWidth,
               height: cacheHeight,
               policy: ResizeImagePolicy.fit,
+            ),
+          ),
+        );
+      }
+      if (widget.ref.miniThumb != null) {
+        return Center(
+          child: interactive(
+            fittedImage(
+              ResizeImage(
+                MemoryImage(widget.ref.miniThumb!),
+                width: cacheWidth,
+                height: cacheHeight,
+                policy: ResizeImagePolicy.fit,
+              ),
             ),
           ),
         );
@@ -286,22 +364,13 @@ class _ViewerPageState extends State<_ViewerPage> {
         child: AppActivityIndicator(size: 24, color: Color(0xFFFFFFFF)),
       );
     }
-    return InteractiveViewer(
-      transformationController: _controller,
-      minScale: 1,
-      maxScale: 5,
-      child: Center(
-        // Both dimensions come from the screen, and the default `exact` policy
-        // decodes to literally that box: a 4:3 photo decoded ~3x the pixels
-        // BoxFit.contain paints, stretched. `fit` keeps the source aspect.
-        child: Image(
-          image: ResizeImage(
-            FileImage(_file!),
-            width: cacheWidth,
-            height: cacheHeight,
-            policy: ResizeImagePolicy.fit,
-          ),
-          fit: BoxFit.contain,
+    return interactive(
+      fittedImage(
+        ResizeImage(
+          FileImage(_file!),
+          width: cacheWidth,
+          height: cacheHeight,
+          policy: ResizeImagePolicy.fit,
         ),
       ),
     );

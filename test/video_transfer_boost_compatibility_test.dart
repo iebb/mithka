@@ -3,9 +3,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final source = File('lib/chat/video_player_view.dart').readAsStringSync();
+  final playerSource = File(
+    'lib/chat/video_player_view.dart',
+  ).readAsStringSync();
+  final serverSource = File(
+    'lib/chat/td_video_stream_server.dart',
+  ).readAsStringSync();
 
-  String section(String start, String end) {
+  String section(String source, String start, String end) {
     final startIndex = source.indexOf(start);
     final endIndex = source.indexOf(end, startIndex + start.length);
     expect(startIndex, isNonNegative, reason: 'Missing section start: $start');
@@ -18,7 +23,11 @@ void main() {
   }
 
   test('video playback primes a bounded range before starting the server', () {
-    final start = section('Future<Uri?> start()', 'Future<void> close()');
+    final start = section(
+      serverSource,
+      'Future<Uri?> start()',
+      'Future<void> close()',
+    );
 
     expect(start, contains('_primePlaybackRange(0, _chunkSize)'));
     expect(start, isNot(contains('_startContinuousDownload(0)')));
@@ -26,6 +35,7 @@ void main() {
 
   test('playback range changes do not restart an unlimited download', () {
     final ensureRange = section(
+      serverSource,
       'Future<bool> _ensureRange',
       'Future<Map<String, dynamic>?> _downloadPlaybackRange',
     );
@@ -36,6 +46,7 @@ void main() {
 
   test('loopback playback can still finish downloading in background', () {
     final backgroundDownload = section(
+      serverSource,
       'void startBackgroundDownload()',
       'void _updateFileInfo',
     );
@@ -45,6 +56,7 @@ void main() {
 
   test('sparse local files are completion-gated before file playback', () {
     final load = section(
+      playerSource,
       'Future<void> _load({',
       'Future<String?> _completedLocalVideoPath',
     );
@@ -59,6 +71,7 @@ void main() {
 
   test('incomplete playback retains the loopback range source', () {
     final load = section(
+      playerSource,
       'Future<void> _load({',
       'Future<String?> _completedLocalVideoPath',
     );

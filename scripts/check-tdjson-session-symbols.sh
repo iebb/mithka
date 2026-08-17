@@ -13,38 +13,48 @@ if ! command -v nm >/dev/null 2>&1; then
   exit 1
 fi
 
-found_binary=0
+found_device=0
+found_simulator=0
 missing=0
 for binary in \
   "$XCFRAMEWORK/ios-arm64/tdjson.framework/tdjson" \
-  "$XCFRAMEWORK/ios-arm64-simulator/tdjson.framework/tdjson"
+  "$XCFRAMEWORK/ios-arm64-simulator/tdjson.framework/tdjson" \
+  "$XCFRAMEWORK/ios-arm64_x86_64-simulator/tdjson.framework/tdjson"
 do
   if [ ! -f "$binary" ]; then
     continue
   fi
-  found_binary=1
+  case "$binary" in
+    */ios-arm64/tdjson.framework/tdjson) found_device=1 ;;
+    */*-simulator/tdjson.framework/tdjson) found_simulator=1 ;;
+  esac
   symbols="$(/usr/bin/nm -gU "$binary" 2>/dev/null || nm -g "$binary" 2>/dev/null || true)"
   for symbol in \
+    _td_create_client_id \
     _td_mithka_export_session_string \
     _td_mithka_import_session_string \
-    _td_mithka_last_error
+    _td_mithka_last_error \
+    _td_mithka_set_transfer_boost
   do
-    if ! printf '%s\n' "$symbols" | grep -q "$symbol"; then
+    if ! printf '%s\n' "$symbols" | grep -Fq "$symbol"; then
       echo "error: $binary is missing $symbol" >&2
       missing=1
     fi
   done
 done
 
-if [ "$found_binary" -eq 0 ]; then
-  echo "error: no tdjson framework binary found in $XCFRAMEWORK" >&2
-  exit 1
+if [ "$found_device" -eq 0 ]; then
+  echo "error: no tdjson iOS device binary found in $XCFRAMEWORK" >&2
+  missing=1
+fi
+if [ "$found_simulator" -eq 0 ]; then
+  echo "error: no tdjson iOS simulator binary found in $XCFRAMEWORK" >&2
+  missing=1
 fi
 
 if [ "$missing" -ne 0 ]; then
-  echo "error: tdjson.xcframework does not support Mithka TDLib session string backup" >&2
-  echo "error: use the patched mithka-tdjson release asset or set TDJSON_XCFRAMEWORK_URL to one" >&2
+  echo "error: tdjson.xcframework is missing required Mithka TDLib exports" >&2
   exit 1
 fi
 
-echo "✓ tdjson session string symbols available"
+echo "✓ required tdjson symbols available in device and simulator slices"

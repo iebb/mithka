@@ -297,6 +297,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   }
 
   void _callMenu() {
+    if (Theme.of(context).platform == TargetPlatform.macOS) return;
     showAppCupertinoModalPopup<void>(
       context: context,
       builder: (sheet) => CupertinoActionSheet(
@@ -1340,6 +1341,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   Widget _bottomBar() {
     final c = context.colors;
+    final showLeadingAction =
+        !_isContact || Theme.of(context).platform != TargetPlatform.macOS;
     return Container(
       decoration: BoxDecoration(
         color: c.navBar,
@@ -1351,20 +1354,22 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(
             children: [
-              Expanded(
-                child: _barButton(
-                  AppStrings.t(
-                    _isContact
-                        ? AppStringKeys.profileDetailAudioVideoCall
-                        : AppStringKeys.profileDetailAddFriend,
+              if (showLeadingAction) ...[
+                Expanded(
+                  child: _barButton(
+                    AppStrings.t(
+                      _isContact
+                          ? AppStringKeys.profileDetailAudioVideoCall
+                          : AppStringKeys.profileDetailAddFriend,
+                    ),
+                    primary: false,
+                    onTap: _isContact
+                        ? _callMenu
+                        : () => unawaited(_addToContacts()),
                   ),
-                  primary: false,
-                  onTap: _isContact
-                      ? _callMenu
-                      : () => unawaited(_addToContacts()),
                 ),
-              ),
-              const SizedBox(width: 12),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: _barButton(
                   AppStrings.t(AppStringKeys.profileDetailSendMessage),

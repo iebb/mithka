@@ -1177,6 +1177,8 @@
     <string name="composerGroupVideoCall">Group video chat</string>
     <string name="composerGroupVoiceCall">Group voice chat</string>
     <string name="composerHoldToTalk">Hold to talk</string>
+    <string name="composerDesktopVoiceHoldSpace">Hold Space or the microphone to record</string>
+    <string name="composerDesktopVoiceRelease">Release to send · Esc to cancel</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
     <string name="composerLoadingEmoji">Loading emoji…</string>

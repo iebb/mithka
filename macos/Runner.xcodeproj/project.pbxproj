@@ -436,7 +436,7 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/../packages/mithka_video_player_fvp/tool/sanitize_mdk_macos.sh",
+				"$(SRCROOT)/Flutter/ephemeral/Packages/.packages/fvp/tool/sanitize_mdk_macos.sh",
 				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/mdk.framework/Versions/A/mdk",
 			);
 			name = "Sanitize embedded MDK";
@@ -446,7 +446,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "/bin/bash \"$SRCROOT/../packages/mithka_video_player_fvp/tool/sanitize_mdk_macos.sh\"\n";
+			shellScript = "/bin/bash \"$SRCROOT/Flutter/ephemeral/Packages/.packages/fvp/tool/sanitize_mdk_macos.sh\"\n";
 		};
 		AA7F8F7802B6392C1F57AACA /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

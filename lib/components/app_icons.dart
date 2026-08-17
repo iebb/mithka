@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
 
@@ -18,6 +20,120 @@ class AppIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return Icon(icon.data, size: size, color: color);
   }
+}
+
+/// Owned ten-second seek glyph used by video transport controls.
+///
+/// The bundled Heroicons set has generic U-turn and fast-forward symbols but
+/// no ten-second seek icon. Drawing the arc and numeral here keeps the control
+/// visually precise without falling back to a platform icon set.
+class AppSeekTenIcon extends StatelessWidget {
+  const AppSeekTenIcon({
+    super.key,
+    required this.backwards,
+    this.size = 32,
+    this.color,
+  });
+
+  final bool backwards;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor =
+        color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _AppSeekTenIconPainter(
+          backwards: backwards,
+          color: resolvedColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _AppSeekTenIconPainter extends CustomPainter {
+  const _AppSeekTenIconPainter({required this.backwards, required this.color});
+
+  final bool backwards;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final extent = size.shortestSide;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = extent * 0.37;
+    final strokeWidth = (extent * 0.075).clamp(1.5, 3.4);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.save();
+    if (backwards) {
+      canvas.translate(size.width, 0);
+      canvas.scale(-1, 1);
+    }
+    final arcBounds = Rect.fromCircle(center: center, radius: radius);
+    const startAngle = math.pi * 0.22;
+    const sweepAngle = math.pi * 1.48;
+    canvas.drawArc(arcBounds, startAngle, sweepAngle, false, paint);
+
+    const endAngle = startAngle + sweepAngle;
+    final tip = Offset(
+      center.dx + math.cos(endAngle) * radius,
+      center.dy + math.sin(endAngle) * radius,
+    );
+    final tangent = Offset(-math.sin(endAngle), math.cos(endAngle));
+    final perpendicular = Offset(-tangent.dy, tangent.dx);
+    final arrowLength = extent * 0.17;
+    final arrowWidth = extent * 0.095;
+    final arrowBase = tip - tangent * arrowLength;
+    canvas.drawPath(
+      Path()
+        ..moveTo(
+          arrowBase.dx + perpendicular.dx * arrowWidth,
+          arrowBase.dy + perpendicular.dy * arrowWidth,
+        )
+        ..lineTo(tip.dx, tip.dy)
+        ..lineTo(
+          arrowBase.dx - perpendicular.dx * arrowWidth,
+          arrowBase.dy - perpendicular.dy * arrowWidth,
+        ),
+      paint,
+    );
+    canvas.restore();
+
+    final numeral = TextPainter(
+      text: TextSpan(
+        text: '10',
+        style: TextStyle(
+          color: color,
+          fontSize: extent * 0.31,
+          fontWeight: FontWeight.w400,
+          height: 1,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    numeral.paint(
+      canvas,
+      Offset(
+        center.dx - numeral.width / 2,
+        center.dy - numeral.height / 2 + extent * 0.025,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AppSeekTenIconPainter oldDelegate) =>
+      oldDelegate.backwards != backwards || oldDelegate.color != color;
 }
 
 /// Owned push-pin glyph for pinned-item status.

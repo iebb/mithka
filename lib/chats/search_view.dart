@@ -17,6 +17,7 @@ import '../app/app_navigator.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_search_query.dart';
 import '../chat/chat_search_view.dart';
+import '../chat/telegram_link.dart';
 import '../chat/telegram_mini_app_recents.dart';
 import '../chat/telegram_mini_app_view.dart';
 import '../components/app_icons.dart';
@@ -40,6 +41,8 @@ import 'search_token_views.dart';
 /// anchored result panel.
 typedef DesktopMiniAppSearch =
     Future<List<TelegramMiniAppRecent>> Function(String query);
+typedef DesktopTelegramLinkOpener =
+    FutureOr<void> Function(BuildContext context, String link);
 
 class DesktopInlineSearchController extends ChangeNotifier {
   DesktopInlineSearchController({DesktopMiniAppSearch? miniAppSearch})
@@ -125,19 +128,49 @@ class DesktopInlineSearchController extends ChangeNotifier {
 
   List<TelegramMiniAppRecent> get _visibleMiniApps =>
       _scope == null ? _miniApps : const [];
-  List<_DesktopInlineSearchSection> get _visibleSections => [
-    for (final tab in _activeTabs)
-      if (_model.resultsFor(tab).isNotEmpty)
-        _DesktopInlineSearchSection(
-          tab: tab,
-          hits: _model
-              .resultsFor(tab)
-              .take(
-                tab == SearchTab.chats ? _chatResultLimit : _messageResultLimit,
-              )
-              .toList(growable: false),
-        ),
-  ];
+  List<_DesktopInlineSearchSection> get _visibleSections {
+    final sections = <_DesktopInlineSearchSection>[
+      for (final tab in _activeTabs)
+        if (_model.resultsFor(tab).isNotEmpty)
+          _DesktopInlineSearchSection(
+            tab: tab,
+            hits: _model
+                .resultsFor(tab)
+                .take(
+                  tab == SearchTab.chats
+                      ? _chatResultLimit
+                      : _messageResultLimit,
+                )
+                .toList(growable: false),
+          ),
+    ];
+    final link = normalizeTelegramLink(_query);
+    if (link == null) return sections;
+
+    // A pasted Telegram link is an action, not just a text-search query. Put
+    // its opener ahead of any chat result (including a freshly discovered
+    // chat that has no message history yet), and do not spend one of the chat
+    // result slots on it.
+    final linkHit = _SearchHit.telegramLink(
+      displayValue: _query.trim(),
+      link: link,
+    );
+    final chatIndex = sections.indexWhere(
+      (section) => section.tab == SearchTab.chats,
+    );
+    if (chatIndex < 0) {
+      return [
+        _DesktopInlineSearchSection(tab: SearchTab.chats, hits: [linkHit]),
+        ...sections,
+      ];
+    }
+    final chatSection = sections[chatIndex];
+    sections[chatIndex] = _DesktopInlineSearchSection(
+      tab: chatSection.tab,
+      hits: [linkHit, ...chatSection.hits],
+    );
+    return sections;
+  }
 
   /// Focuses the field, optionally scoping the search to a conversation.
   ///
@@ -735,6 +768,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
     required this.onSearchAll,
     this.onSearchCategory,
     this.onOpenMiniApp,
+    this.onOpenTelegramLink,
   });
 
   static const double width = 440;
@@ -747,6 +781,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
   /// Falls back to [onSearchAll] when null.
   final FutureOr<void> Function(String query, SearchTab tab)? onSearchCategory;
   final FutureOr<void> Function(TelegramMiniAppRecent app)? onOpenMiniApp;
+  final DesktopTelegramLinkOpener? onOpenTelegramLink;
 
   void _openCategory(BuildContext context, SearchTab tab) {
     final query = controller.query.trim();
@@ -995,7 +1030,13 @@ class DesktopInlineSearchPanel extends StatelessWidget {
               final host = desktopInlineSearchHostContext(context);
               controller.dismiss();
               if (host == null) return;
-              unawaited(_openSearchHit(host, hit));
+              unawaited(
+                _openSearchHit(
+                  host,
+                  hit,
+                  onOpenTelegramLink: onOpenTelegramLink,
+                ),
+              );
             },
           ),
         );
@@ -1178,6 +1219,9 @@ class _DesktopInlineSearchHitAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AppInteractiveSurface(
+    key: hit.telegramLink == null
+        ? null
+        : const ValueKey('desktop-inline-search-deeplink'),
     semanticLabel: hit.title,
     onTap: onOpen,
     child: _DesktopCompactSearchHitRow(hit: hit, highlight: highlight),
@@ -1824,7 +1868,17 @@ class _SearchViewState extends State<SearchView> {
   }
 }
 
-Future<void> _openSearchHit(BuildContext context, _SearchHit hit) async {
+Future<void> _openSearchHit(
+  BuildContext context,
+  _SearchHit hit, {
+  DesktopTelegramLinkOpener? onOpenTelegramLink,
+}) async {
+  final telegramLink = hit.telegramLink;
+  if (telegramLink != null) {
+    final opener = onOpenTelegramLink;
+    if (opener != null) await opener(context, telegramLink);
+    return;
+  }
   if (hit.message != null && hit.chatId != null) {
     final title = hit.sourceTitle;
     await openChatFromCurrentWindow(
@@ -2321,6 +2375,7 @@ class _SearchHit {
     this.userId,
     this.chatId,
     this.message,
+    this.telegramLink,
   }) : icon = icon ?? HeroAppIcons.message;
 
   factory _SearchHit.chat(ChatSummary chat, {String? subtitle}) => _SearchHit(
@@ -2342,6 +2397,17 @@ class _SearchHit {
       userId: id,
     );
   }
+
+  factory _SearchHit.telegramLink({
+    required String displayValue,
+    required String link,
+  }) => _SearchHit(
+    title: AppStrings.t(AppStringKeys.linkHandlerOpenChat),
+    subtitle: displayValue,
+    telegramLink: link,
+    icon: HeroAppIcons.link,
+    tint: AppTheme.brand,
+  );
 
   factory _SearchHit.message(
     ChatMessage message, {
@@ -2378,6 +2444,7 @@ class _SearchHit {
   final int? userId;
   final int? chatId;
   final ChatMessage? message;
+  final String? telegramLink;
   final AppIconData icon;
   final Color tint;
 

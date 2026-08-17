@@ -28,18 +28,12 @@ module TestFlightGroupDistributor
     end
 
     def post(path, body)
-      request(
-        :post,
-        path,
-        body: body,
-        allow_conflict: true,
-        allow_submission_limit: true
-      )
+      request(:post, path, body: body)
     end
 
     private
 
-    def request(method, path, params: {}, body: nil, allow_conflict: false, allow_submission_limit: false)
+    def request(method, path, params: {}, body: nil)
       uri = URI("#{API_BASE}#{path}")
       uri.query = URI.encode_www_form(params) unless params.empty?
       request_class = method == :get ? Net::HTTP::Get : Net::HTTP::Post
@@ -60,10 +54,6 @@ module TestFlightGroupDistributor
       ) { |http| http.request(request) }
       status = response.code.to_i
       payload = response.body.to_s.empty? ? {} : JSON.parse(response.body)
-      if allow_submission_limit && !status.between?(200, 299) && submission_limit_reached?(payload)
-        return { "submission_limit_reached" => true }
-      end
-      return { "conflict" => true } if allow_conflict && status == 409
 
       unless status.between?(200, 299)
         details = Array(payload["errors"]).map do |error|
@@ -74,18 +64,6 @@ module TestFlightGroupDistributor
       payload
     rescue JSON::ParserError => error
       raise Error, "App Store Connect returned invalid JSON: #{error.message}"
-    end
-
-    def submission_limit_reached?(payload)
-      Array(payload["errors"]).any? do |error|
-        message = [error["code"], error["title"], error["detail"]]
-                  .compact
-                  .join(" ")
-                  .downcase
-                  .gsub(/[^a-z0-9]+/, " ")
-                  .strip
-        message.match?(/\b(?:submission limit (?:has been )?reached|reached (?:the )?submission limit)\b/)
-      end
     end
 
     def token
@@ -122,7 +100,26 @@ module TestFlightGroupDistributor
   end
 
   class Runner
-    def initialize(client:, app_id:, build_number:, platform:, internal_group:, external_group:, wait_seconds:)
+    SUBMITTED_REVIEW_STATES = %w[WAITING_FOR_REVIEW IN_REVIEW APPROVED].freeze
+    EXTERNAL_SUBMITTED_STATES = %w[
+      WAITING_FOR_BETA_REVIEW
+      IN_BETA_REVIEW
+      BETA_APPROVED
+      IN_BETA_TESTING
+    ].freeze
+    TERMINAL_INTERNAL_STATES = %w[PROCESSING_EXCEPTION EXPIRED].freeze
+    TERMINAL_EXTERNAL_STATES = %w[PROCESSING_EXCEPTION BETA_REJECTED EXPIRED].freeze
+
+    def initialize(
+      client:,
+      app_id:,
+      build_number:,
+      platform:,
+      internal_group:,
+      external_group:,
+      wait_seconds:,
+      distribution_wait_seconds: 300
+    )
       @client = client
       @app_id = app_id
       @build_number = build_number
@@ -130,20 +127,19 @@ module TestFlightGroupDistributor
       @internal_group = internal_group
       @external_group = external_group
       @wait_seconds = wait_seconds
+      @distribution_wait_seconds = distribution_wait_seconds
     end
 
     def run
       build = wait_for_build
+      build_id = build.fetch("id")
       groups = @client.get("/apps/#{@app_id}/betaGroups", "limit" => "200").fetch("data")
-      statuses = [
-        assign(build.fetch("id"), find_group(groups, @internal_group, true)),
-        assign(build.fetch("id"), find_group(groups, @external_group, false))
-      ]
-      if statuses.include?(:submission_limit_reached)
-        puts "Accepted #{platform_name} build #{@build_number}; the TestFlight submission limit is treated as success."
-      else
-        puts "Assigned #{platform_name} build #{@build_number} to internal and external TestFlight groups."
-      end
+      assign(build_id, find_group(groups, @internal_group, true))
+      assign(build_id, find_group(groups, @external_group, false))
+      submit_external_review(build_id)
+      internal_state, external_state = wait_for_distribution(build_id)
+      puts "Verified #{platform_name} build #{@build_number}: " \
+           "Internal is #{internal_state}; External is #{external_state}."
     end
 
     private
@@ -200,18 +196,82 @@ module TestFlightGroupDistributor
         return :automatic
       end
 
-      result = @client.post(
+      @client.post(
         "/betaGroups/#{group.fetch('id')}/relationships/builds",
         "data" => [{ "type" => "builds", "id" => build_id }]
       )
-      if result["submission_limit_reached"]
-        puts "#{group.dig('attributes', 'name')}: submission limit reached; treating as success"
-        return :submission_limit_reached
+      puts "#{group.dig('attributes', 'name')}: assigned"
+      :assigned
+    end
+
+    def submit_external_review(build_id)
+      submissions = @client.get(
+        "/betaAppReviewSubmissions",
+        "filter[build]" => build_id,
+        "limit" => "10"
+      ).fetch("data")
+      active_submission = submissions.find do |submission|
+        SUBMITTED_REVIEW_STATES.include?(submission.dig("attributes", "betaReviewState"))
+      end
+      if active_submission
+        state = active_submission.dig("attributes", "betaReviewState")
+        puts "External: Beta App Review already #{state}"
+        return state
       end
 
-      status = result["conflict"] ? "already assigned" : "assigned"
-      puts "#{group.dig('attributes', 'name')}: #{status}"
-      status.tr(" ", "_").to_sym
+      rejected_submission = submissions.find do |submission|
+        submission.dig("attributes", "betaReviewState") == "REJECTED"
+      end
+      if rejected_submission
+        raise Error, "build #{@build_number} has a rejected Beta App Review submission"
+      end
+
+      response = @client.post(
+        "/betaAppReviewSubmissions",
+        "data" => {
+          "type" => "betaAppReviewSubmissions",
+          "relationships" => {
+            "build" => {
+              "data" => { "type" => "builds", "id" => build_id }
+            }
+          }
+        }
+      )
+      state = response.dig("data", "attributes", "betaReviewState")
+      unless SUBMITTED_REVIEW_STATES.include?(state)
+        raise Error, "Beta App Review submission returned unexpected state #{state || 'missing'}"
+      end
+
+      puts "External: submitted to Beta App Review (#{state})"
+      state
+    end
+
+    def wait_for_distribution(build_id)
+      deadline = Time.now + @distribution_wait_seconds
+      loop do
+        attributes = @client.get(
+          "/builds/#{build_id}/buildBetaDetail"
+        ).fetch("data").fetch("attributes")
+        internal_state = attributes.fetch("internalBuildState")
+        external_state = attributes.fetch("externalBuildState")
+        if internal_state == "IN_BETA_TESTING" && EXTERNAL_SUBMITTED_STATES.include?(external_state)
+          return [internal_state, external_state]
+        end
+        if TERMINAL_INTERNAL_STATES.include?(internal_state) ||
+           TERMINAL_EXTERNAL_STATES.include?(external_state)
+          raise Error, "build #{@build_number} entered terminal TestFlight state " \
+                       "Internal=#{internal_state}, External=#{external_state}"
+        end
+        if Time.now >= deadline
+          raise Error, "build #{@build_number} did not reach both TestFlight groups after " \
+                       "#{@distribution_wait_seconds} seconds: " \
+                       "Internal=#{internal_state}, External=#{external_state}"
+        end
+
+        puts "Waiting for TestFlight distribution " \
+             "(Internal=#{internal_state}, External=#{external_state})..."
+        sleep 15
+      end
     end
   end
 
@@ -223,7 +283,8 @@ if $PROGRAM_NAME == __FILE__
     platform: "MAC_OS",
     internal_group: "Internal",
     external_group: "External",
-    wait_seconds: 2_700
+    wait_seconds: 2_700,
+    distribution_wait_seconds: 300
   }
   OptionParser.new do |parser|
     parser.on("--key-id VALUE") { |value| options[:key_id] = value }
@@ -235,6 +296,9 @@ if $PROGRAM_NAME == __FILE__
     parser.on("--internal-group VALUE") { |value| options[:internal_group] = value }
     parser.on("--external-group VALUE") { |value| options[:external_group] = value }
     parser.on("--wait-seconds VALUE", Integer) { |value| options[:wait_seconds] = value }
+    parser.on("--distribution-wait-seconds VALUE", Integer) do |value|
+      options[:distribution_wait_seconds] = value
+    end
   end.parse!
 
   required = %i[key_id issuer_id key_path app_id build_number platform internal_group external_group]
@@ -254,6 +318,7 @@ if $PROGRAM_NAME == __FILE__
     platform: options[:platform],
     internal_group: options[:internal_group],
     external_group: options[:external_group],
-    wait_seconds: options[:wait_seconds]
+    wait_seconds: options[:wait_seconds],
+    distribution_wait_seconds: options[:distribution_wait_seconds]
   ).run
 end

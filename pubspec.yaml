@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.0.0+282
+version: 1.0.13+282
 
 environment:
   sdk: ^3.12.2
@@ -44,6 +44,9 @@ dependencies:
   # only release so desktop builds compile and voice notes remain mobile-only.
   flutter_sound: 9.28.0
   logger: ^2.7.0
+  # macOS voice messages use AVFoundation through record and send AAC/M4A,
+  # which TDLib accepts as a voice-note input alongside OGG/Opus.
+  record: ^7.1.1
   # 13.x hardcodes Android compileSdk 37, which is not installed in the pinned
   # Flutter/Android toolchain. Keep the newest SDK-36-compatible release.
   permission_handler: ^12.0.3
@@ -82,21 +85,30 @@ dependencies:
   # replaces the old ffmpeg_kit→WebP transcode.
   video_player: ^2.13.0
   # Reusable player controls, scrub previews, and independent desktop windows.
-  mithka_video_player:
-    path: packages/mithka_video_player
+  f_videoplayer:
+    git:
+      url: https://github.com/iebb/f-videoplayer.git
+      ref: v0.5.6
+      path: packages/f_videoplayer
   # Main-window chrome uses DragToMoveArea on desktop. Keep this direct rather
   # than relying on the video-player package's transitive dependency.
   multi_window_manager: ^1.3.0
   # Optional FVP registration kept outside the reusable player core.
-  mithka_video_player_fvp:
-    path: packages/mithka_video_player_fvp
+  f_videoplayer_fvp:
+    git:
+      url: https://github.com/iebb/f-videoplayer.git
+      ref: v0.5.6
+      path: packages/f_videoplayer_fvp
   # Story video preparation: native 60-second segmentation and mobile-friendly
   # re-encoding before TDLib's inputStoryContentVideo upload.
   light_compressor_v2: ^1.9.0
   # Direct because Mithka also consumes FVP-specific controller and PiP APIs.
   fvp: ^0.37.3
-  system_picture_in_picture:
-    path: third_party/system_picture_in_picture
+  f_videoplayer_pip:
+    git:
+      url: https://github.com/iebb/f-videoplayer.git
+      ref: v0.5.6
+      path: packages/f_videoplayer_pip
   flutter_local_notifications: ^22.2.0
   google_fonts: ^8.2.1
   firebase_core: ^4.12.1
@@ -138,7 +150,10 @@ dev_dependencies:
   video_player_platform_interface: any
 dependency_overrides:
   fvp:
-    path: third_party/fvp
+    git:
+      url: https://github.com/iebb/f-videoplayer.git
+      ref: v0.5.6
+      path: third_party/fvp
 
 flutter_launcher_icons:
   image_path: "assets/app_icon.png"

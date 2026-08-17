@@ -34,9 +34,11 @@ import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
+import 'message_reaction_availability.dart';
 import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
+import 'quick_reaction_choice.dart';
 import 'rich_message_source.dart';
 import 'secret_chat_service.dart';
 import 'sponsored_messages_cache.dart';
@@ -139,6 +141,12 @@ class _MessageSendResult {
   const _MessageSendResult.failure(this.error);
 
   final TdError? error;
+}
+
+bool _isVoiceMessageRestrictionError(Object error) {
+  final normalized = error.toString().toUpperCase();
+  return normalized.contains('VOICE_MESSAGES_FORBIDDEN') ||
+      normalized.contains('CHAT_SEND_VOICES_FORBIDDEN');
 }
 
 class _ChatActionInfo {
@@ -431,6 +439,7 @@ class ChatViewModel extends ChangeNotifier {
   // Membership / send permission. Defaults assume a normal, joined, sendable
   // chat; refined in _loadChatHeader once the chat type + member status load.
   bool canSendMessages = true; // composer enabled
+  bool canSendVoiceNotes = true;
   bool isMember = true; // gates 退出; false → join affordance
   bool canJoin = false; // not a member but joinable (public super/channel/left)
   bool joinByRequest = false; // joining needs approval → "申请加入"
@@ -2003,6 +2012,7 @@ class ChatViewModel extends ChangeNotifier {
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
   }) async {
+    if (!canSendMessages || !canSendVoiceNotes) return false;
     try {
       await _client.query(
         _withPaidMessageOptions({
@@ -2022,6 +2032,10 @@ class ChatViewModel extends ChangeNotifier {
       );
       return true;
     } catch (error) {
+      if (_isVoiceMessageRestrictionError(error)) {
+        canSendVoiceNotes = false;
+        notifyListeners();
+      }
       debugPrint('Failed to send voice note: $error');
       _publishSendFailure(
         ChatSendFailure.fromError(
@@ -3281,6 +3295,8 @@ class ChatViewModel extends ChangeNotifier {
     _chatCanSend =
         chat.obj('permissions')?.boolean('can_send_basic_messages') ?? true;
     canSendMessages = _chatCanSend;
+    canSendVoiceNotes =
+        chat.obj('permissions')?.boolean('can_send_voice_notes') ?? true;
     isMember = true;
     canJoin = false;
     joinByRequest = false;
@@ -3610,12 +3626,15 @@ class ChatViewModel extends ChangeNotifier {
     var next = 0;
     var restrictsNewChats = false;
     var isUnavailable = false;
+    var voiceMessagesForbidden = false;
     try {
       final full = await _client.query({
         '@type': 'getUserFullInfo',
         'user_id': userId,
       });
       next = _paidMessageStars(full);
+      voiceMessagesForbidden =
+          full.boolean('has_restricted_voice_and_video_note_messages') ?? false;
     } catch (_) {}
     try {
       final result = await _client.query({
@@ -3642,10 +3661,13 @@ class ChatViewModel extends ChangeNotifier {
     final requirementChanged =
         peerRequiresPremiumOrContact != restrictsNewChats ||
         peerIsUnavailable != isUnavailable;
+    final voiceRestrictionChanged =
+        canSendVoiceNotes != !voiceMessagesForbidden;
     peerRequiresPremiumOrContact = restrictsNewChats;
     peerIsUnavailable = isUnavailable;
+    canSendVoiceNotes = !voiceMessagesForbidden;
     _setPaidMessageStarCount(next, notify: false);
-    if (paidCountChanged || requirementChanged) {
+    if (paidCountChanged || requirementChanged || voiceRestrictionChanged) {
       notifyListeners();
     }
   }
@@ -3835,6 +3857,9 @@ class ChatViewModel extends ChangeNotifier {
         canSendMessages =
             status?.obj('permissions')?.boolean('can_send_basic_messages') ??
             false;
+        canSendVoiceNotes =
+            status?.obj('permissions')?.boolean('can_send_voice_notes') ??
+            canSendVoiceNotes;
         if (!isMember) canJoin = true;
         if (!canSendMessages) {
           sendDisabledReason = AppStrings.t(AppStringKeys.chatYouAreMuted);
@@ -3842,10 +3867,12 @@ class ChatViewModel extends ChangeNotifier {
       case 'chatMemberStatusLeft':
         isMember = false;
         canSendMessages = false;
+        canSendVoiceNotes = false;
         canJoin = true;
       case 'chatMemberStatusBanned':
         isMember = false;
         canSendMessages = false;
+        canSendVoiceNotes = false;
         sendDisabledReason = AppStrings.t(
           AppStringKeys.chatYouWereRemovedFromGroup,
         );
@@ -4763,6 +4790,9 @@ class ChatViewModel extends ChangeNotifier {
             };
         final error = TdError(errorData);
         debugPrint('Message $oldMessageId failed to send: $error');
+        if (_isVoiceMessageRestrictionError(error)) {
+          canSendVoiceNotes = false;
+        }
         _discardPendingMessage(oldMessageId);
         _recordMessageSendResult(
           oldMessageId,
@@ -4798,6 +4828,11 @@ class ChatViewModel extends ChangeNotifier {
         _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         hasProtectedContent =
             chat.boolean('has_protected_content') ?? hasProtectedContent;
+        if (chat.containsKey('permissions')) {
+          canSendVoiceNotes =
+              chat.obj('permissions')?.boolean('can_send_voice_notes') ??
+              canSendVoiceNotes;
+        }
         if (chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }
@@ -5122,52 +5157,101 @@ class ChatViewModel extends ChangeNotifier {
 
   // MARK: - Reactions
 
-  void addReaction(int messageId, String emoji) {
-    _client.send({
-      '@type': 'addMessageReaction',
-      'chat_id': chatId,
-      'message_id': messageId,
-      'reaction_type': {
-        '@type': 'reactionTypeEmoji',
-        'emoji': emoji.replaceAll(RegExp('[\uFE0E\uFE0F]'), ''),
-      },
-      'is_big': false,
-      'update_recent_reactions': true,
-    });
+  bool get _usesBotApiBackend =>
+      isBotApiAccount || _client.isBotApiSlot(_accountSlot);
+
+  Future<MessageReactionAvailability> messageReactionAvailability(
+    int messageId, {
+    int rowSize = 7,
+  }) async {
+    try {
+      final responses = await Future.wait([
+        _client.queryTo({
+          '@type': 'getMessageAvailableReactions',
+          'chat_id': chatId,
+          'message_id': messageId,
+          'row_size': rowSize.clamp(5, 25),
+        }, _accountClientId),
+        _client.queryTo({
+          '@type': 'getOption',
+          'name': 'is_premium',
+        }, _accountClientId),
+      ]);
+      return MessageReactionAvailability.fromTd(
+        responses.first,
+        isPremium: responses.last.boolean('value') ?? false,
+      );
+    } catch (_) {
+      if (!_usesBotApiBackend) rethrow;
+      // The direct Bot API has no per-message availability method. Keep the
+      // picker hidden instead of presenting reactions that this message may
+      // reject. Existing reaction buckets remain toggleable below, where the
+      // awaited Bot API send is the authoritative availability check.
+      return MessageReactionAvailability.fallback(
+        choices: const <QuickReactionChoice>[],
+        allowArbitraryCustom: false,
+      );
+    }
   }
+
+  Future<void> addReaction(int messageId, String emoji) =>
+      _addReactionChoice(messageId, QuickReactionChoice.emoji(emoji));
 
   /// Custom (premium) emoji reaction.
-  void addCustomReaction(int messageId, int customEmojiId) {
-    _client.send({
+  Future<void> addCustomReaction(int messageId, int customEmojiId) =>
+      _addReactionChoice(messageId, QuickReactionChoice.custom(customEmojiId));
+
+  Future<void> _addReactionChoice(
+    int messageId,
+    QuickReactionChoice requested,
+  ) async {
+    final availability = await messageReactionAvailability(messageId);
+    final reaction = availability.canonicalChoice(requested);
+    if (reaction == null) throw const MessageReactionUnavailableException();
+    await _sendReactionChoice(messageId, reaction);
+  }
+
+  Future<void> _sendReactionChoice(
+    int messageId,
+    QuickReactionChoice reaction,
+  ) async {
+    await _client.queryTo({
       '@type': 'addMessageReaction',
       'chat_id': chatId,
       'message_id': messageId,
-      'reaction_type': {
-        '@type': 'reactionTypeCustomEmoji',
-        'custom_emoji_id': customEmojiId,
-      },
+      'reaction_type': reaction.isCustom
+          ? {
+              '@type': 'reactionTypeCustomEmoji',
+              'custom_emoji_id': reaction.customEmojiId,
+            }
+          : {'@type': 'reactionTypeEmoji', 'emoji': reaction.emoji},
       'is_big': false,
       'update_recent_reactions': true,
-    });
+    }, _accountClientId);
   }
 
-  void toggleReaction(ChatMessage m, MessageReaction r) {
+  Future<void> toggleReaction(ChatMessage m, MessageReaction r) async {
     if (r.chosen) {
-      _client.send({
+      // TDLib guarantees that a chosen reaction remains removable even when
+      // the user can no longer add reactions to the message.
+      await _client.queryTo({
         '@type': 'removeMessageReaction',
         'chat_id': chatId,
         'message_id': m.id,
         'reaction_type': r.type,
-      });
+      }, _accountClientId);
     } else {
-      _client.send({
-        '@type': 'addMessageReaction',
-        'chat_id': chatId,
-        'message_id': m.id,
-        'reaction_type': r.type,
-        'is_big': false,
-        'update_recent_reactions': true,
-      });
+      final reaction = r.customEmojiId != 0
+          ? QuickReactionChoice.custom(r.customEmojiId)
+          : QuickReactionChoice.emoji(r.emoji ?? '');
+      if (_usesBotApiBackend) {
+        // A Bot API message can expose a reaction bucket even though the API
+        // can't enumerate all reactions allowed for that individual message.
+        // Let the server accept or reject that exact existing bucket.
+        await _sendReactionChoice(m.id, reaction);
+      } else {
+        await _addReactionChoice(m.id, reaction);
+      }
     }
   }
 

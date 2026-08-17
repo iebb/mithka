@@ -325,6 +325,19 @@ void main() {
         isFalse,
       );
     });
+
+    test('keeps the pivot after the user claims the viewport', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 900,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+          viewportClaimedByUser: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('shouldRebaseForExpandedInitialWindow', () {
@@ -347,6 +360,19 @@ void main() {
           latestArmIsShort: true,
           hasMessageOlderThanPivot: true,
           followingLatest: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('ignores hydration after the user claims the viewport', () {
+      expect(
+        shouldRebaseForExpandedInitialWindow(
+          transcriptChanged: true,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: true,
+          viewportClaimedByUser: true,
         ),
         isFalse,
       );

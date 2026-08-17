@@ -18,7 +18,6 @@
 #   FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64
 #                      base64 of ios/Runner/GoogleService-Info.plist
 # Optional:
-#   TDJSON_XCFRAMEWORK_URL   override the prebuilt-framework download (see default below)
 #   TGVOIP_WEBRTC_XCFRAMEWORK_URL
 #                      override the pinned official Telegram iOS group-call XCFramework
 #   TGVOIP_WEBRTC_XCFRAMEWORK_SHA256
@@ -31,14 +30,12 @@
 #
 # The prebuilt tdjson.xcframework is hosted in the sibling mithka-tdjson repo
 # rather than rebuilt here, because building TDLib + OpenSSL for iOS takes
-# ~40 min. The default URL is pinned so Xcode Cloud cannot pick a stale latest
-# artifact without the Mithka session string backup symbols.
+# ~40 min. scripts/build-tdjson-ios.sh resolves the repository-pinned manifest,
+# verifies the archive and installed framework, and never follows "latest".
 
 set -e
 
 FLUTTER_VERSION="3.44.2"
-TDJSON_RELEASE_TAG="tdlib-1.8.66-1b08c83bc078-rebuild-29623073124-1"
-TDJSON_URL="${TDJSON_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TDJSON_RELEASE_TAG}/tdjson-ios.xcframework.zip}"
 TGVOIP_RELEASE_TAG="tgvoip-telegram-ios-6e370e06d147"
 TGVOIP_URL="${TGVOIP_WEBRTC_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TGVOIP_RELEASE_TAG}/tgvoip-ios.xcframework.zip}"
 TGVOIP_SHA256="${TGVOIP_WEBRTC_XCFRAMEWORK_SHA256:-a1da44189af3802fcc0900696c5cdc549ffc2e53c5a2a0bab713a208aefe2737}"
@@ -205,9 +202,9 @@ GIT_COMMIT="$(git rev-parse --short HEAD)"
 echo "▸ git commit: $GIT_COMMIT"
 
 # Xcode Cloud runs xcodebuild after this script and can otherwise keep using
-# stale Flutter values from the checked-in project. Keep the major/minor version
-# from pubspec.yaml but force the iOS patch component to zero. Android nightlies
-# can therefore advance independently (for example 0.8.2 becomes 0.8.0 on iOS).
+# stale Flutter values from the checked-in project. Preserve the complete
+# semantic version from pubspec.yaml so nightly builds move to a new App Store
+# Connect release train when the previous train is closed.
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
@@ -224,7 +221,7 @@ case "$APP_BUILD_NUMBER" in
 esac
 XCODE_BUILD_NAME="$(
   printf '%s\n' "$APP_BUILD_NAME" |
-    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $1 "." $2 ".0" }'
+    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $0 }'
 )"
 if [ -z "$XCODE_BUILD_NAME" ]; then
   echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $APP_BUILD_NAME" >&2
@@ -274,16 +271,9 @@ else
   exit 1
 fi
 
-# --- Native TDLib framework (git-ignored; prebuilt on a public release) ------
-echo "▸ downloading tdjson.xcframework"
-mkdir -p ios/tdjson
-rm -rf ios/tdjson/tdjson.xcframework /tmp/tdjson.zip
-# shellcheck disable=SC2086 # CURL_RETRY_FLAGS is intentionally split.
-retry 4 5 curl $CURL_RETRY_FLAGS "$TDJSON_URL" -o /tmp/tdjson.zip
-unzip -q -o /tmp/tdjson.zip -d ios/tdjson
-ls -d ios/tdjson/tdjson.xcframework
-"$REPO/scripts/wrap-tdjson-xcframework.sh" ios/tdjson/tdjson.xcframework
-"$REPO/scripts/check-tdjson-session-symbols.sh" ios/tdjson/tdjson.xcframework
+# --- Native TDLib framework (git-ignored; manifest-pinned release artifact) --
+echo "▸ preparing pinned tdjson.xcframework"
+"$REPO/scripts/build-tdjson-ios.sh"
 
 echo "▸ downloading TgVoipWebrtc.xcframework"
 rm -rf ios/LocalPods/tgvoip/TgVoipWebrtc.xcframework /tmp/tgvoip.zip

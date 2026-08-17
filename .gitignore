@@ -72,10 +72,12 @@ lib/config/secrets.dart
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
-# Native TDLib binaries (large, platform-specific — built via scripts/, see NATIVE.md)
+# Reproducible TDJSON install outputs (large and platform-specific; resolved
+# from scripts/tdjson-manifest.json by the helpers documented in NATIVE.md).
 android/app/src/main/jniLibs/
 **/tdjson.xcframework/
 **/TgVoipWebrtc.xcframework/
+# Legacy source-build cache; unused by the manifest-based artifact installers.
 .tdlib-build/
 /native-libs/
 

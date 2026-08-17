@@ -32,43 +32,202 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
   });
 
-  testWidgets(
-    'startup hydrates the newest page before accepting older-page pagination',
-    (tester) async {
-      final firstLoad = Completer<Map<String, dynamic>>();
-      final requestTypes = <String>[];
-      final model = ChatListViewModel(
-        queryForTesting: (request) {
-          requestTypes.add(request.type ?? 'unknown');
-          return switch (request.type) {
-            'loadChats' => firstLoad.future,
-            'getChats' => Future.value({
-              '@type': 'chats',
-              'chat_ids': const <int>[],
-            }),
-            _ => Future.value({'@type': 'ok'}),
-          };
+  testWidgets('startup hydrates local rows while loadChats is pending', (
+    tester,
+  ) async {
+    final firstLoad = Completer<Map<String, dynamic>>();
+    final requestTypes = <String>[];
+    final currentChat = _privateChat(
+      title: 'Current chat',
+      order: 200,
+      messageId: 20,
+      messageDate: 20,
+      text: 'current message',
+    );
+    final model = ChatListViewModel(
+      queryForTesting: (request) {
+        requestTypes.add(request.type ?? 'unknown');
+        return switch (request.type) {
+          'loadChats' => firstLoad.future,
+          'getChats' => Future.value({
+            '@type': 'chats',
+            'chat_ids': const <int>[42],
+          }),
+          'getChat' => Future.value(currentChat),
+          _ => Future.value({'@type': 'ok'}),
+        };
+      },
+    );
+
+    model.onAppear();
+    model.loadMore();
+    model.applyUpdateForTesting({
+      '@type': 'updateNewChat',
+      'chat': _privateChat(
+        title: 'Restored old chat',
+        order: 100,
+        messageId: 10,
+        messageDate: 10,
+        text: 'old cached message',
+      ),
+    });
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      requestTypes,
+      ['loadChats', 'getChats', 'getChat'],
+      reason: 'the local page should render without waiting on loadChats',
+    );
+    expect(model.isInitialLoading, isFalse);
+    expect(model.chats, hasLength(1));
+    expect(model.chats.single.title, 'Current chat');
+    expect(model.chats.single.lastMessage, 'current message');
+
+    firstLoad.complete({'@type': 'ok'});
+    await tester.pump();
+    await tester.pump();
+
+    expect(requestTypes, [
+      'loadChats',
+      'getChats',
+      'getChat',
+      'getChats',
+      'getChat',
+    ]);
+    expect(model.isInitialLoading, isFalse);
+    expect(model.chats, hasLength(1));
+    expect(model.chats.single.title, 'Current chat');
+    expect(model.chats.single.lastMessage, 'current message');
+
+    model.applyUpdateForTesting({
+      '@type': 'updateNewChat',
+      'chat': _privateChat(
+        title: 'Late restored old chat',
+        order: 100,
+        messageId: 10,
+        messageDate: 10,
+        text: 'late old cached message',
+      ),
+    });
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(model.chats.single.title, 'Current chat');
+    expect(model.chats.single.lastMessage, 'current message');
+
+    model.dispose();
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testWidgets('live chat updates survive a delayed startup membership lookup', (
+    tester,
+  ) async {
+    final membership = Completer<bool>();
+    final model = ChatListViewModel(
+      membershipForTesting: (_, _) => membership.future,
+    );
+    addTearDown(model.dispose);
+
+    final ingest = model.ingestRawChatForTesting(
+      _groupChat(
+        order: 100,
+        messageId: 10,
+        messageDate: 10,
+        text: 'old startup message',
+      ),
+    );
+    expect(model.chats, isEmpty);
+
+    model.applyUpdateForTesting({
+      '@type': 'updateChatLastMessage',
+      'chat_id': 42,
+      'last_message': _message(id: 20, date: 20, text: 'live message'),
+      'positions': [
+        {
+          '@type': 'chatPosition',
+          'list': {'@type': 'chatListMain'},
+          'order': 200,
+          'is_pinned': false,
         },
-      );
+      ],
+    });
+    await tester.pump(const Duration(milliseconds: 50));
 
-      model.onAppear();
-      model.loadMore();
-      await tester.pump();
+    expect(model.chats, hasLength(1));
+    expect(model.chats.single.lastMessage, 'live message');
+    expect(model.chats.single.order, 200);
 
-      expect(
-        requestTypes,
-        ['loadChats'],
-        reason: 'pagination must not read a stale list during the first load',
-      );
+    membership.complete(true);
+    await ingest;
+    await tester.pump(const Duration(milliseconds: 50));
 
-      firstLoad.complete({'@type': 'ok'});
-      await tester.pump();
-      await tester.pump();
-
-      expect(requestTypes, ['loadChats', 'getChats']);
-
-      model.dispose();
-      await tester.pump(const Duration(seconds: 6));
-    },
-  );
+    expect(model.chats, hasLength(1));
+    expect(model.chats.single.lastMessage, 'live message');
+    expect(model.chats.single.lastMessageId, 20);
+    expect(model.chats.single.date, 20);
+    expect(model.chats.single.order, 200);
+  });
 }
+
+Map<String, dynamic> _privateChat({
+  required String title,
+  required int order,
+  required int messageId,
+  required int messageDate,
+  required String text,
+}) => {
+  '@type': 'chat',
+  'id': 42,
+  'title': title,
+  'type': {'@type': 'chatTypePrivate', 'user_id': 7},
+  'last_message': _message(id: messageId, date: messageDate, text: text),
+  'positions': [
+    {
+      '@type': 'chatPosition',
+      'list': {'@type': 'chatListMain'},
+      'order': order,
+      'is_pinned': false,
+    },
+  ],
+};
+
+Map<String, dynamic> _groupChat({
+  required int order,
+  required int messageId,
+  required int messageDate,
+  required String text,
+}) => {
+  '@type': 'chat',
+  'id': 42,
+  'title': 'Current group',
+  'view_as_topics': true,
+  'type': {
+    '@type': 'chatTypeSupergroup',
+    'supergroup_id': 7,
+    'is_channel': false,
+  },
+  'last_message': _message(id: messageId, date: messageDate, text: text),
+  'positions': [
+    {
+      '@type': 'chatPosition',
+      'list': {'@type': 'chatListMain'},
+      'order': order,
+      'is_pinned': false,
+    },
+  ],
+};
+
+Map<String, dynamic> _message({
+  required int id,
+  required int date,
+  required String text,
+}) => {
+  '@type': 'message',
+  'id': id,
+  'chat_id': 42,
+  'date': date,
+  'is_outgoing': false,
+  'content': {
+    '@type': 'messageText',
+    'text': {'@type': 'formattedText', 'text': text, 'entities': <Object>[]},
+  },
+};

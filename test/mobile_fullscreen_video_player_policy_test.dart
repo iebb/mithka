@@ -1,143 +1,94 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/video_player_view.dart';
 import 'package:video_player/video_player.dart';
 
 void main() {
-  group('usesReusableMobileFullscreenPlayer', () {
-    test('enables the reusable player for Android and iOS fullscreen', () {
-      for (final platform in const [
-        TargetPlatform.android,
-        TargetPlatform.iOS,
-      ]) {
-        expect(
-          usesReusableMobileFullscreenPlayer(
-            presentation: VideoPlayerPresentation.fullscreen,
-            platform: platform,
-          ),
-          isTrue,
-          reason: '$platform fullscreen should use the reusable player',
-        );
-      }
-    });
+  final appPlayerSource = File(
+    'lib/chat/video_player_view.dart',
+  ).readAsStringSync();
+  final desktopPlayerSource = File(
+    'lib/app/desktop_video_window.dart',
+  ).readAsStringSync();
 
-    test('keeps Android and iOS embedded and PiP on the legacy player', () {
-      for (final platform in const [
-        TargetPlatform.android,
-        TargetPlatform.iOS,
-      ]) {
-        for (final presentation in const [
-          VideoPlayerPresentation.embedded,
-          VideoPlayerPresentation.pictureInPicture,
-        ]) {
-          expect(
-            usesReusableMobileFullscreenPlayer(
-              presentation: presentation,
-              platform: platform,
-            ),
-            isFalse,
-            reason: '$platform $presentation must remain on the legacy player',
-          );
-        }
-      }
-    });
-
-    test('keeps desktop fullscreen on the existing platform paths', () {
-      for (final platform in const [
-        TargetPlatform.macOS,
-        TargetPlatform.windows,
-        TargetPlatform.linux,
-      ]) {
-        expect(
-          usesReusableMobileFullscreenPlayer(
-            presentation: VideoPlayerPresentation.fullscreen,
-            platform: platform,
-          ),
-          isFalse,
-          reason: '$platform fullscreen must not use the mobile migration',
-        );
-      }
-    });
-
-    test('web always stays outside the mobile fullscreen migration', () {
+  group('reusable video-player architecture', () {
+    test('all app presentations share one FVideoPlayer path', () {
       expect(
-        usesReusableMobileFullscreenPlayer(
-          presentation: VideoPlayerPresentation.fullscreen,
-          platform: TargetPlatform.android,
-          isWeb: true,
-        ),
-        isFalse,
+        appPlayerSource,
+        contains("package:f_videoplayer/f_videoplayer.dart"),
       );
       expect(
-        usesReusableMobileFullscreenPlayer(
-          presentation: VideoPlayerPresentation.fullscreen,
-          platform: TargetPlatform.iOS,
-          isWeb: true,
-        ),
-        isFalse,
-        reason: 'the web override must win even when the platform reports iOS',
+        RegExp(r'\bFVideoPlayer\(').allMatches(appPlayerSource),
+        hasLength(1),
+        reason:
+            'fullscreen, embedded, PiP, mobile, web, and desktop must select '
+            'one reusable player instead of parallel widget trees',
       );
-    });
-  });
-
-  group('videoPlaybackSurfaceUsesPanGestures', () {
-    test('native desktop fullscreen does not install touch-style pans', () {
-      for (final platform in const [
-        TargetPlatform.macOS,
-        TargetPlatform.windows,
-        TargetPlatform.linux,
-      ]) {
-        expect(
-          videoPlaybackSurfaceUsesPanGestures(
-            presentation: VideoPlayerPresentation.fullscreen,
-            platform: platform,
-          ),
-          isFalse,
-          reason: '$platform mouse drags must not seek or adjust side levels',
-        );
-      }
-    });
-
-    test('mobile fullscreen retains its existing pan gestures', () {
-      for (final platform in const [
-        TargetPlatform.android,
-        TargetPlatform.iOS,
-      ]) {
-        expect(
-          videoPlaybackSurfaceUsesPanGestures(
-            presentation: VideoPlayerPresentation.fullscreen,
-            platform: platform,
-          ),
-          isTrue,
-          reason: '$platform fullscreen must retain touch gestures',
-        );
-      }
-    });
-
-    test('embedded and picture-in-picture surfaces stay non-pannable', () {
-      for (final presentation in const [
-        VideoPlayerPresentation.embedded,
-        VideoPlayerPresentation.pictureInPicture,
-      ]) {
-        expect(
-          videoPlaybackSurfaceUsesPanGestures(
-            presentation: presentation,
-            platform: TargetPlatform.iOS,
-          ),
-          isFalse,
-        );
-      }
-    });
-
-    test('web fullscreen is not treated as a native desktop surface', () {
+      expect(appPlayerSource, isNot(matches(RegExp(r'\bVideoPlayer\('))));
+      expect(appPlayerSource, isNot(contains('_legacyPlayer(')));
       expect(
-        videoPlaybackSurfaceUsesPanGestures(
-          presentation: VideoPlayerPresentation.fullscreen,
-          platform: TargetPlatform.macOS,
-          isWeb: true,
-        ),
-        isTrue,
+        appPlayerSource,
+        isNot(contains('usesReusableMobileFullscreenPlayer')),
       );
+    });
+
+    test('app player uses one owned fullscreen chrome', () {
+      expect(
+        appPlayerSource,
+        contains(
+          'chromeBuilder: widget.presentation == '
+          'VideoPlayerPresentation.fullscreen',
+        ),
+      );
+      expect(appPlayerSource, contains('? _playerChrome'));
+      expect(
+        appPlayerSource,
+        isNot(contains('FVideoInteractionMode.delegateToChrome')),
+      );
+      expect(appPlayerSource, isNot(contains('_mobileFullscreenChrome(')));
+      expect(appPlayerSource, isNot(contains('List<Widget> _controls(')));
+      expect(appPlayerSource, isNot(contains('Widget _transportControls(')));
+      expect(appPlayerSource, isNot(contains('Widget _scrubber(')));
+    });
+
+    test('host adapters remain connected to the reusable player', () {
+      expect(appPlayerSource, contains('TdVideoStreamServer('));
+      expect(appPlayerSource, contains('_recoverFromCompletedFile('));
+      expect(appPlayerSource, contains('controller: controller'));
+      expect(appPlayerSource, contains('onPrevious:'));
+      expect(appPlayerSource, contains('onNext:'));
+      expect(appPlayerSource, contains('onVolumeChanged:'));
+      expect(appPlayerSource, contains('onPictureInPictureChanged:'));
+      expect(appPlayerSource, contains('autofocus: _isDesktopPlatform'));
+      expect(appPlayerSource, contains('surfaceInteractionBuilder:'));
+      expect(appPlayerSource, contains('overlayBuilder:'));
+      expect(appPlayerSource, contains('topTrailingBuilder:'));
+      expect(appPlayerSource, contains('bottomTrailingBuilder:'));
+      expect(appPlayerSource, contains('FVideoPlayerLabels('));
+      expect(appPlayerSource, contains('loadingBuilder:'));
+      expect(appPlayerSource, contains('onError:'));
+    });
+
+    test('desktop child windows use the same owned chrome language', () {
+      expect(
+        desktopPlayerSource,
+        contains("package:f_videoplayer/f_videoplayer.dart"),
+      );
+      expect(
+        RegExp(r'\bFVideoPlayer\(').allMatches(desktopPlayerSource),
+        hasLength(1),
+      );
+      expect(desktopPlayerSource, isNot(matches(RegExp(r'\bVideoPlayer\('))));
+      expect(desktopPlayerSource, contains('chromeBuilder:'));
+      expect(desktopPlayerSource, contains('MithkaDesktopVideoChrome('));
+      expect(
+        desktopPlayerSource,
+        isNot(contains('FVideoInteractionMode.delegateToChrome')),
+      );
+      expect(desktopPlayerSource, contains('onPictureInPictureChanged:'));
+      expect(desktopPlayerSource, contains('onFullscreenChanged:'));
     });
   });
 
