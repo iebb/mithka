@@ -160,8 +160,11 @@ module MithkaAppStoreRelease
   class GitHubActionsVerifier
     REQUIRED_STEPS = [
       "Set build identity",
-      "Archive iOS app",
-      "Upload archive to App Store Connect"
+      "Archive iOS app"
+    ].freeze
+    UPLOAD_STEPS = [
+      "Upload archive to App Store Connect",
+      "Export and upload IPA to App Store Connect"
     ].freeze
     ALLOWED_FAILED_STEPS = ["Retain uploaded IPA for release verification"].freeze
 
@@ -186,6 +189,9 @@ module MithkaAppStoreRelease
       step_results = job.fetch("steps", []).to_h { |step| [step["name"], step["conclusion"]] }
       REQUIRED_STEPS.each do |step|
         raise Error, "GitHub Actions run #{run_id} step #{step.inspect} did not succeed" unless step_results[step] == "success"
+      end
+      unless UPLOAD_STEPS.any? { |step| step_results[step] == "success" }
+        raise Error, "GitHub Actions run #{run_id} has no successful App Store Connect upload step (expected one of: #{UPLOAD_STEPS.join(', ')})"
       end
       failed_steps = step_results.select { |_name, conclusion| conclusion == "failure" }.keys
       unexpected_failures = failed_steps - ALLOWED_FAILED_STEPS

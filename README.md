@@ -1,29 +1,30 @@
 # Mithka
 
-A cross-platform Telegram client for Android, iOS, Windows, macOS, and Linux,
-built with **Flutter** on top of
-**[TDLib](https://core.telegram.org/tdlib)** via FFI, with a dense,
-mobile-native messaging interface.
+English | [简体中文](README.zh-CN.md)
 
-> **Disclaimer**
+Mithka is an independent, cross-platform Telegram client for Android, iOS,
+Windows, macOS, and Linux. It combines a Flutter interface with
+[TDLib](https://core.telegram.org/tdlib) over Dart FFI to provide a compact,
+native-feeling messaging experience across phones and desktops.
+
+> [!IMPORTANT]
+> Mithka is an independent, unofficial project. It is not affiliated with,
+> endorsed by, or connected to Telegram. “Telegram” is a trademark of its
+> respective owner.
 >
-> Mithka is an **independent, unofficial** project. It is **not affiliated with,
-> endorsed by, or connected to Telegram** in any way. "Telegram" is a trademark
-> of its respective owner.
+> Mithka is also not affiliated with, endorsed by, sponsored by, or otherwise
+> connected to Tencent or QQ. It does not use, include, copy, or redistribute
+> proprietary QQ assets. “Tencent,” “QQ,” and their related trademarks and
+> assets belong to their respective owners.
 >
-> Mithka is also **not affiliated with, endorsed by, sponsored by, or otherwise
-> connected to Tencent or QQ**. It does not use, include, copy, or redistribute
-> any proprietary QQ assets. "Tencent" and "QQ" and their associated trademarks
-> and assets belong to their respective owners.
->
-> The app talks to Telegram's network through TDLib using your own Telegram API
-> credentials. Use it at your own risk and in accordance with Telegram's
-> [Terms of Service](https://telegram.org/tos) and API
-> [Terms](https://core.telegram.org/api/terms).
+> Mithka connects to Telegram through TDLib using Telegram API credentials that
+> you provide. Use it at your own risk and in accordance with Telegram’s
+> [Terms of Service](https://telegram.org/tos) and
+> [API Terms](https://core.telegram.org/api/terms).
 
 ## Availability
 
-| Platform | Beta | Release |
+| Platform | Beta | Stable release |
 | --- | --- | --- |
 | Android | [Google Play Open testing](https://play.google.com/apps/testing/ad.neko.mithka) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) |
 | iOS | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
@@ -31,38 +32,43 @@ mobile-native messaging interface.
 | macOS | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | Linux | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 
-## The name
+## Why “Mithka”?
 
-A play on small units of mass, by way of the penguin:
+The name is a small piece of wordplay inspired by the penguin mascot and two
+tiny units of mass:
 
-- The penguin mascot is a **pengram** — 🐧 + *gram*, read as **penta-gram** ≈ **5 g**.
-- One **mithqāl** (مثقال), a traditional Islamic unit of mass, is **≈ 4.6875 g**.
+- The mascot suggests a **pengram**: 🐧 + *gram*. Read as *penta-gram*, it is
+  approximately **5 g**.
+- One **mithqāl** (مثقال), a traditional Islamic unit of mass, is approximately
+  **4.6875 g**.
 
-So **Mithka** (from *mithqāl*) is the featherweight just under the (Tele)gram
-penguin on the scale.
+Derived from *mithqāl*, **Mithka** is the featherweight sitting just below the
+(Tele)gram penguin on an imaginary scale.
 
-## What it is
+## What Mithka offers
 
-Mithka connects to **real Telegram** (your account, your chats) through TDLib and
-presents it with a custom interface: chat list, conversations with live state,
-reactions and stickers (including animated `.tgs`/`.webm`), voice notes, polls
-and checklists, Telegram Communities, location sharing, contacts, profiles,
-moments-style stories, settings, and a 1:1 call UI.
+Mithka connects to your real Telegram account and chats through TDLib. Its
+custom interface includes live chat lists and conversations, reactions,
+stickers (including animated `.tgs` and `.webm` formats), voice messages, polls,
+checklists, Telegram Communities, location sharing, contacts, profiles,
+moments-style stories, settings, and a one-to-one calling interface.
 
 ## Architecture
 
-- **Flutter** UI (`lib/`), state via `provider` + `ChangeNotifier`.
-- **TDLib** linked through Dart FFI (`lib/tdlib/`); the native `libtdjson`
-  binary is installed from a pinned release per platform (see below) and is
-  **not** committed.
-- All theming is adaptive (light / dark); UI components are Cupertino/custom —
-  no Material dialogs, snackbars, or switches.
+- The Flutter interface lives in `lib/` and uses `provider` with
+  `ChangeNotifier` for state management.
+- TDLib is connected through Dart FFI in `lib/tdlib/`. A pinned native
+  `libtdjson` binary is installed for each platform and is not committed to this
+  repository.
+- The interface adapts to light and dark themes. It uses Cupertino and custom
+  components rather than Material dialogs, snackbars, or switches.
 
-## Building
+## Build from source
 
-You need your own **Telegram API credentials** (`api_id` / `api_hash`) from
-<https://my.telegram.org>. They are read from a git-ignored
-`lib/config/secrets.dart`:
+### 1. Add Telegram API credentials
+
+Create your own `api_id` and `api_hash` at <https://my.telegram.org>, then place
+them in the git-ignored `lib/config/secrets.dart` file:
 
 ```dart
 class Secrets {
@@ -72,74 +78,78 @@ class Secrets {
 }
 ```
 
-The TDLib native library is prepared with helper scripts (output is git-ignored).
-[`scripts/tdjson-manifest.json`](scripts/tdjson-manifest.json) is the single pin
-for the matching prebuilt Android, iOS, macOS, Linux, and Windows release assets
-from [`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The helpers
-download and verify those artifacts; this app repository no longer compiles
-TDLib from source.
+### 2. Install the native TDLib library
+
+[`scripts/tdjson-manifest.json`](scripts/tdjson-manifest.json) pins the matching
+prebuilt Android, iOS, macOS, Linux, and Windows artifacts published by
+[`iebb/mithka-tdjson`](https://github.com/iebb/mithka-tdjson). The helper scripts
+download and verify these artifacts; this repository does not build TDLib from
+source.
 
 ```bash
-# Android (one or more ABIs) — produces android/app/src/main/jniLibs/<abi>/libtdjson.so
+# Android: install one or more ABIs under android/app/src/main/jniLibs/<abi>/
 scripts/build-tdjson-android.sh arm64-v8a
 
-# iOS — downloads ios/tdjson/tdjson.xcframework consumed by the Runner
+# iOS: install ios/tdjson/tdjson.xcframework for the Runner target
 scripts/build-tdjson-ios.sh
 
-# Desktop — writes the library to the requested path (linux, macos, or windows)
+# Desktop: write the library to the requested path (linux, macos, or windows)
 scripts/build-tdjson-desktop.sh macos /tmp/libtdjson.dylib
 ```
 
-The installed libraries are reproducible local build inputs. Keep the one for
-the platform you are building, or delete it and rerun the corresponding helper
-when disk space matters more than avoiding another download. Legacy
-`.tdlib-build/` source-build trees, including large `libtdcore.a` archives, are
-not runtime inputs and can be removed. See [NATIVE.md](NATIVE.md) for the exact
-paths and cleanup tradeoffs.
+These downloaded libraries are reproducible local build inputs. Keep the
+library for the platform you are building, or delete it and rerun the matching
+helper when you need to reclaim disk space. Legacy `.tdlib-build/` source trees,
+including large `libtdcore.a` archives, are not runtime dependencies and can be
+removed. See [NATIVE.md](NATIVE.md) for exact paths and cleanup guidance.
 
-Then run:
+### 3. Fetch dependencies and run
 
 ```bash
 flutter pub get
-flutter run            # on a connected device / simulator
+flutter run # Run on a connected device or simulator
 ```
 
-Firebase Analytics is optional for local builds. If
+Firebase Analytics is optional for local development. If
 `android/app/google-services.json` or `ios/Runner/GoogleService-Info.plist` is
-missing (or is only an empty placeholder), the app builds and runs with
+missing—or contains only an empty placeholder—the app builds and runs with
 analytics disabled. Maintainers and release CI provide the real, git-ignored
 configuration files automatically.
 
-### Release signing (Android)
+### Android release signing
 
-Release builds are signed with the project's upload key when
-`android/key.properties` (and the referenced keystore) are present; otherwise a
-debug signature is used. Neither the keystore nor `key.properties` is committed.
+Android release builds use the project’s upload key when
+`android/key.properties` and its referenced keystore are available. Otherwise,
+the build uses a debug signature. Neither file is committed to the repository.
 
-## CI
+## CI and releases
 
-`master` does not publish GitHub, Google Play, or TestFlight packages. Push the
-validated `master` commit to `release-ios` to start Xcode Cloud's iOS and macOS
-archives and external TestFlight delivery. At 00:00 UTC each day, GitHub Actions
-merges new `master` commits into `nightly` and increments the app's patch
-version once; `nightly` publishes dated Android, Windows, macOS, and Linux
-GitHub prereleases and submits the signed AAB to Google Play Open testing.
-Xcode Cloud keeps the same major/minor version but forces the iOS and macOS
-patch to `0`.
-Pushes to `release` publish dated stable multi-platform GitHub releases and
-submit the production AAB to Google Play through the same channel-aware
-workflow.
-`secrets.dart` is generated on the runner from the `TELEGRAM_API_ID` /
+- `master` is the validated development branch and does not publish packages to
+  GitHub, Google Play, or TestFlight.
+- Pushing a validated `master` commit to `release-ios` starts Xcode Cloud
+  archives for iOS and macOS and delivers them to external TestFlight testers.
+  Xcode Cloud keeps the same major and minor version while setting the patch
+  version to `0`.
+- At 00:00 UTC each day, GitHub Actions merges new `master` commits into
+  `nightly` and increments the patch version once. The workflow publishes dated
+  Android, Windows, macOS, and Linux GitHub prereleases and submits the signed
+  Android App Bundle to Google Play Open testing.
+- Pushing to `release` publishes a dated stable, multi-platform GitHub release
+  and submits the production Android App Bundle to Google Play through the same
+  channel-aware workflow.
+
+On CI runners, `secrets.dart` is generated from the `TELEGRAM_API_ID` and
 `TELEGRAM_API_HASH` repository secrets.
 
-## License & credits
+## License and credits
 
-Mithka is licensed under the [BSD 3-Clause License](LICENSE).
+Mithka is available under the [BSD 3-Clause License](LICENSE).
 
-TDLib and the components under `third_party/` retain their own licenses. Mithka
-ships no third-party app's proprietary assets or trademarks.
+TDLib and the components in `third_party/` remain subject to their own licenses.
+Mithka does not ship proprietary assets or trademarks from third-party apps.
 
-## Star History
+## Star history
+
 <a href="https://www.star-history.com/?repos=iebb%2Fmithka&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=iebb/mithka&type=date&theme=dark&legend=top-left&sealed_token=1PtDobhZ9XXhT7wgN5YMBVDBa9coSe7MIPcmYtH78U0zAurRU1n2ZU9n_8HKCB7KYraJOet0tyGPTh3jXh_oq-RkR9els5W0T0EDz-_nvt0ce-n1AvOOKgljMdSc-FOc5j0X3RVcRmyyq0qoVZBdWqIPFKMpBvKO8yoRgRc9i9ck-r4-RmWM0FqWLjXG" />
