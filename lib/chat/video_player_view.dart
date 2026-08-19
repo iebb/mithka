@@ -423,6 +423,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Duration _gestureStartPosition = Duration.zero;
   Duration _gestureSeekPosition = Duration.zero;
   int _gestureNavigationDelta = 0;
+  double _videoZoomScale = 1;
+  Offset _videoZoomOffset = Offset.zero;
+  Rect _videoZoomViewport = Rect.zero;
+  bool _videoZoomGestureActive = false;
+  double _videoZoomGestureStartScale = 1;
+  double _videoZoomGestureScaleBaseline = 1;
+  Offset _videoZoomGestureContentAnchor = Offset.zero;
+  final Map<int, Offset> _videoZoomPointers = <int, Offset>{};
+  List<int> _videoZoomPinchPointers = const <int>[];
+  bool _videoZoomSuppressPlaybackGestures = false;
   VideoHorizontalSwipeAction _horizontalSwipeAction =
       VideoHorizontalSwipeAction.changeVideo;
   VideoVerticalSwipeAction _leftVerticalSwipeAction =
@@ -459,6 +469,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   static const _resumeMinimum = Duration(seconds: 3);
   static const _resumeEndSlack = Duration(seconds: 8);
   static const _streamStallTimeout = Duration(seconds: 15);
+  static const _minimumVideoZoomScale = 1.0;
+  static const _maximumVideoZoomScale = 4.0;
+  static const _videoZoomResetThreshold = 1.02;
 
   bool get _canUseAndroidPlatformViewFallback =>
       !kIsWeb &&
@@ -2074,7 +2087,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Widget _reusablePlayer(VideoPlayerController controller) {
-    return FVideoPlayer(
+    final player = FVideoPlayer(
       key: ValueKey('video-${widget.video.id}-${widget.presentation.name}'),
       source: _reusablePlayerSource(),
       controller: controller,
@@ -2129,6 +2142,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       overlayBuilder: _playerOverlay,
       topTrailingBuilder: _playerTopTrailing,
       bottomTrailingBuilder: _playerBottomTrailing,
+    );
+    if (!_supportsPlaybackGestures) return player;
+    return Listener(
+      key: const ValueKey('video-pinch-zoom-listener'),
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleVideoZoomPointerDown,
+      onPointerMove: _handleVideoZoomPointerMove,
+      onPointerUp: _handleVideoZoomPointerEnd,
+      onPointerCancel: _handleVideoZoomPointerEnd,
+      child: player,
     );
   }
 
@@ -2912,7 +2935,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                 child: ClipRRect(
                   key: const ValueKey('video-on-demand-surface'),
                   borderRadius: BorderRadius.circular(geometry.wide ? 12 : 10),
-                  child: ColoredBox(color: Colors.black, child: videoChild),
+                  child: ColoredBox(
+                    color: Colors.black,
+                    child: _zoomedPlaybackSurface(
+                      child: videoChild,
+                      viewport: geometry.videoRect,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -2957,25 +2986,63 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
               ),
             ),
           ),
-          Positioned.fill(child: videoChild),
+          Positioned.fill(child: _fullViewportZoomedSurface(videoChild)),
         ],
       );
+    } else {
+      surface = _fullViewportZoomedSurface(surface);
     }
     if (_supportsPlaybackGestures && controller != null) {
       surface = GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanDown: (details) => _gestureOrigin = details.localPosition,
-        onPanStart: (details) {
-          scope.actions.showControls();
-          _startPlaybackGesture(details, controller);
+        onPanDown: (details) {
+          if (!_videoZoomSuppressPlaybackGestures) {
+            _gestureOrigin = details.localPosition;
+          }
         },
-        onPanUpdate: (details) => _updatePlaybackGesture(details, controller),
-        onPanEnd: (_) => _finishPlaybackGesture(controller),
-        onPanCancel: _cancelPlaybackGesture,
+        onPanStart: (details) =>
+            _startSurfacePanGesture(details, controller, scope.actions),
+        onPanUpdate: (details) =>
+            _updateSurfacePanGesture(details, controller, scope.actions),
+        onPanEnd: (_) => _finishSurfacePanGesture(controller),
+        onPanCancel: _cancelSurfacePanGesture,
         child: surface,
       );
     }
     return surface;
+  }
+
+  Widget _fullViewportZoomedSurface(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport =
+            Offset.zero & Size(constraints.maxWidth, constraints.maxHeight);
+        return _zoomedPlaybackSurface(child: child, viewport: viewport);
+      },
+    );
+  }
+
+  Widget _zoomedPlaybackSurface({
+    required Widget child,
+    required Rect viewport,
+  }) {
+    _videoZoomViewport = viewport;
+    _videoZoomOffset = _clampVideoZoomOffset(
+      _videoZoomOffset,
+      _videoZoomScale,
+      viewport.size,
+    );
+    return ClipRect(
+      child: Transform.translate(
+        key: const ValueKey('video-zoom-translation'),
+        offset: _videoZoomOffset,
+        child: Transform.scale(
+          key: const ValueKey('video-zoom-transform'),
+          scale: _videoZoomScale,
+          child: child,
+        ),
+      ),
+    );
   }
 
   Widget _playerOverlay(BuildContext context, FVideoChromeScope scope) {
@@ -2987,6 +3054,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final overlay = Stack(
       fit: StackFit.expand,
       children: [
+        if (_videoZoomGestureActive) _videoZoomIndicator(),
         if (_gestureIndicatorReady && controller != null)
           _activeGesture == _PlayerGesture.brightness ||
                   _activeGesture == _PlayerGesture.volume
@@ -3119,12 +3187,209 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           _gestureBrightnessReady) &&
       (_activeGesture != _PlayerGesture.volume || _gestureVolumeReady);
 
-  void _startPlaybackGesture(
+  void _handleVideoZoomPointerDown(PointerDownEvent event) {
+    if (event.kind != ui.PointerDeviceKind.touch) return;
+    _videoZoomPointers[event.pointer] = event.localPosition;
+    if (_videoZoomPinchPointers.isNotEmpty || _videoZoomPointers.length < 2) {
+      return;
+    }
+    _videoZoomSuppressPlaybackGestures = true;
+    _cancelPlaybackGesture();
+    _beginVideoPinchFromActivePointers();
+  }
+
+  void _handleVideoZoomPointerMove(PointerMoveEvent event) {
+    if (event.kind != ui.PointerDeviceKind.touch ||
+        !_videoZoomPointers.containsKey(event.pointer)) {
+      return;
+    }
+    _videoZoomPointers[event.pointer] = event.localPosition;
+    if (_videoZoomPinchPointers.isEmpty) {
+      if (_videoZoomPointers.length >= 2) {
+        _beginVideoPinchFromActivePointers();
+      }
+      return;
+    }
+    final points = _activeVideoPinchPoints;
+    if (points == null) return;
+    _updateVideoZoomGesture(
+      focalPoint: (points.$1 + points.$2) / 2,
+      scaleValue: (points.$1 - points.$2).distance,
+    );
+    _reusablePlayerActions?.hideControls();
+  }
+
+  void _handleVideoZoomPointerEnd(PointerEvent event) {
+    if (event.kind != ui.PointerDeviceKind.touch ||
+        !_videoZoomPointers.containsKey(event.pointer)) {
+      return;
+    }
+    final endedActivePinch = _videoZoomPinchPointers.contains(event.pointer);
+    _videoZoomPointers.remove(event.pointer);
+    if (endedActivePinch) {
+      _videoZoomPinchPointers = const <int>[];
+      _finishVideoZoomGesture();
+      if (_videoZoomPointers.length >= 2) {
+        _beginVideoPinchFromActivePointers();
+      }
+    }
+    if (_videoZoomPointers.isEmpty) {
+      _videoZoomSuppressPlaybackGestures = false;
+    }
+  }
+
+  void _beginVideoPinchFromActivePointers() {
+    if (_videoZoomPointers.length < 2) return;
+    final pointers = _videoZoomPointers.keys.take(2).toList(growable: false);
+    final first = _videoZoomPointers[pointers[0]]!;
+    final second = _videoZoomPointers[pointers[1]]!;
+    _videoZoomPinchPointers = pointers;
+    _videoZoomSuppressPlaybackGestures = true;
+    _beginVideoZoomGesture(
+      (first + second) / 2,
+      scaleBaseline: math.max((first - second).distance, 1),
+    );
+    _reusablePlayerActions?.hideControls();
+  }
+
+  (Offset, Offset)? get _activeVideoPinchPoints {
+    if (_videoZoomPinchPointers.length != 2) return null;
+    final first = _videoZoomPointers[_videoZoomPinchPointers[0]];
+    final second = _videoZoomPointers[_videoZoomPinchPointers[1]];
+    if (first == null || second == null) return null;
+    return (first, second);
+  }
+
+  void _startSurfacePanGesture(
     DragStartDetails details,
+    VideoPlayerController controller,
+    FVideoActions actions,
+  ) {
+    if (_videoZoomSuppressPlaybackGestures) return;
+    if (_videoZoomScale > _minimumVideoZoomScale) {
+      _cancelPlaybackGesture();
+      _beginVideoZoomGesture(details.localPosition, scaleBaseline: 1);
+      actions.hideControls();
+      return;
+    }
+    actions.showControls();
+    _startPlaybackGesture(details.localPosition, controller);
+  }
+
+  void _updateSurfacePanGesture(
+    DragUpdateDetails details,
+    VideoPlayerController controller,
+    FVideoActions actions,
+  ) {
+    if (_videoZoomSuppressPlaybackGestures) return;
+    if (_videoZoomGestureActive && _videoZoomScale > _minimumVideoZoomScale) {
+      _updateVideoZoomGesture(focalPoint: details.localPosition, scaleValue: 1);
+      actions.hideControls();
+      return;
+    }
+    _updatePlaybackGesture(details.localPosition, controller);
+  }
+
+  void _finishSurfacePanGesture(VideoPlayerController controller) {
+    if (_videoZoomSuppressPlaybackGestures) {
+      _cancelPlaybackGesture();
+      return;
+    }
+    if (_videoZoomGestureActive) {
+      _finishVideoZoomGesture();
+      return;
+    }
+    _finishPlaybackGesture(controller);
+  }
+
+  void _cancelSurfacePanGesture() {
+    if (!_videoZoomSuppressPlaybackGestures && _videoZoomGestureActive) {
+      _finishVideoZoomGesture();
+      return;
+    }
+    _cancelPlaybackGesture();
+  }
+
+  void _beginVideoZoomGesture(
+    Offset focalPoint, {
+    required double scaleBaseline,
+  }) {
+    final viewport = _resolvedVideoZoomViewport;
+    final localFocalPoint = focalPoint - viewport.topLeft;
+    final center = viewport.size.center(Offset.zero);
+    _videoZoomGestureStartScale = _videoZoomScale;
+    _videoZoomGestureScaleBaseline = math.max(scaleBaseline, 0.0001);
+    _videoZoomGestureContentAnchor =
+        (localFocalPoint - center - _videoZoomOffset) / _videoZoomScale;
+    if (mounted) {
+      setState(() => _videoZoomGestureActive = true);
+    }
+  }
+
+  void _updateVideoZoomGesture({
+    required Offset focalPoint,
+    required double scaleValue,
+  }) {
+    if (!_videoZoomGestureActive) return;
+    final viewport = _resolvedVideoZoomViewport;
+    final scale =
+        (_videoZoomGestureStartScale *
+                scaleValue /
+                _videoZoomGestureScaleBaseline)
+            .clamp(_minimumVideoZoomScale, _maximumVideoZoomScale)
+            .toDouble();
+    final localFocalPoint = focalPoint - viewport.topLeft;
+    final center = viewport.size.center(Offset.zero);
+    final offset =
+        localFocalPoint - center - _videoZoomGestureContentAnchor * scale;
+    final clampedOffset = _clampVideoZoomOffset(offset, scale, viewport.size);
+    if (!mounted) return;
+    setState(() {
+      _videoZoomScale = scale;
+      _videoZoomOffset = clampedOffset;
+    });
+  }
+
+  void _finishVideoZoomGesture() {
+    if (!mounted) return;
+    setState(() {
+      _videoZoomGestureActive = false;
+      if (_videoZoomScale <= _videoZoomResetThreshold) {
+        _videoZoomScale = _minimumVideoZoomScale;
+        _videoZoomOffset = Offset.zero;
+      } else {
+        _videoZoomOffset = _clampVideoZoomOffset(
+          _videoZoomOffset,
+          _videoZoomScale,
+          _resolvedVideoZoomViewport.size,
+        );
+      }
+    });
+  }
+
+  Rect get _resolvedVideoZoomViewport {
+    if (!_videoZoomViewport.isEmpty) return _videoZoomViewport;
+    return Offset.zero & MediaQuery.sizeOf(context);
+  }
+
+  Offset _clampVideoZoomOffset(Offset offset, double scale, Size viewport) {
+    if (scale <= _minimumVideoZoomScale || viewport.isEmpty) {
+      return Offset.zero;
+    }
+    final maximumX = viewport.width * (scale - 1) / 2;
+    final maximumY = viewport.height * (scale - 1) / 2;
+    return Offset(
+      offset.dx.clamp(-maximumX, maximumX).toDouble(),
+      offset.dy.clamp(-maximumY, maximumY).toDouble(),
+    );
+  }
+
+  void _startPlaybackGesture(
+    Offset localPosition,
     VideoPlayerController controller,
   ) {
     _reusablePlayerActions?.showControls();
-    _gestureOrigin ??= details.localPosition;
+    _gestureOrigin ??= localPosition;
     _gestureStartValue = _volume;
     _gestureValue = _volume;
     _gestureBrightnessReady = false;
@@ -3136,12 +3401,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   void _updatePlaybackGesture(
-    DragUpdateDetails details,
+    Offset localPosition,
     VideoPlayerController controller,
   ) {
     final origin = _gestureOrigin;
     if (origin == null) return;
-    final delta = details.localPosition - origin;
+    final delta = localPosition - origin;
     final size = MediaQuery.sizeOf(context);
     var gesture = _activeGesture;
     if (gesture == null) {
@@ -3342,6 +3607,37 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       : delta < 0
       ? widget.previousVideo != null
       : false;
+
+  Widget _videoZoomIndicator() {
+    final percentage = (_videoZoomScale * 100).round();
+    return Center(
+      child: IgnorePointer(
+        child: Semantics(
+          liveRegion: true,
+          label: 'Video zoom',
+          value: '$percentage%',
+          child: Container(
+            key: const ValueKey('video-zoom-indicator'),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+            ),
+            child: Text(
+              '${_videoZoomScale.toStringAsFixed(1)}×',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _gestureIndicator(VideoPlayerController controller) {
     final gesture = _activeGesture!;

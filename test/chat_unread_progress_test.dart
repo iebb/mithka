@@ -211,6 +211,84 @@ void main() {
     );
   });
 
+  test('captured unread divider survives live read updates', () {
+    const capturedUnreadCount = 2;
+    const capturedLastReadInboxId = 100;
+    const capturedLatestMessageId = 102;
+
+    expect(
+      isCapturedUnreadDividerMessage(
+        entryUnreadCount: capturedUnreadCount,
+        firstUnreadMessageId: 101,
+        messageId: 101,
+        isIncoming: true,
+        isService: false,
+        lastReadInboxId: capturedLastReadInboxId,
+        latestMessageId: capturedLatestMessageId,
+      ),
+      isTrue,
+    );
+
+    // Rendering the visible unread messages can settle TDLib's live state to
+    // zero and advance its live boundary. The captured entry boundary remains
+    // the divider source for the lifetime of this chat view.
+    const liveUnreadCountAfterView = 0;
+    const liveLastReadInboxIdAfterView = 102;
+    expect(liveUnreadCountAfterView, 0);
+    expect(liveLastReadInboxIdAfterView, capturedLatestMessageId);
+    expect(
+      isCapturedUnreadDividerMessage(
+        entryUnreadCount: capturedUnreadCount,
+        firstUnreadMessageId: 101,
+        messageId: 101,
+        isIncoming: true,
+        isService: false,
+        lastReadInboxId: capturedLastReadInboxId,
+        latestMessageId: capturedLatestMessageId,
+      ),
+      isTrue,
+    );
+  });
+
+  test('captured unread divider marks only the first incoming unread row', () {
+    expect(
+      isCapturedUnreadDividerMessage(
+        entryUnreadCount: 2,
+        firstUnreadMessageId: 101,
+        messageId: 102,
+        isIncoming: true,
+        isService: false,
+        lastReadInboxId: 100,
+        latestMessageId: 102,
+      ),
+      isFalse,
+    );
+    expect(
+      isCapturedUnreadDividerMessage(
+        entryUnreadCount: 2,
+        firstUnreadMessageId: 101,
+        messageId: 101,
+        isIncoming: false,
+        isService: false,
+        lastReadInboxId: 100,
+        latestMessageId: 102,
+      ),
+      isFalse,
+    );
+    expect(
+      isCapturedUnreadDividerMessage(
+        entryUnreadCount: 2,
+        firstUnreadMessageId: 101,
+        messageId: 103,
+        isIncoming: true,
+        isService: false,
+        lastReadInboxId: 100,
+        latestMessageId: 102,
+      ),
+      isFalse,
+    );
+  });
+
   test('entry upper bound prefers known latest with loaded fallback', () {
     expect(
       resolveCapturedEntryLatestMessageId(

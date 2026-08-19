@@ -2934,7 +2934,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   int _firstUnreadIndex() => _vm.messages.indexWhere(
-    (m) => !m.isOutgoing && !m.isService && m.id > _vm.lastReadInboxId,
+    (m) => !m.isOutgoing && !m.isService && _isEntryUnreadMessage(m.id),
   );
 
   /// One-time positioning when a chat opens. This must never block painting:
@@ -3135,10 +3135,10 @@ class _ChatViewState extends State<ChatView> {
       pendingMessageId: _scrollTargetId,
       openAtBottom: _shouldOpenAtBottom,
       anchoredHistory: _vm.anchoredHistory,
-      unreadCount: _vm.unreadCount,
+      unreadCount: _entryUnreadCount,
       firstUnreadMessageId: i < 0 ? null : _vm.messages[i].id,
       unreadBoundaryLoaded: boundaryLoaded,
-      lastReadInboxId: _vm.lastReadInboxId,
+      lastReadInboxId: _entryLastReadInboxId,
     );
     return switch (decision.kind) {
       ChatInitialViewportTargetKind.message ||
@@ -3168,10 +3168,10 @@ class _ChatViewState extends State<ChatView> {
       pendingMessageId: _scrollTargetId,
       openAtBottom: _shouldOpenAtBottom,
       anchoredHistory: _vm.anchoredHistory,
-      unreadCount: _vm.unreadCount,
+      unreadCount: _entryUnreadCount,
       firstUnreadMessageId: i < 0 ? null : _vm.messages[i].id,
       unreadBoundaryLoaded: boundaryLoaded,
-      lastReadInboxId: _vm.lastReadInboxId,
+      lastReadInboxId: _entryLastReadInboxId,
     );
     switch (decision.kind) {
       case ChatInitialViewportTargetKind.message:
@@ -3579,7 +3579,7 @@ class _ChatViewState extends State<ChatView> {
     }
     final i = _firstUnreadIndex();
     final boundaryLoaded = _isUnreadBoundaryLoaded();
-    if (_vm.unreadCount > 0 && i >= 0 && boundaryLoaded) {
+    if (_entryUnreadCount > 0 && i >= 0 && boundaryLoaded) {
       final ctx = _unreadKey.currentContext;
       if (ctx != null) {
         await Scrollable.ensureVisible(ctx, alignment: 0.12);
@@ -3592,8 +3592,8 @@ class _ChatViewState extends State<ChatView> {
 
   bool _isUnreadBoundaryLoaded() {
     if (_vm.messages.isEmpty) return false;
-    return _vm.lastReadInboxId <= 0 ||
-        _vm.messages.first.id <= _vm.lastReadInboxId;
+    return _entryLastReadInboxId <= 0 ||
+        _vm.messages.first.id <= _entryLastReadInboxId;
   }
 
   bool get _canBackSwipe =>
@@ -3840,31 +3840,34 @@ class _ChatViewState extends State<ChatView> {
 
   bool _needsUnreadDivider(int index, {List<ChatMessage>? messages}) {
     messages ??= _vm.messages;
-    if (_vm.unreadCount <= 0) return false;
     if (index < 0 || index >= messages.length) return false;
     final m = messages[index];
-    if (m.isOutgoing || m.isService || m.id <= _vm.lastReadInboxId) {
-      return false;
-    }
-    if (index == 0) return true;
-    return messages[index - 1].id <= _vm.lastReadInboxId;
+    return isCapturedUnreadDividerMessage(
+      entryUnreadCount: _entryUnreadCount,
+      firstUnreadMessageId: _entryFirstUnreadMessageId,
+      messageId: m.id,
+      isIncoming: !m.isOutgoing,
+      isService: m.isService,
+      lastReadInboxId: _entryLastReadInboxId,
+      latestMessageId: _entryLatestMessageId,
+    );
   }
 
   Widget _unreadDivider() {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Expanded(child: Divider(color: c.divider, height: 1)),
+          Expanded(child: Divider(color: c.linkBlue, height: 1, thickness: 1)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(
               AppStringKeys.chatNewMessagesDivider.l10n(context),
-              style: TextStyle(fontSize: 12, color: c.textSecondary),
+              style: TextStyle(fontSize: 12, color: c.linkBlue),
             ),
           ),
-          Expanded(child: Divider(color: c.divider, height: 1)),
+          Expanded(child: Divider(color: c.linkBlue, height: 1, thickness: 1)),
         ],
       ),
     );

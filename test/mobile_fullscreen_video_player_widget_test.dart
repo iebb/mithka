@@ -765,6 +765,126 @@ void main() {
     }
   });
 
+  testWidgets('pinch zooms around the video and one finger pans while zoomed', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final previousPlatform = VideoPlayerPlatform.instance;
+    final platform = _FakeMobileVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      SharedPreferences.setMockInitialValues(const {});
+      final sourcePath = File('pubspec.yaml').absolute.path;
+      final navigation = <int>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: VideoPlayerView(
+              video: TdFileRef(id: 715, localPath: sourcePath),
+              width: 1920,
+              height: 1080,
+              previousVideo: VideoPlaybackItem(video: TdFileRef(id: 714)),
+              nextVideo: VideoPlaybackItem(video: TdFileRef(id: 716)),
+              onNavigate: navigation.add,
+              onSwitchMode: (_) {},
+              onClose: () {},
+              streamQuery: _completedVideoQuery(sourcePath, fileId: 715),
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilPlayerReady(tester);
+      await tester.pump();
+
+      final zoomTransform = find.byKey(const ValueKey('video-zoom-transform'));
+      final zoomTranslation = find.byKey(
+        const ValueKey('video-zoom-translation'),
+      );
+      expect(
+        tester.widget<Transform>(zoomTransform).transform.getMaxScaleOnAxis(),
+        1,
+      );
+
+      final left = await tester.createGesture(pointer: 11);
+      final right = await tester.createGesture(pointer: 12);
+      await left.down(const Offset(145, 355));
+      await right.down(const Offset(245, 355));
+      await tester.pump();
+      await left.moveTo(const Offset(80, 355));
+      await right.moveTo(const Offset(310, 355));
+      await tester.pump();
+
+      expect(
+        tester.widget<Transform>(zoomTransform).transform.getMaxScaleOnAxis(),
+        greaterThan(1.2),
+      );
+      expect(
+        find.byKey(const ValueKey('video-zoom-indicator')),
+        findsOneWidget,
+      );
+
+      await left.up();
+      await right.up();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('video-zoom-indicator')), findsNothing);
+
+      final translationBeforePan = tester
+          .widget<Transform>(zoomTranslation)
+          .transform
+          .getTranslation()
+          .x;
+      await tester.dragFrom(const Offset(195, 355), const Offset(60, 0));
+      await tester.pump();
+      final translationAfterPan = tester
+          .widget<Transform>(zoomTranslation)
+          .transform
+          .getTranslation()
+          .x;
+      expect(translationAfterPan, greaterThan(translationBeforePan));
+      expect(navigation, isEmpty);
+
+      final resetLeft = await tester.createGesture(pointer: 13);
+      final resetRight = await tester.createGesture(pointer: 14);
+      await resetLeft.down(const Offset(80, 355));
+      await resetRight.down(const Offset(310, 355));
+      await tester.pump();
+      await resetLeft.moveTo(const Offset(170, 355));
+      await resetRight.moveTo(const Offset(220, 355));
+      await tester.pump();
+      await resetLeft.up();
+      await resetRight.up();
+      await tester.pump();
+
+      expect(
+        tester.widget<Transform>(zoomTransform).transform.getMaxScaleOnAxis(),
+        1,
+      );
+      expect(
+        tester.widget<Transform>(zoomTranslation).transform.getTranslation().x,
+        0,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpUntilDisposed(tester, platform);
+      expect(platform.disposeCalls, 1);
+    } finally {
+      VideoPlayerPlatform.instance = previousPlatform;
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('on-demand navigation preserves the selected volume', (
     tester,
   ) async {
