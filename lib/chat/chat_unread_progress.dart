@@ -135,6 +135,35 @@ bool isCapturedEntryUnreadMessage({
   required int latestMessageId,
 }) => messageId > lastReadInboxId && messageId <= latestMessageId;
 
+/// Whether a transcript row begins the unread range captured when the chat
+/// opened. Live TDLib read updates must not be used here: viewing the row can
+/// advance the live boundary while the divider is still on screen.
+bool isCapturedUnreadDividerMessage({
+  required int entryUnreadCount,
+  required int? firstUnreadMessageId,
+  required int messageId,
+  required bool isIncoming,
+  required bool isService,
+  required int lastReadInboxId,
+  required int latestMessageId,
+}) {
+  if (entryUnreadCount <= 0 ||
+      firstUnreadMessageId == null ||
+      messageId != firstUnreadMessageId ||
+      !isIncoming ||
+      isService) {
+    return false;
+  }
+  if (!isCapturedEntryUnreadMessage(
+    messageId: messageId,
+    lastReadInboxId: lastReadInboxId,
+    latestMessageId: latestMessageId,
+  )) {
+    return false;
+  }
+  return true;
+}
+
 int resolveCapturedEntryLatestMessageId({
   required int knownLatestMessageId,
   required int loadedLatestMessageId,
