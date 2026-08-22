@@ -1383,6 +1383,7 @@
     <string name="generalOpenChatAtLatestMessage">Chat mit neuester Nachricht öffnen</string>
     <string name="generalRepeatPreserveSender">Absender bei +1 beibehalten</string>
     <string name="generalSendMessageWithEnter">Nachricht mit Eingabetaste senden</string>
+    <string name="generalShowSavedMessagesIdentity">„Gespeicherte Nachrichten“ statt meines Profils anzeigen</string>
     <string name="generalStorage">Speicher</string>
     <string name="generalTitle">Allgemein</string>
     <string name="gesturesChatActions">Chat-Aktionen</string>

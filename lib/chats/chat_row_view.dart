@@ -14,6 +14,7 @@ import '../chat/group_remark_controller.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -53,7 +54,11 @@ class ChatRowView extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
-    final title = chat.kind == ChatKind.group
+    final showSavedMessagesIdentity =
+        chat.isSavedMessages && theme.showSavedMessagesIdentity;
+    final title = showSavedMessagesIdentity
+        ? AppStrings.t(AppStringKeys.savedMessages)
+        : chat.kind == ChatKind.group
         ? context.watch<GroupRemarkController?>()?.displayTitleFor(
                 chat.id,
                 chat.title,
@@ -66,12 +71,17 @@ class ChatRowView extends StatelessWidget {
     final previewFontSize = AppTextSize.chatListPreview();
     final timestampFontSize = AppTextSize.chatListTimestamp();
     final nameColor =
-        theme.chatListNameColorAudience.shows(isPremium: chat.peerIsPremium) &&
+        !showSavedMessagesIdentity &&
+            theme.chatListNameColorAudience.shows(
+              isPremium: chat.peerIsPremium,
+            ) &&
             chat.peerAccentColorId >= 0
         ? _accentColor(chat.peerAccentColorId)
         : c.textPrimary;
     final showStatus =
-        theme.chatListStatusEmojiMode.visible && chat.peerEmojiStatusId != 0;
+        !showSavedMessagesIdentity &&
+        theme.chatListStatusEmojiMode.visible &&
+        chat.peerEmojiStatusId != 0;
     return Container(
       height: rowHeight,
       color: selected
@@ -80,7 +90,12 @@ class ChatRowView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
-          _avatar(context, title, avatarSize),
+          _avatar(
+            context,
+            title,
+            avatarSize,
+            showSavedMessagesIdentity: showSavedMessagesIdentity,
+          ),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
@@ -104,7 +119,8 @@ class ChatRowView extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: titleFontSize,
-                          fontWeight: chat.peerIsPremium
+                          fontWeight:
+                              chat.peerIsPremium && !showSavedMessagesIdentity
                               ? FontWeight.w600
                               : FontWeight.w500,
                           color: nameColor,
@@ -155,7 +171,12 @@ class ChatRowView extends StatelessWidget {
     return AppTheme.brand;
   }
 
-  Widget _avatar(BuildContext context, String title, double avatarSize) {
+  Widget _avatar(
+    BuildContext context,
+    String title,
+    double avatarSize, {
+    required bool showSavedMessagesIdentity,
+  }) {
     final theme = context.watch<ThemeController>();
     final circleGroups = theme.circularGroupAvatars;
     return SizedBox(
@@ -164,14 +185,27 @@ class ChatRowView extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          avatarBuilder?.call(avatarSize) ??
-              PhotoAvatar(
-                title: title,
-                photo: chat.photo,
-                size: avatarSize,
-                square: chat.usesSquareAvatar && !circleGroups,
-                allowAnimation: false,
+          if (showSavedMessagesIdentity)
+            AvatarSurface(
+              key: const ValueKey('saved-messages-avatar'),
+              size: avatarSize,
+              background: AppTheme.brand,
+              centerChild: true,
+              child: AppIcon(
+                HeroAppIcons.bookmark,
+                size: avatarSize * 0.46,
+                color: Colors.white,
               ),
+            )
+          else
+            avatarBuilder?.call(avatarSize) ??
+                PhotoAvatar(
+                  title: title,
+                  photo: chat.photo,
+                  size: avatarSize,
+                  square: chat.usesSquareAvatar && !circleGroups,
+                  allowAnimation: false,
+                ),
           if (chat.unreadCount > 0)
             Positioned(
               right: 0,

@@ -1379,6 +1379,7 @@
     <string name="generalOpenChatAtLatestMessage">打开聊天显示最新消息</string>
     <string name="generalRepeatPreserveSender">+1 时保留发送者</string>
     <string name="generalSendMessageWithEnter">回车键发送消息</string>
+    <string name="generalShowSavedMessagesIdentity">显示“保存的消息”而不是我的资料</string>
     <string name="generalStorage">存储空间</string>
     <string name="generalTitle">通用</string>
     <string name="gesturesChatActions">聊天操作</string>

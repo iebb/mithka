@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/group_remark_controller.dart';
 import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/components/photo_avatar.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/date_text.dart';
@@ -12,6 +14,60 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('saved messages identity replaces the account name and avatar', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'showSavedMessagesIdentity': true});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final chat = ChatSummary(
+      id: 42,
+      title: 'Account Owner',
+      lastMessage: 'A note',
+      lastMessageId: 1,
+      date: 0,
+      unreadCount: 0,
+      order: 1,
+      isMuted: false,
+      peerIsPremium: true,
+      peerAccentColorId: 2,
+      peerEmojiStatusId: 123,
+      isSavedMessages: true,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [AppLocalizations.delegate],
+          theme: ThemeData(
+            brightness: Brightness.light,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(body: ChatRowView(chat: chat)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Saved Messages'), findsOneWidget);
+    expect(find.text('Account Owner'), findsNothing);
+    expect(find.byKey(const ValueKey('saved-messages-avatar')), findsOneWidget);
+    expect(find.byType(PhotoAvatar), findsNothing);
+    expect(find.byType(StatusEmojiView), findsNothing);
+
+    chat.peerEmojiStatusId = 0;
+    theme.showSavedMessagesIdentity = false;
+    await tester.pump();
+
+    expect(find.text('Saved Messages'), findsNothing);
+    expect(find.text('Account Owner'), findsOneWidget);
+    expect(find.byType(PhotoAvatar), findsOneWidget);
+  });
+
   testWidgets('chat rows show the active account local group remark', (
     tester,
   ) async {

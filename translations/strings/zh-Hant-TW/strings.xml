@@ -1379,6 +1379,7 @@
     <string name="generalOpenChatAtLatestMessage">開啟聊天時顯示最新訊息</string>
     <string name="generalRepeatPreserveSender">+1 時保留傳送者</string>
     <string name="generalSendMessageWithEnter">按 Enter 傳送訊息</string>
+    <string name="generalShowSavedMessagesIdentity">顯示「已儲存的訊息」而不是我的個人資料</string>
     <string name="generalStorage">儲存空間</string>
     <string name="generalTitle">一般</string>
     <string name="gesturesChatActions">聊天操作</string>

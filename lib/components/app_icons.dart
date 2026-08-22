@@ -218,6 +218,7 @@ class HeroAppIcons {
   static const alignBottom = AppIconData(HeroiconsOutline.barsArrowDown);
   static const bell = AppIconData(HeroiconsOutline.bell);
   static const bellSlash = AppIconData(HeroiconsOutline.bellSlash);
+  static const bookmark = AppIconData(HeroiconsOutline.bookmark);
   static const venue = AppIconData(HeroiconsOutline.buildingStorefront);
   static const camera = AppIconData(HeroiconsOutline.camera);
   static const check = AppIconData(HeroiconsOutline.check);

@@ -1111,6 +1111,8 @@ class ThemeController extends ChangeNotifier {
         );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
+    _showSavedMessagesIdentity =
+        _prefs.getBool(_showSavedMessagesIdentityKey) ?? false;
     _preserveSenderWhenRepeating =
         _prefs.getBool(_preserveSenderWhenRepeatingKey) ?? true;
     _quickRepliesEnabled = _prefs.getBool(_quickRepliesEnabledKey) ?? true;
@@ -1217,6 +1219,7 @@ class ThemeController extends ChangeNotifier {
       'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
+  static const _showSavedMessagesIdentityKey = 'showSavedMessagesIdentity';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
   static const _quickRepliesEnabledKey = 'quickRepliesEnabled';
   static const _quickReactionsKey = 'quickReactions';
@@ -1294,6 +1297,7 @@ class ThemeController extends ChangeNotifier {
   late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
+  bool _showSavedMessagesIdentity = false;
   bool _preserveSenderWhenRepeating = true;
   bool _quickRepliesEnabled = true;
   late List<QuickReactionChoice> _quickReactions;
@@ -1744,6 +1748,7 @@ class ThemeController extends ChangeNotifier {
       _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
+  bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get quickRepliesEnabled => _quickRepliesEnabled;
   List<QuickReactionChoice> get quickReactions =>
@@ -2525,8 +2530,16 @@ class ThemeController extends ChangeNotifier {
   }
 
   set openChatsAtLatest(bool value) {
+    if (_openChatsAtLatest == value) return;
     _openChatsAtLatest = value;
     _prefs.setBool(_openChatsAtLatestKey, value);
+    notifyListeners();
+  }
+
+  set showSavedMessagesIdentity(bool value) {
+    if (_showSavedMessagesIdentity == value) return;
+    _showSavedMessagesIdentity = value;
+    _prefs.setBool(_showSavedMessagesIdentityKey, value);
     notifyListeners();
   }
 

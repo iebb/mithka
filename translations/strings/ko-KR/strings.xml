@@ -1379,6 +1379,7 @@
     <string name="generalOpenChatAtLatestMessage">채팅을 열 때 최신 메시지 표시</string>
     <string name="generalRepeatPreserveSender">+1 사용 시 보낸 사람 유지</string>
     <string name="generalSendMessageWithEnter">Enter 키로 메시지 보내기</string>
+    <string name="generalShowSavedMessagesIdentity">내 프로필 대신 ‘저장된 메시지’ 표시</string>
     <string name="generalStorage">저장 공간</string>
     <string name="generalTitle">일반</string>
     <string name="gesturesChatActions">채팅 동작</string>

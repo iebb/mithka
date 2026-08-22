@@ -1379,6 +1379,7 @@
     <string name="generalOpenChatAtLatestMessage">チャットを最新メッセージで開く</string>
     <string name="generalRepeatPreserveSender">+1 で送信者を保持</string>
     <string name="generalSendMessageWithEnter">Enterキーでメッセージを送信</string>
+    <string name="generalShowSavedMessagesIdentity">自分のプロフィールの代わりに「保存済みメッセージ」を表示</string>
     <string name="generalStorage">ストレージ</string>
     <string name="generalTitle">一般</string>
     <string name="gesturesChatActions">チャット操作</string>

@@ -1426,6 +1426,8 @@ abstract final class AppStringKeys {
       'generalOpenChatAtLatestMessage';
   static const generalRepeatPreserveSender = 'generalRepeatPreserveSender';
   static const generalSendMessageWithEnter = 'generalSendMessageWithEnter';
+  static const generalShowSavedMessagesIdentity =
+      'generalShowSavedMessagesIdentity';
   static const generalStorage = 'generalStorage';
   static const generalTitle = 'generalTitle';
   static const globalThemeColors = 'globalThemeColors';

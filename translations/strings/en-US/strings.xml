@@ -1383,6 +1383,7 @@
     <string name="generalOpenChatAtLatestMessage">Open chats at latest message</string>
     <string name="generalRepeatPreserveSender">Preserve sender when using +1</string>
     <string name="generalSendMessageWithEnter">Send messages with Enter</string>
+    <string name="generalShowSavedMessagesIdentity">Show “Saved Messages” instead of my profile</string>
     <string name="generalStorage">Storage</string>
     <string name="generalTitle">General</string>
     <string name="gesturesChatActions">Chat actions</string>

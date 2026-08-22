@@ -210,6 +210,13 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 onChanged: (value) => theme.openChatsAtLatest = value,
               ),
               SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-saved-messages-identity'),
+                title: AppStringKeys.generalShowSavedMessagesIdentity,
+                value: theme.showSavedMessagesIdentity,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.bookmark),
+                onChanged: (value) => theme.showSavedMessagesIdentity = value,
+              ),
+              SettingsSwitchRow(
                 key: const ValueKey('chat-behavior-preserve-sender'),
                 title: AppStringKeys.generalRepeatPreserveSender,
                 value: theme.preserveSenderWhenRepeating,

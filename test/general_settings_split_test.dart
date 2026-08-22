@@ -18,6 +18,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'enterToSend': true,
       'openChatsAtLatest': false,
+      'showSavedMessagesIdentity': false,
       'preserveSenderWhenRepeating': true,
       'quickRepliesEnabled': true,
     });
@@ -37,6 +38,7 @@ void main() {
     for (final key in const [
       'chat-behavior-enter-to-send',
       'chat-behavior-open-at-latest',
+      'chat-behavior-saved-messages-identity',
       'chat-behavior-preserve-sender',
       'chat-behavior-quick-replies',
     ]) {
@@ -60,7 +62,7 @@ void main() {
     );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(5),
+      findsNWidgets(6),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(
@@ -83,6 +85,17 @@ void main() {
     );
     await tester.pump();
     expect(theme.openChatsAtLatest, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('chat-behavior-saved-messages-identity')),
+    );
+    await tester.pump();
+    expect(theme.showSavedMessagesIdentity, isTrue);
+    expect(prefs.getBool('showSavedMessagesIdentity'), isTrue);
+
+    final restoredSavedMessagesTheme = ThemeController(prefs);
+    addTearDown(restoredSavedMessagesTheme.dispose);
+    expect(restoredSavedMessagesTheme.showSavedMessagesIdentity, isTrue);
 
     await tester.tap(
       find.byKey(const ValueKey('chat-behavior-preserve-sender')),
