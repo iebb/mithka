@@ -101,6 +101,51 @@ class ChatListViewModel extends ChangeNotifier {
     return entries;
   }
 
+  /// One neighbouring folder's projection, kept beside the selected one so a
+  /// live folder swipe can render the list it is about to reveal. A single slot
+  /// is enough: a gesture peeks at one folder at a time, and the drag re-reads
+  /// it on every frame.
+  int? _peekFolderId;
+  bool _peekCommunitiesEnabled = true;
+  List<CommunityChatListEntry>? _peekEntries;
+
+  /// [chatListEntries] for an arbitrary folder, leaving the selection alone.
+  List<CommunityChatListEntry> chatListEntriesForFolder(
+    int? folderId, {
+    bool communitiesEnabled = true,
+  }) {
+    if (folderId == _selectedFilter.folderId) {
+      return chatListEntries(communitiesEnabled: communitiesEnabled);
+    }
+    final cached = _peekEntries;
+    if (cached != null &&
+        _peekFolderId == folderId &&
+        _peekCommunitiesEnabled == communitiesEnabled) {
+      return cached;
+    }
+    final entries = CommunityChatListProjection.build(
+      chats: chatsForFolder(folderId),
+      communityByChat: _communityByChat,
+      communities: _communities,
+      communitiesEnabled: communitiesEnabled,
+    );
+    _peekFolderId = folderId;
+    _peekCommunitiesEnabled = communitiesEnabled;
+    _peekEntries = entries;
+    return entries;
+  }
+
+  /// The chats [folderId] would show, sorted exactly like [chats].
+  List<ChatSummary> chatsForFolder(int? folderId) =>
+      folderId == _selectedFilter.folderId
+      ? _chats
+      : _projectChats(folderId, _visibleChats());
+
+  void _invalidateEntriesCaches() {
+    _entriesCache = null;
+    _peekEntries = null;
+  }
+
   List<ChatFilterOption> get filters => _filters;
   ChatFilterOption get selectedFilter => _selectedFilter;
   bool get isAllFilter => _selectedFilter.isAll;
@@ -412,6 +457,18 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   void loadMore() => _loadChats(_pageSize);
+
+  /// Warms [folderId] so a folder swipe reveals a populated list instead of one
+  /// that fills in after the switch has already landed.
+  void prefetchFolder(int? folderId) {
+    if (_disposed) return;
+    _loadAndHydrateChatList(
+      folderId == null
+          ? {'@type': 'chatListMain'}
+          : {'@type': 'chatListFolder', 'chat_folder_id': folderId},
+      _pageSize,
+    );
+  }
 
   Future<void> refresh() async {
     if (_disposed) return;
@@ -1329,9 +1386,7 @@ class ChatListViewModel extends ChangeNotifier {
     _resortTimer?.cancel();
     _resortTimer = null;
     if (_disposed) return;
-    final all = _map.values
-        .where((c) => _joinedChatCache[c.id] ?? true)
-        .toList();
+    final all = _visibleChats();
     _filtered = const [];
     final visible = all;
     _archived = visible.where((c) => c.archiveOrder > 0).toList()
@@ -1340,20 +1395,8 @@ class ChatListViewModel extends ChangeNotifier {
             ? b.archiveOrder.compareTo(a.archiveOrder)
             : b.date.compareTo(a.date),
       );
-    if (_selectedFilter.folderId == null) {
-      _chats = visible.where((c) => c.order > 0).toList()..sort(_compare);
-    } else {
-      final folderOrders = _folderOrders[_selectedFilter.folderId] ?? const {};
-      _chats = visible.where((c) => (folderOrders[c.id] ?? 0) > 0).toList()
-        ..sort((a, b) {
-          final ao = folderOrders[a.id] ?? 0;
-          final bo = folderOrders[b.id] ?? 0;
-          if (ao != bo) return bo.compareTo(ao);
-          if (a.date != b.date) return b.date.compareTo(a.date);
-          return b.id.compareTo(a.id);
-        });
-    }
-    _entriesCache = null;
+    _chats = _projectChats(_selectedFilter.folderId, visible);
+    _invalidateEntriesCaches();
     stopwatch.stop();
     AppPerformanceMetrics.chatListResorted(
       elapsed: stopwatch.elapsed,
@@ -1364,11 +1407,29 @@ class ChatListViewModel extends ChangeNotifier {
     _notifyIfAlive();
   }
 
+  List<ChatSummary> _visibleChats() =>
+      _map.values.where((c) => _joinedChatCache[c.id] ?? true).toList();
+
+  List<ChatSummary> _projectChats(int? folderId, List<ChatSummary> visible) {
+    if (folderId == null) {
+      return visible.where((c) => c.order > 0).toList()..sort(_compare);
+    }
+    final folderOrders = _folderOrders[folderId] ?? const {};
+    return visible.where((c) => (folderOrders[c.id] ?? 0) > 0).toList()
+      ..sort((a, b) {
+        final ao = folderOrders[a.id] ?? 0;
+        final bo = folderOrders[b.id] ?? 0;
+        if (ao != bo) return bo.compareTo(ao);
+        if (a.date != b.date) return b.date.compareTo(a.date);
+        return b.id.compareTo(a.id);
+      });
+  }
+
   void _scheduleResort() {
     if (_disposed) return;
     // Community grouping (collapse, access, membership) is mutated in place by
     // callers that then schedule a resort, so drop the projection here too.
-    _entriesCache = null;
+    _invalidateEntriesCaches();
     _pendingResortSignals++;
     if (_resortTimer != null) return;
     // TDLib can deliver many dependent updates in one burst. A 50 ms window

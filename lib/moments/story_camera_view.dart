@@ -17,6 +17,9 @@ class StoryCameraResult {
   final bool openGallery;
 }
 
+@visibleForTesting
+bool storyCameraShouldRetryOnResume({required bool recording}) => !recording;
+
 class StoryCameraView extends StatefulWidget {
   const StoryCameraView({super.key});
 
@@ -190,6 +193,14 @@ class _StoryCameraViewState extends State<StoryCameraView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        storyCameraShouldRetryOnResume(recording: _recording)) {
+      // A permission grant made in system settings leaves the old controller
+      // allocated but uninitialized. Retry even when that stale controller is
+      // still present; the old guard otherwise leaves the preview black.
+      unawaited(_initializeCamera(_cameraIndex));
+      return;
+    }
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive ||
@@ -199,8 +210,6 @@ class _StoryCameraViewState extends State<StoryCameraView>
       } else {
         unawaited(_disposeController());
       }
-    } else if (state == AppLifecycleState.resumed && !_recording) {
-      unawaited(_initializeCamera(_cameraIndex));
     }
   }
 

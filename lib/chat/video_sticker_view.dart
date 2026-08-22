@@ -2,8 +2,8 @@
 //  video_sticker_view.dart
 //
 //  Plays a Telegram `.webm` (VP9 + alpha) video sticker, looping + muted.
-//  Android routes files from TDLib's sticker cache through the scoped FVP
-//  software decoder so VP9 alpha is preserved without affecting normal video.
+//  Android 14+ renders the supplied static thumbnail instead of loading FVP's
+//  MDK decoder: native surface creation is unstable on those releases.
 //
 
 import 'dart:async';
@@ -11,6 +11,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../components/photo_avatar.dart';
@@ -18,6 +19,13 @@ import '../media/looping_media_playback.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+
+/// FVP's Android MDK decoder can crash while creating a native video surface
+/// on Android 14 and later. Video stickers always include a static thumbnail,
+/// so prefer that safe representation there rather than risking the process.
+@visibleForTesting
+bool shouldUseStaticAndroidVideoStickerFallback(int? sdkInt) =>
+    sdkInt == null || sdkInt >= 34;
 
 class VideoStickerView extends StatefulWidget {
   const VideoStickerView({
@@ -48,6 +56,8 @@ class _VideoStickerViewState extends State<VideoStickerView>
   LoopingMediaPlayerLease? _lease;
   LoopingMediaPlayerWaiter? _leaseWaiter;
   VideoPlayerController? _initializingController;
+
+  static Future<bool>? _androidNeedsStaticFallback;
 
   @override
   void initState() {
@@ -332,7 +342,21 @@ class _VideoStickerViewState extends State<VideoStickerView>
     if (defaultTargetPlatform != TargetPlatform.android) {
       return Future.value(false);
     }
-    return Future.value(false);
+    return _androidNeedsStaticFallback ??= _androidSdkInt().then(
+      shouldUseStaticAndroidVideoStickerFallback,
+    );
+  }
+
+  static Future<int?> _androidSdkInt() async {
+    try {
+      final info = await const MethodChannel(
+        'mithka/app_info',
+      ).invokeMapMethod<String, Object?>('info');
+      final sdkInt = info?['sdkInt'];
+      return sdkInt is int ? sdkInt : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

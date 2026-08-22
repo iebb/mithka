@@ -224,6 +224,200 @@ void main() {
     );
   });
 
+  group('live folder drags', () {
+    test('arms early and then follows the fingers anywhere', () {
+      final session = ChatListSwipeSession();
+      _down(session, 1, Offset.zero, ChatListSwipeMode.switchFolders);
+      session.pointerMove(pointer: 1, position: const Offset(-8, 0));
+      expect(
+        session.liveDecision(ChatListSwipeMode.switchFolders).action,
+        ChatListSwipeAction.none,
+      );
+
+      session.pointerMove(pointer: 1, position: const Offset(-20, 2));
+      expect(
+        session.liveDecision(ChatListSwipeMode.switchFolders).action,
+        ChatListSwipeAction.switchFolders,
+      );
+      expect(session.liveCentroidDelta?.dx, -20);
+
+      // Once armed the travel keeps being reported, including back past the
+      // start, so the list can be dragged the other way without letting go.
+      session.pointerMove(pointer: 1, position: const Offset(30, 2));
+      expect(session.liveCentroidDelta?.dx, 30);
+    });
+
+    test('reports the centroid and stops when the finger count changes', () {
+      final session = ChatListSwipeSession();
+      _down(session, 1, Offset.zero, ChatListSwipeMode.chatActions);
+      _down(session, 2, const Offset(0, 20), ChatListSwipeMode.chatActions);
+      session.pointerMove(pointer: 1, position: const Offset(-40, 0));
+      session.pointerMove(pointer: 2, position: const Offset(-60, 20));
+      expect(session.liveCentroidDelta?.dx, -50);
+      expect(
+        session.liveDecision(ChatListSwipeMode.chatActions).action,
+        ChatListSwipeAction.switchFolders,
+      );
+
+      _down(session, 3, const Offset(-60, 40), ChatListSwipeMode.chatActions);
+      expect(
+        session.liveDecision(ChatListSwipeMode.chatActions).action,
+        isNot(ChatListSwipeAction.switchFolders),
+      );
+
+      session.pointerMove(pointer: 1, position: const Offset(-140, 0));
+      session.pointerMove(pointer: 2, position: const Offset(-160, 20));
+      _up(session, 1, const Offset(-140, 0), ChatListSwipeMode.chatActions);
+      expect(session.liveCentroidDelta, isNull);
+    });
+
+    test('a scroll that turns sideways stays a scroll', () {
+      final session = ChatListSwipeSession();
+      _down(session, 1, Offset.zero, ChatListSwipeMode.switchFolders);
+      session.pointerMove(pointer: 1, position: const Offset(2, -60));
+      session.pointerMove(pointer: 1, position: const Offset(-200, -90));
+      expect(
+        session.liveDecision(ChatListSwipeMode.switchFolders).action,
+        ChatListSwipeAction.none,
+      );
+      expect(
+        _up(
+          session,
+          1,
+          const Offset(-200, -90),
+          ChatListSwipeMode.switchFolders,
+        )?.action,
+        ChatListSwipeAction.none,
+      );
+    });
+
+    test('a mouse or a mode change never arms a drag', () {
+      final session = ChatListSwipeSession();
+      _down(session, 1, Offset.zero, ChatListSwipeMode.switchFolders);
+      session.pointerMove(pointer: 1, position: const Offset(-60, 0));
+      expect(
+        session.liveDecision(ChatListSwipeMode.chatActions).action,
+        ChatListSwipeAction.none,
+      );
+    });
+  });
+
+  group('folder drag physics', () {
+    test('tracks the finger inside the folder list, capped at one page', () {
+      expect(
+        chatListFolderDragOffset(travel: -120, width: 400, hasNeighbour: true),
+        -120,
+      );
+      expect(
+        chatListFolderDragOffset(travel: 520, width: 400, hasNeighbour: true),
+        400,
+      );
+    });
+
+    test('rubber bands past the first and the last folder', () {
+      double band(double travel) => chatListFolderDragOffset(
+        travel: travel,
+        width: 400,
+        hasNeighbour: false,
+      );
+
+      expect(band(40), inExclusiveRange(0, 40));
+      expect(band(400), greaterThan(band(40)));
+      expect(band(4000), lessThan(80));
+      expect(band(-400), -band(400));
+    });
+
+    test('commits on a flick or most of a page, never against the throw', () {
+      bool commit(double offset, double velocity) =>
+          chatListFolderDragShouldCommit(
+            offset: offset,
+            width: 400,
+            velocity: velocity,
+          );
+
+      expect(commit(-40, 0), isFalse);
+      expect(commit(-160, 0), isTrue);
+      expect(commit(-40, -900), isTrue);
+      expect(commit(160, 900), isTrue);
+      expect(commit(-160, 900), isFalse);
+      expect(commit(0, -900), isFalse);
+    });
+  });
+
+  group('folder panes', () {
+    Future<void> pumpPanes(
+      WidgetTester tester,
+      ValueNotifier<double> offset, {
+      required double peekSide,
+      bool withPeek = true,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 400,
+          height: 600,
+          child: ChatListFolderPanes(
+            offset: offset,
+            peekSide: peekSide,
+            width: 400,
+            current: const _Pane('current'),
+            peek: withPeek ? const _Pane('peek') : null,
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('parks the incoming folder one page away and moves the pair', (
+      tester,
+    ) async {
+      final offset = ValueNotifier<double>(0);
+      addTearDown(offset.dispose);
+      await pumpPanes(tester, offset, peekSide: 1);
+
+      double dx(String pane) => tester.getTopLeft(find.text(pane)).dx;
+      final rest = dx('current');
+      expect(dx('peek') - rest, 400);
+
+      offset.value = -120;
+      await tester.pump();
+      expect(dx('current'), rest - 120);
+      expect(dx('peek') - dx('current'), 400);
+
+      offset.value = -400;
+      await tester.pump();
+      expect(dx('peek'), rest);
+    });
+
+    testWidgets('parks a backwards folder on the other side', (tester) async {
+      final offset = ValueNotifier<double>(0);
+      addTearDown(offset.dispose);
+      await pumpPanes(tester, offset, peekSide: -1);
+
+      double dx(String pane) => tester.getTopLeft(find.text(pane)).dx;
+      expect(dx('peek') - dx('current'), -400);
+
+      offset.value = 400;
+      await tester.pump();
+      expect(dx('peek'), dx('current') - 400);
+    });
+
+    testWidgets('keeps the live list mounted when the peek comes and goes', (
+      tester,
+    ) async {
+      final offset = ValueNotifier<double>(0);
+      addTearDown(offset.dispose);
+      await pumpPanes(tester, offset, peekSide: 1, withPeek: false);
+      final element = tester.element(find.text('current'));
+
+      await pumpPanes(tester, offset, peekSide: 1);
+      expect(find.byKey(ChatListFolderPanes.peekKey), findsOneWidget);
+      expect(tester.element(find.text('current')), same(element));
+
+      await pumpPanes(tester, offset, peekSide: 1, withPeek: false);
+      expect(find.byKey(ChatListFolderPanes.peekKey), findsNothing);
+      expect(tester.element(find.text('current')), same(element));
+    });
+  });
+
   group('chat list swipe mode persistence', () {
     test('defaults to chat actions and persists explicit selection', () async {
       SharedPreferences.setMockInitialValues({});
@@ -373,3 +567,16 @@ Widget _rowApp({
     ),
   ),
 );
+
+class _Pane extends StatelessWidget {
+  const _Pane(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    alignment: Alignment.topLeft,
+    color: const Color(0xFF101010),
+    child: Text(label, textDirection: TextDirection.ltr),
+  );
+}

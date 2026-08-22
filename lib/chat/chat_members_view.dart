@@ -17,6 +17,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
+import '../profile/profile_detail_view.dart';
 import '../settings/edit_field_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -467,7 +468,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
                             trailingActions: trailingActions,
                             onTap: widget.mode == ChatMembersMode.administrators
                                 ? () => _openAdministratorEditor(m)
-                                : null,
+                                : () => _openMemberProfile(m),
                             child: _memberRow(m),
                           ),
                           const InsetDivider(leadingInset: 70),
@@ -545,6 +546,14 @@ class _ChatMembersViewState extends State<ChatMembersView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _openMemberProfile(GroupMember member) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileDetailView(userId: member.id, name: member.name),
       ),
     );
   }

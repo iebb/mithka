@@ -58,12 +58,14 @@ class AppStoreReleaseTest < Minitest::Test
     attr_reader :writes
 
     def initialize(version_state: "PREPARE_FOR_SUBMISSION", has_item: false,
-                   item_state: "READY_FOR_REVIEW", submission_state: "READY_FOR_REVIEW")
+                   item_state: "READY_FOR_REVIEW", submission_state: "READY_FOR_REVIEW",
+                   platform: "IOS")
       @version_string = "0.7.41"
       @version_state = version_state
       @has_item = has_item
       @item_state = item_state
       @submission_state = submission_state
+      @platform = platform
       @writes = []
     end
 
@@ -71,9 +73,9 @@ class AppStoreReleaseTest < Minitest::Test
       case [path, params]
       when ["/appStoreVersions/#{TARGET_VERSION_ID}", {}]
         { "data" => { "id" => TARGET_VERSION_ID, "attributes" => { "appStoreState" => @version_state, "versionString" => @version_string } } }
-      when ["/apps/#{APP_ID}/reviewSubmissions", { "filter[platform]" => "IOS", "limit" => "200" }]
+      when ["/apps/#{APP_ID}/reviewSubmissions", { "filter[platform]" => @platform, "limit" => "200" }]
         { "data" => [{ "id" => SUBMISSION_ID, "attributes" => { "state" => @submission_state } }] }
-      when ["/apps/#{APP_ID}/reviewSubmissions", { "filter[platform]" => "IOS", "include" => "appStoreVersionForReview", "limit" => "200" }]
+      when ["/apps/#{APP_ID}/reviewSubmissions", { "filter[platform]" => @platform, "include" => "appStoreVersionForReview", "limit" => "200" }]
         {
           "data" => [{
             "id" => SUBMISSION_ID,
@@ -150,6 +152,55 @@ class AppStoreReleaseTest < Minitest::Test
     assert_includes output.string, "no App Store Connect state was changed"
   end
 
+  def test_macos_dry_run_uses_macos_versions_and_metadata_sources
+    client = FakeClient.new(base_routes(platform: "MAC_OS", version: "1.1.0"))
+    output = StringIO.new
+
+    build_runner(
+      client,
+      output,
+      platform: "MAC_OS",
+      version: "1.1.0",
+      binary_version: "1.1.0"
+    ).run
+
+    assert_empty client.writes
+    assert_includes output.string, "PLAN create macOS App Store version 1.1.0"
+    assert_includes output.string, "DRY RUN complete"
+  end
+
+  def test_selected_platform_must_match_uploaded_build_platform
+    client = FakeClient.new(base_routes(platform: "IOS", version: "1.1.0"))
+    runner = build_runner(
+      client,
+      StringIO.new,
+      platform: "MAC_OS",
+      version: "1.1.0",
+      binary_version: "1.1.0"
+    )
+
+    error = assert_raises(MithkaAppStoreRelease::Error) { runner.send(:resolve_exact_build) }
+
+    assert_includes error.message, "has platform IOS, expected MAC_OS"
+  end
+
+  def test_macos_submission_lookup_uses_macos_platform
+    client = SubmissionClient.new(platform: "MAC_OS")
+    output = StringIO.new
+    runner = build_runner(
+      client,
+      output,
+      platform: "MAC_OS",
+      version: "1.1.0",
+      binary_version: "1.1.0"
+    )
+
+    submission = runner.send(:ensure_submission, TARGET_VERSION_ID)
+
+    assert_equal SUBMISSION_ID, submission.fetch("id")
+    assert_empty client.writes
+  end
+
   def test_exact_uploaded_artifact_resolves_by_build_id_and_sha256
     with_artifact do |path, sha256|
       client = FakeClient.new(uploaded_build_routes)
@@ -175,11 +226,42 @@ class AppStoreReleaseTest < Minitest::Test
     build = runner.send(:resolve_exact_build)
 
     assert_equal UPLOADED_BUILD_ID, build.fetch("id")
-    assert_equal [{ run_id: GITHUB_RUN_ID, source_commit: SOURCE_SHA, build_number: "346" }], verifier.calls
+    assert_equal [{ run_id: GITHUB_RUN_ID, source_commit: SOURCE_SHA, build_number: "346", platform: "IOS" }], verifier.calls
     assert_includes output.string, "GitHub Actions run #{GITHUB_RUN_ID}"
     assert_includes output.string, "binary 0.7.41 (346)"
     assert_includes output.string, "source #{SOURCE_SHA}"
     assert_empty client.writes
+  end
+
+  def test_github_verifier_accepts_the_macos_archive_job
+    verifier = MithkaAppStoreRelease::GitHubActionsVerifier.allocate
+    verifier.define_singleton_method(:gh_json) do |path|
+      if path.end_with?("/jobs?per_page=100")
+        {
+          "jobs" => [{
+            "id" => 42,
+            "name" => "Archive and upload macOS",
+            "steps" => [
+              "Set build identity",
+              "Archive macOS app",
+              "Upload archive to App Store Connect"
+            ].map { |name| { "name" => name, "conclusion" => "success" } }
+          }]
+        }
+      else
+        { "head_sha" => SOURCE_SHA, "status" => "completed" }
+      end
+    end
+    verifier.define_singleton_method(:gh) do |_path|
+      "CI_BUILD_NUMBER: 346\nCI_COMMIT: #{SOURCE_SHA}\n"
+    end
+
+    verifier.verify!(
+      run_id: GITHUB_RUN_ID,
+      source_commit: SOURCE_SHA,
+      build_number: "346",
+      platform: "MAC_OS"
+    )
   end
 
   def test_uploaded_artifact_sha256_must_match_before_build_is_used
@@ -190,6 +272,18 @@ class AppStoreReleaseTest < Minitest::Test
       error = assert_raises(MithkaAppStoreRelease::Error) { runner.send(:resolve_exact_build) }
 
       assert_includes error.message, "artifact SHA-256"
+      assert_empty client.writes
+    end
+  end
+
+  def test_macos_requires_github_provenance_for_uploaded_builds
+    with_artifact do |path, sha256|
+      client = FakeClient.new(uploaded_build_routes)
+      runner = build_uploaded_runner(client, StringIO.new, path, sha256, platform: "MAC_OS")
+
+      error = assert_raises(MithkaAppStoreRelease::Error) { runner.send(:resolve_exact_build) }
+
+      assert_includes error.message, "use --github-run-id for MAC_OS"
       assert_empty client.writes
     end
   end
@@ -454,12 +548,13 @@ class AppStoreReleaseTest < Minitest::Test
 
   private
 
-  def build_runner(client, output, apply: false)
+  def build_runner(client, output, apply: false, platform: "IOS", version: "0.7.41", binary_version: "0.7.0")
     MithkaAppStoreRelease::Runner.new(
       client: client,
       app_id: APP_ID,
-      version: "0.7.41",
-      binary_version: "0.7.0",
+      platform: platform,
+      version: version,
+      binary_version: binary_version,
       build_number: "345",
       ci_build_run_id: RUN_ID,
       source_commit: SOURCE_SHA,
@@ -470,10 +565,11 @@ class AppStoreReleaseTest < Minitest::Test
     )
   end
 
-  def build_uploaded_runner(client, output, artifact_path, artifact_sha256)
+  def build_uploaded_runner(client, output, artifact_path, artifact_sha256, platform: "IOS")
     MithkaAppStoreRelease::Runner.new(
       client: client,
       app_id: APP_ID,
+      platform: platform,
       version: "0.7.41",
       binary_version: "0.7.41",
       build_number: "346",
@@ -550,7 +646,7 @@ class AppStoreReleaseTest < Minitest::Test
         "data" => {
           "type" => "preReleaseVersions",
           "id" => "uploaded-prerelease",
-          "attributes" => { "version" => "0.7.41" }
+          "attributes" => { "platform" => "IOS", "version" => "0.7.41" }
         }
       }
     }
@@ -632,7 +728,7 @@ class AppStoreReleaseTest < Minitest::Test
     }
   end
 
-  def base_routes
+  def base_routes(platform: "IOS", version: "0.7.41")
     {
       "/ciBuildRuns/#{RUN_ID}" => {
         "data" => {
@@ -664,16 +760,16 @@ class AppStoreReleaseTest < Minitest::Test
         "data" => {
           "type" => "preReleaseVersions",
           "id" => "prerelease",
-          "attributes" => { "version" => "0.7.0" }
+          "attributes" => { "platform" => platform, "version" => platform == "MAC_OS" ? "1.1.0" : "0.7.0" }
         }
       },
       ["/apps/#{APP_ID}/appStoreVersions", {
-        "filter[platform]" => "IOS",
-        "filter[versionString]" => "0.7.41",
+        "filter[platform]" => platform,
+        "filter[versionString]" => version,
         "limit" => "50"
       }] => { "data" => [] },
       ["/apps/#{APP_ID}/appStoreVersions", {
-        "filter[platform]" => "IOS",
+        "filter[platform]" => platform,
         "filter[appStoreState]" => "READY_FOR_SALE",
         "limit" => "50"
       }] => {

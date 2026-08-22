@@ -1210,7 +1210,6 @@
     <string name="composerSend">Senden</string>
     <string name="composerSendAsFile">Als Datei senden</string>
     <string name="composerSendAsFileDescription">Originaldateien ohne Medienbearbeitung oder Komprimierung senden</string>
-    <string name="composerSendAsMedia">Als Foto oder Video senden</string>
     <string name="composerSendAsRichText">Als Rich Text senden</string>
     <string name="composerSendPaidMessageQuestion">Kostenpflichtige Nachricht senden?</string>
     <string name="composerStickers">Sticker</string>
@@ -1362,11 +1361,8 @@
     <string name="fileDetailDownloadProgress">Datei wird heruntergeladen… ({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">Keine App kann diese Datei öffnen</string>
     <string name="fileDetailOpen">Öffnen</string>
-    <string name="gallerySendHdSubtitle">Sharper photos · up to 2560 px</string>
-    <string name="gallerySendHdTitle">HD quality</string>
-    <string name="gallerySendMediaSubtitle">Faster upload · up to 1280 px</string>
-    <string name="gallerySendMotionSubtitle">Send the motion component as video</string>
-    <string name="gallerySendMotionTitle">Live or Motion Photo</string>
+    <string name="gallerySendLiveAsVideo">Als Video senden</string>
+    <string name="gallerySendOriginal">Original</string>
     <string name="generalAdvancedAutomaticDownload">Erweiterter automatischer Download</string>
     <string name="generalAutoDownloadDisabled">Deaktiviert</string>
     <string name="generalAutoDownloadFailed">Auto-Download-Einstellungen konnten nicht aktualisiert werden</string>

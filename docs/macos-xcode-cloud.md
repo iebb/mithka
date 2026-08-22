@@ -101,3 +101,10 @@ App Sandbox Entitlement Usage Information that identifies the entitlement,
 explains how reviewers can exercise it, why it is required, and the related
 Feedback Assistant issue ID. TestFlight upload alone does not complete this
 review metadata.
+
+The guarded App Store review helper accepts `--platform IOS` or
+`--platform MAC_OS`. It verifies the selected platform on the uploaded build, scopes store
+version metadata and review submissions to that platform, and uses the matching
+GitHub archive job. macOS releases continue to use the zero-patch marketing
+train described above (for example, source version `1.1.2` uses marketing
+version `1.1.0`).

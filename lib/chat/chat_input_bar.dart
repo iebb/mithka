@@ -65,7 +65,6 @@ import 'desktop_voice_message_controller.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
-import 'gallery_send_mode_sheet.dart';
 import 'gif_item.dart';
 import 'gif_preview.dart';
 import 'gif_store.dart';
@@ -6096,20 +6095,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
         await _pickDesktopPhotos();
         return;
       }
-      final sendMode = await showGallerySendModeSheet(context);
-      if (!mounted || sendMode == null) return;
-      final sendLivePhoto = sendMode == GallerySendMode.livePhoto;
-      final maxDimension = switch (sendMode) {
-        GallerySendMode.media => 1280,
-        GallerySendMode.highDefinition => 2560,
-        _ => null,
-      };
+      // The quality choices live in the picker's own bottom bar, WeChat style,
+      // so tapping 图片 goes straight to the grid.
       final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
-        preferLivePhotoVideo: sendLivePhoto,
-        photoMaxDimension: maxDimension,
+        sendOptions: AppAssetSendOptions(),
       );
       if (!mounted) return;
       if (selection.failedCount > 0) {

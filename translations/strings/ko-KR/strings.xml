@@ -1206,7 +1206,6 @@
     <string name="composerSend">보내기</string>
     <string name="composerSendAsFile">파일로 보내기</string>
     <string name="composerSendAsFileDescription">미디어 편집이나 압축 없이 원본 파일로 보내기</string>
-    <string name="composerSendAsMedia">사진 또는 동영상으로 보내기</string>
     <string name="composerSendAsRichText">서식 있는 텍스트로 보내기</string>
     <string name="composerSendPaidMessageQuestion">유료 메시지를 보내시겠습니까?</string>
     <string name="composerStickers">스티커</string>
@@ -1358,11 +1357,8 @@
     <string name="fileDetailDownloadProgress">파일 다운로드 중…({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">이 파일을 열 수 있는 앱이 없습니다</string>
     <string name="fileDetailOpen">열기</string>
-    <string name="gallerySendHdSubtitle">Sharper photos · up to 2560 px</string>
-    <string name="gallerySendHdTitle">HD quality</string>
-    <string name="gallerySendMediaSubtitle">Faster upload · up to 1280 px</string>
-    <string name="gallerySendMotionSubtitle">Send the motion component as video</string>
-    <string name="gallerySendMotionTitle">Live or Motion Photo</string>
+    <string name="gallerySendLiveAsVideo">동영상으로 전송</string>
+    <string name="gallerySendOriginal">원본</string>
     <string name="generalAdvancedAutomaticDownload">고급 자동 다운로드</string>
     <string name="generalAutoDownloadDisabled">사용 안 함</string>
     <string name="generalAutoDownloadFailed">자동 다운로드 설정을 업데이트하지 못했습니다</string>

@@ -1114,7 +1114,6 @@ abstract final class AppStringKeys {
   static const composerSend = 'composerSend';
   static const composerSendAsFile = 'composerSendAsFile';
   static const composerSendAsFileDescription = 'composerSendAsFileDescription';
-  static const composerSendAsMedia = 'composerSendAsMedia';
   static const composerSendAsRichText = 'composerSendAsRichText';
   static const composerSendPaidMessageQuestion =
       'composerSendPaidMessageQuestion';
@@ -1407,6 +1406,8 @@ abstract final class AppStringKeys {
   static const fileDetailDownloadProgress = 'fileDetailDownloadProgress';
   static const fileDetailNoAppCanOpenFile = 'fileDetailNoAppCanOpenFile';
   static const fileDetailOpen = 'fileDetailOpen';
+  static const gallerySendLiveAsVideo = 'gallerySendLiveAsVideo';
+  static const gallerySendOriginal = 'gallerySendOriginal';
   static const generalAutoDownloadDisabled = 'generalAutoDownloadDisabled';
   static const generalAutoDownloadFailed = 'generalAutoDownloadFailed';
   static const generalAutoDownloadHighResImages =
@@ -1456,11 +1457,6 @@ abstract final class AppStringKeys {
   static const globalThemeUseForUiDescription =
       'globalThemeUseForUiDescription';
   static const globalWallpaperTitle = 'globalWallpaperTitle';
-  static const gallerySendHdSubtitle = 'gallerySendHdSubtitle';
-  static const gallerySendHdTitle = 'gallerySendHdTitle';
-  static const gallerySendMediaSubtitle = 'gallerySendMediaSubtitle';
-  static const gallerySendMotionSubtitle = 'gallerySendMotionSubtitle';
-  static const gallerySendMotionTitle = 'gallerySendMotionTitle';
   static const groupAdminAddPhoto = 'groupAdminAddPhoto';
   static const groupAdminAdvancedTitle = 'groupAdminAdvancedTitle';
   static const groupAdminAggressiveAntiSpam = 'groupAdminAggressiveAntiSpam';

@@ -5057,6 +5057,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final inline = _autoplaysVideoInline && message.video != null;
     final media = GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
       onSecondaryTapUp: (details) =>
@@ -5160,6 +5161,7 @@ class _MessageBubbleState extends State<MessageBubble>
     final grouped = _groupsMediaCaption(caption);
     final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final media = GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => widget.onPlayVideo?.call(message),
       onLongPress: () => _handleLongPress(MessageActionSource.video),
       onSecondaryTapUp: (details) =>

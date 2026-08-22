@@ -1206,7 +1206,6 @@
     <string name="composerSend">傳送</string>
     <string name="composerSendAsFile">作為檔案傳送</string>
     <string name="composerSendAsFileDescription">不編輯或壓縮媒體，傳送原始檔案</string>
-    <string name="composerSendAsMedia">作為圖片或影片傳送</string>
     <string name="composerSendAsRichText">以富文字傳送</string>
     <string name="composerSendPaidMessageQuestion">要傳送付費訊息嗎？</string>
     <string name="composerStickers">貼圖</string>
@@ -1358,11 +1357,8 @@
     <string name="fileDetailDownloadProgress">檔案下載中…({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">沒有可開啟此檔案的應用程式</string>
     <string name="fileDetailOpen">開啟</string>
-    <string name="gallerySendHdSubtitle">更清晰的相片 · 最大 2560 像素</string>
-    <string name="gallerySendHdTitle">高畫質</string>
-    <string name="gallerySendMediaSubtitle">上傳更快 · 最大 1280 像素</string>
-    <string name="gallerySendMotionSubtitle">將動態部分作為影片傳送</string>
-    <string name="gallerySendMotionTitle">原況或動態相片</string>
+    <string name="gallerySendLiveAsVideo">以影片傳送</string>
+    <string name="gallerySendOriginal">原圖</string>
     <string name="generalAdvancedAutomaticDownload">進階自動下載</string>
     <string name="generalAutoDownloadDisabled">停用</string>
     <string name="generalAutoDownloadFailed">更新自動下載設定失敗</string>
