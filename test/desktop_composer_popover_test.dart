@@ -315,7 +315,9 @@ void main() {
       await tester.pump();
       for (final key in <ValueKey<String>>[
         const ValueKey('desktopComposerAudioAction'),
-        const ValueKey('desktopComposerLocationAction'),
+        // The composer hides location on macOS for App Review, so this row
+        // depends on the host the suite runs on.
+        if (!Platform.isMacOS) const ValueKey('desktopComposerLocationAction'),
         const ValueKey('desktopComposerContactAction'),
         const ValueKey('desktopComposerPollAction'),
         const ValueKey('desktopComposerChecklistAction'),
@@ -331,7 +333,7 @@ void main() {
 
       expect(requests.map((request) => request.kind), [
         DesktopUtilityWindowKind.audioPicker,
-        DesktopUtilityWindowKind.locationPicker,
+        if (!Platform.isMacOS) DesktopUtilityWindowKind.locationPicker,
         DesktopUtilityWindowKind.contactPicker,
         DesktopUtilityWindowKind.pollComposer,
         DesktopUtilityWindowKind.checklistComposer,

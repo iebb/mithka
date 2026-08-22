@@ -23,6 +23,7 @@ import '../platform/adaptive_platform.dart';
 import 'app_theme.dart';
 import 'custom_message_bubble_background.dart';
 import 'emoji_font_catalog.dart';
+import 'google_font_weights.dart';
 import 'message_bubble_background.dart';
 import 'system_font_catalog.dart';
 import 'telegram_cloud_theme.dart';
@@ -896,6 +897,7 @@ class ThemeController extends ChangeNotifier {
   }) : _emojiFontCatalog = emojiFontCatalog ?? EmojiFontCatalog.shared,
        _activeAccountSlot = initialAccountSlot,
        _activeAccountUserId = initialAccountUserId {
+    GoogleFontWeightLoader.shared.addListener(_onGoogleFontWeightsLoaded);
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
@@ -1831,6 +1833,12 @@ class ThemeController extends ChangeNotifier {
           ? _fontFallbackChain
           : [AppFontChoice._platformFontFamily()]),
       ...AppFontChoice._platformFontFallback(),
+      // Last resort. The platform's own UI face carries every weight and every
+      // script the system can render, so a chain that misses a glyph lands
+      // somewhere sane instead of on the engine's fallback of last resort.
+      // Deduping keeps it from appearing twice under the stock configuration,
+      // where it is already the primary.
+      AppFontChoice._platformFontFamily(),
     ]);
   }
 
@@ -1871,7 +1879,7 @@ class ThemeController extends ChangeNotifier {
     final googleFamily = _googleFamilyFor(first);
     final withPrimary = googleFamily == null
         ? weightedBase.copyWith(fontFamily: first)
-        : GoogleFonts.getFont(googleFamily, textStyle: weightedBase);
+        : _googleTextStyle(googleFamily, weightedBase);
     return withPrimary.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
         ..._emojiFontChoice.fontFamilies,
@@ -1879,6 +1887,20 @@ class ThemeController extends ChangeNotifier {
         ...families.skip(1),
       ]),
     );
+  }
+
+  /// Names the family that holds every weight face once it is registered.
+  ///
+  /// Until then this falls back to google_fonts' own per-variant family, whose
+  /// single face makes the app's w600 labels a synthetic embolden rather than
+  /// the designed SemiBold. [GoogleFontWeightLoader] reports back when the real
+  /// faces land, and the cached styles are recomputed against them.
+  TextStyle _googleTextStyle(String googleFamily, TextStyle weightedBase) {
+    final loader = GoogleFontWeightLoader.shared;
+    final unified = loader.loadedFamily(googleFamily);
+    if (unified != null) return weightedBase.copyWith(fontFamily: unified);
+    unawaited(loader.ensure(googleFamily));
+    return GoogleFonts.getFont(googleFamily, textStyle: weightedBase);
   }
 
   TextTheme applyAppTextTheme(TextTheme textTheme, {bool boldText = false}) {
@@ -2377,11 +2399,19 @@ class ThemeController extends ChangeNotifier {
 
   @override
   void dispose() {
+    GoogleFontWeightLoader.shared.removeListener(_onGoogleFontWeightsLoaded);
     if (_scalePersistTimer != null) {
       _scalePersistTimer!.cancel();
       _persistScales();
     }
     super.dispose();
+  }
+
+  /// The styles handed out so far name google_fonts' single-face family, so
+  /// drop them and rebuild against the one that now carries every weight.
+  void _onGoogleFontWeightsLoaded() {
+    _invalidateFontCaches();
+    notifyListeners();
   }
 
   set circularGroupAvatars(bool value) {

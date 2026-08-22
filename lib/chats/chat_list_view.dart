@@ -2762,8 +2762,9 @@ class _ChatListViewState extends State<ChatListView>
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ArchivedChatsView(
-          chats: _model.archived,
+        builder: (_) => LiveArchivedChatsView(
+          updates: _model,
+          chatsProvider: () => _model.archived,
           onClearUnread: _model.markRead,
         ),
       ),

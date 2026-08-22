@@ -124,6 +124,57 @@ void main() {
     expect(Navigator.of(tester.element(archiveView)).canPop(), isFalse);
   });
 
+  testWidgets('clearing a badge drops the counter without reopening', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final chat = ChatSummary(
+      id: 9,
+      title: 'Archived group',
+      lastMessage: 'A message',
+      lastMessageId: 11,
+      date: 1,
+      unreadCount: 4,
+      order: 1,
+      isMuted: false,
+    );
+    // Stands in for the chat list model: clearing mutates the summary and
+    // notifies, exactly as ChatListViewModel.markRead does.
+    final updates = ChangeNotifier();
+    addTearDown(updates.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          home: LiveArchivedChatsView(
+            updates: updates,
+            chatsProvider: () => [chat],
+            onClearUnread: (value) {
+              value.unreadCount = 0;
+              updates.notifyListeners();
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.text('4'), findsOneWidget);
+
+    // The badge clears on a drag, not a tap.
+    await tester.drag(find.byType(UnreadBadge), const Offset(60, 0));
+    await tester.pump();
+    expect(chat.unreadCount, 0);
+
+    // The badge hides itself for the 180ms it spends breaking, so the question
+    // is what is on screen once that resets: without a rebuild the row still
+    // holds the old count and the counter comes straight back.
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('4'), findsNothing);
+  });
+
   testWidgets('archive pane marks only the active chat row as selected', (
     tester,
   ) async {

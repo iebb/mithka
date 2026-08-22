@@ -9,8 +9,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../app/macos_desktop_title_bar.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_image_loader.dart';
@@ -47,6 +49,13 @@ class _FullImageViewerState extends State<FullImageViewer> {
   bool _runningAction = false;
 
   int get _max => widget.items.isEmpty ? 0 : widget.items.length - 1;
+
+  /// Keeps the viewer's own controls clear of the macOS window controls, which
+  /// sit over this route because it covers the window edge to edge.
+  static double get _chromeInset =>
+      defaultTargetPlatform == TargetPlatform.macOS
+      ? MacosDesktopTitleBar.trafficLightLeadingClearance
+      : 0;
 
   @override
   void dispose() {
@@ -104,8 +113,11 @@ class _FullImageViewerState extends State<FullImageViewer> {
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
-            left: 16,
-            right: 16,
+            // The viewer covers the whole window, so on macOS the row would
+            // otherwise sit under the traffic lights. Both sides move in by the
+            // same clearance to keep the counter centred on the window.
+            left: 16 + _chromeInset,
+            right: 16 + _chromeInset,
             child: Opacity(
               opacity: 1 - progress,
               child: Row(
@@ -119,11 +131,11 @@ class _FullImageViewerState extends State<FullImageViewer> {
                     child: Center(
                       child: widget.items.length > 1
                           ? Container(
+                              key: const ValueKey('image-viewer-counter'),
+                              height: 32,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                               ),
-                              height: 32,
-                              alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: const Color(
                                   0xFFFFFFFF,
@@ -132,12 +144,20 @@ class _FullImageViewerState extends State<FullImageViewer> {
                                   AppRadius.lg,
                                 ),
                               ),
-                              child: Text(
-                                '${_index + 1} / ${widget.items.length}',
-                                style: const TextStyle(
-                                  color: Color(0xFFFFFFFF),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
+                              // A Container given an alignment grows to its
+                              // constraints, which here is the whole width
+                              // between the buttons: the counter rendered as a
+                              // bar across the window. Centring with a width
+                              // factor keeps the pill around its text.
+                              child: Center(
+                                widthFactor: 1,
+                                child: Text(
+                                  '${_index + 1} / ${widget.items.length}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFFFFFFF),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             )
@@ -161,8 +181,8 @@ class _FullImageViewerState extends State<FullImageViewer> {
           if (widget.primaryActionLabel != null &&
               widget.onPrimaryAction != null)
             Positioned(
-              left: 22,
-              right: 22,
+              left: 22 + _chromeInset,
+              right: 22 + _chromeInset,
               bottom: MediaQuery.of(context).padding.bottom + 18,
               child: Opacity(
                 opacity: 1 - progress,
@@ -310,12 +330,20 @@ class _ViewerPageState extends State<_ViewerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final cacheWidth = (media.size.width * media.devicePixelRatio).ceil();
-    final cacheHeight = (media.size.height * media.devicePixelRatio).ceil();
+    // Sized from the box this page is given, not MediaQuery: the viewer also
+    // runs inside a desktop window and a split-layout pane, where the screen is
+    // larger than the viewport and the image spilled past it.
+    return LayoutBuilder(builder: _buildPage);
+  }
+
+  Widget _buildPage(BuildContext context, BoxConstraints constraints) {
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    final size = constraints.biggest;
+    final cacheWidth = (size.width * ratio).ceil();
+    final cacheHeight = (size.height * ratio).ceil();
     Widget fittedImage(ImageProvider<Object> image) => SizedBox(
-      width: media.size.width,
-      height: media.size.height,
+      width: size.width,
+      height: size.height,
       child: Image(image: image, fit: BoxFit.contain),
     );
     Widget interactive(Widget child) => GestureDetector(

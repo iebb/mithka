@@ -4,8 +4,11 @@ name: 🌙 Sync Nightly
 # master commits increments the app's patch version once. Master is
 # authoritative for the nightly tree; only pubspec.yaml receives a generated
 # nightly version. A generated GITHUB_TOKEN push doesn't trigger other
-# workflows, so a changed sync explicitly dispatches both the GitHub prerelease
-# build and the Google Play beta build.
+# workflows, so a changed sync explicitly dispatches every build that a push to
+# nightly is meant to produce: the GitHub prerelease, the Google Play beta, and
+# the iOS and macOS TestFlight uploads. Those four subscribe to pushes on
+# nightly, which is what covers a human push; only this dispatch covers the
+# scheduled sync.
 
 on:
   schedule:
@@ -151,3 +154,5 @@ jobs:
         run: |
           gh workflow run release.yml --ref nightly
           gh workflow run google-play.yml --ref nightly
+          gh workflow run ios-testflight.yml --ref nightly
+          gh workflow run macos-testflight.yml --ref nightly

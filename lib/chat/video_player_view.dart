@@ -2340,7 +2340,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 17,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w400,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -2636,7 +2636,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 17,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -5091,7 +5091,7 @@ class _MithkaVideoOnDemandBottomChrome extends StatelessWidget {
                 color: Colors.white,
                 fontSize: 17,
                 height: 1.15,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w400,
               ),
             ),
             if (!dense) ...[
@@ -5348,7 +5348,7 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
                 const SizedBox(width: 4),
               ],
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 child: SizedBox(
                   width: widget.wide ? 116 : 102,
                   height: widget.wide ? 66 : 58,

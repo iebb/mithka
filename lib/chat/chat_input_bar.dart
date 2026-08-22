@@ -6084,7 +6084,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     } finally {
       // Screen captures are user-selected temporary data. Keep them only for
       // the review/send flow and remove the local PNG after that flow ends.
-      if (path != null) await _deleteTempFile(path);
+      // Not awaited: the capture is finished once that flow returns, and
+      // holding its future open for a best-effort delete makes every caller
+      // wait on file I/O for nothing.
+      if (path != null) unawaited(_deleteTempFile(path));
     }
   }
 

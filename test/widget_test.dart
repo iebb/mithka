@@ -4551,6 +4551,33 @@ void main() {
       expect(style.fontFamilyFallback, contains('PingFang SC'));
     });
 
+    test('the platform UI face always ends the fallback chain', () async {
+      SharedPreferences.setMockInitialValues({
+        'fontFallbackChain': ['Futura', 'PingFang SC'],
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      final chain = theme.effectiveFontFamilyChain();
+      // Whatever the chain misses lands on the platform's own UI face, which
+      // carries every weight and script the system can render.
+      expect(chain.last, AppFontChoice.system.fontFamily);
+      expect(chain.first, 'Futura');
+    });
+
+    test('the stock chain is the platform UI face, named once', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+
+      final chain = theme.effectiveFontFamilyChain();
+      final platform = AppFontChoice.system.fontFamily;
+      // Stock config already leads with the platform face, so the terminator
+      // dedupes away rather than naming it twice.
+      expect(chain.first, platform);
+      expect(chain.where((family) => family == platform).length, 1);
+    });
+
     test('honors system bold text by increasing app text weights', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
