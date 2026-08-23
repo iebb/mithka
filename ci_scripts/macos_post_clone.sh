@@ -49,12 +49,10 @@ RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 SOURCE_VERSION="${RAW_VERSION%%+*}"
 # Keep the major/minor from pubspec.yaml but force the patch component to zero.
 # Nightly patch increments can therefore advance Android and desktop release
-# artifacts without creating a new macOS TestFlight marketing-version train.
-#
-# Unlike iOS, the macOS project does not hardcode FLUTTER_BUILD_NAME — it
-# reads the generated xcconfig — so passing --build-name below is the whole
-# fix, with no project file to rewrite.
-APP_VERSION="$(sh "$REPO/scripts/macos_marketing_version.sh" "$RAW_VERSION")"
+# artifacts without creating a new TestFlight marketing-version train. iOS
+# derives the same value; the macOS project reads the generated xcconfig, so
+# passing --build-name below is the whole fix, with no project file to rewrite.
+APP_VERSION="$(sh "$REPO/scripts/apple_marketing_version.sh" "$RAW_VERSION")"
 
 # Xcode Cloud replaces distributed products' build number with its own
 # monotonically increasing CI build number. Use the same value in the archive

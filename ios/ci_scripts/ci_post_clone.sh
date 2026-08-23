@@ -202,9 +202,8 @@ GIT_COMMIT="$(git rev-parse --short HEAD)"
 echo "▸ git commit: $GIT_COMMIT"
 
 # Xcode Cloud runs xcodebuild after this script and can otherwise keep using
-# stale Flutter values from the checked-in project. Preserve the complete
-# semantic version from pubspec.yaml so nightly builds move to a new App Store
-# Connect release train when the previous train is closed.
+# stale Flutter values from the checked-in project, so pin both the version and
+# the build number from pubspec.yaml.
 RAW_VERSION="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
 test -n "$RAW_VERSION"
 APP_BUILD_NAME="${RAW_VERSION%%+*}"
@@ -219,14 +218,12 @@ case "$APP_BUILD_NUMBER" in
     exit 1
     ;;
 esac
-XCODE_BUILD_NAME="$(
-  printf '%s\n' "$APP_BUILD_NAME" |
-    awk -F. 'NF == 3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $0 }'
-)"
-if [ -z "$XCODE_BUILD_NAME" ]; then
-  echo "error: expected a numeric X.Y.Z version in pubspec.yaml, got $APP_BUILD_NAME" >&2
-  exit 1
-fi
+# Keep the major/minor from pubspec.yaml but force the patch to zero, the same
+# marketing train macOS uploads on. A nightly's patch increment advances the
+# Android and desktop artifacts, and App Store Connect sees one 1.2.0 train
+# whose builds are told apart by their build number rather than a new version
+# per night, which it would otherwise have to review from scratch.
+XCODE_BUILD_NAME="$(sh "$REPO/scripts/apple_marketing_version.sh" "$APP_BUILD_NAME")"
 echo "▸ iOS app version: $XCODE_BUILD_NAME+$APP_BUILD_NUMBER (source: $APP_BUILD_NAME)"
 python3 - <<PY
 from pathlib import Path

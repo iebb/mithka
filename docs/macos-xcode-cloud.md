@@ -87,11 +87,14 @@ The GitHub workflows use the full Git commit height as the build number with an
 offset of zero. This starts with the `1.0.0` train, after the temporary
 epoch-numbered migration builds on `0.10.0`. Xcode Cloud continues to supply
 its native `CI_BUILD_NUMBER` if either retained workflow is reactivated. The
-macOS marketing version keeps the major and minor components from
-`pubspec.yaml` and always forces the patch component to `0`. The shared hook
-applies this rule in both GitHub Actions and the retained Xcode Cloud workflow,
-and GitHub verifies the archived app's `CFBundleShortVersionString` before
-uploading it to App Store Connect.
+Apple marketing version keeps the major and minor components from
+`pubspec.yaml` and always forces the patch component to `0`, on iOS as well as
+macOS: App Store Connect reviews a marketing version rather than a build, so a
+nightly's patch increment has to advance the Android and desktop artifacts
+without opening a review train per night. `scripts/apple_marketing_version.sh`
+is the single rule, applied by both post-clone hooks in GitHub Actions and the
+retained Xcode Cloud workflow, and both GitHub workflows verify the archived
+app's `CFBundleShortVersionString` before uploading it to App Store Connect.
 
 ## App Store metadata prerequisite
 
@@ -105,6 +108,7 @@ review metadata.
 The guarded App Store review helper accepts `--platform IOS` or
 `--platform MAC_OS`. It verifies the selected platform on the uploaded build, scopes store
 version metadata and review submissions to that platform, and uses the matching
-GitHub archive job. macOS releases continue to use the zero-patch marketing
-train described above (for example, source version `1.1.2` uses marketing
-version `1.1.0`).
+GitHub archive job. Both platforms use the zero-patch marketing train described
+above (for example, source version `1.2.1` uses marketing version `1.2.0`), so
+`--binary-version` carries the zeroed value while `--version` names the App
+Store listing.

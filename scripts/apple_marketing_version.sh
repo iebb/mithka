@@ -13,7 +13,7 @@ marketing_version="$(
 )"
 
 if [ -z "$marketing_version" ]; then
-  echo "error: expected a numeric X.Y.Z macOS version, got $source_version" >&2
+  echo "error: expected a numeric X.Y.Z version, got $source_version" >&2
   exit 1
 fi
 
