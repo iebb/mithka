@@ -836,6 +836,7 @@ class ChannelDirectMessageTopicController extends ChangeNotifier {
     if (quoted == null) return;
     message.replyToPreview = quoted.text;
     message.replyToDate = quoted.date;
+    message.replyToEntities = quoted.textEntities;
     message.replyToImage = quoted.image;
     message.replyToImageWidth = quoted.imageWidth;
     message.replyToImageHeight = quoted.imageHeight;

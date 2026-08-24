@@ -833,7 +833,6 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
               return ColoredBox(color: currentTheme.scaffoldBackgroundColor);
             }
             return _DesktopUtilityScaledView(
-              fontScale: _theme.fontScale,
               interfaceScale: _theme.renderedInterfaceScale,
               child: appSurface,
             );
@@ -984,12 +983,10 @@ class _DesktopLocationPickerRootState
 
 class _DesktopUtilityScaledView extends StatelessWidget {
   const _DesktopUtilityScaledView({
-    required this.fontScale,
     required this.interfaceScale,
     required this.child,
   });
 
-  final double fontScale;
   final double interfaceScale;
   final Widget child;
 
@@ -1007,7 +1004,6 @@ class _DesktopUtilityScaledView extends StatelessWidget {
       viewPadding: _unscale(media.viewPadding, scale),
       viewInsets: _unscale(media.viewInsets, scale),
       systemGestureInsets: _unscale(media.systemGestureInsets, scale),
-      textScaler: TextScaler.linear(fontScale),
     );
     return AppKeyboardDismissOnTap(
       child: ClipRect(

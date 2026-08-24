@@ -1850,6 +1850,7 @@ class ChatPreviewText extends StatelessWidget {
       context,
     ).style.merge(TextStyle(fontSize: fontSize));
     return RichText(
+      textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(

@@ -218,12 +218,12 @@ case "$APP_BUILD_NUMBER" in
     exit 1
     ;;
 esac
-# Keep the major/minor from pubspec.yaml but force the patch to zero, the same
-# marketing train macOS uploads on. A nightly's patch increment advances the
-# Android and desktop artifacts, and App Store Connect sees one 1.2.0 train
-# whose builds are told apart by their build number rather than a new version
-# per night, which it would otherwise have to review from scratch.
-XCODE_BUILD_NAME="$(sh "$REPO/scripts/apple_marketing_version.sh" "$APP_BUILD_NAME")"
+# The same marketing train macOS uploads on: a nightly collapses onto X.Y.0 so
+# App Store Connect sees one train whose builds differ by build number, rather
+# than a version per night it would have to review from scratch. A release
+# keeps the exact patch it is named for.
+XCODE_BUILD_NAME="$(sh "$REPO/scripts/apple_marketing_version.sh" \
+  "$APP_BUILD_NAME" "${CI_BRANCH:-${GITHUB_REF_NAME:-}}")"
 echo "▸ iOS app version: $XCODE_BUILD_NAME+$APP_BUILD_NUMBER (source: $APP_BUILD_NAME)"
 python3 - <<PY
 from pathlib import Path

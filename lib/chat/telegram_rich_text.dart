@@ -88,6 +88,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       return _richTextWithQuoteBlocks(context, baseStyle, linkColor);
     }
     return RichText(
+      textScaler: MediaQuery.textScalerOf(context),
       maxLines: widget.maxLines,
       overflow: widget.overflow,
       text: TextSpan(
@@ -349,13 +350,17 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     final style = _entityStyle(context, effectiveActive, baseStyle, linkColor);
     final customEmojiId = _customEmojiId(effectiveActive);
     if (customEmojiId != null) {
+      final ambientScaler = MediaQuery.textScalerOf(context);
       return [
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
           child: SelectableCustomEmojiView(
             id: customEmojiId,
             fallbackText: segment,
-            size: (style.fontSize ?? baseStyle.fontSize ?? 16) * 1.25,
+            size:
+                (style.fontSize ?? baseStyle.fontSize ?? 16) *
+                ambientScaler.scale(1.0) *
+                1.25,
             color: style.color,
           ),
         ),

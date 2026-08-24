@@ -1026,14 +1026,17 @@ class _MessageBubbleState extends State<MessageBubble>
               role: showSenderRole ? message.senderRole : null,
               roleTitle: showSenderRole && showMemberTags ? senderTitle : null,
               roleAfterName: isDesktopTargetPlatform(),
-              trailing: showStatus
-                  ? StatusEmojiView(
-                      id: message.senderEmojiStatusId,
-                      size: 14,
-                      color: senderNameColor,
-                      animate: theme.chatStatusEmojiMode.animate,
-                    )
-                  : null,
+          trailing: showStatus
+              ? StatusEmojiView(
+                  id: message.senderEmojiStatusId,
+                  // The name beside it scales with the chat font size; the
+                  // status emoji should grow with it instead of staying at a
+                  // fixed pixel size.
+                  size: 14 * MediaQuery.textScalerOf(context).scale(1.0),
+                  color: senderNameColor,
+                  animate: theme.chatStatusEmojiMode.animate,
+                )
+              : null,
             ),
           ),
           const SizedBox(width: 5),
@@ -3908,11 +3911,17 @@ class _MessageBubbleState extends State<MessageBubble>
                 ),
                 if ((message.replyToPreview ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  _richText(
                     message.replyToPreview!,
+                    faded,
+                    faded,
+                    0,
+                    message.replyToPreview!.length,
+                    outgoing,
+                    false,
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, height: 1.22, color: faded),
+                    entities: message.replyToEntities,
+                    fontSize: 14,
                   ),
                 ],
               ],
@@ -4084,7 +4093,10 @@ class _MessageBubbleState extends State<MessageBubble>
       widgets.add(
         Align(
           alignment: Alignment.centerRight,
-          child: RichText(text: TextSpan(children: [_metaSpan(outgoing)])),
+          child: RichText(
+            textScaler: MediaQuery.textScalerOf(context),
+            text: TextSpan(children: [_metaSpan(outgoing)]),
+          ),
         ),
       );
     }
@@ -4120,6 +4132,7 @@ class _MessageBubbleState extends State<MessageBubble>
     ).style.merge(TextStyle(fontSize: effectiveFontSize, color: base));
     return Builder(
       builder: (context) => RichText(
+        textScaler: MediaQuery.textScalerOf(context),
         maxLines: maxLines,
         overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
         text: TextSpan(style: style, children: children),

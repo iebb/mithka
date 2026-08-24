@@ -4268,6 +4268,7 @@ class _PostReplyQuote extends StatelessWidget {
           if (hasText)
             Expanded(
               child: RichText(
+                textScaler: MediaQuery.textScalerOf(context),
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 text: TextSpan(

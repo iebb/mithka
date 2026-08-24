@@ -291,6 +291,7 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
             quoted.senderName ?? quoted.senderTitle ?? widget.peerTitle;
         message.replyToPreview ??= quoted.text;
         message.replyToDate ??= quoted.date;
+        message.replyToEntities = quoted.textEntities;
         message.replyToImage ??= quoted.image;
         message.replyToImageWidth ??= quoted.imageWidth;
         message.replyToImageHeight ??= quoted.imageHeight;

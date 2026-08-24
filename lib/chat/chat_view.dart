@@ -56,6 +56,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/chat_font_scale_scope.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
@@ -5943,24 +5944,26 @@ class _ChatViewState extends State<ChatView> {
                                           : _header()),
                                 body: showPeerRestrictionBlock
                                     ? _restrictedPeerBlockPage()
-                                    : Column(
-                                        children: [
-                                          Expanded(
-                                            child: _transcriptLayer(
-                                              searchPane: searchPane,
+                                    : ChatFontScaleScope(
+                                        child: Column(
+                                          children: [
+                                            Expanded(
+                                              child: _transcriptLayer(
+                                                searchPane: searchPane,
+                                              ),
                                             ),
-                                          ),
-                                          _chatMusicPlayer(),
-                                          // A narrow chat trades the composer
-                                          // for the hit navigator; a wide one
-                                          // keeps composing beside the results.
-                                          if (searching && !searchPane)
-                                            _searchNavigator()
-                                          else if (_isSelecting)
-                                            _selectionActionBar()
-                                          else
-                                            _composerArea(),
-                                        ],
+                                            _chatMusicPlayer(),
+                                            // A narrow chat trades the composer
+                                            // for the hit navigator; a wide one
+                                            // keeps composing beside the results.
+                                            if (searching && !searchPane)
+                                              _searchNavigator()
+                                            else if (_isSelecting)
+                                              _selectionActionBar()
+                                            else
+                                              _composerArea(),
+                                          ],
+                                        ),
                                       ),
                                 trailingPane: searchPane
                                     ? _searchResultsPane()

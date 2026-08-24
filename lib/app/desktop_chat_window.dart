@@ -330,7 +330,6 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
               ],
             );
             return _DesktopChatScaledView(
-              fontScale: _theme.fontScale,
               interfaceScale: _theme.renderedInterfaceScale,
               child: appSurface,
             );
@@ -480,12 +479,10 @@ class _DesktopStandaloneChatSurfaceState
 
 class _DesktopChatScaledView extends StatelessWidget {
   const _DesktopChatScaledView({
-    required this.fontScale,
     required this.interfaceScale,
     required this.child,
   });
 
-  final double fontScale;
   final double interfaceScale;
   final Widget child;
 
@@ -503,7 +500,6 @@ class _DesktopChatScaledView extends StatelessWidget {
       viewPadding: _unscale(media.viewPadding, scale),
       viewInsets: _unscale(media.viewInsets, scale),
       systemGestureInsets: _unscale(media.systemGestureInsets, scale),
-      textScaler: TextScaler.linear(fontScale),
     );
     return AppKeyboardDismissOnTap(
       child: ClipRect(

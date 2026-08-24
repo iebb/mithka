@@ -793,7 +793,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
             theme: _themeData(Brightness.light, theme),
             darkTheme: _themeData(Brightness.dark, theme),
             themeMode: theme.themeMode,
-            // Apply the user's chosen font size app-wide (设置 › 通用 › 字体大小).
             builder: (context, child) {
               // Aspect-scoped: MediaQuery.of would re-run this whole closure on
               // every keyboard-inset and window-resize frame just to read
@@ -877,7 +876,6 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: _ScaledAppView(
-                  fontScale: theme.fontScale,
                   interfaceScale: theme.renderedInterfaceScale,
                   child: DefaultTextStyle(
                     style: theme.applyAppTextStyle(
@@ -939,13 +937,8 @@ List<NavigatorObserver> _telemetryNavigatorObservers() {
 }
 
 class _ScaledAppView extends StatelessWidget {
-  const _ScaledAppView({
-    required this.fontScale,
-    required this.interfaceScale,
-    required this.child,
-  });
+  const _ScaledAppView({required this.interfaceScale, required this.child});
 
-  final double fontScale;
   final double interfaceScale;
   final Widget child;
 
@@ -957,16 +950,15 @@ class _ScaledAppView extends StatelessWidget {
       media.size.width / scale,
       media.size.height / scale,
     );
+    // The system text scaler flows through untouched: the in-app font size
+    // setting is scoped to chat surfaces by ChatFontScaleScope, and the outer
+    // transform scales geometry and text together for interface size.
     final scaledMedia = media.copyWith(
       size: virtualSize,
       padding: _unscaleInsets(media.padding, scale),
       viewPadding: _unscaleInsets(media.viewPadding, scale),
       viewInsets: _unscaleInsets(media.viewInsets, scale),
       systemGestureInsets: _unscaleInsets(media.systemGestureInsets, scale),
-      // The outer transform scales geometry and text together. Keep only the
-      // independent font preference here; dividing by interfaceScale caused
-      // normal Text widgets to stay small while noScaling text still grew.
-      textScaler: TextScaler.linear(fontScale),
     );
 
     return AppKeyboardDismissOnTap(
