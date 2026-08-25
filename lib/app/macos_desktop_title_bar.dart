@@ -23,6 +23,9 @@ class MacosDesktopTitleBar extends StatelessWidget {
   static const double height = 40;
   static const double trafficLightLeadingClearance = 78;
   static const double identityGap = 12;
+
+  /// Trailing inset for the action row. Dropped when this bar carries the
+  /// window controls: a caption button has to reach the window corner.
   static const double trailingPadding = 12;
   static const double dividerWidth = 0.5;
 
@@ -89,12 +92,18 @@ class MacosDesktopTitleBar extends StatelessWidget {
               ),
               const SizedBox(width: 4),
             ],
+            // The caption buttons run flush into the top right corner, with
+            // no inset of their own. That is the shape Windows and Linux draw,
+            // and it is what puts close under the pointer when the window is
+            // maximized and the corner swallows the cursor. macOS keeps the
+            // inset because its controls are native and this slot is empty.
             if (trailingControls != null)
               KeyedSubtree(
                 key: const ValueKey('desktop-title-bar-window-controls'),
                 child: trailingControls,
-              ),
-            const SizedBox(width: trailingPadding),
+              )
+            else
+              const SizedBox(width: trailingPadding),
           ],
         ),
       ),

@@ -35,6 +35,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
+import '../media/camera_capture.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
 import '../settings/ai_settings_controller.dart';
@@ -50,6 +51,7 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'ai_reply_service.dart';
 import 'audio_search_view.dart';
 import 'bot_button_presentation.dart';
@@ -71,6 +73,7 @@ import 'gif_store.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
+import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
@@ -6194,9 +6197,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 相机: capture a photo and send it.
   Future<void> _takePhoto() async {
     try {
-      final shot = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (shot == null) return;
-      final edited = await _editImage(shot.path);
+      final capture = await captureComposerPhoto(
+        context,
+        saveToAlbum: context.read<ThemeController>().saveCapturedPhotosToAlbum,
+      );
+      if (capture == null || !mounted) return;
+      if (capture.albumWriteFailed) {
+        showToast(
+          context,
+          capture.albumResult == MediaLibrarySaveResult.permissionDenied
+              ? AppStringKeys.chatSaveToPhotosPermissionDenied
+              : AppStringKeys.chatSaveToPhotosFailed,
+        );
+      }
+      final edited = await _editImage(capture.file.path);
       if (edited != null) {
         final attachment = await resolveAttachmentDimensions(
           OutgoingAttachment(

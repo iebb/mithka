@@ -13,8 +13,10 @@ Future<void> configurePrimaryDesktopWindowChrome() async {
       windowButtonVisibility: false,
     );
   } on Object {
-    // A portable runner may omit native window chrome support. In that case
-    // its normal title bar remains usable and the Flutter controls are no-ops.
+    // A portable runner may omit native window chrome support. On Windows the
+    // native title bar then stays up and remains usable. On Linux the runner
+    // already created the window undecorated, so there is no native chrome to
+    // fall back to and the caption buttons are the only way to drive it.
   }
 }
 

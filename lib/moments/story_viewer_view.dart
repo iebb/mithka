@@ -20,6 +20,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/custom_emoji.dart';
@@ -543,7 +544,8 @@ class _StoryViewerViewState extends State<StoryViewerView>
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.of(context).padding.top;
+    final top = MediaQuery.of(context).padding.top +
+        iPadWindowChromeInsetOf(context);
     final desktop = storyViewerUsesDesktopControls(Theme.of(context).platform);
     final viewer = Scaffold(
       backgroundColor: Colors.black,

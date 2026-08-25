@@ -1374,6 +1374,8 @@
     <string name="generalNetworkUsage">網路用量</string>
     <string name="generalOpenChatAtLatestMessage">開啟聊天時顯示最新訊息</string>
     <string name="generalRepeatPreserveSender">+1 時保留傳送者</string>
+    <string name="generalSaveCapturedPhotos">拍攝的照片儲存到系統相簿</string>
+    <string name="generalSaveCapturedPhotosHint">關閉後改用應用程式內建相機拍攝，照片不會進入系統相簿。</string>
     <string name="generalSendMessageWithEnter">按 Enter 傳送訊息</string>
     <string name="generalShowSavedMessagesIdentity">顯示「已儲存的訊息」而不是我的個人資料</string>
     <string name="generalStorage">儲存空間</string>

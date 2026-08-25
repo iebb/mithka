@@ -19,6 +19,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/desktop_image_preview_window.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
 import '../chat/audio_search_view.dart';
@@ -724,7 +725,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   /// Cover (blurred profile photo, gradient fallback) + overlapping avatar +
   /// name/username/status.
   Widget _header() {
-    final top = MediaQuery.of(context).padding.top;
+    final top = MediaQuery.of(context).padding.top +
+        iPadWindowChromeInsetOf(context);
     final bannerH = top + 232;
     final status = _isOnline
         ? AppStrings.t(AppStringKeys.presenceOnline)

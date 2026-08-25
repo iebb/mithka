@@ -261,6 +261,7 @@ class HeroAppIcons {
   static const eye = AppIconData(HeroiconsOutline.eye);
   static const eyeSlash = AppIconData(HeroiconsOutline.eyeSlash);
   static const faceScan = AppIconData(HeroiconsOutline.viewfinderCircle);
+  static const faceSmile = AppIconData(HeroiconsOutline.faceSmile);
   static const file = AppIconData(HeroiconsOutline.document);
   static const filter = AppIconData(HeroiconsOutline.funnel);
   static const fingerprint = AppIconData(HeroiconsOutline.fingerPrint);

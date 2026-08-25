@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../platform/system_ui.dart';
@@ -319,9 +320,14 @@ class NavHeader extends StatelessWidget {
       value: systemUiOverlayStyleForSurface(c.navBar),
       child: Container(
         constraints: BoxConstraints(
-          minHeight: headerHeight + MediaQuery.of(context).padding.top,
+          minHeight: headerHeight +
+              MediaQuery.of(context).padding.top +
+              iPadWindowChromeInsetOf(context),
         ),
-        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top +
+              iPadWindowChromeInsetOf(context),
+        ),
         decoration: BoxDecoration(
           color: c.navBar,
           border: Border(

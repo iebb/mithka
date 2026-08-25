@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/video_split_controller.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -4379,7 +4380,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ),
         ),
         PositionedDirectional(
-          top: MediaQuery.paddingOf(context).top + 6,
+          top: MediaQuery.paddingOf(context).top +
+              iPadWindowChromeInsetOf(context) +
+              6,
           start: 8,
           child: _roundIconButton(
             HeroAppIcons.chevronLeft,

@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../app/app_version.dart';
+import '../app/ipad_window_chrome.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../components/app_icons.dart';
@@ -278,11 +279,13 @@ class _SettingsViewState extends State<SettingsView> {
   Widget _splitSidebarHeader(BuildContext context) {
     final c = context.colors;
     final desktopDense = !kIsWeb && isDesktopTargetPlatform();
+    // The enclosing SafeArea only clears the system inset; iPadOS floating
+    // windows additionally need clearance for the traffic-light controls.
     return Container(
       constraints: BoxConstraints(minHeight: desktopDense ? 48 : 58),
       padding: EdgeInsets.fromLTRB(
         desktopDense ? 14 : AppSpacing.lg,
-        desktopDense ? 8 : AppSpacing.md,
+        (desktopDense ? 8 : AppSpacing.md) + iPadWindowChromeInsetOf(context),
         desktopDense ? 14 : AppSpacing.lg,
         desktopDense ? 4 : AppSpacing.xs,
       ),

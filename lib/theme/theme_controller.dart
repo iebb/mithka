@@ -1134,6 +1134,8 @@ class ThemeController extends ChangeNotifier {
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
     _showShortVideos = _prefs.getBool(_showShortVideosKey) ?? true;
     _communitiesEnabled = _prefs.getBool(_communitiesEnabledKey) ?? true;
+    _saveCapturedPhotosToAlbum =
+        _prefs.getBool(_saveCapturedPhotosToAlbumKey) ?? false;
     final storedArchivedChatsMode = _prefs.getString(
       _archivedChatsDisplayModeKey,
     );
@@ -1231,6 +1233,7 @@ class ThemeController extends ChangeNotifier {
   static const _showMomentsTabKey = 'showMomentsTab';
   static const _showShortVideosKey = 'showShortVideos';
   static const _communitiesEnabledKey = 'communitiesEnabled';
+  static const _saveCapturedPhotosToAlbumKey = 'saveCapturedPhotosToAlbum';
   static const _archivedChatsDisplayModeKey = 'archivedChatsDisplayMode';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
@@ -1311,6 +1314,7 @@ class ThemeController extends ChangeNotifier {
   bool _showMomentsTab = true;
   bool _showShortVideos = true;
   bool _communitiesEnabled = true;
+  bool _saveCapturedPhotosToAlbum = false;
   late ArchivedChatsDisplayMode _archivedChatsDisplayMode;
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
@@ -1763,6 +1767,7 @@ class ThemeController extends ChangeNotifier {
   bool get showMomentsTab => _showMomentsTab;
   bool get showShortVideos => _showShortVideos;
   bool get communitiesEnabled => _communitiesEnabled;
+  bool get saveCapturedPhotosToAlbum => _saveCapturedPhotosToAlbum;
   ArchivedChatsDisplayMode get archivedChatsDisplayMode =>
       _archivedChatsDisplayMode;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
@@ -2650,6 +2655,13 @@ class ThemeController extends ChangeNotifier {
     if (_communitiesEnabled == value) return;
     _communitiesEnabled = value;
     _prefs.setBool(_communitiesEnabledKey, value);
+    notifyListeners();
+  }
+
+  set saveCapturedPhotosToAlbum(bool value) {
+    if (_saveCapturedPhotosToAlbum == value) return;
+    _saveCapturedPhotosToAlbum = value;
+    _prefs.setBool(_saveCapturedPhotosToAlbumKey, value);
     notifyListeners();
   }
 

@@ -1378,6 +1378,8 @@
     <string name="generalNetworkUsage">Uso de red</string>
     <string name="generalOpenChatAtLatestMessage">Abrir chats en el mensaje más reciente</string>
     <string name="generalRepeatPreserveSender">Conservar remitente al usar +1</string>
+    <string name="generalSaveCapturedPhotos">Guardar las fotos tomadas en el álbum del sistema</string>
+    <string name="generalSaveCapturedPhotosHint">Al desactivarlo, las fotos se toman con la cámara integrada y nunca llegan al álbum.</string>
     <string name="generalSendMessageWithEnter">Enviar mensajes con Enter</string>
     <string name="generalShowSavedMessagesIdentity">Mostrar «Mensajes guardados» en lugar de mi perfil</string>
     <string name="generalStorage">Almacenamiento</string>

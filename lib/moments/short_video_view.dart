@@ -5,6 +5,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/video_player_view.dart';
@@ -540,7 +541,9 @@ class _ShortVideoViewState extends State<ShortVideoView> {
     return Positioned(
       left: 8,
       right: 8,
-      top: MediaQuery.paddingOf(context).top + 6,
+      top: MediaQuery.paddingOf(context).top +
+          iPadWindowChromeInsetOf(context) +
+          6,
       child: Row(
         children: [
           _roundButton(

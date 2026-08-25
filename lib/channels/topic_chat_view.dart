@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
@@ -1055,7 +1056,8 @@ class _TopicChatViewState extends State<TopicChatView> {
 
   Widget _header() {
     final c = context.colors;
-    final top = MediaQuery.of(context).padding.top;
+    final top = MediaQuery.of(context).padding.top +
+        iPadWindowChromeInsetOf(context);
     final title = widget.chat.isBotTopicChat
         ? widget.chat.title
         : context.watch<GroupRemarkController?>()?.displayTitleFor(

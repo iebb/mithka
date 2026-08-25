@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
@@ -277,7 +278,9 @@ class _ProfileViewState extends State<ProfileView> {
         Padding(
           padding: EdgeInsets.fromLTRB(
             20,
-            MediaQuery.of(context).padding.top + 8,
+            MediaQuery.of(context).padding.top +
+                iPadWindowChromeInsetOf(context) +
+                8,
             16,
             20,
           ),

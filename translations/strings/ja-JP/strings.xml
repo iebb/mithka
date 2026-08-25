@@ -1374,6 +1374,8 @@
     <string name="generalNetworkUsage">ネットワーク使用量</string>
     <string name="generalOpenChatAtLatestMessage">チャットを最新メッセージで開く</string>
     <string name="generalRepeatPreserveSender">+1 で送信者を保持</string>
+    <string name="generalSaveCapturedPhotos">撮影した写真をシステムのアルバムに保存</string>
+    <string name="generalSaveCapturedPhotosHint">オフにするとアプリ内カメラで撮影し、写真はアルバムに保存されません。</string>
     <string name="generalSendMessageWithEnter">Enterキーでメッセージを送信</string>
     <string name="generalShowSavedMessagesIdentity">自分のプロフィールの代わりに「保存済みメッセージ」を表示</string>
     <string name="generalStorage">ストレージ</string>

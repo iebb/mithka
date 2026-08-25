@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
 import '../app/desktop_video_window.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
@@ -2607,16 +2608,20 @@ class _ChatViewState extends State<ChatView> {
     // _isTranscriptShort walks every cached entry; nothing below moves the
     // scroll position or the pivot, so one measurement serves all three tests.
     final latestArmIsShort = _isTranscriptShort();
+    final hasPendingMessageTarget = _scrollTargetId != null;
     final hydratedShortTranscript = shouldRebaseForHydratedOlderPage(
       prependedOlder: prependedOlder,
       latestArmWasShort: latestArmIsShort,
       historyFillInFlight: _isFillingShortTranscript || _loadingOlderFromScroll,
       revealRequested: _revealLoadedOlderPage,
+      hasPendingMessageTarget: hasPendingMessageTarget,
     );
-    final followingLatest =
-        !_autoScrollPolicy.preservesViewport &&
-        !_maintainSessionScrollAnchor &&
-        !_transcriptViewportClaimedByUser;
+    final followingLatest = transcriptFollowsLatestEdge(
+      preservesViewport: _autoScrollPolicy.preservesViewport,
+      maintainsSessionAnchor: _maintainSessionScrollAnchor,
+      viewportClaimedByUser: _transcriptViewportClaimedByUser,
+      hasPendingMessageTarget: hasPendingMessageTarget,
+    );
     final hasMessageOlderThanPivot =
         _transcriptPivot != null &&
         _vm.messages.any(
@@ -2884,6 +2889,35 @@ class _ChatViewState extends State<ChatView> {
     _scrollTargetId = messageId;
   }
 
+  /// Makes an arbitrary loaded target the first child after the scroll view's
+  /// center sliver, so Flutter lays it out without depending on guessed row
+  /// heights. The transcript keeps the same chronological order on both sides
+  /// of the new pivot; only its zero scroll coordinate moves to the target.
+  bool _stageMessageAtTranscriptCenter(int messageId) {
+    if (!_scroll.hasClients) return false;
+    ChatMessage? target;
+    for (final message in _vm.messages) {
+      if (message.id == messageId) {
+        target = message;
+        break;
+      }
+    }
+    if (target == null) return false;
+
+    final cutoff = _transcriptOrderId(target);
+    if (_transcriptPivot?.cutoffMessageId != cutoff ||
+        !_transcriptPivotFrozen) {
+      setState(() {
+        _transcriptPivot = TranscriptPivot(cutoff);
+        // Async sender, preview, and media hydration must not reset the pivot
+        // before the target's final alignment passes have completed.
+        _transcriptPivotFrozen = true;
+      });
+    }
+    _scroll.jumpTo(clampScrollOffset(_scroll.position, 0));
+    return true;
+  }
+
   void _cancelSessionScrollAnchorMaintenance() {
     _maintainSessionScrollAnchor = false;
   }
@@ -3106,7 +3140,11 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _positionInitialTranscript() async {
     if (!_scroll.hasClients || _initialTranscriptPositioningAborted) return;
-    _jumpToInitialEstimate();
+    final initialTarget = _scrollTargetId;
+    if (initialTarget == null ||
+        !_stageMessageAtTranscriptCenter(initialTarget)) {
+      _jumpToInitialEstimate();
+    }
     for (var i = 0; i < 3; i++) {
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted ||
@@ -7194,7 +7232,10 @@ class _ChatViewState extends State<ChatView> {
     final actionActive = _vm.hasActiveChatAction;
     final wideGroupHeader = _usesWideGroupHeader;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: widget.headerColor ?? c.navBar,
         border: widget.showHeaderDivider
@@ -7495,7 +7536,10 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final count = _selectedMessageIds.length;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
@@ -7974,6 +8018,7 @@ class _ChatViewState extends State<ChatView> {
 
     final targetAlignment =
         alignment ?? (pinnedJump ? pinnedMessageScrollAlignment : 0.3);
+    var stagedAtTranscriptCenter = false;
     for (var tries = 0; tries < 6; tries++) {
       if (targetCancelled()) return false;
       final activeKey = _targetKey;
@@ -8008,32 +8053,92 @@ class _ChatViewState extends State<ChatView> {
           return false;
         }
         if (!mounted || !ctx.mounted || targetCancelled()) return false;
-        await Scrollable.ensureVisible(
-          ctx,
+        final aligned = await _alignMessageTarget(
+          activeKey,
           alignment: targetAlignment,
-          duration: instant
-              ? Duration.zero
-              : pinnedJump
-              ? const Duration(milliseconds: 140)
-              : const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
+          instant: instant,
+          pinnedJump: pinnedJump,
+          isCancelled: targetCancelled,
         );
-        if (mounted && !targetCancelled()) {
-          setState(() => _setScrollTarget(null));
-          return true;
-        }
-        return false;
+        if (!mounted || targetCancelled()) return false;
+        // A correction pass can lose the row's context without the navigation
+        // being cancelled, and the jump is over either way. Holding the target
+        // past that point stalls new-message auto-scroll, short-transcript
+        // fill, and parked-pivot repair for as long as the chat stays open.
+        setState(() => _setScrollTarget(null));
+        return aligned;
       }
       if (!_scroll.hasClients) return false;
-      final estimate = _estimateMessageOffset(messageId, targetAlignment);
-      if (estimate != null) _scroll.jumpTo(estimate);
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      // A loaded target can be arbitrarily far from the currently laid-out
+      // sliver children. Move the bidirectional transcript's center to that
+      // row once; unlike an absolute height estimate, this guarantees Flutter
+      // will build the target even when every preceding row was underestimated.
+      if (!stagedAtTranscriptCenter &&
+          _stageMessageAtTranscriptCenter(messageId)) {
+        stagedAtTranscriptCenter = true;
+      } else {
+        final estimate = _estimateMessageOffset(messageId, targetAlignment);
+        if (estimate != null) _scroll.jumpTo(estimate);
+      }
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted || targetCancelled()) return false;
     }
     if (mounted && !targetCancelled()) {
       setState(() => _setScrollTarget(null));
     }
     return false;
+  }
+
+  /// Repeats ordinary target alignment while rich content finishes laying out.
+  /// The first pass carries the visible motion; the two short correction passes
+  /// absorb thumbnail, preview, reaction, and text reflow during that motion.
+  Future<bool> _alignMessageTarget(
+    GlobalKey targetKey, {
+    required double alignment,
+    required bool instant,
+    required bool pinnedJump,
+    required bool Function() isCancelled,
+  }) async {
+    for (var pass = 0; pass < 3; pass++) {
+      if (isCancelled()) return false;
+      final ctx = targetKey.currentContext;
+      if (ctx == null || !ctx.mounted) return false;
+      // Nothing reflowed during the previous pass, so the remaining correction
+      // animations would only spend their duration re-issuing the offset the
+      // row already sits at.
+      if (pass > 0 && _isTargetAtAlignment(targetKey, alignment)) return true;
+      await Scrollable.ensureVisible(
+        ctx,
+        alignment: alignment,
+        duration: instant
+            ? Duration.zero
+            : pass == 0
+            ? pinnedJump
+                  ? const Duration(milliseconds: 140)
+                  : const Duration(milliseconds: 220)
+            : const Duration(milliseconds: 80),
+        curve: Curves.easeOutCubic,
+      );
+      if (isCancelled()) return false;
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    return !isCancelled();
+  }
+
+  /// Whether the row already rests where `Scrollable.ensureVisible` would put
+  /// it, using the viewport's own reveal math so pinned slivers and oversized
+  /// rows are accounted for exactly as the real call accounts for them.
+  bool _isTargetAtAlignment(GlobalKey targetKey, double alignment) {
+    if (!_scroll.hasClients) return false;
+    final object = targetKey.currentContext?.findRenderObject();
+    if (object == null || !object.attached) return false;
+    final viewport = RenderAbstractViewport.maybeOf(object);
+    if (viewport == null) return false;
+    final target = clampScrollOffset(
+      _scroll.position,
+      viewport.getOffsetToReveal(object, alignment).offset,
+    );
+    return (target - _scroll.position.pixels).abs() <= 0.5;
   }
 
   /// Aligns a pinned target more than once because media rows can finish a
@@ -8805,7 +8910,7 @@ class _ChatViewState extends State<ChatView> {
       _actionReactionAvailability = null;
     });
     oldSelectionState?.selectableRegion.clearSelection();
-    if (!desktop && !message.isCall) {
+    if (!message.isCall) {
       unawaited(
         _loadActionReactionAvailability(message.id, reactionGeneration),
       );
@@ -9166,7 +9271,6 @@ class _ChatViewState extends State<ChatView> {
         verticalMenu && rect != null && rect.width == 0 && rect.height == 0;
     final reactionAvailability = _actionReactionAvailability;
     final showReactions = messageActionShowsReactionControls(
-      isDesktop: desktopMenu,
       isCall: _actionTarget!.isCall,
       availability: reactionAvailability,
     );
@@ -9187,15 +9291,27 @@ class _ChatViewState extends State<ChatView> {
       onSelect: (action) => _perform(action, _actionTarget!),
     );
 
+    // Desktop treats the strip as the menu's upper storey and places the pair
+    // as one block. Its row is reserved the moment the menu opens and only
+    // collapses if the server comes back with nothing to offer, so the menu
+    // does not jump out from under a settled pointer when the answer lands.
+    final desktopStrip =
+        desktopMenu &&
+        !_reactionExpanded &&
+        !_actionTarget!.isCall &&
+        (reactionAvailability == null || reactionAvailability.canAdd);
+    final desktopStripH = desktopStrip
+        ? MenuReactionBar.height + _menuReactionGap
+        : 0.0;
     final reactionH = !showReactions
         ? 0.0
         : _reactionExpanded
-        ? 268.0
+        ? _expandedPickerSize.height
         : 48.0;
     final menuH = showActionMenu
         ? math.min(
             actionMenu.preferredHeightFor(context),
-            math.max(0.0, bottomSafe - topSafe),
+            math.max(0.0, bottomSafe - topSafe - desktopStripH),
           )
         : 0.0;
     const gap = 8.0;
@@ -9234,6 +9350,17 @@ class _ChatViewState extends State<ChatView> {
     final boundedActionMenu = verticalMenu
         ? SizedBox(width: verticalMenuWidth, height: menuH, child: actionMenu)
         : actionMenu;
+    final desktopOrigin = desktopMenu
+        ? MessageActionMenu.verticalOriginForPointer(
+            pointer: rect?.topLeft ?? Offset(10, topSafe),
+            viewport: screenSize,
+            menuSize: _reactionExpanded
+                ? _expandedPickerSize
+                : Size(verticalMenuWidth, desktopStripH + menuH),
+            topSafe: topSafe,
+            bottomSafe: bottomSafe,
+          )
+        : Offset.zero;
 
     void dismiss() => setState(() {
       _actionTarget = null;
@@ -9259,29 +9386,34 @@ class _ChatViewState extends State<ChatView> {
                 child: const SizedBox.expand(),
               ),
             ),
-            // Call logs and other special messages aren't reactable — no +1 bar.
+            // Call logs and other special messages aren't reactable — no strip.
             if (showReactions)
               Positioned(
-                top: reactionTop,
-                left: 10,
-                right: 10,
+                top: desktopMenu ? desktopOrigin.dy : reactionTop,
+                left: desktopMenu ? desktopOrigin.dx : 10,
+                right: desktopMenu ? null : 10,
                 child: AnimatedBuilder(
                   animation: EmojiStore.shared,
                   builder: (context, _) {
                     final availability = reactionAvailability!;
                     if (_reactionExpanded) {
-                      return Align(
-                        alignment: align,
-                        child: _expandedReactionPicker(availability),
+                      final picker = _expandedReactionPicker(availability);
+                      return desktopMenu
+                          ? picker
+                          : Align(alignment: align, child: picker);
+                    }
+                    final reactions = _quickReactionChoices(availability);
+                    if (desktopMenu) {
+                      return SizedBox(
+                        width: verticalMenuWidth,
+                        child: MenuReactionBar(
+                          reactions: reactions,
+                          onReaction: _reactQuick,
+                          onExpand: () =>
+                              setState(() => _reactionExpanded = true),
+                        ),
                       );
                     }
-                    final configured = effectiveQuickReactions(
-                      context.watch<ThemeController>().quickReactions,
-                      allowCustomEmoji:
-                          availability.allowArbitraryCustom ||
-                          availability.choices.any((choice) => choice.isCustom),
-                    );
-                    final reactions = availability.quickChoices(configured);
                     return Align(
                       alignment: align,
                       child: QuickReactionBar(
@@ -9296,10 +9428,18 @@ class _ChatViewState extends State<ChatView> {
               ),
             if (showActionMenu)
               Positioned(
-                top: pointerAnchored ? pointerMenuOrigin.dy : menuTop,
-                left: pointerAnchored ? pointerMenuOrigin.dx : 10,
-                right: pointerAnchored ? null : 10,
-                child: pointerAnchored
+                top: desktopMenu
+                    ? desktopOrigin.dy + desktopStripH
+                    : pointerAnchored
+                    ? pointerMenuOrigin.dy
+                    : menuTop,
+                left: desktopMenu
+                    ? desktopOrigin.dx
+                    : pointerAnchored
+                    ? pointerMenuOrigin.dx
+                    : 10,
+                right: desktopMenu || pointerAnchored ? null : 10,
+                child: desktopMenu || pointerAnchored
                     ? boundedActionMenu
                     : Align(alignment: align, child: boundedActionMenu),
               ),
@@ -9309,14 +9449,31 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// The gap between the strip and the menu it rides on — tight enough that
+  /// the pair reads as one stack, wide enough to keep both borders visible.
+  static const _menuReactionGap = 4.0;
+  static const _expandedPickerSize = Size(300, 268);
+
+  List<QuickReactionChoice> _quickReactionChoices(
+    MessageReactionAvailability availability,
+  ) {
+    final configured = effectiveQuickReactions(
+      context.watch<ThemeController>().quickReactions,
+      allowCustomEmoji:
+          availability.allowArbitraryCustom ||
+          availability.choices.any((choice) => choice.isCustom),
+    );
+    return availability.quickChoices(configured);
+  }
+
   Widget _expandedReactionPicker(MessageReactionAvailability availability) {
     final store = EmojiStore.shared;
     final packs = availability.allowArbitraryCustom
         ? store.customPacks
         : const <CustomEmojiPack>[];
     return Container(
-      width: 300,
-      height: 268,
+      width: _expandedPickerSize.width,
+      height: _expandedPickerSize.height,
       decoration: BoxDecoration(
         color: const Color(0xFF2C2C2E),
         borderRadius: BorderRadius.circular(AppRadius.lg),

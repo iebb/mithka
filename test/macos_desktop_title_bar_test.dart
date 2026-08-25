@@ -52,6 +52,15 @@ void main() {
       find.byKey(const ValueKey('macos-account-identity')),
       findsOneWidget,
     );
+    // With no window controls the bar keeps its trailing inset, so the
+    // account identity stops short of the right edge. macOS depends on that:
+    // its caption buttons are native and this slot is empty.
+    expect(
+      tester
+          .getTopRight(find.byKey(const ValueKey('macos-account-identity')))
+          .dx,
+      600 - MacosDesktopTitleBar.trailingPadding,
+    );
 
     final decoration = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey('macos-desktop-title-bar-decoration')),
@@ -107,8 +116,49 @@ void main() {
               .dx,
         ),
       );
+      // The configuration Windows and Linux actually render: actions and
+      // controls together, with close still owning the corner.
+      expect(
+        tester
+            .getTopRight(
+              find.byKey(const ValueKey('desktop-title-bar-window-controls')),
+            )
+            .dx,
+        600,
+      );
     },
   );
+
+  testWidgets('window controls reach the top right corner without a margin', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: const Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 600,
+            child: MacosDesktopTitleBar(
+              leadingClearance: 8,
+              appIdentity: SizedBox(width: 112, child: Text('Account')),
+              trailingControls: SizedBox(
+                key: ValueKey('test-window-controls'),
+                width: 138,
+                height: MacosDesktopTitleBar.height,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final corner = tester.getTopRight(
+      find.byKey(const ValueKey('test-window-controls')),
+    );
+    expect(corner.dx, 600);
+    expect(corner.dy, 0);
+  });
 
   testWidgets(
     'desktop title bar searches in place and hands Search All its query',

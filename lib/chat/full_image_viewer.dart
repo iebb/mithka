@@ -12,6 +12,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../app/macos_desktop_title_bar.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -112,7 +113,9 @@ class _FullImageViewerState extends State<FullImageViewer> {
             ),
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
+            top: MediaQuery.of(context).padding.top +
+                iPadWindowChromeInsetOf(context) +
+                8,
             // The viewer covers the whole window, so on macOS the row would
             // otherwise sit under the traffic lights. Both sides move in by the
             // same clearance to keep the counter centred on the window.

@@ -118,6 +118,21 @@ void main() {
       find.byKey(const ValueKey('video-playback-completion-section')),
       findsOneWidget,
     );
+
+    await tester.pumpWidget(
+      _app(
+        const ChatBehaviorSettingsView(),
+        platform: TargetPlatform.macOS,
+        theme: theme,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('chat-behavior-save-captured-photos')),
+      findsNothing,
+      reason: 'a desktop composer has no camera button to save a capture from',
+    );
   });
 
   testWidgets('touch platforms retain mobile download and gesture controls', (
@@ -154,6 +169,20 @@ void main() {
 
     expect(
       find.byKey(const ValueKey('video-playback-horizontal-swipe-section')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        const ChatBehaviorSettingsView(),
+        platform: TargetPlatform.android,
+        theme: theme,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('chat-behavior-save-captured-photos')),
       findsOneWidget,
     );
   });

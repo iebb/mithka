@@ -1378,6 +1378,8 @@
     <string name="generalNetworkUsage">Network usage</string>
     <string name="generalOpenChatAtLatestMessage">Open chats at latest message</string>
     <string name="generalRepeatPreserveSender">Preserve sender when using +1</string>
+    <string name="generalSaveCapturedPhotos">Save captured photos to the system album</string>
+    <string name="generalSaveCapturedPhotosHint">When off, photos are taken with the in-app camera and never reach the album.</string>
     <string name="generalSendMessageWithEnter">Send messages with Enter</string>
     <string name="generalShowSavedMessagesIdentity">Show “Saved Messages” instead of my profile</string>
     <string name="generalStorage">Storage</string>

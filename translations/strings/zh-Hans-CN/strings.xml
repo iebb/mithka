@@ -1374,6 +1374,8 @@
     <string name="generalNetworkUsage">网络使用情况</string>
     <string name="generalOpenChatAtLatestMessage">打开聊天显示最新消息</string>
     <string name="generalRepeatPreserveSender">+1 时保留发送者</string>
+    <string name="generalSaveCapturedPhotos">拍摄的照片保存到系统相册</string>
+    <string name="generalSaveCapturedPhotosHint">关闭后改用应用内相机拍摄，照片不会进入系统相册。</string>
     <string name="generalSendMessageWithEnter">回车键发送消息</string>
     <string name="generalShowSavedMessagesIdentity">显示“保存的消息”而不是我的资料</string>
     <string name="generalStorage">存储空间</string>

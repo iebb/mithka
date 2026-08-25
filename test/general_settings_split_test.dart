@@ -40,6 +40,7 @@ void main() {
       'chat-behavior-open-at-latest',
       'chat-behavior-saved-messages-identity',
       'chat-behavior-preserve-sender',
+      'chat-behavior-save-captured-photos',
       'chat-behavior-quick-replies',
     ]) {
       expect(find.byKey(ValueKey(key)), findsOneWidget);
@@ -62,7 +63,7 @@ void main() {
     );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(6),
+      findsNWidgets(7),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(
@@ -106,6 +107,22 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chat-behavior-quick-replies')));
     await tester.pump();
     expect(theme.quickRepliesEnabled, isFalse);
+
+    expect(
+      theme.saveCapturedPhotosToAlbum,
+      isFalse,
+      reason: 'sending a photo does not grow the album until the user asks',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('chat-behavior-save-captured-photos')),
+    );
+    await tester.pump();
+    expect(theme.saveCapturedPhotosToAlbum, isTrue);
+    expect(prefs.getBool('saveCapturedPhotosToAlbum'), isTrue);
+
+    final restoredCaptureTheme = ThemeController(prefs);
+    addTearDown(restoredCaptureTheme.dispose);
+    expect(restoredCaptureTheme.saveCapturedPhotosToAlbum, isTrue);
   });
 
   testWidgets('chat behavior keeps video playback navigation', (tester) async {

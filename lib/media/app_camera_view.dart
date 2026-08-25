@@ -1,3 +1,13 @@
+//
+//  app_camera_view.dart
+//
+//  拍摄: the in-app camera surface. Stories capture photos and up to 60 seconds
+//  of video and can hand off to the gallery; the composer reuses the same
+//  preview for photo-only capture, which is how a capture can be kept out of
+//  the system album — the system camera app writes its own copy there and the
+//  app cannot opt out of that.
+//
+
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -9,25 +19,37 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 
-class StoryCameraResult {
-  const StoryCameraResult.capture(this.file) : openGallery = false;
-  const StoryCameraResult.gallery() : file = null, openGallery = true;
+class AppCameraResult {
+  const AppCameraResult.capture(this.file) : openGallery = false;
+  const AppCameraResult.gallery() : file = null, openGallery = true;
 
   final XFile? file;
   final bool openGallery;
 }
 
 @visibleForTesting
-bool storyCameraShouldRetryOnResume({required bool recording}) => !recording;
+bool appCameraShouldRetryOnResume({required bool recording}) => !recording;
 
-class StoryCameraView extends StatefulWidget {
-  const StoryCameraView({super.key});
+class AppCameraView extends StatefulWidget {
+  const AppCameraView({
+    super.key,
+    this.allowVideo = true,
+    this.allowGallery = true,
+  });
+
+  /// Whether holding the shutter records video. Off for the composer, whose
+  /// camera button has always been photo-only.
+  final bool allowVideo;
+
+  /// Whether the bottom bar offers a jump to the picker. Off where the caller
+  /// has no gallery route to hand the result to.
+  final bool allowGallery;
 
   @override
-  State<StoryCameraView> createState() => _StoryCameraViewState();
+  State<AppCameraView> createState() => _AppCameraViewState();
 }
 
-class _StoryCameraViewState extends State<StoryCameraView>
+class _AppCameraViewState extends State<AppCameraView>
     with WidgetsBindingObserver {
   static const _maximumVideoDuration = Duration(seconds: 60);
 
@@ -110,9 +132,9 @@ class _StoryCameraViewState extends State<StoryCameraView>
     setState(() => _capturing = true);
     try {
       final file = await controller.takePicture();
-      if (mounted) Navigator.of(context).pop(StoryCameraResult.capture(file));
+      if (mounted) Navigator.of(context).pop(AppCameraResult.capture(file));
     } on CameraException catch (error) {
-      debugPrint('Story photo capture failed: ${error.code}');
+      debugPrint('Camera photo capture failed: ${error.code}');
     } finally {
       if (mounted) setState(() => _capturing = false);
     }
@@ -120,7 +142,8 @@ class _StoryCameraViewState extends State<StoryCameraView>
 
   Future<void> _startRecording() async {
     final controller = _controller;
-    if (_capturing ||
+    if (!widget.allowVideo ||
+        _capturing ||
         _recording ||
         controller == null ||
         !controller.value.isInitialized) {
@@ -140,7 +163,7 @@ class _StoryCameraViewState extends State<StoryCameraView>
         if (_elapsed >= _maximumVideoDuration) unawaited(_finishRecording());
       });
     } on CameraException catch (error) {
-      debugPrint('Story video recording failed: ${error.code}');
+      debugPrint('Camera video recording failed: ${error.code}');
     }
   }
 
@@ -151,7 +174,7 @@ class _StoryCameraViewState extends State<StoryCameraView>
     _timer?.cancel();
     try {
       final file = await controller.stopVideoRecording();
-      if (mounted) Navigator.of(context).pop(StoryCameraResult.capture(file));
+      if (mounted) Navigator.of(context).pop(AppCameraResult.capture(file));
     } on CameraException catch (_) {
       if (mounted) {
         setState(() {
@@ -187,14 +210,14 @@ class _StoryCameraViewState extends State<StoryCameraView>
       await controller.setFlashMode(enabled ? FlashMode.auto : FlashMode.off);
       if (mounted) setState(() => _flashEnabled = enabled);
     } on CameraException catch (error) {
-      debugPrint('Story camera flash failed: ${error.code}');
+      debugPrint('Camera flash failed: ${error.code}');
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
-        storyCameraShouldRetryOnResume(recording: _recording)) {
+        appCameraShouldRetryOnResume(recording: _recording)) {
       // A permission grant made in system settings leaves the old controller
       // allocated but uninitialized. Retry even when that stale controller is
       // still present; the old guard otherwise leaves the preview black.
@@ -312,18 +335,25 @@ class _StoryCameraViewState extends State<StoryCameraView>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _roundButton(
-                    icon: HeroAppIcons.images,
-                    label: AppStrings.t(AppStringKeys.storyCameraOpenGallery),
-                    onTap: () => Navigator.of(
-                      context,
-                    ).pop(const StoryCameraResult.gallery()),
-                  ),
+                  if (widget.allowGallery)
+                    _roundButton(
+                      icon: HeroAppIcons.images,
+                      label: AppStrings.t(AppStringKeys.storyCameraOpenGallery),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pop(const AppCameraResult.gallery()),
+                    )
+                  else
+                    const SizedBox.square(dimension: 48),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _capturePhoto,
-                    onLongPressStart: (_) => unawaited(_startRecording()),
-                    onLongPressEnd: (_) => unawaited(_finishRecording()),
+                    onLongPressStart: widget.allowVideo
+                        ? (_) => unawaited(_startRecording())
+                        : null,
+                    onLongPressEnd: widget.allowVideo
+                        ? (_) => unawaited(_finishRecording())
+                        : null,
                     child: Container(
                       width: 78,
                       height: 78,
@@ -366,6 +396,12 @@ class _StoryCameraViewState extends State<StoryCameraView>
 
   Widget _permissionMessage() {
     final noCamera = _cameras.isEmpty;
+    // Without a gallery route there is nothing to fall back to, so the empty
+    // state just closes the camera.
+    final offersGallery = noCamera && widget.allowGallery;
+    final description = noCamera
+        ? (widget.allowGallery ? AppStringKeys.storyChooseMediaHint : null)
+        : AppStringKeys.storyCameraAccessDescription;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -399,29 +435,30 @@ class _StoryCameraViewState extends State<StoryCameraView>
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              (noCamera
-                      ? AppStringKeys.storyChooseMediaHint
-                      : AppStringKeys.storyCameraAccessDescription)
-                  .l10n(context),
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFFA1A1AA),
-                fontSize: 14,
-                height: 1.35,
+            if (description != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                description.l10n(context),
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFA1A1AA),
+                  fontSize: 14,
+                  height: 1.35,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 22),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: noCamera
+              onTap: !noCamera
+                  ? openAppSettings
+                  : offersGallery
                   ? () => Navigator.of(
                       context,
-                    ).pop(const StoryCameraResult.gallery())
-                  : openAppSettings,
+                    ).pop(const AppCameraResult.gallery())
+                  : () => Navigator.of(context).pop(),
               child: Container(
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -431,9 +468,11 @@ class _StoryCameraViewState extends State<StoryCameraView>
                   borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Text(
-                  (noCamera
+                  (!noCamera
+                          ? AppStringKeys.storyOpenSettings
+                          : offersGallery
                           ? AppStringKeys.storyGallery
-                          : AppStringKeys.storyOpenSettings)
+                          : AppStringKeys.videoNoteRecorderCloseCamera)
                       .l10n(context),
                   style: const TextStyle(
                     color: Colors.white,

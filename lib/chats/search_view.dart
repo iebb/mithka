@@ -14,6 +14,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../app/active_conversation.dart';
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_search_query.dart';
 import '../chat/chat_search_view.dart';
@@ -1525,7 +1526,10 @@ class _SearchViewState extends State<SearchView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: c.listHeaderTint,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),

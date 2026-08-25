@@ -107,8 +107,12 @@ module TestFlightGroupDistributor
       BETA_APPROVED
       IN_BETA_TESTING
     ].freeze
+    EXTERNAL_SETTLED_STATES = (EXTERNAL_SUBMITTED_STATES + %w[
+      BETA_REJECTED
+      PROCESSING_EXCEPTION
+      EXPIRED
+    ]).freeze
     TERMINAL_INTERNAL_STATES = %w[PROCESSING_EXCEPTION EXPIRED].freeze
-    TERMINAL_EXTERNAL_STATES = %w[PROCESSING_EXCEPTION BETA_REJECTED EXPIRED].freeze
 
     def initialize(
       client:,
@@ -136,10 +140,17 @@ module TestFlightGroupDistributor
       groups = @client.get("/apps/#{@app_id}/betaGroups", "limit" => "200").fetch("data")
       assign(build_id, find_group(groups, @internal_group, true))
       assign(build_id, find_group(groups, @external_group, false))
-      submit_external_review(build_id)
-      internal_state, external_state = wait_for_distribution(build_id)
-      puts "Verified #{platform_name} build #{@build_number}: " \
-           "Internal is #{internal_state}; External is #{external_state}."
+      review_state = submit_external_review(build_id)
+      internal_state, external_state = wait_for_distribution(
+        build_id,
+        await_external: !review_state.nil?
+      )
+      summary = "Verified #{platform_name} build #{@build_number}: " \
+                "Internal is #{internal_state}; External is #{external_state}."
+      unless EXTERNAL_SUBMITTED_STATES.include?(external_state)
+        summary += " Beta App Review did not take this build; that is not a failure."
+      end
+      puts summary
     end
 
     private
@@ -204,6 +215,10 @@ module TestFlightGroupDistributor
       :assigned
     end
 
+    # Beta App Review is Apple's call. A rejection, a sibling build already in
+    # review, or a submission limit still leaves a build the internal group can
+    # test, so report the outcome and let the workflow pass. Returns nil when no
+    # submission is pending, so the caller stops waiting on the external state.
     def submit_external_review(build_id)
       submissions = @client.get(
         "/betaAppReviewSubmissions",
@@ -223,30 +238,38 @@ module TestFlightGroupDistributor
         submission.dig("attributes", "betaReviewState") == "REJECTED"
       end
       if rejected_submission
-        raise Error, "build #{@build_number} has a rejected Beta App Review submission"
+        puts "External: Beta App Review rejected build #{@build_number}; not resubmitting"
+        return nil
       end
 
-      response = @client.post(
-        "/betaAppReviewSubmissions",
-        "data" => {
-          "type" => "betaAppReviewSubmissions",
-          "relationships" => {
-            "build" => {
-              "data" => { "type" => "builds", "id" => build_id }
+      response = begin
+        @client.post(
+          "/betaAppReviewSubmissions",
+          "data" => {
+            "type" => "betaAppReviewSubmissions",
+            "relationships" => {
+              "build" => {
+                "data" => { "type" => "builds", "id" => build_id }
+              }
             }
           }
-        }
-      )
+        )
+      rescue Error => error
+        puts "External: Beta App Review did not accept the submission (#{error.message})"
+        return nil
+      end
+
       state = response.dig("data", "attributes", "betaReviewState")
       unless SUBMITTED_REVIEW_STATES.include?(state)
-        raise Error, "Beta App Review submission returned unexpected state #{state || 'missing'}"
+        puts "External: Beta App Review submission returned #{state || 'no state'}"
+        return nil
       end
 
       puts "External: submitted to Beta App Review (#{state})"
       state
     end
 
-    def wait_for_distribution(build_id)
+    def wait_for_distribution(build_id, await_external: true)
       deadline = Time.now + @distribution_wait_seconds
       loop do
         attributes = @client.get(
@@ -254,18 +277,23 @@ module TestFlightGroupDistributor
         ).fetch("data").fetch("attributes")
         internal_state = attributes.fetch("internalBuildState")
         external_state = attributes.fetch("externalBuildState")
-        if internal_state == "IN_BETA_TESTING" && EXTERNAL_SUBMITTED_STATES.include?(external_state)
-          return [internal_state, external_state]
-        end
-        if TERMINAL_INTERNAL_STATES.include?(internal_state) ||
-           TERMINAL_EXTERNAL_STATES.include?(external_state)
+        internal_ready = internal_state == "IN_BETA_TESTING"
+        external_settled = !await_external || EXTERNAL_SETTLED_STATES.include?(external_state)
+        return [internal_state, external_state] if internal_ready && external_settled
+
+        if TERMINAL_INTERNAL_STATES.include?(internal_state)
           raise Error, "build #{@build_number} entered terminal TestFlight state " \
-                       "Internal=#{internal_state}, External=#{external_state}"
+                       "Internal=#{internal_state}"
         end
         if Time.now >= deadline
-          raise Error, "build #{@build_number} did not reach both TestFlight groups after " \
-                       "#{@distribution_wait_seconds} seconds: " \
-                       "Internal=#{internal_state}, External=#{external_state}"
+          unless internal_ready
+            raise Error, "build #{@build_number} did not reach the internal TestFlight group " \
+                         "after #{@distribution_wait_seconds} seconds: " \
+                         "Internal=#{internal_state}, External=#{external_state}"
+          end
+
+          # Only internal distribution gates the workflow; review pacing is Apple's.
+          return [internal_state, external_state]
         end
 
         puts "Waiting for TestFlight distribution " \

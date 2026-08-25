@@ -374,6 +374,55 @@ void main() {
     expect(ensure, contains('!_isCurrentScrollTarget'));
   });
 
+  test('offscreen message navigation stages and settles the target', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final initialStart = source.indexOf(
+      'Future<void> _positionInitialTranscript()',
+    );
+    final initialEnd = source.indexOf(
+      'void _jumpToInitialEstimate()',
+      initialStart,
+    );
+    final initialPositioning = source.substring(initialStart, initialEnd);
+    expect(
+      initialPositioning,
+      contains('_stageMessageAtTranscriptCenter(initialTarget)'),
+    );
+
+    final ensureStart = source.indexOf(
+      'Future<bool> _ensureMessageVisibleAndReport(',
+    );
+    final ensureEnd = source.indexOf(
+      'Future<bool> _alignMessageTarget(',
+      ensureStart,
+    );
+    final ensure = source.substring(ensureStart, ensureEnd);
+    final stage = ensure.indexOf('_stageMessageAtTranscriptCenter(messageId)');
+    final frame = ensure.indexOf(
+      'await WidgetsBinding.instance.endOfFrame;',
+      stage,
+    );
+    expect(stage, greaterThanOrEqualTo(0));
+    expect(frame, greaterThan(stage));
+    expect(
+      ensure,
+      isNot(
+        contains('Future<void>.delayed(const Duration(milliseconds: 120))'),
+      ),
+    );
+
+    final alignStart = ensureEnd;
+    final alignEnd = source.indexOf(
+      'Future<bool> _alignPinnedMessage(',
+      alignStart,
+    );
+    final align = source.substring(alignStart, alignEnd);
+    expect(align, contains('for (var pass = 0; pass < 3; pass++)'));
+    expect(align, contains('await Scrollable.ensureVisible('));
+    expect(align, contains('await WidgetsBinding.instance.endOfFrame;'));
+    expect(align, contains('const Duration(milliseconds: 80)'));
+  });
+
   test('short transcript positioning is awaited and cancelable', () {
     final source = File('lib/chat/chat_view.dart').readAsStringSync();
     expect(
