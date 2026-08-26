@@ -15,6 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/adaptive_split_layout.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chats/search_view.dart';
 import '../components/app_icons.dart';
@@ -947,7 +948,10 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     final c = context.colors;
     return Container(
       key: const ValueKey('shared-media-inner-header'),
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),

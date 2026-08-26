@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../bot_api/bot_api_account.dart';
 import '../bot_api/bot_api_client.dart';
 import '../bot_api/bot_api_endpoint_config.dart';
@@ -288,7 +289,9 @@ class _LoginViewState extends State<LoginView> {
             ),
             if (canGoBack)
               Positioned(
-                top: MediaQuery.of(context).padding.top + 6,
+                top: MediaQuery.of(context).padding.top +
+                    iPadWindowChromeInsetOf(context) +
+                    6,
                 left: 6,
                 child: AppInteractiveSurface(
                   semanticLabel: AppStringKeys.navigationBack.l10n(context),
@@ -313,7 +316,9 @@ class _LoginViewState extends State<LoginView> {
                 ),
               ),
             Positioned(
-              top: MediaQuery.of(context).padding.top + 6,
+              top: MediaQuery.of(context).padding.top +
+                  iPadWindowChromeInsetOf(context) +
+                  6,
               right: 6,
               child: _topRightActions(auth, showingPhone),
             ),

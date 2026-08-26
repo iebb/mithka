@@ -4,12 +4,12 @@ import 'package:mithka/l10n/app_localizations.dart';
 void main() {
   test('gallery and TGS actions have native Simplified Chinese wording', () {
     expect(
-      AppStrings.tForLocale('zhHans', AppStringKeys.gallerySendHdTitle),
-      '高清画质',
+      AppStrings.tForLocale('zhHans', AppStringKeys.gallerySendOriginal),
+      '原图',
     );
     expect(
-      AppStrings.tForLocale('zhHans', AppStringKeys.gallerySendMotionSubtitle),
-      '将动态部分作为视频发送',
+      AppStrings.tForLocale('zhHans', AppStringKeys.gallerySendLiveAsVideo),
+      '以视频发送',
     );
     expect(
       AppStrings.tForLocale('zhHans', AppStringKeys.stickerStudioFormatTgs),
@@ -27,12 +27,12 @@ void main() {
 
   test('gallery and TGS actions have native Traditional Chinese wording', () {
     expect(
-      AppStrings.tForLocale('zhHant', AppStringKeys.gallerySendHdTitle),
-      '高畫質',
+      AppStrings.tForLocale('zhHant', AppStringKeys.gallerySendOriginal),
+      '原圖',
     );
     expect(
-      AppStrings.tForLocale('zhHant', AppStringKeys.gallerySendMotionSubtitle),
-      '將動態部分作為影片傳送',
+      AppStrings.tForLocale('zhHant', AppStringKeys.gallerySendLiveAsVideo),
+      '以影片傳送',
     );
     expect(
       AppStrings.tForLocale('zhHant', AppStringKeys.stickerStudioValidationTgs),

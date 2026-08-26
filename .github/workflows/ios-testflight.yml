@@ -142,6 +142,20 @@ jobs:
           test "$dsym_uuid" = "$binary_uuid"
           echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
 
+      - name: Verify iOS marketing version
+        run: |
+          set -euo pipefail
+          raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
+          expected_version="$(sh scripts/apple_marketing_version.sh \
+            "$raw_version" "$GITHUB_REF_NAME")"
+          info_plist="$ARCHIVE_PATH/Products/Applications/Runner.app/Info.plist"
+          actual_version="$(plutil -extract CFBundleShortVersionString raw "$info_plist")"
+          if [[ "$actual_version" != "$expected_version" ]]; then
+            echo "::error::Expected iOS marketing version $expected_version, got $actual_version"
+            exit 1
+          fi
+          echo "Verified iOS marketing version $actual_version"
+
       - name: Export and upload IPA to App Store Connect
         run: |
           set -euo pipefail

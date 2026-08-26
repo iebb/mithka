@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/media/app_camera_view.dart';
 import 'package:mithka/moments/story_authoring_view.dart';
-import 'package:mithka/moments/story_camera_view.dart';
 import 'package:mithka/moments/story_service.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -39,7 +39,7 @@ void main() {
     await _pumpAuthoring(tester, canPost: true, initialMediaPath: null);
 
     expect(find.text('选择照片或视频'), findsOneWidget);
-    expect(find.byType(StoryCameraView), findsNothing);
+    expect(find.byType(AppCameraView), findsNothing);
 
     if (Platform.isMacOS) {
       expect(find.text('相机'), findsNothing);
@@ -51,7 +51,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.byType(StoryCameraView), findsOneWidget);
+    expect(find.byType(AppCameraView), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

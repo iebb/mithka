@@ -210,6 +210,13 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 onChanged: (value) => theme.openChatsAtLatest = value,
               ),
               SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-saved-messages-identity'),
+                title: AppStringKeys.generalShowSavedMessagesIdentity,
+                value: theme.showSavedMessagesIdentity,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.bookmark),
+                onChanged: (value) => theme.showSavedMessagesIdentity = value,
+              ),
+              SettingsSwitchRow(
                 key: const ValueKey('chat-behavior-preserve-sender'),
                 title: AppStringKeys.generalRepeatPreserveSender,
                 value: theme.preserveSenderWhenRepeating,
@@ -218,6 +225,17 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 ),
                 onChanged: (value) => theme.preserveSenderWhenRepeating = value,
               ),
+              // Only mobile composers offer a camera button, so only they can
+              // put a capture in the system album.
+              if (!isDesktopTargetPlatform(Theme.of(context).platform))
+                SettingsSwitchRow(
+                  key: const ValueKey('chat-behavior-save-captured-photos'),
+                  title: AppStringKeys.generalSaveCapturedPhotos,
+                  subtitle: AppStringKeys.generalSaveCapturedPhotosHint,
+                  value: theme.saveCapturedPhotosToAlbum,
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.camera),
+                  onChanged: (value) => theme.saveCapturedPhotosToAlbum = value,
+                ),
               SettingsSwitchRow(
                 key: const ValueKey('chat-behavior-quick-replies'),
                 title: AppStringKeys.businessToolsQuickReplies,

@@ -65,6 +65,46 @@ class ArchivedChatsRow extends StatelessWidget {
   }
 }
 
+/// [ArchivedChatsView] kept in step with the chat list model.
+///
+/// The view itself renders the list it is handed, which suits the split layout
+/// because that pane rebuilds whenever its owner does. A pushed route has no
+/// such owner: clearing a row's badge updates the model, but the route kept
+/// rendering the snapshot it was built with, so the counter only disappeared
+/// when the screen was reopened.
+class LiveArchivedChatsView extends StatelessWidget {
+  const LiveArchivedChatsView({
+    super.key,
+    required this.updates,
+    required this.chatsProvider,
+    this.onClearUnread,
+    this.onBack,
+    this.onChatSelected,
+    this.selectedChatId,
+  });
+
+  final Listenable updates;
+  final List<ChatSummary> Function() chatsProvider;
+  final ValueChanged<ChatSummary>? onClearUnread;
+  final VoidCallback? onBack;
+  final ValueChanged<ChatSummary>? onChatSelected;
+  final int? selectedChatId;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: updates,
+      builder: (context, _) => ArchivedChatsView(
+        chats: chatsProvider(),
+        onClearUnread: onClearUnread,
+        onBack: onBack,
+        onChatSelected: onChatSelected,
+        selectedChatId: selectedChatId,
+      ),
+    );
+  }
+}
+
 class ArchivedChatsView extends StatelessWidget {
   const ArchivedChatsView({
     super.key,

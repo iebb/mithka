@@ -16,6 +16,7 @@ import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
@@ -2520,7 +2521,10 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
@@ -3582,12 +3586,14 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
     final c = context.colors;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top,
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
         left: AppSpacing.xxl,
         right: AppSpacing.xxl,
       ),
-      height:
-          MediaQuery.of(context).padding.top + AppMetric.composerHeaderHeight,
+      height: MediaQuery.of(context).padding.top +
+          iPadWindowChromeInsetOf(context) +
+          AppMetric.composerHeaderHeight,
       color: c.groupedBackground,
       child: Row(
         children: [
@@ -4268,6 +4274,7 @@ class _PostReplyQuote extends StatelessWidget {
           if (hasText)
             Expanded(
               child: RichText(
+                textScaler: MediaQuery.textScalerOf(context),
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 text: TextSpan(

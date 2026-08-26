@@ -23,6 +23,7 @@ import '../platform/adaptive_platform.dart';
 import 'app_theme.dart';
 import 'custom_message_bubble_background.dart';
 import 'emoji_font_catalog.dart';
+import 'google_font_weights.dart';
 import 'message_bubble_background.dart';
 import 'system_font_catalog.dart';
 import 'telegram_cloud_theme.dart';
@@ -896,6 +897,7 @@ class ThemeController extends ChangeNotifier {
   }) : _emojiFontCatalog = emojiFontCatalog ?? EmojiFontCatalog.shared,
        _activeAccountSlot = initialAccountSlot,
        _activeAccountUserId = initialAccountUserId {
+    GoogleFontWeightLoader.shared.addListener(_onGoogleFontWeightsLoaded);
     // Theming existed unconditionally before this preference was introduced,
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
@@ -1111,6 +1113,8 @@ class ThemeController extends ChangeNotifier {
         );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
+    _showSavedMessagesIdentity =
+        _prefs.getBool(_showSavedMessagesIdentityKey) ?? false;
     _preserveSenderWhenRepeating =
         _prefs.getBool(_preserveSenderWhenRepeatingKey) ?? true;
     _quickRepliesEnabled = _prefs.getBool(_quickRepliesEnabledKey) ?? true;
@@ -1130,6 +1134,8 @@ class ThemeController extends ChangeNotifier {
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
     _showShortVideos = _prefs.getBool(_showShortVideosKey) ?? true;
     _communitiesEnabled = _prefs.getBool(_communitiesEnabledKey) ?? true;
+    _saveCapturedPhotosToAlbum =
+        _prefs.getBool(_saveCapturedPhotosToAlbumKey) ?? false;
     final storedArchivedChatsMode = _prefs.getString(
       _archivedChatsDisplayModeKey,
     );
@@ -1217,6 +1223,7 @@ class ThemeController extends ChangeNotifier {
       'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
+  static const _showSavedMessagesIdentityKey = 'showSavedMessagesIdentity';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
   static const _quickRepliesEnabledKey = 'quickRepliesEnabled';
   static const _quickReactionsKey = 'quickReactions';
@@ -1226,12 +1233,15 @@ class ThemeController extends ChangeNotifier {
   static const _showMomentsTabKey = 'showMomentsTab';
   static const _showShortVideosKey = 'showShortVideos';
   static const _communitiesEnabledKey = 'communitiesEnabled';
+  static const _saveCapturedPhotosToAlbumKey = 'saveCapturedPhotosToAlbum';
   static const _archivedChatsDisplayModeKey = 'archivedChatsDisplayMode';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
 
   static const double minFontScale = 0.8;
-  static const double maxFontScale = 1.4;
+  // Chat text reflows inside fixed bubble widths, so a generous ceiling is
+  // safe: 2.0 covers users the old 1.4 cap left behind.
+  static const double maxFontScale = 2.0;
   static const double minInterfaceScale = 0.66 * 0.66;
   static const double maxInterfaceScale = 1.50 * 1.50;
 
@@ -1294,6 +1304,7 @@ class ThemeController extends ChangeNotifier {
   late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
+  bool _showSavedMessagesIdentity = false;
   bool _preserveSenderWhenRepeating = true;
   bool _quickRepliesEnabled = true;
   late List<QuickReactionChoice> _quickReactions;
@@ -1303,6 +1314,7 @@ class ThemeController extends ChangeNotifier {
   bool _showMomentsTab = true;
   bool _showShortVideos = true;
   bool _communitiesEnabled = true;
+  bool _saveCapturedPhotosToAlbum = false;
   late ArchivedChatsDisplayMode _archivedChatsDisplayMode;
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
@@ -1744,6 +1756,7 @@ class ThemeController extends ChangeNotifier {
       _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
+  bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get quickRepliesEnabled => _quickRepliesEnabled;
   List<QuickReactionChoice> get quickReactions =>
@@ -1754,6 +1767,7 @@ class ThemeController extends ChangeNotifier {
   bool get showMomentsTab => _showMomentsTab;
   bool get showShortVideos => _showShortVideos;
   bool get communitiesEnabled => _communitiesEnabled;
+  bool get saveCapturedPhotosToAlbum => _saveCapturedPhotosToAlbum;
   ArchivedChatsDisplayMode get archivedChatsDisplayMode =>
       _archivedChatsDisplayMode;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
@@ -1794,11 +1808,12 @@ class ThemeController extends ChangeNotifier {
     return value;
   }
 
-  /// App-wide text scale factor, applied at the root via MediaQuery.textScaler.
+  /// App-wide text scale factor for chat surfaces, applied by
+  /// [ChatFontScaleScope] through a scoped MediaQuery.textScaler.
   double get fontScale => _fontScale;
-  // Font scaling is applied once by the root MediaQuery. Returning an already
-  // scaled size here made chat typography grow twice while navigation text
-  // grew once.
+  // Chat font scaling is applied once by the chat-scoped MediaQuery; Text
+  // applies it implicitly and RichText reads it explicitly. Returning an
+  // already scaled size here made chat typography grow twice.
   double chatTextSize(double base) => base;
 
   /// Squared value shown by the Interface Size control. For example, the
@@ -1826,6 +1841,12 @@ class ThemeController extends ChangeNotifier {
           ? _fontFallbackChain
           : [AppFontChoice._platformFontFamily()]),
       ...AppFontChoice._platformFontFallback(),
+      // Last resort. The platform's own UI face carries every weight and every
+      // script the system can render, so a chain that misses a glyph lands
+      // somewhere sane instead of on the engine's fallback of last resort.
+      // Deduping keeps it from appearing twice under the stock configuration,
+      // where it is already the primary.
+      AppFontChoice._platformFontFamily(),
     ]);
   }
 
@@ -1866,7 +1887,7 @@ class ThemeController extends ChangeNotifier {
     final googleFamily = _googleFamilyFor(first);
     final withPrimary = googleFamily == null
         ? weightedBase.copyWith(fontFamily: first)
-        : GoogleFonts.getFont(googleFamily, textStyle: weightedBase);
+        : _googleTextStyle(googleFamily, weightedBase);
     return withPrimary.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
         ..._emojiFontChoice.fontFamilies,
@@ -1874,6 +1895,20 @@ class ThemeController extends ChangeNotifier {
         ...families.skip(1),
       ]),
     );
+  }
+
+  /// Names the family that holds every weight face once it is registered.
+  ///
+  /// Until then this falls back to google_fonts' own per-variant family, whose
+  /// single face makes the app's w600 labels a synthetic embolden rather than
+  /// the designed SemiBold. [GoogleFontWeightLoader] reports back when the real
+  /// faces land, and the cached styles are recomputed against them.
+  TextStyle _googleTextStyle(String googleFamily, TextStyle weightedBase) {
+    final loader = GoogleFontWeightLoader.shared;
+    final unified = loader.loadedFamily(googleFamily);
+    if (unified != null) return weightedBase.copyWith(fontFamily: unified);
+    unawaited(loader.ensure(googleFamily));
+    return GoogleFonts.getFont(googleFamily, textStyle: weightedBase);
   }
 
   TextTheme applyAppTextTheme(TextTheme textTheme, {bool boldText = false}) {
@@ -2372,11 +2407,19 @@ class ThemeController extends ChangeNotifier {
 
   @override
   void dispose() {
+    GoogleFontWeightLoader.shared.removeListener(_onGoogleFontWeightsLoaded);
     if (_scalePersistTimer != null) {
       _scalePersistTimer!.cancel();
       _persistScales();
     }
     super.dispose();
+  }
+
+  /// The styles handed out so far name google_fonts' single-face family, so
+  /// drop them and rebuild against the one that now carries every weight.
+  void _onGoogleFontWeightsLoaded() {
+    _invalidateFontCaches();
+    notifyListeners();
   }
 
   set circularGroupAvatars(bool value) {
@@ -2525,8 +2568,16 @@ class ThemeController extends ChangeNotifier {
   }
 
   set openChatsAtLatest(bool value) {
+    if (_openChatsAtLatest == value) return;
     _openChatsAtLatest = value;
     _prefs.setBool(_openChatsAtLatestKey, value);
+    notifyListeners();
+  }
+
+  set showSavedMessagesIdentity(bool value) {
+    if (_showSavedMessagesIdentity == value) return;
+    _showSavedMessagesIdentity = value;
+    _prefs.setBool(_showSavedMessagesIdentityKey, value);
     notifyListeners();
   }
 
@@ -2604,6 +2655,13 @@ class ThemeController extends ChangeNotifier {
     if (_communitiesEnabled == value) return;
     _communitiesEnabled = value;
     _prefs.setBool(_communitiesEnabledKey, value);
+    notifyListeners();
+  }
+
+  set saveCapturedPhotosToAlbum(bool value) {
+    if (_saveCapturedPhotosToAlbum == value) return;
+    _saveCapturedPhotosToAlbum = value;
+    _prefs.setBool(_saveCapturedPhotosToAlbumKey, value);
     notifyListeners();
   }
 

@@ -71,7 +71,10 @@ void main() {
     expect(runner, contains('SetTimer(window_handle_, kQuitFallbackTimer'));
     expect(runner, contains('KillTimer(hwnd, kQuitFallbackTimer)'));
     expect(runner, contains('PostMessageW(window_handle_, WM_CLOSE'));
-    expect(flutterWindow, contains('FlutterWindow::~FlutterWindow() {\n  //'));
+    expect(
+      flutterWindow.replaceAll('\r\n', '\n'),
+      contains('FlutterWindow::~FlutterWindow() {\n  //'),
+    );
   });
 
   test('notification icon is an owned runner resource with Shell linkage', () {
@@ -82,5 +85,19 @@ void main() {
     expect(resources, contains('IDI_TRAY_ICON'));
     expect(resourceHeader, contains('#define IDI_TRAY_ICON'));
     expect(cmake, contains('"shell32.lib"'));
+  });
+
+  test('local notifications have a stable Windows identity', () {
+    final notifications = _read(
+      'lib/notifications/notification_controller.dart',
+    );
+
+    expect(notifications, contains('windows: WindowsInitializationSettings('));
+    expect(notifications, contains("appName: 'Mithka'"));
+    expect(notifications, contains("appUserModelId: 'Iebb.Mithka.Desktop'"));
+    expect(
+      notifications,
+      contains("guid: '19a46b98-1781-4d9e-92ed-bd0576e48e2d'"),
+    );
   });
 }

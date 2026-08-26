@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_view.dart';
 import '../components/app_icons.dart';
@@ -269,7 +270,10 @@ class _ContactsViewState extends State<ContactsView> {
     return Container(
       key: const ValueKey('contacts-root-header'),
       color: c.listHeaderTint,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(

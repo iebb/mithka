@@ -62,6 +62,23 @@ Future<void> hover(
 }
 
 void main() {
+  testWidgets('builds above the navigator without an Overlay', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        builder: (context, child) => const Align(
+          alignment: Alignment.topRight,
+          child: DesktopWindowControls(),
+        ),
+        home: const SizedBox.expand(),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Tooltip), findsNothing);
+    expect(buttonNamed('close'), findsOneWidget);
+  });
+
   testWidgets('renders minimize, maximize and close', (tester) async {
     await pumpControls(tester);
 

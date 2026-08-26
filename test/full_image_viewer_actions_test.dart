@@ -8,6 +8,48 @@ import 'package:mithka/chat/full_image_viewer.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
+  testWidgets('the page counter hugs its text instead of spanning the bar', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync(
+      'mithka-image-viewer-counter-test-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final image = File('${directory.path}/photo.png')
+      ..writeAsBytesSync(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+          'AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        ),
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullImageViewer(
+          items: [
+            TdFileRef(id: 1, localPath: image.path),
+            TdFileRef(id: 2, localPath: image.path),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('1 / 2'), findsOneWidget);
+    final counter = tester.getSize(
+      find.byKey(const ValueKey('image-viewer-counter')),
+    );
+    final label = tester.getSize(find.text('1 / 2'));
+    // A Container given an alignment grows to its constraints, which turned
+    // this pill into a bar across the whole window.
+    expect(counter.height, 32);
+    expect(counter.width, closeTo(label.width + 24, 1));
+    expect(
+      counter.width,
+      lessThan(tester.view.physicalSize.width / tester.view.devicePixelRatio),
+    );
+  });
+
   testWidgets('owned image preview exposes primary and more actions', (
     tester,
   ) async {

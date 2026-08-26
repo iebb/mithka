@@ -41,6 +41,9 @@ permissions:
   contents: write
   copilot-requests: write
 
+env:
+  FLUTTER_VERSION: '3.44.2'
+
 jobs:
   prepare:
     name: Read pubspec version
@@ -152,7 +155,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.2'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -332,26 +335,66 @@ jobs:
             architecture: x64
             library: libtdjson.so
             archive_extension: tar.gz
+            flutter_source: archive
+          - platform: linux
+            label: Linux arm64
+            os: ubuntu-24.04-arm
+            architecture: arm64
+            library: libtdjson.so
+            archive_extension: tar.gz
+            flutter_source: git
           - platform: macos
             label: macOS universal
             os: macos-15
             architecture: universal
             library: libtdjson.dylib
             archive_extension: zip
+            flutter_source: archive
           - platform: windows
             label: Windows x64
             os: windows-2022
             architecture: x64
             library: tdjson.dll
             archive_extension: zip
+            flutter_source: archive
+          - platform: windows
+            label: Windows arm64
+            os: windows-11-arm
+            architecture: arm64
+            library: tdjson.dll
+            archive_extension: zip
+            flutter_source: git
     steps:
       - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
+        if: matrix.flutter_source == 'archive'
         with:
-          flutter-version: '3.44.2'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Install Flutter on an arm64 host
+        if: matrix.flutter_source == 'git'
+        shell: bash
+        run: |
+          # Flutter publishes no arm64 SDK archive for Linux or Windows, so the
+          # release archive cannot be used here. A git checkout bootstraps the
+          # Dart SDK for the host architecture on first run, and Flutter targets
+          # the architecture of its own Dart executable — which is what makes
+          # these builds arm64 rather than emulated x64.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            flutter_home='/c/flutter'
+            path_entry='C:\flutter\bin'
+          else
+            flutter_home="$HOME/flutter"
+            path_entry="$flutter_home/bin"
+          fi
+          git clone --depth 1 --branch "$FLUTTER_VERSION" \
+            --config advice.detachedHead=false \
+            https://github.com/flutter/flutter.git "$flutter_home"
+          "$flutter_home/bin/flutter" --version
+          echo "$path_entry" >> "$GITHUB_PATH"
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
@@ -374,7 +417,8 @@ jobs:
         run: |
           scripts/build-tdjson-desktop.sh \
             "${{ matrix.platform }}" \
-            "native-libs/${{ matrix.library }}"
+            "native-libs/${{ matrix.library }}" \
+            "${{ matrix.architecture }}"
 
       - name: Enable Swift Package Manager for macOS
         if: matrix.platform == 'macos'
@@ -404,6 +448,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           flutter build linux --release \
+            --target-platform="linux-${{ matrix.architecture }}" \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
             --build-number="${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
@@ -422,13 +467,39 @@ jobs:
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
             --dart-define="SENTRY_DSN=$SENTRY_DSN"
 
+      - name: Drop Firebase from the Windows arm64 build
+        if: matrix.platform == 'windows' && matrix.architecture == 'arm64'
+        shell: bash
+        run: |
+          # Google ships the Firebase C++ SDK for Windows as x86 and x64 static
+          # libraries only — the archive contains no ARM64 at all — so an ARM64
+          # link fails on unresolved firebase::App symbols. Nothing is lost:
+          # Mithka initialises Firebase only when the mithka/firebase_configuration
+          # channel answers, and that channel is implemented on Android and iOS
+          # alone, so on Windows the plugin registers and is then never used.
+          python3 scripts/drop-windows-plugin.py firebase_core \
+            --reason 'Firebase publishes no Windows ARM64 binaries'
+          # Flutter writes the plugin registrant and the CMake plugin list
+          # during pub get, so both have to be regenerated from the plugin set
+          # this leaves behind; the build itself will not redo it.
+          flutter pub get
+          for generated in windows/flutter/generated_plugin_registrant.cc \
+                           windows/flutter/generated_plugins.cmake; do
+            if grep -qi firebase "$generated"; then
+              echo "$generated still registers Firebase" >&2
+              exit 1
+            fi
+          done
+
       - name: Build Windows release
         if: matrix.platform == 'windows'
         shell: pwsh
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          flutter build windows --release `
+          # --no-pub keeps pub from re-resolving over the plugin set this job
+          # settled on; the dependencies step above already fetched them.
+          flutter build windows --release --no-pub `
             --build-name="${{ needs.prepare.outputs.app_version }}" `
             --build-number="${{ needs.prepare.outputs.build_stamp }}" `
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" `
@@ -438,7 +509,7 @@ jobs:
       - name: Package Linux release
         if: matrix.platform == 'linux'
         run: |
-          bundle="build/linux/x64/release/bundle"
+          bundle="build/linux/${{ matrix.architecture }}/release/bundle"
           install -m 0755 native-libs/libtdjson.so "$bundle/lib/libtdjson.so"
           nm -D "$bundle/lib/libtdjson.so" | grep ' td_create_client_id$'
           if ldd "$bundle/lib/libtdjson.so" | grep -q 'not found'; then
@@ -448,7 +519,7 @@ jobs:
           mkdir -p dist/package/Mithka
           cp -R "$bundle/." dist/package/Mithka/
           tar -C dist/package -czf \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-x64.tar.gz" \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.tar.gz" \
             Mithka
 
       - name: Package macOS release
@@ -475,7 +546,7 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          $bundle = "build\windows\x64\runner\Release"
+          $bundle = "build\windows\${{ matrix.architecture }}\runner\Release"
           Copy-Item "native-libs\tdjson.dll" "$bundle\tdjson.dll"
           Add-Type -TypeDefinition @'
           using System;
@@ -509,12 +580,12 @@ jobs:
           New-Item -ItemType Directory -Force dist\package | Out-Null
           Copy-Item $bundle dist\package\Mithka -Recurse
           Compress-Archive -Path dist\package\Mithka `
-            -DestinationPath "dist\mithka-${{ needs.prepare.outputs.artifact_label }}-windows-x64.zip"
+            -DestinationPath "dist\mithka-${{ needs.prepare.outputs.artifact_label }}-windows-${{ matrix.architecture }}.zip"
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v6
         with:
-          name: desktop-${{ matrix.platform }}-${{ needs.prepare.outputs.release_date }}
+          name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
           if-no-files-found: error
 
@@ -557,8 +628,10 @@ jobs:
           done
           for desktop_asset in \
             '*-windows-x64.zip' \
+            '*-windows-arm64.zip' \
             '*-macos-universal.zip' \
-            '*-linux-x64.tar.gz'; do
+            '*-linux-x64.tar.gz' \
+            '*-linux-arm64.tar.gz'; do
             desktop_asset_count="$(
               find release-assets -maxdepth 1 -type f -name "$desktop_asset" \
                 | wc -l \

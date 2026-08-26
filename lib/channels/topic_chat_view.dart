@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
@@ -35,6 +36,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/chat_font_scale_scope.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'topic_post_content.dart';
@@ -1040,13 +1042,13 @@ class _TopicChatViewState extends State<TopicChatView> {
         children: [
           _header(),
           if (_selectedThreadId == null && widget.chat.lastMessage.isNotEmpty)
-            _pinnedLine(),
-          Expanded(child: _content()),
+            ChatFontScaleScope(child: _pinnedLine()),
+          Expanded(child: ChatFontScaleScope(child: _content())),
           if (canComposeInTopicSurface(
             chat: widget.chat,
             forumTopicId: _selectedThreadId,
           ))
-            _bottomComposer(),
+            ChatFontScaleScope(child: _bottomComposer()),
         ],
       ),
     );
@@ -1054,7 +1056,8 @@ class _TopicChatViewState extends State<TopicChatView> {
 
   Widget _header() {
     final c = context.colors;
-    final top = MediaQuery.of(context).padding.top;
+    final top = MediaQuery.of(context).padding.top +
+        iPadWindowChromeInsetOf(context);
     final title = widget.chat.isBotTopicChat
         ? widget.chat.title
         : context.watch<GroupRemarkController?>()?.displayTitleFor(

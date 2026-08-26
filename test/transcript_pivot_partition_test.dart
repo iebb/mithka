@@ -131,6 +131,121 @@ void main() {
         isFalse,
       );
     });
+
+    test('holds the reveal while a jump target is still being aligned', () {
+      expect(
+        shouldRebaseForHydratedOlderPage(
+          prependedOlder: true,
+          latestArmWasShort: true,
+          historyFillInFlight: true,
+          revealRequested: true,
+          hasPendingMessageTarget: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('transcriptFollowsLatestEdge', () {
+    test('follows the latest edge when nothing owns the viewport', () {
+      expect(
+        transcriptFollowsLatestEdge(
+          preservesViewport: false,
+          maintainsSessionAnchor: false,
+          viewportClaimedByUser: false,
+          hasPendingMessageTarget: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('yields the latest edge to a pending message target', () {
+      expect(
+        transcriptFollowsLatestEdge(
+          preservesViewport: false,
+          maintainsSessionAnchor: false,
+          viewportClaimedByUser: false,
+          hasPendingMessageTarget: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('yields the latest edge to each established viewport owner', () {
+      for (final owner in const ['preserved', 'anchored', 'claimed']) {
+        expect(
+          transcriptFollowsLatestEdge(
+            preservesViewport: owner == 'preserved',
+            maintainsSessionAnchor: owner == 'anchored',
+            viewportClaimedByUser: owner == 'claimed',
+            hasPendingMessageTarget: false,
+          ),
+          isFalse,
+          reason: '$owner must not report as following the latest edge',
+        );
+      }
+    });
+  });
+
+  group('a staged jump target survives routine hydration', () {
+    // Staging a search target near the newest end of the loaded window leaves a
+    // sub-three-entry after-center arm with older history already present. That
+    // is exactly the shape shouldRebaseParkedShortTranscriptPivot and
+    // shouldRebaseForExpandedInitialWindow rebase, so a sender hydration or a
+    // read receipt arriving mid-jump used to discard the staging and drop the
+    // transcript back at the latest edge before the row was ever aligned.
+    bool followsLatest({required bool hasPendingMessageTarget}) =>
+        transcriptFollowsLatestEdge(
+          preservesViewport: false,
+          maintainsSessionAnchor: false,
+          viewportClaimedByUser: false,
+          hasPendingMessageTarget: hasPendingMessageTarget,
+        );
+
+    test('parked-arm rebasing stands down while the jump is in flight', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 70,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: followsLatest(hasPendingMessageTarget: true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('expanded-window rebasing stands down while the jump is in flight', () {
+      expect(
+        shouldRebaseForExpandedInitialWindow(
+          transcriptChanged: true,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: followsLatest(hasPendingMessageTarget: true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('both resume rebasing once the target is released', () {
+      expect(
+        shouldRebaseParkedShortTranscriptPivot(
+          pivotCutoffMessageId: 70,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: followsLatest(hasPendingMessageTarget: false),
+        ),
+        isTrue,
+      );
+      expect(
+        shouldRebaseForExpandedInitialWindow(
+          transcriptChanged: true,
+          latestArmIsShort: true,
+          hasMessageOlderThanPivot: true,
+          followingLatest: followsLatest(hasPendingMessageTarget: false),
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('isLatestTranscriptArmShort', () {

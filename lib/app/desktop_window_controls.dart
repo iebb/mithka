@@ -110,41 +110,47 @@ class _CaptionButtonState extends State<_CaptionButton> {
         ? const Color(0xFFFFFFFF)
         : colors.textSecondary;
 
-    return Semantics(
-      label: widget.label,
-      button: true,
-      excludeSemantics: true,
-      child: Tooltip(
-        message: widget.label,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.basic,
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() {
-            _hovered = false;
-            _pressed = false;
-          }),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTapDown: (_) => setState(() => _pressed = true),
-            onTapCancel: () => setState(() => _pressed = false),
-            onTap: () {
-              setState(() => _pressed = false);
-              unawaited(widget.onTap());
-            },
-            child: SizedBox(
-              width: _CaptionButton.width,
-              height: _CaptionButton.height,
-              child: ColoredBox(
-                color: _background(colors),
-                child: Center(
-                  child: AppIcon(widget.icon, size: 16, color: iconColor),
-                ),
-              ),
+    final button = MouseRegion(
+      cursor: SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() {
+        _hovered = false;
+        _pressed = false;
+      }),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: () {
+          setState(() => _pressed = false);
+          unawaited(widget.onTap());
+        },
+        child: SizedBox(
+          width: _CaptionButton.width,
+          height: _CaptionButton.height,
+          child: ColoredBox(
+            color: _background(colors),
+            child: Center(
+              child: AppIcon(widget.icon, size: 16, color: iconColor),
             ),
           ),
         ),
       ),
+    );
+    // MaterialApp.builder places the desktop frame above the Navigator's
+    // LookupBoundary, so its caption buttons do not always have an Overlay.
+    // RawTooltip asserts during build in that configuration on current
+    // Flutter. The semantics label still exposes the native action; only add
+    // the visual tooltip when it has somewhere valid to float.
+    final overlay = Overlay.maybeOf(context);
+    return Semantics(
+      label: widget.label,
+      button: true,
+      excludeSemantics: true,
+      child: overlay == null
+          ? button
+          : Tooltip(message: widget.label, child: button),
     );
   }
 }

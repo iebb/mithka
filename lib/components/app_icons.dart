@@ -218,6 +218,7 @@ class HeroAppIcons {
   static const alignBottom = AppIconData(HeroiconsOutline.barsArrowDown);
   static const bell = AppIconData(HeroiconsOutline.bell);
   static const bellSlash = AppIconData(HeroiconsOutline.bellSlash);
+  static const bookmark = AppIconData(HeroiconsOutline.bookmark);
   static const venue = AppIconData(HeroiconsOutline.buildingStorefront);
   static const camera = AppIconData(HeroiconsOutline.camera);
   static const check = AppIconData(HeroiconsOutline.check);
@@ -260,6 +261,7 @@ class HeroAppIcons {
   static const eye = AppIconData(HeroiconsOutline.eye);
   static const eyeSlash = AppIconData(HeroiconsOutline.eyeSlash);
   static const faceScan = AppIconData(HeroiconsOutline.viewfinderCircle);
+  static const faceSmile = AppIconData(HeroiconsOutline.faceSmile);
   static const file = AppIconData(HeroiconsOutline.document);
   static const filter = AppIconData(HeroiconsOutline.funnel);
   static const fingerprint = AppIconData(HeroiconsOutline.fingerPrint);

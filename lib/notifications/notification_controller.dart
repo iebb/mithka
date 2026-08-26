@@ -182,6 +182,11 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           defaultPresentSound: false,
           defaultPresentBadge: false,
         ),
+        windows: WindowsInitializationSettings(
+          appName: 'Mithka',
+          appUserModelId: 'Iebb.Mithka.Desktop',
+          guid: '19a46b98-1781-4d9e-92ed-bd0576e48e2d',
+        ),
       ),
       onDidReceiveNotificationResponse: _openNotification,
     );

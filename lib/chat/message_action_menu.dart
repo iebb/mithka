@@ -17,6 +17,7 @@ import '../components/app_icons.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
@@ -168,6 +169,138 @@ class QuickReactionBar extends StatelessWidget {
   }
 }
 
+/// The reaction strip that rides on top of the desktop context menu.
+///
+/// Drawn as the menu's own upper storey: same surface, same 9pt radius, same
+/// hairline border, laid out to the menu's width so the two read as one
+/// stack rather than a pill parked above a card. Touch keeps the rounded
+/// [QuickReactionBar], which floats free of its grid menu.
+class MenuReactionBar extends StatelessWidget {
+  const MenuReactionBar({
+    super.key,
+    required this.reactions,
+    required this.onReaction,
+    required this.onExpand,
+  });
+
+  /// Six plus the expand button divide the menu's 220pt width into 30pt
+  /// slots. More would either narrow the slots below a comfortable target or
+  /// push the strip wider than the menu it sits on.
+  static const maxReactionCount = 6;
+  static const height = 40.0;
+  static const _padding = 5.0;
+  static const _emojiSize = 22.0;
+
+  final List<QuickReactionChoice> reactions;
+  final ValueChanged<QuickReactionChoice> onReaction;
+  final VoidCallback onExpand;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = reactions.take(maxReactionCount).toList(growable: false);
+    return Container(
+      key: const ValueKey('menu-reaction-bar'),
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: _padding),
+      decoration: BoxDecoration(
+        color: MessageActionMenu.surface,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.22),
+          width: 0.75,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          for (final reaction in shown)
+            Expanded(
+              child: _MenuReactionSlot(
+                key: ValueKey('menu-reaction-${reaction.storageValue}'),
+                onTap: () => onReaction(reaction),
+                child: reaction.isCustom
+                    ? CustomEmojiView(
+                        id: reaction.customEmojiId,
+                        size: _emojiSize,
+                        color: Colors.white,
+                      )
+                    : Text(
+                        reaction.emoji,
+                        textScaler: TextScaler.noScaling,
+                        style: const TextStyle(fontSize: _emojiSize),
+                      ),
+              ),
+            ),
+          Expanded(
+            child: _MenuReactionSlot(
+              key: const ValueKey('menu-reaction-expand'),
+              onTap: onExpand,
+              child: const AppIcon(
+                HeroAppIcons.faceSmile,
+                size: 21,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One slot of [MenuReactionBar]. A pointer gets a rounded fill under the
+/// glyph it is over, matching how a row of the menu below lights up.
+class _MenuReactionSlot extends StatefulWidget {
+  const _MenuReactionSlot({
+    super.key,
+    required this.onTap,
+    required this.child,
+  });
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_MenuReactionSlot> createState() => _MenuReactionSlotState();
+}
+
+class _MenuReactionSlotState extends State<_MenuReactionSlot> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.duration(context, AppMotion.quick),
+          curve: AppMotion.standard,
+          height: MenuReactionBar.height - MenuReactionBar._padding * 2,
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _hovering
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class MessageActionMenu extends StatelessWidget {
   const MessageActionMenu({
     super.key,
@@ -191,7 +324,7 @@ class MessageActionMenu extends StatelessWidget {
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
 
-  static const _surface = Color(0xFF2C2C2E);
+  static const surface = Color(0xFF2C2C2E);
   static const _destructive = Color(0xFFFF6961);
   static const _horizontalPadding = 6.0;
   static const _actionWidth = 58.0;
@@ -420,7 +553,7 @@ class MessageActionMenu extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 11),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: _surface,
+            color: surface,
             borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: [
               BoxShadow(
@@ -489,7 +622,7 @@ class _VerticalActionList extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: MessageActionMenu._surface,
+        color: MessageActionMenu.surface,
         borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.22),

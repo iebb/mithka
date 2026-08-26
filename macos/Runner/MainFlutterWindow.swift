@@ -68,6 +68,12 @@ class MainFlutterWindow: NSWindow {
     configurePrimaryWindow()
   }
 
+  override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+    super.setFrame(frameRect, display: flag)
+    // Resizing/zooming re-centres the buttons on the system titlebar strip.
+    alignTrafficLightsWithTitleBar()
+  }
+
   private func configurePrimaryWindow() {
     titleVisibility = .hidden
     titlebarAppearsTransparent = true
@@ -76,6 +82,33 @@ class MainFlutterWindow: NSWindow {
     minSize = NSSize(width: 820, height: 560)
     if #available(macOS 11.0, *) {
       titlebarSeparatorStyle = .none
+    }
+    DispatchQueue.main.async { [weak self] in
+      self?.alignTrafficLightsWithTitleBar()
+    }
+  }
+
+  /// The Flutter title bar (MacosDesktopTitleBar) is 40 pt tall from the
+  /// window's top edge, so the identity row sits on the 20 pt midline. The
+  /// stock traffic lights centre on the shorter system titlebar strip and
+  /// ride a few points above it — nudge them onto the same midline.
+  func alignTrafficLightsWithTitleBar() {
+    guard let close = standardWindowButton(.closeButton) else { return }
+    let centerInWindow = close.superview?.convert(
+      NSPoint(x: close.frame.midX, y: close.frame.midY),
+      to: nil
+    ) ?? NSPoint.zero
+    let currentFromTop = frame.height - centerInWindow.y
+    let delta = currentFromTop - 20
+    guard abs(delta) > 0.1 else { return }
+    for kind in [
+      NSWindow.ButtonType.closeButton,
+      .miniaturizeButton,
+      .zoomButton,
+    ] {
+      if let button = standardWindowButton(kind) {
+        button.frame.origin.y += delta
+      }
     }
   }
 }

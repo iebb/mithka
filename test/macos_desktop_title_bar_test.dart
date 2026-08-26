@@ -52,6 +52,15 @@ void main() {
       find.byKey(const ValueKey('macos-account-identity')),
       findsOneWidget,
     );
+    // With no window controls the bar keeps its trailing inset, so the
+    // account identity stops short of the right edge. macOS depends on that:
+    // its caption buttons are native and this slot is empty.
+    expect(
+      tester
+          .getTopRight(find.byKey(const ValueKey('macos-account-identity')))
+          .dx,
+      600 - MacosDesktopTitleBar.trailingPadding,
+    );
 
     final decoration = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey('macos-desktop-title-bar-decoration')),
@@ -107,8 +116,109 @@ void main() {
               .dx,
         ),
       );
+      // The configuration Windows and Linux actually render: actions and
+      // controls together, with close still owning the corner.
+      expect(
+        tester
+            .getTopRight(
+              find.byKey(const ValueKey('desktop-title-bar-window-controls')),
+            )
+            .dx,
+        600,
+      );
     },
   );
+
+  testWidgets('window controls reach the top right corner without a margin', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: const Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 600,
+            child: MacosDesktopTitleBar(
+              leadingClearance: 8,
+              appIdentity: SizedBox(width: 112, child: Text('Account')),
+              trailingControls: SizedBox(
+                key: ValueKey('test-window-controls'),
+                width: 138,
+                height: MacosDesktopTitleBar.height,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final corner = tester.getTopRight(
+      find.byKey(const ValueKey('test-window-controls')),
+    );
+    expect(corner.dx, 600);
+    expect(corner.dy, 0);
+  });
+
+  testWidgets('window controls stay pinned when title bar actions overflow', (
+    tester,
+  ) async {
+    Future<void> pumpBar({
+      required double width,
+      required double actionsWidth,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: width,
+            child: MacosDesktopTitleBar(
+              leadingClearance: 8,
+              appIdentity: const SizedBox(width: 112, child: Text('Account')),
+              trailingActions: SizedBox(
+                key: const ValueKey('test-growing-title-actions'),
+                width: actionsWidth,
+              ),
+              trailingControls: const SizedBox(
+                key: ValueKey('test-pinned-window-controls'),
+                width: 138,
+                height: MacosDesktopTitleBar.height,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await pumpBar(width: 600, actionsWidth: 220);
+    expect(
+      tester
+          .getTopRight(
+            find.byKey(const ValueKey('test-pinned-window-controls')),
+          )
+          .dx,
+      600,
+    );
+
+    // A scoped search can grow the action row while the window is narrow.
+    // Close must remain under the top-right pointer instead of moving past it.
+    await pumpBar(width: 420, actionsWidth: 360);
+    expect(
+      tester
+          .getTopRight(
+            find.byKey(const ValueKey('test-pinned-window-controls')),
+          )
+          .dx,
+      420,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('test-growing-title-actions')))
+          .width,
+      420 - 138 - 8,
+    );
+  });
 
   testWidgets(
     'desktop title bar searches in place and hands Search All its query',

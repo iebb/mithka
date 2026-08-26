@@ -177,6 +177,35 @@ class RunnerTests: XCTestCase {
   }
 
   @MainActor
+  func testTrafficLightsCenterOnTheFlutterTitleBarMidline() throws {
+    let window = MainFlutterWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
+      styleMask: [
+        .titled, .closable, .miniaturizable, .resizable, .fullSizeContentView,
+      ],
+      backing: .buffered,
+      defer: false
+    )
+    window.contentViewController = NSViewController()
+    window.titlebarAppearsTransparent = true
+    window.orderFront(nil)
+    addTeardownBlock { @MainActor in
+      window.orderOut(nil)
+    }
+
+    window.alignTrafficLightsWithTitleBar()
+
+    let close = try XCTUnwrap(window.standardWindowButton(.closeButton))
+    let container = try XCTUnwrap(close.superview)
+    let centerInWindow = container.convert(
+      NSPoint(x: close.frame.midX, y: close.frame.midY),
+      to: nil
+    )
+    let fromTop = window.frame.height - centerInWindow.y
+    XCTAssertEqual(fromTop, 20, accuracy: 0.5)
+  }
+
+  @MainActor
   private func makeMainWindow() -> MainFlutterWindow {
     let window = MainFlutterWindow(
       contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),

@@ -35,17 +35,41 @@ bool shouldRebasePendingTranscriptPivot({
   return pivot?.cutoffMessageId == pendingOrderId && hasServerMessage;
 }
 
+/// Whether the transcript is still tracking its own latest edge.
+///
+/// A pending message target owns the viewport: selecting it already cancelled
+/// bottom-follow and anchor maintenance, and staging it rebases the pivot onto
+/// that row. Reporting "following latest" during that window lets an ordinary
+/// view-model notification — sender hydration, a read receipt, file progress —
+/// rebase the pivot straight back and strand the jump at the latest edge.
+bool transcriptFollowsLatestEdge({
+  required bool preservesViewport,
+  required bool maintainsSessionAnchor,
+  required bool viewportClaimedByUser,
+  required bool hasPendingMessageTarget,
+}) =>
+    !preservesViewport &&
+    !maintainsSessionAnchor &&
+    !viewportClaimedByUser &&
+    !hasPendingMessageTarget;
+
 /// Lets an older page fill a short visible transcript even when a touch froze
 /// its previous pivot while the request was in flight. Full transcripts retain
 /// their fixed pivot so ordinary pagination does not move the viewport.
+///
+/// [hasPendingMessageTarget] holds the reveal back for the same reason
+/// [transcriptFollowsLatestEdge] does: a hydrating older page must not discard
+/// a staged jump target before it has been aligned.
 bool shouldRebaseForHydratedOlderPage({
   required bool prependedOlder,
   required bool latestArmWasShort,
   required bool historyFillInFlight,
   required bool revealRequested,
+  bool hasPendingMessageTarget = false,
 }) =>
     prependedOlder &&
     latestArmWasShort &&
+    !hasPendingMessageTarget &&
     (historyFillInFlight || revealRequested);
 
 /// Whether the after-center arm is still too thin to treat as a filled

@@ -59,7 +59,10 @@ void main() {
       expect(player, contains('FVideoPictureInPicture.start('));
       expect(player, contains('Widget _playerBottomTrailing('));
       expect(player, contains('Widget _displayModeButton('));
-      expect(player, isNot(contains('chromeBuilder:')));
+      // Fullscreen supplies its own chrome since the video redesign; every
+      // other presentation, picture-in-picture included, still takes the
+      // package's, so this stays conditional rather than unconditional.
+      expect(player, contains('chromeBuilder: widget.presentation =='));
       expect(player, isNot(contains('FVideoInteractionMode.delegateToChrome')));
     },
   );

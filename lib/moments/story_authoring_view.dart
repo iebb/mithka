@@ -12,13 +12,13 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
+import '../media/app_camera_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'story_area_editor_view.dart';
-import 'story_camera_view.dart';
 import 'story_media_preparer.dart';
 import 'story_service.dart';
 import 'story_ui_components.dart';
@@ -173,10 +173,10 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
       await _pickGallery();
       return;
     }
-    final result = await Navigator.of(context).push<StoryCameraResult>(
+    final result = await Navigator.of(context).push<AppCameraResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => const StoryCameraView(),
+        builder: (_) => const AppCameraView(),
       ),
     );
     if (!mounted || result == null) return;

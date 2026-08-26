@@ -705,6 +705,7 @@ class ChatMessage {
     this.canRecognizeSpeech = false,
     this.replyToMessageId,
     this.replyToDate,
+    this.replyToEntities = const [],
     this.replyToImage,
     this.replyToImageWidth,
     this.replyToImageHeight,
@@ -810,6 +811,7 @@ class ChatMessage {
   int? replyToDate; // unix timestamp of the quoted message
   String? replyToSender; // resolved sender name of the quoted message
   String? replyToPreview; // one-line preview of the quoted message
+  List<MessageTextEntity> replyToEntities;
   TdFileRef? replyToImage; // thumbnail/photo shown inside the quote block
   int? replyToImageWidth;
   int? replyToImageHeight;

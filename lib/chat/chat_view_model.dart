@@ -5499,6 +5499,7 @@ class ChatViewModel extends ChangeNotifier {
   void _applyReply(ChatMessage m, ChatMessage quoted) {
     m.replyToPreview = _replyPreview(quoted);
     m.replyToDate = quoted.date;
+    m.replyToEntities = quoted.textEntities;
     m.replyToImage = quoted.image;
     m.replyToImageWidth = quoted.imageWidth;
     m.replyToImageHeight = quoted.imageHeight;

@@ -132,10 +132,12 @@ void main() {
     expect(formatVideoPlayerDuration(Duration.zero), '0:00');
     expect(formatVideoPlayerDuration(const Duration(seconds: 4)), '0:04');
     expect(formatVideoPlayerDuration(const Duration(seconds: 7841)), '2:10:41');
+    // Hours appear only once they exist, and never pad the leading unit.
+    expect(formatVideoPlayerDuration(const Duration(seconds: 3600)), '1:00:00');
+    expect(formatVideoPlayerDuration(const Duration(seconds: 3599)), '59:59');
+    expect(formatVideoPlayerDuration(const Duration(seconds: -5)), '0:00');
     final player = File('lib/chat/video_player_view.dart').readAsStringSync();
     expect(player, isNot(contains("seconds == 1 ? 'sec' : 'secs'")));
-    expect(player, contains('duration.inHours > 0'));
-    expect(player, contains('? 140.0'));
   });
 
   test('desktop video controls omit the decorative waveform', () {

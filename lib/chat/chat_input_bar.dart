@@ -35,6 +35,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
+import '../media/camera_capture.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
 import '../settings/ai_settings_controller.dart';
@@ -50,6 +51,7 @@ import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'ai_reply_service.dart';
 import 'audio_search_view.dart';
 import 'bot_button_presentation.dart';
@@ -65,13 +67,13 @@ import 'desktop_voice_message_controller.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
-import 'gallery_send_mode_sheet.dart';
 import 'gif_item.dart';
 import 'gif_preview.dart';
 import 'gif_store.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
+import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
@@ -6085,7 +6087,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     } finally {
       // Screen captures are user-selected temporary data. Keep them only for
       // the review/send flow and remove the local PNG after that flow ends.
-      if (path != null) await _deleteTempFile(path);
+      // Not awaited: the capture is finished once that flow returns, and
+      // holding its future open for a best-effort delete makes every caller
+      // wait on file I/O for nothing.
+      if (path != null) unawaited(_deleteTempFile(path));
     }
   }
 
@@ -6096,20 +6101,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
         await _pickDesktopPhotos();
         return;
       }
-      final sendMode = await showGallerySendModeSheet(context);
-      if (!mounted || sendMode == null) return;
-      final sendLivePhoto = sendMode == GallerySendMode.livePhoto;
-      final maxDimension = switch (sendMode) {
-        GallerySendMode.media => 1280,
-        GallerySendMode.highDefinition => 2560,
-        _ => null,
-      };
+      // The quality choices live in the picker's own bottom bar, WeChat style,
+      // so tapping 图片 goes straight to the grid.
       final selection = await AppAssetPicker.pickDetailed(
         context,
         type: AppAssetPickerType.imageAndVideo,
         maxAssets: 10,
-        preferLivePhotoVideo: sendLivePhoto,
-        photoMaxDimension: maxDimension,
+        sendOptions: AppAssetSendOptions(),
       );
       if (!mounted) return;
       if (selection.failedCount > 0) {
@@ -6199,9 +6197,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
   /// 相机: capture a photo and send it.
   Future<void> _takePhoto() async {
     try {
-      final shot = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (shot == null) return;
-      final edited = await _editImage(shot.path);
+      final capture = await captureComposerPhoto(
+        context,
+        saveToAlbum: context.read<ThemeController>().saveCapturedPhotosToAlbum,
+      );
+      if (capture == null || !mounted) return;
+      if (capture.albumWriteFailed) {
+        showToast(
+          context,
+          capture.albumResult == MediaLibrarySaveResult.permissionDenied
+              ? AppStringKeys.chatSaveToPhotosPermissionDenied
+              : AppStringKeys.chatSaveToPhotosFailed,
+        );
+      }
+      final edited = await _editImage(capture.file.path);
       if (edited != null) {
         final attachment = await resolveAttachmentDimensions(
           OutgoingAttachment(

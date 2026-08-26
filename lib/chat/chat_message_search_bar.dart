@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../chats/search_token_views.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -58,7 +59,10 @@ class ChatSearchHeaderBar extends StatelessWidget {
     final c = context.colors;
     return Container(
       key: const ValueKey('chatSearchHeader'),
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top +
+            iPadWindowChromeInsetOf(context),
+      ),
       decoration: BoxDecoration(
         color: backgroundColor ?? c.navBar,
         border: showDivider
