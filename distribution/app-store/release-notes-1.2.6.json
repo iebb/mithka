@@ -1,0 +1,4 @@
+{
+  "en-US": "Mithka 1.2.6 adds richer chat text sizing, preserved formatting in reply previews, desktop message gestures and reactions, improved search and message navigation, safer in-app camera capture, and in-place desktop updates with Windows and Linux ARM64 packages. It also refines video handling, window controls, and reliability across mobile and desktop.",
+  "zh-Hans": "Mithka 1.2.6 新增更丰富的聊天文字缩放、保留格式的回复预览、桌面消息手势与快捷回应，改进搜索和消息定位、应用内相机拍摄，并支持桌面端原地更新及 Windows、Linux ARM64 安装包。同时优化视频处理、窗口控件以及移动端和桌面端的稳定性。"
+}
