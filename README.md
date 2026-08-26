@@ -28,9 +28,16 @@ native-feeling messaging experience across phones and desktops.
 | --- | --- | --- |
 | Android | [Google Play Open testing](https://play.google.com/apps/testing/ad.neko.mithka) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) |
 | iOS | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
-| Windows | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
-| macOS | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
-| Linux | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| Windows (x64, arm64) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| macOS (universal) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| Linux (x64, arm64) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+
+The Windows and Linux packages update themselves: **Settings → About → Check for
+Updates** downloads the release package for that architecture, verifies it
+against the SHA-256 GitHub publishes, and swaps the install in place before
+relaunching. An install owned by a package manager, Flatpak, Snap, or AppImage
+is pointed at the releases page instead of being replaced underneath its own
+updater.
 
 ## Why “Mithka”?
 
@@ -93,8 +100,10 @@ scripts/build-tdjson-android.sh arm64-v8a
 # iOS: install ios/tdjson/tdjson.xcframework for the Runner target
 scripts/build-tdjson-ios.sh
 
-# Desktop: write the library to the requested path (linux, macos, or windows)
+# Desktop: write the library to the requested path (linux, macos, or windows).
+# Linux and Windows take an architecture: x64 (default) or arm64.
 scripts/build-tdjson-desktop.sh macos /tmp/libtdjson.dylib
+scripts/build-tdjson-desktop.sh linux /tmp/libtdjson.so arm64
 ```
 
 These downloaded libraries are reproducible local build inputs. Keep the

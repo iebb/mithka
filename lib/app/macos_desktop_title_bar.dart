@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../theme/app_theme.dart';
@@ -28,6 +30,7 @@ class MacosDesktopTitleBar extends StatelessWidget {
   /// window controls: a caption button has to reach the window corner.
   static const double trailingPadding = 12;
   static const double dividerWidth = 0.5;
+  static const double _minimumIdentityWidth = 48;
 
   final Widget appIdentity;
   final Widget? accountIdentity;
@@ -57,41 +60,16 @@ class MacosDesktopTitleBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            SizedBox(
-              key: const ValueKey('macos-traffic-light-clearance'),
-              width: leadingClearance,
-            ),
-            KeyedSubtree(
-              key: const ValueKey('macos-app-identity'),
-              child: appIdentity,
-            ),
-            const SizedBox(width: identityGap),
+            // Window controls own the trailing edge. Everything before them
+            // is allowed to contract, so a wider search or narrower window
+            // cannot push close beyond the top-right corner.
             Expanded(
-              child: desktopWindowDragArea(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onDoubleTap: onDragAreaDoubleTap,
-                  child: const SizedBox.expand(
-                    key: ValueKey('macos-title-bar-drag-area'),
-                  ),
-                ),
+              child: _content(
+                appIdentity: appIdentity,
+                accountIdentity: accountIdentity,
+                trailingActions: trailingActions,
               ),
             ),
-            if (accountIdentity != null) ...[
-              const SizedBox(width: identityGap),
-              KeyedSubtree(
-                key: const ValueKey('macos-account-identity'),
-                child: accountIdentity,
-              ),
-            ],
-            if (trailingActions != null) ...[
-              const SizedBox(width: 4),
-              KeyedSubtree(
-                key: const ValueKey('desktop-title-bar-actions'),
-                child: trailingActions,
-              ),
-              const SizedBox(width: 4),
-            ],
             // The caption buttons run flush into the top right corner, with
             // no inset of their own. That is the shape Windows and Linux draw,
             // and it is what puts close under the pointer when the window is
@@ -109,4 +87,116 @@ class MacosDesktopTitleBar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _content({
+    required Widget appIdentity,
+    required Widget? accountIdentity,
+    required Widget? trailingActions,
+  }) {
+    final identityAndDrag = LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final clearanceWidth = math.min(leadingClearance, availableWidth);
+        final identityWidth = availableWidth - clearanceWidth - identityGap;
+
+        // Below the avatar's useful width, keep the remaining strip draggable
+        // instead of forcing the identity row to overflow under the actions.
+        if (identityWidth < _minimumIdentityWidth) {
+          return Row(
+            children: [
+              SizedBox(
+                key: const ValueKey('macos-traffic-light-clearance'),
+                width: clearanceWidth,
+              ),
+              Expanded(child: _dragArea()),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            SizedBox(
+              key: const ValueKey('macos-traffic-light-clearance'),
+              width: clearanceWidth,
+            ),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: identityWidth),
+              child: KeyedSubtree(
+                key: const ValueKey('macos-app-identity'),
+                child: appIdentity,
+              ),
+            ),
+            const SizedBox(width: identityGap),
+            Expanded(child: _dragArea()),
+          ],
+        );
+      },
+    );
+
+    final withAccount = _appendTrailing(
+      leading: identityAndDrag,
+      trailing: accountIdentity == null
+          ? null
+          : KeyedSubtree(
+              key: const ValueKey('macos-account-identity'),
+              child: accountIdentity,
+            ),
+      leadingGap: identityGap,
+    );
+    return _appendTrailing(
+      leading: withAccount,
+      trailing: trailingActions == null
+          ? null
+          : KeyedSubtree(
+              key: const ValueKey('desktop-title-bar-actions'),
+              child: trailingActions,
+            ),
+      leadingGap: 4,
+      trailingGap: 4,
+    );
+  }
+
+  Widget _appendTrailing({
+    required Widget leading,
+    required Widget? trailing,
+    required double leadingGap,
+    double trailingGap = 0,
+  }) {
+    if (trailing == null) return leading;
+    final totalGap = leadingGap + trailingGap;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth <= totalGap) {
+          return Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: trailing,
+            ),
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: leading),
+            SizedBox(width: leadingGap),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: constraints.maxWidth - totalGap,
+              ),
+              child: trailing,
+            ),
+            SizedBox(width: trailingGap),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _dragArea() => desktopWindowDragArea(
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: onDragAreaDoubleTap,
+      child: const SizedBox.expand(key: ValueKey('macos-title-bar-drag-area')),
+    ),
+  );
 }

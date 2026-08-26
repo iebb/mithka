@@ -1,25 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 2 ]]; then
-  echo "usage: $0 <linux|macos|windows> OUTPUT_LIBRARY" >&2
+if [[ "$#" -lt 2 || "$#" -gt 3 ]]; then
+  echo "usage: $0 <linux|macos|windows> OUTPUT_LIBRARY [ARCHITECTURE]" >&2
   exit 2
 fi
 
 PLATFORM="$1"
 OUTPUT_LIBRARY="$2"
+ARCHITECTURE="${3:-}"
+# Linux and Windows publish one asset per architecture; macOS ships a single
+# fat arm64+x86_64 library.
 case "$PLATFORM" in
-  linux)
-    ASSET=tdjson-linux-x64.zip
-    MEMBER=libtdjson.so
+  linux|windows)
+    ARCHITECTURE="${ARCHITECTURE:-x64}"
+    case "$ARCHITECTURE" in
+      x64|arm64) ;;
+      *)
+        echo "error: unsupported $PLATFORM architecture: $ARCHITECTURE" >&2
+        exit 2
+        ;;
+    esac
+    ASSET="tdjson-$PLATFORM-$ARCHITECTURE.zip"
+    if [[ "$PLATFORM" == linux ]]; then
+      MEMBER=libtdjson.so
+    else
+      MEMBER=tdjson.dll
+    fi
     ;;
   macos)
+    ARCHITECTURE="${ARCHITECTURE:-universal}"
+    if [[ "$ARCHITECTURE" != universal ]]; then
+      echo "error: macOS tdjson is always universal, got: $ARCHITECTURE" >&2
+      exit 2
+    fi
     ASSET=tdjson-macos-universal.zip
     MEMBER=libtdjson.dylib
-    ;;
-  windows)
-    ASSET=tdjson-windows-x64.zip
-    MEMBER=tdjson.dll
     ;;
   *)
     echo "error: unsupported desktop platform: $PLATFORM" >&2
@@ -59,6 +75,19 @@ verify_library() {
         ldd "$library" >&2
         return 1
       fi
+      local machine expected_machine
+      machine="$(
+        readelf -h "$library" \
+          | awk -F: '/^[[:space:]]*Machine:/ { sub(/^[[:space:]]+/, "", $2); print $2 }'
+      )"
+      case "$ARCHITECTURE" in
+        x64) expected_machine='Advanced Micro Devices X86-64' ;;
+        arm64) expected_machine='AArch64' ;;
+      esac
+      if [[ "$machine" != "$expected_machine" ]]; then
+        echo "error: expected an $expected_machine ELF, got: $machine" >&2
+        return 1
+      fi
       ;;
     macos)
       symbols="$(nm -gU "$library")"
@@ -89,4 +118,4 @@ verify_library() {
 }
 
 verify_library "$OUTPUT_LIBRARY"
-echo "Installed pinned $PLATFORM tdjson: $OUTPUT_LIBRARY"
+echo "Installed pinned $PLATFORM $ARCHITECTURE tdjson: $OUTPUT_LIBRARY"

@@ -134,7 +134,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         () => _runChatListHotkey(_chatListController.openNewChat),
       );
     }
-    // Android-only: check GitHub Releases for a newer same-ABI build (once).
+    // Check GitHub Releases once per launch for a newer build this platform
+    // can install: an APK on Android, the desktop package on Windows/Linux.
     if (checkForUpdates) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) UpdateChecker.maybePrompt(context);

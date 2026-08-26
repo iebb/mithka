@@ -397,16 +397,20 @@ class _DesktopChatTitleBarActions extends StatelessWidget {
       initialEntries: [
         OverlayEntry(
           builder: (overlayContext) => Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              TapRegion(
-                groupId: searchTapGroup,
-                onTapOutside: (_) => searchController.dismiss(),
-                child: CompositedTransformTarget(
-                  link: searchLink,
-                  child: DesktopInlineSearchField(
-                    controller: searchController,
-                    onSearchAll: onSearchAll,
+              // The title bar may contract before the fixed window controls.
+              // Keep the add button available and let the search field absorb
+              // that contraction instead of overflowing into the controls.
+              Expanded(
+                child: TapRegion(
+                  groupId: searchTapGroup,
+                  onTapOutside: (_) => searchController.dismiss(),
+                  child: CompositedTransformTarget(
+                    link: searchLink,
+                    child: DesktopInlineSearchField(
+                      controller: searchController,
+                      onSearchAll: onSearchAll,
+                    ),
                   ),
                 ),
               ),

@@ -160,6 +160,66 @@ void main() {
     expect(corner.dy, 0);
   });
 
+  testWidgets('window controls stay pinned when title bar actions overflow', (
+    tester,
+  ) async {
+    Future<void> pumpBar({
+      required double width,
+      required double actionsWidth,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: width,
+            child: MacosDesktopTitleBar(
+              leadingClearance: 8,
+              appIdentity: const SizedBox(width: 112, child: Text('Account')),
+              trailingActions: SizedBox(
+                key: const ValueKey('test-growing-title-actions'),
+                width: actionsWidth,
+              ),
+              trailingControls: const SizedBox(
+                key: ValueKey('test-pinned-window-controls'),
+                width: 138,
+                height: MacosDesktopTitleBar.height,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await pumpBar(width: 600, actionsWidth: 220);
+    expect(
+      tester
+          .getTopRight(
+            find.byKey(const ValueKey('test-pinned-window-controls')),
+          )
+          .dx,
+      600,
+    );
+
+    // A scoped search can grow the action row while the window is narrow.
+    // Close must remain under the top-right pointer instead of moving past it.
+    await pumpBar(width: 420, actionsWidth: 360);
+    expect(
+      tester
+          .getTopRight(
+            find.byKey(const ValueKey('test-pinned-window-controls')),
+          )
+          .dx,
+      420,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('test-growing-title-actions')))
+          .width,
+      420 - 138 - 8,
+    );
+  });
+
   testWidgets(
     'desktop title bar searches in place and hands Search All its query',
     (tester) async {

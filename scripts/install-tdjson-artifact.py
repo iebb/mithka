@@ -50,8 +50,10 @@ EXPECTED_MEMBERS = {
         "tdjson.xcframework/ios-arm64-simulator/tdjson.framework/Modules/module.modulemap",
         "tdjson.xcframework/ios-arm64-simulator/tdjson.framework/tdjson",
     },
+    "tdjson-linux-arm64.zip": {"libtdjson.so"},
     "tdjson-linux-x64.zip": {"libtdjson.so"},
     "tdjson-macos-universal.zip": {"libtdjson.dylib"},
+    "tdjson-windows-arm64.zip": {"tdjson.dll"},
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
 
