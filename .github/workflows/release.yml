@@ -1,7 +1,7 @@
 name: 🚀 Multi-platform Releases
 
-# Builds per-ABI Android APKs and Windows, macOS, and Linux desktop archives
-# from nightly/release. Each Android ABI
+# Builds per-ABI Android APKs, Windows installers, and portable Windows, macOS,
+# and Linux desktop archives from nightly/release. Each Android ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
 # the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. Each
 # desktop job downloads the matching pinned prebuilt asset for its host OS.
@@ -582,11 +582,29 @@ jobs:
           Compress-Archive -Path dist\package\Mithka `
             -DestinationPath "dist\mithka-${{ needs.prepare.outputs.artifact_label }}-windows-${{ matrix.architecture }}.zip"
 
+          $installer = & scripts\build-windows-installer.ps1 `
+            -Architecture "${{ matrix.architecture }}" `
+            -BuildDirectory $bundle `
+            -OutputDirectory dist `
+            -Version "${{ needs.prepare.outputs.app_version }}" `
+            -ArtifactLabel "${{ needs.prepare.outputs.artifact_label }}"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Windows installer was not created: $installer"
+          }
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v6
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
+      - name: Upload Windows installer artifact
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: installer-windows-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-windows-${{ matrix.architecture }}-setup.exe
           if-no-files-found: error
 
   release:
@@ -629,6 +647,8 @@ jobs:
           for desktop_asset in \
             '*-windows-x64.zip' \
             '*-windows-arm64.zip' \
+            '*-windows-x64-setup.exe' \
+            '*-windows-arm64-setup.exe' \
             '*-macos-universal.zip' \
             '*-linux-x64.tar.gz' \
             '*-linux-arm64.tar.gz'; do
@@ -777,7 +797,7 @@ jobs:
             exit 0
           fi
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
-            | grep -E '^mithka-.*\.(apk|zip|tar\.gz)$' \
+            | grep -E '^mithka-.*\.(apk|exe|zip|tar\.gz)$' \
             | while read -r asset; do
                 gh release delete-asset "$RELEASE_TAG" "$asset" --yes
               done

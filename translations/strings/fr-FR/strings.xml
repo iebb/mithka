@@ -1020,8 +1020,10 @@
     <string name="chatRestrictedTelegramTosMessage">Ce groupe ne peut pas être affiché, car il a enfreint les conditions d’utilisation de Telegram. Vous pouvez revenir à la liste des discussions ou quitter le groupe.</string>
     <string name="chatRestrictedTitle">Avertissement de sécurité</string>
     <string name="chatSaveFailed">Échec de l’enregistrement : {value1}</string>
+    <string name="chatSaveToFolderFailed">Impossible d’enregistrer le fichier.</string>
     <string name="chatSaveToPhotosFailed">Impossible d’enregistrer dans Photos.</string>
     <string name="chatSaveToPhotosPermissionDenied">Autorisez l’accès à Photos pour enregistrer ce média.</string>
+    <string name="chatSavedToFolder">Enregistré dans {value1}</string>
     <string name="chatSavedToPhotos">Enregistré dans Photos</string>
     <string name="chatSavedToSavedMessages">Enregistré dans Saved Messages</string>
     <string name="chatSavingToPhotos">Téléchargement du média original…</string>
@@ -1829,6 +1831,7 @@
     <string name="messageActionRepeat">Répéter</string>
     <string name="messageActionReplies">Voir les réponses</string>
     <string name="messageActionReport">Signaler</string>
+    <string name="messageActionSaveAs">Enregistrer sous…</string>
     <string name="messageActionSaveToPhotos">Enregistrer dans Photos</string>
     <string name="messageActionSelectText">Sélectionner le texte</string>
     <string name="messageActionSetTodo">Marquer comme tâche</string>

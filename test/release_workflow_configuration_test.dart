@@ -42,4 +42,41 @@ void main() {
     expect(desktopWorkflow, isNot(contains('vcpkg.exe')));
     expect(desktopWorkflow, isNot(contains('brew install cmake ninja')));
   });
+
+  test('Windows releases publish installers beside portable archives', () {
+    final workflow = File('.github/workflows/release.yml').readAsStringSync();
+    final installer = File('windows/installer/mithka.iss').readAsStringSync();
+    final builder = File(
+      'scripts/build-windows-installer.ps1',
+    ).readAsStringSync();
+
+    expect(workflow, contains('scripts\\build-windows-installer.ps1'));
+    expect(workflow, contains('*-windows-x64-setup.exe'));
+    expect(workflow, contains('*-windows-arm64-setup.exe'));
+    expect(workflow, contains("'*-windows-x64.zip'"));
+    expect(workflow, contains("'*-windows-arm64.zip'"));
+
+    expect(installer, contains(r'PrivilegesRequired=lowest'));
+    expect(
+      installer,
+      contains(r'DefaultDirName={localappdata}\Programs\Mithka'),
+    );
+    expect(
+      installer,
+      contains(r'UninstallFilesDir={localappdata}\Programs\Mithka Uninstall'),
+      reason: 'the in-app directory swap must not erase the uninstaller',
+    );
+    expect(installer, contains(r'Type: filesandordirs; Name: "{app}"'));
+    expect(installer, contains(r'ArchitecturesAllowed=arm64'));
+    expect(
+      installer,
+      contains(r'ArchitecturesAllowed=x64compatible and not arm64'),
+    );
+    expect(
+      builder,
+      contains("'mithka.exe', 'flutter_windows.dll', 'tdjson.dll'"),
+    );
+    expect(builder, contains('0xAA64'));
+    expect(builder, contains('0x8664'));
+  });
 }

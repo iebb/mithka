@@ -65,7 +65,7 @@ class ChatRowView extends StatelessWidget {
               ) ??
               chat.title
         : chat.title;
-    final rowHeight = AppMetric.chatListRowHeight();
+    final rowHeight = AppMetric.chatListRowExtent(context);
     final avatarSize = AppMetric.chatListAvatarSize();
     final titleFontSize = AppTextSize.chatListTitle();
     final previewFontSize = AppTextSize.chatListPreview();

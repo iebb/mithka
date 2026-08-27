@@ -45,6 +45,11 @@ typedef DesktopMiniAppSearch =
 typedef DesktopTelegramLinkOpener =
     FutureOr<void> Function(BuildContext context, String link);
 
+// Search is information-dense, especially in the desktop result popover. Keep
+// its emphasis at medium so the UI retains hierarchy without rendering every
+// match like a bold heading.
+const FontWeight _searchEmphasisWeight = AppTextWeight.medium;
+
 class DesktopInlineSearchController extends ChangeNotifier {
   DesktopInlineSearchController({DesktopMiniAppSearch? miniAppSearch})
     : textController = TextEditingController(),
@@ -705,7 +710,7 @@ class _DesktopInlineSearchTokenChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final labelStyle = TextStyle(
       fontSize: 12,
-      fontWeight: FontWeight.w600,
+      fontWeight: _searchEmphasisWeight,
       color: AppTheme.brand,
     );
     return Container(
@@ -930,7 +935,7 @@ class DesktopInlineSearchPanel extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: _searchEmphasisWeight,
                             color: c.textPrimary,
                           ),
                         ),
@@ -1187,7 +1192,7 @@ class _DesktopInlineSearchSectionHeader extends StatelessWidget {
               tab.label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: _searchEmphasisWeight,
                 color: c.textSecondary,
               ),
             ),
@@ -1297,7 +1302,7 @@ class _DesktopInlineMiniAppAction extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: _searchEmphasisWeight,
                       color: context.colors.textPrimary,
                     ),
                   ),
@@ -1332,7 +1337,7 @@ class _DesktopCompactSearchHitRow extends StatelessWidget {
     final c = context.colors;
     final titleStyle = TextStyle(
       fontSize: 14,
-      fontWeight: FontWeight.w600,
+      fontWeight: _searchEmphasisWeight,
       color: c.textPrimary,
     );
     final subtitleStyle = TextStyle(fontSize: 12, color: c.textSecondary);
@@ -1371,7 +1376,7 @@ class _DesktopCompactSearchHitRow extends StatelessWidget {
                           base: subtitleStyle,
                           highlight: subtitleStyle.copyWith(
                             color: AppTheme.brand,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: _searchEmphasisWeight,
                           ),
                         ),
                       ),
@@ -1725,7 +1730,7 @@ class _SearchViewState extends State<SearchView> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: _searchEmphasisWeight,
                     color: c.textPrimary,
                   ),
                 ),
@@ -1847,7 +1852,9 @@ class _SearchViewState extends State<SearchView> {
                 duration: const Duration(milliseconds: 160),
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: selected
+                      ? _searchEmphasisWeight
+                      : AppTextWeight.regular,
                   color: selected ? AppTheme.brand : c.textSecondary,
                 ),
                 child: Text(tab.label, maxLines: 1),

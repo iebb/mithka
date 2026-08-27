@@ -1018,8 +1018,10 @@
     <string name="chatRestrictedTelegramTosMessage">이 그룹은 Telegram 서비스 약관을 위반하여 표시할 수 없습니다. 채팅 목록으로 돌아가거나 그룹을 나갈 수 있습니다.</string>
     <string name="chatRestrictedTitle">안전 안내</string>
     <string name="chatSaveFailed">저장 실패: {value1}</string>
+    <string name="chatSaveToFolderFailed">파일을 저장하지 못했습니다.</string>
     <string name="chatSaveToPhotosFailed">사진에 저장하지 못했습니다.</string>
     <string name="chatSaveToPhotosPermissionDenied">미디어를 저장하려면 사진 접근을 허용하세요.</string>
+    <string name="chatSavedToFolder">‘{value1}’에 저장했습니다</string>
     <string name="chatSavedToPhotos">사진에 저장됨</string>
     <string name="chatSavedToSavedMessages">Saved Messages에 저장됨</string>
     <string name="chatSavingToPhotos">원본 미디어 다운로드 중…</string>
@@ -1825,6 +1827,7 @@
     <string name="messageActionRepeat">반복</string>
     <string name="messageActionReplies">답글 보기</string>
     <string name="messageActionReport">신고</string>
+    <string name="messageActionSaveAs">다른 이름으로 저장…</string>
     <string name="messageActionSaveToPhotos">사진에 저장</string>
     <string name="messageActionSelectText">텍스트 선택</string>
     <string name="messageActionSetTodo">할 일로 설정</string>

@@ -28,6 +28,15 @@ macOS 和 Linux。它以 Flutter 构建界面，通过 Dart FFI 接入
 | macOS | [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 | Linux | [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 
+Windows 版本同时提供各架构的 `setup.exe` 安装程序与便携 ZIP。安装程序按当前
+用户安装，无需管理员权限，会创建开始菜单快捷方式、可选的桌面快捷方式，并在
+“已安装的应用”中注册 Mithka。
+
+Windows 和 Linux 包支持应用内更新：前往**设置 → 关于 → 检查更新**，应用会下载
+对应架构的发布包，使用 GitHub 发布的 SHA-256 校验值验证文件，并在重新启动前原子
+替换安装目录。由包管理器、Flatpak、Snap 或 AppImage 管理的安装不会被应用直接
+替换，而会跳转到发布页面。
+
 ## 为什么叫“Mithka”？
 
 这个名称来自企鹅吉祥物与两个微小质量单位之间的文字游戏：

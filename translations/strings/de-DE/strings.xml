@@ -1020,8 +1020,10 @@
     <string name="chatRestrictedTelegramTosMessage">Diese Gruppe kann nicht angezeigt werden, weil sie gegen die Nutzungsbedingungen von Telegram verstoßen hat. Du kannst zur Chatliste zurückkehren oder die Gruppe verlassen.</string>
     <string name="chatRestrictedTitle">Sicherheitshinweis</string>
     <string name="chatSaveFailed">Speichern fehlgeschlagen: {value1}</string>
+    <string name="chatSaveToFolderFailed">Datei konnte nicht gespeichert werden.</string>
     <string name="chatSaveToPhotosFailed">In Fotos konnte nicht gesichert werden.</string>
     <string name="chatSaveToPhotosPermissionDenied">Erlaube den Fotozugriff, um dieses Medium zu sichern.</string>
+    <string name="chatSavedToFolder">In {value1} gespeichert</string>
     <string name="chatSavedToPhotos">In Fotos gesichert</string>
     <string name="chatSavedToSavedMessages">In Saved Messages gespeichert</string>
     <string name="chatSavingToPhotos">Originalmedium wird heruntergeladen…</string>
@@ -1829,6 +1831,7 @@
     <string name="messageActionRepeat">Wiederholen</string>
     <string name="messageActionReplies">Antworten anzeigen</string>
     <string name="messageActionReport">Melden</string>
+    <string name="messageActionSaveAs">Speichern unter…</string>
     <string name="messageActionSaveToPhotos">In Fotos sichern</string>
     <string name="messageActionSelectText">Text auswählen</string>
     <string name="messageActionSetTodo">Als Aufgabe markieren</string>

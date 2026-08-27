@@ -210,6 +210,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   final VoicePlayer _voice = VoicePlayer();
   final GlobalKey _bubbleKey = GlobalKey();
+  final GlobalKey<SelectionAreaState> _desktopSelectionAreaKey = GlobalKey();
   final List<TapGestureRecognizer> _linkRecognizers = [];
   late final AnimationController _swipeController;
   bool _stickerReady = false;
@@ -228,6 +229,12 @@ class _MessageBubbleState extends State<MessageBubble>
   Offset? _desktopSecondaryPosition;
   bool _desktopSecondaryHandled = false;
   int _desktopSecondarySequence = 0;
+  int? _desktopTouchPointer;
+  Offset? _desktopTouchOrigin;
+  VelocityTracker? _desktopTouchVelocity;
+  Timer? _desktopTouchLongPressTimer;
+  bool _desktopTouchHorizontal = false;
+  bool _desktopTouchLongPressTriggered = false;
 
   SensitiveContentController get _sensitiveContentController =>
       widget.sensitiveContentController ?? SensitiveContentController.shared;
@@ -255,6 +262,7 @@ class _MessageBubbleState extends State<MessageBubble>
   void _handleLongPress([
     MessageActionSource source = MessageActionSource.normal,
   ]) {
+    if (_claimDesktopTouchLongPress(message, source)) return;
     if (_shouldOfferSensitiveContentUnblock) {
       unawaited(_showSensitiveContentUnblockPrompt(anchor: _bubbleBounds()));
       return;
@@ -274,38 +282,141 @@ class _MessageBubbleState extends State<MessageBubble>
     _handleSecondaryPress(details.globalPosition, source);
   }
 
-  void _handleDesktopPointerDown(PointerDownEvent event) {
-    if ((event.buttons & kSecondaryMouseButton) == 0) return;
-    _desktopSecondarySequence += 1;
-    _desktopSecondaryPointer = event.pointer;
-    _desktopSecondaryPosition = event.position;
-    _desktopSecondaryHandled = false;
+  void _handleDesktopPointerDown(
+    PointerDownEvent event, {
+    required bool touchGesturesEnabled,
+  }) {
+    if ((event.buttons & kSecondaryMouseButton) != 0) {
+      _desktopSecondarySequence += 1;
+      _desktopSecondaryPointer = event.pointer;
+      _desktopSecondaryPosition = event.position;
+      _desktopSecondaryHandled = false;
+    }
+    if (!touchGesturesEnabled || event.kind != PointerDeviceKind.touch) return;
+    if (_desktopTouchPointer != null) {
+      _cancelDesktopTouchGesture();
+      return;
+    }
+    _desktopTouchPointer = event.pointer;
+    _desktopTouchOrigin = event.position;
+    _desktopTouchVelocity = VelocityTracker.withKind(event.kind)
+      ..addPosition(event.timeStamp, event.position);
+    _desktopTouchHorizontal = false;
+    _desktopTouchLongPressTriggered = false;
+    // Let media and file child recognizers reach the normal deadline first so
+    // their more specific action source wins. Selectable text has no message
+    // callback on desktop, so this fallback then opens the pointer menu.
+    _desktopTouchLongPressTimer = Timer(
+      kLongPressTimeout + const Duration(milliseconds: 30),
+      () => _claimDesktopTouchLongPress(message, MessageActionSource.normal),
+    );
+  }
+
+  void _handleDesktopPointerMove(PointerMoveEvent event) {
+    if (_desktopTouchPointer != event.pointer) return;
+    _desktopTouchVelocity?.addPosition(event.timeStamp, event.position);
+    final origin = _desktopTouchOrigin;
+    if (origin == null || _desktopTouchLongPressTriggered) return;
+    final travel = event.position - origin;
+    if (!_desktopTouchHorizontal) {
+      if (travel.dx.abs() < kTouchSlop && travel.dy.abs() < kTouchSlop) {
+        return;
+      }
+      _desktopTouchLongPressTimer?.cancel();
+      _desktopTouchLongPressTimer = null;
+      if (travel.dy.abs() >= travel.dx.abs()) {
+        _cancelDesktopTouchGesture();
+        return;
+      }
+      _desktopTouchHorizontal = true;
+      _swipeController.stop();
+    }
+    _swipeController.value = _rubberBandSwipe(math.min(0, travel.dx));
+    _clearDesktopTouchSelection();
   }
 
   void _handleDesktopPointerUp(PointerUpEvent event) {
-    if (_desktopSecondaryPointer != event.pointer) return;
-    final sequence = _desktopSecondarySequence;
-    final position = _desktopSecondaryPosition ?? event.position;
-    scheduleMicrotask(() {
-      if (!mounted ||
-          sequence != _desktopSecondarySequence ||
-          _desktopSecondaryPointer != event.pointer) {
-        return;
-      }
-      final handled = _desktopSecondaryHandled;
-      _desktopSecondaryPointer = null;
-      _desktopSecondaryPosition = null;
-      _desktopSecondaryHandled = false;
-      if (!handled) _handleSecondaryPress(position);
-    });
+    if (_desktopSecondaryPointer == event.pointer) {
+      final sequence = _desktopSecondarySequence;
+      final position = _desktopSecondaryPosition ?? event.position;
+      scheduleMicrotask(() {
+        if (!mounted ||
+            sequence != _desktopSecondarySequence ||
+            _desktopSecondaryPointer != event.pointer) {
+          return;
+        }
+        final handled = _desktopSecondaryHandled;
+        _desktopSecondaryPointer = null;
+        _desktopSecondaryPosition = null;
+        _desktopSecondaryHandled = false;
+        if (!handled) _handleSecondaryPress(position);
+      });
+    }
+    if (_desktopTouchPointer != event.pointer) return;
+    _desktopTouchLongPressTimer?.cancel();
+    _desktopTouchVelocity?.addPosition(event.timeStamp, event.position);
+    if (_desktopTouchHorizontal) {
+      final velocity = _desktopTouchVelocity?.getVelocity().pixelsPerSecond.dx;
+      _finishReplyDrag(primaryVelocity: velocity);
+    }
+    if (_desktopTouchHorizontal || _desktopTouchLongPressTriggered) {
+      _clearDesktopTouchSelection();
+    }
+    _resetDesktopTouchGesture();
   }
 
   void _handleDesktopPointerCancel(PointerCancelEvent event) {
-    if (_desktopSecondaryPointer != event.pointer) return;
-    _desktopSecondarySequence += 1;
-    _desktopSecondaryPointer = null;
-    _desktopSecondaryPosition = null;
-    _desktopSecondaryHandled = false;
+    if (_desktopSecondaryPointer == event.pointer) {
+      _desktopSecondarySequence += 1;
+      _desktopSecondaryPointer = null;
+      _desktopSecondaryPosition = null;
+      _desktopSecondaryHandled = false;
+    }
+    if (_desktopTouchPointer == event.pointer) {
+      _cancelDesktopTouchGesture();
+    }
+  }
+
+  bool _claimDesktopTouchLongPress(
+    ChatMessage target,
+    MessageActionSource source,
+  ) {
+    final position = _desktopTouchOrigin;
+    if (_desktopTouchPointer == null || position == null) return false;
+    if (_desktopTouchLongPressTriggered) return true;
+    _desktopTouchLongPressTimer?.cancel();
+    _desktopTouchLongPressTimer = null;
+    _desktopTouchLongPressTriggered = true;
+    _clearDesktopTouchSelection();
+    if (identical(target, message)) {
+      _handleSecondaryPress(position, source);
+    } else {
+      widget.onLongPress?.call(
+        target,
+        Rect.fromLTWH(position.dx, position.dy, 0, 0),
+        source,
+      );
+    }
+    return true;
+  }
+
+  void _clearDesktopTouchSelection() {
+    _desktopSelectionAreaKey.currentState?.selectableRegion.clearSelection();
+  }
+
+  void _resetDesktopTouchGesture() {
+    _desktopTouchLongPressTimer?.cancel();
+    _desktopTouchLongPressTimer = null;
+    _desktopTouchPointer = null;
+    _desktopTouchOrigin = null;
+    _desktopTouchVelocity = null;
+    _desktopTouchHorizontal = false;
+    _desktopTouchLongPressTriggered = false;
+  }
+
+  void _cancelDesktopTouchGesture() {
+    if (_desktopTouchHorizontal) _cancelReplyDrag();
+    _resetDesktopTouchGesture();
   }
 
   void _markDesktopSecondaryHandled() {
@@ -701,6 +812,7 @@ class _MessageBubbleState extends State<MessageBubble>
 
   @override
   void dispose() {
+    _desktopTouchLongPressTimer?.cancel();
     _sensitiveContentController.removeListener(_handleSensitiveContentChange);
     _swipeController.dispose();
     _hoveringTimestamp.dispose();
@@ -782,8 +894,12 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   void _onDragEnd(DragEndDetails d) {
+    _finishReplyDrag(primaryVelocity: d.primaryVelocity);
+  }
+
+  void _finishReplyDrag({double? primaryVelocity}) {
     if (_swipeController.value < -_replyTrigger ||
-        d.primaryVelocity != null && d.primaryVelocity! < -650) {
+        primaryVelocity != null && primaryVelocity < -650) {
       widget.onReply?.call(message);
     }
     _swipeController.animateTo(
@@ -793,22 +909,34 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
+  void _cancelReplyDrag() {
+    _swipeController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 190),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  bool _supportsDesktopTouchGestures(TargetPlatform platform) =>
+      platform == TargetPlatform.windows || platform == TargetPlatform.linux;
+
   Widget _row(bool outgoing) {
     final alwaysShowTime =
         widget.forceShowTimestamp || _theme.alwaysShowMessageTime;
     final showDetailTime = alwaysShowTime || _showTappedTimestamp;
     final timeInSenderHeader =
         widget.isGroup && !outgoing && message.senderName != null;
-    final desktopInteraction = isDesktopTargetPlatform(
-      Theme.of(context).platform,
-    );
+    final platform = Theme.of(context).platform;
+    final desktopInteraction = isDesktopTargetPlatform(platform);
+    final desktopTouchInteraction = _supportsDesktopTouchGestures(platform);
     final mobileSelectionArmed = widget.mobileTextSelectionAreaKey != null;
     final contentBody = _contentBody(outgoing);
     final body = GestureDetector(
       key: _bubbleKey,
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(alwaysShowTime),
-      onLongPress: widget.mobileTextSelectionAreaKey == null
+      onLongPress:
+          !desktopTouchInteraction && widget.mobileTextSelectionAreaKey == null
           ? _handleLongPress
           : null,
       onSecondaryTapUp: desktopInteraction ? null : _handleSecondaryTapUp,
@@ -825,13 +953,20 @@ class _MessageBubbleState extends State<MessageBubble>
         key: ValueKey('messageTapTarget-${message.id}'),
         child: desktopInteraction
             ? Listener(
-                onPointerDown: _handleDesktopPointerDown,
+                onPointerDown: (event) => _handleDesktopPointerDown(
+                  event,
+                  touchGesturesEnabled: desktopTouchInteraction,
+                ),
+                onPointerMove: _handleDesktopPointerMove,
                 onPointerUp: _handleDesktopPointerUp,
                 onPointerCancel: _handleDesktopPointerCancel,
-                child: SelectionArea(
+                child: KeyedSubtree(
                   key: ValueKey('messageTextSelectionArea-${message.id}'),
-                  contextMenuBuilder: (_, _) => const SizedBox.shrink(),
-                  child: contentBody,
+                  child: SelectionArea(
+                    key: _desktopSelectionAreaKey,
+                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                    child: contentBody,
+                  ),
                 ),
               )
             : contentBody,
@@ -1026,17 +1161,17 @@ class _MessageBubbleState extends State<MessageBubble>
               role: showSenderRole ? message.senderRole : null,
               roleTitle: showSenderRole && showMemberTags ? senderTitle : null,
               roleAfterName: isDesktopTargetPlatform(),
-          trailing: showStatus
-              ? StatusEmojiView(
-                  id: message.senderEmojiStatusId,
-                  // The name beside it scales with the chat font size; the
-                  // status emoji should grow with it instead of staying at a
-                  // fixed pixel size.
-                  size: 14 * MediaQuery.textScalerOf(context).scale(1.0),
-                  color: senderNameColor,
-                  animate: theme.chatStatusEmojiMode.animate,
-                )
-              : null,
+              trailing: showStatus
+                  ? StatusEmojiView(
+                      id: message.senderEmojiStatusId,
+                      // The name beside it scales with the font size setting;
+                      // the status emoji should grow with it instead of
+                      // staying at a fixed pixel size.
+                      size: 14 * MediaQuery.textScalerOf(context).scale(1.0),
+                      color: senderNameColor,
+                      animate: theme.chatStatusEmojiMode.animate,
+                    )
+                  : null,
             ),
           ),
           const SizedBox(width: 5),
@@ -5721,6 +5856,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   void _handleGroupedFileLongPress(ChatMessage source, GlobalKey itemKey) {
+    if (_claimDesktopTouchLongPress(source, MessageActionSource.normal)) return;
     final box = itemKey.currentContext?.findRenderObject() as RenderBox?;
     final bounds = box != null && box.hasSize
         ? box.localToGlobal(Offset.zero) & box.size

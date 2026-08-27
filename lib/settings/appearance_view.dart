@@ -35,7 +35,6 @@ import '../platform/adaptive_platform.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
-import '../theme/chat_font_scale_scope.dart';
 import '../theme/emoji_font_catalog.dart';
 import '../theme/global_theme_view.dart';
 import '../theme/message_bubble_background.dart';
@@ -1168,6 +1167,97 @@ class _ChatViewQuickReactionOverlay extends StatelessWidget {
   }
 }
 
+class _RepresentativeChatListRow extends StatelessWidget {
+  const _RepresentativeChatListRow({required this.theme});
+
+  final ThemeController theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        children: [
+          Container(
+            width: theme.avatarSize,
+            height: theme.avatarSize,
+            decoration: BoxDecoration(
+              color: AppTheme.brand.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: AppIcon(
+              HeroAppIcons.solidMessage,
+              size: AppIconSize.xl,
+              color: AppTheme.brand,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppStrings.t(AppStringKeys.appearancePreviewUsersSample),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.bodyLarge,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  AppStrings.t(AppStringKeys.appearancePreviewMessageSample),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.footnote,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '10:42',
+                style: TextStyle(
+                  fontSize: AppTextSize.caption,
+                  color: c.textTertiary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppTheme.brand,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  '2',
+                  style: TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: AppTextSize.caption,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RepresentativeMessageBubble extends StatelessWidget {
   const _RepresentativeMessageBubble();
 
@@ -1570,9 +1660,26 @@ extension _DisplayAppearanceHelpers on AppearanceView {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          // The font size setting is scoped to chat surfaces, so the preview
-          // simulates that scope rather than reading the ambient scaler.
-          const ChatFontScaleScope(child: _RepresentativeMessageBubble()),
+          const _RepresentativeMessageBubble(),
+          const SizedBox(height: AppSpacing.xl),
+          Text(
+            AppStrings.t(AppStringKeys.appearanceChatList),
+            style: TextStyle(
+              fontSize: AppTextSize.caption,
+              color: context.colors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            key: const ValueKey('font-size-chat-list-preview'),
+            decoration: BoxDecoration(
+              color: context.colors.background,
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              border: Border.all(color: context.colors.divider),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _RepresentativeChatListRow(theme: theme),
+          ),
         ],
       ),
     );

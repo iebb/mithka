@@ -39,6 +39,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_picker_view.dart';
 import 'forward_options.dart';
+import 'media_download_service.dart';
 import 'media_library_saver.dart';
 import 'td_video_stream_server.dart';
 import 'video_playback_preferences.dart';
@@ -4105,13 +4106,19 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     'video-more-save-to-photos',
                                   ),
                                   child: _FocusableVideoMenuItem(
-                                    icon: HeroAppIcons.image,
-                                    label: AppStringKeys
-                                        .messageActionSaveToPhotos
-                                        .l10n(context),
+                                    icon: _isDesktopPlatform
+                                        ? HeroAppIcons.folder
+                                        : HeroAppIcons.image,
+                                    label:
+                                        (_isDesktopPlatform
+                                                ? AppStringKeys
+                                                      .messageActionSaveAs
+                                                : AppStringKeys
+                                                      .messageActionSaveToPhotos)
+                                            .l10n(context),
                                     focusNode: _moreMenuFocusNodes[1],
                                     onPressed: () => _runMoreMenuAction(
-                                      () => unawaited(_saveVideoToPhotos()),
+                                      () => unawaited(_saveVideo()),
                                     ),
                                   ),
                                 ),
@@ -4586,7 +4593,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  Future<void> _saveVideoToPhotos() async {
+  Future<void> _saveVideo() async {
+    if (_isDesktopPlatform) {
+      await _saveVideoToFolder();
+      return;
+    }
     showToast(
       context,
       AppStringKeys.chatSavingToPhotos,
@@ -4607,6 +4618,26 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       MediaLibrarySaveResult.failed || MediaLibrarySaveResult.unsupported =>
         AppStringKeys.chatSaveToPhotosFailed,
     }, visibleFor: const Duration(seconds: 2));
+  }
+
+  /// A computer has no album, so the original file is copied into a folder
+  /// the user picks instead.
+  Future<void> _saveVideoToFolder() async {
+    showToast(
+      context,
+      AppStringKeys.chatSavingToPhotos,
+      visibleFor: const Duration(milliseconds: 1200),
+    );
+    final outcome = await MediaDownloadService.saveMedia(
+      file: widget.video,
+      isVideo: true,
+      accountSlot: widget.accountSlot,
+    );
+    if (!mounted) return;
+    final feedback = MediaDownloadService.feedbackFor(outcome);
+    if (feedback != null) {
+      showToast(context, feedback, visibleFor: const Duration(seconds: 2));
+    }
   }
 
   Future<void> _forwardVideo() async {

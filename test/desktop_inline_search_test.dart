@@ -110,6 +110,53 @@ void main() {
     );
   });
 
+  testWidgets('inline search typography never promotes matches to semibold', (
+    tester,
+  ) async {
+    final controller = DesktopInlineSearchController(
+      miniAppSearch: (_) async => const [],
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_searchHarness(controller));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('desktop-title-bar-search-input')),
+      'needle',
+    );
+    await tester.pump(const Duration(milliseconds: 241));
+    await tester.pumpAndSettle();
+
+    final chatsHeader = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('desktop-inline-search-section-chats')),
+        matching: find.text('Chats'),
+      ),
+    );
+    expect(chatsHeader.style?.fontWeight, AppTextWeight.medium);
+
+    final resultTitle = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text && widget.textSpan?.toPlainText() == 'Needle chat',
+      ),
+    );
+    final titleWeights = <FontWeight?>[];
+    resultTitle.textSpan?.visitChildren((span) {
+      if (span is TextSpan) titleWeights.add(span.style?.fontWeight);
+      return true;
+    });
+    expect(titleWeights, isNotEmpty);
+    expect(titleWeights, everyElement(anyOf(isNull, AppTextWeight.medium)));
+
+    final footer = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('desktop-inline-search-all')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(footer.style?.fontWeight, AppTextWeight.medium);
+  });
+
   testWidgets('stale category results cannot replace a newer query', (
     tester,
   ) async {
@@ -187,6 +234,10 @@ void main() {
     expect(find.text('Mini result 0'), findsOneWidget);
     expect(find.text('Mini result 2'), findsOneWidget);
     expect(find.text('Mini result 3'), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('Mini result 0')).style?.fontWeight,
+      AppTextWeight.medium,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('desktop-inline-search-mini-app-701-801')),

@@ -1020,8 +1020,10 @@
     <string name="chatRestrictedTelegramTosMessage">Este grupo no se puede mostrar porque infringió las Condiciones de servicio de Telegram. Puedes volver a la lista de chats o salir del grupo.</string>
     <string name="chatRestrictedTitle">Aviso de seguridad</string>
     <string name="chatSaveFailed">No se pudo guardar: {value1}</string>
+    <string name="chatSaveToFolderFailed">No se pudo guardar el archivo.</string>
     <string name="chatSaveToPhotosFailed">No se pudo guardar en Fotos.</string>
     <string name="chatSaveToPhotosPermissionDenied">Permite el acceso a Fotos para guardar este archivo.</string>
+    <string name="chatSavedToFolder">Guardado en {value1}</string>
     <string name="chatSavedToPhotos">Guardado en Fotos</string>
     <string name="chatSavedToSavedMessages">Guardado en Saved Messages</string>
     <string name="chatSavingToPhotos">Descargando el archivo multimedia original…</string>
@@ -1829,6 +1831,7 @@
     <string name="messageActionRepeat">Repetir</string>
     <string name="messageActionReplies">Ver respuestas</string>
     <string name="messageActionReport">Reportar</string>
+    <string name="messageActionSaveAs">Guardar como…</string>
     <string name="messageActionSaveToPhotos">Guardar en Fotos</string>
     <string name="messageActionSelectText">Seleccionar texto</string>
     <string name="messageActionSetTodo">Marcar como tarea</string>

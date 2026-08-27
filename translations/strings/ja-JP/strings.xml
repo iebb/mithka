@@ -1018,8 +1018,10 @@
     <string name="chatRestrictedTelegramTosMessage">このグループは Telegram の利用規約に違反したため表示できません。チャット一覧へ戻るか、グループを退出できます。</string>
     <string name="chatRestrictedTitle">安全に関するお知らせ</string>
     <string name="chatSaveFailed">保存に失敗しました：{value1}</string>
+    <string name="chatSaveToFolderFailed">ファイルを保存できませんでした。</string>
     <string name="chatSaveToPhotosFailed">写真への保存に失敗しました。</string>
     <string name="chatSaveToPhotosPermissionDenied">メディアを保存するには写真へのアクセスを許可してください。</string>
+    <string name="chatSavedToFolder">「{value1}」に保存しました</string>
     <string name="chatSavedToPhotos">写真に保存しました</string>
     <string name="chatSavedToSavedMessages">Saved Messages に保存しました</string>
     <string name="chatSavingToPhotos">オリジナルのメディアをダウンロード中…</string>
@@ -1825,6 +1827,7 @@
     <string name="messageActionRepeat">リピート</string>
     <string name="messageActionReplies">返信を見る</string>
     <string name="messageActionReport">報告</string>
+    <string name="messageActionSaveAs">名前を付けて保存…</string>
     <string name="messageActionSaveToPhotos">写真に保存</string>
     <string name="messageActionSelectText">テキストを選択</string>
     <string name="messageActionSetTodo">ToDo に設定</string>

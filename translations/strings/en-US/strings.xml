@@ -1020,8 +1020,10 @@
     <string name="chatRestrictedTelegramTosMessage">This group can’t be displayed because it violated Telegram's Terms of Service. You can go back or leave the group.</string>
     <string name="chatRestrictedTitle">Safety notice</string>
     <string name="chatSaveFailed">Save failed: {value1}</string>
+    <string name="chatSaveToFolderFailed">Couldn’t save the file.</string>
     <string name="chatSaveToPhotosFailed">Couldn’t save to Photos.</string>
     <string name="chatSaveToPhotosPermissionDenied">Allow Photos access to save this media.</string>
+    <string name="chatSavedToFolder">Saved to {value1}</string>
     <string name="chatSavedToPhotos">Saved to Photos</string>
     <string name="chatSavedToSavedMessages">Saved to Saved Messages</string>
     <string name="chatSavingToPhotos">Downloading original media…</string>
@@ -1829,6 +1831,7 @@
     <string name="messageActionRepeat">Repeat</string>
     <string name="messageActionReplies">View replies</string>
     <string name="messageActionReport">Report</string>
+    <string name="messageActionSaveAs">Save As…</string>
     <string name="messageActionSaveToPhotos">Save to Photos</string>
     <string name="messageActionSelectText">Select text</string>
     <string name="messageActionSetTodo">Pin</string>

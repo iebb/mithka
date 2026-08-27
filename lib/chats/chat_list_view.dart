@@ -844,7 +844,7 @@ class _ChatListViewState extends State<ChatListView>
     if (positions.length != 1) return;
     final position = positions.single;
     final theme = context.read<ThemeController>();
-    final rowHeight = theme.rowHeight + 0.5;
+    final rowHeight = AppMetric.chatListRowExtent(context) + 0.5;
     final archiveMode = effectiveChatListArchiveDisplayMode(
       theme.archivedChatsDisplayMode,
     );
@@ -872,7 +872,7 @@ class _ChatListViewState extends State<ChatListView>
         setState(() => _archiveRevealed = false);
       }
     }
-    if (position.extentAfter < theme.rowHeight * 8) {
+    if (position.extentAfter < AppMetric.chatListRowExtent(context) * 8) {
       _model.loadMore();
     }
   }
@@ -1483,7 +1483,7 @@ class _ChatListViewState extends State<ChatListView>
     }
     return chatListItemScrollOffset(
       itemIndex: itemIndex,
-      rowHeight: context.read<ThemeController>().rowHeight,
+      rowHeight: AppMetric.chatListRowExtent(context),
       maxScrollExtent: _scrollController.position.maxScrollExtent,
       leadingExtent: _leadingListControlsExtent(
         context.read<ThemeController>(),
@@ -1740,7 +1740,8 @@ class _ChatListViewState extends State<ChatListView>
     return Container(
       color: c.listHeaderTint,
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       child: Padding(
@@ -1919,8 +1920,15 @@ class _ChatListViewState extends State<ChatListView>
   Widget _chatFolderTabs() {
     final c = context.colors;
     final selectedFolderId = _model.selectedFilter.folderId;
+    // The strip scrolls horizontally, so its height is fixed; grow it with the
+    // label that sits above the selection indicator.
+    final tabHeight = AppMetric.rowExtentFor(
+      context,
+      base: 44,
+      lines: const [AppTextSize.callout],
+    );
     return Container(
-      height: 44,
+      height: tabHeight,
       decoration: BoxDecoration(
         color: c.listHeaderTint,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
@@ -1944,7 +1952,7 @@ class _ChatListViewState extends State<ChatListView>
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectFilter(filter),
             child: SizedBox(
-              height: 44,
+              height: tabHeight,
               child: AnimatedBuilder(
                 animation: _folderDrag,
                 builder: (context, _) {
@@ -2157,7 +2165,7 @@ class _ChatListViewState extends State<ChatListView>
           color: c.background,
           child: LayoutBuilder(
             builder: (context, geo) {
-              final rowH = theme.rowHeight + 0.5;
+              final rowH = AppMetric.chatListRowExtent(context) + 0.5;
               if (entries.isEmpty && !showInlineArchive) {
                 return ListView(
                   primary: false,
@@ -2229,7 +2237,7 @@ class _ChatListViewState extends State<ChatListView>
       color: c.background,
       child: LayoutBuilder(
         builder: (context, geo) {
-          final rowH = theme.rowHeight + 0.5;
+          final rowH = AppMetric.chatListRowExtent(context) + 0.5;
           final searchHeight = leadingControlsExtent;
           final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
@@ -2471,8 +2479,16 @@ class _ChatListViewState extends State<ChatListView>
   Widget _swipeRow(ChatSummary chat) {
     final selected = widget.selectedChatId == chat.id;
     final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
-    final desktopContextMenu =
-        !kIsWeb && isDesktopTargetPlatform(defaultTargetPlatform);
+    final platform = Theme.of(context).platform;
+    final desktopContextMenu = !kIsWeb && isDesktopTargetPlatform(platform);
+    final desktopTouchGestures =
+        desktopContextMenu &&
+        (platform == TargetPlatform.windows ||
+            platform == TargetPlatform.linux);
+    final rowSwipeActionsEnabled = chatListRowSwipeActionsEnabled(
+      mode: swipeMode,
+      multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
+    );
     final actions = chat.isPinned
         ? [
             SwipeActionItem(
@@ -2518,12 +2534,12 @@ class _ChatListViewState extends State<ChatListView>
       onSecondaryTapDown: desktopContextMenu
           ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
           : null,
+      // Windows and Linux still expose these actions to touchscreen users.
+      // ChatSwipeRow filters that path to touch so a mouse drag never moves a
+      // desktop row.
       horizontalSwipeEnabled:
-          !desktopContextMenu &&
-          chatListRowSwipeActionsEnabled(
-            mode: swipeMode,
-            multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
-          ),
+          rowSwipeActionsEnabled &&
+          (!desktopContextMenu || desktopTouchGestures),
       pressRippleEnabled: !desktopContextMenu,
       actions: actions,
       child: ChatListSelectionHighlight(
@@ -3039,7 +3055,7 @@ class _ChatRowPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final rowHeight = context.watch<ThemeController>().rowHeight;
+    final rowHeight = AppMetric.chatListRowExtent(context);
     return SizedBox(
       height: rowHeight,
       child: Padding(
@@ -3614,6 +3630,13 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   VoidCallback? _animationListener;
   double _offset = 0;
   double _longPressStartOffset = 0;
+  int? _desktopTouchPointer;
+  Offset? _desktopTouchOrigin;
+  double _desktopTouchStartOffset = 0;
+  VelocityTracker? _desktopTouchVelocity;
+  Timer? _desktopTouchLongPressTimer;
+  bool _desktopTouchHorizontal = false;
+  bool _desktopTouchLongPressTriggered = false;
 
   double get _totalWidth => widget.actions.length * _buttonWidth;
 
@@ -3655,6 +3678,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
 
   @override
   void dispose() {
+    _desktopTouchLongPressTimer?.cancel();
     _clearAnimation();
     _controller.dispose();
     super.dispose();
@@ -3723,6 +3747,95 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     widget.onSecondaryTapDown?.call(details);
   }
 
+  bool _supportsDesktopTouchGestures(TargetPlatform platform) =>
+      widget.onSecondaryTapDown != null &&
+      (platform == TargetPlatform.windows || platform == TargetPlatform.linux);
+
+  void _handleDesktopTouchPointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) return;
+    if (_desktopTouchPointer != null) {
+      _cancelDesktopTouchGesture();
+      return;
+    }
+    _desktopTouchPointer = event.pointer;
+    _desktopTouchOrigin = event.position;
+    _desktopTouchStartOffset = _offset;
+    _desktopTouchVelocity = VelocityTracker.withKind(event.kind)
+      ..addPosition(event.timeStamp, event.position);
+    _desktopTouchHorizontal = false;
+    _desktopTouchLongPressTriggered = false;
+    _desktopTouchLongPressTimer = Timer(
+      kLongPressTimeout + const Duration(milliseconds: 30),
+      _handleDesktopTouchLongPress,
+    );
+  }
+
+  void _handleDesktopTouchPointerMove(PointerMoveEvent event) {
+    if (_desktopTouchPointer != event.pointer) return;
+    _desktopTouchVelocity?.addPosition(event.timeStamp, event.position);
+    final origin = _desktopTouchOrigin;
+    if (origin == null || _desktopTouchLongPressTriggered) return;
+    final travel = event.position - origin;
+    if (!_desktopTouchHorizontal) {
+      if (travel.dx.abs() < kTouchSlop && travel.dy.abs() < kTouchSlop) return;
+      _desktopTouchLongPressTimer?.cancel();
+      _desktopTouchLongPressTimer = null;
+      if (travel.dy.abs() >= travel.dx.abs() ||
+          !widget.horizontalSwipeEnabled ||
+          widget.requiresLongPressDrag) {
+        _cancelDesktopTouchGesture();
+        return;
+      }
+      _desktopTouchHorizontal = true;
+      _stopAnimation();
+    }
+    setState(() {
+      _offset = _rubberBandOffset(_desktopTouchStartOffset + travel.dx);
+    });
+  }
+
+  void _handleDesktopTouchPointerUp(PointerUpEvent event) {
+    if (_desktopTouchPointer != event.pointer) return;
+    _desktopTouchLongPressTimer?.cancel();
+    _desktopTouchVelocity?.addPosition(event.timeStamp, event.position);
+    if (_desktopTouchHorizontal) {
+      _settle(_desktopTouchVelocity?.getVelocity().pixelsPerSecond.dx ?? 0);
+    }
+    _resetDesktopTouchGesture();
+  }
+
+  void _handleDesktopTouchPointerCancel(PointerCancelEvent event) {
+    if (_desktopTouchPointer != event.pointer) return;
+    if (_desktopTouchHorizontal) _animateTo(_desktopTouchStartOffset);
+    _resetDesktopTouchGesture();
+  }
+
+  void _handleDesktopTouchLongPress() {
+    final position = _desktopTouchOrigin;
+    if (!mounted || _desktopTouchPointer == null || position == null) return;
+    _desktopTouchLongPressTimer = null;
+    _desktopTouchLongPressTriggered = true;
+    _handleSecondaryTapDown(
+      TapDownDetails(globalPosition: position, kind: PointerDeviceKind.touch),
+    );
+  }
+
+  void _cancelDesktopTouchGesture() {
+    if (_desktopTouchHorizontal) _animateTo(_desktopTouchStartOffset);
+    _desktopTouchLongPressTimer?.cancel();
+    _resetDesktopTouchGesture();
+  }
+
+  void _resetDesktopTouchGesture() {
+    _desktopTouchLongPressTimer?.cancel();
+    _desktopTouchLongPressTimer = null;
+    _desktopTouchPointer = null;
+    _desktopTouchOrigin = null;
+    _desktopTouchVelocity = null;
+    _desktopTouchHorizontal = false;
+    _desktopTouchLongPressTriggered = false;
+  }
+
   void _settle(double velocity) {
     if (velocity < -520 || (velocity <= 360 && _offset < -_totalWidth * 0.38)) {
       _animateTo(-_totalWidth);
@@ -3735,12 +3848,17 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
 
   @override
   Widget build(BuildContext context) {
+    final desktopTouchGestures = _supportsDesktopTouchGestures(
+      Theme.of(context).platform,
+    );
     final horizontalDragEnabled =
-        widget.horizontalSwipeEnabled && !widget.requiresLongPressDrag;
+        widget.horizontalSwipeEnabled &&
+        !widget.requiresLongPressDrag &&
+        !desktopTouchGestures;
     final rowGesture = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _offset != 0 ? _close() : widget.onTap(),
-      onLongPress: widget.requiresLongPressDrag
+      onLongPress: desktopTouchGestures || widget.requiresLongPressDrag
           ? null
           : widget.onLongPress == null
           ? null
@@ -3781,6 +3899,15 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           : (details) => _settle(details.primaryVelocity ?? 0),
       child: widget.child,
     );
+    final interactiveRow = desktopTouchGestures
+        ? Listener(
+            onPointerDown: _handleDesktopTouchPointerDown,
+            onPointerMove: _handleDesktopTouchPointerMove,
+            onPointerUp: _handleDesktopTouchPointerUp,
+            onPointerCancel: _handleDesktopTouchPointerCancel,
+            child: rowGesture,
+          )
+        : rowGesture;
     // At rest the row covers the blocks completely, so building them costs one
     // text layout + one paint per action on every row of every list rebuild.
     final actionsRevealed = _offset != 0 || widget.openRowId == widget.rowId;
@@ -3829,8 +3956,8 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           Transform.translate(
             offset: Offset(_offset, 0),
             child: widget.pressRippleEnabled
-                ? AppPressRipple(child: rowGesture)
-                : rowGesture,
+                ? AppPressRipple(child: interactiveRow)
+                : interactiveRow,
           ),
         ],
       ),

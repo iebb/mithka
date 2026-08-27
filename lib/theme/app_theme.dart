@@ -236,6 +236,45 @@ abstract final class AppMetric {
 
   static double chatListRowHeight([TargetPlatform? platform]) =>
       isDesktopTargetPlatform(platform) ? 58 : listRowHeight;
+
+  /// Rough line box of a text run relative to its font size. Only used to
+  /// grow fixed-extent rows, so it errs generous rather than exact.
+  static const double _textLineHeight = 1.3;
+
+  /// Height a row drawn at a fixed extent needs so the text stacked inside it
+  /// still fits once the ambient text scale is applied.
+  ///
+  /// Some rows cannot simply size to their content — a virtualized list needs
+  /// a known extent, and a swipe-action row positions its layers against a
+  /// bounded box. [lines] are the font sizes stacked inside such a row; the
+  /// avatar and padding around them keep their size, so only those lines'
+  /// growth is added. That keeps the row tight at 100% and tall enough at
+  /// 200%, where scaling the whole box would leave the avatar swimming in
+  /// empty space.
+  static double rowExtentFor(
+    BuildContext context, {
+    required double base,
+    required List<double> lines,
+  }) {
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
+    if (scale <= 1) return base;
+    final stacked = lines.fold<double>(0, (total, size) => total + size);
+    return base + stacked * _textLineHeight * (scale - 1);
+  }
+
+  /// The extent a chat list row draws at and the list virtualizes against.
+  static double chatListRowExtent(
+    BuildContext context, [
+    TargetPlatform? platform,
+  ]) => rowExtentFor(
+    context,
+    base: chatListRowHeight(platform),
+    lines: [
+      AppTextSize.chatListTitle(platform),
+      AppTextSize.chatListPreview(platform),
+    ],
+  );
+
   static double chatListAvatarSize([TargetPlatform? platform]) =>
       isDesktopTargetPlatform(platform) ? 44 : avatarSize;
   static const double headerAvatarSize = 36;

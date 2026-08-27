@@ -364,27 +364,110 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('secondary click and touch long press use distinct callbacks', (
+  testWidgets(
+    'Windows touch hold opens the right-click callback at its point',
+    (tester) async {
+      var taps = 0;
+      var previewRequests = 0;
+      var secondaryRequests = 0;
+      Offset? secondaryGlobalPosition;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.windows),
+          home: SizedBox(
+            height: 64,
+            child: ChatSwipeRow(
+              rowId: 2,
+              openRowId: null,
+              onOpenChanged: (_) {},
+              onTap: () => taps++,
+              onLongPress: () => previewRequests++,
+              onSecondaryTapDown: (details) {
+                secondaryRequests++;
+                secondaryGlobalPosition = details.globalPosition;
+              },
+              actions: [
+                SwipeActionItem(
+                  title: AppStringKeys.chatInfoPin,
+                  color: Colors.blue,
+                  onTap: () {},
+                ),
+              ],
+              child: const SizedBox(
+                key: ValueKey('secondary-click-row'),
+                width: 390,
+                height: 64,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final contextGesture = find.descendant(
+        of: find.byType(ChatSwipeRow),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is GestureDetector && widget.onSecondaryTapDown != null,
+        ),
+      );
+      expect(contextGesture, findsOneWidget);
+
+      final clickPosition =
+          tester.getTopLeft(find.byKey(const ValueKey('secondary-click-row'))) +
+          const Offset(123, 31);
+      await tester.tapAt(
+        clickPosition,
+        buttons: kSecondaryMouseButton,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+
+      expect(secondaryRequests, 1);
+      expect(secondaryGlobalPosition, clickPosition);
+      expect(previewRequests, 0);
+      expect(taps, 0);
+
+      final touch = await tester.startGesture(clickPosition);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 40));
+
+      expect(previewRequests, 0);
+      expect(secondaryRequests, 2);
+      expect(secondaryGlobalPosition, clickPosition);
+
+      await touch.up();
+      await tester.pumpAndSettle();
+
+      final primaryMouse = await tester.startGesture(
+        clickPosition,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 40));
+      await primaryMouse.up();
+      await tester.pumpAndSettle();
+
+      expect(previewRequests, 0);
+      expect(secondaryRequests, 2);
+      expect(taps, 0);
+    },
+  );
+
+  testWidgets('Windows touch swipes chat actions but mouse drag stays fixed', (
     tester,
   ) async {
-    var taps = 0;
-    var previewRequests = 0;
+    const rowKey = ValueKey('desktop-touch-swipe-row');
+    int? openRow;
     var secondaryRequests = 0;
-    Offset? secondaryGlobalPosition;
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.windows),
         home: SizedBox(
           height: 64,
           child: ChatSwipeRow(
-            rowId: 2,
+            rowId: 4,
             openRowId: null,
-            onOpenChanged: (_) {},
-            onTap: () => taps++,
-            onLongPress: () => previewRequests++,
-            onSecondaryTapDown: (details) {
-              secondaryRequests++;
-              secondaryGlobalPosition = details.globalPosition;
-            },
+            onOpenChanged: (value) => openRow = value,
+            onTap: () {},
+            onSecondaryTapDown: (_) => secondaryRequests++,
             actions: [
               SwipeActionItem(
                 title: AppStringKeys.chatInfoPin,
@@ -392,45 +475,62 @@ void main() {
                 onTap: () {},
               ),
             ],
-            child: const SizedBox(
-              key: ValueKey('secondary-click-row'),
-              width: 390,
-              height: 64,
-            ),
+            child: const SizedBox(key: rowKey, width: 390, height: 64),
           ),
         ),
       ),
     );
 
-    final contextGesture = find.descendant(
-      of: find.byType(ChatSwipeRow),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is GestureDetector && widget.onSecondaryTapDown != null,
+    final initialX = tester.getTopLeft(find.byKey(rowKey)).dx;
+    final touch = await tester.startGesture(
+      tester.getCenter(find.byKey(rowKey)),
+    );
+    await touch.moveBy(const Offset(-120, 0));
+    await touch.up();
+    await tester.pumpAndSettle();
+
+    expect(openRow, 4);
+    expect(tester.getTopLeft(find.byKey(rowKey)).dx, initialX - 80);
+    expect(secondaryRequests, 0);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.windows),
+        home: SizedBox(
+          height: 64,
+          child: ChatSwipeRow(
+            rowId: 5,
+            openRowId: null,
+            onOpenChanged: (value) => openRow = value,
+            onTap: () {},
+            onSecondaryTapDown: (_) => secondaryRequests++,
+            actions: [
+              SwipeActionItem(
+                title: AppStringKeys.chatInfoPin,
+                color: Colors.blue,
+                onTap: () {},
+              ),
+            ],
+            child: const SizedBox(key: rowKey, width: 390, height: 64),
+          ),
+        ),
       ),
     );
-    expect(contextGesture, findsOneWidget);
+    openRow = null;
+    await tester.pumpAndSettle();
 
-    final clickPosition =
-        tester.getTopLeft(find.byKey(const ValueKey('secondary-click-row'))) +
-        const Offset(123, 31);
-    await tester.tapAt(
-      clickPosition,
-      buttons: kSecondaryMouseButton,
+    final mouseInitialX = tester.getTopLeft(find.byKey(rowKey)).dx;
+    final mouse = await tester.startGesture(
+      tester.getCenter(find.byKey(rowKey)),
       kind: PointerDeviceKind.mouse,
     );
-    await tester.pump();
+    await mouse.moveBy(const Offset(-120, 0));
+    await mouse.up();
+    await tester.pumpAndSettle();
 
-    expect(secondaryRequests, 1);
-    expect(secondaryGlobalPosition, clickPosition);
-    expect(previewRequests, 0);
-    expect(taps, 0);
-
-    await tester.longPressAt(clickPosition);
-    await tester.pump();
-
-    expect(previewRequests, 1);
-    expect(secondaryRequests, 1);
+    expect(openRow, isNull);
+    expect(tester.getTopLeft(find.byKey(rowKey)).dx, mouseInitialX);
+    expect(secondaryRequests, 0);
   });
 
   testWidgets('desktop chat menu is compact and clamps to pointer viewport', (

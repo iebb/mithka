@@ -676,8 +676,10 @@ class _ProfileViewState extends State<ProfileView> {
     final c = context.colors;
     final avatarCacheSize = (36 * MediaQuery.devicePixelRatioOf(context))
         .ceil();
-    return SizedBox(
-      height: 56,
+    return ConstrainedBox(
+      // A minimum rather than a fixed height: the two stacked lines grow with
+      // the text scale and would otherwise clip out of the row.
+      constraints: const BoxConstraints(minHeight: 56),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
@@ -698,6 +700,7 @@ class _ProfileViewState extends State<ProfileView> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -819,6 +822,12 @@ class _AccountActionRowState extends State<AccountActionRow> {
   static const double _actionsWidth = _actionWidth * 2;
   double _offset = 0;
 
+  // The swipe actions sit behind the row, so the row has to be a bounded box
+  // rather than one that sizes to its content. Grow it with the name and
+  // phone lines it holds instead.
+  double _rowExtent(BuildContext context) =>
+      AppMetric.rowExtentFor(context, base: 56, lines: const [15, 12]);
+
   void _close() {
     if (_offset == 0) return;
     setState(() => _offset = 0);
@@ -850,7 +859,7 @@ class _AccountActionRowState extends State<AccountActionRow> {
         ),
       ];
       return SizedBox(
-        height: 56,
+        height: _rowExtent(context),
         child: DesktopRowActionRegion(
           actions: actions,
           child: GestureDetector(
@@ -881,7 +890,7 @@ class _AccountActionRowState extends State<AccountActionRow> {
       );
     }
     return SizedBox(
-      height: 56,
+      height: _rowExtent(context),
       child: Stack(
         children: [
           Positioned.fill(

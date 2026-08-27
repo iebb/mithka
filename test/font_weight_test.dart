@@ -47,8 +47,9 @@ Iterable<File> dartSources() sync* {
       followLinks: false,
     )) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
-      if (entity.path.endsWith(_exempt)) continue;
-      final path = '/${entity.path}';
+      final normalizedPath = entity.path.replaceAll('\\', '/');
+      if (normalizedPath.endsWith(_exempt)) continue;
+      final path = '/$normalizedPath';
       if (_generatedSegments.any(path.contains)) continue;
       yield entity;
     }

@@ -57,7 +57,6 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
-import '../theme/chat_font_scale_scope.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
@@ -100,6 +99,7 @@ import 'image_preview.dart';
 import 'internal_chat_link_router.dart';
 import 'link_handler.dart';
 import 'media_album_layout.dart';
+import 'media_download_service.dart';
 import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
 import 'message_action_menu.dart';
@@ -4733,6 +4733,8 @@ class _ChatViewState extends State<ChatView> {
         _playVideo(message, muted: true);
       case MessageAction.addToPlaylist:
         unawaited(showMusicPlaylists(context, addMessage: message));
+      case MessageAction.saveAs:
+        await _saveMediaToFolder(message);
       case MessageAction.saveToPhotos:
         DateTime? progressShownAt;
         final progressTimer = Timer(const Duration(milliseconds: 500), () {
@@ -4816,6 +4818,26 @@ class _ChatViewState extends State<ChatView> {
         if (sid != null) _openStickerSet(sid);
       case MessageAction.delete:
         await _performDeleteAction(message);
+    }
+  }
+
+  /// Desktop counterpart of 保存到相册: fetch the original if it is not local
+  /// yet, then copy it into a folder the user picks.
+  Future<void> _saveMediaToFolder(ChatMessage message) async {
+    final progressTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.chatSavingToPhotos,
+        visibleFor: const Duration(milliseconds: 900),
+      );
+    });
+    final outcome = await MediaDownloadService.saveMessageMedia(message);
+    progressTimer.cancel();
+    if (!mounted) return;
+    final feedback = MediaDownloadService.feedbackFor(outcome);
+    if (feedback != null) {
+      showToast(context, feedback, visibleFor: const Duration(seconds: 2));
     }
   }
 
@@ -5982,26 +6004,24 @@ class _ChatViewState extends State<ChatView> {
                                           : _header()),
                                 body: showPeerRestrictionBlock
                                     ? _restrictedPeerBlockPage()
-                                    : ChatFontScaleScope(
-                                        child: Column(
-                                          children: [
-                                            Expanded(
-                                              child: _transcriptLayer(
-                                                searchPane: searchPane,
-                                              ),
+                                    : Column(
+                                        children: [
+                                          Expanded(
+                                            child: _transcriptLayer(
+                                              searchPane: searchPane,
                                             ),
-                                            _chatMusicPlayer(),
-                                            // A narrow chat trades the composer
-                                            // for the hit navigator; a wide one
-                                            // keeps composing beside the results.
-                                            if (searching && !searchPane)
-                                              _searchNavigator()
-                                            else if (_isSelecting)
-                                              _selectionActionBar()
-                                            else
-                                              _composerArea(),
-                                          ],
-                                        ),
+                                          ),
+                                          _chatMusicPlayer(),
+                                          // A narrow chat trades the composer
+                                          // for the hit navigator; a wide one
+                                          // keeps composing beside the results.
+                                          if (searching && !searchPane)
+                                            _searchNavigator()
+                                          else if (_isSelecting)
+                                            _selectionActionBar()
+                                          else
+                                            _composerArea(),
+                                        ],
                                       ),
                                 trailingPane: searchPane
                                     ? _searchResultsPane()
@@ -7233,7 +7253,8 @@ class _ChatViewState extends State<ChatView> {
     final wideGroupHeader = _usesWideGroupHeader;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.paddingOf(context).top +
+        top:
+            MediaQuery.paddingOf(context).top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(
@@ -7537,7 +7558,8 @@ class _ChatViewState extends State<ChatView> {
     final count = _selectedMessageIds.length;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.paddingOf(context).top +
+        top:
+            MediaQuery.paddingOf(context).top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(

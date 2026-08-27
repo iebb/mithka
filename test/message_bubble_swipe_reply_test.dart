@@ -96,8 +96,12 @@ void main() {
   Future<TestGesture> dragLeft(
     WidgetTester tester, {
     required int steps,
+    PointerDeviceKind kind = PointerDeviceKind.touch,
   }) async {
-    final gesture = await tester.startGesture(tester.getCenter(bubbleText));
+    final gesture = await tester.startGesture(
+      tester.getCenter(bubbleText),
+      kind: kind,
+    );
     for (var step = 0; step < steps; step++) {
       await gesture.moveBy(const Offset(-20, 0));
       await tester.pump(const Duration(milliseconds: 16));
@@ -254,6 +258,72 @@ void main() {
     expect(anchor, Rect.fromLTWH(clickPosition.dx, clickPosition.dy, 0, 0));
   });
 
+  for (final platform in [TargetPlatform.windows, TargetPlatform.linux]) {
+    testWidgets(
+      '${platform.name} touch long press uses the right-click action anchor',
+      (tester) async {
+        var actionRequests = 0;
+        Rect? anchor;
+        await pumpBubble(
+          tester,
+          platform: platform,
+          onActionMenu: (_, bounds, _) {
+            actionRequests += 1;
+            anchor = bounds;
+          },
+        );
+
+        final touchPosition = tester.getCenter(bubbleText);
+        final gesture = await tester.startGesture(touchPosition);
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 40));
+        await gesture.up();
+        await tester.pump();
+
+        expect(actionRequests, 1);
+        expect(anchor, Rect.fromLTWH(touchPosition.dx, touchPosition.dy, 0, 0));
+        expect(
+          tester.renderObject<RenderParagraph>(bubbleText).selections,
+          isEmpty,
+        );
+      },
+    );
+
+    testWidgets('${platform.name} touch swipe left replies', (tester) async {
+      final replied = await pumpBubble(tester, platform: platform);
+
+      final gesture = await dragLeft(tester, steps: 12);
+      expect(replyIcon, findsOneWidget);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(replied()?.id, 78);
+      expect(replyIcon, findsNothing);
+    });
+
+    testWidgets(
+      '${platform.name} mouse drag still selects instead of replying',
+      (tester) async {
+        final replied = await pumpBubble(tester, platform: platform);
+
+        final paragraph = tester.renderObject<RenderParagraph>(bubbleText);
+        final gesture = await tester.startGesture(
+          textOffsetToPosition(paragraph, 0),
+          kind: PointerDeviceKind.mouse,
+        );
+        addTearDown(gesture.removePointer);
+        await gesture.moveTo(textOffsetToPosition(paragraph, 5));
+        await gesture.up();
+        await tester.pump();
+
+        expect(paragraph.selections, isNotEmpty);
+        expect(paragraph.selections.single.isCollapsed, isFalse);
+        expect(replied(), isNull);
+        expect(replyIcon, findsNothing);
+      },
+    );
+  }
+
   testWidgets('desktop video secondary-click dispatches one video action', (
     tester,
   ) async {
@@ -294,6 +364,46 @@ void main() {
 
     expect(actionRequests, 1);
     expect(selectedMessage?.id, 80);
+    expect(selectedSource, MessageActionSource.video);
+  });
+
+  testWidgets('windows video touch-hold dispatches one video action', (
+    tester,
+  ) async {
+    var actionRequests = 0;
+    ChatMessage? selectedMessage;
+    MessageActionSource? selectedSource;
+    await pumpBubble(
+      tester,
+      platform: TargetPlatform.windows,
+      message: ChatMessage(
+        id: 83,
+        isOutgoing: false,
+        text: '[Video]',
+        date: 1785862260,
+        contentType: 'messageVideo',
+        video: TdFileRef(id: 403),
+        videoDuration: 75,
+        imageWidth: 1280,
+        imageHeight: 720,
+      ),
+      onActionMenu: (message, _, source) {
+        actionRequests += 1;
+        selectedMessage = message;
+        selectedSource = source;
+      },
+    );
+
+    final playIcon = find.byWidgetPredicate(
+      (widget) => widget is AppIcon && widget.icon == HeroAppIcons.play,
+    );
+    final gesture = await tester.startGesture(tester.getCenter(playIcon));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 40));
+    await gesture.up();
+    await tester.pump();
+
+    expect(actionRequests, 1);
+    expect(selectedMessage?.id, 83);
     expect(selectedSource, MessageActionSource.video);
   });
 

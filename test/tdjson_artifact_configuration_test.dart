@@ -19,8 +19,10 @@ void main() {
       'tdjson.xcframework/ios-arm64-simulator/tdjson.framework/Modules/module.modulemap',
       'tdjson.xcframework/ios-arm64-simulator/tdjson.framework/tdjson',
     },
+    'tdjson-linux-arm64.zip': {'libtdjson.so'},
     'tdjson-linux-x64.zip': {'libtdjson.so'},
     'tdjson-macos-universal.zip': {'libtdjson.dylib'},
+    'tdjson-windows-arm64.zip': {'tdjson.dll'},
     'tdjson-windows-x64.zip': {'tdjson.dll'},
   };
 
@@ -112,5 +114,17 @@ void main() {
     expect(macosHook, isNot(contains('TDJSON_ARCHIVE_SHA256=')));
     expect(macosHook, isNot(contains('TDJSON_BINARY_SHA256=')));
     expect(macosHook, isNot(contains('tdjson-macos-universal.zip')));
+  });
+
+  test('Windows builds require and bundle the pinned tdjson library', () {
+    final cmake = File('windows/CMakeLists.txt').readAsStringSync();
+    final runnerCmake = File(
+      'windows/runner/CMakeLists.txt',
+    ).readAsStringSync();
+    expect(cmake, contains('../native-libs/tdjson.dll'));
+    expect(cmake, contains('Missing native-libs/tdjson.dll'));
+    expect(cmake, contains(r'install(FILES "${TDJSON_LIBRARY}"'));
+    expect(runnerCmake, contains('copy_if_different'));
+    expect(runnerCmake, contains(r'$<TARGET_FILE_DIR:${BINARY_NAME}>'));
   });
 }

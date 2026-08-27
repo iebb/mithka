@@ -27,7 +27,7 @@ class FilteredChatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
-    final rowHeight = theme.rowHeight;
+    final rowHeight = AppMetric.chatListRowExtent(context);
     final avatarSize = theme.avatarSize;
     return Container(
       height: rowHeight,

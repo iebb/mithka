@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/dist/
 
 # Local platform builds and generated test/image-processing workspaces.
 /ios/build/

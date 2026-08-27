@@ -2185,9 +2185,22 @@ class _ClassicTabBar extends StatelessWidget {
   final List<_MainTabItem> items;
   final int unread;
 
+  /// Label size the bar is laid out around. The icon block above it keeps its
+  /// size at every text scale, so only this line's growth is added to the bar.
+  static const double _labelSize = 11;
+
+  /// Line box of the label relative to its font size.
+  static const double _labelLineHeight = 1.3;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // The icons and their badges keep their size, so the bar only has to grow
+    // by what the labels underneath them gain from the text scale.
+    final labelGrowth =
+        _labelSize *
+        _labelLineHeight *
+        (MediaQuery.textScalerOf(context).scale(1.0) - 1).clamp(0, 2);
     return Container(
       decoration: BoxDecoration(
         color: c.navBar,
@@ -2196,7 +2209,7 @@ class _ClassicTabBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 62,
+          height: 62 + labelGrowth,
           child: Row(
             children: [
               for (var i = 0; i < items.length; i++)
@@ -2205,8 +2218,10 @@ class _ClassicTabBar extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => onSelect(i),
                     child: Center(
-                      child: SizedBox(
-                        width: 64,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xxs,
+                        ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -2263,7 +2278,7 @@ class _ClassicTabBar extends StatelessWidget {
                               ),
                               curve: AppMotion.standard,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: _labelSize,
                                 fontWeight: selection == i
                                     ? FontWeight.w600
                                     : FontWeight.w400,
@@ -2271,9 +2286,13 @@ class _ClassicTabBar extends StatelessWidget {
                                     ? AppTheme.brand
                                     : c.textTertiary,
                               ),
+                              // A wrapped label would outgrow the bar; the tab
+                              // is identified by its icon either way.
                               child: Text(
                                 items[i].label.l10n(context),
                                 textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

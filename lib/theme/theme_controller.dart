@@ -1239,8 +1239,8 @@ class ThemeController extends ChangeNotifier {
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
 
   static const double minFontScale = 0.8;
-  // Chat text reflows inside fixed bubble widths, so a generous ceiling is
-  // safe: 2.0 covers users the old 1.4 cap left behind.
+  // Text reflows inside bubbles and rows that grow with it, so a generous
+  // ceiling is safe: 2.0 covers users the old 1.4 cap left behind.
   static const double maxFontScale = 2.0;
   static const double minInterfaceScale = 0.66 * 0.66;
   static const double maxInterfaceScale = 1.50 * 1.50;
@@ -1808,19 +1808,36 @@ class ThemeController extends ChangeNotifier {
     return value;
   }
 
-  /// App-wide text scale factor for chat surfaces, applied by
-  /// [ChatFontScaleScope] through a scoped MediaQuery.textScaler.
+  /// App-wide text scale factor, applied at the root via MediaQuery.textScaler
+  /// by the scaled app views. Every surface follows it — chat transcripts,
+  /// chat list, navigation and settings alike.
   double get fontScale => _fontScale;
-  // Chat font scaling is applied once by the chat-scoped MediaQuery; Text
-  // applies it implicitly and RichText reads it explicitly. Returning an
-  // already scaled size here made chat typography grow twice.
+
+  /// The scale text actually renders at: the user's own font size preference
+  /// on top of the platform accessibility text size, capped at the range the
+  /// app's layouts are tested against so an extreme system setting cannot
+  /// break a fixed layout on its own.
+  ///
+  /// The system size only ever enlarges. This control owns how small the app
+  /// gets — it shows its setting as a percentage, and a device asking for
+  /// text below the platform default would otherwise render 100% smaller than
+  /// the sizes the app is designed at. Enlarging still composes, so a system
+  /// accessibility size carries into the app on its own.
+  double effectiveTextScale(TextScaler systemScaler) =>
+      (_fontScale * math.max(systemScaler.scale(1.0), 1.0)).clamp(
+        minFontScale,
+        maxFontScale,
+      );
+
+  // Font scaling is applied once by the root MediaQuery; Text applies it
+  // implicitly and RichText reads it explicitly. Returning an already scaled
+  // size here made chat typography grow twice.
   double chatTextSize(double base) => base;
 
   /// Squared value shown by the Interface Size control. For example, the
   /// historical 1.5 render scale is presented as 225%.
   double get interfaceScale => _interfaceScale * _interfaceScale;
   double get renderedInterfaceScale => math.sqrt(interfaceScale);
-  double get rowHeight => AppMetric.listRowHeight;
   double get avatarSize => AppMetric.avatarSize;
   double get navHeaderHeight => AppMetric.navHeaderHeight;
   double scaled(double base) => base;

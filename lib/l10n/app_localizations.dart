@@ -932,9 +932,11 @@ abstract final class AppStringKeys {
   static const chatSendFailedRateLimited = 'chatSendFailedRateLimited';
   static const chatSendFailedTitle = 'chatSendFailedTitle';
   static const chatSendFailedUnavailable = 'chatSendFailedUnavailable';
+  static const chatSavedToFolder = 'chatSavedToFolder';
   static const chatSavedToPhotos = 'chatSavedToPhotos';
   static const chatSavedToSavedMessages = 'chatSavedToSavedMessages';
   static const chatSaveFailed = 'chatSaveFailed';
+  static const chatSaveToFolderFailed = 'chatSaveToFolderFailed';
   static const chatSaveToPhotosFailed = 'chatSaveToPhotosFailed';
   static const chatSaveToPhotosPermissionDenied =
       'chatSaveToPhotosPermissionDenied';
@@ -1752,6 +1754,7 @@ abstract final class AppStringKeys {
   static const messageActionRepeat = 'messageActionRepeat';
   static const messageActionReplies = 'messageActionReplies';
   static const messageActionReport = 'messageActionReport';
+  static const messageActionSaveAs = 'messageActionSaveAs';
   static const messageActionSaveToPhotos = 'messageActionSaveToPhotos';
   static const messageActionSelectText = 'messageActionSelectText';
   static const messageActionSetTodo = 'messageActionSetTodo';
