@@ -3992,89 +3992,97 @@ class _MessageBubbleState extends State<MessageBubble>
     final sender = message.replyToSender ?? '';
     final time = DateText.quoteLabel(message.replyToDate ?? 0);
     final targetId = message.replyToMessageId;
-    return Container(
-      key: const ValueKey('messageReplyQuote'),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 8, 6, 9),
-      decoration: BoxDecoration(
-        color: _replyQuoteBackground(outgoing),
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(AppRadius.control),
-          bottomRight: Radius.circular(AppRadius.control),
+    final openOriginal = targetId == null || widget.onOpenReply == null
+        ? null
+        : () => widget.onOpenReply!.call(targetId);
+    return GestureDetector(
+      key: const ValueKey('messageReplyOpenOriginal'),
+      behavior: HitTestBehavior.opaque,
+      onTap: openOriginal,
+      child: Container(
+        key: const ValueKey('messageReplyQuote'),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 9),
+        decoration: BoxDecoration(
+          color: _replyQuoteBackground(outgoing),
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(AppRadius.control),
+            bottomRight: Radius.circular(AppRadius.control),
+          ),
+          border: _messageColors == null
+              ? null
+              : Border(left: BorderSide(color: line, width: 3)),
         ),
-        border: _messageColors == null
-            ? null
-            : Border(left: BorderSide(color: line, width: 3)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (message.replyToImage != null) ...[
-            SizedBox(
-              key: const ValueKey('messageReplyMediaPreview'),
-              width: 44,
-              height: 44,
-              child: TDImage(
-                photo: message.replyToImage,
-                cornerRadius: 6,
-                cacheWidth: _cachePx(44),
-                cacheHeight: _cachePx(44),
-              ),
-            ),
-            const SizedBox(width: 9),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      if (sender.isNotEmpty)
-                        TextSpan(
-                          text: sender,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      if (time.isNotEmpty)
-                        TextSpan(text: sender.isEmpty ? time : ' $time'),
-                    ],
+        child: IgnorePointer(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.replyToImage != null) ...[
+                SizedBox(
+                  key: const ValueKey('messageReplyMediaPreview'),
+                  width: 44,
+                  height: 44,
+                  child: TDImage(
+                    photo: message.replyToImage,
+                    cornerRadius: 6,
+                    cacheWidth: _cachePx(44),
+                    cacheHeight: _cachePx(44),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: labelColor),
                 ),
-                if ((message.replyToPreview ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  _richText(
-                    message.replyToPreview!,
-                    faded,
-                    faded,
-                    0,
-                    message.replyToPreview!.length,
-                    outgoing,
-                    false,
-                    maxLines: 2,
-                    entities: message.replyToEntities,
-                    fontSize: 14,
-                  ),
-                ],
+                const SizedBox(width: 9),
               ],
-            ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          if (sender.isNotEmpty)
+                            TextSpan(
+                              text: sender,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          if (time.isNotEmpty)
+                            TextSpan(text: sender.isEmpty ? time : ' $time'),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, color: labelColor),
+                    ),
+                    if ((message.replyToPreview ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      _richText(
+                        message.replyToPreview!,
+                        faded,
+                        faded,
+                        0,
+                        message.replyToPreview!.length,
+                        outgoing,
+                        false,
+                        maxLines: 2,
+                        entities: message.replyToEntities,
+                        fontSize: 14,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 1, 4, 9),
+                child: AppArrowUpToLineIcon(
+                  key: const ValueKey('messageReplyNavigateUpIcon'),
+                  color: faded,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            key: const ValueKey('messageReplyOpenOriginal'),
-            behavior: HitTestBehavior.opaque,
-            onTap: targetId == null
-                ? null
-                : () => widget.onOpenReply?.call(targetId),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 1, 4, 9),
-              child: AppIcon(HeroAppIcons.arrowUp, size: 18, color: faded),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

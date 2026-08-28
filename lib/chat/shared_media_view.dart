@@ -1335,7 +1335,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       ].join(' ').toLowerCase();
       return fields.contains(query);
     }).toList();
-    if (_tabs[_tab].videoOnly) {
+    // Keep the all-videos list in Telegram's message order. Download
+    // completion updates must not move a card out from under the user's
+    // pointer or make it appear to switch lists; only filtered views need
+    // download-priority ordering.
+    if (_tabs[_tab].videoOnly && _fileFilter != _SharedMediaFileFilter.all) {
       filtered.sort((a, b) {
         final byPriority = _videoPriority(b).compareTo(_videoPriority(a));
         if (byPriority != 0) return byPriority;

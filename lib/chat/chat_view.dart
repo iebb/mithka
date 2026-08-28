@@ -1118,6 +1118,8 @@ class _ChatViewState extends State<ChatView> {
   Timer? _bannerTimer; // auto-hides the banner a few seconds after it appears
   Timer? _readSyncTimer;
   Timer? _handoffUpdateTimer;
+  Timer? _linkedMessageHighlightFadeTimer;
+  Timer? _linkedMessageHighlightClearTimer;
   int? _scrollTargetId;
   int _scrollTargetGeneration = 0;
   int _transcriptGestureGeneration = 0;
@@ -1146,6 +1148,8 @@ class _ChatViewState extends State<ChatView> {
   /// survives the jump that put it there, so the bubble stays marked while the
   /// user steps through the rest of the results.
   int? _searchHighlightId;
+  int? _linkedMessageHighlightId;
+  bool _linkedMessageHighlightActive = false;
   double _keyboardInset = 0;
   // Bumped once per ChatView build; the shell LayoutBuilder reuses its subtree
   // whenever the generation and the available width are both unchanged.
@@ -3861,6 +3865,8 @@ class _ChatViewState extends State<ChatView> {
     _bannerTimer?.cancel();
     _readSyncTimer?.cancel();
     _handoffUpdateTimer?.cancel();
+    _linkedMessageHighlightFadeTimer?.cancel();
+    _linkedMessageHighlightClearTimer?.cancel();
     _translation.removeListener(_onTranslationSettingsChanged);
     _ai?.removeListener(_onTranslationSettingsChanged);
     _search
@@ -4010,7 +4016,7 @@ class _ChatViewState extends State<ChatView> {
           _vm.insertMention(m);
         }
       },
-      onOpenReply: _scrollToMessage,
+      onOpenReply: _openReplyMessage,
       onOpenForwarded: _openForwardedMessage,
       onOpenComments: _openMessageComments,
       showCommentAttachment: chatTranscriptAllowsCommentAttachment(
@@ -4507,7 +4513,7 @@ class _ChatViewState extends State<ChatView> {
       message: message,
       peerTitle: _vm.peerTitle,
       onAvatarTap: _openSenderProfile,
-      onOpenReply: _scrollToMessage,
+      onOpenReply: _openReplyMessage,
       onOpenImage: _openImage,
       onOpenSticker: _openSticker,
       onPlayVideo: _playVideo,
@@ -7865,6 +7871,35 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  Future<void> _openReplyMessage(int messageId) async {
+    _claimTranscriptViewport();
+    final didReachTarget = await _scrollToMessageAndReport(messageId);
+    if (!didReachTarget || !mounted) return;
+    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
+      _flashLinkedMessageHighlight(messageId);
+    }
+  }
+
+  void _flashLinkedMessageHighlight(int messageId) {
+    _linkedMessageHighlightFadeTimer?.cancel();
+    _linkedMessageHighlightClearTimer?.cancel();
+    setState(() {
+      _linkedMessageHighlightId = messageId;
+      _linkedMessageHighlightActive = true;
+    });
+    _linkedMessageHighlightFadeTimer = Timer(
+      const Duration(milliseconds: 650),
+      () {
+        if (!mounted || _linkedMessageHighlightId != messageId) return;
+        setState(() => _linkedMessageHighlightActive = false);
+        _linkedMessageHighlightClearTimer = Timer(AppMotion.deliberate, () {
+          if (!mounted || _linkedMessageHighlightId != messageId) return;
+          setState(() => _linkedMessageHighlightId = null);
+        });
+      },
+    );
+  }
+
   Future<bool> _scrollToMessageAndReport(
     int messageId, {
     bool pinnedJump = false,
@@ -8672,23 +8707,31 @@ class _ChatViewState extends State<ChatView> {
       key: entry.key,
       child: RepaintBoundary(
         key: visibilityKey,
-        child: _searchHighlight(entry, content),
+        child: _messageNavigationHighlight(entry, content),
       ),
     );
   }
 
-  /// Washes the row holding the current search hit. A full-width tint rather
-  /// than a bubble outline, so an album or a document run reads as one hit.
-  Widget _searchHighlight(_TranscriptEntry entry, Widget content) {
-    final highlightId = _searchHighlightId;
-    if (highlightId == null) return content;
-    final highlighted = entry.messages.any((m) => m.id == highlightId);
+  /// Washes the row holding a search hit or a just-opened reply destination.
+  /// A full-width tint makes an album or document run read as one destination;
+  /// reply navigation holds the stronger tint for 650 ms, then fades it out.
+  Widget _messageNavigationHighlight(_TranscriptEntry entry, Widget content) {
+    final searchHighlighted =
+        _searchHighlightId != null &&
+        entry.messages.any((m) => m.id == _searchHighlightId);
+    final linkedHighlighted =
+        _linkedMessageHighlightId != null &&
+        entry.messages.any((m) => m.id == _linkedMessageHighlightId);
+    if (!searchHighlighted && !linkedHighlighted) return content;
+    final alpha = linkedHighlighted && _linkedMessageHighlightActive
+        ? 0.18
+        : searchHighlighted
+        ? 0.12
+        : 0.0;
     return AnimatedContainer(
       duration: AppMotion.duration(context, AppMotion.deliberate),
       curve: AppMotion.standard,
-      color: highlighted
-          ? AppTheme.brand.withValues(alpha: 0.12)
-          : Colors.transparent,
+      color: AppTheme.brand.withValues(alpha: alpha),
       child: content,
     );
   }
