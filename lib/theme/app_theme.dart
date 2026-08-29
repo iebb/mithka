@@ -35,6 +35,11 @@ abstract final class AppTextSize {
   static double chatListPreview([TargetPlatform? platform]) =>
       isDesktopTargetPlatform(platform) ? caption : footnote;
   static double chatListTimestamp([TargetPlatform? platform]) => caption;
+
+  /// The folder-tag line a chat row draws between its name and its preview.
+  static double chatListFolderTag([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? tiny : caption - 1;
+
   static double messageBody([TargetPlatform? platform]) =>
       isDesktopTargetPlatform(platform) ? callout : body;
 }
@@ -263,15 +268,22 @@ abstract final class AppMetric {
   }
 
   /// The extent a chat list row draws at and the list virtualizes against.
+  ///
+  /// [folderTagLine] adds the 文件夹标签 line to the stack. The nominal row is
+  /// already tall enough to hold it, so this changes nothing at 100% text —
+  /// it only keeps the row growing by three lines instead of two once the
+  /// ambient scale is turned up.
   static double chatListRowExtent(
     BuildContext context, [
     TargetPlatform? platform,
+    bool folderTagLine = false,
   ]) => rowExtentFor(
     context,
     base: chatListRowHeight(platform),
     lines: [
       AppTextSize.chatListTitle(platform),
       AppTextSize.chatListPreview(platform),
+      if (folderTagLine) AppTextSize.chatListFolderTag(platform),
     ],
   );
 
@@ -336,9 +348,16 @@ abstract final class AppTheme {
 
   /// Re-derives the brand accent + its shades and the outgoing-bubble color
   /// from a user-chosen base color. Call before/at theme rebuilds.
-  static void applyBrand(Color base) {
+  ///
+  /// [onAccent] is the palette's stored on-accent token, and is what a themed
+  /// accent must pass in. Without one — a brand colour the user picked, which
+  /// no theme author wrote ink for — this falls back to [accentForeground],
+  /// never to [readableForeground]: maximising raw contrast against a
+  /// saturated mid-tone flips to near-black, which is how azure came out with
+  /// dark ink on its own bubble where every other client draws white.
+  static void applyBrand(Color base, {Color? onAccent}) {
     brand = base;
-    onBrand = readableForeground(base);
+    onBrand = onAccent ?? accentForeground(base);
     bubbleOutgoing = base;
     bubbleOutgoingText = onBrand;
     final hsl = HSLColor.fromColor(base);
@@ -692,25 +711,48 @@ class AppColors extends ThemeExtension<AppColors> {
   ]);
 }
 
+const Color _neutralDarkInk = Color(0xFF171717);
+const Color _neutralLightInk = Color(0xFFFFFFFF);
+
+/// WCAG contrast ratio between two opaque colours.
+double contrastRatio(Color a, Color b) {
+  final first = a.computeLuminance();
+  final second = b.computeLuminance();
+  return (math.max(first, second) + 0.05) / (math.min(first, second) + 0.05);
+}
+
 /// Returns whichever neutral text color has the stronger WCAG contrast.
 ///
 /// Do not reach for this to decide what sits on an accent fill — use the
-/// stored [AppColors.onAccent] token. Maximising the raw ratio flips to near
-/// black on any saturated mid-tone, which is how a green accent once came out
-/// black-on-green where every other client draws white.
-Color readableForeground(Color background) {
-  const dark = Color(0xFF171717);
-  const light = Color(0xFFFFFFFF);
-  final backgroundLuminance = background.computeLuminance();
-  double contrast(Color foreground) {
-    final foregroundLuminance = foreground.computeLuminance();
-    final lighter = math.max(backgroundLuminance, foregroundLuminance);
-    final darker = math.min(backgroundLuminance, foregroundLuminance);
-    return (lighter + 0.05) / (darker + 0.05);
-  }
+/// stored [AppColors.onAccent] token, or [accentForeground] where there is no
+/// token because the fill is a colour the user picked. Maximising the raw
+/// ratio flips to near black on any saturated mid-tone, which is how a green
+/// accent once came out black-on-green where every other client draws white.
+Color readableForeground(Color background) =>
+    contrastRatio(background, _neutralDarkInk) >=
+        contrastRatio(background, _neutralLightInk)
+    ? _neutralDarkInk
+    : _neutralLightInk;
 
-  return contrast(dark) >= contrast(light) ? dark : light;
-}
+/// White, and only not white when the fill is light enough that white stops
+/// being readable on it.
+///
+/// This is what sits on an accent that nobody authored a token for — the
+/// brand colour the user picked in 外观. Telegram itself always draws white
+/// here, and [readableForeground] cannot stand in: maximising the raw ratio
+/// prefers near-black on every saturated mid-tone, azure and green included,
+/// which is what put dark ink on the outgoing bubble. The floor is well below
+/// a normal accent's ratio against white, so it only catches a fill so pale
+/// that white would be invisible on it.
+Color accentForeground(Color fill) =>
+    contrastRatio(fill, _neutralLightInk) >= _minimumAccentContrast
+    ? _neutralLightInk
+    : _neutralDarkInk;
+
+/// Azure sits at 3.0 against white and a saturated green at 2.4; a near-white
+/// pick sits near 1.05. Anything in between is a judgement call, and this errs
+/// toward the white every other client draws.
+const double _minimumAccentContrast = 2.0;
 
 /// Keeps a body-sized link readable against [background] while retaining as
 /// much of the owned [preferred] link hue as the contrast threshold permits.

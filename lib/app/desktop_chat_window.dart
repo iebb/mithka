@@ -13,6 +13,7 @@ import '../chat/chat_view.dart';
 import '../chat/desktop_chat_context_pane.dart';
 import '../chat/group_remark_controller.dart';
 import '../chat/music_player_controller.dart';
+import '../chats/chat_folder_tag_controller.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -132,6 +133,9 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
     widget.prefs,
     initialAccountUserId: widget.arguments.accountUserId,
   );
+  late final ChatFolderTagController _folderTags = ChatFolderTagController(
+    widget.prefs,
+  );
   late final CallManager _calls = CallManager()..start();
   bool _presentationReloading = false;
   bool _presentationReloadQueued = false;
@@ -209,6 +213,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
     unawaited(TdClient.shared.closeProxy());
     _calls.dispose();
     _groupRemarks.dispose();
+    _folderTags.dispose();
     _ai.dispose();
     _locale.dispose();
     _translation.dispose();
@@ -261,6 +266,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
       ChangeNotifierProvider.value(value: _locale),
       ChangeNotifierProvider.value(value: _ai),
       ChangeNotifierProvider.value(value: _groupRemarks),
+      ChangeNotifierProvider.value(value: _folderTags),
       ChangeNotifierProvider.value(value: _calls),
     ],
     child: AnimatedBuilder(
@@ -288,10 +294,14 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
           builder: (context, child) {
             final media = MediaQuery.of(context);
             final currentTheme = Theme.of(context);
+            // An installed theme names its own on-accent ink; a colour the
+            // user picked in 外观 has none, and derives one.
+            final usesCloudTheme = _theme.usesCloudThemeForUi(
+              currentTheme.brightness,
+            );
             AppTheme.applyBrand(
-              _theme.usesCloudThemeForUi(currentTheme.brightness)
-                  ? context.colors.linkBlue
-                  : _theme.brandColor,
+              usesCloudTheme ? context.colors.linkBlue : _theme.brandColor,
+              onAccent: usesCloudTheme ? context.colors.onAccent : null,
             );
             final themedChild = Theme(
               data: currentTheme.copyWith(

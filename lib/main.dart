@@ -50,6 +50,7 @@ import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
 import 'chat/group_remark_controller.dart';
 import 'chat/music_player_controller.dart';
+import 'chats/chat_folder_tag_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
@@ -423,6 +424,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     widget.prefs,
     initialAccountUserId: _accounts.activeUserId,
   );
+  late final ChatFolderTagController _folderTags = ChatFolderTagController(
+    widget.prefs,
+  );
   late AppIconController _appIcons = AppIconController(widget.prefs);
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
@@ -494,6 +498,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       ),
     );
     unawaited(_appIcons.initialize());
+    unawaited(_folderTags.refresh());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
     NotificationController.shared.start(widget.prefs);
     // An iOS registerForRemoteNotifications round trip that nothing observes
@@ -510,6 +515,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
     _groupRemarks.dispose();
+    _folderTags.dispose();
     DesktopMiniAppWindowService.instance.detachMainProxy();
     DesktopChatWindowService.instance.detachMainProxy();
     DesktopUtilityWindowService.instance.detachMainProxy();
@@ -520,6 +526,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
 
   void _handleActiveAccountChange() {
     _groupRemarks.setActiveAccountUserId(_accounts.activeUserId);
+    unawaited(_folderTags.refresh());
     _theme.setActiveAccountSlot(
       _accounts.activeSlot,
       userId: _accounts.activeUserId,
@@ -757,6 +764,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _locale),
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider.value(value: _groupRemarks),
+        ChangeNotifierProvider.value(value: _folderTags),
         ChangeNotifierProvider.value(value: _mithkaPro),
         ChangeNotifierProvider.value(value: _chatDeepLinks),
         ChangeNotifierProvider.value(value: _appIcons),
@@ -800,10 +808,14 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               // boldText.
               final boldText = MediaQuery.boldTextOf(context);
               final currentTheme = Theme.of(context);
+              // An installed theme names its own on-accent ink; a colour the
+              // user picked in 外观 has none, and derives one.
+              final usesCloudTheme = theme.usesCloudThemeForUi(
+                currentTheme.brightness,
+              );
               AppTheme.applyBrand(
-                theme.usesCloudThemeForUi(currentTheme.brightness)
-                    ? context.colors.linkBlue
-                    : theme.brandColor,
+                usesCloudTheme ? context.colors.linkBlue : theme.brandColor,
+                onAccent: usesCloudTheme ? context.colors.onAccent : null,
               );
               final themedChild = Theme(
                 data: currentTheme.copyWith(

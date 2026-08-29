@@ -9,6 +9,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
+import 'chat_folder_tag_controller.dart';
 import 'chat_row_view.dart';
 
 const filteredChatsTitle = 'Filtered Chats';
@@ -27,7 +28,7 @@ class FilteredChatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
-    final rowHeight = AppMetric.chatListRowExtent(context);
+    final rowHeight = chatListRowExtentFor(context);
     final avatarSize = theme.avatarSize;
     return Container(
       height: rowHeight,

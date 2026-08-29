@@ -1,10 +1,16 @@
+//
+//  chat_folder_management_view_test.dart
+//
+//  文件夹标签 is no longer gated: the switch works for every account. Telegram
+//  only lets a Premium account write it to the server, so a non-Premium one
+//  keeps its choice on this device and the rows still draw the tags.
+//
+
 import 'dart:async';
-import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/components/app_interactive_surface.dart';
+import 'package:mithka/chats/chat_folder_tag_controller.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/chat_folder_management_view.dart';
@@ -15,272 +21,250 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  Future<Widget> testApp(Widget child) async {
-    SharedPreferences.setMockInitialValues({});
+  Future<ChatFolderTagController> pumpView(
+    WidgetTester tester,
+    _FolderTagHarness harness, {
+    Map<String, Object> initialPreferences = const {},
+  }) async {
+    addTearDown(harness.dispose);
+    SharedPreferences.setMockInitialValues(initialPreferences);
     final preferences = await SharedPreferences.getInstance();
     final theme = ThemeController(preferences);
     addTearDown(theme.dispose);
-    return ChangeNotifierProvider<ThemeController>.value(
-      value: theme,
-      child: MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: const [AppLocalizations.delegate],
-        theme: ThemeData(extensions: [AppColors.light]),
-        home: child,
-      ),
+    final tags = ChatFolderTagController(
+      preferences,
+      query: harness.query,
+      folderUpdates: harness.folders.stream,
     );
-  }
+    addTearDown(tags.dispose);
+    await tags.refresh();
 
-  Future<void> pumpView(WidgetTester tester, _FolderTagHarness harness) async {
-    addTearDown(harness.dispose);
     await tester.pumpWidget(
-      await testApp(
-        ChatFolderManagementView(
-          service: ChatFolderService(query: harness.query),
-          updates: harness.updates.stream,
-          onLockedFolderTagsActivated: harness.activateLocked,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeController>.value(value: theme),
+          ChangeNotifierProvider<ChatFolderTagController>.value(value: tags),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [AppLocalizations.delegate],
+          theme: ThemeData(extensions: [AppColors.light]),
+          home: ChatFolderManagementView(
+            service: ChatFolderService(query: harness.query),
+            updates: harness.updates.stream,
+          ),
         ),
       ),
     );
     await tester.pumpAndSettle();
+    return tags;
   }
 
-  testWidgets('Premium-unavailable accounts do not see folder tags', (
+  testWidgets('a non-Premium account gets a working, unlocked toggle', (
     tester,
   ) async {
-    final harness = _FolderTagHarness(
-      isPremium: false,
-      isPremiumAvailable: false,
-    );
-    await pumpView(tester, harness);
+    final harness = _FolderTagHarness(isPremium: false);
+    final tags = await pumpView(tester, harness);
 
-    expect(find.byKey(const ValueKey('tags-title')), findsNothing);
-    expect(find.byKey(const ValueKey('folder-tags')), findsNothing);
-    expect(find.byType(SettingsSwitchRow), findsNothing);
-  });
-
-  testWidgets('failed entitlement probe fails closed and hides folder tags', (
-    tester,
-  ) async {
-    final harness = _FolderTagHarness(
-      isPremium: false,
-      isPremiumAvailable: true,
-    )..optionResponse = (_) async => throw StateError('option unavailable');
-    await pumpView(tester, harness);
-
-    expect(find.byKey(const ValueKey('tags-title')), findsNothing);
-    expect(find.byType(SettingsSwitchRow), findsNothing);
-  });
-
-  testWidgets(
-    'non-Premium row is one actionable semantics and keyboard surface',
-    (tester) async {
-      final semantics = tester.ensureSemantics();
-      final harness = _FolderTagHarness(
-        isPremium: false,
-        isPremiumAvailable: true,
-      );
-      await pumpView(tester, harness);
-
-      final lock = find.byKey(const ValueKey('folder-tags-premium-lock'));
-      expect(lock, findsOneWidget);
-      expect(
-        tester
-            .widget<SettingsSwitchRow>(find.byType(SettingsSwitchRow))
-            .enabled,
-        isFalse,
-      );
-      final semanticsData = tester.getSemantics(lock).getSemanticsData();
-      expect(
-        semanticsData.label,
-        contains(AppStrings.t(AppStringKeys.profileToolsPremiumRequired)),
-      );
-      expect(semanticsData.hasAction(SemanticsAction.tap), isTrue);
-      expect(
-        find.bySemanticsLabel(
-          RegExp(AppStrings.t(AppStringKeys.profileToolsPremiumRequired)),
-        ),
-        findsOneWidget,
-      );
-
-      await tester.tap(lock);
-      await tester.pump();
-      final surface = tester.widget<AppInteractiveSurface>(lock);
-      surface.focusNode!.requestFocus();
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.sendKeyEvent(LogicalKeyboardKey.space);
-
-      expect(harness.lockedActivations, 3);
-      expect(harness.toggleRequests, isEmpty);
-      semantics.dispose();
-    },
-  );
-
-  testWidgets('Premium accounts retain the working folder-tag toggle', (
-    tester,
-  ) async {
-    final harness = _FolderTagHarness(
-      isPremium: true,
-      isPremiumAvailable: true,
-    );
-    await pumpView(tester, harness);
-
-    expect(
-      find.byKey(const ValueKey('folder-tags-premium-lock')),
-      findsNothing,
-    );
+    expect(find.byKey(const ValueKey('tags-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('folder-tags')), findsOneWidget);
     final row = find.byType(SettingsSwitchRow);
     expect(tester.widget<SettingsSwitchRow>(row).enabled, isTrue);
+    expect(tester.widget<SettingsSwitchRow>(row).value, isFalse);
 
     await tester.tap(row);
-    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<SettingsSwitchRow>(row).value, isTrue);
+    expect(tags.enabled, isTrue);
+    // The server setting is Premium-only, so nothing was sent.
+    expect(harness.toggleRequests, isEmpty);
+  });
+
+  testWidgets('a non-Premium choice is kept on this device', (tester) async {
+    final harness = _FolderTagHarness(isPremium: false);
+    await pumpView(tester, harness);
+
+    await tester.tap(find.byType(SettingsSwitchRow));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getBool(ChatFolderTagController.preferenceKey), isTrue);
+  });
+
+  testWidgets('a stored preference survives the next launch', (tester) async {
+    final harness = _FolderTagHarness(isPremium: false);
+    final tags = await pumpView(
+      tester,
+      harness,
+      initialPreferences: const {ChatFolderTagController.preferenceKey: true},
+    );
+
+    expect(tags.enabled, isTrue);
+    expect(
+      tester.widget<SettingsSwitchRow>(find.byType(SettingsSwitchRow)).value,
+      isTrue,
+    );
+  });
+
+  testWidgets('a Premium account also writes the setting to the server', (
+    tester,
+  ) async {
+    final harness = _FolderTagHarness(isPremium: true);
+    await pumpView(tester, harness);
+
+    await tester.tap(find.byType(SettingsSwitchRow));
+    await tester.pumpAndSettle();
 
     expect(harness.toggleRequests, hasLength(1));
     expect(harness.toggleRequests.single['are_tags_enabled'], isTrue);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getBool(ChatFolderTagController.preferenceKey), isTrue);
   });
 
-  testWidgets('current Premium remains enabled when upgrades are unavailable', (
+  testWidgets('a refused server write does not undo the local choice', (
     tester,
   ) async {
-    final harness = _FolderTagHarness(
-      isPremium: true,
-      isPremiumAvailable: false,
-    );
-    await pumpView(tester, harness);
+    final harness = _FolderTagHarness(isPremium: true)
+      ..toggleResponse = () async => throw StateError('toggle failed');
+    final tags = await pumpView(tester, harness);
 
-    final row = find.byType(SettingsSwitchRow);
-    expect(tester.widget<SettingsSwitchRow>(row).enabled, isTrue);
-
-    final optionRequestCount = harness.optionRequests.length;
-    harness.optionResponse = (_) async => throw StateError('probe failed');
-    harness.updates.add(_optionUpdate('is_premium_available', false));
+    await tester.tap(find.byType(SettingsSwitchRow));
     await tester.pumpAndSettle();
 
-    expect(tester.widget<SettingsSwitchRow>(row).enabled, isTrue);
-    expect(harness.optionRequests, hasLength(optionRequestCount));
+    expect(tags.enabled, isTrue);
     expect(
-      find.byKey(const ValueKey('folder-tags-premium-lock')),
-      findsNothing,
+      tester.widget<SettingsSwitchRow>(find.byType(SettingsSwitchRow)).value,
+      isTrue,
     );
-  });
-
-  testWidgets('Premium folder-tag toggle still rolls back on TDLib failure', (
-    tester,
-  ) async {
-    final harness = _FolderTagHarness(isPremium: true, isPremiumAvailable: true)
-      ..toggleResponse = () async => throw StateError('toggle failed');
-    await pumpView(tester, harness);
-
-    final row = find.byType(SettingsSwitchRow);
-    expect(tester.widget<SettingsSwitchRow>(row).value, isFalse);
-
-    await tester.tap(row);
-    await tester.pump();
-
-    expect(tester.widget<SettingsSwitchRow>(row).value, isFalse);
     expect(harness.toggleRequests, hasLength(1));
   });
 
-  testWidgets('live Premium downgrade blocks a toggle before probe returns', (
+  testWidgets("a Premium account adopts the server's own value", (
     tester,
   ) async {
-    final harness = _FolderTagHarness(
-      isPremium: true,
-      isPremiumAvailable: true,
-    );
-    await pumpView(tester, harness);
-    final pending = _PendingOptions();
-    harness.optionResponse = pending.call;
+    final harness = _FolderTagHarness(isPremium: true);
+    final tags = await pumpView(tester, harness);
+    expect(tags.enabled, isFalse);
 
-    harness.updates.add(_optionUpdate('is_premium', false));
-    await tester.pump();
-
-    expect(find.byKey(const ValueKey('tags-title')), findsNothing);
-    expect(harness.toggleRequests, isEmpty);
-
-    pending.complete(isPremium: false, isPremiumAvailable: true);
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('folder-tags-premium-lock')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('live Premium upgrade enables folder tags', (tester) async {
-    final harness = _FolderTagHarness(
-      isPremium: false,
-      isPremiumAvailable: true,
-    );
-    await pumpView(tester, harness);
-
-    final optionRequestCount = harness.optionRequests.length;
-    harness.optionResponse = (_) async => throw StateError('probe failed');
-    harness.updates.add(_optionUpdate('is_premium', true));
+    harness.folders.add(const {
+      '@type': 'updateChatFolders',
+      'chat_folders': <Object>[],
+      'are_tags_enabled': true,
+    });
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('folder-tags-premium-lock')),
-      findsNothing,
-    );
-    expect(
-      tester.widget<SettingsSwitchRow>(find.byType(SettingsSwitchRow)).enabled,
-      isTrue,
-    );
-    expect(harness.optionRequests, hasLength(optionRequestCount));
+    expect(tags.enabled, isTrue);
   });
 
-  testWidgets('live Premium availability shows and immediately hides tags', (
+  testWidgets("a non-Premium account ignores the server's always-off value", (
     tester,
   ) async {
-    final harness = _FolderTagHarness(
-      isPremium: false,
-      isPremiumAvailable: false,
+    final harness = _FolderTagHarness(isPremium: false);
+    final tags = await pumpView(
+      tester,
+      harness,
+      initialPreferences: const {ChatFolderTagController.preferenceKey: true},
     );
-    await pumpView(tester, harness);
+    expect(tags.enabled, isTrue);
 
-    harness.isPremiumAvailable = true;
-    harness.updates.add(_optionUpdate('is_premium_available', true));
+    harness.folders.add(const {
+      '@type': 'updateChatFolders',
+      'chat_folders': <Object>[],
+      'are_tags_enabled': false,
+    });
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('folder-tags-premium-lock')),
-      findsOneWidget,
-    );
 
-    final pending = _PendingOptions();
-    harness.optionResponse = pending.call;
-    harness.updates.add(_optionUpdate('is_premium_available', false));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('tags-title')), findsNothing);
-    expect(harness.toggleRequests, isEmpty);
+    expect(tags.enabled, isTrue);
+  });
 
-    pending.complete(isPremium: false, isPremiumAvailable: false);
-    await tester.pumpAndSettle();
+  group('folder tags', () {
+    test('read each folder name and its palette colour', () async {
+      SharedPreferences.setMockInitialValues({
+        ChatFolderTagController.preferenceKey: true,
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final folders = StreamController<Map<String, dynamic>>.broadcast();
+      addTearDown(folders.close);
+      final tags = ChatFolderTagController(
+        preferences,
+        query: (_) async => {'@type': 'ok'},
+        folderUpdates: folders.stream,
+        initialFolders: const {
+          '@type': 'updateChatFolders',
+          'chat_folders': [
+            {
+              'id': 3,
+              'name': {
+                'text': {'text': 'Personal'},
+              },
+              'color_id': 1,
+            },
+            {
+              'id': 7,
+              'name': {
+                'text': {'text': 'Work'},
+              },
+              'color_id': -1,
+            },
+          ],
+        },
+      );
+      addTearDown(tags.dispose);
+
+      expect(tags.folders[3]!.title, 'Personal');
+      expect(tags.folders[3]!.color, chatFolderTagColors[1]);
+      // No colour of its own; the row falls back to the accent.
+      expect(tags.folders[7]!.color, isNull);
+
+      expect(tags.tagsFor({7, 3}).map((tag) => tag.title), [
+        'Personal',
+        'Work',
+      ]);
+      expect(tags.tagsFor(const <int>{}), isEmpty);
+    });
+
+    test('report nothing while the preference is off', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final folders = StreamController<Map<String, dynamic>>.broadcast();
+      addTearDown(folders.close);
+      final tags = ChatFolderTagController(
+        preferences,
+        query: (_) async => {'@type': 'ok'},
+        folderUpdates: folders.stream,
+        initialFolders: const {
+          '@type': 'updateChatFolders',
+          'chat_folders': [
+            {
+              'id': 3,
+              'name': {
+                'text': {'text': 'Personal'},
+              },
+              'color_id': 1,
+            },
+          ],
+        },
+      );
+      addTearDown(tags.dispose);
+
+      expect(tags.tagsFor({3}), isEmpty);
+    });
   });
 }
 
 class _FolderTagHarness {
-  _FolderTagHarness({
-    required this.isPremium,
-    required this.isPremiumAvailable,
-  });
+  _FolderTagHarness({required this.isPremium});
 
   bool isPremium;
-  bool isPremiumAvailable;
   final updates = StreamController<Map<String, dynamic>>.broadcast(sync: true);
+  final folders = StreamController<Map<String, dynamic>>.broadcast(sync: true);
   final requests = <Map<String, dynamic>>[];
-  Future<Map<String, dynamic>> Function(String name)? optionResponse;
   Future<Map<String, dynamic>> Function()? toggleResponse;
-  int lockedActivations = 0;
 
   Iterable<Map<String, dynamic>> get toggleRequests =>
       requests.where((request) => request['@type'] == 'toggleChatFolderTags');
-
-  List<Map<String, dynamic>> get optionRequests =>
-      requests.where((request) => request['@type'] == 'getOption').toList();
-
-  void activateLocked() => lockedActivations++;
 
   Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
     requests.add(request);
@@ -289,42 +273,16 @@ class _FolderTagHarness {
         '@type': 'recommendedChatFolders',
         'chat_folders': <Object>[],
       },
-      'getOption' =>
-        optionResponse != null
-            ? await optionResponse!(request['name'] as String)
-            : {
-                '@type': 'optionValueBoolean',
-                'value': request['name'] == 'is_premium'
-                    ? isPremium
-                    : isPremiumAvailable,
-              },
+      'getOption' => {
+        '@type': 'optionValueBoolean',
+        'value': request['name'] == 'is_premium' && isPremium,
+      },
       'toggleChatFolderTags' =>
         toggleResponse == null ? {'@type': 'ok'} : await toggleResponse!(),
       _ => {'@type': 'ok'},
     };
   }
 
-  Future<void> dispose() => updates.close();
+  Future<void> dispose() =>
+      Future.wait<void>([updates.close(), folders.close()]);
 }
-
-class _PendingOptions {
-  final premium = Completer<Map<String, dynamic>>();
-  final availability = Completer<Map<String, dynamic>>();
-
-  Future<Map<String, dynamic>> call(String name) =>
-      name == 'is_premium' ? premium.future : availability.future;
-
-  void complete({required bool isPremium, required bool isPremiumAvailable}) {
-    premium.complete({'@type': 'optionValueBoolean', 'value': isPremium});
-    availability.complete({
-      '@type': 'optionValueBoolean',
-      'value': isPremiumAvailable,
-    });
-  }
-}
-
-Map<String, dynamic> _optionUpdate(String name, bool value) => {
-  '@type': 'updateOption',
-  'name': name,
-  'value': {'@type': 'optionValueBoolean', 'value': value},
-};

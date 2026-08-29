@@ -745,13 +745,24 @@ class _AccountInactivityViewState extends State<AccountInactivityView> {
     children: [
       _SecurityCard(
         children: [
+          // A single-choice list, not a set of destinations: no chevron, and
+          // the current value carries a trailing brand check the way every
+          // other picker in 设置 does. Swapping the leading glyph for a
+          // check-circle instead left all six rows reading alike.
           for (final days in _options)
-            _SecurityActionRow(
-              icon: days == _days
-                  ? HeroAppIcons.circleCheck
-                  : HeroAppIcons.clock,
+            SettingsRow(
+              key: ValueKey('account-inactivity-$days'),
               title: _label(days),
+              leading: const SettingsLeadingIcon(icon: HeroAppIcons.clock),
+              showChevron: false,
               onTap: _working ? null : () => _set(days),
+              trailing: days == _days
+                  ? AppIcon(
+                      HeroAppIcons.check,
+                      size: AppIconSize.lg,
+                      color: AppTheme.brand,
+                    )
+                  : null,
             ),
         ],
       ),

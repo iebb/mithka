@@ -53,6 +53,7 @@ import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
 import 'chat_delete_dialog.dart';
 import 'chat_delete_policy.dart';
+import 'chat_folder_tag_controller.dart';
 import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
 import 'chat_row_view.dart';
@@ -844,7 +845,7 @@ class _ChatListViewState extends State<ChatListView>
     if (positions.length != 1) return;
     final position = positions.single;
     final theme = context.read<ThemeController>();
-    final rowHeight = AppMetric.chatListRowExtent(context) + 0.5;
+    final rowHeight = chatListRowExtentFor(context, listen: false) + 0.5;
     final archiveMode = effectiveChatListArchiveDisplayMode(
       theme.archivedChatsDisplayMode,
     );
@@ -872,7 +873,7 @@ class _ChatListViewState extends State<ChatListView>
         setState(() => _archiveRevealed = false);
       }
     }
-    if (position.extentAfter < AppMetric.chatListRowExtent(context) * 8) {
+    if (position.extentAfter < rowHeight * 8) {
       _model.loadMore();
     }
   }
@@ -1483,7 +1484,7 @@ class _ChatListViewState extends State<ChatListView>
     }
     return chatListItemScrollOffset(
       itemIndex: itemIndex,
-      rowHeight: AppMetric.chatListRowExtent(context),
+      rowHeight: chatListRowExtentFor(context, listen: false),
       maxScrollExtent: _scrollController.position.maxScrollExtent,
       leadingExtent: _leadingListControlsExtent(
         context.read<ThemeController>(),
@@ -2165,7 +2166,7 @@ class _ChatListViewState extends State<ChatListView>
           color: c.background,
           child: LayoutBuilder(
             builder: (context, geo) {
-              final rowH = AppMetric.chatListRowExtent(context) + 0.5;
+              final rowH = chatListRowExtentFor(context) + 0.5;
               if (entries.isEmpty && !showInlineArchive) {
                 return ListView(
                   primary: false,
@@ -2237,7 +2238,7 @@ class _ChatListViewState extends State<ChatListView>
       color: c.background,
       child: LayoutBuilder(
         builder: (context, geo) {
-          final rowH = AppMetric.chatListRowExtent(context) + 0.5;
+          final rowH = chatListRowExtentFor(context) + 0.5;
           final searchHeight = leadingControlsExtent;
           final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
@@ -3055,7 +3056,7 @@ class _ChatRowPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final rowHeight = AppMetric.chatListRowExtent(context);
+    final rowHeight = chatListRowExtentFor(context);
     return SizedBox(
       height: rowHeight,
       child: Padding(

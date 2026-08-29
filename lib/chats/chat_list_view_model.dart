@@ -821,6 +821,7 @@ class ChatListViewModel extends ChangeNotifier {
           final folderId = list.integer('chat_folder_id');
           if (folderId != null) {
             _folderOrders.putIfAbsent(folderId, () => {})[id] = 1;
+            _mutate(id, (s) => s.folderIds.add(folderId));
           }
         }
         _scheduleResort();
@@ -836,7 +837,10 @@ class ChatListViewModel extends ChangeNotifier {
             _mutate(id, (s) => s.archiveOrder = 0);
           case 'chatListFolder':
             final folderId = list.integer('chat_folder_id');
-            if (folderId != null) _folderOrders[folderId]?.remove(id);
+            if (folderId != null) {
+              _folderOrders[folderId]?.remove(id);
+              _mutate(id, (s) => s.folderIds.remove(folderId));
+            }
         }
         _scheduleResort();
 
@@ -1008,6 +1012,13 @@ class ChatListViewModel extends ChangeNotifier {
         } else {
           orders.remove(id);
         }
+        _mutate(id, (s) {
+          if (order > 0) {
+            s.folderIds.add(folderId);
+          } else {
+            s.folderIds.remove(folderId);
+          }
+        });
     }
   }
 

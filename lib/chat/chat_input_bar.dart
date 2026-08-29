@@ -426,6 +426,19 @@ class _ComposerEnterToSendFormatter extends TextInputFormatter {
   }
 }
 
+/// Incoming chat updates are frequent while a user is typing. Rebuilding the
+/// editable field for each one can make Flutter tear down and recreate the
+/// platform input connection, which presents as a blinking keyboard (and is
+/// especially visible with third-party IMEs). While focused, only rebuild for
+/// state that actually affects the composer; when unfocused, keep the previous
+/// revision-driven refresh behavior.
+@visibleForTesting
+bool shouldRebuildComposerForVmUpdate({
+  required bool revisionChanged,
+  required bool localChanged,
+  required bool hasFocus,
+}) => localChanged || (revisionChanged && !hasFocus);
+
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({
     super.key,
@@ -1118,7 +1131,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
         hadQuickReplyContext != _quickReplyContextVisible ||
         !identical(previousBotCommandQuery, _botCommandQuery) ||
         !identical(previousBotCommandCandidates, _botCommandCandidates);
-    if (mounted && (revisionChanged || localChanged)) setState(() {});
+    if (mounted &&
+        shouldRebuildComposerForVmUpdate(
+          revisionChanged: revisionChanged,
+          localChanged: localChanged,
+          hasFocus: _focus.hasFocus,
+        )) {
+      setState(() {});
+    }
   }
 
   void _requestInitialFocusIfReady() {

@@ -563,6 +563,11 @@ class ChatSummary {
   bool
   isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
 
+  /// Chat folders this chat currently sits in, kept from its TDLib chat-list
+  /// positions. Lets a chat-list row draw its folder tags without asking
+  /// TDLib — or recomputing folder filters — once per row.
+  final Set<int> folderIds = {};
+
   /// Groups & channels use a rounded-square avatar unless UI preferences
   /// override them; people use a circle.
   bool get usesSquareAvatar =>

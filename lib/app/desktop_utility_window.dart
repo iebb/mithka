@@ -31,6 +31,7 @@ import '../chat/shared_media_view.dart';
 import '../chat/telegram_ai_editor_view.dart';
 import '../chat/telegram_ai_service.dart';
 import '../chat/video_playback_preferences.dart';
+import '../chats/chat_folder_tag_controller.dart';
 import '../chats/search_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
@@ -156,6 +157,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   late final GroupRemarkController _groupRemarks = GroupRemarkController(
     widget.prefs,
     initialAccountUserId: widget.arguments.accountUserId,
+  );
+  late final ChatFolderTagController _folderTags = ChatFolderTagController(
+    widget.prefs,
   );
   late final MithkaProService _mithkaPro = MithkaProService.shared;
   late final AppIconController _appIcons = AppIconController(widget.prefs);
@@ -392,6 +396,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     _calls.dispose();
     _performance.dispose();
     _groupRemarks.dispose();
+    _folderTags.dispose();
     _appIcons.dispose();
     _developer.dispose();
     _safetyNotice.dispose();
@@ -755,6 +760,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       ChangeNotifierProvider.value(value: _ai),
       ChangeNotifierProvider.value(value: _locale),
       ChangeNotifierProvider.value(value: _groupRemarks),
+      ChangeNotifierProvider.value(value: _folderTags),
       ChangeNotifierProvider.value(value: _mithkaPro),
       ChangeNotifierProvider.value(value: _appIcons),
       ChangeNotifierProvider.value(value: _autoDownload),
@@ -788,10 +794,14 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
           builder: (context, child) {
             final media = MediaQuery.of(context);
             final currentTheme = Theme.of(context);
+            // An installed theme names its own on-accent ink; a colour the
+            // user picked in 外观 has none, and derives one.
+            final usesCloudTheme = _theme.usesCloudThemeForUi(
+              currentTheme.brightness,
+            );
             AppTheme.applyBrand(
-              _theme.usesCloudThemeForUi(currentTheme.brightness)
-                  ? context.colors.linkBlue
-                  : _theme.brandColor,
+              usesCloudTheme ? context.colors.linkBlue : _theme.brandColor,
+              onAccent: usesCloudTheme ? context.colors.onAccent : null,
             );
             final themedChild = Theme(
               data: currentTheme.copyWith(
