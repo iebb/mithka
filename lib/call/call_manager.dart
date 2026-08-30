@@ -179,6 +179,10 @@ class CallManager extends ChangeNotifier {
     isMuted = false;
     isSpeaker = false;
     isVideoEnabled = isVideo;
+    final existing = call;
+    if (existing != null && existing.callId != 0) {
+      _end(reportSystem: true);
+    }
     call = ActiveCall(
       callId: 0,
       peerUserId: userId,
