@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_folder_tag_controller.dart';
+import 'package:mithka/chats/chat_list_view_model.dart';
 import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -95,7 +96,7 @@ void main() {
     return tags;
   }
 
-  testWidgets('tags sit between the chat name and its message', (tester) async {
+  testWidgets('tags sit along the bottom, under the message', (tester) async {
     await pumpRow(tester, _chat(folders: {3}));
 
     final tagLine = find.byKey(const ValueKey('chat-row-folder-tags'));
@@ -105,8 +106,8 @@ void main() {
     final name = tester.getCenter(find.text('NekokoLPA insider')).dy;
     final tag = tester.getCenter(find.text('Personal')).dy;
     final message = tester.getCenter(find.byType(ChatPreviewText)).dy;
-    expect(tag, greaterThan(name));
-    expect(tag, lessThan(message));
+    expect(message, greaterThan(name));
+    expect(tag, greaterThan(message));
     expect(tester.takeException(), isNull);
   });
 
@@ -160,6 +161,58 @@ void main() {
 
     expect(find.byKey(const ValueKey('chat-row-folder-tags')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('folder membership on the chat summary', () {
+    Map<String, dynamic> rawChat() => {
+      '@type': 'chat',
+      'id': 42,
+      'title': 'NekokoLPA insider',
+      'type': {'@type': 'chatTypePrivate', 'user_id': 7},
+      'positions': const <Object>[],
+    };
+
+    Map<String, dynamic> folderPosition(int folderId, int order) => {
+      '@type': 'updateChatPosition',
+      'chat_id': 42,
+      'position': {
+        '@type': 'chatPosition',
+        'list': {'@type': 'chatListFolder', 'chat_folder_id': folderId},
+        'order': order,
+      },
+    };
+
+    test('survives the chat being re-ingested', () async {
+      // The regression: a re-ingest builds a fresh ChatSummary, and a raw chat
+      // only carries positions for chat lists TDLib has loaded — so the tags
+      // rendered once and then vanished on the next update for that chat.
+      final model = ChatListViewModel();
+      addTearDown(model.dispose);
+      await model.ingestRawChatForTesting(rawChat());
+      model.applyUpdateForTesting(folderPosition(3, 100));
+
+      expect(model.chatsForFolder(3).single.folderIds, {3});
+
+      await model.ingestRawChatForTesting(rawChat());
+
+      expect(
+        model.chatsForFolder(3).single.folderIds,
+        {3},
+        reason: 're-ingesting must not drop folder membership',
+      );
+    });
+
+    test('clears when the chat actually leaves the folder', () async {
+      final model = ChatListViewModel();
+      addTearDown(model.dispose);
+      await model.ingestRawChatForTesting(rawChat());
+      model.applyUpdateForTesting(folderPosition(3, 100));
+      expect(model.chatsForFolder(3), hasLength(1));
+
+      model.applyUpdateForTesting(folderPosition(3, 0));
+
+      expect(model.chatsForFolder(3), isEmpty);
+    });
   });
 
   testWidgets('the tag line still fits at a large text scale', (tester) async {

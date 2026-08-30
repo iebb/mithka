@@ -181,6 +181,24 @@ class MessageSenderOption {
   }
 }
 
+@visibleForTesting
+MessageSenderOption? preferredMessageSenderOption(
+  List<MessageSenderOption> options, {
+  Map<String, dynamic>? preferredSender,
+  MessageSenderOption? current,
+}) {
+  if (current != null &&
+      options.any((option) => option.sameSender(current.sender))) {
+    return options.firstWhere((option) => option.sameSender(current.sender));
+  }
+  if (preferredSender != null) {
+    for (final option in options) {
+      if (option.sameSender(preferredSender)) return option;
+    }
+  }
+  return options.isEmpty ? null : options.first;
+}
+
 class MentionCandidate {
   const MentionCandidate({
     required this.userId,
@@ -416,6 +434,7 @@ class ChatViewModel extends ChangeNotifier {
   ChatMessage? _replyBeforeEditing;
   List<MessageSenderOption> availableMessageSenders = const [];
   MessageSenderOption? selectedMessageSender;
+  Map<String, dynamic>? _messageSenderFromChat;
 
   // Live header state.
   bool peerOnline = false;
@@ -905,19 +924,11 @@ class ChatViewModel extends ChangeNotifier {
         if (option != null) loaded.add(option);
       }
       availableMessageSenders = loaded;
-      if (selectedMessageSender == null && loaded.isNotEmpty) {
-        selectedMessageSender = loaded.first;
-      } else if (selectedMessageSender != null) {
-        MessageSenderOption? selected;
-        for (final option in loaded) {
-          if (option.sameSender(selectedMessageSender!.sender)) {
-            selected = option;
-            break;
-          }
-        }
-        selectedMessageSender =
-            selected ?? (loaded.isNotEmpty ? loaded.first : null);
-      }
+      selectedMessageSender = preferredMessageSenderOption(
+        loaded,
+        preferredSender: _messageSenderFromChat,
+        current: selectedMessageSender,
+      );
       notifyListeners();
     } catch (_) {}
   }
@@ -983,6 +994,7 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> selectMessageSender(MessageSenderOption option) async {
     final previous = selectedMessageSender;
     selectedMessageSender = option;
+    _messageSenderFromChat = option.sender;
     notifyListeners();
     try {
       await _client.query({
@@ -992,6 +1004,7 @@ class ChatViewModel extends ChangeNotifier {
       });
     } catch (_) {
       selectedMessageSender = previous;
+      _messageSenderFromChat = previous?.sender;
       notifyListeners();
     }
   }
@@ -3234,6 +3247,7 @@ class ChatViewModel extends ChangeNotifier {
     }
     if (_chatOpenWorkIsStale) return;
     peerTitle = chat.str('title') ?? peerTitle;
+    _messageSenderFromChat = chat.obj('message_sender_id');
     peerPhoto = TDParse.smallPhoto(chat.obj('photo'));
     firstContactInfo = ChatFirstContactInfo.fromActionBar(
       chat.obj('action_bar'),

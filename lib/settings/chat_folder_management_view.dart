@@ -11,6 +11,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -348,7 +349,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     final entries = _orderedEntries();
     return SettingsPanel(
       key: const ValueKey('folder-list'),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      clipBehavior: Clip.antiAlias,
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -387,11 +388,23 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     ),
   );
 
+  /// The inset [SettingsRow] applies, so these hand-rolled rows line up with
+  /// the settings rows elsewhere on the page while still spanning the card.
+  static EdgeInsets get _rowInset => EdgeInsets.only(
+    left: isDesktopTargetPlatform()
+        ? AppSpacing.lg
+        : AppMetric.settingsLeadingInset,
+    right: isDesktopTargetPlatform()
+        ? AppSpacing.lg
+        : AppMetric.settingsTrailingInset,
+  );
+
   Widget _mainListRow(int index, {required bool showDivider}) {
     final c = context.colors;
     return Container(
       key: const ValueKey('folder-main-list'),
       height: SettingsRow.resolveHeight(),
+      padding: _rowInset,
       decoration: BoxDecoration(
         border: showDivider
             ? Border(bottom: BorderSide(color: c.divider, width: 0.5))
@@ -422,6 +435,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     return Container(
       key: ValueKey('folder-${folder.id}'),
       height: SettingsRow.resolveHeight(),
+      padding: _rowInset,
       decoration: BoxDecoration(
         border: showDivider
             ? Border(bottom: BorderSide(color: c.divider, width: 0.5))
@@ -476,7 +490,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       onTap: () => _create(recommendation: folder),
       child: Container(
         constraints: BoxConstraints(minHeight: SettingsRow.resolveHeight()),
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: _rowInset.copyWith(top: AppSpacing.sm, bottom: AppSpacing.sm),
         child: Row(
           children: [
             AppIcon(HeroAppIcons.plus, size: 21, color: AppTheme.brand),
@@ -516,12 +530,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   Widget _sectionTitle(String text, {required Key key}) =>
       SettingsSectionHeader.text(text, key: key);
 
+  /// No horizontal padding: a settings row draws its own leading and trailing
+  /// insets and its tap surface has to reach the card's edges. Padding here
+  /// left the highlight floating in the middle of the card.
   Widget _card({required Key key, required List<Widget> children}) =>
-      SettingsPanel(
-        key: key,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        child: Column(children: children),
-      );
+      SettingsCard(key: key, children: children);
 
   Widget _divider() => Container(height: 0.5, color: context.colors.divider);
 }

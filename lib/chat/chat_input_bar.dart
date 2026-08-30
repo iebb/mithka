@@ -426,6 +426,15 @@ class _ComposerEnterToSendFormatter extends TextInputFormatter {
   }
 }
 
+/// The view-model state the composer draws itself. See
+/// [_ChatInputBarState._renderedVmState].
+typedef _ComposerVmState = ({
+  int autoDeleteTime,
+  Object? selectedSender,
+  bool canChooseSender,
+  bool peerIsBot,
+});
+
 /// Incoming chat updates are frequent while a user is typing. Rebuilding the
 /// editable field for each one can make Flutter tear down and recreate the
 /// platform input connection, which presents as a blinking keyboard (and is
@@ -581,6 +590,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
   ));
   String? _recPath;
   late bool _hasText = vm.draft.trim().isNotEmpty;
+
+  /// Assigned in [initState], never lazily: a `late` initializer would first
+  /// run inside the very [_syncFromVm] call it exists to compare against, and
+  /// so record the new value as the old one.
+  late _ComposerVmState _syncedVmState;
   late bool _aiDraftEligible = isTelegramAiDraftEligible(vm.draft);
   bool _replyKeyboardVisible = false;
   Timer? _mentionSearchTimer;
@@ -632,6 +646,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void initState() {
     super.initState();
+    _syncedVmState = _renderedVmState;
     _botPlatform = widget.botPlatformForTesting ?? BotPlatformService();
     DesktopChatComposerActions._register(
       _desktopActionOwner,
@@ -1039,6 +1054,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
     };
   }
 
+  /// The view-model state the composer draws itself.
+  ///
+  /// [shouldRebuildComposerForVmUpdate] stops rebuilding on bare revision
+  /// bumps while the field has focus, so anything rendered from the view model
+  /// has to be compared here or it silently stops updating mid-typing — which
+  /// is how the auto-delete indicator got stuck on screen after the chat's
+  /// timer was turned off. Add to this record when the composer starts drawing
+  /// another view-model value.
+  _ComposerVmState get _renderedVmState => (
+    autoDeleteTime: vm.messageAutoDeleteTime,
+    selectedSender: vm.selectedMessageSender,
+    canChooseSender: vm.canChooseMessageSender,
+    peerIsBot: vm.peerIsBot,
+  );
+
   void _syncFromVm() {
     // A notification that changed only the typing subtitle or the peer's
     // online status leaves the revision alone; nothing here renders either.
@@ -1046,6 +1076,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final revisionChanged = revision != _syncedComposerRevision;
     _syncedComposerRevision = revision;
     final hadText = _hasText;
+    final previousVmState = _syncedVmState;
+    _syncedVmState = _renderedVmState;
     final wasAiDraftEligible = _aiDraftEligible;
     final hadQuickReplyContext = _quickReplyContextVisible;
     final voicePanelWasClosed = !_canSendVoiceNotes && _panel == _Panel.voice;
@@ -1129,6 +1161,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         hadText != _hasText ||
         wasAiDraftEligible != _aiDraftEligible ||
         hadQuickReplyContext != _quickReplyContextVisible ||
+        previousVmState != _syncedVmState ||
         !identical(previousBotCommandQuery, _botCommandQuery) ||
         !identical(previousBotCommandCandidates, _botCommandCandidates);
     if (mounted &&

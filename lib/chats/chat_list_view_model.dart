@@ -975,6 +975,19 @@ class ChatListViewModel extends ChangeNotifier {
 
   // MARK: - Mutation helpers
 
+  /// Restores [ChatSummary.folderIds] on a summary that has just been parsed
+  /// fresh from TDLib.
+  ///
+  /// A raw chat only carries positions for chat lists TDLib has loaded, so a
+  /// re-ingest would otherwise drop every folder the chat is in — the tags
+  /// appeared and then vanished on the next update. [_folderOrders] is the
+  /// same store [_projectChats] filters on, so the two cannot disagree.
+  void _restoreFolderIds(ChatSummary summary) {
+    for (final entry in _folderOrders.entries) {
+      if ((entry.value[summary.id] ?? 0) > 0) summary.folderIds.add(entry.key);
+    }
+  }
+
   void _mutate(int id, void Function(ChatSummary) body) {
     final s = _map[id] ?? _communityDirectoryChats[id];
     if (s == null) return;
@@ -1072,6 +1085,7 @@ class ChatListViewModel extends ChangeNotifier {
     if (cachedJoined == false) {
       _map.remove(summary.id);
       _communityDirectoryChats[summary.id] = summary;
+      _restoreFolderIds(summary);
       // After the chat is in a map: the peer resolution can now complete
       // synchronously off the user cache, and it looks the chat up by id.
       _resolvePeerIfNeeded(summary);
@@ -1094,6 +1108,7 @@ class ChatListViewModel extends ChangeNotifier {
     _viewableCommunityChatIds.remove(summary.id);
     _checkingCommunityChatAccess.remove(summary.id);
     _map[summary.id] = summary;
+    _restoreFolderIds(summary);
     _resolvePeerIfNeeded(summary);
     _applyPositions(summary.id, raw.objects('positions'));
     _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));

@@ -146,10 +146,6 @@ class ChatRowView extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (folderTags.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.xxs),
-                  _folderTags(context, folderTags),
-                ],
                 const SizedBox(height: AppSpacing.xs),
                 chat.draftText.trim().isNotEmpty
                     ? ChatPreviewText(
@@ -162,6 +158,10 @@ class ChatRowView extends StatelessWidget {
                         message: chat.lastMessage,
                         fontSize: previewFontSize,
                       ),
+                if (folderTags.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xxs),
+                  _folderTags(context, folderTags),
+                ],
               ],
             ),
           ),
@@ -172,9 +172,9 @@ class ChatRowView extends StatelessWidget {
     );
   }
 
-  /// 文件夹标签, on their own line between the chat's name and its preview.
-  /// Names only, in each folder's own colour — a chat in five folders would
-  /// turn the row into a wall of chips otherwise.
+  /// 文件夹标签, on their own line along the bottom of the row, under the
+  /// message preview. Names only, in each folder's own colour — a chat in five
+  /// folders would turn the row into a wall of chips otherwise.
   Widget _folderTags(BuildContext context, List<ChatFolderTag> tags) {
     final fontSize = AppTextSize.chatListFolderTag();
     return SizedBox(

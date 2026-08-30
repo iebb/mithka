@@ -129,16 +129,49 @@ class ChatFolderTagController extends ChangeNotifier {
     final enabled = isPremium
         ? (_serverEnabled ?? _preferences?.getBool(preferenceKey) ?? false)
         : _preferences?.getBool(preferenceKey) ?? false;
-    if (_isPremium == isPremium && _enabled == enabled) return;
+    if (_isPremium == isPremium && _enabled == enabled) {
+      unawaited(_warmFolderLists());
+      return;
+    }
     _isPremium = isPremium;
     _enabled = enabled;
     notifyListeners();
+    unawaited(_warmFolderLists());
+  }
+
+  /// How deep each folder's list is loaded. Membership is only known for
+  /// chats TDLib has placed in a folder's list, so this bounds how far down
+  /// the chat list tags stay complete.
+  static const _warmLimit = 500;
+
+  final Set<int> _warmedFolders = {};
+
+  /// TDLib reports a chat's position in a folder only once that folder's chat
+  /// list has been loaded, so a fresh session knows membership for no folder
+  /// but the one on screen — which is why rows came up bare. Asking for each
+  /// folder's list is what makes `updateChatPosition` start naming folders,
+  /// and the chat list model turns those into [ChatSummary.folderIds].
+  Future<void> _warmFolderLists() async {
+    if (!_enabled) return;
+    for (final id in _folders.keys.toList()) {
+      if (!_warmedFolders.add(id)) continue;
+      try {
+        await _query({
+          '@type': 'loadChats',
+          'chat_list': {'@type': 'chatListFolder', 'chat_folder_id': id},
+          'limit': _warmLimit,
+        });
+      } catch (_) {
+        // 404 here just means the folder is already fully loaded.
+      }
+    }
   }
 
   Future<void> setEnabled(bool value) async {
     if (_enabled == value) return;
     _enabled = value;
     notifyListeners();
+    unawaited(_warmFolderLists());
     // The device preference is written for every account, Premium included:
     // it is what the next launch reads before TDLib has answered.
     await _preferences?.setBool(preferenceKey, value);
@@ -192,6 +225,8 @@ class ChatFolderTagController extends ChangeNotifier {
       changed = true;
     }
     if (changed && notify) notifyListeners();
+    // A folder added since the last warm-up still needs its list loaded.
+    unawaited(_warmFolderLists());
   }
 
   bool _sameFolders(Map<int, ChatFolderTag> next) {
