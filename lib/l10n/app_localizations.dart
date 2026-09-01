@@ -3268,14 +3268,26 @@ abstract final class AppStringKeys {
   static const downloadsClearActiveDownloads = 'downloadsClearActiveDownloads';
   static const downloadsClearCompletedDownloads =
       'downloadsClearCompletedDownloads';
+  static const downloadsFilterActive = 'downloadsFilterActive';
+  static const downloadsFilterAll = 'downloadsFilterAll';
+  static const downloadsFilterCompleted = 'downloadsFilterCompleted';
   static const downloadsKeepTheCachedFileOrDeleteItFrom =
       'downloadsKeepTheCachedFileOrDeleteItFrom';
+  static const downloadsMediaAnimation = 'downloadsMediaAnimation';
+  static const downloadsMediaPhoto = 'downloadsMediaPhoto';
+  static const downloadsMediaTelegramMedia = 'downloadsMediaTelegramMedia';
+  static const downloadsMediaVideo = 'downloadsMediaVideo';
+  static const downloadsMediaVideoMessage = 'downloadsMediaVideoMessage';
+  static const downloadsMediaVoiceMessage = 'downloadsMediaVoiceMessage';
   static const downloadsNoDownloadsFound = 'downloadsNoDownloadsFound';
+  static const downloadsPauseAllDownloads = 'downloadsPauseAllDownloads';
+  static const downloadsPausedProgress = 'downloadsPausedProgress';
   static const downloadsRefreshDownloads = 'downloadsRefreshDownloads';
   static const downloadsRemoveAndDeleteFile = 'downloadsRemoveAndDeleteFile';
   static const downloadsRemoveAndKeepCachedFile =
       'downloadsRemoveAndKeepCachedFile';
   static const downloadsRemoveFromDownloads = 'downloadsRemoveFromDownloads';
+  static const downloadsResumeAllDownloads = 'downloadsResumeAllDownloads';
   static const downloadsSearchDownloads = 'downloadsSearchDownloads';
   static const groupAdministrationAddCustomReaction =
       'groupAdministrationAddCustomReaction';

@@ -118,6 +118,71 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('limited-access tip and video badge carry no Material glyphs', (
+    tester,
+  ) async {
+    final provider = DefaultAssetPickerProvider.forTest(
+      requestType: RequestType.common,
+      maxAssets: 10,
+    );
+    final delegate = AppAssetPickerBuilderDelegate(
+      provider: provider,
+      // The tip only exists while the OS granted partial access.
+      initialPermission: PermissionState.limited,
+      config: const AssetPickerConfig(maxAssets: 10),
+      locale: const Locale('en'),
+    );
+    addTearDown(delegate.dispose);
+    final video = AssetEntity(
+      id: '1',
+      typeInt: 2,
+      width: 100,
+      height: 100,
+      duration: 6,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Builder(
+          builder: (context) => Column(
+            children: [
+              delegate.accessLimitedBottomTip(context),
+              SizedBox(
+                height: 60,
+                width: 60,
+                child: delegate.videoIndicator(context, video),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final glyphs = tester
+        .widgetList<Icon>(find.byType(Icon))
+        .map((icon) => icon.icon)
+        .whereType<IconData>();
+    expect(glyphs, isNotEmpty);
+    // The package reaches for Icons.warning, Icons.keyboard_arrow_right and
+    // Icons.videocam here. Mithka bundles no Material Icons font, so any that
+    // survive draw as tofu boxes.
+    expect(
+      glyphs.where((glyph) => glyph.fontFamily == 'MaterialIcons'),
+      isEmpty,
+      reason: 'a Material codepoint has no glyph to render',
+    );
+
+    final owned = tester
+        .widgetList<AppIcon>(find.byType(AppIcon))
+        .map((icon) => icon.icon);
+    expect(owned, contains(HeroAppIcons.triangleExclamation));
+    expect(owned, contains(HeroAppIcons.chevronRight));
+    expect(owned, contains(HeroAppIcons.solidFileVideo));
+    expect(find.text('00:06'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('preview header uses owned icons and the app text style', (
     tester,
   ) async {

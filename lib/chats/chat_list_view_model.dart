@@ -645,9 +645,13 @@ class ChatListViewModel extends ChangeNotifier {
     if (chat.unreadCount <= 0 && !chat.isMarkedUnread) return;
     final previousUnread = chat.unreadCount;
     final previousMarked = chat.isMarkedUnread;
+    final previousLastReadInboxMessageId = chat.lastReadInboxMessageId;
     _mutate(chat.id, (s) {
       s.unreadCount = 0;
       s.isMarkedUnread = false;
+      if (s.lastMessageId > s.lastReadInboxMessageId) {
+        s.lastReadInboxMessageId = s.lastMessageId;
+      }
     });
     _resort();
 
@@ -663,6 +667,7 @@ class ChatListViewModel extends ChangeNotifier {
       _mutate(chat.id, (s) {
         s.unreadCount = previousUnread;
         s.isMarkedUnread = previousMarked;
+        s.lastReadInboxMessageId = previousLastReadInboxMessageId;
       });
       _resort();
     });
@@ -690,7 +695,6 @@ class ChatListViewModel extends ChangeNotifier {
       final fresh = TDParse.chat(raw);
       if (fresh == null) return;
       messageId = fresh.lastMessageId;
-      _map[chat.id] = fresh;
     }
     if (messageId <= 0) return;
     await _client.query({
@@ -871,11 +875,22 @@ class ChatListViewModel extends ChangeNotifier {
       case 'updateChatReadInbox':
         final id = update.int64('chat_id');
         if (id == null) return;
-        _mutate(
-          id,
-          (s) =>
-              s.unreadCount = update.integer('unread_count') ?? s.unreadCount,
-        );
+        _mutate(id, (s) {
+          final lastReadInboxMessageId = update.int64(
+            'last_read_inbox_message_id',
+          );
+          // A locally emitted read update can overtake an older TDLib snapshot.
+          // Read boundaries never move backwards, so ignore the stale pair
+          // instead of letting its unread count resurrect a cleared badge.
+          if (lastReadInboxMessageId != null &&
+              lastReadInboxMessageId < s.lastReadInboxMessageId) {
+            return;
+          }
+          if (lastReadInboxMessageId != null) {
+            s.lastReadInboxMessageId = lastReadInboxMessageId;
+          }
+          s.unreadCount = update.integer('unread_count') ?? s.unreadCount;
+        });
         _scheduleResort();
 
       case 'updateChatUnreadMentionCount':
@@ -1074,6 +1089,9 @@ class ChatListViewModel extends ChangeNotifier {
       final recency = _compareChatSnapshotRecency(summary, existing);
       if (recency < 0 || (preserveExistingIfNotNewer && recency == 0)) {
         return;
+      }
+      if (recency == 0) {
+        _preserveFresherReadState(summary, existing);
       }
     }
     if (_meId != null) summary.isSavedMessages = summary.peerUserId == _meId;
@@ -1496,6 +1514,24 @@ class ChatListViewModel extends ChangeNotifier {
       return candidate.date.compareTo(existing.date);
     }
     return candidate.lastMessageId.compareTo(existing.lastMessageId);
+  }
+
+  /// A `getChat` requested by the community catalogue can finish after the
+  /// chat has already been marked read. For the same last-message snapshot,
+  /// the furthest read boundary is authoritative; at an equal boundary the
+  /// smaller unread count reflects more read progress. A genuinely newer last
+  /// message bypasses this merge and is free to add unread messages normally.
+  static void _preserveFresherReadState(
+    ChatSummary candidate,
+    ChatSummary existing,
+  ) {
+    final existingIsFresher =
+        existing.lastReadInboxMessageId > candidate.lastReadInboxMessageId ||
+        (existing.lastReadInboxMessageId == candidate.lastReadInboxMessageId &&
+            existing.unreadCount < candidate.unreadCount);
+    if (!existingIsFresher) return;
+    candidate.lastReadInboxMessageId = existing.lastReadInboxMessageId;
+    candidate.unreadCount = existing.unreadCount;
   }
 
   static int _compare(ChatSummary a, ChatSummary b) {
