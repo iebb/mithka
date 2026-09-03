@@ -151,6 +151,34 @@ enum ChatListSwipeMode {
   final AppIconData icon;
 }
 
+/// Where ordinary web links leave the chat surface.
+///
+/// Telegram links still resolve through TDLib and are unaffected by this
+/// device-wide preference.
+enum LinkOpenMode {
+  askEveryTime(
+    AppStringKeys.linkBrowserAskEveryTime,
+    AppStringKeys.linkBrowserAskEveryTimeDescription,
+    HeroAppIcons.questionCircle,
+  ),
+  internalBrowser(
+    AppStringKeys.linkBrowserMithkaBrowser,
+    AppStringKeys.linkBrowserMithkaBrowserDescription,
+    HeroAppIcons.globe,
+  ),
+  defaultBrowser(
+    AppStringKeys.linkBrowserDefaultBrowser,
+    AppStringKeys.linkBrowserDefaultBrowserDescription,
+    HeroAppIcons.arrowTopRight,
+  );
+
+  const LinkOpenMode(this.label, this.description, this.icon);
+
+  final String label;
+  final String description;
+  final AppIconData icon;
+}
+
 enum MobileMessageActionMenuStyle {
   grid(AppStringKeys.appearanceMessageActionMenuGrid, HeroAppIcons.grip),
   dropdown(
@@ -1113,6 +1141,10 @@ class ThemeController extends ChangeNotifier {
         );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
+    _linkOpenMode = LinkOpenMode.values.firstWhere(
+      (mode) => mode.name == _prefs.getString(_linkOpenModeKey),
+      orElse: () => LinkOpenMode.defaultBrowser,
+    );
     _showSavedMessagesIdentity =
         _prefs.getBool(_showSavedMessagesIdentityKey) ?? false;
     _preserveSenderWhenRepeating =
@@ -1223,6 +1255,7 @@ class ThemeController extends ChangeNotifier {
       'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
+  static const _linkOpenModeKey = 'linkOpenMode.v1';
   static const _showSavedMessagesIdentityKey = 'showSavedMessagesIdentity';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
   static const _quickRepliesEnabledKey = 'quickRepliesEnabled';
@@ -1304,6 +1337,7 @@ class ThemeController extends ChangeNotifier {
   late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
+  late LinkOpenMode _linkOpenMode;
   bool _showSavedMessagesIdentity = false;
   bool _preserveSenderWhenRepeating = true;
   bool _quickRepliesEnabled = true;
@@ -1756,6 +1790,7 @@ class ThemeController extends ChangeNotifier {
       _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
+  LinkOpenMode get linkOpenMode => _linkOpenMode;
   bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get quickRepliesEnabled => _quickRepliesEnabled;
@@ -2588,6 +2623,13 @@ class ThemeController extends ChangeNotifier {
     if (_openChatsAtLatest == value) return;
     _openChatsAtLatest = value;
     _prefs.setBool(_openChatsAtLatestKey, value);
+    notifyListeners();
+  }
+
+  set linkOpenMode(LinkOpenMode value) {
+    if (_linkOpenMode == value) return;
+    _linkOpenMode = value;
+    _prefs.setString(_linkOpenModeKey, value.name);
     notifyListeners();
   }
 

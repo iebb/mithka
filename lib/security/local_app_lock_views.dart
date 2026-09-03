@@ -95,6 +95,9 @@ class _LocalAppLockGateState extends State<LocalAppLockGate> {
   Widget build(BuildContext context) {
     final controller = context.watch<LocalAppLockController>();
     if (!controller.locked) return const SizedBox.shrink();
+    if (controller.storageUnavailable) {
+      return _AppLockStorageUnavailableView(controller: controller);
+    }
     if (controller.biometricEnabled &&
         controller.biometricAvailable &&
         _automaticBiometricEpoch != controller.lockEpoch) {
@@ -111,6 +114,46 @@ class _LocalAppLockGateState extends State<LocalAppLockGate> {
     return _AppUnlockView(
       key: ValueKey(controller.lockEpoch),
       controller: controller,
+    );
+  }
+}
+
+class _AppLockStorageUnavailableView extends StatelessWidget {
+  const _AppLockStorageUnavailableView({required this.controller});
+
+  final LocalAppLockController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _AppLockPalette.of(context);
+    return _AppLockBackdrop(
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppStringKeys.appLockSetupFailed.l10n(context),
+                    textAlign: TextAlign.center,
+                    style: AppTextStyle.title(palette.foreground),
+                  ),
+                  const SizedBox(height: 18),
+                  SettingsHeaderAction(
+                    label: AppStringKeys.aiSummaryRetry,
+                    enabled: !controller.readingStorage,
+                    working: controller.readingStorage,
+                    onTap: () => unawaited(controller.reloadFromStorage()),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

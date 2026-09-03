@@ -1,0 +1,10 @@
+self-hosted-runner:
+  labels:
+    - mithka-physical-ios
+    - mithka-physical-android
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      # GitHub supports this newer token scope, but actionlint 1.7.12 does not.
+      - 'unknown permission scope "copilot-requests"'

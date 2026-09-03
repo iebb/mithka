@@ -109,12 +109,22 @@ void main() {
       find.byKey(const ValueKey('desktopComposerSendOptionsButton')),
       findsNothing,
     );
-    final send = tester.widget<GestureDetector>(
-      find.byKey(const ValueKey('composerSendButton')),
-    );
+    final sendFinder = find.byKey(const ValueKey('composerSendButton'));
+    final send = tester.widget<AppInteractiveSurface>(sendFinder);
     expect(send.onLongPress, isNotNull);
-    final decoration = (send.child! as Container).decoration! as BoxDecoration;
-    expect(decoration.shape, BoxShape.circle);
+    expect(tester.getSize(sendFinder), const Size(44, 44));
+
+    final circularVisual = find.descendant(
+      of: sendFinder,
+      matching: find.byWidgetPredicate((widget) {
+        if (widget is! Container) return false;
+        final decoration = widget.decoration;
+        return decoration is BoxDecoration &&
+            decoration.shape == BoxShape.circle;
+      }),
+    );
+    expect(circularVisual, findsOneWidget);
+    expect(tester.getSize(circularVisual), const Size(36, 36));
   });
 }
 

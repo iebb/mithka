@@ -14,6 +14,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../security/sensitive_clipboard.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 
@@ -253,7 +254,7 @@ class _AccountBackupViewState extends State<AccountBackupView> {
     setState(() => _working = true);
     try {
       final backup = await _service.exportActiveSession();
-      await Clipboard.setData(ClipboardData(text: backup.sessionString));
+      await SensitiveClipboard.shared.copy(backup.sessionString);
       if (mounted) {
         showToast(context, AppStrings.t(AppStringKeys.accountBackupCopied));
       }

@@ -404,6 +404,9 @@ class ChatViewModel extends ChangeNotifier {
   final Map<int, ChatMessage> _messagesById = {};
   final Map<int, ChatMessage> _allMessagesById = {};
   final Map<int, List<ChatMessage>> _messagesBySenderId = {};
+  final Map<int, ValueNotifier<int>> _messageRevisionNotifiers = {};
+  final ValueNotifier<int> _headerRevisionNotifier = ValueNotifier<int>(0);
+  int _transcriptScanVisitsForTesting = 0;
   bool _messageIndexesDirty = true;
   // A pending send makes compareChatMessagesChronologically non-total, so the
   // order-preserving shortcuts below only run while there are none.
@@ -640,16 +643,53 @@ class ChatViewModel extends ChangeNotifier {
   );
 
   int _composerRevision = 0;
+  int _fullViewRevision = 0;
 
   /// Bumped by every notification except the handful proven not to touch
   /// anything the composer renders, so the input bar can skip those rebuilds.
   /// Bumping is the default: a path that forgets to opt out stays correct.
   int get composerRevision => _composerRevision;
 
+  /// Changes only when a notification can affect ChatView's shell, transcript
+  /// boundaries, scrolling, or overlays. Header-only and in-place bubble
+  /// updates keep this stable so ChatView can skip its O(n) synchronization.
+  int get fullViewRevision => _fullViewRevision;
+
+  ValueListenable<int> get headerRevisionListenable => _headerRevisionNotifier;
+
+  ValueListenable<int> messageRevisionListenable(int messageId) =>
+      _messageRevisionNotifiers.putIfAbsent(
+        messageId,
+        () => ValueNotifier<int>(0),
+      );
+
+  @visibleForTesting
+  int get transcriptScanVisitsForTesting => _transcriptScanVisitsForTesting;
+
+  @visibleForTesting
+  int get messageRevisionNotifierCountForTesting =>
+      _messageRevisionNotifiers.length;
+
+  @visibleForTesting
+  void resetTranscriptScanVisitsForTesting() {
+    _transcriptScanVisitsForTesting = 0;
+  }
+
+  @visibleForTesting
+  void primeMessageIndexesForTesting() {
+    _ensureMessageIndexes();
+  }
+
+  bool _recordTranscriptScanVisitForTesting() {
+    _transcriptScanVisitsForTesting++;
+    return true;
+  }
+
   @override
   void notifyListeners() {
     if (_isDisposed) return;
     _composerRevision++;
+    _fullViewRevision++;
     super.notifyListeners();
   }
 
@@ -658,7 +698,36 @@ class ChatViewModel extends ChangeNotifier {
   /// which belong to the header.
   void _notifyComposerNeutral() {
     if (_isDisposed) return;
+    _headerRevisionNotifier.value++;
     super.notifyListeners();
+  }
+
+  /// Rebuilds only materialized bubbles for [messageIds]. The regular model
+  /// notification is deliberately retained: ChatInputBar uses it to invalidate
+  /// AI context and preserves its focused revision-rebuild policy.
+  void _notifyLocalizedMessages(Iterable<int> messageIds) {
+    if (_isDisposed) return;
+    if (!_bumpMaterializedMessageRevisions(messageIds)) return;
+    _composerRevision++;
+    super.notifyListeners();
+  }
+
+  /// Refreshes materialized bubbles while retaining ChatView's full sync for
+  /// cross-message and shell dependencies such as translation and overlays.
+  void _notifyMessagesWithFullViewSync(Iterable<int> messageIds) {
+    if (_isDisposed) return;
+    if (!_bumpMaterializedMessageRevisions(messageIds)) return;
+    notifyListeners();
+  }
+
+  bool _bumpMaterializedMessageRevisions(Iterable<int> messageIds) {
+    var changed = false;
+    for (final messageId in messageIds.toSet()) {
+      final notifier = _messageRevisionNotifiers[messageId];
+      if (notifier != null) notifier.value++;
+      changed = true;
+    }
+    return changed;
   }
 
   int? consumePendingScrollToId() {
@@ -861,7 +930,7 @@ class ChatViewModel extends ChangeNotifier {
       for (final target in _messageRefs(messageId)) {
         target.canRecognizeSpeech = eligible;
       }
-      notifyListeners();
+      _notifyLocalizedMessages([messageId]);
     } catch (_) {
       _speechRecognitionEligibility[messageId] = false;
     } finally {
@@ -1034,6 +1103,11 @@ class ChatViewModel extends ChangeNotifier {
       }
     }
     _messageSendWaiters.clear();
+    for (final notifier in _messageRevisionNotifiers.values) {
+      notifier.dispose();
+    }
+    _messageRevisionNotifiers.clear();
+    _headerRevisionNotifier.dispose();
     telegramAi.dispose();
     super.dispose();
   }
@@ -2310,7 +2384,7 @@ class ChatViewModel extends ChangeNotifier {
       for (final target in _messageRefs(message.id)) {
         target.canRecognizeSpeech = false;
       }
-      notifyListeners();
+      _notifyLocalizedMessages([message.id]);
       throw StateError('SPEECH_RECOGNITION_UNAVAILABLE');
     }
     await _client.query({
@@ -2575,7 +2649,7 @@ class ChatViewModel extends ChangeNotifier {
     for (final target in targets) {
       target.aiSummaryLoading = true;
     }
-    notifyListeners();
+    _notifyLocalizedMessages([message.id]);
     try {
       final result = await telegramAi.summarize(
         chatId: chatId,
@@ -2589,12 +2663,12 @@ class ChatViewModel extends ChangeNotifier {
         target.aiSummaryEntities = TDParse.textEntities(formatted);
         target.aiSummaryLoading = false;
       }
-      notifyListeners();
+      _notifyLocalizedMessages([message.id]);
     } catch (_) {
       for (final target in _messageRefs(message.id)) {
         target.aiSummaryLoading = false;
       }
-      notifyListeners();
+      _notifyLocalizedMessages([message.id]);
       rethrow;
     }
   }
@@ -4782,9 +4856,7 @@ class ChatViewModel extends ChangeNotifier {
         for (final message in targets) {
           message.isSendAcknowledged = true;
         }
-        // Publish a new transcript list so ChatView's identity-based memo
-        // rebuilds the bubble immediately instead of retaining its spinner.
-        _applyKeywordFilter();
+        _notifyLocalizedMessages([messageId]);
 
       case 'updateMessageSendFailed':
         if (messageSendUpdateChatId(update) != chatId) return;
@@ -5078,7 +5150,7 @@ class ChatViewModel extends ChangeNotifier {
             edited = true;
           }
         }
-        if (edited) notifyListeners();
+        if (edited) _notifyLocalizedMessages([mid]);
 
       case 'updateMessageInteractionInfo':
         if (update.int64('chat_id') != chatId) return;
@@ -5108,7 +5180,7 @@ class ChatViewModel extends ChangeNotifier {
               );
             }
           }
-          notifyListeners();
+          _notifyLocalizedMessages([mid]);
         }
 
       case 'updateAvailableMessageEffects':
@@ -5633,6 +5705,7 @@ class ChatViewModel extends ChangeNotifier {
     _messagesBySenderId.clear();
     _pendingMessageCount = 0;
     for (final message in _allMessages) {
+      assert(_recordTranscriptScanVisitForTesting());
       _allMessagesById[message.id] = message;
       if (isPendingChatMessage(message)) ++_pendingMessageCount;
       if (_isBlockedMessage(message)) {
@@ -5727,10 +5800,12 @@ class ChatViewModel extends ChangeNotifier {
     _messagesBySenderId.clear();
     _pendingMessageCount = 0;
     for (final message in _allMessages) {
+      assert(_recordTranscriptScanVisitForTesting());
       _allMessagesById[message.id] = message;
       if (isPendingChatMessage(message)) ++_pendingMessageCount;
     }
     for (final message in messages) {
+      assert(_recordTranscriptScanVisitForTesting());
       _messagesById[message.id] = message;
       final senderId = message.senderId;
       if (senderId != null) {
@@ -5910,7 +5985,17 @@ class ChatViewModel extends ChangeNotifier {
       if (updateLinkPreview) target.linkPreview = linkPreview;
       if (edited) target.isEdited = true;
     }
-    _applyKeywordFilter();
+    // Text can only change transcript membership while text rules exist.
+    // Sender blocking is independent of the body, so the overwhelmingly
+    // common no-keyword path can avoid republishing and rescanning every
+    // loaded message. A full ChatView sync is still required because message
+    // text feeds chat-language detection, automatic translation, the repeat
+    // affordance on the next bubble, and any open message action overlay.
+    if (!KeywordBlocker.shared.hasTextRules) {
+      _notifyMessagesWithFullViewSync([messageId]);
+    } else {
+      _applyKeywordFilter();
+    }
   }
 
   bool _isSending(int messageId) =>

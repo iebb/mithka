@@ -454,6 +454,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
     WidgetsBinding.instance.addObserver(this);
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
@@ -525,6 +526,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 
   void _handleActiveAccountChange() {
+    MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
     _groupRemarks.setActiveAccountUserId(_accounts.activeUserId);
     unawaited(_folderTags.refresh());
     _theme.setActiveAccountSlot(

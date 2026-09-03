@@ -1,6 +1,10 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../tdlib/json_helpers.dart';
+
+typedef ProxySecureRead = Future<String?> Function(String key);
+typedef ProxySecureWrite = Future<void> Function(String key, String? value);
 
 class ProxyConfig {
   const ProxyConfig({
@@ -30,6 +34,9 @@ class ProxyConfig {
   static const _usernameKey = 'mithka.proxy.username';
   static const _passwordKey = 'mithka.proxy.password';
   static const _secretKey = 'mithka.proxy.secret';
+  static const _securePasswordKey = 'mithka.proxy.password.v2';
+  static const _secureSecretKey = 'mithka.proxy.secret.v2';
+  static const _secureStorage = FlutterSecureStorage();
 
   bool get isUsable => enabled && server.trim().isNotEmpty && port > 0;
 
@@ -171,8 +178,28 @@ class ProxyConfig {
     );
   }
 
-  static Future<ProxyConfig> load() async {
-    final prefs = await SharedPreferences.getInstance();
+  static Future<ProxyConfig> load({
+    SharedPreferences? preferences,
+    ProxySecureRead? secureRead,
+    ProxySecureWrite? secureWrite,
+  }) async {
+    final prefs = preferences ?? await SharedPreferences.getInstance();
+    final read = secureRead ?? _defaultSecureRead;
+    final write = secureWrite ?? _defaultSecureWrite;
+    final password = await _loadSensitiveValue(
+      preferences: prefs,
+      legacyKey: _passwordKey,
+      secureKey: _securePasswordKey,
+      secureRead: read,
+      secureWrite: write,
+    );
+    final secret = await _loadSensitiveValue(
+      preferences: prefs,
+      legacyKey: _secretKey,
+      secureKey: _secureSecretKey,
+      secureRead: read,
+      secureWrite: write,
+    );
     return ProxyConfig(
       configured: prefs.containsKey(_enabledKey),
       enabled: prefs.getBool(_enabledKey) ?? false,
@@ -180,21 +207,93 @@ class ProxyConfig {
       server: prefs.getString(_serverKey) ?? '',
       port: prefs.getInt(_portKey) ?? 0,
       username: prefs.getString(_usernameKey) ?? '',
-      password: prefs.getString(_passwordKey) ?? '',
-      secret: prefs.getString(_secretKey) ?? '',
+      password: password,
+      secret: secret,
     );
   }
 
-  static Future<void> save(ProxyConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
+  static Future<void> save(
+    ProxyConfig config, {
+    SharedPreferences? preferences,
+    ProxySecureRead? secureRead,
+    ProxySecureWrite? secureWrite,
+  }) async {
+    final prefs = preferences ?? await SharedPreferences.getInstance();
+    final read = secureRead ?? _defaultSecureRead;
+    final write = secureWrite ?? _defaultSecureWrite;
+    final previousPassword = await read(_securePasswordKey);
+    final previousSecret = await read(_secureSecretKey);
+    try {
+      await write(
+        _securePasswordKey,
+        config.password.isEmpty ? null : config.password,
+      );
+      await write(
+        _secureSecretKey,
+        config.secret.isEmpty ? null : config.secret,
+      );
+      final savedPassword = await read(_securePasswordKey);
+      final savedSecret = await read(_secureSecretKey);
+      if ((savedPassword ?? '') != config.password ||
+          (savedSecret ?? '') != config.secret) {
+        throw StateError('Proxy credentials could not be verified');
+      }
+    } catch (_) {
+      try {
+        await write(_securePasswordKey, previousPassword);
+        await write(_secureSecretKey, previousSecret);
+      } catch (_) {
+        // Preserve the original secure-storage failure for the caller.
+      }
+      rethrow;
+    }
     await prefs.setBool(_enabledKey, config.enabled);
     await prefs.setString(_typeKey, config.type);
     await prefs.setString(_serverKey, config.server.trim());
     await prefs.setInt(_portKey, config.port);
     await prefs.setString(_usernameKey, config.username);
-    await prefs.setString(_passwordKey, config.password);
-    await prefs.setString(_secretKey, config.secret);
+    await prefs.remove(_passwordKey);
+    await prefs.remove(_secretKey);
   }
+
+  static Future<String> _loadSensitiveValue({
+    required SharedPreferences preferences,
+    required String legacyKey,
+    required String secureKey,
+    required ProxySecureRead secureRead,
+    required ProxySecureWrite secureWrite,
+  }) async {
+    final legacyValue = preferences.getString(legacyKey) ?? '';
+    try {
+      final secureValue = await secureRead(secureKey);
+      if (secureValue != null) {
+        await preferences.remove(legacyKey);
+        return secureValue;
+      }
+      if (legacyValue.isEmpty) {
+        await preferences.remove(legacyKey);
+        return '';
+      }
+      await secureWrite(secureKey, legacyValue);
+      final verified = await secureRead(secureKey);
+      if (verified == legacyValue) {
+        await preferences.remove(legacyKey);
+      }
+      return legacyValue;
+    } catch (_) {
+      // Migration is deliberately fail-safe: retain and use the legacy value
+      // until secure storage accepts and confirms it on a later load.
+      return legacyValue;
+    }
+  }
+
+  static Future<String?> _defaultSecureRead(String key) =>
+      _secureStorage.read(key: key);
+
+  static Future<void> _defaultSecureWrite(String key, String? value) =>
+      value == null
+      ? _secureStorage.delete(key: key)
+      : _secureStorage.write(key: key, value: value);
 
   static Future<void> disable() async {
     final current = await load();

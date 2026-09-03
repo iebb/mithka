@@ -2522,7 +2522,8 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
     final c = context.colors;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(
@@ -3586,12 +3587,14 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
     final c = context.colors;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
         left: AppSpacing.xxl,
         right: AppSpacing.xxl,
       ),
-      height: MediaQuery.of(context).padding.top +
+      height:
+          MediaQuery.of(context).padding.top +
           iPadWindowChromeInsetOf(context) +
           AppMetric.composerHeaderHeight,
       color: c.groupedBackground,

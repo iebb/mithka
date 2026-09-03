@@ -4,17 +4,27 @@ import 'package:flutter/foundation.dart';
 
 typedef AiStdoutSink = void Function(String line);
 
-/// Always writes complete AI lifecycle events as one JSON object per line.
+enum AiLogContentPolicy { metadataOnly, fullContent }
+
+/// Writes AI lifecycle events as one JSON object per line.
 ///
-/// Callers should pass model payloads rather than transport headers. Known
-/// credential fields are recursively redacted as a final safeguard.
+/// Message content is omitted by default. Full request and response bodies are
+/// available only through an explicit developer opt-in in a non-release build.
+/// Known credential fields are recursively redacted as a final safeguard even
+/// when that opt-in is active.
 class AiStdoutLogger {
-  AiStdoutLogger({AiStdoutSink? sink, Iterable<String> secrets = const []})
-    : _sink = sink ?? _defaultSink,
-      _secrets = _normalizedSecrets(secrets);
+  AiStdoutLogger({
+    AiStdoutSink? sink,
+    Iterable<String> secrets = const [],
+    AiLogContentPolicy contentPolicy = AiLogContentPolicy.metadataOnly,
+  }) : _sink = sink ?? _defaultSink,
+       _secrets = _normalizedSecrets(secrets),
+       _includeContent =
+           contentPolicy == AiLogContentPolicy.fullContent && !kReleaseMode;
 
   final AiStdoutSink _sink;
   final List<String> _secrets;
+  final bool _includeContent;
   static int _correlationSerial = 0;
 
   String newCorrelationId(String provider) {
@@ -38,7 +48,8 @@ class AiStdoutLogger {
     'correlation_id': correlationId,
     'provider': provider,
     'operation': operation,
-    'payload': payload,
+    if (_includeContent) 'payload': payload,
+    if (!_includeContent) 'payload_metadata': _contentMetadata(payload),
   }, secrets: secrets);
 
   void response({
@@ -53,7 +64,8 @@ class AiStdoutLogger {
     'correlation_id': correlationId,
     'provider': provider,
     'operation': operation,
-    'result': result,
+    if (_includeContent) 'result': result,
+    if (!_includeContent) 'result_metadata': _contentMetadata(result),
   }, secrets: secrets);
 
   void error({
@@ -70,13 +82,32 @@ class AiStdoutLogger {
     'correlation_id': correlationId,
     'provider': provider,
     'operation': operation,
-    'payload': ?payload,
+    if (_includeContent) 'payload': ?payload,
+    if (!_includeContent && payload != null)
+      'payload_metadata': _contentMetadata(payload),
     'error': {
       'type': error.runtimeType.toString(),
-      'message': error.toString(),
-      if (stackTrace != null) 'stack_trace': stackTrace.toString(),
+      if (_includeContent) 'message': error.toString(),
+      if (_includeContent && stackTrace != null)
+        'stack_trace': stackTrace.toString(),
     },
   }, secrets: secrets);
+
+  static Map<String, Object> _contentMetadata(Object? value) {
+    if (value == null) return const {'type': 'null'};
+    if (value is String) {
+      return {'type': 'string', 'character_count': value.runes.length};
+    }
+    if (value is Map) {
+      return {'type': 'map', 'entry_count': value.length};
+    }
+    if (value is Iterable) {
+      return {'type': 'list', 'item_count': value.length};
+    }
+    if (value is bool) return const {'type': 'boolean'};
+    if (value is num) return const {'type': 'number'};
+    return {'type': value.runtimeType.toString()};
+  }
 
   void _emit(
     Map<String, Object?> event, {
@@ -222,4 +253,8 @@ class AiStdoutLogger {
   }
 }
 
-final AiStdoutLogger aiStdoutLogger = AiStdoutLogger();
+const _developerFullAiLogs = bool.fromEnvironment('MITHKA_AI_LOG_FULL_CONTENT');
+
+final AiStdoutLogger aiStdoutLogger = kDebugMode && _developerFullAiLogs
+    ? AiStdoutLogger(contentPolicy: AiLogContentPolicy.fullContent)
+    : AiStdoutLogger();

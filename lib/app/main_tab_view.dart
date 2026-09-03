@@ -31,6 +31,7 @@ import '../chats/archived_chats_view.dart';
 import '../chats/chat_list_view.dart';
 import '../communities/community_view.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/ui_components.dart';
 import '../contacts/contacts_view.dart';
@@ -2214,8 +2215,9 @@ class _ClassicTabBar extends StatelessWidget {
             children: [
               for (var i = 0; i < items.length; i++)
                 Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  child: AppInteractiveSurface(
+                    semanticLabel: items[i].label.l10n(context),
+                    selected: selection == i,
                     onTap: () => onSelect(i),
                     child: Center(
                       child: Padding(

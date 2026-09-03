@@ -245,6 +245,13 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
                             value: progress,
                             min: 0,
                             max: 1,
+                            semanticLabel: AppStrings.t(
+                              AppStringKeys.videoPlaybackSwipeAdjustProgress,
+                            ),
+                            semanticValue:
+                                '${_duration(value.position.inSeconds)} / ${_duration(value.duration.inSeconds)}',
+                            semanticValueFormatter: (fraction) =>
+                                '${_duration((value.duration.inSeconds * fraction).round())} / ${_duration(value.duration.inSeconds)}',
                             onChanged: (fraction) => _controller.seekTo(
                               Duration(
                                 milliseconds: (totalMs * fraction).round(),
@@ -280,6 +287,11 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
                             min: 0,
                             max: totalMs.toDouble(),
                             minimumGap: 250,
+                            semanticLabel: AppStrings.t(
+                              AppStringKeys.mediaSendPreviewVideoTrimRange,
+                            ),
+                            semanticValue:
+                                '${_duration((_trimRange.start / 1000).floor())}–${_duration((_trimRange.end / 1000).ceil())}',
                             onChanged: (start, end) {
                               if (!_exporting) {
                                 setState(

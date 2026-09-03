@@ -289,7 +289,8 @@ class _LoginViewState extends State<LoginView> {
             ),
             if (canGoBack)
               Positioned(
-                top: MediaQuery.of(context).padding.top +
+                top:
+                    MediaQuery.of(context).padding.top +
                     iPadWindowChromeInsetOf(context) +
                     6,
                 left: 6,
@@ -316,7 +317,8 @@ class _LoginViewState extends State<LoginView> {
                 ),
               ),
             Positioned(
-              top: MediaQuery.of(context).padding.top +
+              top:
+                  MediaQuery.of(context).padding.top +
                   iPadWindowChromeInsetOf(context) +
                   6,
               right: 6,

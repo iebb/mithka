@@ -36,10 +36,11 @@
 set -e
 
 FLUTTER_VERSION="3.44.2"
+COCOAPODS_VERSION="1.17.0"
 TGVOIP_RELEASE_TAG="tgvoip-telegram-ios-6e370e06d147"
 TGVOIP_URL="${TGVOIP_WEBRTC_XCFRAMEWORK_URL:-https://github.com/iebb/mithka-tdjson/releases/download/${TGVOIP_RELEASE_TAG}/tgvoip-ios.xcframework.zip}"
 TGVOIP_SHA256="${TGVOIP_WEBRTC_XCFRAMEWORK_SHA256:-a1da44189af3802fcc0900696c5cdc549ffc2e53c5a2a0bab713a208aefe2737}"
-SQLITE3_VERSION="3.5.1"
+SQLITE3_VERSION="3.5.2"
 SQLITE3_IOS_ARM64_ASSET="libsqlite3.arm64.ios.dylib"
 SQLITE3_IOS_ARM64_SHA256="f1bc69a4304a21e472c15f849c34ae46539483cfa7ce901f54175c6d6cc17991"
 SQLITE3_IOS_ARM64_URL="https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-${SQLITE3_VERSION}/${SQLITE3_IOS_ARM64_ASSET}"
@@ -65,6 +66,21 @@ retry() {
     n=$((n + 1))
     delay=$((delay * 2))
   done
+}
+
+ensure_cocoapods() {
+  installed_version="$(pod --version 2>/dev/null || true)"
+  if [ "$installed_version" != "$COCOAPODS_VERSION" ]; then
+    echo "▸ installing CocoaPods $COCOAPODS_VERSION"
+    retry 3 10 sudo gem install cocoapods -v "$COCOAPODS_VERSION" --no-document
+    hash -r
+    installed_version="$(pod --version 2>/dev/null || true)"
+  fi
+  if [ "$installed_version" != "$COCOAPODS_VERSION" ]; then
+    echo "error: expected CocoaPods $COCOAPODS_VERSION, found ${installed_version:-missing}" >&2
+    exit 1
+  fi
+  echo "▸ using CocoaPods $installed_version"
 }
 
 pod_install_with_retry() {
@@ -242,6 +258,7 @@ if ! command -v flutter >/dev/null 2>&1; then
   export PATH="$HOME/flutter/bin:$PATH"
 fi
 flutter --version
+ensure_cocoapods
 
 # --- Telegram credentials → lib/config/secrets.dart ------------------------
 : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID in the Xcode Cloud workflow environment}"
@@ -303,10 +320,6 @@ print("SENTRY_ENVIRONMENT=" + environment.replace("\\n", "").replace("\\r", ""))
 PY
 
 # --- CocoaPods --------------------------------------------------------------
-if ! command -v pod >/dev/null 2>&1; then
-  echo "▸ installing CocoaPods"
-  retry 3 10 brew install cocoapods || retry 3 10 sudo gem install cocoapods
-fi
 echo "▸ pod install"
 cd ios
 # Xcode Cloud can restore or leave behind a stale Pods sandbox. The archive

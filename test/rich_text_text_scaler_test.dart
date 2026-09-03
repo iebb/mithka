@@ -16,10 +16,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _withScaler(
-        1.5,
-        const TelegramRichText(text: 'hello', entities: []),
-      ),
+      _withScaler(1.5, const TelegramRichText(text: 'hello')),
     );
 
     final richText = tester.widget<RichText>(find.byType(RichText));

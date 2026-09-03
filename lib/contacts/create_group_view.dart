@@ -134,7 +134,8 @@ class _CreateGroupViewState extends State<CreateGroupView> {
     final canCreate = _selected.isNotEmpty && !_creating;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(

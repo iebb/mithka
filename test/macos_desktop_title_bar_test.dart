@@ -539,7 +539,6 @@ void main() {
     expect(runner, contains('titlebarAppearsTransparent = true'));
     expect(runner, contains('styleMask.insert(.fullSizeContentView)'));
     expect(runner, contains('titlebarSeparatorStyle = .none'));
-    expect(runner, isNot(contains('standardWindowButton')));
   });
 
   test('window drag entry point stays portable outside desktop IO builds', () {

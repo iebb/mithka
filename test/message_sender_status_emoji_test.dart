@@ -30,28 +30,29 @@ void main() {
       senderEmojiStatusId: 42,
     );
 
-    Widget bubble(double scale) => ChangeNotifierProvider<ThemeController>.value(
-      value: theme,
-      child: MaterialApp(
-        theme: ThemeData(extensions: [AppColors.light]),
-        locale: const Locale('en'),
-        localizationsDelegates: const [AppLocalizations.delegate],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          child: Scaffold(
-            body: TickerMode(
-              enabled: false,
-              child: MessageBubble(
-                message: message,
-                peerTitle: 'Test Group',
-                isGroup: true,
+    Widget bubble(double scale) =>
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            theme: ThemeData(extensions: [AppColors.light]),
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                body: TickerMode(
+                  enabled: false,
+                  child: MessageBubble(
+                    message: message,
+                    peerTitle: 'Test Group',
+                    isGroup: true,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        );
 
     await tester.pumpWidget(bubble(1));
     // CustomEmojiCenter debounces its load request on a 40 ms timer.

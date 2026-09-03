@@ -30,6 +30,7 @@ class KeywordBlocker extends ChangeNotifier {
   List<String> _plainLowered = const [];
 
   List<String> get keywords => List.unmodifiable(_keywords);
+  bool get hasTextRules => _keywords.isNotEmpty;
   String get listUrl => _listUrl;
   bool get isEnabled => _keywords.isNotEmpty || _blockedSenderIds.isNotEmpty;
 

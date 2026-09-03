@@ -45,8 +45,13 @@ env:
   FLUTTER_VERSION: '3.44.2'
 
 jobs:
+  quality:
+    name: Required quality gate
+    uses: ./.github/workflows/quality.yml
+
   prepare:
     name: Read pubspec version
+    needs: quality
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
@@ -62,7 +67,7 @@ jobs:
       make_latest: ${{ steps.version.outputs.make_latest }}
       short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Read version from pubspec.yaml
         id: version
@@ -114,18 +119,20 @@ jobs:
               ;;
             esac
           fi
-          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
-          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
-          echo "android_version_code=$android_version_code" >> "$GITHUB_OUTPUT"
-          echo "build_stamp=$build_stamp" >> "$GITHUB_OUTPUT"
-          echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
-          echo "artifact_label=$artifact_label" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
-          echo "release_channel=$release_channel" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "make_latest=$make_latest" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "app_version=$app_version"
+            echo "version_code=$version_code"
+            echo "android_version_code=$android_version_code"
+            echo "build_stamp=$build_stamp"
+            echo "release_date=$release_date"
+            echo "artifact_label=$artifact_label"
+            echo "release_tag=$release_tag"
+            echo "release_name=$release_name"
+            echo "release_channel=$release_channel"
+            echo "prerelease=$prerelease"
+            echo "make_latest=$make_latest"
+            echo "short_sha=$short_sha"
+          } >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
           echo "Release channel: $release_channel"
           echo "Android version code: $android_version_code"
@@ -146,9 +153,9 @@ jobs:
           - abi: armeabi-v7a
             target: android-arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -188,7 +195,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
       - name: Cache tdjson (${{ matrix.abi }})
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: android/app/src/main/jniLibs/${{ matrix.abi }}
           key: tdjson-android-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('scripts/tdjson-manifest.json') }}
@@ -315,7 +322,7 @@ jobs:
             "dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk"
 
       - name: Upload standard APK artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: apk-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}
           path: dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk
@@ -365,7 +372,7 @@ jobs:
             archive_extension: zip
             flutter_source: git
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         if: matrix.flutter_source == 'archive'
@@ -407,7 +414,7 @@ jobs:
             ninja-build pkg-config
 
       - name: Cache desktop tdjson
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: native-libs/${{ matrix.library }}
           key: tdjson-desktop-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.architecture }}-${{ hashFiles('scripts/tdjson-manifest.json') }}
@@ -593,7 +600,7 @@ jobs:
           }
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
@@ -601,7 +608,7 @@ jobs:
 
       - name: Upload Windows installer artifact
         if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: installer-windows-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-windows-${{ matrix.architecture }}-setup.exe
@@ -613,12 +620,12 @@ jobs:
     needs: [prepare, build, build-desktop]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download all release packages
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
@@ -676,7 +683,7 @@ jobs:
 
       - name: Set up Node.js for Copilot CLI
         if: needs.prepare.outputs.prerelease == 'true'
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 

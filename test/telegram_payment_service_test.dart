@@ -90,6 +90,21 @@ void main() {
     );
     expect(submission?.credentials, {'type': 'card', 'id': 'tok_web'});
     expect(submission?.title, 'Visa •••• 4242');
+    final authenticated = jsonEncode({
+      'bridgeNonce': 'right',
+      'eventType': 'payment_form_submit',
+      'eventData': jsonEncode({
+        'credentials': jsonEncode({'type': 'card', 'id': 'tok_web'}),
+      }),
+    });
+    expect(
+      decodePaymentFormSubmit(authenticated, expectedBridgeNonce: 'right'),
+      isNotNull,
+    );
+    expect(
+      decodePaymentFormSubmit(authenticated, expectedBridgeNonce: 'wrong'),
+      isNull,
+    );
   });
 
   test('Stripe card tokenization sends fields only to Stripe', () async {

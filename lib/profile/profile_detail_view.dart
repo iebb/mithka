@@ -725,8 +725,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   /// Cover (blurred profile photo, gradient fallback) + overlapping avatar +
   /// name/username/status.
   Widget _header() {
-    final top = MediaQuery.of(context).padding.top +
-        iPadWindowChromeInsetOf(context);
+    final top =
+        MediaQuery.of(context).padding.top + iPadWindowChromeInsetOf(context);
     final bannerH = top + 232;
     final status = _isOnline
         ? AppStrings.t(AppStringKeys.presenceOnline)

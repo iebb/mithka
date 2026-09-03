@@ -730,7 +730,10 @@ void main() {
       model: 'reply-model',
       endpointStyle: AiEndpointStyle.openAiResponses,
       apiKey: 'secret',
-      aiLogger: AiStdoutLogger(sink: logLines.add),
+      aiLogger: AiStdoutLogger(
+        sink: logLines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      ),
       httpClient: MockClient((request) async {
         expect(request.url.path, '/v1/responses');
         expect(request.headers['authorization'], 'Bearer secret');
@@ -794,7 +797,10 @@ void main() {
       model: 'streaming-reply-model',
       endpointStyle: AiEndpointStyle.openAiChatCompletions,
       httpClient: client,
-      aiLogger: AiStdoutLogger(sink: logLines.add),
+      aiLogger: AiStdoutLogger(
+        sink: logLines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      ),
     );
     addTearDown(provider.close);
     final drafts = <TelegramAiFormattedText>[];
@@ -906,7 +912,10 @@ void main() {
       endpoint: Uri.parse('https://api.example/v1/messages'),
       model: 'claude-test',
       endpointStyle: AiEndpointStyle.anthropicMessages,
-      aiLogger: AiStdoutLogger(sink: logLines.add),
+      aiLogger: AiStdoutLogger(
+        sink: logLines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      ),
       httpClient: MockClient((request) async {
         requestBody = jsonDecode(request.body) as Map<String, dynamic>;
         final events = <Map<String, Object?>>[
@@ -981,7 +990,10 @@ void main() {
       endpoint: Uri.parse('http://localhost:11434/api/chat'),
       model: 'qwen-test',
       endpointStyle: AiEndpointStyle.ollamaChat,
-      aiLogger: AiStdoutLogger(sink: logLines.add),
+      aiLogger: AiStdoutLogger(
+        sink: logLines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      ),
       httpClient: MockClient(
         (_) async => http.Response(
           '${jsonEncode({

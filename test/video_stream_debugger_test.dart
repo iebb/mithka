@@ -187,7 +187,7 @@ void main() {
     expect(find.text('RECORD'), findsNothing);
     expect(find.text('CLEAR'), findsNothing);
     expect(find.text('EXPORT'), findsNothing);
-    expect(find.bySemanticsLabel('CLOSE'), findsOneWidget);
+    expect(find.bySemanticsLabel('Close'), findsOneWidget);
     expect(find.byKey(const ValueKey('video-debug-block-0')), findsOneWidget);
     final inspectorTextStyle = DefaultTextStyle.of(
       tester.element(find.text('Stream Inspector')),
@@ -199,7 +199,7 @@ void main() {
     );
     expect(inspectorTextStyle.letterSpacing, 0);
     final inspectorRect = tester.getRect(find.byType(VideoStreamDebugger));
-    final closeRect = tester.getRect(find.bySemanticsLabel('CLOSE'));
+    final closeRect = tester.getRect(find.bySemanticsLabel('Close'));
     expect(closeRect.right, closeTo(inspectorRect.right - 10, 0.01));
     final cacheHeaderRect = tester.getRect(
       find.byKey(const ValueKey('video-debug-panel-header-Stream cache')),

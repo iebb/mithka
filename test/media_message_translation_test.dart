@@ -869,10 +869,14 @@ void main() {
       (replyDecoration.border! as Border).left.color,
       messageColors.outgoingReplyLine,
     );
-    expect(
-      tester.widget<Text>(find.text('Outgoing earlier message')).style?.color,
-      messageColors.outgoingReplyText,
-    );
+    final replyPreview = tester
+        .widgetList<RichText>(
+          find.descendant(of: reply, matching: find.byType(RichText)),
+        )
+        .singleWhere(
+          (widget) => widget.text.toPlainText() == 'Outgoing earlier message',
+        );
+    expect(replyPreview.text.style?.color, messageColors.outgoingReplyText);
     expect(
       tester
           .widgetList<Text>(
@@ -1077,10 +1081,14 @@ void main() {
       (replyDecoration.border! as Border).left.color,
       messageColors.incomingReplyLine,
     );
-    expect(
-      tester.widget<Text>(find.text('Earlier message')).style?.color,
-      messageColors.incomingReplyText,
-    );
+    final replyPreview = tester
+        .widgetList<RichText>(
+          find.descendant(of: reply, matching: find.byType(RichText)),
+        )
+        .singleWhere(
+          (widget) => widget.text.toPlainText() == 'Earlier message',
+        );
+    expect(replyPreview.text.style?.color, messageColors.incomingReplyText);
     final replyLabels = tester.widgetList<Text>(
       find.descendant(of: reply, matching: find.byType(Text)),
     );
@@ -1145,11 +1153,10 @@ void main() {
 
     await pumpBubble(tester, message, messageColors: messageColors);
 
-    final openOriginal = find.byKey(const ValueKey('messageReplyOpenOriginal'));
     expect(
       tester
-          .widget<AppIcon>(
-            find.descendant(of: openOriginal, matching: find.byType(AppIcon)),
+          .widget<AppArrowUpToLineIcon>(
+            find.byKey(const ValueKey('messageReplyNavigateUpIcon')),
           )
           .color,
       messageColors.incomingReplyMediaText,

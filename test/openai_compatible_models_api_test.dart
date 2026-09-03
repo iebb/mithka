@@ -148,7 +148,10 @@ void main() {
       late http.Request captured;
       final logLines = <String>[];
       final api = OpenAiCompatibleModelsApi(
-        aiLogger: AiStdoutLogger(sink: logLines.add),
+        aiLogger: AiStdoutLogger(
+          sink: logLines.add,
+          contentPolicy: AiLogContentPolicy.fullContent,
+        ),
         httpClient: MockClient((request) async {
           captured = request;
           return http.Response(

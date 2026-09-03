@@ -132,6 +132,72 @@ bool chatTranscriptAllowsCommentAttachment({required bool isChannel}) =>
     isChannel;
 
 @visibleForTesting
+bool chatViewRequiresFullSync({
+  required int previousRevision,
+  required int nextRevision,
+}) => previousRevision != nextRevision;
+
+/// Rebuilds a narrow chat fragment only while its route is active. Hidden
+/// split-view/tab routes deliberately detach from high-frequency TDLib bubble
+/// and header updates; their next TickerMode build reads the latest model.
+class _ActiveChatListenableBuilder extends StatefulWidget {
+  const _ActiveChatListenableBuilder({
+    required this.listenable,
+    required this.builder,
+  });
+
+  final Listenable listenable;
+  final WidgetBuilder builder;
+
+  @override
+  State<_ActiveChatListenableBuilder> createState() =>
+      _ActiveChatListenableBuilderState();
+}
+
+class _ActiveChatListenableBuilderState
+    extends State<_ActiveChatListenableBuilder> {
+  bool _listening = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _setListening(TickerMode.valuesOf(context).enabled);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActiveChatListenableBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_listening && !identical(oldWidget.listenable, widget.listenable)) {
+      oldWidget.listenable.removeListener(_handleChange);
+      widget.listenable.addListener(_handleChange);
+    }
+  }
+
+  void _setListening(bool value) {
+    if (_listening == value) return;
+    _listening = value;
+    if (value) {
+      widget.listenable.addListener(_handleChange);
+    } else {
+      widget.listenable.removeListener(_handleChange);
+    }
+  }
+
+  void _handleChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
+
+  @override
+  void dispose() {
+    if (_listening) widget.listenable.removeListener(_handleChange);
+    super.dispose();
+  }
+}
+
+@visibleForTesting
 Future<T?> showReactionUsersModal<T>(
   BuildContext context, {
   required WidgetBuilder builder,
@@ -1092,6 +1158,7 @@ class _ChatViewState extends State<ChatView> {
   bool _transcriptPivotFreezeScheduled = false;
   late int _historyWindowRevision;
   late int _historyWindowInvalidationRevision;
+  late int _fullViewRevision;
   final Set<int> _expandedBlockedRunIds = <int>{};
   final Set<int> _showOriginalTranslationMessageIds = <int>{};
   int? _desktopStickerSetId;
@@ -1376,6 +1443,7 @@ class _ChatViewState extends State<ChatView> {
     unawaited(_loadBotApiWarningDismissal());
     _historyWindowRevision = _vm.historyWindowRevision;
     _historyWindowInvalidationRevision = _vm.historyWindowInvalidationRevision;
+    _fullViewRevision = _vm.fullViewRevision;
     unawaited(
       TelegramCountryNames.shared
           .load()
@@ -2588,12 +2656,19 @@ class _ChatViewState extends State<ChatView> {
 
   void _onModel() {
     if (!mounted) return;
-    _syncProtectedContentSelectionState();
-    _reportChatKindIfReady();
+    final nextFullViewRevision = _vm.fullViewRevision;
+    final requiresFullViewSync = chatViewRequiresFullSync(
+      previousRevision: _fullViewRevision,
+      nextRevision: nextFullViewRevision,
+    );
     if (!_viewTickerEnabled) {
-      _modelDirtyWhileInactive = true;
+      if (requiresFullViewSync) _modelDirtyWhileInactive = true;
       return;
     }
+    if (!requiresFullViewSync) return;
+    _fullViewRevision = nextFullViewRevision;
+    _syncProtectedContentSelectionState();
+    _reportChatKindIfReady();
     _modelDirtyWhileInactive = false;
     _scheduleHandoffRefresh();
     if (!_sendFailureDialogVisible) {
@@ -3980,6 +4055,31 @@ class _ChatViewState extends State<ChatView> {
         _vm.ensureMessageCapabilities(member);
       }
     }
+    final revisionIds = groupedMedia.isEmpty
+        ? <int>[message.id]
+        : <int>[for (final member in groupedMedia) member.id];
+    return _ActiveChatListenableBuilder(
+      listenable: Listenable.merge([
+        for (final messageId in revisionIds)
+          _vm.messageRevisionListenable(messageId),
+      ]),
+      builder: (context) => _buildMessageBubble(
+        message,
+        messageIndex,
+        groupedMedia: groupedMedia,
+        targetMediaMessageId: targetMediaMessageId,
+        targetMediaKey: targetMediaKey,
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(
+    ChatMessage message,
+    int messageIndex, {
+    required List<ChatMessage> groupedMedia,
+    required int? targetMediaMessageId,
+    required GlobalKey? targetMediaKey,
+  }) {
     final mobileSelectionKey =
         !_vm.hasProtectedContent && _mobileTextSelectionMessageId == message.id
         ? _mobileTextSelectionAreaKey
@@ -7253,6 +7353,13 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _header() {
+    return _ActiveChatListenableBuilder(
+      listenable: _vm.headerRevisionListenable,
+      builder: (context) => _buildHeader(),
+    );
+  }
+
+  Widget _buildHeader() {
     final c = context.colors;
     final subtitle = _vm.subtitle;
     final actionActive = _vm.hasActiveChatAction;
@@ -9176,14 +9283,27 @@ class _ChatViewState extends State<ChatView> {
     int? targetMessageId,
     GlobalKey? targetKey,
   }) {
-    final owner = _mediaAlbumInteractionOwner(entry.messages);
-    final ownerIndex = entry.startIndex + entry.messages.indexOf(owner);
-    return _messageBubble(
-      owner,
-      ownerIndex,
-      groupedMedia: entry.messages,
-      targetMediaMessageId: targetMessageId,
-      targetMediaKey: targetKey,
+    for (final member in entry.messages) {
+      _vm.ensureMessageCapabilities(member);
+    }
+    return _ActiveChatListenableBuilder(
+      listenable: Listenable.merge([
+        for (final message in entry.messages)
+          _vm.messageRevisionListenable(message.id),
+      ]),
+      builder: (context) {
+        // Replies/reactions can move album interaction ownership to another
+        // member, so reselect the owner inside the localized rebuild.
+        final owner = _mediaAlbumInteractionOwner(entry.messages);
+        final ownerIndex = entry.startIndex + entry.messages.indexOf(owner);
+        return _buildMessageBubble(
+          owner,
+          ownerIndex,
+          groupedMedia: entry.messages,
+          targetMediaMessageId: targetMessageId,
+          targetMediaKey: targetKey,
+        );
+      },
     );
   }
 
@@ -9195,6 +9315,23 @@ class _ChatViewState extends State<ChatView> {
     List<ChatMessage> group, {
     int? targetMessageId,
     GlobalKey? targetKey,
+  }) {
+    return _ActiveChatListenableBuilder(
+      listenable: Listenable.merge([
+        for (final message in group) _vm.messageRevisionListenable(message.id),
+      ]),
+      builder: (context) => _buildImageGroupBubble(
+        group,
+        targetMessageId: targetMessageId,
+        targetKey: targetKey,
+      ),
+    );
+  }
+
+  Widget _buildImageGroupBubble(
+    List<ChatMessage> group, {
+    required int? targetMessageId,
+    required GlobalKey? targetKey,
   }) {
     ChatMessage? captionMessage;
     for (final message in group) {

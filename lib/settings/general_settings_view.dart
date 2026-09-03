@@ -8,7 +8,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../chat/link_browser.dart';
 import '../components/app_icons.dart';
+import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -188,6 +190,19 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
+    final supportsInternalBrowser = internalBrowserSupported(
+      platform: Theme.of(context).platform,
+    );
+    final selectedLinkMode = supportsInternalBrowser
+        ? theme.linkOpenMode
+        : LinkOpenMode.defaultBrowser;
+    final linkModes = supportsInternalBrowser
+        ? const [
+            LinkOpenMode.askEveryTime,
+            LinkOpenMode.internalBrowser,
+            LinkOpenMode.defaultBrowser,
+          ]
+        : const [LinkOpenMode.defaultBrowser];
     return SettingsPageScaffold(
       title: AppStringKeys.settingsChatBehavior,
       onBack: () => Navigator.of(context).pop(),
@@ -244,6 +259,27 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                   icon: HeroAppIcons.solidMessage,
                 ),
                 onChanged: (value) => theme.quickRepliesEnabled = value,
+              ),
+              SettingsSelectionRow<LinkOpenMode>(
+                key: const ValueKey('chat-behavior-link-browser'),
+                title: AppStrings.t(AppStringKeys.linkBrowserOpenLinksIn),
+                value: AppStrings.t(selectedLinkMode.label),
+                menuTitle: AppStringKeys.linkBrowserOpenLinksIn,
+                menuKey: const ValueKey('link-browser-setting-menu'),
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.globe),
+                enabled: supportsInternalBrowser,
+                options: [
+                  for (final mode in linkModes)
+                    SettingsSelectionOption<LinkOpenMode>(
+                      id: 'link-browser-mode-${mode.name}',
+                      value: mode,
+                      label: AppStrings.t(mode.label),
+                      subtitle: AppStrings.t(mode.description),
+                      icon: mode.icon,
+                    ),
+                ],
+                isSelected: (mode) => mode == selectedLinkMode,
+                onSelected: (mode) => theme.linkOpenMode = mode,
               ),
               SettingsRow(
                 key: const ValueKey('chat-behavior-video-playback'),

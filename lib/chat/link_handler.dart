@@ -11,7 +11,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
@@ -55,7 +54,9 @@ import '../theme/theme_controller.dart';
 import 'chat_appearance_message_preview.dart';
 import 'chat_picker_view.dart';
 import 'chat_wallpaper.dart';
+import 'internal_browser_view.dart';
 import 'internal_chat_link_router.dart';
+import 'link_browser.dart';
 import 'sticker_set_detail_view.dart';
 import 'telegram_ai_service.dart';
 import 'telegram_invoice_checkout_view.dart';
@@ -81,7 +82,7 @@ Future<void> openLink(BuildContext context, String url) async {
   final link = normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {
-    await _external(url);
+    await _openBrowserLink(context, url);
     return;
   }
 
@@ -158,14 +159,33 @@ Future<void> openLink(BuildContext context, String url) async {
         if (context.mounted) await _openBotStartInGroup(context, nav, type);
       case 'internalLinkTypeAttachmentMenuBot':
         if (context.mounted) {
-          await _openMiniAppLink(context, type, attachmentMenu: true);
+          await _openMiniAppLink(
+            context,
+            type,
+            query: query,
+            sourceChat: sourceChat,
+            attachmentMenu: true,
+          );
         }
       case 'internalLinkTypeMainWebApp':
         if (context.mounted) {
-          await _openMiniAppLink(context, type, mainWebApp: true);
+          await _openMiniAppLink(
+            context,
+            type,
+            query: query,
+            sourceChat: sourceChat,
+            mainWebApp: true,
+          );
         }
       case 'internalLinkTypeWebApp':
-        if (context.mounted) await _openMiniAppLink(context, type);
+        if (context.mounted) {
+          await _openMiniAppLink(
+            context,
+            type,
+            query: query,
+            sourceChat: sourceChat,
+          );
+        }
       case 'internalLinkTypeBackground':
         if (context.mounted) await _applyBackgroundLink(context, type);
       case 'internalLinkTypeLanguagePack':
@@ -205,7 +225,7 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeChatBoost':
         await _openChatBoost(nav, type);
       case 'internalLinkTypeInstantView':
-        await _openInstantView(type);
+        if (context.mounted) await _openInstantView(context, type);
       case 'internalLinkTypeBusinessChat':
         await _openBusinessChat(nav, type.str('link_name') ?? '');
       case 'internalLinkTypeCallsPage':
@@ -331,7 +351,9 @@ Future<void> openLink(BuildContext context, String url) async {
       case 'internalLinkTypeTheme':
         if (context.mounted) await _openCloudTheme(context, nav, link);
       case 'internalLinkTypeUnknownDeepLink':
-        await _showDeepLinkInfoOrExternal(link);
+        if (context.mounted) {
+          await _showDeepLinkInfoOrExternal(context, link);
+        }
       default:
         if (!await _openTelegramFallback(
               nav,
@@ -340,7 +362,7 @@ Future<void> openLink(BuildContext context, String url) async {
               query: query,
             ) &&
             context.mounted) {
-          await _external(link);
+          await _openBrowserLink(context, link);
         }
     }
   } catch (_) {
@@ -351,7 +373,7 @@ Future<void> openLink(BuildContext context, String url) async {
           query: query,
         ) &&
         context.mounted) {
-      await _external(fallbackLink);
+      await _openBrowserLink(context, fallbackLink);
     }
   }
 }
@@ -800,24 +822,28 @@ Future<void> _openBotStart(
 Future<void> _openMiniAppLink(
   BuildContext context,
   Map<String, dynamic> type, {
+  required _TdLinkQuery query,
+  InternalChatLinkTarget? sourceChat,
   bool mainWebApp = false,
   bool attachmentMenu = false,
 }) async {
   final username = type.str('bot_username')?.trim() ?? '';
   if (username.isEmpty) return;
-  final botChat = await TdClient.shared.query({
+  final botChat = await query({
     '@type': 'searchPublicChat',
     'username': username,
   });
   final botUserId = botChat.obj('type')?.int64('user_id');
   if (botUserId == null || !context.mounted) return;
-  final user = await TdClient.shared.query({
-    '@type': 'getUser',
-    'user_id': botUserId,
-  });
-  if (user.obj('type')?.type != 'userTypeBot' || !context.mounted) return;
+  final user = await query({'@type': 'getUser', 'user_id': botUserId});
+  final botType = user.obj('type');
+  if (botType?.type != 'userTypeBot' || !context.mounted) return;
+  if (mainWebApp && !(botType?.boolean('has_main_web_app') ?? false)) return;
+  final attachmentMenuConsentRequired =
+      mainWebApp &&
+      (botType?.boolean('can_be_added_to_attachment_menu') ?? false);
 
-  var chatId = 0;
+  var chatId = sourceChat?.chatId ?? 0;
   if (attachmentMenu) {
     final target = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(builder: (_) => const ChatPickerView()),
@@ -838,6 +864,8 @@ Future<void> _openMiniAppLink(
     webAppShortName: type.str('web_app_short_name') ?? '',
     openMode: type.obj('mode'),
     photo: TDParse.smallPhoto(user.obj('profile_photo')),
+    accountSlot: sourceChat?.accountSlot,
+    attachmentMenuConsentRequired: attachmentMenuConsentRequired,
   );
 }
 
@@ -1195,18 +1223,21 @@ Future<void> _selectAndOpenChat(NavigatorState nav) async {
   if (picked != null) await _openChat(nav, picked.id);
 }
 
-Future<void> _openInstantView(Map<String, dynamic> type) async {
+Future<void> _openInstantView(
+  BuildContext context,
+  Map<String, dynamic> type,
+) async {
   final url = type.str('url')?.trim() ?? '';
   if (url.isEmpty) return;
   // Resolve the page through TDLib first so Telegram can warm/cache the
   // canonical Instant View. Mithka doesn't yet include an owned rich-page
-  // renderer, so the canonical page then opens in the system browser.
+  // renderer, so the canonical page then follows the user's browser choice.
   await TdClient.shared.query({
     '@type': 'getWebPageInstantView',
     'url': url,
     'only_local': false,
   });
-  await _external(url);
+  if (context.mounted) await _openBrowserLink(context, url);
 }
 
 Future<void> _processOauthLink(
@@ -1282,7 +1313,7 @@ Future<void> _processOauthLink(
     'allow_phone_number_access': asksPhone,
   });
   final redirect = result.str('url')?.trim() ?? '';
-  if (redirect.isNotEmpty) await _external(redirect);
+  if (redirect.isNotEmpty) await _launchExternal(redirect);
 }
 
 Future<void> _openPassportRequest(
@@ -2215,11 +2246,14 @@ Future<void> _confirmQrAuthentication(BuildContext context, String link) async {
   });
 }
 
-Future<void> _showDeepLinkInfoOrExternal(String link) async {
+Future<void> _showDeepLinkInfoOrExternal(
+  BuildContext context,
+  String link,
+) async {
   try {
     await TdClient.shared.query({'@type': 'getDeepLinkInfo', 'link': link});
   } catch (_) {}
-  await _external(link);
+  if (context.mounted) await _openBrowserLink(context, link);
 }
 
 Future<bool> _openPrivateMessageLink(
@@ -2358,21 +2392,48 @@ Future<void> _joinFolderInvite(
   }
 }
 
-Future<void> _external(String url) async {
-  var u = url;
-  if (!u.contains('://') && !u.startsWith('tg:')) u = 'https://$u';
-  final uri = Uri.tryParse(u);
+Future<void> _launchExternal(String url) async {
+  final uri = parseLinkUri(url);
   if (uri == null) return;
-  // Open in the external browser. We deliberately do NOT gate on canLaunchUrl():
-  // on Android 11+ it returns false when no browser package is visible to the
-  // query filter, silently swallowing perfectly valid non-Telegram links. Try
-  // the external app first, then fall back to the platform default.
-  for (final mode in const [
-    LaunchMode.externalApplication,
-    LaunchMode.platformDefault,
-  ]) {
-    try {
-      if (await launchUrl(uri, mode: mode)) return;
-    } catch (_) {}
+  await launchInDefaultBrowser(uri);
+}
+
+Future<void> _openBrowserLink(
+  BuildContext context,
+  String url, {
+  LinkOpenTarget? target,
+}) async {
+  final uri = parseLinkUri(url);
+  if (uri == null) return;
+  final platform = Theme.of(context).platform;
+  final theme = Provider.of<ThemeController?>(context, listen: false);
+  target ??= linkOpenTargetFor(
+    mode: theme?.linkOpenMode ?? LinkOpenMode.defaultBrowser,
+    uri: uri,
+    platform: platform,
+  );
+  if (target == null) {
+    if (!context.mounted) return;
+    target = await showLinkBrowserChooser(context);
+  }
+  if (target == null || !context.mounted) return;
+
+  switch (target) {
+    case LinkOpenTarget.internalBrowser:
+      if (!internalBrowserCanOpen(uri) ||
+          !internalBrowserSupported(platform: platform)) {
+        await launchInDefaultBrowser(uri);
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        AppPageRoute<void>(
+          pageBuilder: (browserContext, _, _) => InternalBrowserView(
+            initialUri: uri,
+            onOpenInApp: (link) => openLink(browserContext, link),
+          ),
+        ),
+      );
+    case LinkOpenTarget.defaultBrowser:
+      await launchInDefaultBrowser(uri);
   }
 }

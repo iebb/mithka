@@ -214,17 +214,20 @@ void main() {
       );
     });
 
-    test('expanded-window rebasing stands down while the jump is in flight', () {
-      expect(
-        shouldRebaseForExpandedInitialWindow(
-          transcriptChanged: true,
-          latestArmIsShort: true,
-          hasMessageOlderThanPivot: true,
-          followingLatest: followsLatest(hasPendingMessageTarget: true),
-        ),
-        isFalse,
-      );
-    });
+    test(
+      'expanded-window rebasing stands down while the jump is in flight',
+      () {
+        expect(
+          shouldRebaseForExpandedInitialWindow(
+            transcriptChanged: true,
+            latestArmIsShort: true,
+            hasMessageOlderThanPivot: true,
+            followingLatest: followsLatest(hasPendingMessageTarget: true),
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test('both resume rebasing once the target is released', () {
       expect(

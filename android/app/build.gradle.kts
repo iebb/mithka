@@ -123,9 +123,9 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // FlutterFragmentActivity and the local_auth launch theme require AppCompat.
-    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     // Edge-to-edge: WindowCompat.setDecorFitsSystemWindows.
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.18.0")
     // Android's system passkey picker. The Play Services adapter keeps the
     // same Credential Manager API working on pre-Android 14 devices.
     implementation("androidx.credentials:credentials:1.6.0")

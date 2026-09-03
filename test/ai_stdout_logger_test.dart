@@ -47,12 +47,58 @@ void main() {
     expect(chunks.map((chunk) => chunk['data']).join(), original);
   });
 
-  test('writes complete correlated JSON lines and redacts credentials', () {
+  test('metadata-only logging never writes request, result, or error text', () {
+    final lines = <String>[];
+    final logger = AiStdoutLogger(sink: lines.add);
+    const prompt = 'private prompt that must not reach stdout';
+    const result = 'private result that must not reach stdout';
+    const failure = 'private failure that must not reach stdout';
+
+    logger.request(
+      correlationId: 'metadata-1',
+      provider: 'test',
+      operation: 'complete',
+      payload: const {
+        'prompt': prompt,
+        'messages': [prompt],
+      },
+    );
+    logger.response(
+      correlationId: 'metadata-1',
+      provider: 'test',
+      operation: 'complete',
+      result: const {'text': result},
+    );
+    logger.error(
+      correlationId: 'metadata-1',
+      provider: 'test',
+      operation: 'complete',
+      error: StateError(failure),
+      payload: const {'prompt': prompt},
+      stackTrace: StackTrace.fromString('trace with $failure'),
+    );
+
+    final output = lines.join('\n');
+    expect(output, isNot(contains(prompt)));
+    expect(output, isNot(contains(result)));
+    expect(output, isNot(contains(failure)));
+    final events = _decode(lines);
+    expect(events, hasLength(3));
+    expect(events[0], isNot(contains('payload')));
+    expect(events[0]['payload_metadata'], {'type': 'map', 'entry_count': 2});
+    expect(events[1], isNot(contains('result')));
+    expect(events[1]['result_metadata'], {'type': 'map', 'entry_count': 1});
+    expect(events[2], isNot(contains('payload')));
+    expect((events[2]['error'] as Map), {'type': 'StateError'});
+  });
+
+  test('explicit developer logging writes content and redacts credentials', () {
     final lines = <String>[];
     const configuredSecret = 'configured-secret-value';
     final logger = AiStdoutLogger(
       sink: lines.add,
       secrets: const [configuredSecret],
+      contentPolicy: AiLogContentPolicy.fullContent,
     );
     final correlationId = logger.newCorrelationId('test provider');
     final credentialFields = <String, String>{
@@ -134,7 +180,10 @@ void main() {
 
   test('Telegram AI logs the full TDLib request and response', () async {
     final lines = <String>[];
-    final logger = AiStdoutLogger(sink: lines.add);
+    final logger = AiStdoutLogger(
+      sink: lines.add,
+      contentPolicy: AiLogContentPolicy.fullContent,
+    );
     final service = TelegramAiService(
       aiLogger: logger,
       queryOverride: (request) async => {
@@ -169,7 +218,10 @@ void main() {
     'Telegram AI logs provider errors with the request correlation',
     () async {
       final lines = <String>[];
-      final logger = AiStdoutLogger(sink: lines.add);
+      final logger = AiStdoutLogger(
+        sink: lines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      );
       final service = TelegramAiService(
         aiLogger: logger,
         queryOverride: (_) async => throw StateError('TDLib AI failed'),
@@ -197,7 +249,10 @@ void main() {
 
   test('Apple AI logs full native summarize payloads and results', () async {
     final lines = <String>[];
-    final logger = AiStdoutLogger(sink: lines.add);
+    final logger = AiStdoutLogger(
+      sink: lines.add,
+      contentPolicy: AiLogContentPolicy.fullContent,
+    );
     final api = ApplePccApi(
       aiLogger: logger,
       invokeMethod: (method, arguments) async {
@@ -234,7 +289,10 @@ void main() {
 
   test('Apple AI logs native errors with the request correlation', () async {
     final lines = <String>[];
-    final logger = AiStdoutLogger(sink: lines.add);
+    final logger = AiStdoutLogger(
+      sink: lines.add,
+      contentPolicy: AiLogContentPolicy.fullContent,
+    );
     final api = ApplePccApi(
       aiLogger: logger,
       invokeMethod: (_, _) async => throw PlatformException(

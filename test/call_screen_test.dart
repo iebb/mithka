@@ -27,6 +27,21 @@ void main() {
     expect(manager.call, isNull);
   });
 
+  test('active calls retain their originating account and client', () {
+    final call = ActiveCall(
+      callId: 88,
+      peerUserId: 99,
+      accountSlot: 4,
+      clientId: 4004,
+      isOutgoing: true,
+      isVideo: false,
+      phase: CallPhase.requesting,
+    );
+
+    expect(call.accountSlot, 4);
+    expect(call.clientId, 4004);
+  });
+
   test('an active call is reported as busy instead of successful', () {
     final manager = CallManager(engine: _RecordingCallMediaEngine());
     addTearDown(manager.dispose);

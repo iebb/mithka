@@ -87,10 +87,8 @@ class MediaDownloadService {
           {'value1': outcome.folder ?? ''},
         ),
         MediaDownloadResult.cancelled => null,
-        MediaDownloadResult.failed ||
-        MediaDownloadResult.unsupported => AppStrings.t(
-          AppStringKeys.chatSaveToFolderFailed,
-        ),
+        MediaDownloadResult.failed || MediaDownloadResult.unsupported =>
+          AppStrings.t(AppStringKeys.chatSaveToFolderFailed),
       };
 
   static Future<MediaDownloadOutcome> _copyToPickedFile(

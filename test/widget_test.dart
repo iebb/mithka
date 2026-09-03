@@ -29,6 +29,7 @@ import 'package:mithka/chat/sticker_item.dart';
 import 'package:mithka/chat/sticker_store.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/components/keyboard_dismiss_on_tap.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/components/ui_components.dart';
@@ -1472,11 +1473,11 @@ void main() {
         );
         expect(
           tester
-              .widget<GestureDetector>(
+              .widget<AppInteractiveSurface>(
                 find.byKey(const ValueKey('composerSendButton')),
               )
-              .onTap,
-          isNull,
+              .enabled,
+          isFalse,
         );
 
         await tester.pumpAndSettle();
@@ -1494,11 +1495,11 @@ void main() {
         );
         expect(
           tester
-              .widget<GestureDetector>(
+              .widget<AppInteractiveSurface>(
                 find.byKey(const ValueKey('composerSendButton')),
               )
-              .onTap,
-          isNotNull,
+              .enabled,
+          isTrue,
         );
       },
     );

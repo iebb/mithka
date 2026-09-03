@@ -5075,60 +5075,71 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       ),
                       const SizedBox(height: 6),
                     ],
-                    GestureDetector(
+                    AppInteractiveSurface(
                       key: const ValueKey('composerSendButton'),
-                      onTap: _aiReplyWorkingTargetId != null
-                          ? null
-                          : () => unawaited(_sendCurrentText()),
+                      semanticLabel:
+                          (editing
+                                  ? AppStringKeys.messageActionEdit
+                                  : AppStringKeys.composerSend)
+                              .l10n(context),
+                      enabled: _aiReplyWorkingTargetId == null,
+                      onTap: () => unawaited(_sendCurrentText()),
                       onLongPress: _aiReplyWorkingTargetId != null
                           ? null
                           : editing
                           ? null
                           : () => unawaited(_showTextSendOptions()),
-                      child: Container(
-                        width: vm.requiresPaidMessage ? 58 : 36,
-                        height: 36,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: _aiReplyWorkingTargetId != null
-                              ? AppTheme.brand.withValues(alpha: 0.42)
-                              : editing
-                              ? AppTheme.cloverGreen
-                              : AppTheme.brand,
-                          shape: BoxShape.circle,
-                        ),
-                        child: editing
-                            ? const AppIcon(
-                                HeroAppIcons.check,
-                                size: 18,
-                                color: Colors.white,
-                              )
-                            : vm.requiresPaidMessage
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const AppIcon(
-                                    HeroAppIcons.solidStar,
-                                    size: 14,
+                      borderRadius: BorderRadius.circular(24),
+                      child: SizedBox(
+                        width: vm.requiresPaidMessage ? 58 : 44,
+                        height: 44,
+                        child: Center(
+                          child: Container(
+                            width: vm.requiresPaidMessage ? 58 : 36,
+                            height: 36,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _aiReplyWorkingTargetId != null
+                                  ? AppTheme.brand.withValues(alpha: 0.42)
+                                  : editing
+                                  ? AppTheme.cloverGreen
+                                  : AppTheme.brand,
+                              shape: BoxShape.circle,
+                            ),
+                            child: editing
+                                ? const AppIcon(
+                                    HeroAppIcons.check,
+                                    size: 18,
+                                    color: Colors.white,
+                                  )
+                                : vm.requiresPaidMessage
+                                ? Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const AppIcon(
+                                        HeroAppIcons.solidStar,
+                                        size: 14,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'x${vm.paidMessageStarCount}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : const AppIcon(
+                                    HeroAppIcons.solidPaperPlane,
+                                    size: 17,
                                     color: Colors.white,
                                   ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    'x${vm.paidMessageStarCount}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const AppIcon(
-                                HeroAppIcons.solidPaperPlane,
-                                size: 17,
-                                color: Colors.white,
-                              ),
+                          ),
+                        ),
                       ),
                     ),
                   ],

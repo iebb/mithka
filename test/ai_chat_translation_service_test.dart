@@ -154,7 +154,10 @@ void main() {
         model: 'translator-model',
         apiKey: 'secret',
         httpClient: client,
-        aiLogger: AiStdoutLogger(sink: logLines.add),
+        aiLogger: AiStdoutLogger(
+          sink: logLines.add,
+          contentPolicy: AiLogContentPolicy.fullContent,
+        ),
       );
 
       final result = await service.translate(

@@ -113,41 +113,50 @@ void main() {
     }
   });
 
-  test('macOS TestFlight always uses a zero patch marketing version', () {
+  test('macOS TestFlight follows the shared Apple version policy', () {
     for (final testCase in const {
       '0.8.14': '0.8.0',
       '1.0.0+282': '1.0.0',
       '12.34.56+789': '12.34.0',
     }.entries) {
       final result = Process.runSync('sh', [
-        'scripts/macos_marketing_version.sh',
+        'scripts/apple_marketing_version.sh',
         testCase.key,
+        'nightly',
       ]);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       expect(result.stdout.toString().trim(), testCase.value);
     }
 
+    final release = Process.runSync('sh', [
+      'scripts/apple_marketing_version.sh',
+      '12.34.56+789',
+      'release-macos/12.34',
+    ]);
+    expect(release.exitCode, 0, reason: release.stderr.toString());
+    expect(release.stdout.toString().trim(), '12.34.56');
+
     final invalid = Process.runSync('sh', [
-      'scripts/macos_marketing_version.sh',
+      'scripts/apple_marketing_version.sh',
       '1.2',
+      'nightly',
     ]);
     expect(invalid.exitCode, isNonZero);
 
     final postClone = File('ci_scripts/macos_post_clone.sh').readAsStringSync();
     expect(
       postClone,
-      contains(
-        r'APP_VERSION="$(sh "$REPO/scripts/macos_marketing_version.sh" '
-        r'"$RAW_VERSION")"',
-      ),
+      contains(r'APP_VERSION="$(sh "$REPO/scripts/apple_marketing_version.sh"'),
     );
+    expect(postClone, contains(r'${CI_BRANCH:-${GITHUB_REF_NAME:-}}'));
     expect(postClone, contains(r'--build-name="$APP_VERSION"'));
 
     final workflow = File(
       '.github/workflows/macos-testflight.yml',
     ).readAsStringSync();
     expect(workflow, contains('- name: Verify macOS marketing version'));
-    expect(workflow, contains('scripts/macos_marketing_version.sh'));
+    expect(workflow, contains('scripts/apple_marketing_version.sh'));
+    expect(workflow, contains(r'"$raw_version" "$GITHUB_REF_NAME"'));
     expect(workflow, contains('CFBundleShortVersionString'));
     expect(
       workflow,
@@ -205,7 +214,7 @@ void main() {
             (pin['state']! as Map<String, Object?>)['version']! as String,
     };
 
-    expect(versions['firebase-ios-sdk'], '12.17.0');
+    expect(versions['firebase-ios-sdk'], '12.18.0');
     expect(versions['sentry-cocoa'], '8.58.4');
   });
 }

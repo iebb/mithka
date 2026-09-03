@@ -511,14 +511,18 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
         modeButton: _pictureInPictureSupported
             ? MithkaVideoChromeAction(
                 icon: HeroAppIcons.pictureInPicture,
-                label: 'Picture in picture',
+                label: AppStrings.t(AppStringKeys.videoPlayerPictureInPicture),
                 onTap: () => unawaited(_setPictureInPicture(true)),
                 enabled: !_pictureInPictureBusy,
               )
             : null,
         fullscreenButton: MithkaVideoChromeAction(
           icon: HeroAppIcons.expand,
-          label: fullscreen ? 'Exit fullscreen' : 'Fullscreen',
+          label: AppStrings.t(
+            fullscreen
+                ? AppStringKeys.videoPlayerExitFullscreen
+                : AppStringKeys.videoPlayerFullscreen,
+          ),
           onTap: () => unawaited(
             FVideoDesktopWindows.setCurrentWindowFullscreen(!fullscreen),
           ),

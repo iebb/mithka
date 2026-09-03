@@ -271,7 +271,8 @@ class _ContactsViewState extends State<ContactsView> {
       key: const ValueKey('contacts-root-header'),
       color: c.listHeaderTint,
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       child: Padding(
