@@ -504,7 +504,7 @@ class _ImageEditViewState extends State<ImageEditView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(AppStrings.t(AppStringKeys.countryPickerCancel)),
+            child: Text(AppStrings.t(AppStringKeys.confirmCancel)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(controller.text),

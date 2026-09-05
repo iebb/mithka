@@ -90,7 +90,9 @@ class EmojiStore extends ChangeNotifier {
       }
       customPacks = result;
       notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+      _loaded = false; // allow retry on next loadIfNeeded()
+    }
   }
 
   TdFileRef? _coverRef(Map<String, dynamic> info) {
