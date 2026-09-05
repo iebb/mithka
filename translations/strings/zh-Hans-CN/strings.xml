@@ -2213,6 +2213,8 @@
     <string name="pollResultsUnableToLoadVoters">无法加载投票者</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1} 票数 · 提供详细统计数据</string>
     <string name="premiumLabel">高级</string>
+    <string name="presenceConnecting">正在连接</string>
+    <string name="presenceDisconnected">已断开连接</string>
     <string name="presenceLastSeenRecently">最近在线</string>
     <string name="presenceLastSeenWithinMonth">一个月内在线</string>
     <string name="presenceLastSeenWithinWeek">一周内在线</string>

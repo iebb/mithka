@@ -2213,6 +2213,8 @@
     <string name="pollResultsUnableToLoadVoters">無法載入投票者</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1} 票數 · 提供詳細統計數據</string>
     <string name="premiumLabel">Premium</string>
+    <string name="presenceConnecting">連線中</string>
+    <string name="presenceDisconnected">已中斷連線</string>
     <string name="presenceLastSeenRecently">最近上線</string>
     <string name="presenceLastSeenWithinMonth">一個月內上線</string>
     <string name="presenceLastSeenWithinWeek">一週內上線</string>

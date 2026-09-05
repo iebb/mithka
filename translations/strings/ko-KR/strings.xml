@@ -2213,6 +2213,8 @@
     <string name="pollResultsUnableToLoadVoters">투표자를 불러올 수 없습니다</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1}개 투표 · 자세한 통계 확인 가능</string>
     <string name="premiumLabel">Premium</string>
+    <string name="presenceConnecting">연결 중</string>
+    <string name="presenceDisconnected">연결 끊김</string>
     <string name="presenceLastSeenRecently">최근에 접속</string>
     <string name="presenceLastSeenWithinMonth">한 달 이내 접속</string>
     <string name="presenceLastSeenWithinWeek">일주일 이내 접속</string>

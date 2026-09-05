@@ -4092,6 +4092,8 @@ abstract final class AppStringKeys {
   static const telegramMiniAppThirdPartyAttachmentPrompt =
       'telegramMiniAppThirdPartyAttachmentPrompt';
   static const telegramMiniAppThisMiniApp = 'telegramMiniAppThisMiniApp';
+  static const presenceConnecting = 'presenceConnecting';
+  static const presenceDisconnected = 'presenceDisconnected';
   static const presenceOnline = 'presenceOnline';
   static const presenceLastSeenRecently = 'presenceLastSeenRecently';
   static const presenceLastSeenWithinWeek = 'presenceLastSeenWithinWeek';

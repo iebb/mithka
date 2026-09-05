@@ -2220,6 +2220,8 @@
     <string name="pollResultsUnableToLoadVoters">Abstimmende konnten nicht geladen werden</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1} Stimmen · Detaillierte Statistiken verfügbar</string>
     <string name="premiumLabel">Premium</string>
+    <string name="presenceConnecting">Verbindung wird hergestellt…</string>
+    <string name="presenceDisconnected">getrennt</string>
     <string name="presenceLastSeenRecently">zuletzt kürzlich gesehen</string>
     <string name="presenceLastSeenWithinMonth">zuletzt diesen Monat gesehen</string>
     <string name="presenceLastSeenWithinWeek">zuletzt diese Woche gesehen</string>
