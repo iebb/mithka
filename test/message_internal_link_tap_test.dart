@@ -21,6 +21,7 @@ void main() {
 
   late StreamController<Map<String, dynamic>> updates;
   late List<Map<String, dynamic>> requests;
+  late bool mainWebAppAvailable;
   late bool mainWebAppCanBeAddedToAttachmentMenu;
   late bool mainWebAppIsInstalled;
 
@@ -106,7 +107,7 @@ void main() {
               'last_name': '',
               'type': <String, dynamic>{
                 '@type': 'userTypeBot',
-                'has_main_web_app': true,
+                'has_main_web_app': mainWebAppAvailable,
                 'can_be_added_to_attachment_menu':
                     mainWebAppCanBeAddedToAttachmentMenu,
               },
@@ -134,6 +135,7 @@ void main() {
 
   setUp(() {
     requests = [];
+    mainWebAppAvailable = true;
     mainWebAppCanBeAddedToAttachmentMenu = false;
     mainWebAppIsInstalled = false;
     ChatDeepLinkController.shared.consumePending();
@@ -510,6 +512,64 @@ void main() {
       expect(
         presentedLaunch?.url,
         'https://mini.example/app?tgWebAppData=test-signed-data',
+      );
+    },
+  );
+
+  testWidgets(
+    'a startapp URL opens the bot chat when its Main Mini App is unavailable',
+    (tester) async {
+      mainWebAppAvailable = false;
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      addTearDown(theme.dispose);
+      final message = ChatMessage(
+        id: 7,
+        isOutgoing: false,
+        text: mainWebAppUrl,
+        date: 1,
+        contentType: 'messageText',
+        textEntities: const [
+          MessageTextEntity(
+            offset: 0,
+            length: mainWebAppUrl.length,
+            type: 'textEntityTypeUrl',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.android),
+            home: Scaffold(
+              body: InternalChatLinkScope(
+                target: InternalChatLinkTarget(
+                  chatId: 42,
+                  accountSlot: 3,
+                  openMessage: (_) async {},
+                ),
+                child: MessageBubble(
+                  message: message,
+                  peerTitle: 'Source chat',
+                  isGroup: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await _tapFirstCharacter(tester, mainWebAppUrl);
+      await tester.pumpAndSettle();
+
+      final opened = ChatDeepLinkController.shared.consumePending();
+      expect(opened?.chatId, 9100);
+      expect(opened?.accountSlot, 3);
+      expect(
+        requests.where((request) => request['@type'] == 'getMainWebApp'),
+        isEmpty,
       );
     },
   );

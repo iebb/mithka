@@ -838,7 +838,15 @@ Future<void> _openMiniAppLink(
   final user = await query({'@type': 'getUser', 'user_id': botUserId});
   final botType = user.obj('type');
   if (botType?.type != 'userTypeBot' || !context.mounted) return;
-  if (mainWebApp && !(botType?.boolean('has_main_web_app') ?? false)) return;
+  if (mainWebApp && !(botType?.boolean('has_main_web_app') ?? false)) {
+    await _openChat(
+      Navigator.of(context),
+      botChat.int64('id'),
+      sourceChat: sourceChat,
+      query: query,
+    );
+    return;
+  }
   final attachmentMenuConsentRequired =
       mainWebApp &&
       (botType?.boolean('can_be_added_to_attachment_menu') ?? false);
