@@ -61,7 +61,10 @@ void main() {
       model: 'test-model',
       apiKey: ' sk-test ',
       httpClient: client,
-      aiLogger: AiStdoutLogger(sink: logLines.add),
+      aiLogger: AiStdoutLogger(
+        sink: logLines.add,
+        contentPolicy: AiLogContentPolicy.fullContent,
+      ),
     );
 
     final result = await provider.complete(_request());

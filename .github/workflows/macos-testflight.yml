@@ -16,8 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Required quality gate
+    uses: ./.github/workflows/quality.yml
+
   archive-upload:
     name: Archive and upload macOS
+    needs: quality
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -33,7 +38,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

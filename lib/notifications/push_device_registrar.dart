@@ -9,6 +9,33 @@ import '../tdlib/td_client.dart';
 import 'ios_communication_notification.dart';
 import 'notification_preferences.dart';
 
+/// Serializes registration work while remembering that inputs changed during
+/// an in-flight pass. The queued pass observes the newest token/account policy.
+@visibleForTesting
+class PushRegistrationDrain {
+  bool _running = false;
+  bool _queued = false;
+
+  bool get isRunning => _running;
+  bool get isQueued => _queued;
+
+  Future<void> run(Future<void> Function() operation) async {
+    if (_running) {
+      _queued = true;
+      return;
+    }
+    _running = true;
+    try {
+      do {
+        _queued = false;
+        await operation();
+      } while (_queued);
+    } finally {
+      _running = false;
+    }
+  }
+}
+
 class PushDeviceRegistrar {
   PushDeviceRegistrar._();
   static final PushDeviceRegistrar shared = PushDeviceRegistrar._();
@@ -22,7 +49,7 @@ class PushDeviceRegistrar {
   String? _deviceToken;
   String? _lastRegistrationSignature;
   bool _running = false;
-  bool _registering = false;
+  final PushRegistrationDrain _registrationDrain = PushRegistrationDrain();
 
   Future<void> start() async {
     if (_running || !Platform.isIOS) return;
@@ -77,10 +104,12 @@ class PushDeviceRegistrar {
     _lastRegistrationSignature = null;
   }
 
-  Future<void> _registerIfPossible() async {
+  Future<void> _registerIfPossible() =>
+      _registrationDrain.run(_registerOnceIfPossible);
+
+  Future<void> _registerOnceIfPossible() async {
     final token = _deviceToken;
-    if (token == null || _registering) return;
-    _registering = true;
+    if (token == null || !_running) return;
     try {
       final readyUsersByClient = await _readyUsersByClient();
       final usersByClient = <int, int>{
@@ -100,17 +129,19 @@ class PushDeviceRegistrar {
         final otherUserIds = userIds
             .where((userId) => userId != entry.value)
             .toList(growable: false);
-        await _client
-            .queryTo({
-              '@type': 'registerDevice',
-              'device_token': {
-                '@type': 'deviceTokenApplePush',
-                'device_token': token,
-                'is_app_sandbox': kDebugMode,
-              },
-              'other_user_ids': otherUserIds,
-            }, entry.key)
-            .timeout(const Duration(seconds: 8));
+        await _client.queryTo(
+          {
+            '@type': 'registerDevice',
+            'device_token': {
+              '@type': 'deviceTokenApplePush',
+              'device_token': token,
+              'is_app_sandbox': kDebugMode,
+            },
+            'other_user_ids': otherUserIds,
+          },
+          entry.key,
+          timeout: const Duration(seconds: 8),
+        );
       }
       _lastRegistrationSignature = signature;
       // The service extension stamps the slot onto a delivered push, so it
@@ -119,8 +150,6 @@ class PushDeviceRegistrar {
       debugPrint('Registered APNs device token with TDLib');
     } catch (error) {
       debugPrint('TDLib APNs device registration failed: $error');
-    } finally {
-      _registering = false;
     }
   }
 
@@ -146,13 +175,17 @@ class PushDeviceRegistrar {
       final clientId = _client.clientId(slot);
       if (clientId == null) continue;
       try {
-        final state = await _client
-            .queryTo({'@type': 'getAuthorizationState'}, clientId)
-            .timeout(const Duration(seconds: 2));
+        final state = await _client.queryTo(
+          {'@type': 'getAuthorizationState'},
+          clientId,
+          timeout: const Duration(seconds: 2),
+        );
         if (state.type != 'authorizationStateReady') continue;
-        final me = await _client
-            .queryTo({'@type': 'getMe'}, clientId)
-            .timeout(const Duration(seconds: 3));
+        final me = await _client.queryTo(
+          {'@type': 'getMe'},
+          clientId,
+          timeout: const Duration(seconds: 3),
+        );
         final userId = me.int64('id');
         if (userId != null) usersByClient[clientId] = userId;
       } catch (_) {

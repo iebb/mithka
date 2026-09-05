@@ -60,7 +60,19 @@ class _PendingRequest {
 
   final int clientId;
   final Completer<Map<String, dynamic>> completer;
+  Timer? timeoutTimer;
+
+  void cancelTimeout() {
+    timeoutTimer?.cancel();
+    timeoutTimer = null;
+  }
 }
+
+@visibleForTesting
+bool tdResponseMatchesRequestClient({
+  required int responseClientId,
+  required int requestClientId,
+}) => responseClientId == requestClientId;
 
 class TdSessionRestoreException implements Exception {
   const TdSessionRestoreException(this.message);
@@ -220,6 +232,7 @@ final class TdAccountLease {
 class TdClient {
   TdClient._();
   static final TdClient shared = TdClient._();
+  static const defaultQueryTimeout = Duration(seconds: 30);
 
   // Lazy: only opened when first used, so demo/simulator builds (no tdjson) can
   // touch the singleton (e.g. read activeSlot) without resolving symbols.
@@ -1679,6 +1692,7 @@ class TdClient {
     for (final extra in stranded) {
       final pending = _pending.remove(extra);
       if (pending == null || pending.completer.isCompleted) continue;
+      pending.cancelTimeout();
       pending.completer.completeError(
         TdError(<String, dynamic>{'code': 500, 'message': reason}),
       );
@@ -1814,15 +1828,24 @@ class TdClient {
     // Responses to our requests carry the "@extra" we attached (any client).
     final extra = object.str('@extra');
     if (extra != null) {
-      final pending = _pending.remove(extra);
-      if (pending != null) {
-        if (object.type == 'error') {
-          pending.completer.completeError(TdError(object));
-        } else {
-          pending.completer.complete(object);
-        }
+      final pending = _pending[extra];
+      // Timed-out replies must not escape into the update stream. Likewise, a
+      // response carrying another client's id must never complete this query.
+      if (pending == null ||
+          !tdResponseMatchesRequestClient(
+            responseClientId: clientId,
+            requestClientId: pending.clientId,
+          )) {
         return;
       }
+      _pending.remove(extra);
+      pending.cancelTimeout();
+      if (object.type == 'error') {
+        pending.completer.completeError(TdError(object));
+      } else {
+        pending.completer.complete(object);
+      }
+      return;
     }
 
     if (object.type == 'updateAuthorizationState' &&
@@ -2078,6 +2101,7 @@ class TdClient {
   /// Fire-and-forget request to a specific account client.
   void sendTo(Map<String, dynamic> request, int clientId) {
     if (_isShuttingDown || _shutdownComplete) return;
+    if (!_slotForClient.containsKey(clientId)) return;
     final proxy = _proxyTransport;
     if (proxy != null) {
       unawaited(proxy.send(Map<String, dynamic>.from(request)));
@@ -2092,8 +2116,11 @@ class TdClient {
   }
 
   /// Sends a request to the active account and awaits its response.
-  Future<Map<String, dynamic>> query(Map<String, dynamic> request) {
-    return queryTo(request, _activeClientId);
+  Future<Map<String, dynamic>> query(
+    Map<String, dynamic> request, {
+    Duration timeout = defaultQueryTimeout,
+  }) {
+    return queryTo(request, _activeClientId, timeout: timeout);
   }
 
   /// Sends a request to the client that owns [accountSlot].
@@ -2103,13 +2130,14 @@ class TdClient {
   /// app's active account while the request is in flight.
   Future<Map<String, dynamic>> queryForSlot(
     Map<String, dynamic> request,
-    int accountSlot,
-  ) {
+    int accountSlot, {
+    Duration timeout = defaultQueryTimeout,
+  }) {
     final clientId = _clientForSlot[accountSlot];
     if (clientId == null) {
       throw StateError('No TDLib client for account slot $accountSlot');
     }
-    return queryTo(request, clientId);
+    return queryTo(request, clientId, timeout: timeout);
   }
 
   /// Retains the concrete client currently registered for [accountSlot].
@@ -2134,14 +2162,23 @@ class TdClient {
   /// each account's identity for the switcher).
   Future<Map<String, dynamic>> queryTo(
     Map<String, dynamic> request,
-    int clientId,
-  ) async {
+    int clientId, {
+    Duration timeout = defaultQueryTimeout,
+  }) async {
     if (_isShuttingDown || _shutdownComplete) {
       throw StateError('TDLib is shutting down');
     }
+    if (!_slotForClient.containsKey(clientId)) {
+      throw StateError('TDLib client $clientId is not registered');
+    }
+    if (timeout <= Duration.zero) {
+      throw ArgumentError.value(timeout, 'timeout', 'must be positive');
+    }
     final proxy = _proxyTransport;
     if (proxy != null) {
-      final result = await proxy.query(Map<String, dynamic>.from(request));
+      final result = await proxy
+          .query(Map<String, dynamic>.from(request))
+          .timeout(timeout);
       if (result.type == 'error') throw TdError(result);
       return result;
     }
@@ -2164,9 +2201,9 @@ class TdClient {
     final botApiBackend = _botApiBackendForClient[clientId];
     if (botApiBackend != null) {
       try {
-        final result = await botApiBackend.query(
-          Map<String, dynamic>.from(request),
-        );
+        final result = await botApiBackend
+            .query(Map<String, dynamic>.from(request))
+            .timeout(timeout);
         if (result.type == 'error') throw TdError(result);
         stopwatch.stop();
         DiagnosticBreadcrumbs.tdlibRequestFinished(
@@ -2189,9 +2226,20 @@ class TdClient {
     final extra = _nextExtra();
     final tagged = {...request, '@extra': extra};
     final completer = Completer<Map<String, dynamic>>();
-    _pending[extra] = _PendingRequest(clientId, completer);
-    _bindings.send(clientId, jsonEncode(tagged));
+    final pending = _PendingRequest(clientId, completer);
+    _pending[extra] = pending;
+    pending.timeoutTimer = Timer(timeout, () {
+      if (!identical(_pending[extra], pending)) return;
+      _pending.remove(extra);
+      pending.timeoutTimer = null;
+      if (!pending.completer.isCompleted) {
+        pending.completer.completeError(
+          TimeoutException('TDLib $requestType request timed out', timeout),
+        );
+      }
+    });
     try {
+      _bindings.send(clientId, jsonEncode(tagged));
       final result = await completer.future;
       stopwatch.stop();
       DiagnosticBreadcrumbs.tdlibRequestFinished(
@@ -2201,6 +2249,8 @@ class TdClient {
       );
       return result;
     } catch (error, stackTrace) {
+      if (identical(_pending[extra], pending)) _pending.remove(extra);
+      pending.cancelTimeout();
       stopwatch.stop();
       DiagnosticBreadcrumbs.tdlibRequestFinished(
         requestType: requestType,

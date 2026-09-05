@@ -182,6 +182,14 @@ Map<String, dynamic> authenticationEmailCodeRequest(String code) => {
   'code': {'@type': 'emailAddressAuthenticationCode', 'code': code.trim()},
 };
 
+@visibleForTesting
+bool authReloadIsCurrent({
+  required int reloadAction,
+  required int currentAction,
+  required int reloadClientId,
+  required int currentClientId,
+}) => reloadAction == currentAction && reloadClientId == currentClientId;
+
 class AuthManager extends ChangeNotifier {
   static const _startupTimeout = Duration(seconds: 20);
 
@@ -387,21 +395,41 @@ class AuthManager extends ChangeNotifier {
   /// Re-reads the active account's authorization state (after an account
   /// switch) and updates `step` so the UI gates on the right account.
   void reloadAuthState() {
-    _actionSerial += 1;
+    final action = ++_actionSerial;
+    final clientId = _client.activeClientId;
     _isWorking = false;
     _errorMessage = null;
     _canUseLoginPasskey = false;
     _set(const AuthInitializing());
     unawaited(_loadPasskeyAvailability());
-    _client
-        .query({'@type': 'getAuthorizationState'})
-        .timeout(const Duration(seconds: 8))
-        .then(_handle)
-        .catchError((Object error) {
-          debugPrint('Auth state reload failed: $error');
-          _client.sendParametersForActiveClient();
-          _set(const AuthWaitPhoneNumber());
-        });
+    unawaited(_reloadAuthState(action: action, clientId: clientId));
+  }
+
+  Future<void> _reloadAuthState({
+    required int action,
+    required int clientId,
+  }) async {
+    bool isCurrent() => authReloadIsCurrent(
+      reloadAction: action,
+      currentAction: _actionSerial,
+      reloadClientId: clientId,
+      currentClientId: _client.activeClientId,
+    );
+
+    try {
+      final state = await _client.queryTo(
+        {'@type': 'getAuthorizationState'},
+        clientId,
+        timeout: const Duration(seconds: 8),
+      );
+      if (!isCurrent()) return;
+      _handle(state);
+    } catch (error) {
+      if (!isCurrent()) return;
+      debugPrint('Auth state reload failed: $error');
+      _client.sendParametersForActiveClient();
+      _set(const AuthWaitPhoneNumber());
+    }
   }
 
   // MARK: - User actions

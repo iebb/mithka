@@ -29,6 +29,7 @@ import 'package:mithka/chat/sticker_item.dart';
 import 'package:mithka/chat/sticker_store.dart';
 import 'package:mithka/chat/telegram_ai_service.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/components/keyboard_dismiss_on_tap.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/components/ui_components.dart';
@@ -1472,11 +1473,11 @@ void main() {
         );
         expect(
           tester
-              .widget<GestureDetector>(
+              .widget<AppInteractiveSurface>(
                 find.byKey(const ValueKey('composerSendButton')),
               )
-              .onTap,
-          isNull,
+              .enabled,
+          isFalse,
         );
 
         await tester.pumpAndSettle();
@@ -1494,11 +1495,11 @@ void main() {
         );
         expect(
           tester
-              .widget<GestureDetector>(
+              .widget<AppInteractiveSurface>(
                 find.byKey(const ValueKey('composerSendButton')),
               )
-              .onTap,
-          isNotNull,
+              .enabled,
+          isTrue,
         );
       },
     );
@@ -3884,7 +3885,7 @@ void main() {
   });
 
   group('MessageBubble reply quote', () {
-    testWidgets('only the up arrow opens the original and media is inline', (
+    testWidgets('the full quote opens the original and media is inline', (
       tester,
     ) async {
       SharedPreferences.setMockInitialValues({});
@@ -3931,11 +3932,21 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('[图片]'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('messageReplyNavigateUpIcon')),
+        findsOneWidget,
+      );
+      expect(find.byType(AppArrowUpToLineIcon), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('messageReplyQuote')));
-      expect(openedMessageId, isNull);
+      expect(openedMessageId, 9);
 
-      await tester.tap(find.byKey(const ValueKey('messageReplyOpenOriginal')));
+      openedMessageId = null;
+      await tester.tapAt(
+        tester.getCenter(
+          find.byKey(const ValueKey('messageReplyMediaPreview')),
+        ),
+      );
       expect(openedMessageId, 9);
 
       // Expire the mocked TDLib download timeout before test teardown.

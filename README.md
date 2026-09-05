@@ -32,6 +32,10 @@ native-feeling messaging experience across phones and desktops.
 | macOS (universal) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | Linux (x64, arm64) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 
+Windows releases include per-architecture `setup.exe` installers and portable
+ZIPs. The installer is per-user, needs no administrator access, creates Start
+Menu and optional desktop shortcuts, and registers Mithka in Installed Apps.
+
 The Windows and Linux packages update themselves: **Settings → About → Check for
 Updates** downloads the release package for that architecture, verifies it
 against the SHA-256 GitHub publishes, and swaps the install in place before

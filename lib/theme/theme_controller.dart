@@ -151,6 +151,34 @@ enum ChatListSwipeMode {
   final AppIconData icon;
 }
 
+/// Where ordinary web links leave the chat surface.
+///
+/// Telegram links still resolve through TDLib and are unaffected by this
+/// device-wide preference.
+enum LinkOpenMode {
+  askEveryTime(
+    AppStringKeys.linkBrowserAskEveryTime,
+    AppStringKeys.linkBrowserAskEveryTimeDescription,
+    HeroAppIcons.questionCircle,
+  ),
+  internalBrowser(
+    AppStringKeys.linkBrowserMithkaBrowser,
+    AppStringKeys.linkBrowserMithkaBrowserDescription,
+    HeroAppIcons.globe,
+  ),
+  defaultBrowser(
+    AppStringKeys.linkBrowserDefaultBrowser,
+    AppStringKeys.linkBrowserDefaultBrowserDescription,
+    HeroAppIcons.arrowTopRight,
+  );
+
+  const LinkOpenMode(this.label, this.description, this.icon);
+
+  final String label;
+  final String description;
+  final AppIconData icon;
+}
+
 enum MobileMessageActionMenuStyle {
   grid(AppStringKeys.appearanceMessageActionMenuGrid, HeroAppIcons.grip),
   dropdown(
@@ -1113,6 +1141,10 @@ class ThemeController extends ChangeNotifier {
         );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
+    _linkOpenMode = LinkOpenMode.values.firstWhere(
+      (mode) => mode.name == _prefs.getString(_linkOpenModeKey),
+      orElse: () => LinkOpenMode.defaultBrowser,
+    );
     _showSavedMessagesIdentity =
         _prefs.getBool(_showSavedMessagesIdentityKey) ?? false;
     _preserveSenderWhenRepeating =
@@ -1223,6 +1255,7 @@ class ThemeController extends ChangeNotifier {
       'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
+  static const _linkOpenModeKey = 'linkOpenMode.v1';
   static const _showSavedMessagesIdentityKey = 'showSavedMessagesIdentity';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
   static const _quickRepliesEnabledKey = 'quickRepliesEnabled';
@@ -1239,8 +1272,8 @@ class ThemeController extends ChangeNotifier {
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
 
   static const double minFontScale = 0.8;
-  // Chat text reflows inside fixed bubble widths, so a generous ceiling is
-  // safe: 2.0 covers users the old 1.4 cap left behind.
+  // Text reflows inside bubbles and rows that grow with it, so a generous
+  // ceiling is safe: 2.0 covers users the old 1.4 cap left behind.
   static const double maxFontScale = 2.0;
   static const double minInterfaceScale = 0.66 * 0.66;
   static const double maxInterfaceScale = 1.50 * 1.50;
@@ -1304,6 +1337,7 @@ class ThemeController extends ChangeNotifier {
   late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
+  late LinkOpenMode _linkOpenMode;
   bool _showSavedMessagesIdentity = false;
   bool _preserveSenderWhenRepeating = true;
   bool _quickRepliesEnabled = true;
@@ -1756,6 +1790,7 @@ class ThemeController extends ChangeNotifier {
       _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
+  LinkOpenMode get linkOpenMode => _linkOpenMode;
   bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get quickRepliesEnabled => _quickRepliesEnabled;
@@ -1808,19 +1843,36 @@ class ThemeController extends ChangeNotifier {
     return value;
   }
 
-  /// App-wide text scale factor for chat surfaces, applied by
-  /// [ChatFontScaleScope] through a scoped MediaQuery.textScaler.
+  /// App-wide text scale factor, applied at the root via MediaQuery.textScaler
+  /// by the scaled app views. Every surface follows it — chat transcripts,
+  /// chat list, navigation and settings alike.
   double get fontScale => _fontScale;
-  // Chat font scaling is applied once by the chat-scoped MediaQuery; Text
-  // applies it implicitly and RichText reads it explicitly. Returning an
-  // already scaled size here made chat typography grow twice.
+
+  /// The scale text actually renders at: the user's own font size preference
+  /// on top of the platform accessibility text size, capped at the range the
+  /// app's layouts are tested against so an extreme system setting cannot
+  /// break a fixed layout on its own.
+  ///
+  /// The system size only ever enlarges. This control owns how small the app
+  /// gets — it shows its setting as a percentage, and a device asking for
+  /// text below the platform default would otherwise render 100% smaller than
+  /// the sizes the app is designed at. Enlarging still composes, so a system
+  /// accessibility size carries into the app on its own.
+  double effectiveTextScale(TextScaler systemScaler) =>
+      (_fontScale * math.max(systemScaler.scale(1.0), 1.0)).clamp(
+        minFontScale,
+        maxFontScale,
+      );
+
+  // Font scaling is applied once by the root MediaQuery; Text applies it
+  // implicitly and RichText reads it explicitly. Returning an already scaled
+  // size here made chat typography grow twice.
   double chatTextSize(double base) => base;
 
   /// Squared value shown by the Interface Size control. For example, the
   /// historical 1.5 render scale is presented as 225%.
   double get interfaceScale => _interfaceScale * _interfaceScale;
   double get renderedInterfaceScale => math.sqrt(interfaceScale);
-  double get rowHeight => AppMetric.listRowHeight;
   double get avatarSize => AppMetric.avatarSize;
   double get navHeaderHeight => AppMetric.navHeaderHeight;
   double scaled(double base) => base;
@@ -2571,6 +2623,13 @@ class ThemeController extends ChangeNotifier {
     if (_openChatsAtLatest == value) return;
     _openChatsAtLatest = value;
     _prefs.setBool(_openChatsAtLatestKey, value);
+    notifyListeners();
+  }
+
+  set linkOpenMode(LinkOpenMode value) {
+    if (_linkOpenMode == value) return;
+    _linkOpenMode = value;
+    _prefs.setString(_linkOpenModeKey, value.name);
     notifyListeners();
   }
 

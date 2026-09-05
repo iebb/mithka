@@ -949,7 +949,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     return Container(
       key: const ValueKey('shared-media-inner-header'),
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(
@@ -1159,6 +1160,15 @@ class _SharedMediaViewState extends State<SharedMediaView> {
             value: index.toDouble(),
             min: 0,
             max: (_minVideoDurationStops.length - 1).toDouble(),
+            step: 1,
+            semanticLabel: AppStrings.t(AppStringKeys.sharedMediaMinDuration),
+            semanticValue: _minVideoDurationLabel(_minVideoDurationSeconds),
+            semanticValueFormatter: (value) => _minVideoDurationLabel(
+              _minVideoDurationStops[value.round().clamp(
+                0,
+                _minVideoDurationStops.length - 1,
+              )],
+            ),
             onChanged: (value) => _setMinVideoDuration(
               _minVideoDurationStops[value.round().clamp(
                 0,
@@ -1335,7 +1345,11 @@ class _SharedMediaViewState extends State<SharedMediaView> {
       ].join(' ').toLowerCase();
       return fields.contains(query);
     }).toList();
-    if (_tabs[_tab].videoOnly) {
+    // Keep the all-videos list in Telegram's message order. Download
+    // completion updates must not move a card out from under the user's
+    // pointer or make it appear to switch lists; only filtered views need
+    // download-priority ordering.
+    if (_tabs[_tab].videoOnly && _fileFilter != _SharedMediaFileFilter.all) {
       filtered.sort((a, b) {
         final byPriority = _videoPriority(b).compareTo(_videoPriority(a));
         if (byPriority != 0) return byPriority;
@@ -1716,8 +1730,8 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => FileDetailView(doc: m.document!)),
           );
-        } else if (isLink && m.text.isNotEmpty) {
-          openLink(context, m.text);
+        } else if (isLink && subtitle.isNotEmpty) {
+          openLink(context, subtitle);
         }
       },
       child: Container(

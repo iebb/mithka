@@ -20,6 +20,23 @@ typedef MiniAppTdQuery =
 typedef MiniAppEventEmitter =
     Future<void> Function(String event, Map<String, dynamic> data);
 
+typedef MiniAppDownloadDirectoryProvider = Future<Directory> Function();
+
+const int miniAppMaximumDownloadBytes = 100 * 1024 * 1024;
+const Duration miniAppDownloadConnectTimeout = Duration(seconds: 15);
+const Duration miniAppDownloadIdleTimeout = Duration(seconds: 30);
+
+class MiniAppDownloadCancellation {
+  final Completer<void> _cancelled = Completer<void>();
+
+  bool get isCancelled => _cancelled.isCompleted;
+  Future<void> get whenCancelled => _cancelled.future;
+
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
+  }
+}
+
 class MiniAppBridgePayload {
   const MiniAppBridgePayload({required this.type, required this.data});
 
@@ -27,11 +44,18 @@ class MiniAppBridgePayload {
   final Map<String, dynamic> data;
 }
 
-MiniAppBridgePayload? decodeMiniAppBridgePayload(String raw) {
+MiniAppBridgePayload? decodeMiniAppBridgePayload(
+  String raw, {
+  String? expectedBridgeNonce,
+}) {
   try {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) return null;
     final map = Map<String, dynamic>.from(decoded);
+    if (expectedBridgeNonce != null &&
+        map['bridgeNonce'] != expectedBridgeNonce) {
+      return null;
+    }
     final type = map['eventType'];
     if (type is! String || type.isEmpty) return null;
     final rawData = map['eventData'];
@@ -62,13 +86,30 @@ class MiniAppPlatformService {
     required this.clientId,
     MiniAppTdQuery? query,
     http.Client? httpClient,
-  }) : _query = query ?? TdClient.shared.query,
-       _http = httpClient ?? http.Client();
+    MiniAppDownloadDirectoryProvider? downloadDirectoryProvider,
+    this.downloadConnectTimeout = miniAppDownloadConnectTimeout,
+    this.downloadIdleTimeout = miniAppDownloadIdleTimeout,
+    this.maximumDownloadBytes = miniAppMaximumDownloadBytes,
+  }) : _query =
+           query ?? ((request) => TdClient.shared.queryTo(request, clientId)),
+       _http = httpClient ?? http.Client(),
+       _downloadDirectoryProvider =
+           downloadDirectoryProvider ?? _defaultDownloadDirectory {
+    if (downloadConnectTimeout <= Duration.zero ||
+        downloadIdleTimeout <= Duration.zero ||
+        maximumDownloadBytes <= 0) {
+      throw ArgumentError('Mini App download limits must be positive');
+    }
+  }
 
   final int botUserId;
   final int clientId;
   final MiniAppTdQuery _query;
   final http.Client _http;
+  final MiniAppDownloadDirectoryProvider _downloadDirectoryProvider;
+  final Duration downloadConnectTimeout;
+  final Duration downloadIdleTimeout;
+  final int maximumDownloadBytes;
 
   Future<Map<String, dynamic>?> attachmentMenuBot() async {
     try {
@@ -180,31 +221,114 @@ class MiniAppPlatformService {
     }
   }
 
-  Future<File> download({required String fileName, required String url}) async {
-    final uri = Uri.parse(url);
-    if (uri.scheme != 'https') {
-      throw const FormatException('Mini App downloads require HTTPS');
+  Future<File> download({
+    required String fileName,
+    required String url,
+    MiniAppDownloadCancellation? cancellation,
+  }) async {
+    final uri = _safeDownloadUri(url);
+    if (cancellation?.isCancelled ?? false) {
+      throw http.RequestAbortedException(uri);
     }
     final safeName = _safeFileName(fileName);
-    final root = await getDownloadsDirectory() ?? await getTemporaryDirectory();
-    final destination = await _unusedFile(root, safeName);
-    final request = http.Request('GET', uri);
-    final response = await _http.send(request);
+    final abort = Completer<void>();
+    void abortRequest() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    if (cancellation != null) {
+      unawaited(cancellation.whenCancelled.then((_) => abortRequest()));
+    }
+    final request = http.AbortableRequest(
+      'GET',
+      uri,
+      abortTrigger: abort.future,
+    )..maxRedirects = 5;
+    final response = await _http
+        .send(request)
+        .timeout(
+          downloadConnectTimeout,
+          onTimeout: () {
+            abortRequest();
+            throw TimeoutException(
+              'Mini App download connection timed out',
+              downloadConnectTimeout,
+            );
+          },
+        );
+    final responseUri = switch (response) {
+      http.BaseResponseWithUrl(:final url) => url,
+      _ => response.request?.url ?? uri,
+    };
+    if (!_isSafeDownloadUri(responseUri)) {
+      abortRequest();
+      throw const FormatException('Mini App download redirected outside HTTPS');
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      abortRequest();
       throw HttpException(
         'Download failed with status ${response.statusCode}',
-        uri: uri,
+        uri: responseUri,
       );
     }
-    final sink = destination.openWrite();
+    final advertised = response.contentLength;
+    if (advertised != null && advertised > maximumDownloadBytes) {
+      abortRequest();
+      throw FileSystemException(
+        'Mini App download is larger than $maximumDownloadBytes bytes',
+      );
+    }
+    if (cancellation?.isCancelled ?? false) {
+      abortRequest();
+      throw http.RequestAbortedException(uri);
+    }
+
+    final root = await _downloadDirectoryProvider();
+    await root.create(recursive: true);
+    // The server-controlled Content-Disposition header is deliberately ignored.
+    // Only the user-confirmed, sanitized Mini App filename reaches the filesystem.
+    final temporary = await _unusedFile(root, '.$safeName.mithka-part');
+    IOSink? sink;
     try {
-      await response.stream.pipe(sink);
-    } catch (_) {
+      sink = temporary.openWrite();
+      var received = 0;
+      final stream = response.stream.timeout(
+        downloadIdleTimeout,
+        onTimeout: (eventSink) {
+          abortRequest();
+          eventSink.addError(
+            TimeoutException(
+              'Mini App download became idle',
+              downloadIdleTimeout,
+            ),
+          );
+          eventSink.close();
+        },
+      );
+      await for (final chunk in stream) {
+        received += chunk.length;
+        if (received > maximumDownloadBytes) {
+          abortRequest();
+          throw FileSystemException(
+            'Mini App download is larger than $maximumDownloadBytes bytes',
+          );
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
       await sink.close();
-      if (await destination.exists()) await destination.delete();
+      sink = null;
+      if (cancellation?.isCancelled ?? false) {
+        throw http.RequestAbortedException(uri);
+      }
+      final destination = await _unusedFile(root, safeName);
+      return temporary.rename(destination.path);
+    } catch (_) {
+      abortRequest();
+      await sink?.close();
+      if (await temporary.exists()) await temporary.delete();
       rethrow;
     }
-    return destination;
   }
 
   Future<File> downloadTemporaryStoryMedia(String url) async {
@@ -328,11 +452,62 @@ class MiniAppPlatformService {
   void dispose() => _http.close();
 
   static String _safeFileName(String value) {
-    final normalized = value.replaceAll(RegExp(r'[/\\\x00-\x1F]'), '_').trim();
-    if (normalized.isEmpty || normalized == '.' || normalized == '..') {
+    var normalized = value
+        .replaceAll(
+          RegExp(r'[<>:"/\\|?*\x00-\x1F\x7F\u202A-\u202E\u2066-\u2069]'),
+          '_',
+        )
+        .trim()
+        .replaceFirst(RegExp(r'^\.+'), '')
+        .replaceFirst(RegExp(r'[. ]+$'), '');
+    if (normalized.isEmpty) {
       return 'download';
     }
-    return normalized.length <= 180 ? normalized : normalized.substring(0, 180);
+    final stem = normalized.split('.').first.toUpperCase();
+    if (RegExp(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$').hasMatch(stem)) {
+      normalized = '_$normalized';
+    }
+    return _truncateUtf8(normalized, 180);
+  }
+
+  static String _truncateUtf8(String value, int maximumBytes) {
+    final output = StringBuffer();
+    var byteCount = 0;
+    for (final rune in value.runes) {
+      final character = String.fromCharCode(rune);
+      final characterBytes = utf8.encode(character).length;
+      if (byteCount + characterBytes > maximumBytes) break;
+      output.write(character);
+      byteCount += characterBytes;
+    }
+    return output.isEmpty ? 'download' : output.toString();
+  }
+
+  static Uri _safeDownloadUri(String value) {
+    final uri = Uri.tryParse(value);
+    if (!_isSafeDownloadUri(uri)) {
+      throw const FormatException('Mini App downloads require HTTPS');
+    }
+    return uri!;
+  }
+
+  static bool _isSafeDownloadUri(Uri? uri) {
+    if (uri == null) return false;
+    try {
+      final port = uri.port;
+      return uri.scheme.toLowerCase() == 'https' &&
+          uri.hasAuthority &&
+          uri.host.isNotEmpty &&
+          uri.userInfo.isEmpty &&
+          port > 0 &&
+          port <= 65535;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<Directory> _defaultDownloadDirectory() async {
+    return await getDownloadsDirectory() ?? await getTemporaryDirectory();
   }
 
   static Future<File> _unusedFile(Directory root, String name) async {

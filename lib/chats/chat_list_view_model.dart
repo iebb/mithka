@@ -645,9 +645,13 @@ class ChatListViewModel extends ChangeNotifier {
     if (chat.unreadCount <= 0 && !chat.isMarkedUnread) return;
     final previousUnread = chat.unreadCount;
     final previousMarked = chat.isMarkedUnread;
+    final previousLastReadInboxMessageId = chat.lastReadInboxMessageId;
     _mutate(chat.id, (s) {
       s.unreadCount = 0;
       s.isMarkedUnread = false;
+      if (s.lastMessageId > s.lastReadInboxMessageId) {
+        s.lastReadInboxMessageId = s.lastMessageId;
+      }
     });
     _resort();
 
@@ -663,6 +667,7 @@ class ChatListViewModel extends ChangeNotifier {
       _mutate(chat.id, (s) {
         s.unreadCount = previousUnread;
         s.isMarkedUnread = previousMarked;
+        s.lastReadInboxMessageId = previousLastReadInboxMessageId;
       });
       _resort();
     });
@@ -690,7 +695,6 @@ class ChatListViewModel extends ChangeNotifier {
       final fresh = TDParse.chat(raw);
       if (fresh == null) return;
       messageId = fresh.lastMessageId;
-      _map[chat.id] = fresh;
     }
     if (messageId <= 0) return;
     await _client.query({
@@ -821,6 +825,7 @@ class ChatListViewModel extends ChangeNotifier {
           final folderId = list.integer('chat_folder_id');
           if (folderId != null) {
             _folderOrders.putIfAbsent(folderId, () => {})[id] = 1;
+            _mutate(id, (s) => s.folderIds.add(folderId));
           }
         }
         _scheduleResort();
@@ -836,7 +841,10 @@ class ChatListViewModel extends ChangeNotifier {
             _mutate(id, (s) => s.archiveOrder = 0);
           case 'chatListFolder':
             final folderId = list.integer('chat_folder_id');
-            if (folderId != null) _folderOrders[folderId]?.remove(id);
+            if (folderId != null) {
+              _folderOrders[folderId]?.remove(id);
+              _mutate(id, (s) => s.folderIds.remove(folderId));
+            }
         }
         _scheduleResort();
 
@@ -867,11 +875,22 @@ class ChatListViewModel extends ChangeNotifier {
       case 'updateChatReadInbox':
         final id = update.int64('chat_id');
         if (id == null) return;
-        _mutate(
-          id,
-          (s) =>
-              s.unreadCount = update.integer('unread_count') ?? s.unreadCount,
-        );
+        _mutate(id, (s) {
+          final lastReadInboxMessageId = update.int64(
+            'last_read_inbox_message_id',
+          );
+          // A locally emitted read update can overtake an older TDLib snapshot.
+          // Read boundaries never move backwards, so ignore the stale pair
+          // instead of letting its unread count resurrect a cleared badge.
+          if (lastReadInboxMessageId != null &&
+              lastReadInboxMessageId < s.lastReadInboxMessageId) {
+            return;
+          }
+          if (lastReadInboxMessageId != null) {
+            s.lastReadInboxMessageId = lastReadInboxMessageId;
+          }
+          s.unreadCount = update.integer('unread_count') ?? s.unreadCount;
+        });
         _scheduleResort();
 
       case 'updateChatUnreadMentionCount':
@@ -971,6 +990,19 @@ class ChatListViewModel extends ChangeNotifier {
 
   // MARK: - Mutation helpers
 
+  /// Restores [ChatSummary.folderIds] on a summary that has just been parsed
+  /// fresh from TDLib.
+  ///
+  /// A raw chat only carries positions for chat lists TDLib has loaded, so a
+  /// re-ingest would otherwise drop every folder the chat is in — the tags
+  /// appeared and then vanished on the next update. [_folderOrders] is the
+  /// same store [_projectChats] filters on, so the two cannot disagree.
+  void _restoreFolderIds(ChatSummary summary) {
+    for (final entry in _folderOrders.entries) {
+      if ((entry.value[summary.id] ?? 0) > 0) summary.folderIds.add(entry.key);
+    }
+  }
+
   void _mutate(int id, void Function(ChatSummary) body) {
     final s = _map[id] ?? _communityDirectoryChats[id];
     if (s == null) return;
@@ -1008,6 +1040,13 @@ class ChatListViewModel extends ChangeNotifier {
         } else {
           orders.remove(id);
         }
+        _mutate(id, (s) {
+          if (order > 0) {
+            s.folderIds.add(folderId);
+          } else {
+            s.folderIds.remove(folderId);
+          }
+        });
     }
   }
 
@@ -1051,6 +1090,9 @@ class ChatListViewModel extends ChangeNotifier {
       if (recency < 0 || (preserveExistingIfNotNewer && recency == 0)) {
         return;
       }
+      if (recency == 0) {
+        _preserveFresherReadState(summary, existing);
+      }
     }
     if (_meId != null) summary.isSavedMessages = summary.peerUserId == _meId;
     summary.lastMessage = _previewText(summary.lastMessage);
@@ -1061,6 +1103,7 @@ class ChatListViewModel extends ChangeNotifier {
     if (cachedJoined == false) {
       _map.remove(summary.id);
       _communityDirectoryChats[summary.id] = summary;
+      _restoreFolderIds(summary);
       // After the chat is in a map: the peer resolution can now complete
       // synchronously off the user cache, and it looks the chat up by id.
       _resolvePeerIfNeeded(summary);
@@ -1083,6 +1126,7 @@ class ChatListViewModel extends ChangeNotifier {
     _viewableCommunityChatIds.remove(summary.id);
     _checkingCommunityChatAccess.remove(summary.id);
     _map[summary.id] = summary;
+    _restoreFolderIds(summary);
     _resolvePeerIfNeeded(summary);
     _applyPositions(summary.id, raw.objects('positions'));
     _resolveSenderIfNeeded(summary.id, raw.obj('last_message'));
@@ -1470,6 +1514,24 @@ class ChatListViewModel extends ChangeNotifier {
       return candidate.date.compareTo(existing.date);
     }
     return candidate.lastMessageId.compareTo(existing.lastMessageId);
+  }
+
+  /// A `getChat` requested by the community catalogue can finish after the
+  /// chat has already been marked read. For the same last-message snapshot,
+  /// the furthest read boundary is authoritative; at an equal boundary the
+  /// smaller unread count reflects more read progress. A genuinely newer last
+  /// message bypasses this merge and is free to add unread messages normally.
+  static void _preserveFresherReadState(
+    ChatSummary candidate,
+    ChatSummary existing,
+  ) {
+    final existingIsFresher =
+        existing.lastReadInboxMessageId > candidate.lastReadInboxMessageId ||
+        (existing.lastReadInboxMessageId == candidate.lastReadInboxMessageId &&
+            existing.unreadCount < candidate.unreadCount);
+    if (!existingIsFresher) return;
+    candidate.lastReadInboxMessageId = existing.lastReadInboxMessageId;
+    candidate.unreadCount = existing.unreadCount;
   }
 
   static int _compare(ChatSummary a, ChatSummary b) {

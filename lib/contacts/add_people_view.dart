@@ -281,7 +281,8 @@ class _AddPeopleViewState extends State<AddPeopleView> {
     final c = context.colors;
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top +
+        top:
+            MediaQuery.of(context).padding.top +
             iPadWindowChromeInsetOf(context),
       ),
       decoration: BoxDecoration(

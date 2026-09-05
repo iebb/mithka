@@ -932,9 +932,11 @@ abstract final class AppStringKeys {
   static const chatSendFailedRateLimited = 'chatSendFailedRateLimited';
   static const chatSendFailedTitle = 'chatSendFailedTitle';
   static const chatSendFailedUnavailable = 'chatSendFailedUnavailable';
+  static const chatSavedToFolder = 'chatSavedToFolder';
   static const chatSavedToPhotos = 'chatSavedToPhotos';
   static const chatSavedToSavedMessages = 'chatSavedToSavedMessages';
   static const chatSaveFailed = 'chatSaveFailed';
+  static const chatSaveToFolderFailed = 'chatSaveToFolderFailed';
   static const chatSaveToPhotosFailed = 'chatSaveToPhotosFailed';
   static const chatSaveToPhotosPermissionDenied =
       'chatSaveToPhotosPermissionDenied';
@@ -1661,6 +1663,24 @@ abstract final class AppStringKeys {
   static const keywordBlockerTitle = 'keywordBlockerTitle';
   static const languageMithkaLanguage = 'languageMithkaLanguage';
   static const languageTitle = 'languageTitle';
+  static const linkBrowserAddress = 'linkBrowserAddress';
+  static const linkBrowserAskEveryTime = 'linkBrowserAskEveryTime';
+  static const linkBrowserAskEveryTimeDescription =
+      'linkBrowserAskEveryTimeDescription';
+  static const linkBrowserBack = 'linkBrowserBack';
+  static const linkBrowserDefaultBrowser = 'linkBrowserDefaultBrowser';
+  static const linkBrowserDefaultBrowserDescription =
+      'linkBrowserDefaultBrowserDescription';
+  static const linkBrowserForward = 'linkBrowserForward';
+  static const linkBrowserMithkaBrowser = 'linkBrowserMithkaBrowser';
+  static const linkBrowserMithkaBrowserDescription =
+      'linkBrowserMithkaBrowserDescription';
+  static const linkBrowserOpenInDefaultBrowser =
+      'linkBrowserOpenInDefaultBrowser';
+  static const linkBrowserOpenLinkWith = 'linkBrowserOpenLinkWith';
+  static const linkBrowserOpenLinksIn = 'linkBrowserOpenLinksIn';
+  static const linkBrowserReload = 'linkBrowserReload';
+  static const linkBrowserTitle = 'linkBrowserTitle';
   static const linkHandlerGroupLabel = 'linkHandlerGroupLabel';
   static const linkHandlerJoin = 'linkHandlerJoin';
   static const linkHandlerJoinNamedGroupQuestion =
@@ -1752,6 +1772,7 @@ abstract final class AppStringKeys {
   static const messageActionRepeat = 'messageActionRepeat';
   static const messageActionReplies = 'messageActionReplies';
   static const messageActionReport = 'messageActionReport';
+  static const messageActionSaveAs = 'messageActionSaveAs';
   static const messageActionSaveToPhotos = 'messageActionSaveToPhotos';
   static const messageActionSelectText = 'messageActionSelectText';
   static const messageActionSetTodo = 'messageActionSetTodo';
@@ -2772,6 +2793,7 @@ abstract final class AppStringKeys {
   static const translationLingvaNoResult = 'translationLingvaNoResult';
   static const translationGoogleCloudApiKeyRequired =
       'translationGoogleCloudApiKeyRequired';
+  static const translationGoogleCloudName = 'translationGoogleCloudName';
   static const translationGoogleCloudPrivacy = 'translationGoogleCloudPrivacy';
   static const translationMlKitLocal = 'translationMlKitLocal';
   static const translationMyMemoryNoResult = 'translationMyMemoryNoResult';
@@ -3265,14 +3287,26 @@ abstract final class AppStringKeys {
   static const downloadsClearActiveDownloads = 'downloadsClearActiveDownloads';
   static const downloadsClearCompletedDownloads =
       'downloadsClearCompletedDownloads';
+  static const downloadsFilterActive = 'downloadsFilterActive';
+  static const downloadsFilterAll = 'downloadsFilterAll';
+  static const downloadsFilterCompleted = 'downloadsFilterCompleted';
   static const downloadsKeepTheCachedFileOrDeleteItFrom =
       'downloadsKeepTheCachedFileOrDeleteItFrom';
+  static const downloadsMediaAnimation = 'downloadsMediaAnimation';
+  static const downloadsMediaPhoto = 'downloadsMediaPhoto';
+  static const downloadsMediaTelegramMedia = 'downloadsMediaTelegramMedia';
+  static const downloadsMediaVideo = 'downloadsMediaVideo';
+  static const downloadsMediaVideoMessage = 'downloadsMediaVideoMessage';
+  static const downloadsMediaVoiceMessage = 'downloadsMediaVoiceMessage';
   static const downloadsNoDownloadsFound = 'downloadsNoDownloadsFound';
+  static const downloadsPauseAllDownloads = 'downloadsPauseAllDownloads';
+  static const downloadsPausedProgress = 'downloadsPausedProgress';
   static const downloadsRefreshDownloads = 'downloadsRefreshDownloads';
   static const downloadsRemoveAndDeleteFile = 'downloadsRemoveAndDeleteFile';
   static const downloadsRemoveAndKeepCachedFile =
       'downloadsRemoveAndKeepCachedFile';
   static const downloadsRemoveFromDownloads = 'downloadsRemoveFromDownloads';
+  static const downloadsResumeAllDownloads = 'downloadsResumeAllDownloads';
   static const downloadsSearchDownloads = 'downloadsSearchDownloads';
   static const groupAdministrationAddCustomReaction =
       'groupAdministrationAddCustomReaction';
@@ -3755,6 +3789,39 @@ abstract final class AppStringKeys {
   static const telegramStorePurchaseRetry = 'telegramStorePurchaseRetry';
   static const telegramStorePurchaseTelegramDidNotReturnAnAppStoreProduct =
       'telegramStorePurchaseTelegramDidNotReturnAnAppStoreProduct';
+  static const videoDebuggerBufferHealth = 'videoDebuggerBufferHealth';
+  static const videoDebuggerCache = 'videoDebuggerCache';
+  static const videoDebuggerChunkDescription = 'videoDebuggerChunkDescription';
+  static const videoDebuggerConnectionSpeed = 'videoDebuggerConnectionSpeed';
+  static const videoDebuggerCurrentOptimalResolution =
+      'videoDebuggerCurrentOptimalResolution';
+  static const videoDebuggerIdle = 'videoDebuggerIdle';
+  static const videoDebuggerLastEvent = 'videoDebuggerLastEvent';
+  static const videoDebuggerLive = 'videoDebuggerLive';
+  static const videoDebuggerNetworkActivity = 'videoDebuggerNetworkActivity';
+  static const videoDebuggerPartial = 'videoDebuggerPartial';
+  static const videoDebuggerPerSecond = 'videoDebuggerPerSecond';
+  static const videoDebuggerPlaybackRate = 'videoDebuggerPlaybackRate';
+  static const videoDebuggerSeconds = 'videoDebuggerSeconds';
+  static const videoDebuggerStreamCache = 'videoDebuggerStreamCache';
+  static const videoDebuggerUndownloaded = 'videoDebuggerUndownloaded';
+  static const videoDebuggerVideoIdFile = 'videoDebuggerVideoIdFile';
+  static const videoDebuggerViewportFrames = 'videoDebuggerViewportFrames';
+  static const videoDebuggerVolumeNormalized = 'videoDebuggerVolumeNormalized';
+  static const videoDebuggerWaitingForSize = 'videoDebuggerWaitingForSize';
+  static const videoDebuggerWaitingForStreamEvents =
+      'videoDebuggerWaitingForStreamEvents';
+  static const videoPlayerAutoplay = 'videoPlayerAutoplay';
+  static const videoPlayerExitFullscreen = 'videoPlayerExitFullscreen';
+  static const videoPlayerOnDemand = 'videoPlayerOnDemand';
+  static const videoPlayerPlaying = 'videoPlayerPlaying';
+  static const videoPlayerSeekBackwardTenSeconds =
+      'videoPlayerSeekBackwardTenSeconds';
+  static const videoPlayerSeekForwardTenSeconds =
+      'videoPlayerSeekForwardTenSeconds';
+  static const videoPlayerStreamInspector = 'videoPlayerStreamInspector';
+  static const videoPlayerVideoNumber = 'videoPlayerVideoNumber';
+  static const videoPlayerVideoZoom = 'videoPlayerVideoZoom';
   static const videoNotePreviewTrim = 'videoNotePreviewTrim';
   static const videoNotePreviewVideoMessage = 'videoNotePreviewVideoMessage';
   static const videoNoteRecorderCancelRecording =

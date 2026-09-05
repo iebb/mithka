@@ -79,4 +79,50 @@ void main() {
     }
     debugDefaultTargetPlatformOverride = null;
   });
+  testWidgets('desktop export menu drops the album destination', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final themeController = ThemeController(
+      await SharedPreferences.getInstance(),
+    );
+    final message = ChatMessage(
+      id: 56,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      stickerFileId: 56,
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: themeController,
+        child: MaterialApp(
+          theme: ThemeData(extensions: [AppColors.light]),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: StickerViewer(message: message),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('sticker-export-menu-button')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('sticker-export-menu')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('sticker-export-photos-png')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('sticker-export-files-png')),
+      findsOneWidget,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

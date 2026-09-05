@@ -6,12 +6,12 @@
 //  edit, or a typing notice arriving in a conversation with thousands of
 //  messages already loaded, folded on the same isolate that is trying to draw.
 //
-//  Most of these updates address exactly one message, but the view model finds
-//  that message by scanning the transcript, so the work grows with the
-//  conversation rather than with the update. The figure that matters is
-//  therefore not the cost of one update but the scaling column: the same burst
-//  against 500 and against 5000 loaded messages. A ratio near x1 is a lookup
-//  that ignores transcript length; a ratio near x10 is one that walks it.
+//  Most of these updates address exactly one message. The view model indexes
+//  those lookups and localizes several notification types, while structural
+//  arrivals still copy or republish transcript state. The scaling column shows
+//  which work remains sensitive to transcript size: the same burst against 500
+//  and against 5000 loaded messages. A ratio near x1 ignores transcript length;
+//  a ratio near x10 usually indicates a walk or full-list copy.
 //
 //  There is no timing assertion: absolute numbers depend on the machine, so a
 //  threshold would only be flaky elsewhere. It asserts the shape of the run

@@ -61,7 +61,8 @@ double iPadWindowChromeInset({
   if (isWeb) return 0;
   if ((platform ?? defaultTargetPlatform) != TargetPlatform.iOS) return 0;
   if (!_supportsWindowControls(operatingSystemVersion)) return 0;
-  final floating = paddingTop > 0 && paddingTop <= 16 ||
+  final floating =
+      paddingTop > 0 && paddingTop <= 16 ||
       _isSmallerInBothDimensions(viewSize, displaySize);
   return floating ? iPadWindowControlsTopInset : 0;
 }

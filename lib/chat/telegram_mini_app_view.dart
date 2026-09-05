@@ -39,6 +39,7 @@ import 'link_handler.dart';
 import 'telegram_invoice_checkout_view.dart';
 import 'telegram_mini_app_platform.dart';
 import 'telegram_mini_app_recents.dart';
+import 'telegram_webview_security.dart';
 
 class TelegramMiniAppLaunch {
   const TelegramMiniAppLaunch({
@@ -46,6 +47,7 @@ class TelegramMiniAppLaunch {
     required this.url,
     required this.botUserId,
     required this.chatId,
+    this.clientId,
     this.launchId,
     this.keyboardButtonText,
   });
@@ -54,11 +56,36 @@ class TelegramMiniAppLaunch {
   final String url;
   final int botUserId;
   final int chatId;
+  final int? clientId;
   final int? launchId;
   final String? keyboardButtonText;
 
   bool get canSendData =>
       keyboardButtonText != null && keyboardButtonText!.isNotEmpty;
+}
+
+typedef TelegramMiniAppPresenter =
+    Future<bool> Function(TelegramMiniAppLaunch launch);
+
+/// A scoped presentation seam for end-to-end launch tests. Production callers
+/// use the platform-specific dialog/window path below.
+@visibleForTesting
+class TelegramMiniAppPresentationScope extends InheritedWidget {
+  const TelegramMiniAppPresentationScope({
+    super.key,
+    required this.present,
+    required super.child,
+  });
+
+  final TelegramMiniAppPresenter present;
+
+  static TelegramMiniAppPresenter? maybeOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<TelegramMiniAppPresentationScope>()
+      ?.present;
+
+  @override
+  bool updateShouldNotify(TelegramMiniAppPresentationScope oldWidget) =>
+      present != oldWidget.present;
 }
 
 /// Resolves account-bound launch material and discards it if the active
@@ -111,17 +138,27 @@ Future<bool> openTelegramMiniApp(
   bool allowWriteAccess = false,
   Map<String, dynamic>? openMode,
   TdFileRef? photo,
+  int? accountSlot,
+  bool attachmentMenuConsentRequired = false,
 }) async {
   final accountStore = context.read<AccountStore?>();
-  final account = await _captureTelegramMiniAppAccount(accountStore);
+  final requireActiveAccount = accountSlot == null;
+  final account = await _captureTelegramMiniAppAccount(
+    accountStore,
+    accountSlot: accountSlot,
+    requireActiveAccount: requireActiveAccount,
+  );
   if (account == null || !context.mounted) return false;
   final launch = await resolveTelegramMiniAppForPinnedAccount(
     account: account,
     resolve: (clientId) => _resolveMiniAppLaunch(
       context,
       clientId: clientId,
-      accountStillCurrent: () =>
-          _isTelegramMiniAppAccountCurrent(account, accountStore),
+      accountStillCurrent: () => _isTelegramMiniAppAccountCurrent(
+        account,
+        accountStore,
+        requireActiveAccount: requireActiveAccount,
+      ),
       chatId: chatId,
       botUserId: botUserId,
       url: url,
@@ -134,9 +171,13 @@ Future<bool> openTelegramMiniApp(
       webAppShortName: webAppShortName,
       allowWriteAccess: allowWriteAccess,
       openMode: openMode,
+      attachmentMenuConsentRequired: attachmentMenuConsentRequired,
     ),
-    isCurrent: (captured) =>
-        _isTelegramMiniAppAccountCurrent(captured, accountStore),
+    isCurrent: (captured) => _isTelegramMiniAppAccountCurrent(
+      captured,
+      accountStore,
+      requireActiveAccount: requireActiveAccount,
+    ),
     onRejected: (rejected) =>
         _closeTelegramMiniAppLaunchIfOwned(account, rejected),
   );
@@ -160,6 +201,10 @@ Future<bool> openTelegramMiniApp(
       account: account,
     ),
   );
+  final presentationOverride = TelegramMiniAppPresentationScope.maybeOf(
+    context,
+  );
+  if (presentationOverride != null) return presentationOverride(launch);
   if (Platform.isMacOS) {
     final locale = Localizations.maybeLocaleOf(context);
     return DesktopMiniAppWindowService.instance.open(
@@ -264,14 +309,20 @@ class _MiniAppDialogHostState extends State<_MiniAppDialogHost> {
 }
 
 Future<TelegramMiniAppAccountScope?> _captureTelegramMiniAppAccount(
-  AccountStore? accountStore,
-) async {
+  AccountStore? accountStore, {
+  int? accountSlot,
+  required bool requireActiveAccount,
+}) async {
   final client = TdClient.shared;
-  final slot = client.activeSlot;
-  final clientId = client.activeClientId;
-  if (clientId <= 0 || client.clientId(slot) != clientId) return null;
+  final slot = accountSlot ?? client.activeSlot;
+  final clientId = client.clientId(slot);
+  if (clientId == null || clientId <= 0) return null;
 
-  var userId = accountStore?.activeUserId ?? client.proxyAccountUserId;
+  final isActiveClient =
+      client.activeSlot == slot && client.activeClientId == clientId;
+  var userId = isActiveClient
+      ? accountStore?.activeUserId ?? client.proxyAccountUserId
+      : null;
   if (userId == null || userId <= 0) {
     try {
       userId = (await client.queryTo({'@type': 'getMe'}, clientId)).int64('id');
@@ -285,37 +336,49 @@ Future<TelegramMiniAppAccountScope?> _captureTelegramMiniAppAccount(
     clientId: clientId,
     userId: userId,
   );
-  return await _isTelegramMiniAppAccountCurrent(account, accountStore)
+  return await _isTelegramMiniAppAccountCurrent(
+        account,
+        accountStore,
+        requireActiveAccount: requireActiveAccount,
+      )
       ? account
       : null;
 }
 
 Future<bool> _isTelegramMiniAppAccountCurrent(
   TelegramMiniAppAccountScope account,
-  AccountStore? accountStore,
-) async {
+  AccountStore? accountStore, {
+  required bool requireActiveAccount,
+}) async {
   final client = TdClient.shared;
-  final knownUserId = accountStore?.activeUserId ?? client.proxyAccountUserId;
-  if (!account.matches(
-        currentSlot: client.activeSlot,
-        currentClientId: client.activeClientId,
-        currentUserId: knownUserId ?? account.userId,
-      ) ||
-      client.clientId(account.slot) != account.clientId) {
+  if (client.clientId(account.slot) != account.clientId) {
     return false;
+  }
+  if (requireActiveAccount) {
+    final knownUserId = accountStore?.activeUserId ?? client.proxyAccountUserId;
+    if (!account.matches(
+      currentSlot: client.activeSlot,
+      currentClientId: client.activeClientId,
+      currentUserId: knownUserId ?? account.userId,
+    )) {
+      return false;
+    }
   }
   try {
     final me = await client.queryTo({'@type': 'getMe'}, account.clientId);
     final liveUserId = me.int64('id');
+    if (client.clientId(account.slot) != account.clientId ||
+        liveUserId != account.userId) {
+      return false;
+    }
+    if (!requireActiveAccount) return true;
     final currentKnownUserId =
         accountStore?.activeUserId ?? client.proxyAccountUserId;
-    return client.clientId(account.slot) == account.clientId &&
-        account.matches(
-          currentSlot: client.activeSlot,
-          currentClientId: client.activeClientId,
-          currentUserId: currentKnownUserId ?? liveUserId,
-        ) &&
-        liveUserId == account.userId;
+    return account.matches(
+      currentSlot: client.activeSlot,
+      currentClientId: client.activeClientId,
+      currentUserId: currentKnownUserId ?? liveUserId,
+    );
   } catch (_) {
     return false;
   }
@@ -361,10 +424,11 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
   String webAppShortName = '',
   bool allowWriteAccess = false,
   Map<String, dynamic>? openMode,
+  bool attachmentMenuConsentRequired = false,
 }) async {
   try {
     final parameters = _webAppOpenParameters(context, mode: openMode);
-    if (attachmentMenuWebApp &&
+    if ((attachmentMenuWebApp || attachmentMenuConsentRequired) &&
         !await _ensureAttachmentMenuBot(
           context,
           botUserId: botUserId,
@@ -377,7 +441,7 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
     if (mainWebApp) {
       final app = await TdClient.shared.queryTo({
         '@type': 'getMainWebApp',
-        'chat_id': 0,
+        'chat_id': chatId,
         'bot_user_id': botUserId,
         'start_parameter': startParameter,
         'parameters': parameters,
@@ -389,6 +453,7 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
         url: resolvedUrl,
         botUserId: botUserId,
         chatId: chatId,
+        clientId: clientId,
       );
     }
 
@@ -410,7 +475,7 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
     if (webAppShortName.isNotEmpty) {
       final resolved = await TdClient.shared.queryTo({
         '@type': 'getWebAppLinkUrl',
-        'chat_id': 0,
+        'chat_id': chatId,
         'bot_user_id': botUserId,
         'web_app_short_name': webAppShortName,
         'start_parameter': startParameter,
@@ -424,6 +489,7 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
         url: resolvedUrl,
         botUserId: botUserId,
         chatId: chatId,
+        clientId: clientId,
       );
     }
 
@@ -446,6 +512,7 @@ Future<TelegramMiniAppLaunch?> _resolveMiniAppLaunch(
             url: resolvedUrl,
             botUserId: botUserId,
             chatId: chatId,
+            clientId: clientId,
             keyboardButtonText: keyboardButtonText,
           );
         }
@@ -548,6 +615,7 @@ Future<TelegramMiniAppLaunch?> _openAuthorizedWebApp({
     url: resolvedUrl,
     botUserId: botUserId,
     chatId: chatId,
+    clientId: clientId,
     launchId: info.int64('launch_id'),
     keyboardButtonText: keyboardButtonText,
   );
@@ -556,13 +624,16 @@ Future<TelegramMiniAppLaunch?> _openAuthorizedWebApp({
 String? _launchUrlFrom(Map<String, dynamic> response) {
   final candidates = <String>[];
   _collectLaunchUrls(response['url'], candidates);
-  if (candidates.isNotEmpty) {
+  final safeCandidates = candidates
+      .where((url) => TelegramWebViewOrigin.fromUrl(url) != null)
+      .toList();
+  if (safeCandidates.isNotEmpty) {
     // Prefer the URL that TDLib signed for Telegram.WebApp. Some generated
     // bindings wrap an HTTP URL and may expose the original and resolved URLs
     // together; loading the former drops the authentication payload.
-    return candidates.firstWhere(
+    return safeCandidates.firstWhere(
       _containsWebAppInitData,
-      orElse: () => candidates.first,
+      orElse: () => safeCandidates.first,
     );
   }
   debugPrint(
@@ -647,6 +718,9 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
   late final MiniAppScopedStorage _storage;
   late final MiniAppBiometryController _biometry;
   late final BotPlatformService _botPlatform;
+  late final TelegramWebViewOrigin? _expectedOrigin;
+  late final int _clientId;
+  late final String _bridgeNonce;
   final MiniAppMotionController _motion = MiniAppMotionController();
   var _progress = 0;
   var _pageReady = false;
@@ -655,6 +729,8 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
   var _needClosingConfirmation = false;
   var _allowVerticalSwipe = true;
   var _downloadPending = false;
+  var _bridgeAuthorized = false;
+  var _accountChangeCloseStarted = false;
   var _popupOpen = false;
   var _invoiceOpen = false;
   var _qrScannerOpen = false;
@@ -672,32 +748,50 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
   Timer? _viewportTimer;
   DateTime? _lastUserInteraction;
   DateTime? _lastBiometrySettingsOpen;
+  MiniAppDownloadCancellation? _activeDownload;
+  StreamSubscription<int>? _accountSlotSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final clientId = TdClient.shared.activeClientId;
+    _expectedOrigin = TelegramWebViewOrigin.fromUrl(widget.launch.url);
+    _clientId = widget.launch.clientId ?? TdClient.shared.activeClientId;
+    _bridgeNonce = newTelegramWebViewBridgeNonce();
     _platform = MiniAppPlatformService(
       botUserId: widget.launch.botUserId,
-      clientId: clientId,
+      clientId: _clientId,
     );
     _storage = MiniAppScopedStorage(
-      clientId: clientId,
+      clientId: _clientId,
       botUserId: widget.launch.botUserId,
     );
     _biometry = MiniAppBiometryController(
-      clientId: clientId,
+      clientId: _clientId,
       botUserId: widget.launch.botUserId,
     );
-    _botPlatform = BotPlatformService();
+    _botPlatform = BotPlatformService(
+      query: (request) => TdClient.shared.queryTo(request, _clientId),
+    );
+    _accountSlotSubscription = TdClient.shared
+        .subscribeActiveSlotChanges()
+        .listen((_) {
+          if (TdClient.shared.activeClientId != _clientId) {
+            unawaited(_closeForAccountChange());
+          }
+        });
     _controller = _buildController();
-    unawaited(_controller.loadRequest(Uri.parse(widget.launch.url)));
+    final initialUri = Uri.tryParse(widget.launch.url);
+    if (_expectedOrigin != null && initialUri != null) {
+      unawaited(_controller.loadRequest(initialUri));
+    }
   }
 
   @override
   void dispose() {
     _viewportTimer?.cancel();
+    unawaited(_accountSlotSubscription?.cancel());
+    _activeDownload?.cancel();
     unawaited(_motion.dispose(_emitEvent));
     _platform.dispose();
     if (_orientationLocked) {
@@ -741,17 +835,25 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       ..setUserAgent(_miniAppUserAgent)
       ..addJavaScriptChannel(
         'MithkaTelegramBridge',
-        onMessageReceived: _handleBridgeMessage,
+        onMessageReceived: (message) {
+          unawaited(_handleBridgeMessage(message));
+        },
       )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (value) {
             if (mounted) setState(() => _progress = value);
           },
-          onPageStarted: (_) {
-            unawaited(_installBridge());
+          onPageStarted: (url) {
+            _bridgeAuthorized =
+                _expectedOrigin?.matches(Uri.tryParse(url)) ?? false;
+            if (mounted) setState(() => _pageReady = false);
+            if (_bridgeAuthorized) unawaited(_installBridge());
           },
-          onPageFinished: (_) async {
+          onPageFinished: (url) async {
+            _bridgeAuthorized =
+                _expectedOrigin?.matches(Uri.tryParse(url)) ?? false;
+            if (!_bridgeAuthorized) return;
             await _installBridge();
             await _sendThemeEvent();
             await _sendViewportEvent();
@@ -759,12 +861,22 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
             if (mounted) setState(() => _pageReady = true);
           },
           onNavigationRequest: (request) {
-            final uri = Uri.tryParse(request.url);
-            if (uri == null || _isWebNavigation(uri)) {
-              return NavigationDecision.navigate;
+            final action = telegramMiniAppNavigationAction(
+              expectedOrigin: _expectedOrigin,
+              url: request.url,
+              isMainFrame: request.isMainFrame,
+            );
+            switch (action) {
+              case TelegramWebViewNavigationAction.navigateTrusted:
+              case TelegramWebViewNavigationAction.navigateUntrusted:
+                return NavigationDecision.navigate;
+              case TelegramWebViewNavigationAction.openExternally:
+                final uri = Uri.tryParse(request.url);
+                if (uri != null) unawaited(_openTopLevelNavigation(uri));
+                return NavigationDecision.prevent;
+              case TelegramWebViewNavigationAction.block:
+                return NavigationDecision.prevent;
             }
-            unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
-            return NavigationDecision.prevent;
           },
         ),
       )
@@ -817,19 +929,29 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     return controller;
   }
 
-  bool _isWebNavigation(Uri uri) {
-    return uri.scheme == 'http' ||
-        uri.scheme == 'https' ||
-        uri.scheme == 'about' ||
-        uri.scheme == 'data';
+  Future<bool> _currentPageCanUseBridge() async {
+    if (!_bridgeAuthorized || _expectedOrigin == null) return false;
+    try {
+      final currentUrl = await _controller.currentUrl();
+      return _expectedOrigin.matches(Uri.tryParse(currentUrl ?? ''));
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _installBridge() {
-    return _controller.runJavaScript(_telegramBridgeScript).catchError((_) {});
+    if (!_bridgeAuthorized) return Future<void>.value();
+    return _controller
+        .runJavaScript(_telegramBridgeScript(_bridgeNonce))
+        .catchError((_) {});
   }
 
-  void _handleBridgeMessage(JavaScriptMessage message) {
-    final payload = decodeMiniAppBridgePayload(message.message);
+  Future<void> _handleBridgeMessage(JavaScriptMessage message) async {
+    if (!await _currentPageCanUseBridge() || !mounted) return;
+    final payload = decodeMiniAppBridgePayload(
+      message.message,
+      expectedBridgeNonce: _bridgeNonce,
+    );
     if (payload == null) return;
     final eventType = payload.type;
     final eventData = payload.data;
@@ -1009,12 +1131,12 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     final buttonText = widget.launch.keyboardButtonText;
     if (buttonText == null || buttonText.isEmpty) return;
     try {
-      await TdClient.shared.query({
+      await TdClient.shared.queryTo({
         '@type': 'sendWebAppData',
         'bot_user_id': widget.launch.botUserId,
         'button_text': buttonText,
         'data': data,
-      });
+      }, _clientId);
       unawaited(_closeView());
     } catch (_) {}
   }
@@ -1427,12 +1549,18 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
         ),
         confirmText: AppStringKeys.confirmContinue,
       );
-      if (!accepted) {
+      if (!accepted || !mounted) {
         await _emitEvent('file_download_requested', {'status': 'cancelled'});
         return;
       }
       await _emitEvent('file_download_requested', {'status': 'downloading'});
-      final file = await _platform.download(fileName: fileName, url: url);
+      final cancellation = MiniAppDownloadCancellation();
+      _activeDownload = cancellation;
+      final file = await _platform.download(
+        fileName: fileName,
+        url: url,
+        cancellation: cancellation,
+      );
       if (mounted) {
         showToast(
           context,
@@ -1444,6 +1572,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     } catch (_) {
       await _emitEvent('file_download_requested', {'status': 'cancelled'});
     } finally {
+      _activeDownload = null;
       _downloadPending = false;
     }
   }
@@ -1760,11 +1889,11 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     final id = data['id'] as String?;
     if (id == null || id.isEmpty || !mounted) return;
     try {
-      final prepared = await TdClient.shared.query({
+      final prepared = await TdClient.shared.queryTo({
         '@type': 'getPreparedInlineMessage',
         'bot_user_id': widget.launch.botUserId,
         'prepared_message_id': id,
-      });
+      }, _clientId);
       if (!mounted) return;
       final picked = await Navigator.of(context).push<ChatSummary>(
         MaterialPageRoute(builder: (_) => const ChatPickerView()),
@@ -1805,7 +1934,8 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     };
   }
 
-  Future<void> _emitEvent(String eventType, Object? data) {
+  Future<void> _emitEvent(String eventType, Object? data) async {
+    if (!await _currentPageCanUseBridge()) return;
     final script =
         '''
 (function() {
@@ -1820,7 +1950,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
   }));
 })();
 ''';
-    return _controller.runJavaScript(script).catchError((_) {});
+    await _controller.runJavaScript(script).catchError((_) {});
   }
 
   Map<String, String> _themeParams() {
@@ -1854,6 +1984,11 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
       return;
     }
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openTopLevelNavigation(Uri uri) async {
+    if (!mounted) return;
+    await openLink(context, uri.toString());
   }
 
   void _pressMainButton() {
@@ -1901,15 +2036,27 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     }
   }
 
+  Future<void> _closeForAccountChange() async {
+    if (!mounted || _accountChangeCloseStarted) return;
+    _accountChangeCloseStarted = true;
+    if (widget.closeTdLaunchOnDispose) _notifyTdClosed();
+    final closeWindow = widget.onClose;
+    if (closeWindow != null) {
+      await closeWindow();
+    } else if (mounted) {
+      await Navigator.of(context).maybePop();
+    }
+  }
+
   void _notifyTdClosed() {
     if (_closedTdLaunch) return;
     _closedTdLaunch = true;
     final launchId = widget.launch.launchId;
     if (launchId == null) return;
-    TdClient.shared.send({
+    TdClient.shared.sendTo({
       '@type': 'closeWebApp',
       'web_app_launch_id': launchId,
-    });
+    }, _clientId);
   }
 
   @override
@@ -2532,7 +2679,8 @@ final _miniAppUserAgent =
     'Mozilla/5.0 (${Platform.operatingSystem}) AppleWebKit/605.1.15 '
     '(KHTML, like Gecko) Mithka/1.0 TelegramWebView/1.0';
 
-const _telegramBridgeScript = r'''
+String _telegramBridgeScript(String bridgeNonce) =>
+    '''
 (function() {
   if (window.__mithkaTelegramBridgeInstalled) return;
   window.__mithkaTelegramBridgeInstalled = true;
@@ -2542,6 +2690,7 @@ const _telegramBridgeScript = r'''
       if (window.MithkaTelegramBridge &&
           typeof window.MithkaTelegramBridge.postMessage === 'function') {
         window.MithkaTelegramBridge.postMessage(JSON.stringify({
+          bridgeNonce: ${jsonEncode(bridgeNonce)},
           eventType: eventType,
           eventData: eventData || ''
         }));

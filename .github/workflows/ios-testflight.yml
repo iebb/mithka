@@ -16,8 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Required quality gate
+    uses: ./.github/workflows/quality.yml
+
   archive-upload:
     name: Archive and upload iOS
+    needs: quality
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -34,7 +39,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -189,7 +194,7 @@ jobs:
               --output-format json
 
       - name: Retain uploaded IPA for release verification
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ios-app-store-ipa
           path: ${{ runner.temp }}/iOSUpload/*.ipa

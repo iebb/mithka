@@ -12,6 +12,7 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -103,6 +104,8 @@ class _StickerViewerState extends State<StickerViewer> {
     final formats = StickerExportService.availableFormats(_message);
     final saveToPhotos = l10n.t(AppStringKeys.messageActionSaveToPhotos);
     final saveToFiles = l10n.t(AppStringKeys.stickerExportSaveToFiles);
+    // A computer has no album, so only the file destination survives there.
+    final offersPhotos = !isDesktopTargetPlatform(Theme.of(context).platform);
 
     late OverlayEntry entry;
     entry = OverlayEntry(
@@ -139,17 +142,19 @@ class _StickerViewerState extends State<StickerViewer> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final format in formats.where(
-                    (format) => format != StickerExportFormat.lottie,
-                  ))
-                    _exportMenuItem(
-                      c: c,
-                      label: saveToPhotos,
-                      format: format,
-                      formatLabel: format.label(animated: isAnimated),
-                      destination: StickerExportDestination.photos,
-                    ),
-                  Container(height: 0.5, color: c.divider),
+                  if (offersPhotos) ...[
+                    for (final format in formats.where(
+                      (format) => format != StickerExportFormat.lottie,
+                    ))
+                      _exportMenuItem(
+                        c: c,
+                        label: saveToPhotos,
+                        format: format,
+                        formatLabel: format.label(animated: isAnimated),
+                        destination: StickerExportDestination.photos,
+                      ),
+                    Container(height: 0.5, color: c.divider),
+                  ],
                   for (final format in formats)
                     _exportMenuItem(
                       c: c,

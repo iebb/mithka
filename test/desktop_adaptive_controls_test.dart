@@ -7,9 +7,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/components/desktop_content_constraint.dart';
+import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/contacts/contacts_view.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_motion.dart';
+import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/theme_controller.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   tearDown(() => debugDefaultTargetPlatformOverride = null);
@@ -28,6 +34,61 @@ void main() {
       expect(contactMatchesQuery(contact, '@collectible'), isTrue);
       expect(contactMatchesQuery(contact, 'PRIMARY_HANDLE'), isTrue);
       expect(contactMatchesQuery(contact, 'missing'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'a settings scroll view spans the pane while its content stays laned',
+    (tester) async {
+      // The scrollbar rides the scroll view's edge, so narrowing the scroll
+      // view to the content lane leaves it floating in the middle of the pane
+      // with dead space beside it. The lane belongs in the list's padding.
+      tester.view.physicalSize = const Size(1520, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      addTearDown(theme.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            locale: const Locale('en'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [AppLocalizations.delegate],
+            theme: ThemeData(extensions: [AppColors.light]),
+            home: SettingsPageScaffold(
+              title: 'Probe',
+              showBackButton: false,
+              child: SettingsListView(
+                children: [
+                  for (var index = 0; index < 40; index++)
+                    SettingsCard.rows(
+                      key: ValueKey('card-$index'),
+                      rows: [SettingsRow(title: 'Row $index')],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final pane = tester.getRect(find.byType(Scaffold));
+      final scrollable = tester.getRect(find.byType(Scrollable).first);
+      expect(scrollable.left, pane.left);
+      expect(scrollable.right, pane.right);
+
+      // Content still sits in the same 720 lane, minus the list's own inset.
+      final card = tester.getRect(find.byKey(const ValueKey('card-0')));
+      expect(card.width, kDesktopContentMaxWidth - AppSpacing.lg * 2);
+      expect(pane.right - card.right, card.left - pane.left);
+      debugDefaultTargetPlatformOverride = null;
     },
   );
 

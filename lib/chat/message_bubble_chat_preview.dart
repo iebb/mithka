@@ -167,10 +167,13 @@ class _PreviewBubble extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
+          // Same chain the real bubble resolves (see MessageBubble's
+          // _outgoingTextColor): the last resort is the palette's own ink, so
+          // a preview never disagrees with the chat it is previewing.
           color:
               background.foregroundColor ??
               textColor ??
-              (outgoing ? AppTheme.bubbleOutgoingText : c.bubbleIncomingText),
+              (outgoing ? c.bubbleOutgoingText : c.bubbleIncomingText),
           fontSize: 15,
           height: 1.25,
         ),

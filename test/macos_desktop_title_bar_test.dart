@@ -530,7 +530,7 @@ void main() {
     },
   );
 
-  test('native macOS window uses transparent chrome with aligned buttons', () {
+  test('native macOS window uses full-size transparent titlebar chrome', () {
     final runner = File(
       'macos/Runner/MainFlutterWindow.swift',
     ).readAsStringSync();
@@ -539,9 +539,6 @@ void main() {
     expect(runner, contains('titlebarAppearsTransparent = true'));
     expect(runner, contains('styleMask.insert(.fullSizeContentView)'));
     expect(runner, contains('titlebarSeparatorStyle = .none'));
-    expect(runner, contains('func alignTrafficLightsWithTitleBar()'));
-    expect(runner, contains('standardWindowButton(.closeButton)'));
-    expect(runner, contains('button.frame.origin.y += delta'));
   });
 
   test('window drag entry point stays portable outside desktop IO builds', () {

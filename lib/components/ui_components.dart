@@ -92,7 +92,10 @@ class SettingsPageScaffold extends StatelessWidget {
             (navigator?.canPop() ?? false)
         ? onBack ?? () => navigator!.pop()
         : null;
-    final content = constrainContent
+    // A scroll view has to span the pane so its scrollbar rides the pane's
+    // edge rather than floating beside the content lane; [SettingsListView]
+    // lanes its own content instead. Everything else is constrained here.
+    final content = constrainContent && child is! SettingsListView
         ? DesktopContentConstraint(child: child)
         : child;
     return Scaffold(
@@ -137,12 +140,21 @@ class SettingsListView extends StatelessWidget {
   final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
 
   @override
-  Widget build(BuildContext context) => ListView(
-    controller: controller,
-    physics: physics,
-    padding: padding,
-    keyboardDismissBehavior: keyboardDismissBehavior,
-    children: children,
+  Widget build(BuildContext context) => LayoutBuilder(
+    // The lane lives in the padding, not around the list — see
+    // [desktopContentLaneInset]. Nested inside a pane that is already laned,
+    // the inset resolves to zero and this is a plain ListView.
+    builder: (context, constraints) => ListView(
+      controller: controller,
+      physics: physics,
+      padding: padding.add(
+        EdgeInsets.symmetric(
+          horizontal: desktopContentLaneInset(constraints.maxWidth),
+        ),
+      ),
+      keyboardDismissBehavior: keyboardDismissBehavior,
+      children: children,
+    ),
   );
 }
 
@@ -320,12 +332,14 @@ class NavHeader extends StatelessWidget {
       value: systemUiOverlayStyleForSurface(c.navBar),
       child: Container(
         constraints: BoxConstraints(
-          minHeight: headerHeight +
+          minHeight:
+              headerHeight +
               MediaQuery.of(context).padding.top +
               iPadWindowChromeInsetOf(context),
         ),
         padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top +
+          top:
+              MediaQuery.of(context).padding.top +
               iPadWindowChromeInsetOf(context),
         ),
         decoration: BoxDecoration(
@@ -1012,14 +1026,20 @@ class SettingsRow extends StatelessWidget {
   final String? subtitle;
   final bool enabled;
 
+  /// The height a settings row of [height] actually resolves to. Exposed so a
+  /// hand-rolled row that has to line up with the settings rows around it can
+  /// read the rule instead of hard-coding a number and drifting on desktop,
+  /// where rows compress well below [AppMetric.settingsRowHeight].
+  static double resolveHeight([double height = AppMetric.settingsRowHeight]) =>
+      isDesktopTargetPlatform() && height >= AppMetric.compactSettingsRowHeight
+      ? 42.0
+      : height;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final pointerDense = isDesktopTargetPlatform();
-    final effectiveHeight =
-        pointerDense && height >= AppMetric.compactSettingsRowHeight
-        ? 42.0
-        : height;
+    final effectiveHeight = resolveHeight(height);
     final effectiveLeadingInset =
         pointerDense && leadingInset == AppMetric.settingsLeadingInset
         ? AppSpacing.lg
@@ -1386,10 +1406,7 @@ class SettingsSwitchRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final pointerDense = isDesktopTargetPlatform();
-    final effectiveHeight =
-        pointerDense && height >= AppMetric.compactSettingsRowHeight
-        ? 42.0
-        : height;
+    final effectiveHeight = SettingsRow.resolveHeight(height);
     final effectiveLeadingInset =
         pointerDense && leadingInset == AppMetric.settingsLeadingInset
         ? AppSpacing.lg
@@ -1550,7 +1567,8 @@ class AppProgressBar extends StatelessWidget {
   }
 }
 
-/// Project-owned single-value scrubber.
+/// Project-owned single-value scrubber with pointer, keyboard and assistive
+/// technology adjustment contracts.
 class AppValueScrubber extends StatelessWidget {
   const AppValueScrubber({
     super.key,
@@ -1558,16 +1576,25 @@ class AppValueScrubber extends StatelessWidget {
     required this.min,
     required this.max,
     required this.onChanged,
+    required this.semanticLabel,
+    this.semanticValue,
+    this.semanticValueFormatter,
+    this.step,
     this.compact = false,
+    this.focusNode,
   });
 
   final double value;
   final double min;
   final double max;
   final ValueChanged<double> onChanged;
+  final String semanticLabel;
+  final String? semanticValue;
+  final String Function(double value)? semanticValueFormatter;
+  final double? step;
+  final FocusNode? focusNode;
 
-  /// Slimmer track and thumb, for a scrubber sitting inline in a toolbar
-  /// rather than owning a settings row.
+  /// Slimmer track and thumb, for a scrubber sitting inline in a toolbar.
   final bool compact;
 
   @override
@@ -1575,65 +1602,98 @@ class AppValueScrubber extends StatelessWidget {
     builder: (context, constraints) {
       final range = math.max(0.000001, max - min);
       final progress = ((value - min) / range).clamp(0.0, 1.0);
-      void update(double dx) =>
-          onChanged(min + (dx / constraints.maxWidth).clamp(0.0, 1.0) * range);
-      return Semantics(
-        slider: true,
-        value: '${(progress * 100).round()}%',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (event) => update(event.localPosition.dx),
-          onHorizontalDragUpdate: (event) => update(event.localPosition.dx),
-          child: SizedBox(
-            height: compact ? 22 : 34,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: compact ? 3 : 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.divider,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  width: constraints.maxWidth * progress,
-                  child: Container(
-                    height: compact ? 3 : 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.linkBlue,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: constraints.maxWidth * progress - (compact ? 6 : 9),
-                  child: Container(
-                    width: compact ? 12 : 18,
-                    height: compact ? 12 : 18,
-                    decoration: BoxDecoration(
-                      color: context.colors.linkBlue,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: context.colors.card,
-                        width: compact ? 1.5 : 2,
+      final thumbRadius = compact ? 6.0 : 9.0;
+      final trackWidth = math.max(1.0, constraints.maxWidth - thumbRadius * 2);
+      final adjustment = step ?? range / 20;
+      final decreased = (value - adjustment).clamp(min, max);
+      final increased = (value + adjustment).clamp(min, max);
+      String fallbackValue(double next) =>
+          '${(((next - min) / range).clamp(0.0, 1.0) * 100).round()}%';
+      String formattedValue(double next) =>
+          semanticValueFormatter?.call(next) ?? fallbackValue(next);
+
+      void updateFromOffset(double dx) => onChanged(
+        min + ((dx - thumbRadius) / trackWidth).clamp(0.0, 1.0) * range,
+      );
+      void adjust(int direction) =>
+          onChanged((value + adjustment * direction).clamp(min, max));
+
+      return FocusableActionDetector(
+        focusNode: focusNode,
+        shortcuts: _scrubberShortcuts,
+        actions: <Type, Action<Intent>>{
+          _ScrubberAdjustIntent: CallbackAction<_ScrubberAdjustIntent>(
+            onInvoke: (intent) {
+              adjust(intent.direction);
+              return null;
+            },
+          ),
+        },
+        child: Semantics(
+          slider: true,
+          label: semanticLabel,
+          value: semanticValue ?? formattedValue(value),
+          increasedValue: formattedValue(increased),
+          decreasedValue: formattedValue(decreased),
+          onIncrease: () => adjust(1),
+          onDecrease: () => adjust(-1),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTapDown: (event) => updateFromOffset(event.localPosition.dx),
+            onHorizontalDragUpdate: (event) =>
+                updateFromOffset(event.localPosition.dx),
+            child: SizedBox(
+              height: compact ? 44 : 48,
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  Positioned(
+                    left: thumbRadius,
+                    right: thumbRadius,
+                    child: Container(
+                      height: compact ? 3 : 4,
+                      decoration: BoxDecoration(
+                        color: context.colors.divider,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x28000000),
-                          blurRadius: 4,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
                     ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    left: thumbRadius,
+                    width: trackWidth * progress,
+                    child: Container(
+                      height: compact ? 3 : 4,
+                      decoration: BoxDecoration(
+                        color: context.colors.linkBlue,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: thumbRadius + trackWidth * progress - thumbRadius,
+                    child: Container(
+                      width: compact ? 12 : 18,
+                      height: compact ? 12 : 18,
+                      decoration: BoxDecoration(
+                        color: context.colors.linkBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: context.colors.card,
+                          width: compact ? 1.5 : 2,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x28000000),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1651,6 +1711,9 @@ class AppRangeScrubber extends StatefulWidget {
     required this.min,
     required this.max,
     required this.onChanged,
+    required this.semanticLabel,
+    this.semanticValue,
+    this.step,
     this.minimumGap = 0,
   });
 
@@ -1660,6 +1723,9 @@ class AppRangeScrubber extends StatefulWidget {
   final double max;
   final double minimumGap;
   final void Function(double start, double end) onChanged;
+  final String semanticLabel;
+  final String? semanticValue;
+  final double? step;
 
   @override
   State<AppRangeScrubber> createState() => _AppRangeScrubberState();
@@ -1686,36 +1752,54 @@ class _AppRangeScrubberState extends State<AppRangeScrubber> {
     }
   }
 
+  void _adjustThumb(bool start, int direction) {
+    final range = math.max(0.000001, widget.max - widget.min);
+    final adjustment = widget.step ?? range / 20;
+    _movesStart = start;
+    _update((start ? widget.start : widget.end) + adjustment * direction);
+  }
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final range = math.max(0.000001, widget.max - widget.min);
       final start = ((widget.start - widget.min) / range).clamp(0.0, 1.0);
       final end = ((widget.end - widget.min) / range).clamp(0.0, 1.0);
+      final trackWidth = math.max(1.0, constraints.maxWidth - 44);
+      final normalizedAdjustment = widget.step == null
+          ? 0.05
+          : widget.step! / range;
       double valueAt(double dx) =>
-          widget.min + (dx / constraints.maxWidth).clamp(0.0, 1.0) * range;
-      return Semantics(
-        slider: true,
-        value: '${(start * 100).round()}%–${(end * 100).round()}%',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (event) {
-            final value = valueAt(event.localPosition.dx);
-            _selectThumb(value);
-            _update(value);
-          },
-          onHorizontalDragStart: (event) =>
-              _selectThumb(valueAt(event.localPosition.dx)),
-          onHorizontalDragUpdate: (event) =>
-              _update(valueAt(event.localPosition.dx)),
+          widget.min + ((dx - 22) / trackWidth).clamp(0.0, 1.0) * range;
+
+      return GestureDetector(
+        excludeFromSemantics: true,
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (event) {
+          final value = valueAt(event.localPosition.dx);
+          _selectThumb(value);
+          _update(value);
+        },
+        onHorizontalDragStart: (event) =>
+            _selectThumb(valueAt(event.localPosition.dx)),
+        onHorizontalDragUpdate: (event) =>
+            _update(valueAt(event.localPosition.dx)),
+        child: Semantics(
+          container: true,
+          explicitChildNodes: true,
+          label: widget.semanticLabel,
+          value:
+              widget.semanticValue ??
+              '${(start * 100).round()}%–${(end * 100).round()}%',
           child: SizedBox(
-            height: 36,
+            height: 48,
             child: Stack(
+              clipBehavior: Clip.none,
               alignment: Alignment.centerLeft,
               children: [
                 Positioned(
-                  left: 0,
-                  right: 0,
+                  left: 22,
+                  right: 22,
                   child: Container(
                     height: 4,
                     decoration: BoxDecoration(
@@ -1725,30 +1809,63 @@ class _AppRangeScrubberState extends State<AppRangeScrubber> {
                   ),
                 ),
                 Positioned(
-                  left: constraints.maxWidth * start,
-                  width: constraints.maxWidth * (end - start),
+                  left: 22 + trackWidth * start,
+                  width: trackWidth * (end - start),
                   child: Container(height: 4, color: context.colors.linkBlue),
                 ),
-                for (final progress in [start, end])
+                for (final thumb in [(true, start), (false, end)])
                   Positioned(
-                    left: constraints.maxWidth * progress - 9,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: context.colors.linkBlue,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: context.colors.card,
-                          width: 2,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x28000000),
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
+                    left: trackWidth * thumb.$2,
+                    child: FocusableActionDetector(
+                      onFocusChange: (focused) {
+                        if (focused) _movesStart = thumb.$1;
+                      },
+                      shortcuts: _scrubberShortcuts,
+                      actions: <Type, Action<Intent>>{
+                        _ScrubberAdjustIntent:
+                            CallbackAction<_ScrubberAdjustIntent>(
+                              onInvoke: (intent) {
+                                _adjustThumb(thumb.$1, intent.direction);
+                                return null;
+                              },
+                            ),
+                      },
+                      child: Semantics(
+                        slider: true,
+                        label:
+                            '${widget.semanticLabel}, ${AppStrings.t(thumb.$1 ? AppStringKeys.businessToolsStarts : AppStringKeys.businessToolsEnds)}',
+                        value: '${(thumb.$2 * 100).round()}%',
+                        increasedValue:
+                            '${((thumb.$2 + normalizedAdjustment).clamp(0.0, 1.0) * 100).round()}%',
+                        decreasedValue:
+                            '${((thumb.$2 - normalizedAdjustment).clamp(0.0, 1.0) * 100).round()}%',
+                        onIncrease: () => _adjustThumb(thumb.$1, 1),
+                        onDecrease: () => _adjustThumb(thumb.$1, -1),
+                        child: SizedBox(
+                          width: 44,
+                          height: 48,
+                          child: Center(
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: context.colors.linkBlue,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: context.colors.card,
+                                  width: 2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x28000000),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -1760,6 +1877,19 @@ class _AppRangeScrubberState extends State<AppRangeScrubber> {
     },
   );
 }
+
+class _ScrubberAdjustIntent extends Intent {
+  const _ScrubberAdjustIntent(this.direction);
+
+  final int direction;
+}
+
+const Map<ShortcutActivator, Intent> _scrubberShortcuts = {
+  SingleActivator(LogicalKeyboardKey.arrowLeft): _ScrubberAdjustIntent(-1),
+  SingleActivator(LogicalKeyboardKey.arrowDown): _ScrubberAdjustIntent(-1),
+  SingleActivator(LogicalKeyboardKey.arrowRight): _ScrubberAdjustIntent(1),
+  SingleActivator(LogicalKeyboardKey.arrowUp): _ScrubberAdjustIntent(1),
+};
 
 /// Centered gray timestamp separator in a conversation.
 class TimeSeparator extends StatelessWidget {

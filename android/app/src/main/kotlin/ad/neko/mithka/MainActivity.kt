@@ -237,6 +237,25 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mithka/app_lock_privacy",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "setPrivacyShieldVisible") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val visible = call.argument<Boolean>("visible") ?: false
+            runOnUiThread {
+                if (visible) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+            result.success(null)
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/player_brightness")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

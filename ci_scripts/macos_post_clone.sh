@@ -17,6 +17,7 @@
 set -eu
 
 FLUTTER_VERSION="3.44.2"
+COCOAPODS_VERSION="1.17.0"
 
 retry() {
   attempts="$1"
@@ -35,6 +36,21 @@ retry() {
     attempt=$((attempt + 1))
     delay=$((delay * 2))
   done
+}
+
+ensure_cocoapods() {
+  installed_version="$(pod --version 2>/dev/null || true)"
+  if [ "$installed_version" != "$COCOAPODS_VERSION" ]; then
+    echo "Installing CocoaPods $COCOAPODS_VERSION"
+    retry 3 10 sudo gem install cocoapods -v "$COCOAPODS_VERSION" --no-document
+    hash -r
+    installed_version="$(pod --version 2>/dev/null || true)"
+  fi
+  if [ "$installed_version" != "$COCOAPODS_VERSION" ]; then
+    echo "error: expected CocoaPods $COCOAPODS_VERSION, found ${installed_version:-missing}" >&2
+    exit 1
+  fi
+  echo "Using CocoaPods $installed_version"
 }
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -70,10 +86,7 @@ if ! command -v flutter >/dev/null 2>&1; then
   export PATH="$HOME/flutter/bin:$PATH"
 fi
 flutter --version
-
-if ! command -v pod >/dev/null 2>&1; then
-  retry 3 10 brew install cocoapods
-fi
+ensure_cocoapods
 
 : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID as a secret Xcode Cloud environment variable}"
 : "${TELEGRAM_API_HASH:?set TELEGRAM_API_HASH as a secret Xcode Cloud environment variable}"

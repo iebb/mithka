@@ -158,6 +158,71 @@ class AppPinIcon extends StatelessWidget {
   }
 }
 
+/// Owned "jump to earlier message" glyph.
+///
+/// The horizontal rule is the destination and the arrow moves toward it. The
+/// bundled Heroicons set has arrows and trays, but no upward arrow terminating
+/// at a line, so the chat quote control draws that exact shape here.
+class AppArrowUpToLineIcon extends StatelessWidget {
+  const AppArrowUpToLineIcon({super.key, this.size = 18, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor =
+        color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _AppArrowUpToLineIconPainter(color: resolvedColor),
+      ),
+    );
+  }
+}
+
+class _AppArrowUpToLineIconPainter extends CustomPainter {
+  const _AppArrowUpToLineIconPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = (size.shortestSide * 0.10).clamp(1.35, 1.9);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final centerX = size.width * 0.5;
+    final barY = size.height * 0.17;
+    final tipY = size.height * 0.34;
+    final wingY = size.height * 0.53;
+    final stemBottom = size.height * 0.86;
+
+    canvas.drawLine(
+      Offset(size.width * 0.20, barY),
+      Offset(size.width * 0.80, barY),
+      paint,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * 0.28, wingY)
+        ..lineTo(centerX, tipY)
+        ..lineTo(size.width * 0.72, wingY)
+        ..moveTo(centerX, tipY)
+        ..lineTo(centerX, stemBottom),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AppArrowUpToLineIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class _AppPinIconPainter extends CustomPainter {
   const _AppPinIconPainter({required this.color});
 

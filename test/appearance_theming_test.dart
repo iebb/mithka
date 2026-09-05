@@ -27,7 +27,7 @@ void main() {
     expect(ThemeController(prefs).themingEnabled, isFalse);
   });
 
-  test('chat font size is not pre-scaled before scoped text scaling', () async {
+  test('chat font size is not pre-scaled before root text scaling', () async {
     SharedPreferences.setMockInitialValues({'fontScale': 1.5});
     final prefs = await SharedPreferences.getInstance();
     final controller = ThemeController(prefs);
@@ -607,13 +607,12 @@ void main() {
       find.byKey(const ValueKey('font-size-chat-preview')),
       findsOneWidget,
     );
-    // Font size is scoped to chat surfaces, so the preview no longer shows
-    // a chat-list row.
     expect(
       find.byKey(const ValueKey('font-size-chat-list-preview')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(find.text('This is how chat text will look.'), findsOneWidget);
+    expect(find.text('Mithka Users'), findsOneWidget);
 
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();

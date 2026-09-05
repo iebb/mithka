@@ -50,6 +50,7 @@ import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
 import 'chat/group_remark_controller.dart';
 import 'chat/music_player_controller.dart';
+import 'chats/chat_folder_tag_controller.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
@@ -423,6 +424,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     widget.prefs,
     initialAccountUserId: _accounts.activeUserId,
   );
+  late final ChatFolderTagController _folderTags = ChatFolderTagController(
+    widget.prefs,
+  );
   late AppIconController _appIcons = AppIconController(widget.prefs);
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
@@ -450,6 +454,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
     WidgetsBinding.instance.addObserver(this);
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
@@ -494,6 +499,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       ),
     );
     unawaited(_appIcons.initialize());
+    unawaited(_folderTags.refresh());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
     NotificationController.shared.start(widget.prefs);
     // An iOS registerForRemoteNotifications round trip that nothing observes
@@ -510,6 +516,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
     _groupRemarks.dispose();
+    _folderTags.dispose();
     DesktopMiniAppWindowService.instance.detachMainProxy();
     DesktopChatWindowService.instance.detachMainProxy();
     DesktopUtilityWindowService.instance.detachMainProxy();
@@ -519,7 +526,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   }
 
   void _handleActiveAccountChange() {
+    MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
     _groupRemarks.setActiveAccountUserId(_accounts.activeUserId);
+    unawaited(_folderTags.refresh());
     _theme.setActiveAccountSlot(
       _accounts.activeSlot,
       userId: _accounts.activeUserId,
@@ -757,6 +766,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: _locale),
         ChangeNotifierProvider.value(value: _accounts),
         ChangeNotifierProvider.value(value: _groupRemarks),
+        ChangeNotifierProvider.value(value: _folderTags),
         ChangeNotifierProvider.value(value: _mithkaPro),
         ChangeNotifierProvider.value(value: _chatDeepLinks),
         ChangeNotifierProvider.value(value: _appIcons),
@@ -793,16 +803,21 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
             theme: _themeData(Brightness.light, theme),
             darkTheme: _themeData(Brightness.dark, theme),
             themeMode: theme.themeMode,
+            // Apply the user's chosen font size app-wide (设置 › 外观 › 字体大小).
             builder: (context, child) {
               // Aspect-scoped: MediaQuery.of would re-run this whole closure on
               // every keyboard-inset and window-resize frame just to read
               // boldText.
               final boldText = MediaQuery.boldTextOf(context);
               final currentTheme = Theme.of(context);
+              // An installed theme names its own on-accent ink; a colour the
+              // user picked in 外观 has none, and derives one.
+              final usesCloudTheme = theme.usesCloudThemeForUi(
+                currentTheme.brightness,
+              );
               AppTheme.applyBrand(
-                theme.usesCloudThemeForUi(currentTheme.brightness)
-                    ? context.colors.linkBlue
-                    : theme.brandColor,
+                usesCloudTheme ? context.colors.linkBlue : theme.brandColor,
+                onAccent: usesCloudTheme ? context.colors.onAccent : null,
               );
               final themedChild = Theme(
                 data: currentTheme.copyWith(
@@ -876,6 +891,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: _ScaledAppView(
+                  textScale: theme.effectiveTextScale(
+                    MediaQuery.textScalerOf(context),
+                  ),
                   interfaceScale: theme.renderedInterfaceScale,
                   child: DefaultTextStyle(
                     style: theme.applyAppTextStyle(
@@ -937,8 +955,13 @@ List<NavigatorObserver> _telemetryNavigatorObservers() {
 }
 
 class _ScaledAppView extends StatelessWidget {
-  const _ScaledAppView({required this.interfaceScale, required this.child});
+  const _ScaledAppView({
+    required this.textScale,
+    required this.interfaceScale,
+    required this.child,
+  });
 
+  final double textScale;
   final double interfaceScale;
   final Widget child;
 
@@ -950,15 +973,18 @@ class _ScaledAppView extends StatelessWidget {
       media.size.width / scale,
       media.size.height / scale,
     );
-    // The system text scaler flows through untouched: the in-app font size
-    // setting is scoped to chat surfaces by ChatFontScaleScope, and the outer
-    // transform scales geometry and text together for interface size.
     final scaledMedia = media.copyWith(
       size: virtualSize,
       padding: _unscaleInsets(media.padding, scale),
       viewPadding: _unscaleInsets(media.viewPadding, scale),
       viewInsets: _unscaleInsets(media.viewInsets, scale),
       systemGestureInsets: _unscaleInsets(media.systemGestureInsets, scale),
+      // Every surface reads this one scaler: Text applies it implicitly and
+      // the chat's RichText widgets read it explicitly. The outer transform
+      // scales geometry and text together for interface size, so the font
+      // preference belongs here on its own — dividing by interfaceScale caused
+      // normal Text widgets to stay small while noScaling text still grew.
+      textScaler: TextScaler.linear(textScale),
     );
 
     return AppKeyboardDismissOnTap(

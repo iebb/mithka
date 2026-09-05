@@ -120,10 +120,14 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
           builder: (context, child) {
             final media = MediaQuery.of(context);
             final currentTheme = Theme.of(context);
+            // An installed theme names its own on-accent ink; a colour the
+            // user picked in 外观 has none, and derives one.
+            final usesCloudTheme = _theme.usesCloudThemeForUi(
+              currentTheme.brightness,
+            );
             AppTheme.applyBrand(
-              _theme.usesCloudThemeForUi(currentTheme.brightness)
-                  ? context.colors.linkBlue
-                  : _theme.brandColor,
+              usesCloudTheme ? context.colors.linkBlue : _theme.brandColor,
+              onAccent: usesCloudTheme ? context.colors.onAccent : null,
             );
             return AppKeyboardDismissOnTap(
               child: Theme(

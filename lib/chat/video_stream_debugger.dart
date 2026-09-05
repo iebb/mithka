@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
+import '../l10n/app_localizations.dart';
 import '../tdlib/td_image_loader.dart';
 import '../theme/app_theme.dart';
 
@@ -437,12 +438,12 @@ class _InspectorHeader extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                const Flexible(
+                Flexible(
                   child: Text(
-                    'Stream Inspector',
+                    AppStrings.t(AppStringKeys.videoPlayerStreamInspector),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.w400,
@@ -462,7 +463,11 @@ class _InspectorHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  widget.isLive ? 'LIVE' : 'IDLE',
+                  AppStrings.t(
+                    widget.isLive
+                        ? AppStringKeys.videoDebuggerLive
+                        : AppStringKeys.videoDebuggerIdle,
+                  ),
                   style: TextStyle(
                     color: widget.isLive
                         ? const Color(0xFFB8F28B)
@@ -477,7 +482,7 @@ class _InspectorHeader extends StatelessWidget {
           ),
           _InspectorAction(
             icon: HeroAppIcons.xmark,
-            label: 'CLOSE',
+            label: AppStrings.t(AppStringKeys.musicPlayerClose),
             onTap: widget.onClose,
           ),
         ],
@@ -541,7 +546,7 @@ class _StatsForNerdsPanel extends StatelessWidget {
     final resolution = _formatPixelSize(videoSize);
     final speed = math.max(0, downloadBytesPerSecond).toDouble();
     final lastEvent = events.isEmpty
-        ? 'Waiting for stream events'
+        ? AppStrings.t(AppStringKeys.videoDebuggerWaitingForStreamEvents)
         : events.last;
     return _InspectorPanel(
       child: SingleChildScrollView(
@@ -549,43 +554,55 @@ class _StatsForNerdsPanel extends StatelessWidget {
         child: Column(
           children: [
             _NerdStatRow(
-              label: 'Video ID / File',
+              label: AppStrings.t(AppStringKeys.videoDebuggerVideoIdFile),
               value: progress == null ? '—' : '${progress!.fileId}',
             ),
-            _NerdStatRow(label: 'Viewport / Frames', value: '$viewport / —'),
             _NerdStatRow(
-              label: 'Current / Optimal Res',
+              label: AppStrings.t(AppStringKeys.videoDebuggerViewportFrames),
+              value: '$viewport / —',
+            ),
+            _NerdStatRow(
+              label: AppStrings.t(
+                AppStringKeys.videoDebuggerCurrentOptimalResolution,
+              ),
               value: '$resolution / $resolution',
             ),
             _NerdStatRow(
-              label: 'Volume / Normalized',
+              label: AppStrings.t(AppStringKeys.videoDebuggerVolumeNormalized),
               value: '${(volume.clamp(0.0, 1.0) * 100).round()}% / 100%',
             ),
             _NerdStatRow(
-              label: 'Playback Rate',
+              label: AppStrings.t(AppStringKeys.videoDebuggerPlaybackRate),
               value:
                   '${playbackSpeed.toStringAsFixed(playbackSpeed % 1 == 0 ? 0 : 2)}x',
             ),
             _NerdStatRow(
-              label: 'Connection Speed',
+              label: AppStrings.t(AppStringKeys.videoDebuggerConnectionSpeed),
               value: _formatBitsPerSecond(speed),
             ),
             _NerdStatRow(
-              label: 'Network Activity',
-              value: '${_formatBytes(speed.round())}/s',
+              label: AppStrings.t(AppStringKeys.videoDebuggerNetworkActivity),
+              value: AppStrings.t(AppStringKeys.videoDebuggerPerSecond, {
+                'value1': _formatBytes(speed.round()),
+              }),
             ),
             _NerdStatRow(
-              label: 'Buffer Health',
-              value:
-                  '${(math.max(0, bufferedAhead.inMilliseconds) / 1000).toStringAsFixed(2)} s',
+              label: AppStrings.t(AppStringKeys.videoDebuggerBufferHealth),
+              value: AppStrings.t(AppStringKeys.videoDebuggerSeconds, {
+                'value1': (math.max(0, bufferedAhead.inMilliseconds) / 1000)
+                    .toStringAsFixed(2),
+              }),
             ),
             _NerdStatRow(
-              label: 'Cache',
+              label: AppStrings.t(AppStringKeys.videoDebuggerCache),
               value: total > 0
                   ? '${_formatBytes(downloaded)} / ${_formatBytes(total)}'
-                  : 'waiting for size',
+                  : AppStrings.t(AppStringKeys.videoDebuggerWaitingForSize),
             ),
-            _NerdStatRow(label: 'Last Event', value: lastEvent),
+            _NerdStatRow(
+              label: AppStrings.t(AppStringKeys.videoDebuggerLastEvent),
+              value: lastEvent,
+            ),
           ],
         ),
       ),
@@ -650,10 +667,10 @@ class _DownloadBlockPanel extends StatelessWidget {
     final downloaded = progress?.downloaded ?? 0;
     final fraction = total > 0 ? (downloaded / total).clamp(0.0, 1.0) : 0.0;
     return _InspectorPanel(
-      title: 'Stream cache',
+      title: AppStrings.t(AppStringKeys.videoDebuggerStreamCache),
       trailing: total > 0
           ? '${_formatBytes(downloaded)} / ${_formatBytes(total)}  •  ${(fraction * 100).round()}%'
-          : 'waiting for size',
+          : AppStrings.t(AppStringKeys.videoDebuggerWaitingForSize),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: LayoutBuilder(
@@ -721,21 +738,25 @@ class _DownloadBlockPanel extends StatelessWidget {
                     children: [
                       _LegendDot(
                         color: _blockColor(VideoDownloadBlockState.downloaded),
-                        label: 'Downloaded',
+                        label: AppStrings.t(
+                          AppStringKeys.sharedMediaFilterDownloaded,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       _LegendDot(
                         color: _blockColor(
                           VideoDownloadBlockState.partiallyDownloaded,
                         ),
-                        label: 'Partial',
+                        label: AppStrings.t(AppStringKeys.videoDebuggerPartial),
                       ),
                       const SizedBox(width: 10),
                       _LegendDot(
                         color: _blockColor(
                           VideoDownloadBlockState.undownloaded,
                         ),
-                        label: 'Undownloaded',
+                        label: AppStrings.t(
+                          AppStringKeys.videoDebuggerUndownloaded,
+                        ),
                       ),
                     ],
                   ),
@@ -860,11 +881,21 @@ Color _blockColor(VideoDownloadBlockState state) => switch (state) {
 
 String _blockLabel(VideoDownloadBlock block, VideoDownloadBlockLayout layout) {
   final state = switch (block.state) {
-    VideoDownloadBlockState.downloaded => 'downloaded',
-    VideoDownloadBlockState.partiallyDownloaded => 'partially downloaded',
-    VideoDownloadBlockState.undownloaded => 'undownloaded',
+    VideoDownloadBlockState.downloaded => AppStrings.t(
+      AppStringKeys.sharedMediaFilterDownloaded,
+    ),
+    VideoDownloadBlockState.partiallyDownloaded => AppStrings.t(
+      AppStringKeys.videoDebuggerPartial,
+    ),
+    VideoDownloadBlockState.undownloaded => AppStrings.t(
+      AppStringKeys.videoDebuggerUndownloaded,
+    ),
   };
-  return 'Chunk ${block.index + 1}, ${_formatBlockSize(layout.blockSizeBytes)}, $state';
+  return AppStrings.t(AppStringKeys.videoDebuggerChunkDescription, {
+    'value1': block.index + 1,
+    'value2': _formatBlockSize(layout.blockSizeBytes),
+    'value3': state,
+  });
 }
 
 String _formatBlockSize(int bytes) {

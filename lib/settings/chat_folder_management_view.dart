@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/telegram_premium_features.dart';
+import '../chats/chat_folder_tag_controller.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
-import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -22,16 +23,10 @@ String _chatFallbackTitle(int id) =>
     AppStrings.t(AppStringKeys.chatFolderManagementChatValue1, {'value1': id});
 
 class ChatFolderManagementView extends StatefulWidget {
-  const ChatFolderManagementView({
-    super.key,
-    this.service,
-    this.updates,
-    this.onLockedFolderTagsActivated,
-  });
+  const ChatFolderManagementView({super.key, this.service, this.updates});
 
   final ChatFolderService? service;
   final Stream<Map<String, dynamic>>? updates;
-  final VoidCallback? onLockedFolderTagsActivated;
 
   @override
   State<ChatFolderManagementView> createState() =>
@@ -44,13 +39,14 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   List<ChatFolderRecord> _folders = const [];
   List<RecommendedFolder> _recommended = const [];
   bool _loading = true;
-  bool _tagsEnabled = false;
-  ChatFolderTagEntitlement _folderTagEntitlement =
-      ChatFolderTagEntitlement.unavailable;
-  final FocusNode _folderTagLockFocusNode = FocusNode();
   int _mainListPosition = 0;
   int _generation = 0;
-  int _entitlementGeneration = 0;
+
+  /// Null only in a harness with no provider above it; the toggle then simply
+  /// has nowhere to write.
+  ChatFolderTagController? get _tags =>
+      context.read<ChatFolderTagController?>();
+  bool get _tagsEnabled => _tags?.enabled ?? false;
 
   @override
   void initState() {
@@ -69,7 +65,6 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   @override
   void dispose() {
     _updates?.cancel();
-    _folderTagLockFocusNode.dispose();
     super.dispose();
   }
 
@@ -78,71 +73,20 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       unawaited(_load(update));
       return;
     }
-    if (update.type == 'updateOption') _handleOptionUpdate(update);
-  }
-
-  void _handleOptionUpdate(Map<String, dynamic> update) {
-    final name = update.str('name');
-    if (name != 'is_premium' && name != 'is_premium_available') return;
-    final value = update.obj('value')?.boolean('value');
-    if (name == 'is_premium') {
-      if (value == true) {
-        if (mounted) {
-          setState(
-            () => _folderTagEntitlement = ChatFolderTagEntitlement.enabled,
-          );
-        }
-        return;
-      }
-      if (value == false &&
-          _folderTagEntitlement == ChatFolderTagEntitlement.locked) {
-        return;
-      }
-      if (mounted) {
-        // A downgrade must revoke before availability is confirmed.
-        setState(
-          () => _folderTagEntitlement = ChatFolderTagEntitlement.unavailable,
-        );
-      }
-      unawaited(_refreshFolderTagEntitlement());
-      return;
-    }
-
-    if (_folderTagEntitlement == ChatFolderTagEntitlement.enabled) {
-      // Current Premium entitlement wins even when purchasing Premium isn't
-      // advertised or the availability update is malformed.
-      return;
-    }
-    if (_folderTagEntitlement == ChatFolderTagEntitlement.locked) {
-      if (value == true) return;
-      if (mounted) {
-        setState(
-          () => _folderTagEntitlement = ChatFolderTagEntitlement.unavailable,
-        );
-      }
-      return;
-    }
-    unawaited(_refreshFolderTagEntitlement());
   }
 
   Future<void> _load(Map<String, dynamic>? update) async {
     final generation = ++_generation;
-    final entitlementGeneration = _entitlementGeneration;
     if (mounted && _folders.isEmpty) setState(() => _loading = true);
     try {
       final values = await Future.wait<Object>([
         _service.load(update),
         _service.recommended(),
-        _loadFolderTagEntitlement(),
       ]);
       if (!mounted || generation != _generation) return;
       setState(() {
         _folders = values[0] as List<ChatFolderRecord>;
         _recommended = values[1] as List<RecommendedFolder>;
-        if (entitlementGeneration == _entitlementGeneration) {
-          _folderTagEntitlement = values[2] as ChatFolderTagEntitlement;
-        }
-        _tagsEnabled = update?.boolean('are_tags_enabled') ?? _tagsEnabled;
         _mainListPosition =
             update?.integer('main_chat_list_position') ?? _mainListPosition;
         _loading = false;
@@ -158,21 +102,6 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         ),
       );
     }
-  }
-
-  Future<ChatFolderTagEntitlement> _loadFolderTagEntitlement() async {
-    try {
-      return await _service.folderTagEntitlement();
-    } catch (_) {
-      return ChatFolderTagEntitlement.unavailable;
-    }
-  }
-
-  Future<void> _refreshFolderTagEntitlement() async {
-    final generation = ++_entitlementGeneration;
-    final entitlement = await _loadFolderTagEntitlement();
-    if (!mounted || generation != _entitlementGeneration) return;
-    setState(() => _folderTagEntitlement = entitlement);
   }
 
   Future<void> _refresh() => _load(
@@ -321,47 +250,18 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     return entries;
   }
 
-  Future<void> _toggleTags(bool enabled) async {
-    if (_folderTagEntitlement != ChatFolderTagEntitlement.enabled) {
-      if (_folderTagEntitlement == ChatFolderTagEntitlement.locked) {
-        _activateLockedFolderTags();
-      }
-      return;
-    }
-    final previous = _tagsEnabled;
-    setState(() => _tagsEnabled = enabled);
-    try {
-      await _service.toggleTags(enabled);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _tagsEnabled = previous);
-      showToast(
-        context,
-        AppStrings.t(
-          AppStringKeys.chatFolderManagementCouldnTChangeFolderTagsValue1,
-          {'value1': error},
-        ),
-      );
-    }
-  }
-
-  void _activateLockedFolderTags() {
-    final callback = widget.onLockedFolderTagsActivated;
-    if (callback != null) {
-      callback();
-      return;
-    }
-    unawaited(
-      openTelegramPremiumBusinessFeature(
-        context,
-        feature: const {'@type': 'businessFeatureChatFolderTags'},
-      ),
-    );
-  }
+  /// 文件夹标签 is a Premium setting on the server, so the controller writes it
+  /// there only for a Premium account and keeps everyone else's choice on this
+  /// device. Drawing the tags is local either way.
+  Future<void> _toggleTags(bool enabled) async => _tags?.setEnabled(enabled);
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // The switch follows the controller, so a change made anywhere — here, or
+    // a Premium account's own server update — lands on this row.
+    final tagsEnabled =
+        context.watch<ChatFolderTagController?>()?.enabled ?? false;
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.appearanceChatFolders),
       onBack: () => Navigator.of(context).pop(),
@@ -400,33 +300,27 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
                   key: const ValueKey('title'),
                 ),
                 _folderOrderCard(),
-                if (_folderTagEntitlement !=
-                    ChatFolderTagEntitlement.unavailable) ...[
-                  const SizedBox(
-                    key: ValueKey('gap-tags'),
-                    height: AppSpacing.xl,
-                  ),
-                  _sectionTitle(
-                    AppStrings.t(AppStringKeys.chatFolderManagementFolderTags),
-                    key: const ValueKey('tags-title'),
-                  ),
-                  _card(
-                    key: const ValueKey('folder-tags'),
-                    children: [
-                      _switchRow(
-                        AppStrings.t(
-                          AppStringKeys
-                              .chatFolderManagementShowFolderTagsInChatList,
-                        ),
-                        _tagsEnabled,
-                        _toggleTags,
-                        locked:
-                            _folderTagEntitlement ==
-                            ChatFolderTagEntitlement.locked,
+                const SizedBox(
+                  key: ValueKey('gap-tags'),
+                  height: AppSpacing.xl,
+                ),
+                _sectionTitle(
+                  AppStrings.t(AppStringKeys.chatFolderManagementFolderTags),
+                  key: const ValueKey('tags-title'),
+                ),
+                _card(
+                  key: const ValueKey('folder-tags'),
+                  children: [
+                    _switchRow(
+                      AppStrings.t(
+                        AppStringKeys
+                            .chatFolderManagementShowFolderTagsInChatList,
                       ),
-                    ],
-                  ),
-                ],
+                      tagsEnabled,
+                      _toggleTags,
+                    ),
+                  ],
+                ),
                 if (_recommended.isNotEmpty) ...[
                   const SizedBox(
                     key: ValueKey('gap-recommended'),
@@ -455,7 +349,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     final entries = _orderedEntries();
     return SettingsPanel(
       key: const ValueKey('folder-list'),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      clipBehavior: Clip.antiAlias,
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -475,11 +369,42 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     );
   }
 
+  /// The grip that starts a reorder. It leads the row — the thing you grab
+  /// sits where you reach for it, ahead of the folder it moves — and draws as
+  /// three bars, the drag-handle glyph, rather than the 2x2 squares it used to
+  /// borrow, which read as a menu button.
+  Widget _dragHandle(int index) => ReorderableDragStartListener(
+    index: index,
+    child: const Padding(
+      // Vertical padding keeps the grab target a comfortable size on the
+      // compact desktop row, where the row itself is only 42 tall.
+      padding: EdgeInsets.fromLTRB(
+        0,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: AppIcon(HeroAppIcons.bars, size: 19, color: Color(0xFF9CA3AF)),
+    ),
+  );
+
+  /// The inset [SettingsRow] applies, so these hand-rolled rows line up with
+  /// the settings rows elsewhere on the page while still spanning the card.
+  static EdgeInsets get _rowInset => EdgeInsets.only(
+    left: isDesktopTargetPlatform()
+        ? AppSpacing.lg
+        : AppMetric.settingsLeadingInset,
+    right: isDesktopTargetPlatform()
+        ? AppSpacing.lg
+        : AppMetric.settingsTrailingInset,
+  );
+
   Widget _mainListRow(int index, {required bool showDivider}) {
     final c = context.colors;
     return Container(
       key: const ValueKey('folder-main-list'),
-      height: 62,
+      height: SettingsRow.resolveHeight(),
+      padding: _rowInset,
       decoration: BoxDecoration(
         border: showDivider
             ? Border(bottom: BorderSide(color: c.divider, width: 0.5))
@@ -487,23 +412,13 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       ),
       child: Row(
         children: [
+          _dragHandle(index),
           AppIcon(HeroAppIcons.inbox, size: 23, color: AppTheme.brand),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               AppStrings.t(AppStringKeys.chatFolderManagementAllChats),
               style: AppTextStyle.bodyLarge(c.textPrimary),
-            ),
-          ),
-          ReorderableDragStartListener(
-            index: index,
-            child: const Padding(
-              padding: EdgeInsets.all(AppSpacing.sm),
-              child: AppIcon(
-                HeroAppIcons.grip,
-                size: 19,
-                color: Color(0xFF9CA3AF),
-              ),
             ),
           ),
         ],
@@ -519,7 +434,8 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     final c = context.colors;
     return Container(
       key: ValueKey('folder-${folder.id}'),
-      height: 62,
+      height: SettingsRow.resolveHeight(),
+      padding: _rowInset,
       decoration: BoxDecoration(
         border: showDivider
             ? Border(bottom: BorderSide(color: c.divider, width: 0.5))
@@ -527,6 +443,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       ),
       child: Row(
         children: [
+          _dragHandle(index),
           AppIcon(HeroAppIcons.folder, size: 23, color: AppTheme.brand),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -553,27 +470,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
             behavior: HitTestBehavior.opaque,
             onTap: () => _delete(folder),
             child: const Padding(
-              padding: EdgeInsets.all(AppSpacing.sm),
+              padding: EdgeInsets.only(left: AppSpacing.sm),
               child: AppIcon(
                 HeroAppIcons.trash,
                 size: 19,
                 color: Color(0xFFFF3B30),
-              ),
-            ),
-          ),
-          ReorderableDragStartListener(
-            index: index,
-            child: const Padding(
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.xs,
-                AppSpacing.sm,
-                0,
-                AppSpacing.sm,
-              ),
-              child: AppIcon(
-                HeroAppIcons.grip,
-                size: 19,
-                color: Color(0xFF9CA3AF),
               ),
             ),
           ),
@@ -587,8 +488,9 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _create(recommendation: folder),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: Container(
+        constraints: BoxConstraints(minHeight: SettingsRow.resolveHeight()),
+        padding: _rowInset.copyWith(top: AppSpacing.sm, bottom: AppSpacing.sm),
         child: Row(
           children: [
             AppIcon(HeroAppIcons.plus, size: 21, color: AppTheme.brand),
@@ -617,45 +519,22 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     );
   }
 
-  Widget _switchRow(
-    String label,
-    bool value,
-    ValueChanged<bool> onChanged, {
-    bool locked = false,
-  }) {
-    final row = SettingsSwitchRow(
-      title: label,
-      value: value,
-      leading: SettingsLeadingIcon(
-        icon: locked ? HeroAppIcons.lock : HeroAppIcons.hashtag,
-      ),
-      subtitle: locked
-          ? context.l10n.t(AppStringKeys.profileToolsPremiumRequired)
-          : null,
-      enabled: !locked,
-      onChanged: onChanged,
-    );
-    if (!locked) return row;
-    return AppInteractiveSurface(
-      key: const ValueKey('folder-tags-premium-lock'),
-      semanticLabel:
-          '$label. ${context.l10n.t(AppStringKeys.profileToolsPremiumRequired)}',
-      isButton: true,
-      focusNode: _folderTagLockFocusNode,
-      borderRadius: BorderRadius.circular(AppRadius.sm),
-      onTap: _activateLockedFolderTags,
-      child: ExcludeSemantics(child: row),
-    );
-  }
+  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) =>
+      SettingsSwitchRow(
+        title: label,
+        value: value,
+        leading: const SettingsLeadingIcon(icon: HeroAppIcons.hashtag),
+        onChanged: onChanged,
+      );
 
   Widget _sectionTitle(String text, {required Key key}) =>
       SettingsSectionHeader.text(text, key: key);
 
+  /// No horizontal padding: a settings row draws its own leading and trailing
+  /// insets and its tap surface has to reach the card's edges. Padding here
+  /// left the highlight floating in the middle of the card.
   Widget _card({required Key key, required List<Widget> children}) =>
-      SettingsPanel(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        child: Column(children: children),
-      );
+      SettingsCard(key: key, children: children);
 
   Widget _divider() => Container(height: 0.5, color: context.colors.divider);
 }

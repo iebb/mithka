@@ -870,6 +870,111 @@ class AppAssetPickerBuilderDelegate
     );
   }
 
+  /// Same story as [accessLimitedBottomTip]: the package stamps
+  /// `Icons.videocam` beside every video's duration, which without Material
+  /// Icons is a tofu box on each video thumbnail in the grid.
+  @override
+  Widget videoIndicator(BuildContext context, AssetEntity asset) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: double.maxFinite,
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: AlignmentDirectional.bottomCenter,
+            end: AlignmentDirectional.topCenter,
+            colors: [theme.splashColor, Colors.transparent],
+          ),
+        ),
+        child: Row(
+          children: [
+            const AppIcon(
+              HeroAppIcons.solidFileVideo,
+              size: 20,
+              color: Colors.white,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(start: 4),
+                child: Text(
+                  textDelegate.durationIndicatorBuilder(
+                    Duration(seconds: asset.duration),
+                  ),
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    decoration: TextDecoration.none,
+                  ),
+                  strutStyle: const StrutStyle(
+                    forceStrutHeight: true,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The package draws this banner with `Icons.warning` and
+  /// `Icons.keyboard_arrow_right`. Without Material Icons bundled those two
+  /// codepoints have no glyph and render as tofu boxes at either end of the
+  /// blue bar. Same layout and same tap target, project icons instead.
+  @override
+  Widget accessLimitedBottomTip(BuildContext context) {
+    final bottomPadding = hasBottomActions
+        ? 0.0
+        : MediaQuery.paddingOf(context).bottom;
+    return GestureDetector(
+      onTap: () {
+        Feedback.forTap(context);
+        PhotoManager.openSetting();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+        ).add(EdgeInsets.only(bottom: bottomPadding)),
+        height: permissionLimitedBarHeight + bottomPadding,
+        color: theme.primaryColor,
+        child: Row(
+          children: [
+            const SizedBox(width: 5),
+            AppIcon(
+              HeroAppIcons.triangleExclamation,
+              size: 24,
+              color: const Color(0xFFFFA726).withValues(alpha: 0.8),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Semantics(
+                label: semanticsTextDelegate.accessAllTip,
+                child: Text(
+                  textDelegate.accessAllTip,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: theme.textTheme.bodySmall?.color,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            ),
+            AppIcon(
+              HeroAppIcons.chevronRight,
+              size: 20,
+              color: (theme.iconTheme.color ?? theme.colorScheme.onSurface)
+                  .withValues(alpha: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sendOptionToggle(
     BuildContext context, {
     required Key key,

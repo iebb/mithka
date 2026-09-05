@@ -95,6 +95,47 @@ void main() {
       expect(readableForeground(const Color(0xFF000000)), white);
     });
   });
+
+  group('the brand accent', () {
+    // applyBrand writes globals; put them back so test order cannot matter.
+    tearDown(
+      () =>
+          AppTheme.applyBrand(const Color(0xFF000000 | AppTheme.defaultBrand)),
+    );
+
+    test('takes the stored token, not a contrast calculation', () {
+      // Azure's raw contrast prefers near-black over white, which is exactly
+      // the flip this must not make: the outgoing bubble draws white ink.
+      AppTheme.applyBrand(const Color(0xFF0099FF));
+      expect(AppTheme.onBrand, white);
+      expect(AppTheme.bubbleOutgoingText, white);
+    });
+
+    test('holds for a saturated green too', () {
+      AppTheme.applyBrand(const Color(0xFF07C160));
+      expect(AppTheme.bubbleOutgoingText, white);
+    });
+
+    test('only a fill too pale for white moves it', () {
+      // A near-white brand is the one case where Telegram's white would be
+      // invisible, so this — and only this — takes the dark ink.
+      AppTheme.applyBrand(const Color(0xFFF9F7F4));
+      expect(AppTheme.onBrand, isNot(white));
+      expect(
+        contrastRatio(AppTheme.brand, AppTheme.onBrand),
+        greaterThanOrEqualTo(4.5),
+      );
+    });
+
+    test('honours a palette that names its own on-accent ink', () {
+      AppTheme.applyBrand(
+        const Color(0xFF0099FF),
+        onAccent: const Color(0xFF171717),
+      );
+      expect(AppTheme.onBrand, const Color(0xFF171717));
+      expect(AppTheme.bubbleOutgoingText, const Color(0xFF171717));
+    });
+  });
 }
 
 // Telegram keys the rest of the chrome binds to. Same rule as onAccent: the

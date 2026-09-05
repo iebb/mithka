@@ -1607,17 +1607,7 @@ void main() {
       tester.view.resetPhysicalSize();
     });
 
-    const thumbnailChannel = MethodChannel('fc_native_video_thumbnail');
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    MethodCall? thumbnailCall;
-    messenger.setMockMethodCallHandler(thumbnailChannel, (call) async {
-      thumbnailCall = call;
-      return _transparentPixelPng;
-    });
-    addTearDown(
-      () => messenger.setMockMethodCallHandler(thumbnailChannel, null),
-    );
+    FVideoThumbnailRequest? thumbnailRequest;
 
     late Directory directory;
     late File sparseFile;
@@ -1656,6 +1646,10 @@ void main() {
               height: 1080,
               onClose: () {},
               streamQuery: query.call,
+              thumbnailProvider: (request) async {
+                thumbnailRequest = request;
+                return _transparentPixelPng;
+              },
             ),
           ),
         ),
@@ -1697,9 +1691,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 80));
       await tester.pump();
 
-      expect(thumbnailCall?.method, 'saveThumbnailToBytes');
-      expect(thumbnailCall?.arguments['srcFile'], dataSource.uri);
-      expect(thumbnailCall?.arguments['srcFileUri'], isTrue);
+      expect(thumbnailRequest?.source.kind, FVideoSourceKind.network);
+      expect(thumbnailRequest?.source.location, dataSource.uri);
       expect(
         find.descendant(of: _compactScrubPreview, matching: find.byType(Image)),
         findsOneWidget,

@@ -350,9 +350,7 @@ class _TargetedHistoryPrototypeState extends State<_TargetedHistoryPrototype> {
       scrollCacheExtent: ScrollCacheExtent.pixels(widget.cacheExtent),
       physics: const ClampingScrollPhysics(),
       slivers: [
-        _messageSliver(
-          partition.beforePivot.reversed.toList(growable: false),
-        ),
+        _messageSliver(partition.beforePivot.reversed.toList(growable: false)),
         _messageSliver(partition.pivotAndAfter, key: _centerSliverKey),
       ],
     );

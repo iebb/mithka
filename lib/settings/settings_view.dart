@@ -872,6 +872,10 @@ class _SettingsViewState extends State<SettingsView> {
           'repeat sender',
           'quick replies',
           'video playback',
+          'browser',
+          'links',
+          'internal browser',
+          'default browser',
         ],
       ),
       _SettingsDestination(

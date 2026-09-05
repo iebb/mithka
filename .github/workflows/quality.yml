@@ -1,0 +1,53 @@
+name: Quality
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  # Reusable calls share the caller's github context. Keep simultaneous
+  # release, Play, TestFlight, and nightly gates from cancelling each other.
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flutter:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Configure credential-free test build
+        run: cp lib/config/secrets_example.dart lib/config/secrets.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify generated localization catalogues
+        run: |
+          python3 translations/tools/check.py
+          python3 translations/tools/gen_assets.py --check
+          python3 tool/check_l10n_strings.py
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run unit and widget tests
+        run: flutter test --concurrency=4

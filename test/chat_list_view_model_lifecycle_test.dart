@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
+import 'package:mithka/communities/community_models.dart';
 import 'package:mithka/tdlib/json_helpers.dart';
 
 void main() {
@@ -166,6 +167,74 @@ void main() {
     expect(model.chats.single.date, 20);
     expect(model.chats.single.order, 200);
   });
+
+  testWidgets(
+    'stale community snapshot cannot restore an unread badge after read',
+    (tester) async {
+      final model = ChatListViewModel(
+        membershipForTesting: (_, _) async => true,
+      );
+      addTearDown(model.dispose);
+
+      final staleUnreadSnapshot = _groupChat(
+        order: 100,
+        messageId: 10,
+        messageDate: 10,
+        text: 'community message',
+        unreadCount: 4,
+      );
+      await model.ingestRawChatForTesting(staleUnreadSnapshot);
+      model.applyUpdateForTesting({
+        '@type': 'updateChatReadInbox',
+        'chat_id': 42,
+        'last_read_inbox_message_id': 10,
+        'unread_count': 0,
+      });
+      await tester.pump(const Duration(milliseconds: 50));
+
+      model.applyUpdateForTesting({
+        '@type': 'updateChatReadInbox',
+        'chat_id': 42,
+        'last_read_inbox_message_id': 5,
+        'unread_count': 2,
+      });
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(model.chats.single.unreadCount, 0);
+
+      // A community catalogue getChat that started before the read update can
+      // return afterwards with the same last message and its old unread count.
+      await model.ingestRawChatForTesting(staleUnreadSnapshot);
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(model.chats.single.unreadCount, 0);
+      expect(model.chats.single.lastReadInboxMessageId, 10);
+      final community = CommunityGroupEntry(
+        community: CommunitySummary(
+          id: 7,
+          name: 'Community',
+          haveAccess: true,
+          isAdministrator: false,
+          canEditChatList: false,
+        ),
+        chats: model.chats,
+      );
+      expect(community.unreadCount, 0);
+
+      // A genuinely newer message still creates a new unread count.
+      await model.ingestRawChatForTesting(
+        _groupChat(
+          order: 200,
+          messageId: 20,
+          messageDate: 20,
+          text: 'new community message',
+          unreadCount: 1,
+          lastReadInboxMessageId: 10,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(model.chats.single.unreadCount, 1);
+    },
+  );
 }
 
 Map<String, dynamic> _privateChat({
@@ -195,11 +264,15 @@ Map<String, dynamic> _groupChat({
   required int messageId,
   required int messageDate,
   required String text,
+  int unreadCount = 0,
+  int lastReadInboxMessageId = 0,
 }) => {
   '@type': 'chat',
   'id': 42,
   'title': 'Current group',
   'view_as_topics': true,
+  'unread_count': unreadCount,
+  'last_read_inbox_message_id': lastReadInboxMessageId,
   'type': {
     '@type': 'chatTypeSupergroup',
     'supergroup_id': 7,

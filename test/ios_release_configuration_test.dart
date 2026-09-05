@@ -3,6 +3,26 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Apple CI pins CocoaPods to the lockfile generator', () {
+    final iosScript = File(
+      'ios/ci_scripts/ci_post_clone.sh',
+    ).readAsStringSync();
+    final macosScript = File(
+      'ci_scripts/macos_post_clone.sh',
+    ).readAsStringSync();
+    final iosLock = File('ios/Podfile.lock').readAsStringSync();
+    final macosLock = File('macos/Podfile.lock').readAsStringSync();
+
+    for (final script in [iosScript, macosScript]) {
+      expect(script, contains('COCOAPODS_VERSION="1.17.0"'));
+      expect(script, contains('ensure_cocoapods'));
+      expect(script, contains('pod --version'));
+    }
+    for (final lock in [iosLock, macosLock]) {
+      expect(lock, endsWith('COCOAPODS: 1.17.0\n'));
+    }
+  });
+
   test('Xcode Cloud prefetches the pinned sqlite3 iOS binary safely', () {
     final script = File('ios/ci_scripts/ci_post_clone.sh').readAsStringSync();
     final lock = File('pubspec.lock').readAsStringSync();
@@ -11,8 +31,8 @@ void main() {
       multiLine: true,
     ).firstMatch(lock)?.group(1);
 
-    expect(sqlite3Version, '3.5.1');
-    expect(script, contains('SQLITE3_VERSION="3.5.1"'));
+    expect(sqlite3Version, '3.5.2');
+    expect(script, contains('SQLITE3_VERSION="3.5.2"'));
     expect(
       script,
       contains(

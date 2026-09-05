@@ -1,0 +1,125 @@
+name: Physical device smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Physical-device platform
+        required: true
+        type: choice
+        options:
+          - ios
+          - android
+      device_id:
+        description: Exact ID reported by flutter devices
+        required: true
+        type: string
+
+concurrency:
+  group: physical-device-${{ inputs.platform }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: iOS physical-device integration tests
+    if: inputs.platform == 'ios'
+    runs-on: [self-hosted, macOS, mithka-physical-ios]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Configure credential-free smoke build
+        run: cp lib/config/secrets_example.dart lib/config/secrets.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Require the requested physical iOS device
+        env:
+          MITHKA_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          flutter devices --machine > "$RUNNER_TEMP/flutter-devices.json"
+          python3 - "$RUNNER_TEMP/flutter-devices.json" "$MITHKA_DEVICE_ID" ios <<'PY'
+          import json
+          import sys
+
+          devices = json.load(open(sys.argv[1], encoding="utf-8"))
+          device_id, platform = sys.argv[2:]
+          matches = [device for device in devices if device.get("id") == device_id]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one connected device {device_id!r}")
+          device = matches[0]
+          target = str(device.get("targetPlatform", "")).lower()
+          if device.get("emulator") is not False or not target.startswith(platform):
+              raise SystemExit(
+                  f"Refusing non-physical or wrong-platform device: {device!r}"
+              )
+          print(f"Using physical device {device.get('name')} ({device_id})")
+          PY
+
+      - name: Run iOS hardware and native-plugin smoke tests
+        env:
+          MITHKA_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          flutter test -d "$MITHKA_DEVICE_ID" integration_test/composer_media_panel_test.dart
+          flutter test -d "$MITHKA_DEVICE_ID" integration_test/animated_avatar_preparer_test.dart
+          flutter test -d "$MITHKA_DEVICE_ID" integration_test/sticker_alpha_mov_export_test.dart
+
+  android:
+    name: Android physical-device integration tests
+    if: inputs.platform == 'android'
+    runs-on: [self-hosted, mithka-physical-android]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Configure credential-free smoke build
+        run: cp lib/config/secrets_example.dart lib/config/secrets.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Require the requested physical Android device
+        env:
+          MITHKA_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          flutter devices --machine > "$RUNNER_TEMP/flutter-devices.json"
+          python3 - "$RUNNER_TEMP/flutter-devices.json" "$MITHKA_DEVICE_ID" android <<'PY'
+          import json
+          import sys
+
+          devices = json.load(open(sys.argv[1], encoding="utf-8"))
+          device_id, platform = sys.argv[2:]
+          matches = [device for device in devices if device.get("id") == device_id]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one connected device {device_id!r}")
+          device = matches[0]
+          target = str(device.get("targetPlatform", "")).lower()
+          if device.get("emulator") is not False or not target.startswith(platform):
+              raise SystemExit(
+                  f"Refusing non-physical or wrong-platform device: {device!r}"
+              )
+          print(f"Using physical device {device.get('name')} ({device_id})")
+          PY
+
+      - name: Run Android hardware and native-plugin smoke tests
+        env:
+          MITHKA_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          flutter test -d "$MITHKA_DEVICE_ID" integration_test/composer_media_panel_test.dart
+          flutter test -d "$MITHKA_DEVICE_ID" integration_test/animated_avatar_preparer_test.dart

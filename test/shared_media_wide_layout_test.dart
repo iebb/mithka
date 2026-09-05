@@ -305,8 +305,8 @@ void main() {
 
       expect(find.byKey(const ValueKey('shared-video-grid')), findsOneWidget);
       final first = find.byKey(const ValueKey('shared-video-card-101-1'));
-      final second = find.byKey(const ValueKey('shared-video-card-101-4'));
-      final fourth = find.byKey(const ValueKey('shared-video-card-101-2'));
+      final second = find.byKey(const ValueKey('shared-video-card-101-2'));
+      final fourth = find.byKey(const ValueKey('shared-video-card-101-4'));
       expect(first, findsOneWidget);
       expect(second, findsOneWidget);
       expect(fourth, findsOneWidget);
@@ -374,6 +374,38 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     },
   );
+
+  testWidgets('all videos keeps message order when a download completes', (
+    tester,
+  ) async {
+    _configureView(tester, const Size(760, 720), TargetPlatform.macOS);
+    messages = [
+      _videoMessage(2, 502, 'Night train', 142),
+      _videoMessage(1, 501, 'Alpine lake', 95),
+    ];
+
+    await tester.pumpWidget(
+      _app(
+        const SharedMediaView(
+          chatId: 101,
+          title: 'Videos',
+          initialTab: 4,
+          displayTitle: AppStringKeys.sharedMediaVideos,
+          lockedTab: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final first = tester.getTopLeft(
+      find.byKey(const ValueKey('shared-video-card-101-2')),
+    );
+    final completed = tester.getTopLeft(
+      find.byKey(const ValueKey('shared-video-card-101-1')),
+    );
+    expect(first.dx, lessThan(completed.dx));
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets('wide Video keeps loading and empty states in the grid surface', (
     tester,

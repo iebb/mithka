@@ -47,9 +47,9 @@ class MusicPlayerController extends ChangeNotifier {
   static final MusicPlayerController shared = MusicPlayerController._();
 
   final VoicePlayer _player = VoicePlayer();
-  final MusicPlaylistService _playlistService = MusicPlaylistService();
   final Set<Object> _embeddedPlayerHosts = <Object>{};
   SharedPreferences? _prefs;
+  int _accountSlot = 0;
   int? _loadedSlot;
   int? _playedChatsSlot;
 
@@ -89,7 +89,32 @@ class MusicPlayerController extends ChangeNotifier {
   // opened. main() calls this before TDLib reaches authorizationStateReady.
   void initialize(SharedPreferences prefs) {
     _prefs = prefs;
+    setActiveAccountSlot(TdClient.shared.activeSlot);
     _loadPlayedMusicChats(force: true);
+  }
+
+  /// Clears account-owned playback state before another account becomes the
+  /// source of playlist, chat, and file identifiers.
+  void setActiveAccountSlot(int accountSlot) {
+    if (_accountSlot == accountSlot) return;
+    _accountSlot = accountSlot;
+    _loadedSlot = null;
+    _playedChatsSlot = null;
+    playlists = const [];
+    playlistsLoading = false;
+    _stopPlayback(clearCurrent: true);
+    _loadPlayedMusicChats(force: true);
+    notifyListeners();
+  }
+
+  MusicPlaylistService _playlistServiceForSlot(int accountSlot) {
+    final clientId = TdClient.shared.clientId(accountSlot);
+    return MusicPlaylistService(
+      query: (request) => TdClient.shared.queryForSlot(request, accountSlot),
+      folderUpdate: () => clientId == null
+          ? null
+          : TdClient.shared.latestChatFoldersUpdateForClient(clientId),
+    );
   }
 
   bool isActive(TdFileRef? file) => _player.isActive(file);
@@ -113,23 +138,30 @@ class MusicPlayerController extends ChangeNotifier {
 
   Future<void> refreshPlaylists({bool force = false}) async {
     _loadPlayedMusicChats();
-    final slot = TdClient.shared.activeSlot;
+    final slot = _accountSlot;
     if (!force && _loadedSlot == slot && playlists.isNotEmpty) return;
     _loadedSlot = slot;
     playlistsLoading = true;
     notifyListeners();
     try {
-      playlists = await _playlistService.loadPlaylists();
+      final loaded = await _playlistServiceForSlot(slot).loadPlaylists();
+      if (slot != _accountSlot) return;
+      playlists = loaded;
     } finally {
-      playlistsLoading = false;
-      notifyListeners();
+      if (slot == _accountSlot) {
+        playlistsLoading = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<MusicPlaylist> createPlaylist(String title) async {
-    final playlist = await _playlistService.createPlaylist(title);
-    playlists = [...playlists, playlist];
-    notifyListeners();
+    final slot = _accountSlot;
+    final playlist = await _playlistServiceForSlot(slot).createPlaylist(title);
+    if (slot == _accountSlot) {
+      playlists = [...playlists, playlist];
+      notifyListeners();
+    }
     return playlist;
   }
 
@@ -137,6 +169,7 @@ class MusicPlayerController extends ChangeNotifier {
     ChatMessage message,
     MusicPlaylist playlist,
   ) async {
+    final slot = _accountSlot;
     final fileId = message.music?.file?.id;
     if (fileId == null) return false;
     final index = playlists.indexWhere(
@@ -146,7 +179,8 @@ class MusicPlayerController extends ChangeNotifier {
     if (active.tracks.any((item) => item.music?.file?.id == fileId)) {
       return false;
     }
-    final sent = await _playlistService.addTrack(active, message);
+    final sent = await _playlistServiceForSlot(slot).addTrack(active, message);
+    if (slot != _accountSlot) return true;
     final updated = active.copyWith(tracks: [...active.tracks, sent]);
     playlists = index < 0
         ? [...playlists, updated]
@@ -162,6 +196,7 @@ class MusicPlayerController extends ChangeNotifier {
     MusicPlaylist playlist,
     ChatMessage message,
   ) async {
+    final slot = _accountSlot;
     final fileId = message.music?.file?.id;
     if (fileId == null) return;
     final playlistIndex = playlists.indexWhere(
@@ -173,7 +208,8 @@ class MusicPlayerController extends ChangeNotifier {
       orElse: () => null,
     );
     if (savedTrack == null) return;
-    await _playlistService.removeTrack(active, savedTrack);
+    await _playlistServiceForSlot(slot).removeTrack(active, savedTrack);
+    if (slot != _accountSlot) return;
     final updated = active.copyWith(
       tracks: active.tracks.where((item) => item.id != savedTrack.id).toList(),
     );
@@ -195,6 +231,7 @@ class MusicPlayerController extends ChangeNotifier {
     int chatId, {
     String? title,
   }) async {
+    final accountSlot = _accountSlot;
     _recordPlayedMusicChat(chatId, title ?? message.senderName);
     final sourceRevision = _setPlaybackSource(
       chatId: chatId,
@@ -206,7 +243,10 @@ class MusicPlayerController extends ChangeNotifier {
     // become eligible for next-track playback in the meantime.
     play(message, visibleQueue: [message]);
     try {
-      final tracks = await _playlistService.loadTracks(chatId);
+      final tracks = await _playlistServiceForSlot(
+        accountSlot,
+      ).loadTracks(chatId);
+      if (accountSlot != _accountSlot) return;
       if (sourceRevision != _playbackSourceRevision ||
           _playbackSourceChatId != chatId ||
           _playbackSourceIsPlaylist ||
@@ -231,8 +271,10 @@ class MusicPlayerController extends ChangeNotifier {
     play(message, visibleQueue: playlist.tracks);
   }
 
-  Future<List<ChatMessage>> loadChatTracks(int chatId) =>
-      _playlistService.loadTracks(chatId);
+  Future<List<ChatMessage>> loadChatTracks(int chatId) {
+    final slot = _accountSlot;
+    return _playlistServiceForSlot(slot).loadTracks(chatId);
+  }
 
   void play(
     ChatMessage message, {
@@ -395,12 +437,11 @@ class MusicPlayerController extends ChangeNotifier {
     return _playbackSourceRevision;
   }
 
-  String get _playedChatsPrefsKey =>
-      'mithka.musicPlayedChats.v1.${TdClient.shared.activeSlot}';
+  String get _playedChatsPrefsKey => 'mithka.musicPlayedChats.v1.$_accountSlot';
 
   void _loadPlayedMusicChats({bool force = false}) {
     final prefs = _prefs;
-    final slot = TdClient.shared.activeSlot;
+    final slot = _accountSlot;
     if (prefs == null || (!force && _playedChatsSlot == slot)) return;
     _playedChatsSlot = slot;
     playedMusicChats = decodePlayedMusicChats(

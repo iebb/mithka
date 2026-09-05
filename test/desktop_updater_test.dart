@@ -200,7 +200,15 @@ void main() {
       expect(File('${install.path}/marker').readAsStringSync(), 'new');
       expect(Directory('${root.path}/work').existsSync(), isFalse);
       expect(Directory('${root.path}/.mithka-backup-1').existsSync(), isFalse);
-      expect(File('${install.path}/ran').existsSync(), isTrue);
+      final relaunched = File('${install.path}/ran');
+      for (
+        var attempt = 0;
+        attempt < 100 && !relaunched.existsSync();
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(relaunched.existsSync(), isTrue);
       root.deleteSync(recursive: true);
     });
 

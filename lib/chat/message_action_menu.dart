@@ -42,6 +42,7 @@ enum MessageAction {
   playMuted(HeroAppIcons.volumeXmark, AppStringKeys.messageActionPlayMuted),
   addToPlaylist(HeroAppIcons.music, AppStringKeys.musicPlayerAddToPlaylist),
   saveToPhotos(HeroAppIcons.download, AppStringKeys.messageActionSaveToPhotos),
+  saveAs(HeroAppIcons.download, AppStringKeys.messageActionSaveAs),
   multiSelect(HeroAppIcons.circleCheck, AppStringKeys.messageActionMultiSelect),
   pinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionSetTodo),
   unpinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionUnsetTodo),
@@ -448,7 +449,10 @@ class MessageActionMenu extends StatelessWidget {
 
   bool get _hasCopyableText => message.text.trim().isNotEmpty;
 
-  List<MessageAction> _actions(TranslationController translation) {
+  List<MessageAction> _actions(
+    TranslationController translation, {
+    required bool isDesktop,
+  }) {
     if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
     if (_hasCopyableText) {
@@ -489,7 +493,8 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.addToPlaylist);
     }
     if (message.isPhoto || message.video != null) {
-      result.add(MessageAction.saveToPhotos);
+      // A computer has no album to add to — it gets a save panel instead.
+      result.add(isDesktop ? MessageAction.saveAs : MessageAction.saveToPhotos);
     }
     result.add(MessageAction.multiSelect);
     result.add(isPinned ? MessageAction.unpinTodo : MessageAction.pinTodo);
@@ -513,14 +518,20 @@ class MessageActionMenu extends StatelessWidget {
       return preferredHeight;
     }
     return desktopHeightForActionCount(
-      _actions(context.read<TranslationController>()).length,
+      _actions(
+        context.read<TranslationController>(),
+        isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+      ).length,
       availableHeight: MediaQuery.sizeOf(context).height - 24,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final actions = _actions(context.watch<TranslationController>());
+    final actions = _actions(
+      context.watch<TranslationController>(),
+      isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+    );
     if (_usesVerticalLayout(context)) {
       return _VerticalActionList(actions: actions, onSelect: onSelect);
     }

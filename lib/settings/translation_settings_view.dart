@@ -178,7 +178,7 @@ class _GoogleCloudTranslationProviderListView extends StatelessWidget {
     final translation = context.watch<TranslationController>();
     final providers = translation.googleCloudProviders;
     return SettingsPageScaffold(
-      title: 'Google Cloud Translation',
+      title: AppStringKeys.translationGoogleCloudName.l10n(context),
       onBack: () => Navigator.of(context).pop(),
       child: SettingsListView(
         children: [
@@ -287,7 +287,7 @@ class _GoogleCloudTranslationProviderEditorViewState
             controller: _name,
             icon: HeroAppIcons.cloud,
             label: AppStringKeys.aiProviderName.l10n(context),
-            hint: 'Google Cloud Translation',
+            hint: AppStringKeys.translationGoogleCloudName.l10n(context),
           ),
           const SizedBox(height: AppSpacing.sm),
           _googleCloudInputField(
@@ -664,7 +664,7 @@ class _TranslationSettingsViewState extends State<TranslationSettingsView> {
               SettingsRow(
                 key: const ValueKey('google-cloud-providers-settings'),
                 leading: const SettingsLeadingIcon(icon: HeroAppIcons.cloud),
-                title: 'Google Cloud Translation',
+                title: AppStringKeys.translationGoogleCloudName.l10n(context),
                 value: translation.googleCloudProviders.isEmpty
                     ? AppStringKeys.translationSettingsNone.l10n(context)
                     : '${translation.googleCloudProviders.length}',

@@ -15,6 +15,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'telegram_payment_service.dart';
+import 'telegram_webview_security.dart';
 
 Future<TelegramInvoiceOutcome> openTelegramInvoiceCheckout(
   BuildContext context, {
@@ -780,11 +781,18 @@ class PaymentFormSubmission {
 }
 
 @visibleForTesting
-PaymentFormSubmission? decodePaymentFormSubmit(String raw) {
+PaymentFormSubmission? decodePaymentFormSubmit(
+  String raw, {
+  String? expectedBridgeNonce,
+}) {
   try {
     final outer = jsonDecode(raw);
     if (outer is! Map) return null;
     final event = Map<String, dynamic>.from(outer);
+    if (expectedBridgeNonce != null &&
+        event['bridgeNonce'] != expectedBridgeNonce) {
+      return null;
+    }
     if (event['eventType'] != 'payment_form_submit') return null;
     Object? data = event['eventData'];
     if (data is String) data = jsonDecode(data);
@@ -820,43 +828,88 @@ class TelegramPaymentWebView extends StatefulWidget {
 
 class _TelegramPaymentWebViewState extends State<TelegramPaymentWebView> {
   late final WebViewController _controller;
+  late final TelegramWebViewOrigin? _expectedOrigin;
+  late final String _bridgeNonce;
   bool _loading = true;
+  bool _bridgeAuthorized = false;
 
   @override
   void initState() {
     super.initState();
+    _bridgeNonce = newTelegramWebViewBridgeNonce();
     final uri = Uri.tryParse(widget.url);
+    _expectedOrigin = TelegramWebViewOrigin.fromUri(uri);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageFinished: (_) async {
-            if (widget.capturePaymentSubmission) {
-              await _controller.runJavaScript(_paymentBridgeJavaScript);
+          onPageStarted: (url) {
+            _bridgeAuthorized =
+                _expectedOrigin?.matches(Uri.tryParse(url)) ?? false;
+            if (mounted) setState(() => _loading = true);
+          },
+          onPageFinished: (url) async {
+            _bridgeAuthorized =
+                _expectedOrigin?.matches(Uri.tryParse(url)) ?? false;
+            if (widget.capturePaymentSubmission && _bridgeAuthorized) {
+              await _controller.runJavaScript(
+                _paymentBridgeJavaScript(_bridgeNonce),
+              );
             }
             if (mounted) setState(() => _loading = false);
           },
           onNavigationRequest: (request) {
-            final next = Uri.tryParse(request.url);
-            if (next == null ||
-                (next.scheme != 'https' && next.scheme != 'about')) {
-              return NavigationDecision.prevent;
+            final action = telegramPaymentNavigationAction(
+              expectedOrigin: _expectedOrigin,
+              url: request.url,
+              isMainFrame: request.isMainFrame,
+            );
+            switch (action) {
+              case TelegramWebViewNavigationAction.navigateTrusted:
+                if (request.isMainFrame) _bridgeAuthorized = true;
+                return NavigationDecision.navigate;
+              case TelegramWebViewNavigationAction.navigateUntrusted:
+                if (request.isMainFrame) _bridgeAuthorized = false;
+                return NavigationDecision.navigate;
+              case TelegramWebViewNavigationAction.openExternally:
+              case TelegramWebViewNavigationAction.block:
+                return NavigationDecision.prevent;
             }
-            return NavigationDecision.navigate;
           },
         ),
       )
       ..addJavaScriptChannel(
         'MithkaPayment',
         onMessageReceived: (message) {
-          final submission = decodePaymentFormSubmit(message.message);
-          if (submission != null && mounted) {
-            Navigator.of(context).pop(submission);
-          }
+          unawaited(_handlePaymentMessage(message));
         },
       );
-    if (uri != null && uri.scheme == 'https') {
+    if (_expectedOrigin != null && uri != null) {
       unawaited(_controller.loadRequest(uri));
+    } else {
+      _loading = false;
+    }
+  }
+
+  Future<void> _handlePaymentMessage(JavaScriptMessage message) async {
+    final expectedOrigin = _expectedOrigin;
+    if (!widget.capturePaymentSubmission ||
+        !_bridgeAuthorized ||
+        expectedOrigin == null) {
+      return;
+    }
+    try {
+      final currentUrl = await _controller.currentUrl();
+      if (!expectedOrigin.matches(Uri.tryParse(currentUrl ?? ''))) return;
+    } catch (_) {
+      return;
+    }
+    final submission = decodePaymentFormSubmit(
+      message.message,
+      expectedBridgeNonce: _bridgeNonce,
+    );
+    if (submission != null && mounted) {
+      Navigator.of(context).pop(submission);
     }
   }
 
@@ -879,11 +932,13 @@ class _TelegramPaymentWebViewState extends State<TelegramPaymentWebView> {
   }
 }
 
-const _paymentBridgeJavaScript = r'''
+String _paymentBridgeJavaScript(String bridgeNonce) =>
+    '''
 (function() {
   var target = window.TelegramWebviewProxy || {};
   target.postEvent = function(eventType, eventData) {
     MithkaPayment.postMessage(JSON.stringify({
+      bridgeNonce: ${jsonEncode(bridgeNonce)},
       eventType: eventType,
       eventData: eventData
     }));

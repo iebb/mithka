@@ -21,6 +21,7 @@ void main() {
       'showSavedMessagesIdentity': false,
       'preserveSenderWhenRepeating': true,
       'quickRepliesEnabled': true,
+      'linkOpenMode.v1': LinkOpenMode.defaultBrowser.name,
     });
     final prefs = await SharedPreferences.getInstance();
     final theme = ThemeController(prefs);
@@ -42,6 +43,7 @@ void main() {
       'chat-behavior-preserve-sender',
       'chat-behavior-save-captured-photos',
       'chat-behavior-quick-replies',
+      'chat-behavior-link-browser',
     ]) {
       expect(find.byKey(ValueKey(key)), findsOneWidget);
     }
@@ -63,7 +65,7 @@ void main() {
     );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(7),
+      findsNWidgets(8),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(
@@ -107,6 +109,30 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chat-behavior-quick-replies')));
     await tester.pump();
     expect(theme.quickRepliesEnabled, isFalse);
+
+    final browserRow = find.byKey(const ValueKey('chat-behavior-link-browser'));
+    await tester.ensureVisible(browserRow);
+    expect(
+      find.descendant(
+        of: browserRow,
+        matching: find.text(
+          AppStrings.tForLocale('en', AppStringKeys.linkBrowserDefaultBrowser),
+        ),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(browserRow);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('link-browser-mode-internalBrowser')),
+    );
+    await tester.pumpAndSettle();
+    expect(theme.linkOpenMode, LinkOpenMode.internalBrowser);
+    expect(prefs.getString('linkOpenMode.v1'), 'internalBrowser');
+
+    final restoredLinkModeTheme = ThemeController(prefs);
+    addTearDown(restoredLinkModeTheme.dispose);
+    expect(restoredLinkModeTheme.linkOpenMode, LinkOpenMode.internalBrowser);
 
     expect(
       theme.saveCapturedPhotosToAlbum,

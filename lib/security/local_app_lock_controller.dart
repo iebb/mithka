@@ -47,6 +47,7 @@ typedef AppLockBiometricProbe = Future<List<BiometricType>> Function();
 typedef AppLockBiometricAuthenticate =
     Future<bool> Function(String localizedReason);
 typedef AppLockPrivacyShieldApply = Future<void> Function(bool visible);
+typedef AppLockNow = DateTime Function();
 
 /// Owns the app-local lock credential and the current foreground lock state.
 ///
@@ -61,6 +62,7 @@ class LocalAppLockController extends ChangeNotifier {
     AppLockPrivacyShieldApply? privacyShieldApply,
     this.hashRounds = _defaultHashRounds,
     bool? platformSupportsBiometrics,
+    AppLockNow? now,
   }) : _secureRead = secureRead ?? _defaultSecureRead,
        _secureWrite = secureWrite ?? _defaultSecureWrite,
        _biometricProbe = biometricProbe ?? _defaultBiometricProbe,
@@ -69,11 +71,13 @@ class LocalAppLockController extends ChangeNotifier {
        _privacyShieldApply =
            privacyShieldApply ?? AppLockPrivacyPlatform.setPrivacyShieldVisible,
        _platformSupportsBiometrics =
-           platformSupportsBiometrics ?? _defaultPlatformSupportsBiometrics;
+           platformSupportsBiometrics ?? _defaultPlatformSupportsBiometrics,
+       _now = now ?? DateTime.now;
 
   static final LocalAppLockController shared = LocalAppLockController();
 
   static const _storageKey = 'mithka.local_app_lock.v1';
+  static const _attemptStorageKey = 'mithka.local_app_lock.attempts.v1';
   static const _defaultHashRounds = 120000;
   static const _pinLength = 4;
   static const _minimumGestureNodes = 4;
@@ -86,10 +90,14 @@ class LocalAppLockController extends ChangeNotifier {
   final AppLockPrivacyShieldApply _privacyShieldApply;
   final int hashRounds;
   final bool _platformSupportsBiometrics;
+  final AppLockNow _now;
 
   _StoredAppLock? _stored;
+  _StoredFailedAttempts _failedAttempts = const _StoredFailedAttempts();
   bool _initialized = false;
   bool _locked = false;
+  bool _storageUnavailable = false;
+  bool _readingStorage = false;
   bool _authenticatingBiometrics = false;
   bool _biometricAvailable = false;
   AppLockBiometricKind _biometricKind = AppLockBiometricKind.generic;
@@ -100,6 +108,8 @@ class LocalAppLockController extends ChangeNotifier {
   bool get initialized => _initialized;
   bool get enabled => _stored != null;
   bool get locked => _locked;
+  bool get storageUnavailable => _storageUnavailable;
+  bool get readingStorage => _readingStorage;
   bool get authenticatingBiometrics => _authenticatingBiometrics;
   bool get biometricAvailable => _biometricAvailable;
   bool get biometricEnabled => _stored?.biometricEnabled ?? false;
@@ -109,15 +119,31 @@ class LocalAppLockController extends ChangeNotifier {
   AppLockBiometricKind get biometricKind => _biometricKind;
   AppLockCredentialType? get credentialType => _stored?.type;
   int get lockEpoch => _lockEpoch;
+  int get failedAttemptCount => _failedAttempts.count;
+  Duration get credentialRetryAfter {
+    final retryAt = _failedAttempts.retryAt;
+    if (retryAt == null) return Duration.zero;
+    final remaining = retryAt.difference(_now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  bool get canAttemptCredential => credentialRetryAfter == Duration.zero;
 
   static int get pinLength => _pinLength;
   static int get minimumGestureNodes => _minimumGestureNodes;
 
   Future<void> initialize() async {
     if (_initialized) return;
+    _readingStorage = true;
     try {
       final value = await _secureRead(_storageKey);
       _stored = _StoredAppLock.tryParse(value);
+      if (value != null && value.isNotEmpty && _stored == null) {
+        throw const FormatException('Invalid app-lock record');
+      }
+      _failedAttempts = _StoredFailedAttempts.tryParse(
+        await _secureRead(_attemptStorageKey),
+      );
       if (_stored != null) {
         _locked = true;
         _lockEpoch = 1;
@@ -127,6 +153,9 @@ class LocalAppLockController extends ChangeNotifier {
       }
     } catch (error) {
       debugPrint('Local app lock could not read secure storage: $error');
+      _failClosedForStorageError();
+    } finally {
+      _readingStorage = false;
     }
     _initialized = true;
     await refreshBiometricAvailability();
@@ -142,22 +171,45 @@ class LocalAppLockController extends ChangeNotifier {
       await initialize();
       return;
     }
+    if (_readingStorage) return;
+    _readingStorage = true;
+    notifyListeners();
     try {
+      final wasStorageUnavailable = _storageUnavailable;
       final value = await _secureRead(_storageKey);
       _stored = _StoredAppLock.tryParse(value);
+      if (value != null && value.isNotEmpty && _stored == null) {
+        throw const FormatException('Invalid app-lock record');
+      }
+      _failedAttempts = _StoredFailedAttempts.tryParse(
+        await _secureRead(_attemptStorageKey),
+      );
+      _storageUnavailable = false;
       if (_stored == null) {
         _locked = false;
         _authenticatingBiometrics = false;
       } else if (_stored!.storageVersion < 2) {
         await _persist(_stored!);
+      } else if (wasStorageUnavailable && !_locked) {
+        _locked = true;
+        _lockEpoch += 1;
       }
     } catch (error) {
       debugPrint('Local app lock could not reload secure storage: $error');
-      return;
+      _failClosedForStorageError();
+    } finally {
+      _readingStorage = false;
     }
     await refreshBiometricAvailability();
     unawaited(_applyPrivacyShield(false));
     notifyListeners();
+  }
+
+  void _failClosedForStorageError() {
+    _storageUnavailable = true;
+    _locked = true;
+    _authenticatingBiometrics = false;
+    _lockEpoch += 1;
   }
 
   Future<void> refreshBiometricAvailability() async {
@@ -208,7 +260,9 @@ class LocalAppLockController extends ChangeNotifier {
       autoLockSeconds: _stored?.autoLockSeconds ?? 0,
     );
     await _persist(next);
+    await _clearFailedAttempts();
     _stored = next;
+    _storageUnavailable = false;
     _locked = false;
     unawaited(_applyPrivacyShield(false));
     notifyListeners();
@@ -231,10 +285,58 @@ class LocalAppLockController extends ChangeNotifier {
   }
 
   Future<bool> unlockWithCredential(String credential) async {
+    if (_storageUnavailable || !canAttemptCredential) return false;
     final verified = await verifyCredential(credential);
-    if (verified) unlock();
+    if (verified) {
+      try {
+        await _clearFailedAttempts();
+      } catch (error) {
+        debugPrint('Local app lock could not clear failed attempts: $error');
+        _failClosedForStorageError();
+        notifyListeners();
+        return false;
+      }
+      unlock();
+    } else {
+      try {
+        await _recordFailedAttempt();
+      } catch (error) {
+        debugPrint('Local app lock could not persist failed attempts: $error');
+        _failClosedForStorageError();
+        notifyListeners();
+      }
+    }
     return verified;
   }
+
+  Future<void> _recordFailedAttempt() async {
+    final count = _failedAttempts.count + 1;
+    final next = _StoredFailedAttempts(
+      count: count,
+      retryAt: _now().add(_failedAttemptDelay(count)),
+    );
+    await _secureWrite(_attemptStorageKey, next.encode());
+    _failedAttempts = next;
+    notifyListeners();
+  }
+
+  Future<void> _clearFailedAttempts() async {
+    if (_failedAttempts.count == 0 && _failedAttempts.retryAt == null) return;
+    await _secureWrite(_attemptStorageKey, null);
+    _failedAttempts = const _StoredFailedAttempts();
+  }
+
+  static Duration _failedAttemptDelay(int count) => switch (count) {
+    <= 1 => const Duration(seconds: 1),
+    2 => const Duration(seconds: 2),
+    3 => const Duration(seconds: 5),
+    4 => const Duration(seconds: 15),
+    5 => const Duration(seconds: 30),
+    6 => const Duration(minutes: 1),
+    7 => const Duration(minutes: 5),
+    8 => const Duration(minutes: 15),
+    _ => const Duration(hours: 1),
+  };
 
   void lock() {
     if (!enabled || _locked || _authenticatingBiometrics) return;
@@ -244,18 +346,21 @@ class LocalAppLockController extends ChangeNotifier {
   }
 
   void unlock() {
-    if (!_locked) return;
+    if (!_locked || _storageUnavailable) return;
     _locked = false;
     notifyListeners();
   }
 
   Future<void> disable() async {
     await _secureWrite(_storageKey, null);
+    await _secureWrite(_attemptStorageKey, null);
     _autoLockTimer?.cancel();
     _autoLockTimer = null;
     _awaySince = null;
     _stored = null;
+    _failedAttempts = const _StoredFailedAttempts();
     _locked = false;
+    _storageUnavailable = false;
     _authenticatingBiometrics = false;
     unawaited(_applyPrivacyShield(false));
     notifyListeners();
@@ -287,7 +392,7 @@ class LocalAppLockController extends ChangeNotifier {
   }
 
   void _handleAway() {
-    if (!enabled) return;
+    if (!enabled && !_storageUnavailable) return;
     _awaySince ??= DateTime.now();
     unawaited(_applyPrivacyShield(true));
     _rescheduleAutoLock();
@@ -306,7 +411,9 @@ class LocalAppLockController extends ChangeNotifier {
       lock();
     }
     _awaySince = null;
-    if (enabled) unawaited(_applyPrivacyShield(false));
+    if (enabled || _storageUnavailable) {
+      unawaited(_applyPrivacyShield(false));
+    }
   }
 
   void _rescheduleAutoLock() {
@@ -391,7 +498,19 @@ class LocalAppLockController extends ChangeNotifier {
     try {
       final authenticated = await _biometricAuthenticate(localizedReason);
       if (!authenticated) return AppLockBiometricResult.failed;
-      if (unlockOnSuccess) unlock();
+      if (unlockOnSuccess) {
+        try {
+          await _clearFailedAttempts();
+        } catch (error) {
+          debugPrint(
+            'Local app lock could not clear failed attempts after biometrics: '
+            '$error',
+          );
+          _failClosedForStorageError();
+          return AppLockBiometricResult.failed;
+        }
+        unlock();
+      }
       return AppLockBiometricResult.success;
     } on LocalAuthException catch (error) {
       return switch (error.code) {
@@ -578,6 +697,46 @@ class _StoredAppLock {
       );
     } catch (_) {
       return null;
+    }
+  }
+}
+
+@immutable
+class _StoredFailedAttempts {
+  const _StoredFailedAttempts({this.count = 0, this.retryAt});
+
+  final int count;
+  final DateTime? retryAt;
+
+  String encode() => jsonEncode({
+    'version': 1,
+    'count': count,
+    'retryAtEpochMs': retryAt?.millisecondsSinceEpoch,
+  });
+
+  static _StoredFailedAttempts tryParse(String? value) {
+    if (value == null || value.isEmpty) return const _StoredFailedAttempts();
+    try {
+      final json = jsonDecode(value);
+      if (json is! Map<String, dynamic> || json['version'] != 1) {
+        return const _StoredFailedAttempts();
+      }
+      final count = json['count'];
+      final retryAtEpochMs = json['retryAtEpochMs'];
+      if (count is! int ||
+          count < 0 ||
+          count > 100000 ||
+          (retryAtEpochMs != null && retryAtEpochMs is! int)) {
+        return const _StoredFailedAttempts();
+      }
+      return _StoredFailedAttempts(
+        count: count,
+        retryAt: retryAtEpochMs is int
+            ? DateTime.fromMillisecondsSinceEpoch(retryAtEpochMs)
+            : null,
+      );
+    } catch (_) {
+      return const _StoredFailedAttempts();
     }
   }
 }

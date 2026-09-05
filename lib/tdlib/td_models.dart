@@ -511,6 +511,7 @@ class ChatSummary {
     required this.lastMessageId,
     required this.date,
     required this.unreadCount,
+    this.lastReadInboxMessageId = 0,
     this.unreadMentionCount = 0,
     required this.order,
     required this.isMuted,
@@ -540,6 +541,7 @@ class ChatSummary {
   int lastMessageId;
   int date;
   int unreadCount;
+  int lastReadInboxMessageId;
   int unreadMentionCount;
   int order;
   bool isMuted;
@@ -562,6 +564,11 @@ class ChatSummary {
   ChatMessage? lastChatMessage;
   bool
   isSavedMessages; // true when this is the Saved Messages chat (private chat with yourself)
+
+  /// Chat folders this chat currently sits in, kept from its TDLib chat-list
+  /// positions. Lets a chat-list row draw its folder tags without asking
+  /// TDLib — or recomputing folder filters — once per row.
+  final Set<int> folderIds = {};
 
   /// Groups & channels use a rounded-square avatar unless UI preferences
   /// override them; people use a circle.
@@ -1463,6 +1470,7 @@ abstract final class TDParse {
       lastMessageId: lastMessageId,
       date: date,
       unreadCount: unread,
+      lastReadInboxMessageId: chat.int64('last_read_inbox_message_id') ?? 0,
       unreadMentionCount: chat.integer('unread_mention_count') ?? 0,
       order: order,
       isMuted: muted,

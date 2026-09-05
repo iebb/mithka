@@ -39,6 +39,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_picker_view.dart';
 import 'forward_options.dart';
+import 'media_download_service.dart';
 import 'media_library_saver.dart';
 import 'td_video_stream_server.dart';
 import 'video_playback_preferences.dart';
@@ -168,6 +169,7 @@ class VideoPlayerView extends StatefulWidget {
     this.onFVideoPictureInPictureRestore,
     this.onToggleFullscreen,
     this.streamQuery,
+    this.thumbnailProvider,
   });
 
   final TdFileRef video;
@@ -202,6 +204,10 @@ class VideoPlayerView extends StatefulWidget {
   /// Overrides TDLib file queries for deterministic host tests.
   @visibleForTesting
   final TdVideoStreamQuery? streamQuery;
+
+  /// Overrides native thumbnail generation for deterministic host tests.
+  @visibleForTesting
+  final FVideoThumbnailProvider? thumbnailProvider;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -2197,7 +2203,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     if (source == null) {
       return Future<Uint8List?>.value();
     }
-    return FVideoThumbnail.generateRequest(
+    return _generateScrubThumbnail(
       FVideoThumbnailRequest(
         source: source,
         position: request.position,
@@ -2363,7 +2369,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                             const SizedBox(width: 12),
                             _playerChromeIconButton(
                               icon: HeroAppIcons.code,
-                              label: 'Stream inspector',
+                              label: AppStrings.t(
+                                AppStringKeys.videoPlayerStreamInspector,
+                              ),
                               onTap: () {
                                 setState(
                                   () => _debuggerVisible = !_debuggerVisible,
@@ -2380,7 +2388,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                             const SizedBox(width: 8),
                             _playerChromeIconButton(
                               icon: HeroAppIcons.ellipsisVertical,
-                              label: 'More',
+                              label: AppStrings.t(AppStringKeys.momentsMore),
                               onTap: _toggleMoreMenu,
                               size: 44,
                               iconSize: 23,
@@ -2659,7 +2667,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                     const SizedBox(width: 10),
                     _playerChromeIconButton(
                       icon: HeroAppIcons.code,
-                      label: 'Stream inspector',
+                      label: AppStrings.t(
+                        AppStringKeys.videoPlayerStreamInspector,
+                      ),
                       onTap: () {
                         setState(() => _debuggerVisible = !_debuggerVisible);
                         scope.actions.showControls();
@@ -2674,7 +2684,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                     const SizedBox(width: 8),
                     _playerChromeIconButton(
                       icon: HeroAppIcons.ellipsisVertical,
-                      label: 'More',
+                      label: AppStrings.t(AppStringKeys.momentsMore),
                       onTap: _toggleMoreMenu,
                       size: 44,
                       iconSize: 23,
@@ -2797,7 +2807,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       key: const ValueKey('video-on-demand-toggle'),
       child: _FocusableVideoIconButton(
         icon: HeroAppIcons.listCheck,
-        label: 'On-demand',
+        label: AppStrings.t(AppStringKeys.videoPlayerOnDemand),
         onPressed: _toggleOnDemandPanel,
         size: const Size.square(44),
         iconSize: 21,
@@ -2860,7 +2870,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final aspect = controller == null
         ? 16 / 9
         : _displayVideoSize(controller).aspectRatio;
-    return FVideoThumbnail.generateRequest(
+    return _generateScrubThumbnail(
       FVideoThumbnailRequest(
         source: source,
         position: position,
@@ -2868,6 +2878,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         quality: 70,
       ),
     );
+  }
+
+  Future<Uint8List?> _generateScrubThumbnail(FVideoThumbnailRequest request) {
+    final provider = widget.thumbnailProvider;
+    return provider == null
+        ? FVideoThumbnail.generateRequest(request)
+        : provider(request);
   }
 
   FVideoSource? _scrubThumbnailSource() {
@@ -3615,7 +3632,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       child: IgnorePointer(
         child: Semantics(
           liveRegion: true,
-          label: 'Video zoom',
+          label: AppStrings.t(AppStringKeys.videoPlayerVideoZoom),
           value: '$percentage%',
           child: Container(
             key: const ValueKey('video-zoom-indicator'),
@@ -4105,13 +4122,19 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     'video-more-save-to-photos',
                                   ),
                                   child: _FocusableVideoMenuItem(
-                                    icon: HeroAppIcons.image,
-                                    label: AppStringKeys
-                                        .messageActionSaveToPhotos
-                                        .l10n(context),
+                                    icon: _isDesktopPlatform
+                                        ? HeroAppIcons.folder
+                                        : HeroAppIcons.image,
+                                    label:
+                                        (_isDesktopPlatform
+                                                ? AppStringKeys
+                                                      .messageActionSaveAs
+                                                : AppStringKeys
+                                                      .messageActionSaveToPhotos)
+                                            .l10n(context),
                                     focusNode: _moreMenuFocusNodes[1],
                                     onPressed: () => _runMoreMenuAction(
-                                      () => unawaited(_saveVideoToPhotos()),
+                                      () => unawaited(_saveVideo()),
                                     ),
                                   ),
                                 ),
@@ -4380,7 +4403,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ),
         ),
         PositionedDirectional(
-          top: MediaQuery.paddingOf(context).top +
+          top:
+              MediaQuery.paddingOf(context).top +
               iPadWindowChromeInsetOf(context) +
               6,
           start: 8,
@@ -4586,7 +4610,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  Future<void> _saveVideoToPhotos() async {
+  Future<void> _saveVideo() async {
+    if (_isDesktopPlatform) {
+      await _saveVideoToFolder();
+      return;
+    }
     showToast(
       context,
       AppStringKeys.chatSavingToPhotos,
@@ -4607,6 +4635,26 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       MediaLibrarySaveResult.failed || MediaLibrarySaveResult.unsupported =>
         AppStringKeys.chatSaveToPhotosFailed,
     }, visibleFor: const Duration(seconds: 2));
+  }
+
+  /// A computer has no album, so the original file is copied into a folder
+  /// the user picks instead.
+  Future<void> _saveVideoToFolder() async {
+    showToast(
+      context,
+      AppStringKeys.chatSavingToPhotos,
+      visibleFor: const Duration(milliseconds: 1200),
+    );
+    final outcome = await MediaDownloadService.saveMedia(
+      file: widget.video,
+      isVideo: true,
+      accountSlot: widget.accountSlot,
+    );
+    if (!mounted) return;
+    final feedback = MediaDownloadService.feedbackFor(outcome);
+    if (feedback != null) {
+      showToast(context, feedback, visibleFor: const Duration(seconds: 2));
+    }
   }
 
   Future<void> _forwardVideo() async {
@@ -4824,7 +4872,9 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                             const SizedBox(width: 12),
                             MithkaVideoChromeAction(
                               icon: HeroAppIcons.code,
-                              label: 'Stream inspector',
+                              label: AppStrings.t(
+                                AppStringKeys.videoPlayerStreamInspector,
+                              ),
                               onTap: () {
                                 onToggleInspector();
                                 scope.actions.showControls();
@@ -5286,9 +5336,9 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
                 ),
                 child: Row(
                   children: [
-                    const Text(
-                      'Autoplay',
-                      style: TextStyle(
+                    Text(
+                      AppStrings.t(AppStringKeys.videoPlayerAutoplay),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
@@ -5308,7 +5358,11 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
   Widget _item(int index) {
     final item = widget.queue.items[index];
     final current = index == widget.queue.index;
-    final title = item.title.trim().isEmpty ? 'Video ${index + 1}' : item.title;
+    final title = item.title.trim().isEmpty
+        ? AppStrings.t(AppStringKeys.videoPlayerVideoNumber, {
+            'value1': index + 1,
+          })
+        : item.title;
     final duration = (item.durationSeconds ?? 0) > 0
         ? formatVideoPlayerDuration(Duration(seconds: item.durationSeconds!))
         : null;
@@ -5317,7 +5371,9 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
       child: AppInteractiveSurface(
         key: ValueKey('video-on-demand-item-${item.video.id}'),
         semanticLabel: title,
-        semanticValue: current ? 'Playing' : duration,
+        semanticValue: current
+            ? AppStrings.t(AppStringKeys.videoPlayerPlaying)
+            : duration,
         selected: current,
         onTap: current || widget.onSelect == null
             ? null
@@ -5400,9 +5456,9 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
                     ],
                     if (current) ...[
                       const SizedBox(height: 3),
-                      const Text(
-                        'Playing',
-                        style: TextStyle(
+                      Text(
+                        AppStrings.t(AppStringKeys.videoPlayerPlaying),
+                        style: const TextStyle(
                           color: Color(0xFF24DDD9),
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
@@ -5421,8 +5477,12 @@ class _MithkaVideoOnDemandPanelState extends State<_MithkaVideoOnDemandPanel> {
 
   Widget _autoplayToggle() {
     return AppInteractiveSurface(
-      semanticLabel: 'Autoplay',
-      semanticValue: widget.autoplay ? 'On' : 'Off',
+      semanticLabel: AppStrings.t(AppStringKeys.videoPlayerAutoplay),
+      semanticValue: AppStrings.t(
+        widget.autoplay
+            ? AppStringKeys.privacyEnabled
+            : AppStringKeys.privacyDisabled,
+      ),
       toggled: widget.autoplay,
       onTap: () => widget.onAutoplayChanged(!widget.autoplay),
       borderRadius: BorderRadius.circular(16),
@@ -5476,7 +5536,7 @@ class _MithkaVideoCenterTransport extends StatelessWidget {
       children: [
         _MithkaVideoSeekButton(
           backwards: true,
-          label: 'Seek backward 10 seconds',
+          label: AppStrings.t(AppStringKeys.videoPlayerSeekBackwardTenSeconds),
           onTap: () =>
               unawaited(scope.actions.seekBy(const Duration(seconds: -10))),
         ),
@@ -5486,13 +5546,15 @@ class _MithkaVideoCenterTransport extends StatelessWidget {
             playing: value.isPlaying,
             onTap: () => unawaited(scope.actions.togglePlayback()),
             size: 86,
-            semanticLabel: 'Center playback',
+            semanticLabel: AppStrings.t(
+              AppStringKeys.videoPlaybackSettingsTitle,
+            ),
           ),
         ),
         const SizedBox(width: 18),
         _MithkaVideoSeekButton(
           backwards: false,
-          label: 'Seek forward 10 seconds',
+          label: AppStrings.t(AppStringKeys.videoPlayerSeekForwardTenSeconds),
           onTap: () =>
               unawaited(scope.actions.seekBy(const Duration(seconds: 10))),
         ),
@@ -5526,7 +5588,9 @@ class _MithkaVideoCompactTransport extends StatelessWidget {
         else
           _MithkaVideoSeekButton(
             backwards: true,
-            label: 'Seek backward 10 seconds',
+            label: AppStrings.t(
+              AppStringKeys.videoPlayerSeekBackwardTenSeconds,
+            ),
             compact: true,
             onTap: () =>
                 unawaited(scope.actions.seekBy(const Duration(seconds: -10))),
@@ -5537,7 +5601,9 @@ class _MithkaVideoCompactTransport extends StatelessWidget {
             playing: value.isPlaying,
             onTap: () => unawaited(scope.actions.togglePlayback()),
             size: 72,
-            semanticLabel: 'Center playback',
+            semanticLabel: AppStrings.t(
+              AppStringKeys.videoPlaybackSettingsTitle,
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -5550,7 +5616,7 @@ class _MithkaVideoCompactTransport extends StatelessWidget {
         else
           _MithkaVideoSeekButton(
             backwards: false,
-            label: 'Seek forward 10 seconds',
+            label: AppStrings.t(AppStringKeys.videoPlayerSeekForwardTenSeconds),
             compact: true,
             onTap: () =>
                 unawaited(scope.actions.seekBy(const Duration(seconds: 10))),

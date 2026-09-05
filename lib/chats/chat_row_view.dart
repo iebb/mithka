@@ -20,6 +20,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
+import 'chat_folder_tag_controller.dart';
 
 const List<Color> _telegramAccentColors = [
   Color(0xFFCC5049),
@@ -65,7 +66,10 @@ class ChatRowView extends StatelessWidget {
               ) ??
               chat.title
         : chat.title;
-    final rowHeight = AppMetric.chatListRowHeight();
+    final rowHeight = chatListRowExtentFor(context);
+    final folderTags =
+        context.watch<ChatFolderTagController?>()?.tagsFor(chat.folderIds) ??
+        const <ChatFolderTag>[];
     final avatarSize = AppMetric.chatListAvatarSize();
     final titleFontSize = AppTextSize.chatListTitle();
     final previewFontSize = AppTextSize.chatListPreview();
@@ -154,11 +158,49 @@ class ChatRowView extends StatelessWidget {
                         message: chat.lastMessage,
                         fontSize: previewFontSize,
                       ),
+                if (folderTags.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xxs),
+                  _folderTags(context, folderTags),
+                ],
               ],
             ),
           ),
           const SizedBox(width: AppSpacing.md),
           _rightColumn(context, rowHeight, timestampFontSize),
+        ],
+      ),
+    );
+  }
+
+  /// 文件夹标签, on their own line along the bottom of the row, under the
+  /// message preview. Names only, in each folder's own colour — a chat in five
+  /// folders would turn the row into a wall of chips otherwise.
+  Widget _folderTags(BuildContext context, List<ChatFolderTag> tags) {
+    final fontSize = AppTextSize.chatListFolderTag();
+    return SizedBox(
+      key: const ValueKey('chat-row-folder-tags'),
+      height: fontSize * 1.35,
+      child: Row(
+        children: [
+          for (final tag in tags) ...[
+            if (tag != tags.first) const SizedBox(width: AppSpacing.sm),
+            // Loose flex rather than a fixed width: a row of short folder
+            // names draws at its natural size, and only a set too wide for
+            // the row starts ellipsizing.
+            Flexible(
+              child: Text(
+                tag.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  height: 1.0,
+                  fontWeight: AppTextWeight.medium,
+                  color: tag.color ?? AppTheme.brand,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

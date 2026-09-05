@@ -1,4 +1,5 @@
 import 'dart:ffi' show Abi;
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/update/release_feed.dart';
@@ -19,14 +20,19 @@ void main() {
   });
 
   test('a manual check follows the same distribution rule', () {
-    // supportsManualCheck reads the host platform, which is macOS under the
-    // test VM; the point here is that a Play build disables it regardless.
     expect(
       UpdateChecker.automaticChecksEnabled(isGooglePlayBuild: true),
       isFalse,
       reason: 'About must not offer GitHub packages to a Play install',
     );
-    expect(UpdateChecker.supportsManualCheck, isFalse);
+    final hostHasPackage = UpdateChecker.platformSelfDistributes(
+      isAndroid: Platform.isAndroid,
+      packageSuffix: desktopPackageSuffix(),
+    );
+    expect(
+      UpdateChecker.supportsManualCheck,
+      equals(!isGooglePlayBuild && hostHasPackage),
+    );
   });
 
   group('which platforms Mithka distributes itself on', () {

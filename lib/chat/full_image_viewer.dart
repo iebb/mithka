@@ -113,7 +113,8 @@ class _FullImageViewerState extends State<FullImageViewer> {
             ),
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top +
+            top:
+                MediaQuery.of(context).padding.top +
                 iPadWindowChromeInsetOf(context) +
                 8,
             // The viewer covers the whole window, so on macOS the row would

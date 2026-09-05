@@ -165,6 +165,37 @@ void main() {
     expect(mountedGuard, lessThan(loadedFastPath));
   });
 
+  test('reply jumps flash their reached destination on desktop', () {
+    final source = File('lib/chat/chat_view.dart').readAsStringSync();
+    final openStart = source.indexOf('Future<void> _openReplyMessage(');
+    final openEnd = source.indexOf(
+      'Future<bool> _scrollToMessageAndReport(',
+      openStart,
+    );
+    expect(openStart, greaterThanOrEqualTo(0));
+    expect(openEnd, greaterThan(openStart));
+    final open = source.substring(openStart, openEnd);
+    expect(open, contains('final didReachTarget = await'));
+    expect(open, contains('if (!didReachTarget || !mounted) return;'));
+    expect(open, contains('isDesktopTargetPlatform'));
+    expect(open, contains('_flashLinkedMessageHighlight(messageId)'));
+
+    final highlightStart = source.indexOf(
+      'Widget _messageNavigationHighlight(',
+    );
+    final highlightEnd = source.indexOf(
+      'TranscriptPivotPartition<_TranscriptEntry> _partitionTranscript(',
+      highlightStart,
+    );
+    expect(highlightStart, greaterThanOrEqualTo(0));
+    expect(highlightEnd, greaterThan(highlightStart));
+    final highlight = source.substring(highlightStart, highlightEnd);
+    expect(highlight, contains('_linkedMessageHighlightId'));
+    expect(highlight, contains('_linkedMessageHighlightActive'));
+    expect(highlight, contains('? 0.18'));
+    expect(highlight, contains('AnimatedContainer('));
+  });
+
   test('session unread history loads carry cancellation through mutation', () {
     final viewSource = File('lib/chat/chat_view.dart').readAsStringSync();
     final sessionJumpStart = viewSource.indexOf(

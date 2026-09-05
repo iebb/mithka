@@ -233,6 +233,14 @@ void main() {
       sessionMessages: [pending],
     );
     final transcriptBeforeAcknowledgement = vm.messages;
+    final fullViewRevisionBeforeAcknowledgement = vm.fullViewRevision;
+    final composerRevisionBeforeAcknowledgement = vm.composerRevision;
+    var bubbleRefreshes = 0;
+    var unrelatedBubbleRefreshes = 0;
+    vm.messageRevisionListenable(77).addListener(() => bubbleRefreshes++);
+    vm
+        .messageRevisionListenable(78)
+        .addListener(() => unrelatedBubbleRefreshes++);
 
     vm.applyLiveUpdateForTesting({
       '@type': 'updateMessageSendAcknowledged',
@@ -242,7 +250,11 @@ void main() {
 
     expect(vm.messages.single.isSending, isTrue);
     expect(vm.messages.single.isSendAcknowledged, isTrue);
-    expect(vm.messages, isNot(same(transcriptBeforeAcknowledgement)));
+    expect(vm.messages, same(transcriptBeforeAcknowledgement));
+    expect(vm.fullViewRevision, fullViewRevisionBeforeAcknowledgement);
+    expect(vm.composerRevision, composerRevisionBeforeAcknowledgement + 1);
+    expect(bubbleRefreshes, 1);
+    expect(unrelatedBubbleRefreshes, 0);
     vm.dispose();
   });
 

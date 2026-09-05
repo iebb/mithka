@@ -24,6 +24,7 @@ import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/custom_emoji.dart';
+import '../chat/link_handler.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -544,8 +545,8 @@ class _StoryViewerViewState extends State<StoryViewerView>
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.of(context).padding.top +
-        iPadWindowChromeInsetOf(context);
+    final top =
+        MediaQuery.of(context).padding.top + iPadWindowChromeInsetOf(context);
     final desktop = storyViewerUsesDesktopControls(Theme.of(context).platform);
     final viewer = Scaffold(
       backgroundColor: Colors.black,
@@ -1084,9 +1085,9 @@ class _StoryViewerViewState extends State<StoryViewerView>
           );
         }
       case 'storyAreaTypeLink':
-        final uri = Uri.tryParse(type.str('url') ?? '');
-        if (uri != null) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        final url = type.str('url')?.trim() ?? '';
+        if (url.isNotEmpty && mounted) {
+          await openLink(context, url);
         }
       case 'storyAreaTypeLocation':
         await _openMap(type.obj('location'));
