@@ -49,7 +49,9 @@ ln -s ../lib "$appdir/usr/bin/lib"
 # belongs to Rockchip board images. Generic desktop AppImages use MDK's FFmpeg
 # fallback instead; the original portable tarball retains the optional plugin.
 rm -f "$appdir/usr/lib/libmdk-rockchip.so"
-install -m 0644 "$repository_root/assets/app_icon.png" "$work/ad.neko.mithka.png"
+install -m 0644 \
+  "$repository_root/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png" \
+  "$work/ad.neko.mithka.png"
 
 tool="$work/linuxdeploy-$appimage_arch.AppImage"
 curl --fail --location --retry 3 \
