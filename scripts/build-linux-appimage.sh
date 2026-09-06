@@ -45,6 +45,10 @@ cp -a "$bundle/." "$appdir/usr/bin/"
 # while allowing linuxdeploy to collect plugin and dlopen dependencies in lib.
 mv "$appdir/usr/bin/lib" "$appdir/usr/lib"
 ln -s ../lib "$appdir/usr/bin/lib"
+# MDK ships this optional decoder on arm64, but its librockchip_mpp dependency
+# belongs to Rockchip board images. Generic desktop AppImages use MDK's FFmpeg
+# fallback instead; the original portable tarball retains the optional plugin.
+rm -f "$appdir/usr/lib/libmdk-rockchip.so"
 install -m 0644 "$repository_root/assets/app_icon.png" "$work/ad.neko.mithka.png"
 
 tool="$work/linuxdeploy-$appimage_arch.AppImage"
