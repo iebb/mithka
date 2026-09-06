@@ -107,6 +107,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   }
 
   Future<void> _search(String q) async {
+    if (!mounted || _query.trim() != q.trim()) return;
     setState(() => _loading = true);
     try {
       final res = await _client.query({
@@ -134,7 +135,10 @@ class _AudioSearchViewState extends State<AudioSearchView> {
       for (final r in results.take(12)) {
         unawaited(_resolveSource(r.sourceChatId));
       }
-      if (!mounted || q != _query.trim()) return;
+      if (!mounted || _query.trim() != q.trim()) {
+        setState(() => _loading = false);
+        return;
+      }
       setState(() {
         _results = results;
         _loading = false;

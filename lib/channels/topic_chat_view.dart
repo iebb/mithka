@@ -730,6 +730,7 @@ class _TopicChatViewState extends State<TopicChatView> {
       hintText: AppStringKeys.topicChatComposerPlaceholder,
     );
     if (result == null) return;
+    if (!mounted) return;
     _input.text = result.text;
     if (result.attachments.isEmpty) {
       await _sendPostText(result.formattedText);

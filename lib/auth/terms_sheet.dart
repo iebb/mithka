@@ -191,8 +191,11 @@ class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
   Future<void> _submit() async {
     if (_working) return;
     setState(() => _working = true);
-    await widget.onPressed();
-    if (mounted) setState(() => _working = false);
+    try {
+      await widget.onPressed();
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
   }
 
   @override
