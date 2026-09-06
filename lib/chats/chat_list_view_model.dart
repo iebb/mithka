@@ -894,12 +894,24 @@ class ChatListViewModel extends ChangeNotifier {
         _scheduleResort();
 
       case 'updateChatUnreadMentionCount':
+      case 'updateMessageMentionRead':
         final id = update.int64('chat_id');
         if (id == null) return;
         _mutate(
           id,
           (s) => s.unreadMentionCount =
               update.integer('unread_mention_count') ?? s.unreadMentionCount,
+        );
+        _scheduleResort();
+
+      case 'updateChatUnreadReactionCount':
+      case 'updateMessageUnreadReactions':
+        final id = update.int64('chat_id');
+        if (id == null) return;
+        _mutate(
+          id,
+          (s) => s.unreadReactionCount =
+              update.integer('unread_reaction_count') ?? s.unreadReactionCount,
         );
         _scheduleResort();
 

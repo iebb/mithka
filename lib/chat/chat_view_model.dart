@@ -103,6 +103,10 @@ int unreadMentionCountAfterReading(int currentCount, int readCount) =>
     math.max(0, currentCount - math.max(0, readCount));
 
 @visibleForTesting
+int unreadReactionCountAfterReading(int currentCount, int readCount) =>
+    math.max(0, currentCount - math.max(0, readCount));
+
+@visibleForTesting
 int? messageSendUpdateChatId(Map<String, dynamic> update) =>
     update.int64('chat_id') ?? update.obj('message')?.int64('chat_id');
 
@@ -448,6 +452,7 @@ class ChatViewModel extends ChangeNotifier {
   UnreadChatRangeSnapshot? unreadSummarySnapshot;
   bool _didCaptureUnreadSummaryRange = false;
   int unreadMentionCount = 0;
+  int unreadReactionCount = 0;
   bool isMarkedUnread = false; // manual unread marker on the chat row
   bool initialLoaded = false; // first history page (+ unread boundary) is in
   bool anchoredHistory = false; // transcript is centered on an arbitrary target
@@ -547,6 +552,7 @@ class ChatViewModel extends ChangeNotifier {
   final Set<int> _messagePropertiesLoading = {};
   final Map<int, bool> _speechRecognitionEligibility = {};
   final Set<int> _locallyViewedMentionIds = {};
+  final Set<int> _locallyViewedReactionIds = {};
   final Set<int> _blockedSenderIds = {};
   final Set<int> _discardedPendingMessageIds = {};
   final Set<int> _settledPendingMessageIds = {};
@@ -3336,6 +3342,7 @@ class ChatViewModel extends ChangeNotifier {
       unreadCount = chat.integer('unread_count') ?? 0;
     }
     unreadMentionCount = chat.integer('unread_mention_count') ?? 0;
+    unreadReactionCount = chat.integer('unread_reaction_count') ?? 0;
     isMarkedUnread = chat.boolean('is_marked_as_unread') ?? false;
     hasProtectedContent =
         chat.boolean('has_protected_content') ?? hasProtectedContent;
@@ -4320,24 +4327,65 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  Future<int?> openNextUnreadReaction() async {
+    try {
+      final response = await _client.query({
+        '@type': 'searchChatMessages',
+        'chat_id': chatId,
+        'query': '',
+        'sender_id': null,
+        'from_message_id': 0,
+        'offset': 0,
+        'limit': math.min(
+          100,
+          math.max(10, unreadReactionCount + _locallyViewedReactionIds.length),
+        ),
+        'filter': {'@type': 'searchMessagesFilterUnreadReaction'},
+      });
+      final rawMessages =
+          response.objects('messages') ?? const <Map<String, dynamic>>[];
+      if (rawMessages.isEmpty) {
+        _setUnreadReactionCount(0, emitLocalUpdate: true);
+        return null;
+      }
+      final reactions = rawMessages
+          .map(TDParse.message)
+          .whereType<ChatMessage>()
+          .where((message) => !_locallyViewedReactionIds.contains(message.id))
+          .toList();
+      final reaction = reactions.isEmpty ? null : reactions.first;
+      return reaction?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Reports the exact messages that entered the viewport. TDLib tracks
-  /// unread mentions independently from the ordinary inbox boundary, so only
-  /// advancing `last_read_inbox_message_id` leaves `unread_mention_count`
-  /// behind. Sending the concrete IDs clears both states correctly.
+  /// unread mentions and reactions independently from the ordinary inbox
+  /// boundary. Sending the concrete IDs clears all three states correctly.
   void markVisibleMessagesViewed(Iterable<ChatMessage> visibleMessages) {
-    final incoming = visibleMessages
-        .where((message) => !message.isOutgoing && !message.isService)
+    final viewed = visibleMessages
+        .where(
+          (message) =>
+              (!message.isOutgoing && !message.isService) ||
+              message.hasUnreadReactions,
+        )
         .toList(growable: false);
-    if (incoming.isEmpty) return;
+    if (viewed.isEmpty) return;
     _client.send({
       '@type': 'viewMessages',
       'chat_id': chatId,
-      'message_ids': incoming.map((message) => message.id).toList(),
+      'message_ids': viewed.map((message) => message.id).toSet().toList(),
       'force_read': true,
     });
     _consumeViewedMentions(
-      incoming
+      viewed
           .where((message) => message.containsUnreadMention)
+          .map((message) => message.id),
+    );
+    _consumeViewedReactions(
+      viewed
+          .where((message) => message.hasUnreadReactions)
           .map((message) => message.id),
     );
   }
@@ -4357,6 +4405,20 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
     _consumeViewedMentions([messageId], force: true);
+  }
+
+  Future<void> markUnreadReactionRead(int messageId) async {
+    try {
+      await _client.query({
+        '@type': 'viewMessages',
+        'chat_id': chatId,
+        'message_ids': [messageId],
+        'force_read': true,
+      });
+    } catch (_) {
+      return;
+    }
+    _consumeViewedReactions([messageId], force: true);
   }
 
   void _consumeViewedMentions(Iterable<int> messageIds, {bool force = false}) {
@@ -4391,7 +4453,39 @@ class ChatViewModel extends ChangeNotifier {
     );
   }
 
-  void _setUnreadMentionCount(int count, {bool emitLocalUpdate = false}) {
+  void _consumeViewedReactions(Iterable<int> messageIds, {bool force = false}) {
+    final candidates = messageIds
+        .where((id) => id > 0 && !_locallyViewedReactionIds.contains(id))
+        .toSet();
+    if (candidates.isEmpty) return;
+    final unreadIds = force
+        ? candidates
+        : _allMessages
+              .where(
+                (message) =>
+                    candidates.contains(message.id) &&
+                    message.hasUnreadReactions,
+              )
+              .map((message) => message.id)
+              .toSet();
+    if (unreadIds.isEmpty) return;
+
+    _locallyViewedReactionIds.addAll(unreadIds);
+    while (_locallyViewedReactionIds.length > 512) {
+      _locallyViewedReactionIds.remove(_locallyViewedReactionIds.first);
+    }
+    for (final message in _allMessages) {
+      if (unreadIds.contains(message.id)) {
+        message.hasUnreadReactions = false;
+      }
+    }
+    _setUnreadReactionCount(
+      unreadReactionCountAfterReading(unreadReactionCount, unreadIds.length),
+      emitLocalUpdate: true,
+    );
+  }
+
+  bool _setUnreadMentionCount(int count, {bool emitLocalUpdate = false}) {
     final next = math.max(0, count);
     final changed = unreadMentionCount != next;
     unreadMentionCount = next;
@@ -4403,6 +4497,22 @@ class ChatViewModel extends ChangeNotifier {
         'unread_mention_count': next,
       });
     }
+    return changed;
+  }
+
+  bool _setUnreadReactionCount(int count, {bool emitLocalUpdate = false}) {
+    final next = math.max(0, count);
+    final changed = unreadReactionCount != next;
+    unreadReactionCount = next;
+    if (changed) notifyListeners();
+    if (emitLocalUpdate) {
+      _client.emitLocalUpdate({
+        '@type': 'updateChatUnreadReactionCount',
+        'chat_id': chatId,
+        'unread_reaction_count': next,
+      });
+    }
+    return changed;
   }
 
   Future<bool> _fetchHistory(
@@ -4685,6 +4795,9 @@ class ChatViewModel extends ChangeNotifier {
     'updateMessageContent',
     'updateMessageSuggestedPostInfo',
     'updateChatUnreadMentionCount',
+    'updateMessageMentionRead',
+    'updateChatUnreadReactionCount',
+    'updateMessageUnreadReactions',
     'updateMessageSendSucceeded',
     'updateMessageSendAcknowledged',
     'updateMessageSendFailed',
@@ -4827,6 +4940,62 @@ class ChatViewModel extends ChangeNotifier {
           update.integer('unread_mention_count') ?? unreadMentionCount,
         );
 
+      case 'updateMessageMentionRead':
+        if (update.int64('chat_id') != chatId) return;
+        final messageId = update.int64('message_id');
+        if (messageId == null) return;
+        _locallyViewedMentionIds.add(messageId);
+        while (_locallyViewedMentionIds.length > 512) {
+          _locallyViewedMentionIds.remove(_locallyViewedMentionIds.first);
+        }
+        final targets = _messageRefs(messageId);
+        final flagChanged = targets.any(
+          (message) => message.containsUnreadMention,
+        );
+        for (final message in targets) {
+          message.containsUnreadMention = false;
+        }
+        final countChanged = _setUnreadMentionCount(
+          update.integer('unread_mention_count') ?? unreadMentionCount,
+        );
+        if (flagChanged && !countChanged) {
+          _notifyLocalizedMessages([messageId]);
+        }
+
+      case 'updateChatUnreadReactionCount':
+        if (update.int64('chat_id') != chatId) return;
+        _setUnreadReactionCount(
+          update.integer('unread_reaction_count') ?? unreadReactionCount,
+        );
+
+      case 'updateMessageUnreadReactions':
+        if (update.int64('chat_id') != chatId) return;
+        final messageId = update.int64('message_id');
+        if (messageId == null) return;
+        final hasUnreadReactions =
+            (update.objects('unread_reactions') ?? const []).isNotEmpty;
+        if (hasUnreadReactions) {
+          _locallyViewedReactionIds.remove(messageId);
+        } else {
+          _locallyViewedReactionIds.add(messageId);
+          while (_locallyViewedReactionIds.length > 512) {
+            _locallyViewedReactionIds.remove(_locallyViewedReactionIds.first);
+          }
+        }
+        final targets = _messageRefs(messageId);
+        final flagChanged = targets.any(
+          (message) => message.hasUnreadReactions != hasUnreadReactions,
+        );
+        for (final message in targets) {
+          message.hasUnreadReactions = hasUnreadReactions;
+        }
+        final countChanged = _setUnreadReactionCount(
+          update.integer('unread_reaction_count') ?? unreadReactionCount,
+        );
+        if (flagChanged && !countChanged) {
+          _notifyLocalizedMessages([messageId]);
+        }
+
       case 'updateMessageSendSucceeded':
         if (messageSendUpdateChatId(update) != chatId) return;
         final oldMessageId = update.int64('old_message_id');
@@ -4910,6 +5079,10 @@ class ChatViewModel extends ChangeNotifier {
           ++_chatReadInboxRevision;
           ++_chatReadStateRevision;
         }
+        unreadMentionCount =
+            chat.integer('unread_mention_count') ?? unreadMentionCount;
+        unreadReactionCount =
+            chat.integer('unread_reaction_count') ?? unreadReactionCount;
         messageAutoDeleteTime = _autoDeleteSeconds(chat);
         _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         hasProtectedContent =
@@ -5848,6 +6021,9 @@ class ChatViewModel extends ChangeNotifier {
       if (_locallyViewedMentionIds.contains(message.id)) {
         message.containsUnreadMention = false;
       }
+      if (_locallyViewedReactionIds.contains(message.id)) {
+        message.hasUnreadReactions = false;
+      }
     }
     if (_appendIfStrictlyNewest(incoming)) {
       _appendToVisibleTranscript(incoming.first);
@@ -5902,6 +6078,9 @@ class ChatViewModel extends ChangeNotifier {
       }
       if (_locallyViewedMentionIds.contains(message.id)) {
         message.containsUnreadMention = false;
+      }
+      if (_locallyViewedReactionIds.contains(message.id)) {
+        message.hasUnreadReactions = false;
       }
     }
     _allMessages = mergeChatHistoryWindow(

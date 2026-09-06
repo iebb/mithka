@@ -513,6 +513,7 @@ class ChatSummary {
     required this.unreadCount,
     this.lastReadInboxMessageId = 0,
     this.unreadMentionCount = 0,
+    this.unreadReactionCount = 0,
     required this.order,
     required this.isMuted,
     this.kind = ChatKind.unknown,
@@ -543,6 +544,7 @@ class ChatSummary {
   int unreadCount;
   int lastReadInboxMessageId;
   int unreadMentionCount;
+  int unreadReactionCount;
   int order;
   bool isMuted;
   ChatKind kind;
@@ -674,6 +676,7 @@ class ChatMessage {
     this.restrictedContentText,
     this.restrictedContentTextEntities = const [],
     this.containsUnreadMention = false,
+    this.hasUnreadReactions = false,
     this.senderId,
     this.senderPhoto,
     this.image,
@@ -771,6 +774,7 @@ class ChatMessage {
   String? restrictedContentText;
   List<MessageTextEntity> restrictedContentTextEntities;
   bool containsUnreadMention;
+  bool hasUnreadReactions;
   int? senderId;
   TdFileRef? senderPhoto;
   TdFileRef? image; // photo / sticker / video-thumb / gif
@@ -1472,6 +1476,7 @@ abstract final class TDParse {
       unreadCount: unread,
       lastReadInboxMessageId: chat.int64('last_read_inbox_message_id') ?? 0,
       unreadMentionCount: chat.integer('unread_mention_count') ?? 0,
+      unreadReactionCount: chat.integer('unread_reaction_count') ?? 0,
       order: order,
       isMuted: muted,
       kind: chatKind(chat),
@@ -1618,6 +1623,8 @@ abstract final class TDParse {
             : const [],
         containsUnreadMention:
             message.boolean('contains_unread_mention') ?? false,
+        hasUnreadReactions:
+            (message.objects('unread_reactions') ?? const []).isNotEmpty,
         senderId: senderId,
         senderIsChat: sender?.type == 'messageSenderChat',
         senderTitle:

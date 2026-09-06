@@ -1269,6 +1269,7 @@ class _ChatViewState extends State<ChatView> {
   bool _maintainRestoredBottom = false;
   final _restoredBottomCorrection = ChatBottomCorrectionCoordinator();
   bool _openingUnreadMention = false;
+  bool _openingUnreadReaction = false;
   bool _openingUnreadSummary = false;
   bool _exitStatePrepared = false;
   bool _notificationVisibilityRegistered = false;
@@ -6370,7 +6371,8 @@ class _ChatViewState extends State<ChatView> {
                   (_showEntryUnreadBanner || _vm.unreadCount > 0),
             ),
           ),
-        if (transcriptReady && _vm.unreadMentionCount > 0)
+        if (transcriptReady &&
+            (_vm.unreadMentionCount > 0 || _vm.unreadReactionCount > 0))
           Positioned(
             top:
                 (showPinnedTodo ? 72.0 : 8.0) +
@@ -6378,7 +6380,7 @@ class _ChatViewState extends State<ChatView> {
                     ? 52
                     : 0),
             right: 12,
-            child: _unreadMentionIndicator(),
+            child: _unreadActivityIndicators(),
           ),
         if (transcriptReady &&
             bottomIndicator == ChatBottomIndicator.jumpToBottom)
@@ -6936,34 +6938,83 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
-  Widget _unreadMentionIndicator() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _openingUnreadMention ? null : _openUnreadMention,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 120),
-        opacity: _openingUnreadMention ? 0.62 : 1,
-        child: Container(
-          width: 40,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppTheme.brand,
-            borderRadius: BorderRadius.circular(17),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+  Widget _unreadActivityIndicators() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_vm.unreadMentionCount > 0)
+          _unreadActivityIndicator(
+            key: const ValueKey('unread-mention-indicator'),
+            icon: HeroAppIcons.at,
+            count: _vm.unreadMentionCount,
+            label: AppStrings.t(AppStringKeys.notificationMentions),
+            opening: _openingUnreadMention,
+            onTap: _openUnreadMention,
           ),
-          child: const Text(
-            '@',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+        if (_vm.unreadMentionCount > 0 && _vm.unreadReactionCount > 0)
+          const SizedBox(height: AppSpacing.md),
+        if (_vm.unreadReactionCount > 0)
+          _unreadActivityIndicator(
+            key: const ValueKey('unread-reaction-indicator'),
+            icon: HeroAppIcons.heart,
+            count: _vm.unreadReactionCount,
+            label: AppStrings.t(AppStringKeys.notificationReactions),
+            opening: _openingUnreadReaction,
+            onTap: _openUnreadReaction,
+          ),
+      ],
+    );
+  }
+
+  Widget _unreadActivityIndicator({
+    required Key key,
+    required AppIconData icon,
+    required int count,
+    required String label,
+    required bool opening,
+    required VoidCallback onTap,
+  }) {
+    final countLabel = count > 999 ? '999+' : '$count';
+    return Semantics(
+      button: true,
+      label: '$label: $countLabel',
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: opening ? null : onTap,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 120),
+          opacity: opening ? 0.62 : 1,
+          child: Container(
+            height: 34,
+            constraints: const BoxConstraints(minWidth: 40),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppTheme.brand,
+              borderRadius: BorderRadius.circular(17),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AppIcon(icon, size: AppIconSize.lg, color: Colors.white),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  countLabel,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: AppTextSize.caption,
+                    fontWeight: AppTextWeight.semibold,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -6982,6 +7033,19 @@ class _ChatViewState extends State<ChatView> {
       }
     }
     if (mounted) setState(() => _openingUnreadMention = false);
+  }
+
+  Future<void> _openUnreadReaction() async {
+    if (_openingUnreadReaction || _vm.unreadReactionCount <= 0) return;
+    setState(() => _openingUnreadReaction = true);
+    final messageId = await _vm.openNextUnreadReaction();
+    if (messageId != null && mounted) {
+      await _scrollToMessage(messageId);
+      if (_vm.messages.any((message) => message.id == messageId)) {
+        await _vm.markUnreadReactionRead(messageId);
+      }
+    }
+    if (mounted) setState(() => _openingUnreadReaction = false);
   }
 
   // MARK: - Composer area (input bar / join bar / disabled bar)
