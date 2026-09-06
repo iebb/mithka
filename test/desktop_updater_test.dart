@@ -45,16 +45,22 @@ void main() {
     }
 
     test('a writable AppImage replaces its outer file, not the mount', () {
+      const environment = {
+        'APPIMAGE': '/home/u/Apps/Mithka.AppImage',
+        'APPDIR': '/tmp/.mount_mithka',
+        'MITHKA_APPIMAGE_ENV_KEYS': 'PATH LD_LIBRARY_PATH',
+      };
       expect(
         inspect(
           executablePath: '/tmp/.mount_mithka/usr/bin/mithka',
-          environment: const {'APPIMAGE': '/home/u/Apps/Mithka.AppImage'},
+          environment: environment,
         ),
         isNull,
       );
       expect(
         inspect(
-          environment: const {'APPIMAGE': '/home/u/Apps/Mithka.AppImage'},
+          executablePath: '/tmp/.mount_mithka/usr/bin/mithka',
+          environment: environment,
           parentWritable: false,
         ),
         DesktopUpdateBlock.readOnlyInstall,
@@ -65,6 +71,19 @@ void main() {
           DesktopUpdateBlock.managedInstall,
         );
       }
+      expect(
+        inspect(environment: environment),
+        DesktopUpdateBlock.managedInstall,
+        reason: 'a child outside the AppImage must not replace its parent app',
+      );
+      expect(
+        inspect(
+          executablePath: '/tmp/.mount_mithka/usr/bin/mithka',
+          environment: {...environment}..remove('MITHKA_APPIMAGE_ENV_KEYS'),
+        ),
+        DesktopUpdateBlock.managedInstall,
+        reason: 'third-party AppImages retain ownership of their payload',
+      );
     });
 
     test('an empty managed variable is not a managed install', () {

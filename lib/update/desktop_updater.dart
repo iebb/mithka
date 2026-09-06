@@ -466,7 +466,7 @@ abstract final class DesktopUpdater {
     return describeInstallBlock(
       platformSupported: desktopPackageSuffix() != null,
       environment: Platform.environment,
-      executablePath: layout.launcher.path,
+      executablePath: Platform.resolvedExecutable,
       parentWritable: _isWritable(layout.parentDirectory),
     );
   }
@@ -486,6 +486,17 @@ abstract final class DesktopUpdater {
       }
     }
     final appImage = environment['APPIMAGE'];
+    if (appImage != null && appImage.isNotEmpty) {
+      final appDirectory = environment['APPDIR'] ?? '';
+      // A process launched by another AppImage can inherit its environment.
+      // Only our AppRun and its mounted executable may replace that outer file.
+      if (appDirectory.isEmpty ||
+          !appDirectory.startsWith('/') ||
+          executablePath != '$appDirectory/usr/bin/mithka' ||
+          (environment['MITHKA_APPIMAGE_ENV_KEYS'] ?? '').isEmpty) {
+        return DesktopUpdateBlock.managedInstall;
+      }
+    }
     final target = appImage != null && appImage.isNotEmpty
         ? appImage
         : executablePath;
