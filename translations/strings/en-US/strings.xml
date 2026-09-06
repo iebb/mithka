@@ -2220,6 +2220,8 @@
     <string name="pollResultsUnableToLoadVoters">Unable to load voters</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1} votes · detailed statistics available</string>
     <string name="premiumLabel">Premium</string>
+    <string name="presenceConnecting">connecting</string>
+    <string name="presenceDisconnected">disconnected</string>
     <string name="presenceLastSeenRecently">last seen recently</string>
     <string name="presenceLastSeenWithinMonth">last seen within a month</string>
     <string name="presenceLastSeenWithinWeek">last seen within a week</string>

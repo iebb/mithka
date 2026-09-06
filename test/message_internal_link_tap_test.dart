@@ -112,6 +112,18 @@ void main() {
                     mainWebAppCanBeAddedToAttachmentMenu,
               },
             },
+            'getUserFullInfo' when request['user_id'] == 911 =>
+              <String, dynamic>{
+                '@type': 'userFullInfo',
+                'bot_info': <String, dynamic>{
+                  '@type': 'botInfo',
+                  'menu_button': <String, dynamic>{
+                    '@type': 'botMenuButton',
+                    'text': 'Website mutual aid',
+                    'url': 'menu://https://tghz.20110202.top/',
+                  },
+                },
+              },
             'getMe' => <String, dynamic>{'@type': 'user', 'id': 33},
             'getMainWebApp' => <String, dynamic>{
               '@type': 'mainWebApp',
@@ -122,6 +134,10 @@ void main() {
               'name': 'Water bot',
               'is_added': mainWebAppIsInstalled,
               'request_write_access': false,
+            },
+            'openWebApp' => <String, dynamic>{
+              '@type': 'webAppInfo',
+              'url': 'https://tghz.20110202.top/?tgWebAppData=menu-signed-data',
             },
             'sendBotStartMessage' => <String, dynamic>{'@type': 'message'},
             _ => throw StateError('Unexpected TDLib request: $request'),
@@ -517,7 +533,7 @@ void main() {
   );
 
   testWidgets(
-    'a startapp URL opens the bot chat when its Main Mini App is unavailable',
+    'a startapp URL opens the menu Mini App when its Main Mini App is unavailable',
     (tester) async {
       mainWebAppAvailable = false;
       final preferences = await SharedPreferences.getInstance();
@@ -537,6 +553,7 @@ void main() {
           ),
         ],
       );
+      TelegramMiniAppLaunch? presentedLaunch;
 
       await tester.pumpWidget(
         ChangeNotifierProvider<ThemeController>.value(
@@ -544,16 +561,22 @@ void main() {
           child: MaterialApp(
             theme: ThemeData(platform: TargetPlatform.android),
             home: Scaffold(
-              body: InternalChatLinkScope(
-                target: InternalChatLinkTarget(
-                  chatId: 42,
-                  accountSlot: 3,
-                  openMessage: (_) async {},
-                ),
-                child: MessageBubble(
-                  message: message,
-                  peerTitle: 'Source chat',
-                  isGroup: true,
+              body: TelegramMiniAppPresentationScope(
+                present: (launch) async {
+                  presentedLaunch = launch;
+                  return true;
+                },
+                child: InternalChatLinkScope(
+                  target: InternalChatLinkTarget(
+                    chatId: 42,
+                    accountSlot: 3,
+                    openMessage: (_) async {},
+                  ),
+                  child: MessageBubble(
+                    message: message,
+                    peerTitle: 'Source chat',
+                    isGroup: true,
+                  ),
                 ),
               ),
             ),
@@ -564,13 +587,24 @@ void main() {
       await _tapFirstCharacter(tester, mainWebAppUrl);
       await tester.pumpAndSettle();
 
-      final opened = ChatDeepLinkController.shared.consumePending();
-      expect(opened?.chatId, 9100);
-      expect(opened?.accountSlot, 3);
+      expect(ChatDeepLinkController.shared.consumePending(), isNull);
+      expect(presentedLaunch?.chatId, 9100);
+      expect(presentedLaunch?.botUserId, 911);
+      expect(presentedLaunch?.clientId, 1);
+      expect(
+        presentedLaunch?.url,
+        'https://tghz.20110202.top/?tgWebAppData=menu-signed-data',
+      );
       expect(
         requests.where((request) => request['@type'] == 'getMainWebApp'),
         isEmpty,
       );
+      final menuWebAppRequest = requests.singleWhere(
+        (request) => request['@type'] == 'openWebApp',
+      );
+      expect(menuWebAppRequest['chat_id'], 9100);
+      expect(menuWebAppRequest['bot_user_id'], 911);
+      expect(menuWebAppRequest['url'], 'menu://https://tghz.20110202.top/');
     },
   );
 

@@ -2213,6 +2213,8 @@
     <string name="pollResultsUnableToLoadVoters">投票者を読み込めません</string>
     <string name="pollResultsVotesWithDetailedStatistics">{value1} 票 · 詳細な統計が利用可能</string>
     <string name="premiumLabel">Premium</string>
+    <string name="presenceConnecting">接続中</string>
+    <string name="presenceDisconnected">未接続</string>
     <string name="presenceLastSeenRecently">最終ログイン: 最近</string>
     <string name="presenceLastSeenWithinMonth">最終ログイン: 1か月以内</string>
     <string name="presenceLastSeenWithinWeek">最終ログイン: 1週間以内</string>

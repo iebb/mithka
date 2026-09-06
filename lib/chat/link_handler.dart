@@ -838,13 +838,40 @@ Future<void> _openMiniAppLink(
   final user = await query({'@type': 'getUser', 'user_id': botUserId});
   final botType = user.obj('type');
   if (botType?.type != 'userTypeBot' || !context.mounted) return;
+  final botTitle = TDParse.userName(user).trim();
+  final title = botTitle.isEmpty ? username : botTitle;
   if (mainWebApp && !(botType?.boolean('has_main_web_app') ?? false)) {
-    await _openChat(
-      Navigator.of(context),
-      botChat.int64('id'),
-      sourceChat: sourceChat,
-      query: query,
-    );
+    final botChatId = botChat.int64('id');
+    Map<String, dynamic>? menu;
+    try {
+      final full = await query({
+        '@type': 'getUserFullInfo',
+        'user_id': botUserId,
+      });
+      menu = full.obj('bot_info')?.obj('menu_button');
+    } catch (_) {}
+    final menuUrl = menu?.str('url')?.trim() ?? '';
+    if (menu?.type == 'botMenuButton' &&
+        menuUrl.isNotEmpty &&
+        botChatId != null &&
+        context.mounted) {
+      final menuTitle = menu?.str('text')?.trim() ?? '';
+      final opened = await openTelegramMiniApp(
+        context,
+        chatId: botChatId,
+        botUserId: botUserId,
+        url: menuUrl,
+        title: menuTitle.isEmpty ? title : menuTitle,
+        menuWebApp: true,
+        openMode: type.obj('mode'),
+        photo: TDParse.smallPhoto(user.obj('profile_photo')),
+        accountSlot: sourceChat?.accountSlot,
+      );
+      if (opened || !context.mounted) return;
+    }
+    if (context.mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+    }
     return;
   }
   final attachmentMenuConsentRequired =
@@ -859,13 +886,12 @@ Future<void> _openMiniAppLink(
     if (target == null || !context.mounted) return;
     chatId = target.id;
   }
-  final title = TDParse.userName(user).trim();
   await openTelegramMiniApp(
     context,
     chatId: chatId,
     botUserId: botUserId,
     url: attachmentMenu ? type.str('url') ?? '' : '',
-    title: title.isEmpty ? username : title,
+    title: title,
     mainWebApp: mainWebApp,
     attachmentMenuWebApp: attachmentMenu,
     startParameter: type.str('start_parameter') ?? '',
