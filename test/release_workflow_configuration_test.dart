@@ -3,6 +3,18 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Linux publishes and smoke-tests AppImages for both architectures', () {
+    final workflow = File('.github/workflows/release.yml').readAsStringSync();
+    expect(workflow, contains('scripts/build-linux-appimage.sh'));
+    expect(workflow, contains('scripts/test-linux-appimage.sh'));
+    expect(workflow, contains('name: appimage-linux-'));
+    for (final architecture in ['x64', 'arm64']) {
+      expect(workflow, contains("'*-linux-$architecture.AppImage'"));
+      expect(workflow, contains("'*-linux-$architecture.tar.gz'"));
+    }
+    expect(workflow, contains(r'tar\.gz|AppImage'));
+  });
+
   test('Linux release installs the hotkey manager native dependency', () {
     final workflow = File('.github/workflows/release.yml').readAsStringSync();
 

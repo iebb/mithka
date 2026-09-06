@@ -1,7 +1,7 @@
 name: 🚀 Multi-platform Releases
 
 # Builds per-ABI Android APKs, Windows installers, and portable Windows, macOS,
-# and Linux desktop archives from nightly/release. Each Android ABI
+# and Linux desktop archives plus Linux AppImages from nightly/release. Each Android ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
 # the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. Each
 # desktop job downloads the matching pinned prebuilt asset for its host OS.
@@ -411,7 +411,8 @@ jobs:
             clang cmake libavcodec-dev libavformat-dev libavutil-dev \
             libcurl4-openssl-dev libgtk-3-dev libjpeg-dev liblzma-dev \
             libkeybinder-3.0-dev libsecret-1-dev libswscale-dev \
-            ninja-build pkg-config
+            libgirepository1.0-dev librsvg2-dev patchelf \
+            desktop-file-utils ninja-build pkg-config xvfb xdotool
 
       - name: Cache desktop tdjson
         uses: actions/cache@v6
@@ -529,6 +530,20 @@ jobs:
             "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.tar.gz" \
             Mithka
 
+      - name: Build Linux AppImage
+        if: matrix.platform == 'linux'
+        run: |
+          scripts/build-linux-appimage.sh \
+            "${{ matrix.architecture }}" \
+            "build/linux/${{ matrix.architecture }}/release/bundle" \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.AppImage"
+
+      - name: Verify Linux AppImage launch
+        if: matrix.platform == 'linux'
+        run: |
+          scripts/test-linux-appimage.sh \
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.AppImage"
+
       - name: Package macOS release
         if: matrix.platform == 'macos'
         run: |
@@ -614,6 +629,14 @@ jobs:
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-windows-${{ matrix.architecture }}-setup.exe
           if-no-files-found: error
 
+      - name: Upload Linux AppImage artifact
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: appimage-linux-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.AppImage
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
@@ -658,7 +681,9 @@ jobs:
             '*-windows-arm64-setup.exe' \
             '*-macos-universal.zip' \
             '*-linux-x64.tar.gz' \
-            '*-linux-arm64.tar.gz'; do
+            '*-linux-arm64.tar.gz' \
+            '*-linux-x64.AppImage' \
+            '*-linux-arm64.AppImage'; do
             desktop_asset_count="$(
               find release-assets -maxdepth 1 -type f -name "$desktop_asset" \
                 | wc -l \
@@ -804,7 +829,7 @@ jobs:
             exit 0
           fi
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
-            | grep -E '^mithka-.*\.(apk|exe|zip|tar\.gz)$' \
+            | grep -E '^mithka-.*\.(apk|exe|zip|tar\.gz|AppImage)$' \
             | while read -r asset; do
                 gh release delete-asset "$RELEASE_TAG" "$asset" --yes
               done

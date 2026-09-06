@@ -161,7 +161,7 @@ class UpdateChecker {
   /// Offers the desktop package for this architecture, installed in place.
   ///
   /// An install this app does not own — a distro package, Flatpak, Snap,
-  /// AppImage, or a directory it cannot write — is never swapped underneath its
+  /// or a directory it cannot write — is never swapped underneath its
   /// real updater. A check the user pressed says so and points at the releases
   /// page; the launch check stays quiet, because repeating a message nobody can
   /// act on from inside the app is just nagging.

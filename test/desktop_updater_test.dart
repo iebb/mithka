@@ -35,7 +35,7 @@ void main() {
       );
     });
 
-    for (final key in ['APPIMAGE', 'FLATPAK_ID', 'SNAP']) {
+    for (final key in ['FLATPAK_ID', 'SNAP']) {
       test('$key means the runtime owns its own payload', () {
         expect(
           inspect(environment: {key: '/somewhere/mithka'}),
@@ -43,6 +43,29 @@ void main() {
         );
       });
     }
+
+    test('a writable AppImage replaces its outer file, not the mount', () {
+      expect(
+        inspect(
+          executablePath: '/tmp/.mount_mithka/usr/bin/mithka',
+          environment: const {'APPIMAGE': '/home/u/Apps/Mithka.AppImage'},
+        ),
+        isNull,
+      );
+      expect(
+        inspect(
+          environment: const {'APPIMAGE': '/home/u/Apps/Mithka.AppImage'},
+          parentWritable: false,
+        ),
+        DesktopUpdateBlock.readOnlyInstall,
+      );
+      for (final path in ['/opt/Mithka.AppImage', 'relative.AppImage']) {
+        expect(
+          inspect(environment: {'APPIMAGE': path}),
+          DesktopUpdateBlock.managedInstall,
+        );
+      }
+    });
 
     test('an empty managed variable is not a managed install', () {
       expect(inspect(environment: const {'SNAP': ''}), isNull);

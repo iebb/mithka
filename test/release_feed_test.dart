@@ -88,6 +88,8 @@ void main() {
         _asset('mithka-1.3.0-arm64-v8a.apk'),
         _asset('mithka-1.3.0-linux-arm64.tar.gz'),
         _asset('mithka-1.3.0-linux-x64.tar.gz'),
+        _asset('mithka-1.3.0-linux-x64.AppImage'),
+        _asset('mithka-1.3.0-linux-arm64.AppImage'),
         _asset('mithka-1.3.0-macos-universal.zip'),
         _asset('mithka-1.3.0-windows-arm64.zip'),
         _asset('mithka-1.3.0-windows-x64.zip'),
@@ -118,6 +120,20 @@ void main() {
     test('an architecture with no package returns nothing', () {
       expect(release.assetEndingWith('linux-riscv64.tar.gz'), isNull);
     });
+
+    test('AppImages select their architecture without taking a tarball', () {
+      for (final abi in [Abi.linuxX64, Abi.linuxArm64]) {
+        final suffix = desktopPackageSuffix(abi, true)!;
+        expect(release.assetEndingWith(suffix)!.name, 'mithka-1.3.0-$suffix');
+      }
+      final tarOnly = parseReleaseInfo(
+        _releaseJson([_asset('mithka-1.3.0-linux-x64.tar.gz')]),
+      )!;
+      expect(
+        tarOnly.assetEndingWith(desktopPackageSuffix(Abi.linuxX64, true)!),
+        isNull,
+      );
+    });
   });
 
   group('package suffix', () {
@@ -126,6 +142,12 @@ void main() {
       expect(desktopPackageSuffix(Abi.linuxArm64), 'linux-arm64.tar.gz');
       expect(desktopPackageSuffix(Abi.windowsX64), 'windows-x64.zip');
       expect(desktopPackageSuffix(Abi.windowsArm64), 'windows-arm64.zip');
+      expect(desktopPackageSuffix(Abi.linuxX64, true), 'linux-x64.AppImage');
+      expect(
+        desktopPackageSuffix(Abi.linuxArm64, true),
+        'linux-arm64.AppImage',
+      );
+      expect(desktopPackageSuffix(Abi.windowsX64, true), 'windows-x64.zip');
     });
 
     test('macOS and mobile update through their own channels', () {

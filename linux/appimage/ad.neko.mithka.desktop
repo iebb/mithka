@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mithka
+Comment=Telegram client
+Exec=mithka %U
+Icon=ad.neko.mithka
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupWMClass=ad.neko.mithka
