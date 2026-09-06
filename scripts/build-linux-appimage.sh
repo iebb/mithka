@@ -68,6 +68,9 @@ while IFS= read -r -d '' library; do
 done < <(find "$appdir/usr/lib" -type f -name '*.so*' -print0)
 export ARCH="$appimage_arch" OUTPUT="$output" APPIMAGE_EXTRACT_AND_RUN=1
 export DEPLOY_GTK_VERSION=3
+# Some FFI libraries (including FFmpeg's bundled libc++) have no peer-library
+# RUNPATH. Resolve those from the bundle while linuxdeploy scans dependencies.
+export LD_LIBRARY_PATH="$appdir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 "$tool" --appdir "$appdir" --executable "$appdir/usr/bin/mithka" \
   "${libraries[@]}" --plugin gtk \
   --desktop-file "$repository_root/linux/appimage/ad.neko.mithka.desktop" \
