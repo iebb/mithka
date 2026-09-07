@@ -30,7 +30,7 @@ void main() {
   });
 
   test(
-    'visible incoming messages issue one exact viewMessages request',
+    'visible incoming messages and unread reactions issue one request',
     () async {
       final viewModel = ChatViewModel(
         chatId: -10042,
@@ -41,7 +41,13 @@ void main() {
 
       viewModel.markVisibleMessagesViewed([
         ChatMessage(id: 101, text: 'visible', date: 1, isOutgoing: false),
-        ChatMessage(id: 102, text: 'outgoing', date: 2, isOutgoing: true),
+        ChatMessage(
+          id: 102,
+          text: 'outgoing',
+          date: 2,
+          isOutgoing: true,
+          hasUnreadReactions: true,
+        ),
         ChatMessage(
           id: 103,
           text: 'service',
@@ -56,10 +62,41 @@ void main() {
         {
           '@type': 'viewMessages',
           'chat_id': -10042,
-          'message_ids': [101],
+          'message_ids': [101, 102],
           'force_read': true,
         },
       ]);
+    },
+  );
+
+  test(
+    'viewing a loaded reaction clears its local counter immediately',
+    () async {
+      final message = ChatMessage(
+        id: 201,
+        text: 'outgoing',
+        date: 1,
+        isOutgoing: true,
+        hasUnreadReactions: true,
+      );
+      final viewModel = ChatViewModel(
+        chatId: -10042,
+        title: 'Group',
+        markReadOnOpen: false,
+        sessionMessages: [message],
+      );
+      addTearDown(viewModel.dispose);
+      viewModel.applyLiveUpdateForTesting({
+        '@type': 'updateChatUnreadReactionCount',
+        'chat_id': -10042,
+        'unread_reaction_count': 1,
+      });
+
+      viewModel.markVisibleMessagesViewed([message]);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.unreadReactionCount, 0);
+      expect(message.hasUnreadReactions, isFalse);
     },
   );
 }

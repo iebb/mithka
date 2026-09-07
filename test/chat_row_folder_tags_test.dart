@@ -40,7 +40,11 @@ const _foldersUpdate = {
   ],
 };
 
-ChatSummary _chat({Set<int> folders = const {}}) {
+ChatSummary _chat({
+  Set<int> folders = const {},
+  int unreadMentionCount = 0,
+  int unreadReactionCount = 0,
+}) {
   final chat = ChatSummary(
     id: 42,
     title: 'NekokoLPA insider',
@@ -48,6 +52,8 @@ ChatSummary _chat({Set<int> folders = const {}}) {
     lastMessageId: 1,
     date: 0,
     unreadCount: 0,
+    unreadMentionCount: unreadMentionCount,
+    unreadReactionCount: unreadReactionCount,
     order: 1,
     isMuted: false,
   );
@@ -109,6 +115,23 @@ void main() {
     expect(message, greaterThan(name));
     expect(tag, greaterThan(message));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('row shows separate mention and reaction counters', (
+    tester,
+  ) async {
+    await pumpRow(tester, _chat(unreadMentionCount: 2, unreadReactionCount: 3));
+
+    expect(
+      find.byKey(const ValueKey('chat-row-unread-mention')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('chat-row-unread-reaction')),
+      findsOneWidget,
+    );
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
   });
 
   testWidgets('every folder the chat is in gets a name, in folder order', (

@@ -63,13 +63,20 @@ class ReleaseInfo {
 ///
 /// Null where an in-place update does not apply: macOS ships through its own
 /// signed channel, and no other desktop architecture is published.
-String? desktopPackageSuffix([Abi? abi]) => switch (abi ?? Abi.current()) {
-  Abi.linuxX64 => 'linux-x64.tar.gz',
-  Abi.linuxArm64 => 'linux-arm64.tar.gz',
-  Abi.windowsX64 => 'windows-x64.zip',
-  Abi.windowsArm64 => 'windows-arm64.zip',
-  _ => null,
-};
+String? desktopPackageSuffix([Abi? abi, bool? appImage]) =>
+    switch (abi ?? Abi.current()) {
+      Abi.linuxX64 =>
+        (appImage ?? (Platform.environment['APPIMAGE'] ?? '').isNotEmpty)
+            ? 'linux-x64.AppImage'
+            : 'linux-x64.tar.gz',
+      Abi.linuxArm64 =>
+        (appImage ?? (Platform.environment['APPIMAGE'] ?? '').isNotEmpty)
+            ? 'linux-arm64.AppImage'
+            : 'linux-arm64.tar.gz',
+      Abi.windowsX64 => 'windows-x64.zip',
+      Abi.windowsArm64 => 'windows-arm64.zip',
+      _ => null,
+    };
 
 /// The latest stable release, or null when the request fails or is malformed.
 ///

@@ -36,10 +36,17 @@ Windows releases include per-architecture `setup.exe` installers and portable
 ZIPs. The installer is per-user, needs no administrator access, creates Start
 Menu and optional desktop shortcuts, and registers Mithka in Installed Apps.
 
+Linux releases include x64 and arm64 AppImages alongside the portable tarballs.
+Make the AppImage executable (`chmod +x Mithka.AppImage`) and run it from a
+directory you can write to. CI verifies each AppImage launches on Ubuntu 24.04;
+older distributions are not a supported baseline.
+
 The Windows and Linux packages update themselves: **Settings → About → Check for
 Updates** downloads the release package for that architecture, verifies it
 against the SHA-256 GitHub publishes, and swaps the install in place before
-relaunching. An install owned by a package manager, Flatpak, Snap, or AppImage
+relaunching. AppImages replace the original file while preserving its filename.
+Updates check the latest stable GitHub release, including when using a nightly
+build. An install owned by a package manager, Flatpak, or Snap
 is pointed at the releases page instead of being replaced underneath its own
 updater.
 

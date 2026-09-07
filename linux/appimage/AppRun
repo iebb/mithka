@@ -1,0 +1,18 @@
+#!/bin/bash
+# Keep the pre-bundle environment for the detached in-app update helper.
+export MITHKA_APPIMAGE_ENV_KEYS='PATH LD_LIBRARY_PATH GTK_DATA_PREFIX GTK_THEME GDK_BACKEND XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR GI_TYPELIB_PATH GTK_EXE_PREFIX GTK_PATH GTK_IM_MODULE_FILE GDK_PIXBUF_MODULE_FILE'
+for key in $MITHKA_APPIMAGE_ENV_KEYS; do
+  unset "MITHKA_APPIMAGE_ORIGINAL_$key"
+  if [ "${!key+x}" = x ]; then
+    export "MITHKA_APPIMAGE_ORIGINAL_$key=${!key}"
+  fi
+done
+
+export APPDIR="${APPDIR:-$(cd -- "$(dirname -- "$0")" && pwd)}"
+export PATH="$APPDIR/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+for hook in "$APPDIR"/apprun-hooks/*.sh; do
+  # shellcheck disable=SC1090
+  [ ! -f "$hook" ] || source "$hook"
+done
+exec "$APPDIR/usr/bin/mithka" "$@"

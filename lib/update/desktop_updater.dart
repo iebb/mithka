@@ -1,7 +1,7 @@
 //
 //  desktop_updater.dart
 //
-//  One-click in-place update for the portable Windows and Linux packages.
+//  One-click in-place update for Windows and Linux packages, including AppImages.
 //
 //  Both ship as an archive holding a single `Mithka` directory, so an update is
 //  a directory swap: download the release asset for this architecture, verify
@@ -13,9 +13,12 @@
 //  The swap is staged and reversible: the current install is renamed aside
 //  first and put back if anything fails, so a failed update leaves the working
 //  build in place rather than a half-written directory.
+//  AppImages use the same verified download, followed by an atomic file rename
+//  over the original APPIMAGE path instead of replacing the mounted directory.
 //
 
 import 'dart:async';
+import 'dart:ffi' show Abi;
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -51,7 +54,7 @@ enum DesktopUpdateBlock {
   /// update through their own signed channel.
   unsupportedPlatform,
 
-  /// A package manager, Flatpak, Snap, or AppImage owns this payload, and
+  /// A package manager, Flatpak, or Snap owns this payload, and
   /// swapping the directory underneath it would fight the real updater.
   managedInstall,
 
@@ -92,6 +95,7 @@ class DesktopInstallLayout {
   const DesktopInstallLayout({
     required this.installDirectory,
     required this.launcher,
+    this.isAppImage = false,
   });
 
   /// The unpacked package root — the directory the update replaces.
@@ -100,14 +104,32 @@ class DesktopInstallLayout {
   /// The executable inside it, which is also what gets relaunched.
   final File launcher;
 
-  /// The directory the swap renames within; it is what must be writable.
-  Directory get parentDirectory => installDirectory.parent;
+  /// AppImages replace the outer file, never their read-only mounted bundle.
+  final bool isAppImage;
 
-  static DesktopInstallLayout current() {
-    final launcher = File(Platform.resolvedExecutable);
+  /// The directory the swap renames within; it is what must be writable.
+  Directory get parentDirectory =>
+      isAppImage ? launcher.parent : installDirectory.parent;
+
+  static DesktopInstallLayout current() => fromExecutable(
+    executablePath: Platform.resolvedExecutable,
+    environment: Platform.environment,
+    isLinux: Platform.isLinux,
+  );
+
+  @visibleForTesting
+  static DesktopInstallLayout fromExecutable({
+    required String executablePath,
+    required Map<String, String> environment,
+    required bool isLinux,
+  }) {
+    final appImage = isLinux ? environment['APPIMAGE'] : null;
+    final isAppImage = appImage != null && appImage.isNotEmpty;
+    final launcher = File(isAppImage ? appImage : executablePath);
     return DesktopInstallLayout(
       installDirectory: launcher.parent,
       launcher: launcher,
+      isAppImage: isAppImage,
     );
   }
 }
@@ -126,7 +148,7 @@ class PreparedDesktopUpdate {
 
   final DesktopInstallLayout _layout;
   final Directory _workDirectory;
-  final Directory _stagedDirectory;
+  final FileSystemEntity _stagedDirectory;
 
   /// Throws away the staged build, leaving the current install untouched.
   Future<void> discard() async {
@@ -148,6 +170,10 @@ class PreparedDesktopUpdate {
       Platform.isWindows ? ['/c', script.path] : [script.path],
       mode: ProcessStartMode.detached,
       workingDirectory: script.parent.path,
+      environment: _layout.isAppImage
+          ? appImageUpdateEnvironment(Platform.environment)
+          : null,
+      includeParentEnvironment: !_layout.isAppImage,
     );
     if (drain != null) {
       try {
@@ -178,14 +204,21 @@ class PreparedDesktopUpdate {
         ? buildWindowsUpdateScript
         : buildPosixUpdateScript;
     await script.writeAsString(
-      build(
-        processId: pid,
-        installDirectory: _layout.installDirectory.path,
-        stagedDirectory: _stagedDirectory.path,
-        backupDirectory: backup,
-        workDirectory: _workDirectory.path,
-        launcherName: DesktopUpdater.launcherFileName,
-      ),
+      _layout.isAppImage
+          ? buildAppImageUpdateScript(
+              processId: pid,
+              appImagePath: _layout.launcher.path,
+              stagedPath: _stagedDirectory.path,
+              workDirectory: _workDirectory.path,
+            )
+          : build(
+              processId: pid,
+              installDirectory: _layout.installDirectory.path,
+              stagedDirectory: _stagedDirectory.path,
+              backupDirectory: backup,
+              workDirectory: _workDirectory.path,
+              launcherName: DesktopUpdater.launcherFileName,
+            ),
     );
     if (!Platform.isWindows) {
       await Process.run('chmod', ['0755', script.path]);
@@ -253,6 +286,81 @@ if ! mv "\$staged_dir" "\$install_dir"; then
 fi
 
 rm -rf "\$backup_dir" "\$work_dir"
+relaunch
+exit 0
+''';
+}
+
+/// Restores the environment saved by linux/appimage/AppRun before it loads
+/// bundled GTK libraries. Otherwise even the helper's shell utilities can try
+/// to load shared objects from a mount that disappears when Mithka exits.
+@visibleForTesting
+Map<String, String> appImageUpdateEnvironment(Map<String, String> current) {
+  final result = Map<String, String>.of(current);
+  const prefix = 'MITHKA_APPIMAGE_ORIGINAL_';
+  for (final key in (result.remove('MITHKA_APPIMAGE_ENV_KEYS') ?? '').split(
+    ' ',
+  )) {
+    if (key.isEmpty) continue;
+    final original = result.remove('$prefix$key');
+    if (original == null) {
+      result.remove(key);
+    } else {
+      result[key] = original;
+    }
+  }
+  for (final key in ['APPDIR', 'APPIMAGE', 'ARGV0', 'OWD']) {
+    result.remove(key);
+  }
+  return result;
+}
+
+/// Replaces only the AppImage file, keeping its filename (including portable
+/// .home/.config siblings and desktop shortcuts) unchanged. Staging beside the
+/// original permits one atomic rename over the old file on the same filesystem.
+@visibleForTesting
+String buildAppImageUpdateScript({
+  required int processId,
+  required String appImagePath,
+  required String stagedPath,
+  required String workDirectory,
+}) {
+  String quote(String value) => "'${value.replaceAll("'", r"'\''")}'";
+  return '''
+#!/bin/sh
+set -u
+pid=${quote('$processId')}
+app_image=${quote(appImagePath)}
+staged=${quote(stagedPath)}
+work_dir=${quote(workDirectory)}
+
+relaunch() {
+  (cd "\$(dirname "\$app_image")" && "\$app_image" >/dev/null 2>&1 &)
+}
+
+waited=0
+while [ "\$waited" -lt 60 ] && kill -0 "\$pid" 2>/dev/null; do
+  sleep 1
+  waited=\$((waited + 1))
+done
+if kill -0 "\$pid" 2>/dev/null; then
+  rm -rf "\$work_dir"
+  exit 1
+fi
+
+if [ ! -f "\$app_image" ] || [ -L "\$app_image" ] ||
+   [ ! -f "\$staged" ] || [ ! -x "\$staged" ]; then
+  rm -rf "\$work_dir"
+  relaunch
+  exit 1
+fi
+if ! mv -f "\$staged" "\$app_image"; then
+  # The atomic rename failed: the original file is still in place.
+  rm -rf "\$work_dir"
+  relaunch
+  exit 1
+fi
+rm -rf "\$work_dir"
 relaunch
 exit 0
 ''';
@@ -337,7 +445,7 @@ abstract final class DesktopUpdater {
   static const backupPrefix = '.mithka-backup-';
 
   /// Environment variables the sandboxed runtimes set for their own payload.
-  static const _managedEnvironmentKeys = ['APPIMAGE', 'FLATPAK_ID', 'SNAP'];
+  static const _managedEnvironmentKeys = ['FLATPAK_ID', 'SNAP'];
 
   /// Path prefixes that mean the install belongs to the system rather than to
   /// the user who is running it.
@@ -358,7 +466,7 @@ abstract final class DesktopUpdater {
     return describeInstallBlock(
       platformSupported: desktopPackageSuffix() != null,
       environment: Platform.environment,
-      executablePath: layout.launcher.path,
+      executablePath: Platform.resolvedExecutable,
       parentWritable: _isWritable(layout.parentDirectory),
     );
   }
@@ -377,9 +485,29 @@ abstract final class DesktopUpdater {
         return DesktopUpdateBlock.managedInstall;
       }
     }
-    final normalized = executablePath.replaceAll(r'\', '/');
+    final appImage = environment['APPIMAGE'];
+    if (appImage != null && appImage.isNotEmpty) {
+      final appDirectory = environment['APPDIR'] ?? '';
+      // A process launched by another AppImage can inherit its environment.
+      // Only our AppRun and its mounted executable may replace that outer file.
+      if (appDirectory.isEmpty ||
+          !appDirectory.startsWith('/') ||
+          executablePath != '$appDirectory/usr/bin/mithka' ||
+          (environment['MITHKA_APPIMAGE_ENV_KEYS'] ?? '').isEmpty) {
+        return DesktopUpdateBlock.managedInstall;
+      }
+    }
+    final target = appImage != null && appImage.isNotEmpty
+        ? appImage
+        : executablePath;
+    // Never resolve a relative APPIMAGE against an arbitrary working directory.
+    if (appImage != null && appImage.isNotEmpty && !appImage.startsWith('/')) {
+      return DesktopUpdateBlock.managedInstall;
+    }
+    final normalized = target.replaceAll(r'\', '/');
     for (final prefix in _managedPrefixes) {
-      if (normalized.startsWith(prefix)) {
+      if (normalized.startsWith(prefix) ||
+          normalized == prefix.substring(0, prefix.length - 1)) {
         return DesktopUpdateBlock.managedInstall;
       }
     }
@@ -399,8 +527,17 @@ abstract final class DesktopUpdater {
     required String version,
     void Function(DesktopUpdateProgress)? onProgress,
     DesktopUpdateCancellation? cancellation,
+    @visibleForTesting DesktopInstallLayout? installLayout,
   }) async {
-    final block = inspectInstall();
+    final layout = installLayout ?? DesktopInstallLayout.current();
+    final block = installLayout == null
+        ? inspectInstall()
+        : describeInstallBlock(
+            platformSupported: true,
+            environment: const {},
+            executablePath: layout.launcher.path,
+            parentWritable: _isWritable(layout.parentDirectory),
+          );
     if (block != null) {
       throw DesktopUpdateException(
         'In-place update unavailable: ${block.name}',
@@ -413,7 +550,13 @@ abstract final class DesktopUpdater {
       );
     }
 
-    final layout = DesktopInstallLayout.current();
+    final suffix = desktopPackageSuffix(null, layout.isAppImage);
+    if (installLayout == null &&
+        (suffix == null || !asset.name.endsWith(suffix))) {
+      throw const DesktopUpdateException(
+        'Release asset does not match this install',
+      );
+    }
     await _removeStaleArtifacts(layout.parentDirectory);
     final workDirectory = Directory(
       '${layout.parentDirectory.path}${Platform.pathSeparator}$workPrefix$pid',
@@ -426,7 +569,7 @@ abstract final class DesktopUpdater {
       // extractor needs, never by the name the release feed supplied.
       final package = File(
         '${workDirectory.path}${Platform.pathSeparator}'
-        'package.${Platform.isWindows ? 'zip' : 'tar.gz'}',
+        'package.${layout.isAppImage ? 'AppImage' : (Platform.isWindows ? 'zip' : 'tar.gz')}',
       );
       await _download(
         asset,
@@ -441,6 +584,21 @@ abstract final class DesktopUpdater {
       );
       await _verify(package, expectedDigest, asset.size);
       _throwIfCancelled(cancellation);
+
+      if (layout.isAppImage) {
+        await validateAppImage(package);
+        final result = await Process.run('chmod', ['0755', package.path]);
+        if (result.exitCode != 0) {
+          throw const DesktopUpdateException(
+            'Could not make the AppImage executable',
+          );
+        }
+        _throwIfCancelled(cancellation);
+        onProgress?.call(
+          const DesktopUpdateProgress(DesktopUpdateStage.staging),
+        );
+        return PreparedDesktopUpdate._(version, layout, workDirectory, package);
+      }
 
       onProgress?.call(
         const DesktopUpdateProgress(DesktopUpdateStage.extracting),
@@ -530,6 +688,39 @@ abstract final class DesktopUpdater {
     if (digest.toString() != expectedDigest) {
       throw const DesktopUpdateException(
         'Downloaded package does not match the published SHA-256',
+      );
+    }
+  }
+
+  /// A type-2 AppImage must be a 64-bit ELF for this machine. The digest check
+  /// runs first; no downloaded code is executed while preparing an update.
+  @visibleForTesting
+  static Future<void> validateAppImage(File package, {Abi? abi}) async {
+    final file = await package.open();
+    late List<int> header;
+    try {
+      header = await file.read(20);
+    } finally {
+      await file.close();
+    }
+    final machine = switch (abi ?? Abi.current()) {
+      Abi.linuxX64 => 62,
+      Abi.linuxArm64 => 183,
+      _ => -1,
+    };
+    if (header.length != 20 ||
+        header[0] != 0x7f ||
+        header[1] != 0x45 ||
+        header[2] != 0x4c ||
+        header[3] != 0x46 ||
+        header[4] != 2 ||
+        header[5] != 1 ||
+        header[8] != 0x41 ||
+        header[9] != 0x49 ||
+        header[10] != 2 ||
+        (header[18] | (header[19] << 8)) != machine) {
+      throw const DesktopUpdateException(
+        'Update is not a type-2 AppImage for this architecture',
       );
     }
   }

@@ -304,10 +304,34 @@ class ChatRowView extends StatelessWidget {
             ),
             const Spacer(),
             SizedBox(
-              height: AppIconSize.sm,
+              height:
+                  chat.unreadMentionCount > 0 || chat.unreadReactionCount > 0
+                  ? AppMetric.unreadBadgeMin
+                  : AppIconSize.sm,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (chat.unreadMentionCount > 0)
+                    _UnreadActivityBadge(
+                      key: const ValueKey('chat-row-unread-mention'),
+                      icon: HeroAppIcons.at,
+                      count: chat.unreadMentionCount,
+                      label: AppStrings.t(AppStringKeys.notificationMentions),
+                    ),
+                  if (chat.unreadMentionCount > 0 &&
+                      chat.unreadReactionCount > 0)
+                    const SizedBox(width: AppSpacing.xs),
+                  if (chat.unreadReactionCount > 0)
+                    _UnreadActivityBadge(
+                      key: const ValueKey('chat-row-unread-reaction'),
+                      icon: HeroAppIcons.heart,
+                      count: chat.unreadReactionCount,
+                      label: AppStrings.t(AppStringKeys.notificationReactions),
+                    ),
+                  if ((chat.unreadMentionCount > 0 ||
+                          chat.unreadReactionCount > 0) &&
+                      (chat.isPinned || chat.isMuted))
+                    const SizedBox(width: AppSpacing.xs),
                   if (chat.isPinned)
                     AppPinIcon(
                       key: const ValueKey('chat-row-pinned'),
@@ -329,6 +353,52 @@ class ChatRowView extends StatelessWidget {
                     const SizedBox(width: AppSpacing.xs),
                   if (showTrailingIndicator) ?trailingIndicator,
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadActivityBadge extends StatelessWidget {
+  const _UnreadActivityBadge({
+    super.key,
+    required this.icon,
+    required this.count,
+    required this.label,
+  });
+
+  final AppIconData icon;
+  final int count;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final countLabel = count > 99 ? '99+' : '$count';
+    final colors = context.colors;
+    return Semantics(
+      label: '$label: $countLabel',
+      child: Container(
+        height: AppMetric.unreadBadgeMin,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        decoration: BoxDecoration(
+          color: colors.badgeBackground,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIcon(icon, size: 11, color: colors.badgeText),
+            const SizedBox(width: AppSpacing.xxs),
+            Text(
+              countLabel,
+              style: TextStyle(
+                color: colors.badgeText,
+                fontSize: 10,
+                fontWeight: AppTextWeight.semibold,
+                height: 1,
               ),
             ),
           ],
