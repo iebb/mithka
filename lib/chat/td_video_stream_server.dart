@@ -84,12 +84,12 @@ class TdVideoStreamServer {
     TdVideoStreamQuery? query,
     String? fileName,
     String? mimeType,
-    int maxResponseBytes = _defaultMaxResponseBytes,
+    int readChunkBytes = _defaultReadChunkBytes,
     this.rangeWaitTimeout = const Duration(seconds: 45),
     this.rangePollInterval = const Duration(milliseconds: 100),
-  }) : assert(maxResponseBytes > 0),
+  }) : assert(readChunkBytes > 0),
        _query = query ?? TdClient.shared.query,
-       _maxResponseBytes = maxResponseBytes,
+       _readChunkBytes = readChunkBytes,
        _mimeType = _videoStreamMimeType(fileName, mimeType),
        _extension = _videoStreamExtension(
          fileName,
@@ -98,7 +98,7 @@ class TdVideoStreamServer {
 
   final int fileId;
   final TdVideoStreamQuery _query;
-  final int _maxResponseBytes;
+  final int _readChunkBytes;
   final String _mimeType;
   final String _extension;
   final Duration rangeWaitTimeout;
@@ -122,7 +122,7 @@ class TdVideoStreamServer {
   final Map<(int, int), Future<Map<String, dynamic>?>> _rangeDownloads = {};
 
   static const _chunkSize = 2 * 1024 * 1024;
-  static const _defaultMaxResponseBytes = 2 * 1024 * 1024;
+  static const _defaultReadChunkBytes = 2 * 1024 * 1024;
   static const _metadataTailSize = 4 * 1024 * 1024;
 
   Future<Uri?> start() async {
@@ -345,6 +345,14 @@ class TdVideoStreamServer {
         return;
       }
 
+      if (request.method == 'HEAD') {
+        // Range applies to GET only. A metadata probe describes the full file
+        // without waiting for any media bytes to be downloaded.
+        _writeRangeHeaders(request.response, 0, _total - 1, false);
+        await request.response.close();
+        return;
+      }
+
       final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
       final range = rangeHeader == null ? null : _requestedRange(rangeHeader);
       if (rangeHeader != null && range == null) {
@@ -355,22 +363,10 @@ class TdVideoStreamServer {
         return;
       }
       final (start, end) = range ?? (0, _total - 1);
-      if (request.method == 'HEAD') {
-        if (range == null) {
-          _writeRangeHeaders(request.response, start, end, false);
-        } else {
-          final boundedEnd = _boundedEnd(start, end);
-          _writeRangeHeaders(request.response, start, boundedEnd, true);
-        }
-        await request.response.close();
-        return;
-      }
-
-      final boundedEnd = _boundedEnd(start, end);
-      final partial = range != null || boundedEnd < _total - 1;
-      final bytes = await _loadRange(
+      var chunkEnd = _readChunkEnd(start, end);
+      var bytes = await _loadRange(
         start,
-        boundedEnd,
+        chunkEnd,
         isCancelled: () => requestFinished,
       );
       if (requestFinished) return;
@@ -382,8 +378,29 @@ class TdVideoStreamServer {
         );
         return;
       }
-      _writeRangeHeaders(request.response, start, boundedEnd, partial);
-      request.response.add(bytes);
+      // Bound each TDLib read, not the HTTP response. Native players can treat
+      // the end of a shortened response as EOF instead of requesting the next
+      // chunk, even when Content-Range advertises a larger file.
+      _writeRangeHeaders(request.response, start, end, range != null);
+      request.response.bufferOutput = false;
+      while (true) {
+        request.response.add(bytes!);
+        await request.response.flush();
+        if (chunkEnd == end || requestFinished || _closed) break;
+        final chunkStart = chunkEnd + 1;
+        chunkEnd = _readChunkEnd(chunkStart, end);
+        bytes = await _loadRange(
+          chunkStart,
+          chunkEnd,
+          isCancelled: () => requestFinished,
+        );
+        if (requestFinished) return;
+        if (bytes == null) {
+          // Keep the advertised length: closing an incomplete body must be a
+          // transport failure, not a successful response ending the video.
+          throw const HttpException('Video stream range is unavailable');
+        }
+      }
       await request.response.close();
     } catch (_) {
       // The player may cancel a range request after headers were sent. Do not
@@ -445,10 +462,8 @@ class TdVideoStreamServer {
     await request.response.close();
   }
 
-  int _boundedEnd(int start, int requestedEnd) => math.min(
-    requestedEnd,
-    math.min(_total - 1, start + _maxResponseBytes - 1),
-  );
+  int _readChunkEnd(int start, int requestedEnd) =>
+      math.min(requestedEnd, math.min(_total - 1, start + _readChunkBytes - 1));
 
   Future<void> _closeEmptyResponse(
     HttpResponse response,
@@ -484,10 +499,9 @@ class TdVideoStreamServer {
     }
   }
 
-  /// Loads the complete bounded response before committing its headers.
-  /// AVFoundation validates `Content-Length` strictly, so an unavailable or
-  /// truncated TDLib range must become an empty retryable response rather than
-  /// a short successful body.
+  /// Loads one complete read chunk without exposing sparse or truncated bytes.
+  /// The first chunk is validated before committing response headers so a
+  /// range miss can still become an empty retryable response.
   Future<List<int>?> _loadRange(
     int start,
     int end, {
@@ -515,7 +529,7 @@ class TdVideoStreamServer {
     if (parts.first.isEmpty) {
       final suffixLength = int.tryParse(parts[1]) ?? 0;
       if (suffixLength <= 0) return null;
-      start = math.max(0, _total - math.min(suffixLength, _maxResponseBytes));
+      start = math.max(0, _total - suffixLength);
       requestedEnd = _total - 1;
     } else {
       start = int.tryParse(parts.first) ?? -1;
