@@ -20,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
+import '../app/app_navigator.dart';
+import '../app/chat_pane.dart';
 import '../app/desktop_video_window.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
@@ -27,6 +29,7 @@ import '../app/video_split_controller.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
+import '../channels/topic_navigation.dart';
 import '../chats/search_token_views.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
@@ -1284,6 +1287,7 @@ class _ChatViewState extends State<ChatView> {
   final Set<int> _autoTranslatedMessageIds = <int>{};
   bool _sendFailureDialogVisible = false;
   VoidCallback? _detachExitController;
+  VoidCallback? _detachPaneBackHandler;
   final ChatSessionCacheWriteGate _sessionCacheWriteGate =
       ChatSessionCacheWriteGate();
 
@@ -1505,6 +1509,15 @@ class _ChatViewState extends State<ChatView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _detachPaneBackHandler?.call();
+    _detachPaneBackHandler = ChatPane.registerBackHandler(context, () {
+      if (_search.isActive) {
+        _closeSearch();
+        return true;
+      }
+      _prepareExitState();
+      return false;
+    });
     final tickerEnabled = TickerMode.valuesOf(context).enabled;
     final reactivated = !_viewTickerEnabled && tickerEnabled;
     _viewTickerEnabled = tickerEnabled;
@@ -2688,7 +2701,9 @@ class _ChatViewState extends State<ChatView> {
     // _isTranscriptShort walks every cached entry; nothing below moves the
     // scroll position or the pivot, so one measurement serves all three tests.
     final latestArmIsShort = _isTranscriptShort();
-    final hasPendingMessageTarget = _scrollTargetId != null;
+    final hasPendingMessageTarget =
+        _scrollTargetId != null ||
+        (_didInitialScroll && !_initialTranscriptReady);
     final hydratedShortTranscript = shouldRebaseForHydratedOlderPage(
       prependedOlder: prependedOlder,
       latestArmWasShort: latestArmIsShort,
@@ -3067,6 +3082,11 @@ class _ChatViewState extends State<ChatView> {
       setState(() => _initialTranscriptReady = true);
       return;
     }
+    final shortUnreadTail =
+        _initialViewportTarget().kind ==
+            ChatInitialViewportTargetKind.firstUnread &&
+        _vm.historyReachesLatest &&
+        _isTranscriptShort();
     if (_repairParkedShortTranscriptPivot()) {
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
@@ -3074,7 +3094,17 @@ class _ChatViewState extends State<ChatView> {
         setState(() => _initialTranscriptReady = true);
         return;
       }
-      if (_canFollowLoadedBottom()) _scrollToBottom();
+      if (_canFollowLoadedBottom() || shortUnreadTail) _scrollToBottom();
+      if (shortUnreadTail) {
+        // Finish the short unread tail's bottom alignment before revealing it.
+        // Rebasing a one-row center otherwise exposes empty space, then the
+        // first gesture repairs it with a sudden jump to the newest message.
+        for (var pass = 0; pass < 3; pass++) {
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted || _initialTranscriptPositioningAborted) return;
+          _scrollToBottom();
+        }
+      }
     }
     if (!mounted) return;
     setState(() => _initialTranscriptReady = true);
@@ -3220,7 +3250,9 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _positionInitialTranscript() async {
     if (!_scroll.hasClients || _initialTranscriptPositioningAborted) return;
-    final initialTarget = _scrollTargetId;
+    // Build the resolved unread row before aligning it. Height estimates can
+    // skip it entirely in channels with long posts and mixed media.
+    final initialTarget = _initialViewportTarget().messageId;
     if (initialTarget == null ||
         !_stageMessageAtTranscriptCenter(initialTarget)) {
       _jumpToInitialEstimate();
@@ -3244,12 +3276,10 @@ class _ChatViewState extends State<ChatView> {
     _scroll.jumpTo(position);
   }
 
-  double? _initialPositionEstimate() {
-    if (!_scroll.hasClients || _vm.messages.isEmpty) return null;
-    final max = _scroll.position.maxScrollExtent;
+  ChatInitialViewportTarget _initialViewportTarget() {
     final i = _firstUnreadIndex();
     final boundaryLoaded = _isUnreadBoundaryLoaded();
-    final decision = resolveChatInitialViewportTarget(
+    return resolveChatInitialViewportTarget(
       explicitMessageId: widget.initialMessageId,
       pendingMessageId: _scrollTargetId,
       openAtBottom: _shouldOpenAtBottom,
@@ -3259,6 +3289,12 @@ class _ChatViewState extends State<ChatView> {
       unreadBoundaryLoaded: boundaryLoaded,
       lastReadInboxId: _entryLastReadInboxId,
     );
+  }
+
+  double? _initialPositionEstimate() {
+    if (!_scroll.hasClients || _vm.messages.isEmpty) return null;
+    final max = _scroll.position.maxScrollExtent;
+    final decision = _initialViewportTarget();
     return switch (decision.kind) {
       ChatInitialViewportTargetKind.message ||
       ChatInitialViewportTargetKind.readBoundary => () {
@@ -3280,18 +3316,7 @@ class _ChatViewState extends State<ChatView> {
     if (!_scroll.hasClients || _initialTranscriptPositioningAborted) {
       return false;
     }
-    final i = _firstUnreadIndex();
-    final boundaryLoaded = _isUnreadBoundaryLoaded();
-    final decision = resolveChatInitialViewportTarget(
-      explicitMessageId: widget.initialMessageId,
-      pendingMessageId: _scrollTargetId,
-      openAtBottom: _shouldOpenAtBottom,
-      anchoredHistory: _vm.anchoredHistory,
-      unreadCount: _entryUnreadCount,
-      firstUnreadMessageId: i < 0 ? null : _vm.messages[i].id,
-      unreadBoundaryLoaded: boundaryLoaded,
-      lastReadInboxId: _entryLastReadInboxId,
-    );
+    final decision = _initialViewportTarget();
     switch (decision.kind) {
       case ChatInitialViewportTargetKind.message:
       case ChatInitialViewportTargetKind.readBoundary:
@@ -3526,7 +3551,7 @@ class _ChatViewState extends State<ChatView> {
     _parkedShortTranscriptRepairScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _parkedShortTranscriptRepairScheduled = false;
-      if (!mounted) return;
+      if (!mounted || !_initialTranscriptReady) return;
       if (!_repairParkedShortTranscriptPivot()) return;
       setState(() {});
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3570,6 +3595,7 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _fillShortTranscript() async {
     if (!mounted ||
+        !_initialTranscriptReady ||
         !_scroll.hasClients ||
         !_vm.initialLoaded ||
         _initialTranscriptPositionCancelled) {
@@ -3934,6 +3960,7 @@ class _ChatViewState extends State<ChatView> {
   @override
   void dispose() {
     _prepareExitState();
+    _detachPaneBackHandler?.call();
     _detachExitController?.call();
     NotificationController.shared.unregisterVisibleChat(this);
     ActiveConversation.shared.unregister(this);
@@ -6111,24 +6138,26 @@ class _ChatViewState extends State<ChatView> {
                                           : _header()),
                                 body: showPeerRestrictionBlock
                                     ? _restrictedPeerBlockPage()
-                                    : Column(
-                                        children: [
-                                          Expanded(
-                                            child: _transcriptLayer(
-                                              searchPane: searchPane,
+                                    : _withTopicNavigation(
+                                        Column(
+                                          children: [
+                                            Expanded(
+                                              child: _transcriptLayer(
+                                                searchPane: searchPane,
+                                              ),
                                             ),
-                                          ),
-                                          _chatMusicPlayer(),
-                                          // A narrow chat trades the composer
-                                          // for the hit navigator; a wide one
-                                          // keeps composing beside the results.
-                                          if (searching && !searchPane)
-                                            _searchNavigator()
-                                          else if (_isSelecting)
-                                            _selectionActionBar()
-                                          else
-                                            _composerArea(),
-                                        ],
+                                            _chatMusicPlayer(),
+                                            // A narrow chat trades the composer
+                                            // for the hit navigator; a wide one
+                                            // keeps composing beside the results.
+                                            if (searching && !searchPane)
+                                              _searchNavigator()
+                                            else if (_isSelecting)
+                                              _selectionActionBar()
+                                            else
+                                              _composerArea(),
+                                          ],
+                                        ),
                                       ),
                                 trailingPane: searchPane
                                     ? _searchResultsPane()
@@ -6158,6 +6187,30 @@ class _ChatViewState extends State<ChatView> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _withTopicNavigation(Widget child) {
+    if (!_vm.supportsTopics ||
+        !usesSplitSelectionLayout(MediaQuery.sizeOf(context))) {
+      return child;
+    }
+    return TopicNavigationLayout(
+      topics: [
+        for (final topic in _vm.forumTopics)
+          TopicNavigationItem(
+            id: topic.id,
+            name: topic.name,
+            iconCustomEmojiId: topic.iconCustomEmojiId,
+            iconColor: topic.iconColor,
+          ),
+      ],
+      selectedTopicId: null,
+      hasForumTabs: _vm.hasForumTabs,
+      onSelected: (id) {
+        if (id != null) unawaited(_openTopicMode(id));
+      },
+      child: child,
     );
   }
 
@@ -7651,12 +7704,29 @@ class _ChatViewState extends State<ChatView> {
       onOpenTopicMode(threadId);
       return;
     }
+    final chat = _topicChatSummary();
+    _prepareExitState();
+    if (ChatPane.replace(
+      context,
+      (onBack) => TopicChatView(
+        chat: chat,
+        initialThreadId: threadId,
+        hasForumTabs: _vm.hasForumTabs,
+        headerHeight: widget.headerHeight,
+        headerColor: widget.headerColor,
+        onBack: onBack,
+      ),
+    )) {
+      return;
+    }
     unawaited(
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
+      replaceWithAppChatRoute<void, void>(
+        context,
+        AppChatPageRoute<void>(
           builder: (_) => TopicChatView(
-            chat: _topicChatSummary(),
+            chat: chat,
             initialThreadId: threadId,
+            hasForumTabs: _vm.hasForumTabs,
           ),
         ),
       ),

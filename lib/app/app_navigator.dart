@@ -295,6 +295,11 @@ Future<T?> replaceWithAppChatRoute<T, TO>(
       appNavigatorKey.currentState ??
       Navigator.of(context, rootNavigator: true);
   if (identical(sourceNavigator, rootNavigator)) {
+    // A pane can share the root navigator without owning its route. Keep the
+    // shell underneath the conversation, including roots with local history.
+    if (ModalRoute.of(context)?.isFirst != false) {
+      return rootNavigator.push<T>(route);
+    }
     return sourceNavigator.pushReplacement<T, TO>(route, result: result);
   }
   if (sourceNavigator.canPop()) sourceNavigator.pop<TO>(result);

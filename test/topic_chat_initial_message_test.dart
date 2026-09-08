@@ -114,9 +114,9 @@ void main() {
       );
 
       final target = find.byKey(const ValueKey('topic-post-$targetMessageId'));
-      final viewport = find.byWidgetPredicate(
-        (widget) =>
-            widget is ListView && widget.scrollDirection == Axis.vertical,
+      final viewport = find.ancestor(
+        of: target,
+        matching: find.byType(ListView),
       );
       expect(target, findsOneWidget);
       expect(viewport, findsOneWidget);

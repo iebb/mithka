@@ -5,6 +5,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/app_navigator.dart';
 
 void main() {
+  testWidgets('replacing a conversation never removes the app root', (
+    tester,
+  ) async {
+    late BuildContext rootContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: appNavigatorKey,
+        home: Builder(
+          builder: (context) {
+            rootContext = context;
+            return const Text('app shell');
+          },
+        ),
+      ),
+    );
+    unawaited(
+      replaceWithAppChatRoute<void, void>(
+        rootContext,
+        AppChatPageRoute<void>(builder: (_) => const Text('topic mode')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('topic mode'), findsOneWidget);
+    expect(appNavigatorKey.currentState!.canPop(), isTrue);
+    appNavigatorKey.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('app shell'), findsOneWidget);
+    expect(appNavigatorKey.currentState!.canPop(), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('conversation routes stay outside the tab navigator', (
     tester,
   ) async {
