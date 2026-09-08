@@ -23,6 +23,8 @@ import android.view.DragEvent
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.iebb.f_videoplayer_pip.FVideoPictureInPicturePlugin
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
@@ -54,6 +56,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var shareIntentChannel: MethodChannel? = null
     private var pendingSharePayload: Map<String, Any?>? = null
     private var acceptingImageDrop = false
+    private var fullscreenSystemUi = false
     private val translators = mutableMapOf<String, Translator>()
     private val languageIdentifierDelegate = lazy<LanguageIdentifier> {
         LanguageIdentification.getClient()
@@ -75,6 +78,23 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onResume() {
         super.onResume()
         FVideoPictureInPicturePlugin.onActivityResumed(this)
+        if (fullscreenSystemUi) applyFullscreenSystemUi()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && fullscreenSystemUi) applyFullscreenSystemUi()
+    }
+
+    private fun applyFullscreenSystemUi() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreenSystemUi) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onPause() {
@@ -111,6 +131,16 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         registerPlugins(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/fullscreen_system_ui")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "setFullscreen") {
+                    fullscreenSystemUi = call.arguments == true
+                    applyFullscreenSystemUi()
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
         configureShareIntentChannel(flutterEngine)
         telegramPasskeys = TelegramPasskeyPlugin(
             this,

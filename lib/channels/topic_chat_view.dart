@@ -12,11 +12,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/chat_pane.dart';
 import '../app/ipad_window_chrome.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
-import '../chat/custom_emoji.dart';
 import '../chat/forward_options.dart';
 import '../chat/group_remark_controller.dart';
 import '../chat/message_replies_sheet.dart';
@@ -38,6 +38,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
+import 'topic_navigation.dart';
 import 'topic_post_content.dart';
 
 /// Keeps a forum browser suspended while its topic route is replaced by other
@@ -95,6 +96,7 @@ class TopicChatView extends StatefulWidget {
     required this.chat,
     this.initialThreadId,
     this.initialMessageId,
+    this.hasForumTabs = false,
     this.showBackButton = true,
     this.headerHeight = 48,
     this.headerColor,
@@ -108,6 +110,7 @@ class TopicChatView extends StatefulWidget {
   final ChatSummary chat;
   final int? initialThreadId;
   final int? initialMessageId;
+  final bool hasForumTabs;
   final bool showBackButton;
   final double headerHeight;
   final Color? headerColor;
@@ -297,6 +300,11 @@ class _TopicChatViewState extends State<TopicChatView> {
   bool _initialMessagePositionScheduled = false;
   int? _selectedThreadId;
   int? _pendingInitialMessageId;
+  late bool _hasForumTabs = widget.hasForumTabs;
+  final int _accountClientId = TdClient.shared.activeClientId;
+  int? _supergroupId;
+  int _topicLayoutRevision = 0;
+  StreamSubscription<Map<String, dynamic>>? _supergroupUpdates;
 
   @override
   void initState() {
@@ -304,14 +312,55 @@ class _TopicChatViewState extends State<TopicChatView> {
     _selectedThreadId = widget.initialThreadId;
     _pendingInitialMessageId = widget.initialMessageId;
     _scroll.addListener(_scheduleVisibleMessageUpdate);
+    if (widget.chat.isForum) {
+      _supergroupUpdates = TdClient.shared.updatesOf('updateSupergroup').listen(
+        (update) {
+          if (!mounted || TdClient.shared.activeClientId != _accountClientId) {
+            return;
+          }
+          final group = update.obj('supergroup');
+          if (_supergroupId == null || group?.int64('id') != _supergroupId) {
+            return;
+          }
+          ++_topicLayoutRevision;
+          setState(
+            () => _hasForumTabs = group?.boolean('has_forum_tabs') ?? false,
+          );
+        },
+      );
+      unawaited(_loadTopicLayout());
+    }
     _loadTopics();
   }
 
   Future<Map<String, dynamic>> _query(Map<String, dynamic> request) =>
-      (widget.query ?? TdClient.shared.query)(request);
+      widget.query?.call(request) ??
+      TdClient.shared.queryTo(request, _accountClientId);
+
+  Future<void> _loadTopicLayout() async {
+    try {
+      final chat = await _query({
+        '@type': 'getChat',
+        'chat_id': widget.chat.id,
+      });
+      if (!mounted) return;
+      _supergroupId = chat.obj('type')?.int64('supergroup_id');
+      if (_supergroupId == null) return;
+      final revision = _topicLayoutRevision;
+      final group = await _query({
+        '@type': 'getSupergroup',
+        'supergroup_id': _supergroupId,
+      });
+      if (!mounted || revision != _topicLayoutRevision) return;
+      setState(() => _hasForumTabs = group.boolean('has_forum_tabs') ?? false);
+    } catch (_) {
+      // Keep the entry snapshot while offline or while metadata is unavailable.
+    }
+  }
 
   @override
   void dispose() {
+    _supergroupUpdates?.cancel();
     _scroll.dispose();
     _input.dispose();
     super.dispose();
@@ -334,6 +383,7 @@ class _TopicChatViewState extends State<TopicChatView> {
         'offset_forum_topic_id': 0,
         'limit': 80,
       });
+      if (!mounted) return;
       final rawTopics =
           response.objects('topics') ?? const <Map<String, dynamic>>[];
       final next = <_ForumTopic>[];
@@ -381,6 +431,8 @@ class _TopicChatViewState extends State<TopicChatView> {
       }
       _rebuildPosts();
       await _loadVisibleThreads();
+    } catch (_) {
+      // A failed topic refresh must not surface as an uncaught navigation error.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -828,12 +880,25 @@ class _TopicChatViewState extends State<TopicChatView> {
       onOpenChatView();
       return;
     }
+    final chat = widget.chat;
+    if (ChatPane.replace(
+      context,
+      (onBack) => ChatView(
+        chatId: chat.id,
+        title: chat.title,
+        seedMessage: chat.lastChatMessage,
+        headerHeight: widget.headerHeight,
+        headerColor: widget.headerColor,
+        onBack: onBack,
+      ),
+    )) {
+      return;
+    }
     if (widget.chatRouteBelow) {
       Navigator.of(context).pop();
       return;
     }
     final routeSession = widget.routeSession;
-    final chat = widget.chat;
     final route = AppChatPageRoute<void>(
       builder: (chatContext) => ChatView(
         chatId: chat.id,
@@ -1040,14 +1105,35 @@ class _TopicChatViewState extends State<TopicChatView> {
       body: Column(
         children: [
           _header(),
-          if (_selectedThreadId == null && widget.chat.lastMessage.isNotEmpty)
-            _pinnedLine(),
-          Expanded(child: _content()),
-          if (canComposeInTopicSurface(
-            chat: widget.chat,
-            forumTopicId: _selectedThreadId,
-          ))
-            _bottomComposer(),
+          Expanded(
+            child: TopicNavigationLayout(
+              topics: [
+                for (final topic in _topics)
+                  TopicNavigationItem(
+                    id: topic.id,
+                    name: topic.name,
+                    iconCustomEmojiId: topic.iconCustomEmojiId,
+                    iconColor: topic.iconColor?.toARGB32() ?? 0,
+                  ),
+              ],
+              selectedTopicId: _selectedThreadId,
+              hasForumTabs: _hasForumTabs,
+              onSelected: _selectTopic,
+              child: Column(
+                children: [
+                  if (_selectedThreadId == null &&
+                      widget.chat.lastMessage.isNotEmpty)
+                    _pinnedLine(),
+                  Expanded(child: _content()),
+                  if (canComposeInTopicSurface(
+                    chat: widget.chat,
+                    forumTopicId: _selectedThreadId,
+                  ))
+                    _bottomComposer(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1065,7 +1151,7 @@ class _TopicChatViewState extends State<TopicChatView> {
               ) ??
               widget.chat.title;
     return Container(
-      height: top + widget.headerHeight + 44,
+      height: top + widget.headerHeight,
       padding: EdgeInsets.only(top: top),
       decoration: BoxDecoration(
         color: widget.headerColor ?? c.navBar,
@@ -1083,8 +1169,10 @@ class _TopicChatViewState extends State<TopicChatView> {
               children: [
                 if (widget.showBackButton)
                   GestureDetector(
+                    key: const ValueKey('topic-header-back'),
                     behavior: HitTestBehavior.opaque,
-                    onTap: widget.onBack ?? () => Navigator.of(context).pop(),
+                    onTap:
+                        widget.onBack ?? () => Navigator.of(context).maybePop(),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,
@@ -1136,6 +1224,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                   ),
                 ),
                 GestureDetector(
+                  key: const ValueKey('topic-header-search'),
                   behavior: HitTestBehavior.opaque,
                   onTap: _openSearch,
                   child: Padding(
@@ -1149,6 +1238,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                 ),
                 const SizedBox(width: AppSpacing.md),
                 GestureDetector(
+                  key: const ValueKey('topic-header-chat-mode'),
                   behavior: HitTestBehavior.opaque,
                   onTap: _openChatView,
                   child: Padding(
@@ -1163,6 +1253,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                 if (showsGroupTopicControls(widget.chat)) ...[
                   const SizedBox(width: AppSpacing.xl),
                   GestureDetector(
+                    key: const ValueKey('topic-header-settings'),
                     behavior: HitTestBehavior.opaque,
                     onTap: _openSettings,
                     child: Padding(
@@ -1179,74 +1270,7 @@ class _TopicChatViewState extends State<TopicChatView> {
               ],
             ),
           ),
-          _topicTabs(inHeader: true),
         ],
-      ),
-    );
-  }
-
-  Widget _topicTabs({bool inHeader = false}) {
-    final c = context.colors;
-    final visibleTopics = _topics.take(8).toList();
-    return Container(
-      height: inHeader ? 44 : 52,
-      decoration: BoxDecoration(
-        color: inHeader ? Colors.transparent : c.background,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        itemBuilder: (context, index) {
-          final all = index == 0;
-          final topic = all ? null : visibleTopics[index - 1];
-          final id = topic?.id;
-          final selected = id == _selectedThreadId;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectTopic(id),
-            child: SizedBox(
-              height: inHeader ? 44 : 52,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _TopicTabIcon(topic: topic, selected: selected),
-                      const SizedBox(width: 5),
-                      Text(
-                        all
-                            ? AppStringKeys.topicChatAllFilter.l10n(context)
-                            : topic!.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: selected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: inHeader ? 7 : 9),
-                  Container(
-                    width: 38,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: selected ? AppTheme.brand : Colors.transparent,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-        separatorBuilder: (_, _) => const SizedBox(width: 28),
-        itemCount: visibleTopics.length + 1,
       ),
     );
   }
@@ -1383,34 +1407,6 @@ class _TopicChatViewState extends State<TopicChatView> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _TopicTabIcon extends StatelessWidget {
-  const _TopicTabIcon({required this.topic, required this.selected});
-
-  final _ForumTopic? topic;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final topic = this.topic;
-    if (topic == null) {
-      return AppIcon(
-        HeroAppIcons.hashtag,
-        size: 17,
-        color: selected ? AppTheme.brand : c.textSecondary,
-      );
-    }
-    if (topic.iconCustomEmojiId != 0) {
-      return CustomEmojiView(id: topic.iconCustomEmojiId, size: 18);
-    }
-    return AppIcon(
-      HeroAppIcons.solidMessage,
-      size: 17,
-      color: topic.iconColor ?? (selected ? AppTheme.brand : c.textSecondary),
     );
   }
 }
@@ -2229,6 +2225,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
     final c = context.colors;
     final topic = _topic;
     return Scaffold(
+      key: const ValueKey('topic-settings'),
       backgroundColor: c.groupedBackground,
       body: SafeArea(
         child: Column(
@@ -2238,6 +2235,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
               child: Row(
                 children: [
                   IconButton(
+                    key: const ValueKey('topic-settings-back'),
                     onPressed: () => Navigator.of(context).pop(),
                     icon: AppIcon(
                       HeroAppIcons.chevronLeft,
@@ -2316,6 +2314,7 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                   SettingsCard(
                     children: [
                       SettingsRow(
+                        key: const ValueKey('topic-settings-members'),
                         title: AppStrings.t(
                           AppStringKeys.topicChatChannelMembers,
                         ),

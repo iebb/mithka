@@ -499,6 +499,7 @@ class ChatViewModel extends ChangeNotifier {
   BotMenuInfo? botMenu;
   List<BotCommandOption> botCommands = const [];
   bool isForum = false;
+  bool hasForumTabs = false;
   bool supportsBotTopics = false;
   bool get supportsTopics => isForum || supportsBotTopics;
   bool forumTopicsLoading = false;
@@ -3515,6 +3516,7 @@ class ChatViewModel extends ChangeNotifier {
             isAdministeredDirectMessagesGroup =
                 sg.boolean('is_administered_direct_messages_group') ?? false;
             isForum = isForum || (sg.boolean('is_forum') ?? false);
+            hasForumTabs = sg.boolean('has_forum_tabs') ?? false;
             joinByRequest = sg.boolean('join_by_request') ?? false;
             _setPaidMessageStarCount(_paidMessageStars(sg), notify: false);
             _applyGroupStatus(sg.obj('status'));
@@ -5271,6 +5273,17 @@ class ChatViewModel extends ChangeNotifier {
         final supergroup = update.obj('supergroup');
         if (supergroup == null || supergroup.int64('id') != peerSupergroupId) {
           return;
+        }
+        final nextIsForum = supergroup.boolean('is_forum') ?? isForum;
+        final nextHasForumTabs =
+            supergroup.boolean('has_forum_tabs') ?? hasForumTabs;
+        if (isForum != nextIsForum || hasForumTabs != nextHasForumTabs) {
+          isForum = nextIsForum;
+          hasForumTabs = nextHasForumTabs;
+          notifyListeners();
+          if (supportsTopics && forumTopics.isEmpty) {
+            unawaited(loadForumTopics());
+          }
         }
         _setPaidMessageStarCount(_paidMessageStars(supergroup));
 

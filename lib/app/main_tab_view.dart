@@ -55,6 +55,7 @@ import '../update/update_checker.dart';
 import 'adaptive_split_layout.dart';
 import 'app_navigator.dart';
 import 'chat_deep_link_controller.dart';
+import 'chat_pane.dart';
 import 'desktop_chat_window.dart';
 import 'desktop_navigation_rail.dart';
 import 'desktop_utility_window.dart';
@@ -99,6 +100,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   late final ChatViewExitController _messageChatExitController =
       ChatViewExitController();
   ChatListSelection? _selectedMessageChat;
+  final _chatPaneController = ChatPaneController();
   CommunityListSelection? _selectedMessageCommunity;
   ArchivedChatListSelection? _selectedArchivedChats;
   int? _closedDesktopInfoChatId;
@@ -371,6 +373,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   Future<bool> _onWillPop() async {
     if (_usesSplitSelection(context)) {
+      if (_chatPaneController.pop()) return false;
       switch (_selection) {
         case 0:
           if (_selectedArchivedChats != null) {
@@ -1396,7 +1399,14 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       _ when _selectedMomentDetail != null => ObjectKey(_selectedMomentDetail!),
       _ => const ValueKey('tablet-moments-root'),
     };
-    return DetailContentReveal(motionKey: motionKey, child: detail);
+    return DetailContentReveal(
+      motionKey: motionKey,
+      child: ChatPane(
+        key: ValueKey(('chat-pane', motionKey)),
+        controller: _chatPaneController,
+        child: detail,
+      ),
+    );
   }
 
   Widget _messageDetailPane({
@@ -1778,7 +1788,6 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final content = _index == 0
         ? ChatView(
             key: const ValueKey('forum-detail-chat'),
@@ -1788,7 +1797,6 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
             showBackButton: widget.showBackButton,
             headerHeight: widget.headerHeight,
             headerColor: widget.headerColor,
-            headerBottom: _tabSwitcher(c),
             trailingPane: widget.trailingPane,
             trailingPaneWidth: widget.trailingPaneWidth,
             exitController: widget.exitController,
@@ -1812,93 +1820,6 @@ class _ForumSplitDetailPaneState extends State<_ForumSplitDetailPane> {
     return DetailContentReveal(
       motionKey: ValueKey('forum-detail-$_index-${_topicThreadId ?? 0}'),
       child: content,
-    );
-  }
-
-  Widget _tabSwitcher(AppColors c) {
-    return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-      child: Align(
-        // Desktop split pane: the mode switch sits top-right, mirroring the
-        // header actions above it.
-        alignment: Alignment.centerRight,
-        child: Container(
-          height: 32,
-          decoration: BoxDecoration(
-            color: c.searchFill,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ForumDetailTabButton(
-                selected: _index == 0,
-                icon: HeroAppIcons.solidMessage,
-                label: AppStringKeys.tabMessages,
-                onTap: () => unawaited(_showChatMode()),
-              ),
-              _ForumDetailTabButton(
-                selected: _index == 1,
-                icon: HeroAppIcons.hashtag,
-                label: AppStringKeys.topicChatAllTopics,
-                onTap: () => unawaited(_showChannelMode()),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ForumDetailTabButton extends StatelessWidget {
-  const _ForumDetailTabButton({
-    required this.selected,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final AppIconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: AppMotion.duration(context, AppMotion.responsive),
-        curve: AppMotion.standard,
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.brand : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            AppIcon(
-              icon,
-              size: 17,
-              color: selected ? Colors.white : c.textSecondary,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label.l10n(context),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : c.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
