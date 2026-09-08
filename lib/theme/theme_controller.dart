@@ -1163,6 +1163,7 @@ class ThemeController extends ChangeNotifier {
     _hideBlockedUserMessages =
         _prefs.getBool(_hideBlockedUserMessagesKey) ?? false;
     _showChannelsTab = _prefs.getBool(_showChannelsTabKey) ?? false;
+    _showContactsTab = _prefs.getBool(_showContactsTabKey) ?? true;
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
     _showShortVideos = _prefs.getBool(_showShortVideosKey) ?? true;
     _communitiesEnabled = _prefs.getBool(_communitiesEnabledKey) ?? true;
@@ -1263,6 +1264,7 @@ class ThemeController extends ChangeNotifier {
   static const _groupImageMessagesKey = 'groupImageMessages';
   static const _hideBlockedUserMessagesKey = 'hideBlockedUserMessages';
   static const _showChannelsTabKey = 'showChannelsTab';
+  static const _showContactsTabKey = 'showContactsTab';
   static const _showMomentsTabKey = 'showMomentsTab';
   static const _showShortVideosKey = 'showShortVideos';
   static const _communitiesEnabledKey = 'communitiesEnabled';
@@ -1345,6 +1347,7 @@ class ThemeController extends ChangeNotifier {
   bool _groupImageMessages = true;
   bool _hideBlockedUserMessages = false;
   bool _showChannelsTab = false;
+  bool _showContactsTab = true;
   bool _showMomentsTab = true;
   bool _showShortVideos = true;
   bool _communitiesEnabled = true;
@@ -1799,6 +1802,7 @@ class ThemeController extends ChangeNotifier {
   bool get groupImageMessages => _groupImageMessages;
   bool get hideBlockedUserMessages => _hideBlockedUserMessages;
   bool get showChannelsTab => _showChannelsTab;
+  bool get showContactsTab => _showContactsTab;
   bool get showMomentsTab => _showMomentsTab;
   bool get showShortVideos => _showShortVideos;
   bool get communitiesEnabled => _communitiesEnabled;
@@ -2695,6 +2699,12 @@ class ThemeController extends ChangeNotifier {
   set showChannelsTab(bool value) {
     _showChannelsTab = value;
     _prefs.setBool(_showChannelsTabKey, value);
+    notifyListeners();
+  }
+
+  set showContactsTab(bool value) {
+    _showContactsTab = value;
+    _prefs.setBool(_showContactsTabKey, value);
     notifyListeners();
   }
 

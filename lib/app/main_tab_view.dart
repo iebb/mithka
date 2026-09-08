@@ -1,7 +1,7 @@
 //
 //  main_tab_view.dart
 //
-//  Tab shell: 消息 / 联系人 / optional 动态, plus the left-sliding "我" profile drawer
+//  Tab shell: 消息 / optional 频道、联系人、动态, plus the left-sliding "我" profile drawer
 //  overlaid above the tab bar. The bottom tab bar is either a custom flat bar
 //  ("classic", default) or the system tab bar — chosen in 外观 settings. Port of
 //  the Swift `MainTabView`.
@@ -359,7 +359,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     return [
       _allTabs[0],
       if (theme.showChannelsTab) _allTabs[1],
-      _allTabs[2],
+      if (theme.showContactsTab) _allTabs[2],
       if (theme.showMomentsTab) _allTabs[3],
     ];
   }
