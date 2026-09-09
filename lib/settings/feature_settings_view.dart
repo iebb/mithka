@@ -38,6 +38,12 @@ class FeatureSettingsView extends StatelessWidget {
                 onChanged: (value) => theme.showChannelsTab = value,
               ),
               SettingsSwitchRow(
+                title: AppStrings.t(AppStringKeys.tabContacts),
+                value: theme.showContactsTab,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.users),
+                onChanged: (value) => theme.showContactsTab = value,
+              ),
+              SettingsSwitchRow(
                 title: AppStrings.t(AppStringKeys.tabMoments),
                 value: theme.showMomentsTab,
                 leading: const SettingsLeadingIcon(icon: HeroAppIcons.camera),
