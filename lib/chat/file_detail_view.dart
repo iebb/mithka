@@ -55,10 +55,7 @@ class _FileDetailViewState extends State<FileDetailView> {
       if (f != null && f.integer('id') == id) _apply(f);
     });
     try {
-      final resp = await TdFileCenter.shared.downloadPriorityFile(
-        id,
-        total: _total,
-      );
+      final resp = await TdFileCenter.shared.downloadPriorityFile(id);
       if (resp != null) _apply(resp);
     } catch (_) {}
   }

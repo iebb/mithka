@@ -4,10 +4,70 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/chat/full_image_viewer.dart';
+import 'package:mithka/chat/image_preview.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
+  testWidgets('image preview covers tab navigation and returns to its tab', (
+    tester,
+  ) async {
+    final root = GlobalKey<NavigatorState>();
+    final tab = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: root,
+        home: Column(
+          children: [
+            Expanded(
+              child: Navigator(
+                key: tab,
+                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                  builder: (context) => Center(
+                    child: GestureDetector(
+                      onTap: () => openImagePreview(
+                        context,
+                        // Keep this macOS-hosted test on the in-app path.
+                        onMore: (_) async {},
+                        items: [
+                          TdFileRef(
+                            id: 999,
+                            localPath:
+                                '${Directory.current.path}/assets/penguin.png',
+                          ),
+                        ],
+                      ),
+                      child: const Text('Moment image'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(
+              height: 64,
+              child: Text('Messages Contacts Moments'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.text('Moment image'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(root.currentState!.canPop(), isTrue);
+    expect(tab.currentState!.canPop(), isFalse);
+    expect(find.text('Messages Contacts Moments'), findsNothing);
+    expect(
+      tester.getSize(find.byType(FullImageViewer)),
+      tester.view.physicalSize / tester.view.devicePixelRatio,
+    );
+    root.currentState!.pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Moment image'), findsOneWidget);
+    expect(find.text('Messages Contacts Moments'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the page counter hugs its text instead of spanning the bar', (
     tester,
   ) async {
