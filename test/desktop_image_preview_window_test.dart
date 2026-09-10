@@ -264,7 +264,10 @@ void main() {
     expect(shell, contains('desktop-image-preview-toolbar'));
     expect(shell, contains('pageRouteBuilder:'));
     expect(helper, contains('if (opened) return'));
-    expect(helper, contains('Navigator.of(context).push<void>'));
+    expect(
+      helper,
+      contains('Navigator.of(context, rootNavigator: true).push<void>'),
+    );
     expect(
       main,
       contains('DesktopImagePreviewWindowArguments.tryParseLaunchArguments'),

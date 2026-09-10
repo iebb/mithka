@@ -1368,6 +1368,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (!mounted) return;
       final posts = _posts.take(_metadataHydrationLimit).toList();
       _loadAuthors(posts);
+      _loadForwardAttributions(posts);
       _loadReplyQuotes(posts);
       _loadLikeNames(posts);
       _loadThreadTargets(posts);
@@ -1386,6 +1387,41 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       if (_loadingReplyQuotes.contains(key)) continue;
       _loadingReplyQuotes.add(key);
       _resolveReplyQuote(post, key);
+    }
+  }
+
+  final Map<String, Future<String?>> _forwardNames = {};
+
+  void _loadForwardAttributions(List<ChannelPost> posts) {
+    for (final post in posts) {
+      for (final message in post.messages) {
+        if (message.forwardOrigin?.trim().isNotEmpty == true) continue;
+        final userId = message.forwardFromUserId;
+        final chatId = message.forwardFromChatId;
+        if (userId == null && chatId == null) continue;
+        final key = '${post.accountSlot}:$userId:$chatId';
+        final pending = _forwardNames.putIfAbsent(key, () async {
+          try {
+            final raw = await TdClient.shared.queryForSlot({
+              '@type': userId != null ? 'getUser' : 'getChat',
+              if (userId != null) 'user_id': userId else 'chat_id': chatId,
+            }, post.accountSlot);
+            return userId != null ? TDParse.userName(raw) : raw.str('title');
+          } catch (_) {
+            return null;
+          }
+        });
+        unawaited(
+          pending.then((name) {
+            if (name == null || name.trim().isEmpty) {
+              _forwardNames.remove(key);
+              return;
+            }
+            message.forwardOrigin = name;
+            _notifyPost(post);
+          }),
+        );
+      }
     }
   }
 
@@ -4148,6 +4184,16 @@ class ChannelPostRow extends StatelessWidget {
                 ),
               ],
             ),
+            if (message.hasForwardAttribution) ...[
+              const SizedBox(height: 10),
+              Text(
+                key: const ValueKey('momentsForwardAttribution'),
+                AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+                  'value1': message.forwardDisplayName,
+                }),
+                style: TextStyle(fontSize: 13, color: c.linkBlue),
+              ),
+            ],
             if (text.isNotEmpty) ...[
               const SizedBox(height: 12),
               TelegramRichText(
@@ -4231,10 +4277,7 @@ class ChannelPostRow extends StatelessWidget {
   bool get _hasSignedAuthor =>
       !_isChannelSelfPost(post) && post.authorName?.trim().isNotEmpty == true;
 
-  bool get _hasReplyQuote =>
-      message.replyToMessageId != null &&
-      ((message.replyToPreview?.trim().isNotEmpty ?? false) ||
-          message.replyToImage != null);
+  bool get _hasReplyQuote => message.replyToMessageId != null;
 }
 
 class _PostReplyQuote extends StatelessWidget {
@@ -4249,8 +4292,10 @@ class _PostReplyQuote extends StatelessWidget {
     final preview = message.replyToPreview?.trim() ?? '';
     final image = message.replyToImage;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final hasText = (sender?.isNotEmpty ?? false) || preview.isNotEmpty;
+    final hasText =
+        (sender?.isNotEmpty ?? false) || preview.isNotEmpty || image == null;
     return Container(
+      key: const ValueKey('momentsReplyQuote'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
       decoration: BoxDecoration(
@@ -4295,7 +4340,11 @@ class _PostReplyQuote extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    TextSpan(text: preview.replaceAll('\n', ' ')),
+                    TextSpan(
+                      text: preview.isEmpty && image == null
+                          ? AppStringKeys.chatInputBarReply.l10n(context)
+                          : preview.replaceAll('\n', ' '),
+                    ),
                   ],
                 ),
               ),
@@ -4512,7 +4561,7 @@ class _PostImageGroup extends StatelessWidget {
   void _openMedia(BuildContext context, ChatMessage message) {
     final video = message.video;
     if (video != null) {
-      Navigator.of(context).push(
+      Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => VideoOnDemandPlayerView(queue: _videoQueue(message)),

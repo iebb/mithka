@@ -2254,9 +2254,21 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Widget _playerChrome(BuildContext context, FVideoChromeScope scope) {
     _reusablePlayerActions = scope.actions;
+    return GestureDetector(
+      // Text and decorative chrome can hit-test without handling taps. Let
+      // their taps dismiss controls while buttons/sliders keep their gestures.
+      onTap: () => _dismissMenusAndControls(scope: scope),
+      child: _playerFullscreenChrome(context, scope),
+    );
+  }
+
+  Widget _playerFullscreenChrome(
+    BuildContext context,
+    FVideoChromeScope scope,
+  ) {
     final snapshot = scope.snapshot;
     final safePadding = MediaQuery.paddingOf(context);
-    if (scope.snapshot.controlsVisible && _showsOnDemandLayout(context)) {
+    if (snapshot.controlsVisible && _showsOnDemandLayout(context)) {
       return _playerOnDemandChrome(context, scope, safePadding);
     }
     final standalone = _usesStandaloneFullscreenLayout(context);

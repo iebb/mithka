@@ -872,6 +872,7 @@ class ChatMessage {
   bool blockedByUser;
   List<MessageReaction> reactions = const [];
   String? forwardOrigin; // name of the original author when forwarded
+  String? forwardAuthorSignature; // signed author within the origin channel
   int? forwardFromUserId; // origin user, resolved lazily to forwardOrigin
   int? forwardFromChatId; // origin chat/channel, resolved lazily
   int? forwardFromMessageId; // original channel message when TDLib exposes it
@@ -888,7 +889,14 @@ class ChatMessage {
   /// flight or when Telegram intentionally hides the original name.
   String get forwardDisplayName {
     final name = forwardOrigin?.trim();
-    if (name != null && name.isNotEmpty) return name;
+    final signature = forwardAuthorSignature?.trim();
+    if (name != null && name.isNotEmpty) {
+      if (signature != null && signature.isNotEmpty && signature != name) {
+        return '$name ($signature)';
+      }
+      return name;
+    }
+    if (signature != null && signature.isNotEmpty) return signature;
     return AppStrings.t(AppStringKeys.groupManagementLogUnknownActor);
   }
 
@@ -1548,18 +1556,18 @@ abstract final class TDParse {
     final forwardInfo = message.obj('forward_info');
     final origin = forwardInfo?.obj('origin');
     final forwardSource = forwardInfo?.obj('source');
-    String? fwdName;
+    String? fwdName, fwdAuthorSignature;
     int? fwdUserId, fwdChatId, fwdMessageId;
     switch (origin?.type) {
       case 'messageOriginUser':
         fwdUserId = origin?.int64('sender_user_id');
       case 'messageOriginChat':
         fwdChatId = origin?.int64('sender_chat_id');
-        fwdName = origin?.str('author_signature');
+        fwdAuthorSignature = origin?.str('author_signature');
       case 'messageOriginChannel':
         fwdChatId = origin?.int64('chat_id');
         fwdMessageId = origin?.int64('message_id');
-        fwdName = origin?.str('author_signature');
+        fwdAuthorSignature = origin?.str('author_signature');
       case 'messageOriginHiddenUser':
         fwdName = origin?.str('sender_name');
     }
@@ -1704,6 +1712,7 @@ abstract final class TDParse {
       )
       ..reactions = reactionsFrom(message)
       ..forwardOrigin = isContentRestricted ? null : fwdName
+      ..forwardAuthorSignature = isContentRestricted ? null : fwdAuthorSignature
       ..forwardFromUserId = isContentRestricted ? null : fwdUserId
       ..forwardFromChatId = isContentRestricted ? null : fwdChatId
       ..forwardFromMessageId = isContentRestricted ? null : fwdMessageId;

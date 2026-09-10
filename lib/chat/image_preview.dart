@@ -18,7 +18,7 @@ bool imagePreviewCanUseIndependentWindow({
 /// Opens the selected image in an independent native window on desktop.
 ///
 /// Mobile/tablet, action-bearing previews, and native-window failures retain
-/// the existing in-app gallery without changing navigation behavior.
+/// an in-app gallery above the tab navigators and their navigation bars.
 Future<void> openImagePreview(
   BuildContext context, {
   required List<TdFileRef> items,
@@ -42,7 +42,7 @@ Future<void> openImagePreview(
     if (opened) return;
   }
   if (!context.mounted) return;
-  await Navigator.of(context).push<void>(
+  await Navigator.of(context, rootNavigator: true).push<void>(
     AppPageRoute<void>(
       fullscreenDialog: true,
       pageBuilder: (_, _, _) => FullImageViewer(

@@ -68,8 +68,13 @@ void main() {
 
     expect(message, isNotNull);
     expect(message!.forwardFromChatId, -55);
+    expect(message.forwardOrigin, isNull);
+    expect(message.forwardAuthorSignature, 'Original author');
     expect(message.forwardDisplayName, 'Original author');
     expect(message.hasForwardAttribution, isTrue);
+    // The channel lookup still runs when a signature arrived in the message.
+    message.forwardOrigin = 'Source group';
+    expect(message.forwardDisplayName, 'Source group (Original author)');
   });
 
   testWidgets(

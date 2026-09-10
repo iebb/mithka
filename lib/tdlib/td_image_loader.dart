@@ -75,8 +75,6 @@ class TdFileCenter {
   bool _started = false;
   static const _cacheCapacity = 4096;
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
-  static const _priorityChunkSize = 512 * 1024;
-  static const _priorityParallelism = 4;
 
   String _key(int slot, int fileId) => '$slot:$fileId';
 
@@ -356,104 +354,56 @@ class TdFileCenter {
     } catch (_) {}
   }
 
+  /// Waits for one bounded range while TDLib downloads its parts in parallel.
+  ///
+  /// TDLib has one user-requested offset/limit per file. Splitting this into
+  /// concurrent downloadFile calls cancels earlier ranges instead of adding
+  /// workers. Chunk size and parallelism belong to native transfer boost.
   Future<Map<String, dynamic>?> downloadPriorityRange(
     int fileId, {
     int? accountSlot,
     required int offset,
     required int length,
     int priority = 32,
-    int parallelism = _priorityParallelism,
-    int chunkSize = _priorityChunkSize,
     Duration timeout = const Duration(seconds: 45),
   }) async {
     _startIfNeeded();
     final slot = accountSlot ?? _client.activeSlot;
-    if (fileId == 0 || length <= 0) return null;
-    final chunks = <MapEntry<int, int>>[];
-    var cursor = offset;
-    final endExclusive = offset + length;
-    while (cursor < endExclusive) {
-      final nextLength = math.min(chunkSize, endExclusive - cursor);
-      chunks.add(MapEntry(cursor, nextLength));
-      cursor += nextLength;
-    }
-    if (chunks.isEmpty) return null;
-
-    var nextIndex = 0;
-    var completed = 0;
-    Map<String, dynamic>? latest;
-
-    Future<void> worker() async {
-      while (true) {
-        final index = nextIndex++;
-        if (index >= chunks.length) return;
-        final chunk = chunks[index];
-        try {
-          final file = await _client
-              .queryForSlot({
-                '@type': 'downloadFile',
-                'file_id': fileId,
-                'priority': priority,
-                'offset': chunk.key,
-                'limit': chunk.value,
-                'synchronous': true,
-              }, slot)
-              .timeout(timeout);
-          _ingest(file, accountSlot: slot);
-          latest = file;
-          completed++;
-        } catch (_) {}
-      }
-    }
-
-    final workerCount = math.min(parallelism, chunks.length);
-    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
-    return completed == chunks.length ? latest : null;
-  }
-
-  Future<Map<String, dynamic>?> downloadPriorityFile(
-    int fileId, {
-    int? accountSlot,
-    required int total,
-    int priority = 32,
-    int parallelism = _priorityParallelism,
-    int chunkSize = 2 * 1024 * 1024,
-  }) async {
-    _startIfNeeded();
-    final slot = accountSlot ?? _client.activeSlot;
-    if (fileId == 0) return null;
-    if (total <= 0) {
-      try {
-        final response = await _client.queryForSlot({
+    if (fileId <= 0 || offset < 0 || length <= 0) return null;
+    try {
+      final response = await _client.queryForSlot(
+        {
           '@type': 'downloadFile',
           'file_id': fileId,
           'priority': priority,
-          'offset': 0,
-          'limit': 0,
-          'synchronous': false,
-        }, slot);
-        _ingest(response, accountSlot: slot);
-        return response;
-      } catch (_) {}
+          'offset': offset,
+          'limit': length,
+          'synchronous': true,
+        },
+        slot,
+        timeout: timeout,
+      );
+      _ingest(response, accountSlot: slot);
+      return response;
+    } catch (_) {
       return null;
     }
-    final rangeResult = await downloadPriorityRange(
-      fileId,
-      accountSlot: slot,
-      offset: 0,
-      length: total,
-      priority: priority,
-      parallelism: parallelism,
-      chunkSize: chunkSize,
-      timeout: const Duration(seconds: 90),
-    );
-    if (rangeResult != null) return rangeResult;
+  }
 
-    // One or more chunks timed out or failed. Fall back to a standard
-    // async download so TDLib keeps the file alive in the background and
-    // continues emitting updateFile events. Without this, the progress bar
-    // stalls at whatever fraction the chunked download reached, and the
-    // file never completes.
+  /// Starts a continuous whole-file download at foreground priority.
+  ///
+  /// Returns the initial state; updateFile reports progress and completion.
+  /// Native TDLib owns chunk scheduling, retries, and resuming cached parts.
+  /// An unlimited request also handles unknown or estimated file sizes, and
+  /// leaves no Dart workers that could restart the transfer after cancellation.
+  Future<Map<String, dynamic>?> downloadPriorityFile(
+    int fileId, {
+    int? accountSlot,
+    int priority = 32,
+  }) async {
+    _startIfNeeded();
+    final slot = accountSlot ?? _client.activeSlot;
+    if (fileId <= 0) return null;
     try {
       final response = await _client.queryForSlot({
         '@type': 'downloadFile',

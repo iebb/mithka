@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../chat/video_player_view.dart';
+import 'app_navigator.dart';
 import 'video_split_controller.dart';
 
 /// Keeps a split video above the app navigator without losing video playback.
@@ -178,14 +179,31 @@ class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
         // is reached on iOS. Do not replace it with an in-app overlay.
         _videoSplit.close();
       case VideoDisplayMode.fullscreen:
+        // This host is in MaterialApp.builder, above the root Navigator.
+        // Resolve that navigator before removing the current player.
+        final navigator = appNavigatorKey.currentState;
+        if (navigator == null || !navigator.mounted) return;
         // Keep a single playback owner. The queue is handed to fullscreen,
         // then the embedded split player is removed before the new route is
         // built so both controllers cannot decode and emit audio together.
         _videoSplit.close();
-        Navigator.of(context, rootNavigator: true).push(
+        navigator.push(
           MaterialPageRoute(
             fullscreenDialog: true,
-            builder: (_) => VideoOnDemandPlayerView(queue: session.queue),
+            builder: (routeContext) => VideoOnDemandPlayerView(
+              queue: session.queue,
+              onSwitchMode: (queue, mode) {
+                switch (mode) {
+                  case VideoDisplayMode.fullscreen:
+                    break;
+                  case VideoDisplayMode.split:
+                    _videoSplit.play(VideoSplitSession.fromQueue(queue));
+                    Navigator.of(routeContext).pop();
+                  case VideoDisplayMode.pictureInPicture:
+                    Navigator.of(routeContext).pop();
+                }
+              },
+            ),
           ),
         );
     }
