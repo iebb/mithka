@@ -11,7 +11,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 4 * 1024 * 1024,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
       reportedReadableBytes: 2 * 1024 * 1024,
     );
     try {
@@ -45,24 +45,154 @@ void main() {
   });
 
   test(
-    'a large request without Range returns one bounded exact body',
+    'a request without Range streams the entire file across read chunks',
     () async {
       final fixture = await _VideoServerFixture.create(
         bytes: List<int>.generate(64, (index) => index),
-        totalBytes: 1000000,
-        maxResponseBytes: 16,
+        totalBytes: 64,
+        readChunkBytes: 16,
       );
       try {
         final response = await fixture.get();
         final body = await _readBody(response);
 
+        expect(response.statusCode, HttpStatus.ok);
+        expect(response.contentLength, 64);
+        expect(response.headers.value(HttpHeaders.contentRangeHeader), isNull);
+        expect(body, fixture.bytes);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  for (final (range, start, end) in [
+    ('bytes=0-', 0, 64),
+    ('bytes=20-', 20, 64),
+    ('bytes=8-55', 8, 56),
+    ('bytes=-40', 24, 64),
+  ]) {
+    test('$range returns the full requested span across read chunks', () async {
+      final fixture = await _VideoServerFixture.create(
+        bytes: List<int>.generate(64, (index) => index),
+        totalBytes: 64,
+        readChunkBytes: 16,
+      );
+      try {
+        final response = await fixture.get(range: range);
+
         expect(response.statusCode, HttpStatus.partialContent);
-        expect(response.contentLength, 16);
+        expect(response.contentLength, end - start);
         expect(
           response.headers.value(HttpHeaders.contentRangeHeader),
-          'bytes 0-15/1000000',
+          'bytes $start-${end - 1}/64',
         );
-        expect(body, List<int>.generate(16, (index) => index));
+        expect(await _readBody(response), fixture.bytes.sublist(start, end));
+      } finally {
+        await fixture.close();
+      }
+    });
+  }
+
+  test('HEAD reports the full file without downloading media bytes', () async {
+    late _ControlledRangeBackend backend;
+    final fixture = await _VideoServerFixture.create(
+      bytes: const [],
+      totalBytes: 64,
+      readChunkBytes: 16,
+      queryBuilder: (file) {
+        backend = _ControlledRangeBackend(file: file, totalBytes: 64);
+        return backend.query;
+      },
+    );
+    try {
+      for (final range in [null, 'bytes=20-']) {
+        final response = await fixture.getUri(
+          fixture.uri,
+          method: 'HEAD',
+          range: range,
+        );
+        expect(response.statusCode, HttpStatus.ok);
+        expect(response.contentLength, 64);
+        expect(response.headers.value(HttpHeaders.contentRangeHeader), isNull);
+        expect(await _readBody(response), isEmpty);
+      }
+      expect(backend.boundedRequests, isEmpty);
+      expect(backend.prefixOffsets, isEmpty);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test('one response waits for and streams successive TDLib chunks', () async {
+    late _ControlledRangeBackend backend;
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      readChunkBytes: 16,
+      queryBuilder: (file) {
+        backend = _ControlledRangeBackend(file: file, totalBytes: 64);
+        return backend.query;
+      },
+    );
+    try {
+      final pendingResponse = fixture.get(range: 'bytes=0-');
+      await _waitFor(() => backend.boundedRequests.isNotEmpty);
+      backend.completeBounded(0);
+      final response = await pendingResponse;
+      expect(response.contentLength, 64);
+
+      final received = <int>[];
+      var finished = false;
+      final body = response
+          .forEach(received.addAll)
+          .whenComplete(() => finished = true);
+      body.ignore();
+      await _waitFor(() => received.length == 16);
+      for (var index = 1; index < 4; index++) {
+        await _waitFor(() => backend.boundedRequests.length > index);
+        expect(backend.boundedRequests[index]['offset'], index * 16);
+        expect(backend.boundedRequests[index]['limit'], 16);
+        expect(received, fixture.bytes.sublist(0, index * 16));
+        expect(
+          finished,
+          isFalse,
+          reason: 'a read chunk is not the end of video',
+        );
+        backend.completeBounded(index);
+        await _waitFor(() => received.length == (index + 1) * 16);
+      }
+      await body;
+      expect(received, fixture.bytes);
+      expect(backend.unlimitedRequests, 0);
+    } finally {
+      await fixture.close();
+      for (var index = 0; index < backend.boundedRequests.length; index++) {
+        backend.completeBounded(index);
+      }
+    }
+  });
+
+  test(
+    'an unavailable later chunk interrupts the advertised full response',
+    () async {
+      final fixture = await _VideoServerFixture.create(
+        bytes: List<int>.generate(16, (index) => index),
+        totalBytes: 64,
+        readChunkBytes: 16,
+      );
+      try {
+        final response = await fixture.get(range: 'bytes=0-');
+        expect(response.contentLength, 64);
+        expect(
+          response.headers.value(HttpHeaders.contentRangeHeader),
+          'bytes 0-63/64',
+        );
+        await expectLater(_readBody(response), throwsA(isA<HttpException>()));
+
+        final retry = await fixture.get(range: 'bytes=0-15');
+        expect(retry.statusCode, HttpStatus.partialContent);
+        expect(await _readBody(retry), fixture.bytes);
       } finally {
         await fixture.close();
       }
@@ -74,7 +204,7 @@ void main() {
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 64,
       expectedBytes: 1000000,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     try {
       final response = await fixture.get(range: 'bytes=48-63');
@@ -95,7 +225,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 1000000,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     try {
       expect(fixture.uri.scheme, 'http');
@@ -121,7 +251,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(128, (index) => index),
       totalBytes: 128,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
       queryBuilder: (file) {
         backend = _SparseRangeBackend(file: file, totalBytes: 128);
         return backend.query;
@@ -154,7 +284,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 64,
-      maxResponseBytes: 64,
+      readChunkBytes: 64,
       fileName: 'sample.webm',
       mimeType: 'video/webm',
     );
@@ -278,7 +408,7 @@ void main() {
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 1000000,
       reportedReadableBytes: 0,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
       queryBuilder: (file) {
         backend = _ControlledRangeBackend(file: file, totalBytes: 1000000);
         return backend.query;
@@ -316,7 +446,7 @@ void main() {
         bytes: List<int>.generate(64, (index) => index),
         totalBytes: 1000000,
         reportedReadableBytes: 0,
-        maxResponseBytes: 16,
+        readChunkBytes: 16,
         queryBuilder: (file) {
           backend = _ControlledRangeBackend(file: file, totalBytes: 1000000);
           return backend.query;
@@ -366,7 +496,7 @@ void main() {
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 1000000,
       reportedReadableBytes: 0,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
       queryBuilder: (file) {
         backend = _ControlledRangeBackend(file: file, totalBytes: 1000000);
         return backend.query;
@@ -432,7 +562,7 @@ void main() {
       bytes: const [],
       totalBytes: 1000000,
       reportedReadableBytes: 0,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     try {
       final response = await fixture.get(range: 'bytes=0-15');
@@ -452,7 +582,7 @@ void main() {
       bytes: const [1, 2, 3, 4],
       totalBytes: 1000000,
       reportedReadableBytes: 16,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     try {
       final response = await fixture.get(range: 'bytes=0-15');
@@ -470,7 +600,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(256 * 1024, (index) => index % 251),
       totalBytes: 1000000,
-      maxResponseBytes: 256 * 1024,
+      readChunkBytes: 256 * 1024,
     );
     final cancelledClient = HttpClient();
     try {
@@ -499,7 +629,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 64,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     final preparation = Completer<bool>();
     try {
@@ -529,7 +659,7 @@ void main() {
     final fixture = await _VideoServerFixture.create(
       bytes: List<int>.generate(64, (index) => index),
       totalBytes: 64,
-      maxResponseBytes: 16,
+      readChunkBytes: 16,
     );
     try {
       fixture.server.holdRequestsUntilPrepared(Future<bool>.value(false));
@@ -573,7 +703,7 @@ final class _VideoServerFixture {
   static Future<_VideoServerFixture> create({
     required List<int> bytes,
     required int totalBytes,
-    required int maxResponseBytes,
+    required int readChunkBytes,
     int? expectedBytes,
     int? reportedReadableBytes,
     String? fileName,
@@ -596,7 +726,7 @@ final class _VideoServerFixture {
       query: queryBuilder?.call(file) ?? backend.query,
       fileName: fileName,
       mimeType: mimeType,
-      maxResponseBytes: maxResponseBytes,
+      readChunkBytes: readChunkBytes,
       rangeWaitTimeout: const Duration(milliseconds: 20),
       rangePollInterval: const Duration(milliseconds: 1),
     );
@@ -617,11 +747,15 @@ final class _VideoServerFixture {
     return getUri(uri, range: range);
   }
 
-  Future<HttpClientResponse> getUri(Uri target, {String? range}) async {
+  Future<HttpClientResponse> getUri(
+    Uri target, {
+    String? range,
+    String method = 'GET',
+  }) async {
     final client = HttpClient();
     _clients.add(client);
     try {
-      final request = await client.getUrl(target);
+      final request = await client.openUrl(method, target);
       if (range != null) {
         request.headers.set(HttpHeaders.rangeHeader, range);
       }
