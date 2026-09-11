@@ -21,6 +21,7 @@ void main() {
       VideoVerticalSwipeAction.volume,
     );
     expect(preferences.completionAction, VideoCompletionAction.prompt);
+    expect(preferences.androidVideoCompatibility, isTrue);
   });
 
   test('video playback preferences persist all custom actions', () async {

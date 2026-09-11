@@ -4,6 +4,7 @@ import '../chat/video_playback_preferences.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../media/video_view_compatibility.dart';
 import '../platform/adaptive_platform.dart';
 import '../theme/app_theme.dart';
 
@@ -69,6 +70,17 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
     await VideoPlaybackPreferences.saveCompletionAction(action);
   }
 
+  Future<void> _setAndroidVideoCompatibility(bool enabled) async {
+    await VideoPlaybackPreferences.saveAndroidVideoCompatibility(enabled);
+    await initializeCompatibleVideoViewType();
+    if (!mounted) return;
+    setState(
+      () => _preferences = _preferences.copyWith(
+        androidVideoCompatibility: enabled,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
@@ -79,6 +91,21 @@ class _VideoPlaybackSettingsViewState extends State<VideoPlaybackSettingsView> {
           ? const Center(child: AppActivityIndicator(size: 24))
           : SettingsListView(
               children: [
+                if (Theme.of(context).platform == TargetPlatform.android)
+                  SettingsCard.rows(
+                    rows: [
+                      SettingsSwitchRow(
+                        key: const ValueKey(
+                          'android-video-compatibility-toggle',
+                        ),
+                        title: AppStringKeys.videoPlaybackAndroidCompatibility,
+                        subtitle:
+                            AppStringKeys.videoPlaybackAndroidCompatibilityHint,
+                        value: _preferences.androidVideoCompatibility,
+                        onChanged: _setAndroidVideoCompatibility,
+                      ),
+                    ],
+                  ),
                 if (!desktop) ...[
                   const SettingsSectionHeader(
                     AppStringKeys.videoPlaybackHorizontalSwipe,

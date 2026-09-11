@@ -3381,6 +3381,8 @@
     <string name="videoPlaybackHorizontalSwipe">좌우 스와이프</string>
     <string name="videoPlaybackLeftVerticalSwipe">왼쪽 세로 스와이프</string>
     <string name="videoPlaybackRightVerticalSwipe">오른쪽 세로 스와이프</string>
+    <string name="videoPlaybackAndroidCompatibility">동영상 호환 모드</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Android 14 이상에서 동영상 화면 깨짐을 방지하는 데 도움이 됩니다. 설정 변경 후 여는 동영상에 적용됩니다.</string>
     <string name="videoPlaybackSettingsTitle">동영상 재생</string>
     <string name="videoPlaybackSwipeAdjustBrightness">밝기 조절</string>
     <string name="videoPlaybackSwipeAdjustProgress">재생 위치 조절</string>

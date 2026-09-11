@@ -2,18 +2,24 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
+import '../chat/video_playback_preferences.dart';
+
 VideoViewType _preferredVideoViewType = VideoViewType.textureView;
 
-/// MediaTek's AVC decoder on the Nothing A142 returns correctly sized frames
-/// through a direct Android view, but corrupts them when its graphic buffers
-/// are imported through Flutter's texture-backed SurfaceProducer. Keep the
-/// workaround exact so other Android devices retain the cheaper texture path.
+/// Avoid the texture-backed SurfaceProducer for Android 14 and newer, where
+/// video frame corruption has been reported beyond the original Nothing A142
+/// workaround. Corrupted frames can arrive without a decoder error, so choose
+/// the direct surface before playback rather than relying on error recovery.
+/// Retain the device workaround on older Android releases as well.
 @visibleForTesting
 bool needsDirectVideoSurface({
+  int? sdkInt,
   required String? manufacturer,
   required String? model,
   required String? hardware,
 }) {
+  if (sdkInt != null && sdkInt >= 34) return true;
+
   final normalizedManufacturer = manufacturer?.trim().toLowerCase();
   final normalizedModel = model?.trim().toLowerCase();
   final normalizedHardware = hardware?.trim().toLowerCase();
@@ -22,7 +28,7 @@ bool needsDirectVideoSurface({
       normalizedHardware == 'mt6886';
 }
 
-/// The video surface selected once during application bootstrap.
+/// The video surface selected at bootstrap and after compatibility changes.
 VideoViewType get preferredCompatibleVideoViewType => _preferredVideoViewType;
 
 @visibleForTesting
@@ -40,10 +46,16 @@ Future<void> initializeCompatibleVideoViewType() async {
     return;
   }
   try {
+    final preferences = await VideoPlaybackPreferences.load();
+    if (!preferences.androidVideoCompatibility) {
+      _preferredVideoViewType = VideoViewType.textureView;
+      return;
+    }
     final info = await const MethodChannel(
       'mithka/app_info',
     ).invokeMapMethod<String, Object?>('info');
     if (needsDirectVideoSurface(
+      sdkInt: info?['sdkInt'] as int?,
       manufacturer: info?['manufacturer'] as String?,
       model: info?['model'] as String?,
       hardware: info?['hardware'] as String?,

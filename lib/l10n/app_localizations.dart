@@ -2875,6 +2875,10 @@ abstract final class AppStringKeys {
       'videoPlaybackLeftVerticalSwipe';
   static const videoPlaybackRightVerticalSwipe =
       'videoPlaybackRightVerticalSwipe';
+  static const videoPlaybackAndroidCompatibility =
+      'videoPlaybackAndroidCompatibility';
+  static const videoPlaybackAndroidCompatibilityHint =
+      'videoPlaybackAndroidCompatibilityHint';
   static const videoPlaybackSettingsTitle = 'videoPlaybackSettingsTitle';
   static const videoPlaybackSwipeAdjustBrightness =
       'videoPlaybackSwipeAdjustBrightness';

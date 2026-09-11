@@ -8,6 +8,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
+import '../media/video_view_compatibility.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'image_edit_view.dart';
@@ -133,7 +134,10 @@ class _MediaSendPreviewViewState extends State<MediaSendPreviewView> {
       text: attachment.startTimestamp.toString(),
     );
     var coverPath = attachment.coverPath;
-    final video = VideoPlayerController.file(File(attachment.path));
+    final video = VideoPlayerController.file(
+      File(attachment.path),
+      viewType: preferredCompatibleVideoViewType,
+    );
     try {
       await video.initialize();
     } catch (_) {
