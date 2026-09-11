@@ -3389,6 +3389,8 @@
     <string name="videoPlaybackHorizontalSwipe">Deslizamiento horizontal</string>
     <string name="videoPlaybackLeftVerticalSwipe">Deslizamiento vertical izquierdo</string>
     <string name="videoPlaybackRightVerticalSwipe">Deslizamiento vertical derecho</string>
+    <string name="videoPlaybackAndroidCompatibility">Modo de compatibilidad de vídeo</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Ayuda a evitar imágenes de vídeo dañadas en Android 14 y versiones posteriores. Se aplica a los vídeos abiertos después de cambiar este ajuste.</string>
     <string name="videoPlaybackSettingsTitle">Reproducción de vídeo</string>
     <string name="videoPlaybackSwipeAdjustBrightness">Ajustar brillo</string>
     <string name="videoPlaybackSwipeAdjustProgress">Ajustar progreso</string>

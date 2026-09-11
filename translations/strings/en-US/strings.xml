@@ -3389,6 +3389,8 @@
     <string name="videoPlaybackHorizontalSwipe">Horizontal swipe</string>
     <string name="videoPlaybackLeftVerticalSwipe">Left-side vertical swipe</string>
     <string name="videoPlaybackRightVerticalSwipe">Right-side vertical swipe</string>
+    <string name="videoPlaybackAndroidCompatibility">Video compatibility mode</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Helps prevent corrupted video on Android 14 and newer. Applies to videos opened after changing this setting.</string>
     <string name="videoPlaybackSettingsTitle">Video playback</string>
     <string name="videoPlaybackSwipeAdjustBrightness">Adjust brightness</string>
     <string name="videoPlaybackSwipeAdjustProgress">Adjust progress</string>

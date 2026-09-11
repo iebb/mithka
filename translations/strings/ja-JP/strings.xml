@@ -3381,6 +3381,8 @@
     <string name="videoPlaybackHorizontalSwipe">左右スワイプ</string>
     <string name="videoPlaybackLeftVerticalSwipe">左側の上下スワイプ</string>
     <string name="videoPlaybackRightVerticalSwipe">右側の上下スワイプ</string>
+    <string name="videoPlaybackAndroidCompatibility">動画の互換モード</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Android 14以降で動画の表示が乱れる問題を軽減します。変更後に開く動画に適用されます。</string>
     <string name="videoPlaybackSettingsTitle">動画再生</string>
     <string name="videoPlaybackSwipeAdjustBrightness">明るさを調整</string>
     <string name="videoPlaybackSwipeAdjustProgress">再生位置を調整</string>

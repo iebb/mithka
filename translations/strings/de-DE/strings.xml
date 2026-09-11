@@ -3389,6 +3389,8 @@
     <string name="videoPlaybackHorizontalSwipe">Horizontales Wischen</string>
     <string name="videoPlaybackLeftVerticalSwipe">Vertikales Wischen links</string>
     <string name="videoPlaybackRightVerticalSwipe">Vertikales Wischen rechts</string>
+    <string name="videoPlaybackAndroidCompatibility">Videokompatibilitätsmodus</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Hilft, Bildfehler unter Android 14 und neuer zu vermeiden. Gilt für Videos, die nach dieser Änderung geöffnet werden.</string>
     <string name="videoPlaybackSettingsTitle">Videowiedergabe</string>
     <string name="videoPlaybackSwipeAdjustBrightness">Helligkeit anpassen</string>
     <string name="videoPlaybackSwipeAdjustProgress">Fortschritt anpassen</string>

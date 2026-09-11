@@ -3381,6 +3381,8 @@
     <string name="videoPlaybackHorizontalSwipe">左右滑動</string>
     <string name="videoPlaybackLeftVerticalSwipe">左側上下滑動</string>
     <string name="videoPlaybackRightVerticalSwipe">右側上下滑動</string>
+    <string name="videoPlaybackAndroidCompatibility">影片相容模式</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">有助於避免 Android 14 及更新版本上的影片畫面損壞。變更後開啟的影片將套用此設定。</string>
     <string name="videoPlaybackSettingsTitle">影片播放</string>
     <string name="videoPlaybackSwipeAdjustBrightness">調整亮度</string>
     <string name="videoPlaybackSwipeAdjustProgress">調整播放進度</string>

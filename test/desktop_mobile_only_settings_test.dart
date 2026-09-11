@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/video_playback_preferences.dart';
+import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/notification_preferences.dart';
 import 'package:mithka/settings/auto_download_media_controller.dart';
@@ -134,6 +136,38 @@ void main() {
       reason: 'a desktop composer has no camera button to save a capture from',
     );
   });
+
+  testWidgets(
+    'Android video compatibility toggle defaults on and persists off',
+    (tester) async {
+      Future<void> openSettings() async {
+        await tester.pumpWidget(
+          _app(
+            const VideoPlaybackSettingsView(),
+            platform: TargetPlatform.android,
+            theme: theme,
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      final toggle = find.byKey(
+        const ValueKey('android-video-compatibility-toggle'),
+      );
+      await openSettings();
+      expect(tester.widget<SettingsSwitchRow>(toggle).value, isTrue);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SettingsSwitchRow>(toggle).value, isFalse);
+      expect(
+        (await VideoPlaybackPreferences.load()).androidVideoCompatibility,
+        isFalse,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await openSettings();
+      expect(tester.widget<SettingsSwitchRow>(toggle).value, isFalse);
+    },
+  );
 
   testWidgets('touch platforms retain mobile download and gesture controls', (
     tester,

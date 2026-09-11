@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../components/ui_components.dart';
 import '../media/looping_media_playback.dart';
+import '../media/video_view_compatibility.dart';
 import '../platform/animated_avatar_preparer.dart';
 
 class AnimatedAvatarCropView extends StatefulWidget {
@@ -57,6 +58,7 @@ class _AnimatedAvatarCropViewState extends State<AnimatedAvatarCropView> {
         final controller = VideoPlayerController.file(
           File(widget.source.path),
           videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
+          viewType: preferredCompatibleVideoViewType,
         );
         await controller.initialize();
         await controller.setLooping(true);

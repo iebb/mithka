@@ -19,6 +19,7 @@ import 'package:video_player/video_player.dart';
 import '../app/performance_metrics.dart';
 import '../l10n/app_localizations.dart';
 import '../media/looping_media_playback.dart';
+import '../media/video_view_compatibility.dart';
 import '../tdlib/animated_avatar_repository.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -448,6 +449,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
       final controller = VideoPlayerController.file(
         File(path),
         videoPlayerOptions: mutedLoopingVideoPlayerOptions(),
+        viewType: preferredCompatibleVideoViewType,
       );
       try {
         await controller.initialize();

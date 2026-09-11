@@ -3389,6 +3389,8 @@
     <string name="videoPlaybackHorizontalSwipe">Balayage horizontal</string>
     <string name="videoPlaybackLeftVerticalSwipe">Balayage vertical à gauche</string>
     <string name="videoPlaybackRightVerticalSwipe">Balayage vertical à droite</string>
+    <string name="videoPlaybackAndroidCompatibility">Mode de compatibilité vidéo</string>
+    <string name="videoPlaybackAndroidCompatibilityHint">Aide à éviter les images vidéo corrompues sur Android 14 et versions ultérieures. S’applique aux vidéos ouvertes après la modification de ce réglage.</string>
     <string name="videoPlaybackSettingsTitle">Lecture vidéo</string>
     <string name="videoPlaybackSwipeAdjustBrightness">Régler la luminosité</string>
     <string name="videoPlaybackSwipeAdjustProgress">Régler la progression</string>

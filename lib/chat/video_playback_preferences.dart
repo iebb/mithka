@@ -22,7 +22,11 @@ class VideoPlaybackPreferences {
     this.leftVerticalSwipeAction = VideoVerticalSwipeAction.brightness,
     this.rightVerticalSwipeAction = VideoVerticalSwipeAction.volume,
     this.completionAction = VideoCompletionAction.prompt,
+    this.androidVideoCompatibility = true,
   });
+
+  static const androidVideoCompatibilityPreferenceKey =
+      'videoPlayback.androidVideoCompatibility';
 
   static const horizontalSwipePreferenceKey =
       'videoPlayback.horizontalSwipeAction';
@@ -45,12 +49,14 @@ class VideoPlaybackPreferences {
   final VideoVerticalSwipeAction leftVerticalSwipeAction;
   final VideoVerticalSwipeAction rightVerticalSwipeAction;
   final VideoCompletionAction completionAction;
+  final bool androidVideoCompatibility;
 
   VideoPlaybackPreferences copyWith({
     VideoHorizontalSwipeAction? horizontalSwipeAction,
     VideoVerticalSwipeAction? leftVerticalSwipeAction,
     VideoVerticalSwipeAction? rightVerticalSwipeAction,
     VideoCompletionAction? completionAction,
+    bool? androidVideoCompatibility,
   }) {
     return VideoPlaybackPreferences(
       horizontalSwipeAction:
@@ -60,6 +66,8 @@ class VideoPlaybackPreferences {
       rightVerticalSwipeAction:
           rightVerticalSwipeAction ?? this.rightVerticalSwipeAction,
       completionAction: completionAction ?? this.completionAction,
+      androidVideoCompatibility:
+          androidVideoCompatibility ?? this.androidVideoCompatibility,
     );
   }
 
@@ -70,6 +78,8 @@ class VideoPlaybackPreferences {
 
   static VideoPlaybackPreferences fromPreferences(SharedPreferences prefs) {
     return VideoPlaybackPreferences(
+      androidVideoCompatibility:
+          prefs.getBool(androidVideoCompatibilityPreferenceKey) ?? true,
       horizontalSwipeAction: _enumByName(
         VideoHorizontalSwipeAction.values,
         prefs.getString(horizontalSwipePreferenceKey),
@@ -118,6 +128,13 @@ class VideoPlaybackPreferences {
 
   static Future<void> saveCompletionAction(VideoCompletionAction action) =>
       _save(completionPreferenceKey, action);
+
+  static Future<void> saveAndroidVideoCompatibility(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (await prefs.setBool(androidVideoCompatibilityPreferenceKey, enabled)) {
+      _changes.emit();
+    }
+  }
 
   static Future<void> _save(String key, Enum value) async {
     final prefs = await SharedPreferences.getInstance();

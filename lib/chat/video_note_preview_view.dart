@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
+import '../media/video_view_compatibility.dart';
 import '../theme/app_theme.dart';
 import 'message_send_options.dart';
 import 'video_trim_service.dart';
@@ -52,19 +53,23 @@ class _VideoNotePreviewViewState extends State<VideoNotePreviewView> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.path))
-      ..setLooping(true)
-      ..initialize().then((_) {
-        if (!mounted) return;
-        setState(() {
-          _ready = true;
-          _trimRange = RangeValues(
-            0,
-            _controller.value.duration.inMilliseconds.toDouble(),
-          );
-        });
-        _controller.play();
-      });
+    _controller =
+        VideoPlayerController.file(
+            File(widget.path),
+            viewType: preferredCompatibleVideoViewType,
+          )
+          ..setLooping(true)
+          ..initialize().then((_) {
+            if (!mounted) return;
+            setState(() {
+              _ready = true;
+              _trimRange = RangeValues(
+                0,
+                _controller.value.duration.inMilliseconds.toDouble(),
+              );
+            });
+            _controller.play();
+          });
     _controller.addListener(_refresh);
   }
 

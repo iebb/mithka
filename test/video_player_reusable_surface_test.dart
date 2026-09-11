@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/video_playback_queue.dart';
 import 'package:mithka/chat/video_player_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/media/video_view_compatibility.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // Used only to install a deterministic fake for the public video_player API.
@@ -30,6 +31,16 @@ void main() {
           name: 'Android fullscreen',
           platform: TargetPlatform.android,
           presentation: VideoPlayerPresentation.fullscreen,
+        ),
+        (
+          name: 'Android embedded',
+          platform: TargetPlatform.android,
+          presentation: VideoPlayerPresentation.embedded,
+        ),
+        (
+          name: 'Android picture in picture',
+          platform: TargetPlatform.android,
+          presentation: VideoPlayerPresentation.pictureInPicture,
         ),
         (
           name: 'iOS fullscreen',
@@ -74,7 +85,13 @@ void main() {
       VideoPlayerPlatform.instance = fakePlatform;
       debugDefaultTargetPlatformOverride = surface.platform;
       try {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('mithka/app_info'),
+              (_) async => <String, Object?>{'sdkInt': 35},
+            );
         SharedPreferences.setMockInitialValues(const {});
+        await initializeCompatibleVideoViewType();
         final sourcePath = File('pubspec.yaml').absolute.path;
         await tester.pumpWidget(
           MaterialApp(
@@ -127,6 +144,12 @@ void main() {
         );
         expect(player.showPictureInPictureButton, isFalse);
         expect(player.showFullscreenButton, isFalse);
+        expect(
+          fakePlatform.creationOptions.single.viewType,
+          surface.platform == TargetPlatform.android
+              ? VideoViewType.platformView
+              : VideoViewType.textureView,
+        );
         expect(player.bottomTrailingBuilder, isNotNull);
         expect(
           player.isFullscreen,
@@ -141,6 +164,12 @@ void main() {
         await tester.pump();
         VideoPlayerPlatform.instance = previousPlatform;
         debugDefaultTargetPlatformOverride = null;
+        resetCompatibleVideoViewType();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('mithka/app_info'),
+              null,
+            );
         tester.view.resetDevicePixelRatio();
         tester.view.resetPhysicalSize();
       }
@@ -400,6 +429,7 @@ TdVideoStreamQuery _completedVideoQuery(String path) => (request) async {
 
 class _ReusableSurfaceVideoPlatform extends VideoPlayerPlatform {
   final Map<int, StreamController<VideoEvent>> _events = {};
+  final creationOptions = <VideoCreationOptions>[];
   var _nextPlayerId = 1;
   var initializedEvents = 0;
   var pauseCalls = 0;
@@ -409,6 +439,7 @@ class _ReusableSurfaceVideoPlatform extends VideoPlayerPlatform {
 
   @override
   Future<int?> createWithOptions(VideoCreationOptions options) async {
+    creationOptions.add(options);
     final playerId = _nextPlayerId++;
     // Ownership transfers to the fake platform and dispose() closes it.
     // ignore: close_sinks

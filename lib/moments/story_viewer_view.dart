@@ -31,6 +31,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../media/video_view_compatibility.dart';
 import '../platform/adaptive_platform.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -387,7 +388,10 @@ class _StoryViewerViewState extends State<StoryViewerView>
       }
       return;
     }
-    final c = VideoPlayerController.file(File(path));
+    final c = VideoPlayerController.file(
+      File(path),
+      viewType: preferredCompatibleVideoViewType,
+    );
     try {
       await c.initialize();
       await c.setLooping(false);
