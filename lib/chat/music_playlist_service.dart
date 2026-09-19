@@ -138,32 +138,67 @@ class MusicPlaylistService {
     final result = <ChatMessage>[];
     var fromMessageId = 0;
     for (var page = 0; page < 10; page++) {
-      final response = await _query({
-        '@type': 'searchChatMessages',
-        'chat_id': chatId,
-        'query': '',
-        'sender_id': null,
-        'from_message_id': fromMessageId,
-        'offset': 0,
-        'limit': 100,
-        'filter': {'@type': 'searchMessagesFilterAudio'},
-      });
-      final messages = (response.objects('messages') ?? const [])
-          .map(TDParse.message)
-          .whereType<ChatMessage>()
-          .toList();
+      // Page forward with `offset: 1` so the boundary message (the oldest
+      // message of the previous page) is skipped instead of refetched.
+      // Subtracting 1 from the message id is not an option here: TDLib
+      // message ids encode the type in the low 20 bits, so oldestId - 1 is
+      // rejected by MessageId::is_valid before the query runs.
+      final messages = await _fetchAudioPage(
+        chatId,
+        fromMessageId: fromMessageId,
+        offset: page == 0 ? 0 : 1,
+      );
       if (messages.isEmpty) break;
       result.addAll(messages);
       final oldestId = messages
           .map((message) => message.id)
           .reduce((a, b) => a < b ? a : b);
-      if (messages.length < 100 || oldestId == fromMessageId) break;
-      fromMessageId = oldestId;
+      // Full page means there may be more history older than `oldestId`.
+      if (messages.length >= 100 && oldestId != fromMessageId) {
+        fromMessageId = oldestId;
+        continue;
+      }
+      // Short page: history exhausted unless the offset skipped the boundary
+      // message and the page came back exactly one short — refetch once with
+      // the boundary included; the seen-set dedupe absorbs the repeat.
+      if (page > 0 && messages.length == 99 && oldestId != fromMessageId) {
+        final refill = await _fetchAudioPage(chatId, fromMessageId: oldestId);
+        if (refill.isEmpty) break;
+        result.addAll(refill);
+        final refillOldest = refill
+            .map((message) => message.id)
+            .reduce((a, b) => a < b ? a : b);
+        if (refill.length < 100 || refillOldest == oldestId) break;
+        fromMessageId = refillOldest;
+        continue;
+      }
+      break;
     }
     final seen = <int>{};
     final unique = result.where((message) => seen.add(message.id)).toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     return unique;
+  }
+
+  Future<List<ChatMessage>> _fetchAudioPage(
+    int chatId, {
+    required int fromMessageId,
+    int offset = 0,
+  }) async {
+    final response = await _query({
+      '@type': 'searchChatMessages',
+      'chat_id': chatId,
+      'query': '',
+      'sender_id': null,
+      'from_message_id': fromMessageId,
+      'offset': offset,
+      'limit': 100,
+      'filter': {'@type': 'searchMessagesFilterAudio'},
+    });
+    return (response.objects('messages') ?? const [])
+        .map(TDParse.message)
+        .whereType<ChatMessage>()
+        .toList();
   }
 
   Future<Map<String, dynamic>?> _findFolder() async {

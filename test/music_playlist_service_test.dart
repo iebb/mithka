@@ -153,4 +153,94 @@ void main() {
     expect(send['send_copy'], isTrue);
     expect(requests.last['message_ids'], [12]);
   });
+
+  test(
+    'loadTracks pages with offset 1 from the previous oldest message id',
+    () async {
+      // TDLib server message ids are the sequential id shifted left by 20
+      // bits (see td/telegram/MessageId.cpp). Using real encoded ids guards
+      // the pagination against cursor arithmetic that TDLib would reject.
+      const shift = 1 << 20;
+      int encodeId(int sequentialId) => sequentialId * shift;
+
+      final requests = <Map<String, dynamic>>[];
+      final page1Ids = List.generate(101, (i) => encodeId(201 - i));
+      // Second page comes back one short of the limit because the offset
+      // skips the already-seen boundary message; the service must refetch
+      // with the boundary included to learn whether more history exists.
+      final page2Ids = List.generate(99, (i) => encodeId(100 - i));
+      final service = MusicPlaylistService(
+        query: (request) async {
+          requests.add(request);
+          expect(request['@type'], 'searchChatMessages');
+          final from = request['from_message_id'] as int;
+          final offset = request['offset'] as int;
+          final boundary = page1Ids.last;
+          final ids = switch ((from, offset)) {
+            (0, 0) => page1Ids,
+            (final f, 1) when f == boundary => page2Ids,
+            (final f, 0) when f == page2Ids.last => <int>[],
+            _ => <int>[],
+          };
+          return {
+            '@type': 'foundChatMessages',
+            'messages': [
+              for (final (index, id) in ids.indexed)
+                _audioMessage(chatId: 903, messageId: id, fileId: 500 + index),
+            ],
+          };
+        },
+      );
+
+      final tracks = await service.loadTracks(903);
+
+      expect(requests, hasLength(3));
+      expect(requests[1]['from_message_id'], page1Ids.last);
+      expect(requests[1]['offset'], 1);
+      expect(requests[2]['from_message_id'], page2Ids.last);
+      expect(requests[2]['offset'], 0);
+      final ids = tracks.map((track) => track.id).toList();
+      expect(ids, [...page1Ids, ...page2Ids]..sort());
+      expect(ids.toSet(), hasLength(ids.length));
+    },
+  );
+
+  test(
+    'loadTracks stops when the next page would only repeat the boundary',
+    () async {
+      const shift = 1 << 20;
+      int encodeId(int sequentialId) => sequentialId * shift;
+
+      final page1Ids = List.generate(100, (i) => encodeId(150 - i));
+      final requests = <Map<String, dynamic>>[];
+      final service = MusicPlaylistService(
+        query: (request) async {
+          requests.add(request);
+          final from = request['from_message_id'] as int;
+          final offset = request['offset'] as int;
+          final boundary = page1Ids.last;
+          final ids = switch ((from, offset)) {
+            (0, 0) => page1Ids,
+            // A chat with exactly 100 tracks: the follow-up page is empty.
+            (final f, 1) when f == boundary => <int>[],
+            _ => throw StateError(
+              'Unexpected cursor from=$from offset=$offset',
+            ),
+          };
+          return {
+            '@type': 'foundChatMessages',
+            'messages': [
+              for (final (index, id) in ids.indexed)
+                _audioMessage(chatId: 904, messageId: id, fileId: 700 + index),
+            ],
+          };
+        },
+      );
+
+      final tracks = await service.loadTracks(904);
+
+      expect(requests, hasLength(2));
+      expect(tracks.map((track) => track.id).toList(), page1Ids..sort());
+    },
+  );
 }
