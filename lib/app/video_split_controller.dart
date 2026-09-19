@@ -69,6 +69,7 @@ class VideoSplitController extends ChangeNotifier {
   static final VideoSplitController instance = VideoSplitController._();
 
   VideoSplitSession? _session;
+  Object? _owner;
   VideoSplitSession? get session => _session;
   bool get isOpen => _session != null;
 
@@ -81,5 +82,22 @@ class VideoSplitController extends ChangeNotifier {
     if (_session == null) return;
     _session = null;
     notifyListeners();
+  }
+
+  /// Claims ownership of the singleton for [owner] (typically the widget
+  /// hosting the split pane). The current session, if any, keeps playing.
+  void attach(Object owner) {
+    _owner = owner;
+  }
+
+  /// Tears the singleton down when its owner goes away: the session is
+  /// closed so listeners remove the pane and the queue can be released by
+  /// the owner. Unlike [dispose], which would permanently break the
+  /// process-wide instance, the controller stays usable afterwards.
+  /// Detach calls from non-owners are ignored.
+  void detach(Object owner) {
+    if (!identical(_owner, owner)) return;
+    _owner = null;
+    close();
   }
 }

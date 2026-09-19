@@ -1231,9 +1231,34 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     await _sub?.cancel();
     _sub = null;
     _ready = false;
+    _stoppedAt = DateTime.now();
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       _notificationTapChannel.setMethodCallHandler(null);
     }
+  }
+
+  Object? _owner;
+  DateTime? _stoppedAt;
+
+  /// Set when [stop] last ran; used by tests to prove detach reaches stop().
+  DateTime? get stoppedAt => _stoppedAt;
+
+  /// Claims ownership of the shared controller (typically the widget that
+  /// starts the notification pipeline). The current owner, if any, keeps its
+  /// running pipeline until it detaches or is replaced.
+  void attach(Object owner) {
+    _owner = owner;
+  }
+
+  /// Tears the notification pipeline down when its owner goes away. Unlike
+  /// [dispose], which would permanently break the process-wide singleton and
+  /// leak in-flight work, detach stops listening and fences nothing beyond
+  /// what [stop] already fences — the pipeline can be started again by the
+  /// next owner. Detach calls from non-owners are ignored.
+  Future<void> detach(Object owner) async {
+    if (!identical(_owner, owner)) return;
+    _owner = null;
+    await stop();
   }
 }
 

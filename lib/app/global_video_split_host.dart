@@ -18,6 +18,19 @@ class GlobalVideoSplitHost extends StatefulWidget {
 class _GlobalVideoSplitHostState extends State<GlobalVideoSplitHost> {
   final VideoSplitController _videoSplit = VideoSplitController.instance;
   double _videoSplitFraction = 0.42;
+
+  @override
+  void initState() {
+    super.initState();
+    _videoSplit.attach(this);
+  }
+
+  @override
+  void dispose() {
+    _videoSplit.detach(this);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(

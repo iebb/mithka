@@ -501,6 +501,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     unawaited(_appIcons.initialize());
     unawaited(_folderTags.refresh());
     unawaited(_accounts.recoverPendingAddOnStartup(_auth));
+    NotificationController.shared.attach(this);
     NotificationController.shared.start(widget.prefs);
     // An iOS registerForRemoteNotifications round trip that nothing observes
     // during launch.
@@ -522,6 +523,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     DesktopUtilityWindowService.instance.detachMainProxy();
     unawaited(HandoffService.shared.stop());
     _calls.dispose();
+    unawaited(NotificationController.shared.detach(this));
     super.dispose();
   }
 
