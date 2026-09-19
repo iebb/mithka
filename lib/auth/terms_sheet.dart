@@ -8,6 +8,10 @@ import '../theme/app_theme.dart';
 
 const telegramTermsUrl = 'https://telegram.org/tos';
 
+/// Key of the accept button so tests can find the tappable surface without
+/// relying on layout details of the sheet.
+const termsAcceptButtonKey = ValueKey('terms_accept_button');
+
 Future<void> showTelegramTermsSheet(
   BuildContext context, {
   Future<void> Function()? onAccept,
@@ -177,7 +181,8 @@ class _TermsSheet extends StatelessWidget {
 }
 
 class _TermsAcceptButton extends StatefulWidget {
-  const _TermsAcceptButton({required this.onPressed});
+  const _TermsAcceptButton({required this.onPressed})
+    : super(key: termsAcceptButtonKey);
 
   final Future<void> Function() onPressed;
 
@@ -191,8 +196,13 @@ class _TermsAcceptButtonState extends State<_TermsAcceptButton> {
   Future<void> _submit() async {
     if (_working) return;
     setState(() => _working = true);
-    await widget.onPressed();
-    if (mounted) setState(() => _working = false);
+    try {
+      await widget.onPressed();
+    } catch (_) {
+      // A failed accept (e.g. network) must not leave the button spinning.
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
   }
 
   @override

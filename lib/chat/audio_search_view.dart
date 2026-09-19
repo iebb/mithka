@@ -67,6 +67,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   bool _loading = false;
   bool _pickingLocal = false;
   int? _sendingMessageId;
+  int _searchRun = 0;
   List<_AudioResult> _results = [];
 
   @override
@@ -97,6 +98,8 @@ class _AudioSearchViewState extends State<AudioSearchView> {
     _debounce?.cancel();
     final q = value.trim();
     if (q.isEmpty) {
+      // Invalidate any in-flight search so its completion cannot touch state.
+      _searchRun++;
       setState(() {
         _loading = false;
         _results = [];
@@ -107,6 +110,10 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   }
 
   Future<void> _search(String q) async {
+    if (!mounted || _query.trim() != q.trim()) return;
+    // Only the latest search run may touch results/loading; completions from
+    // superseded runs are dropped entirely.
+    final run = ++_searchRun;
     setState(() => _loading = true);
     try {
       final res = await _client.query({
@@ -131,16 +138,16 @@ class _AudioSearchViewState extends State<AudioSearchView> {
         }
         results.add(_AudioResult(sourceChatId: sourceChatId, message: message));
       }
+      if (!mounted || run != _searchRun) return;
       for (final r in results.take(12)) {
         unawaited(_resolveSource(r.sourceChatId));
       }
-      if (!mounted || q != _query.trim()) return;
       setState(() {
         _results = results;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || run != _searchRun) return;
       setState(() => _loading = false);
       showToast(context, AppStrings.t(AppStringKeys.audioSearchFailed));
     }
