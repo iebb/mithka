@@ -121,6 +121,9 @@ class DesktopUtilityWindowService {
 
   Future<void> notifySettingsChanged(DesktopUtilityWindowArguments arguments) =>
       implementation.notifyDesktopUtilitySettingsChanged(arguments);
+
+  Future<void> setHotkeyRecording(bool recording) =>
+      implementation.setDesktopUtilityHotkeyRecording(recording);
 }
 
 /// Secondary-engine shell for production utility, chat-info, and profile

@@ -43,6 +43,22 @@ void main() {
   });
 
   test('desktop story shortcuts preserve reply-field editing', () {
+    for (final key in [
+      LogicalKeyboardKey.keyM,
+      LogicalKeyboardKey.space,
+      LogicalKeyboardKey.arrowLeft,
+      LogicalKeyboardKey.arrowRight,
+      LogicalKeyboardKey.escape,
+    ]) {
+      expect(
+        storyViewerDesktopCommandForKey(
+          key,
+          replyHasFocus: false,
+          hasModifiers: true,
+        ),
+        isNull,
+      );
+    }
     expect(
       storyViewerDesktopCommandForKey(
         LogicalKeyboardKey.escape,
@@ -199,6 +215,18 @@ void main() {
       'StoryViewerDesktopKeyboard',
     );
 
+    for (final modifier in [
+      LogicalKeyboardKey.metaLeft,
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.altLeft,
+      LogicalKeyboardKey.shiftLeft,
+    ]) {
+      await tester.sendKeyDownEvent(modifier);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.sendKeyUpEvent(modifier);
+      await tester.pump();
+      expect(find.byType(StoryViewerView), findsOneWidget);
+    }
     final handled = await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     expect(handled, isTrue);
     await tester.pump();

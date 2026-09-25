@@ -38,6 +38,7 @@ import '../media/app_asset_picker.dart';
 import '../media/camera_capture.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
+import '../platform/keyboard_modifiers.dart';
 import '../settings/ai_settings_controller.dart';
 import '../settings/ai_settings_view.dart';
 import '../settings/apple_pcc_api.dart';
@@ -385,8 +386,10 @@ bool isComposerImeEnterFallback(
   TextEditingValue newValue, {
   required bool shiftPressed,
   required bool controlPressed,
+  bool altPressed = false,
+  bool metaPressed = false,
 }) {
-  if (shiftPressed || controlPressed) return false;
+  if (shiftPressed || controlPressed || altPressed || metaPressed) return false;
   if (!oldValue.selection.isValid || !oldValue.selection.isCollapsed) {
     return false;
   }
@@ -419,6 +422,8 @@ class _ComposerEnterToSendFormatter extends TextInputFormatter {
       newValue,
       shiftPressed: keyboard.isShiftPressed,
       controlPressed: keyboard.isControlPressed,
+      altPressed: keyboard.isAltPressed,
+      metaPressed: keyboard.isMetaPressed,
     )) {
       return newValue;
     }
@@ -659,7 +664,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         .register(
           DesktopHotkeyAction.screenshot,
           _captureDesktopScreenshot,
-          isEnabled: _isDesktopComposerVisible,
+          isEnabled: () =>
+              _isDesktopComposerVisible() &&
+              vm.canSendMessages &&
+              vm.editingMessage == null,
         );
     _wasEditingMessage = vm.editingMessage != null;
     _syncedEditingMessageId = vm.editingMessage?.id;
@@ -1916,12 +1924,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
     if (!Platform.isMacOS || _panel != _Panel.voice) {
       return KeyEventResult.ignored;
     }
+    if (event is KeyRepeatEvent) {
+      return event.logicalKey == LogicalKeyboardKey.space && _desktopSpaceHeld
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    if (event is! KeyDownEvent && event is! KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
     final isKeyDown = event is KeyDownEvent;
     final action = desktopVoiceMessageAction(
       isSpace: event.logicalKey == LogicalKeyboardKey.space,
       isEscape: event.logicalKey == LogicalKeyboardKey.escape,
       isKeyDown: isKeyDown,
       isRecording: _recording,
+      spaceHeld: _desktopSpaceHeld,
+      hasModifiers: keyboardModifiersPressed(),
     );
     switch (action) {
       case DesktopVoiceMessageAction.start:
@@ -2885,6 +2903,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final c = context.colors;
     final aiSettings = context.watch<AiSettingsController?>();
     final desktopComposer = _usesNativeDesktopComposer(context);
+    if (desktopComposer) {
+      // Hidden tabs and covered routes must release their native screenshot key.
+      TickerMode.valuesOf(context);
+      ModalRoute.isCurrentOf(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _desktopScreenshotHotkeyRegistration?.refresh();
+      });
+    }
     final editingMessage = vm.editingMessage;
     final replyKeyboard = _activeReplyKeyboard();
     final replyKeyboardPanelVisible =

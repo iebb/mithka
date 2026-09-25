@@ -15,12 +15,14 @@ import 'package:provider/provider.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../auth/login_view.dart';
+import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
 import '../chats/search_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
+import '../profile/emoji_status_picker.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
@@ -75,6 +77,7 @@ class DesktopPrimaryWindowFrame extends StatefulWidget {
     this.accountPhone,
     this.showAccountPhone,
     this.onOpenSearchAll,
+    this.profileWindowOpener,
   });
 
   final bool accountReady;
@@ -84,6 +87,8 @@ class DesktopPrimaryWindowFrame extends StatefulWidget {
   final String? accountPhone;
   final bool? showAccountPhone;
   final FutureOr<void> Function(String query)? onOpenSearchAll;
+  final Future<bool> Function(DesktopUtilityWindowArguments)?
+  profileWindowOpener;
 
   @override
   State<DesktopPrimaryWindowFrame> createState() =>
@@ -102,6 +107,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
   Timer? _profileDismissTimer;
   DesktopHotkeyRegistration? _focusSearchRegistration;
   bool _profileVisible = false;
+  bool _statusPickerVisible = false;
 
   @override
   void initState() {
@@ -185,8 +191,47 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
 
   void _showProfile() {
     _profileDismissTimer?.cancel();
-    if (!widget.accountReady || _profileVisible) return;
+    if (!widget.accountReady || _profileVisible || _statusPickerVisible) return;
     setState(() => _profileVisible = true);
+  }
+
+  Future<void> _showStatusPicker(int currentStatusId) async {
+    if (!widget.accountReady || _statusPickerVisible) return;
+    // This frame is above the app Navigator. Its overlay supplies a context
+    // that can present the picker without replacing the current workspace.
+    final navigator =
+        appNavigatorKey.currentState ?? Navigator.maybeOf(context);
+    final pickerContext = navigator?.overlay?.context;
+    if (pickerContext == null) return;
+    _hideProfile();
+    _searchController.dismiss();
+    setState(() => _statusPickerVisible = true);
+    try {
+      await showEmojiStatusPicker(
+        pickerContext,
+        currentStatusId: currentStatusId,
+      );
+    } finally {
+      if (mounted) setState(() => _statusPickerVisible = false);
+    }
+  }
+
+  Future<void> _openEditProfile() async {
+    _hideProfile();
+    final accounts = context.read<AccountStore?>();
+    final userId = accounts?.activeUserId;
+    if (accounts == null || userId == null || accounts.activeIsBotApi) return;
+    await (widget.profileWindowOpener ??
+        DesktopUtilityWindowService.instance.open)(
+      DesktopUtilityWindowArguments(
+        kind: DesktopUtilityWindowKind.editProfile,
+        accountSlot: accounts.activeSlot,
+        accountUserId: userId,
+        title: AppStringKeys.editProfileTitle.l10n(context),
+        localeTag: Localizations.localeOf(context).toLanguageTag(),
+        dark: Theme.of(context).brightness == Brightness.dark,
+      ),
+    );
   }
 
   void _scheduleProfileDismiss() {
@@ -220,6 +265,12 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
         widget.showAccountPhone ??
         !context.watch<ThemeController>().hideSidebarPhone;
     final avatarPath = widget.accountAvatarPath ?? activeAccount?.avatarPath;
+    final canManageProfile =
+        widget.accountReady && activeAccount?.isBotApi != true;
+    final statusId = activeAccount?.emojiStatusId ?? 0;
+    final statusMode = context
+        .watch<ThemeController?>()
+        ?.chatListStatusEmojiMode;
     final flutterWindowControls = usesFlutterDesktopWindowControls;
     return ColoredBox(
       color: context.colors.background,
@@ -245,60 +296,108 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                 onDragAreaDoubleTap: flutterWindowControls
                     ? () => unawaited(togglePrimaryDesktopWindowMaximized())
                     : null,
-                appIdentity: TapRegion(
-                  groupId: _profileTapGroup,
-                  onTapOutside: (_) => _hideProfile(),
-                  child: CompositedTransformTarget(
-                    link: _profileLink,
-                    child: MouseRegion(
-                      onEnter: widget.accountReady
-                          ? (_) => _showProfile()
-                          : null,
-                      onExit: widget.accountReady
-                          ? (_) => _scheduleProfileDismiss()
-                          : null,
-                      child: AppInteractiveSurface(
-                        key: const ValueKey('macos-title-bar-account'),
-                        semanticLabel: label,
-                        enabled: widget.accountReady,
-                        onTap: widget.accountReady ? _showProfile : null,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ClipOval(
-                                key: const ValueKey(
-                                  'macos-title-bar-account-avatar',
+                appIdentity: LayoutBuilder(
+                  builder: (context, constraints) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: TapRegion(
+                          groupId: _profileTapGroup,
+                          onTapOutside: (_) => _hideProfile(),
+                          child: CompositedTransformTarget(
+                            link: _profileLink,
+                            child: MouseRegion(
+                              onEnter: widget.accountReady
+                                  ? (_) => _showProfile()
+                                  : null,
+                              onExit: widget.accountReady
+                                  ? (_) => _scheduleProfileDismiss()
+                                  : null,
+                              child: AppInteractiveSurface(
+                                key: const ValueKey('macos-title-bar-account'),
+                                semanticLabel: label,
+                                enabled: widget.accountReady,
+                                onTap: widget.accountReady
+                                    ? _showProfile
+                                    : null,
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
                                 ),
-                                child: _MacosTitleBarAvatar(
-                                  path: avatarPath,
-                                  name: label,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 220,
-                                ),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: context.colors.textPrimary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    decoration: TextDecoration.none,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ClipOval(
+                                        key: const ValueKey(
+                                          'macos-title-bar-account-avatar',
+                                        ),
+                                        child: _MacosTitleBarAvatar(
+                                          path: avatarPath,
+                                          name: label,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 220,
+                                          ),
+                                          child: Text(
+                                            label,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: context.colors.textPrimary,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              decoration: TextDecoration.none,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      if (canManageProfile && constraints.maxWidth >= 80) ...[
+                        const SizedBox(width: 2),
+                        AppInteractiveSurface(
+                          key: const ValueKey('desktop-title-bar-status'),
+                          semanticLabel: AppStringKeys.emojiStatusSetTitle.l10n(
+                            context,
+                          ),
+                          enabled: !_statusPickerVisible,
+                          onTap: () => unawaited(_showStatusPicker(statusId)),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Center(
+                              child:
+                                  statusId != 0 && statusMode?.visible != false
+                                  ? StatusEmojiView(
+                                      id: statusId,
+                                      size: 18,
+                                      color: context.colors.textPrimary,
+                                      animate: statusMode?.animate ?? true,
+                                    )
+                                  : AppIcon(
+                                      HeroAppIcons.faceSmile,
+                                      size: 18,
+                                      color: context.colors.textSecondary,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -327,6 +426,9 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                     name: label,
                     phone: showPhone ? phone : null,
                     avatarPath: avatarPath,
+                    onEdit: canManageProfile
+                        ? () => unawaited(_openEditProfile())
+                        : null,
                   ),
                 ),
               ),
@@ -516,81 +618,118 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
     required this.name,
     required this.phone,
     required this.avatarPath,
+    required this.onEdit,
   });
 
   final String name;
   final String? phone;
   final String? avatarPath;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final phone = this.phone;
-    return Material(
-      type: MaterialType.transparency,
-      child: Container(
-        key: const ValueKey('desktop-title-bar-profile-popup'),
-        width: 264,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(color: c.divider),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 22,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            ClipOval(
-              child: _MacosTitleBarAvatar(
-                path: avatarPath,
-                name: name,
-                size: 52,
+    return Container(
+      key: const ValueKey('desktop-title-bar-profile-popup'),
+      width: 264,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: c.divider),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              ClipOval(
+                child: _MacosTitleBarAvatar(
+                  path: avatarPath,
+                  name: name,
+                  size: 52,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    key: const ValueKey('desktop-title-bar-profile-name'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                  if (phone != null && phone.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      phone,
-                      key: const ValueKey('desktop-title-bar-profile-phone'),
+                      name,
+                      key: const ValueKey('desktop-title-bar-profile-name'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: c.textSecondary,
+                        color: c.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    if (phone != null && phone.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        phone,
+                        key: const ValueKey('desktop-title-bar-profile-phone'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: c.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (onEdit != null) ...[
+            const SizedBox(height: 12),
+            AppInteractiveSurface(
+              key: const ValueKey('desktop-title-bar-profile-edit'),
+              semanticLabel: AppStringKeys.editProfileTitle.l10n(context),
+              onTap: onEdit,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              child: Container(
+                height: 32,
+                decoration: BoxDecoration(
+                  color: c.searchFill,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AppIcon(HeroAppIcons.pen, size: 16, color: c.linkBlue),
+                    const SizedBox(width: 6),
+                    Text(
+                      AppStringKeys.editProfileTitle.l10n(context),
+                      style: TextStyle(
+                        color: c.linkBlue,
                         fontSize: 13,
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w500,
                         decoration: TextDecoration.none,
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }

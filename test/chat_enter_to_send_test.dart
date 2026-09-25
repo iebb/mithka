@@ -80,6 +80,20 @@ void main() {
       selection: TextSelection.collapsed(offset: 6),
     );
 
+    for (final altPressed in [true, false]) {
+      expect(
+        isComposerImeEnterFallback(
+          oldValue,
+          terminalNewline,
+          shiftPressed: false,
+          controlPressed: false,
+          altPressed: altPressed,
+          metaPressed: !altPressed,
+        ),
+        isFalse,
+      );
+    }
+
     expect(
       isComposerImeEnterFallback(
         oldValue,

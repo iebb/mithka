@@ -142,10 +142,13 @@ class _SettingsViewState extends State<SettingsView> {
 
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
-            _searchFocusNode.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-            _searchFocusNode.requestFocus,
+        if (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.iOS)
+          const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+              _searchFocusNode.requestFocus
+        else
+          const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+              _searchFocusNode.requestFocus,
       },
       child: LayoutBuilder(
         builder: (context, constraints) {

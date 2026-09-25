@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:provider/provider.dart';
 
@@ -24,6 +25,10 @@ abstract class DesktopSystemHotkeyBackend {
 }
 
 class PluginDesktopSystemHotkeyBackend implements DesktopSystemHotkeyBackend {
+  PluginDesktopSystemHotkeyBackend({HotKeyManager? manager})
+    : _manager = manager ?? hotKeyManager;
+
+  final HotKeyManager _manager;
   final Map<DesktopHotkeyAction, HotKey> _registered = {};
   bool _disposed = false;
 
@@ -46,14 +51,20 @@ class PluginDesktopSystemHotkeyBackend implements DesktopSystemHotkeyBackend {
         ],
       );
       try {
-        await hotKeyManager.register(
+        await _manager.register(
           hotKey,
-          keyDownHandler: (_) => onPressed(entry.key),
+          keyDownHandler: (_) {
+            if (!_disposed) onPressed(entry.key);
+          },
         );
+        if (_disposed) {
+          await _manager.unregister(hotKey);
+          return;
+        }
         _registered[entry.key] = hotKey;
       } on Object {
         // Reserved or unavailable OS shortcuts stay functional while Mithka is
-        // focused through CallbackShortcuts below.
+        // focused through the shortcut handler below.
       }
     }
   }
@@ -63,7 +74,7 @@ class PluginDesktopSystemHotkeyBackend implements DesktopSystemHotkeyBackend {
     _registered.clear();
     for (final hotKey in current) {
       try {
-        await hotKeyManager.unregister(hotKey);
+        await _manager.unregister(hotKey);
       } on Object {
         // A disappearing native window can invalidate a registration before
         // Dart receives its disposal callback.
@@ -78,11 +89,11 @@ class PluginDesktopSystemHotkeyBackend implements DesktopSystemHotkeyBackend {
   }
 }
 
-/// Installs system-wide and focused-window shortcuts only for actions that
-/// currently have a live handler.
+/// Installs focused-window shortcuts for actions with a live handler. Only
+/// screenshot capture also registers a system-wide hotkey.
 ///
-/// This keeps a configurable shortcut from swallowing an ordinary platform or
-/// text-editing command while its destination is not mounted.
+/// Search, new chat, and settings are ordinary application commands and must
+/// never swallow another application's keyboard shortcuts.
 class DesktopHotkeyHost extends StatefulWidget {
   const DesktopHotkeyHost({
     super.key,
@@ -90,11 +101,13 @@ class DesktopHotkeyHost extends StatefulWidget {
     required this.child,
     this.registry,
     this.systemBackend,
+    this.enabled = true,
   });
 
   final DesktopHotkeyController controller;
   final DesktopHotkeyRegistry? registry;
   final DesktopSystemHotkeyBackend? systemBackend;
+  final bool enabled;
   final Widget child;
 
   @override
@@ -104,6 +117,7 @@ class DesktopHotkeyHost extends StatefulWidget {
 class _DesktopHotkeyHostState extends State<DesktopHotkeyHost> {
   late DesktopSystemHotkeyBackend _systemBackend;
   Future<void> _systemSync = Future<void>.value();
+  Map<DesktopHotkeyAction, DesktopHotkeyGesture>? _systemBindings;
 
   DesktopHotkeyRegistry get _registry =>
       widget.registry ?? DesktopHotkeyRegistry.instance;
@@ -139,28 +153,37 @@ class _DesktopHotkeyHostState extends State<DesktopHotkeyHost> {
       _attachSources();
     }
     if (backendChanged) {
-      unawaited(_systemBackend.dispose());
+      final previousBackend = _systemBackend;
+      _systemSync = _systemSync.then((_) => previousBackend.dispose());
       _systemBackend =
           widget.systemBackend ?? PluginDesktopSystemHotkeyBackend();
+      _systemBindings = null;
     }
-    if (controllerChanged || registryChanged || backendChanged) {
+    if (controllerChanged ||
+        registryChanged ||
+        backendChanged ||
+        oldWidget.enabled != widget.enabled) {
       _scheduleSystemSync();
     }
   }
 
   void _scheduleSystemSync() {
+    final backend = _systemBackend;
     _systemSync = _systemSync
         .then((_) async {
-          if (!mounted) return;
+          if (!mounted || !identical(backend, _systemBackend)) return;
           final bindings = <DesktopHotkeyAction, DesktopHotkeyGesture>{};
-          if (widget.controller.available) {
-            for (final action in DesktopHotkeyAction.values) {
-              if (_registry.hasHandler(action)) {
-                bindings[action] = widget.controller.bindingFor(action);
-              }
-            }
+          if (widget.enabled &&
+              widget.controller.available &&
+              !widget.controller.isRecording &&
+              _registry.hasEnabledHandler(DesktopHotkeyAction.screenshot)) {
+            bindings[DesktopHotkeyAction.screenshot] = widget.controller
+                .bindingFor(DesktopHotkeyAction.screenshot);
           }
-          await _systemBackend.replaceAll(bindings, _invokeSystemHotkey);
+          if (!mapEquals(_systemBindings, bindings)) {
+            await backend.replaceAll(bindings, _invokeSystemHotkey);
+            if (identical(backend, _systemBackend)) _systemBindings = bindings;
+          }
         })
         .catchError((Object _) {
           // Native registration failures retain the focused-window fallback.
@@ -168,7 +191,9 @@ class _DesktopHotkeyHostState extends State<DesktopHotkeyHost> {
   }
 
   void _invokeSystemHotkey(DesktopHotkeyAction action) {
-    if (mounted) _registry.invoke(action);
+    if (mounted && widget.enabled && !widget.controller.isRecording) {
+      _registry.invoke(action);
+    }
   }
 
   @override
@@ -180,20 +205,26 @@ class _DesktopHotkeyHostState extends State<DesktopHotkeyHost> {
 
   @override
   Widget build(BuildContext context) {
-    final actions = _registry;
-    if (!widget.controller.available) return widget.child;
-    return AnimatedBuilder(
-      animation: Listenable.merge([widget.controller, actions]),
-      child: widget.child,
-      builder: (context, child) {
-        final bindings = <ShortcutActivator, VoidCallback>{};
-        for (final action in DesktopHotkeyAction.values) {
-          if (!actions.hasHandler(action)) continue;
-          bindings[widget.controller.bindingFor(action).activator] = () =>
-              actions.invoke(action);
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: (_, event) {
+        if (!widget.enabled ||
+            !widget.controller.available ||
+            widget.controller.isRecording) {
+          return KeyEventResult.ignored;
         }
-        return CallbackShortcuts(bindings: bindings, child: child!);
+        for (final action in DesktopHotkeyAction.values) {
+          if (widget.controller
+                  .bindingFor(action)
+                  .activator
+                  .accepts(event, HardwareKeyboard.instance) &&
+              _registry.invoke(action)) {
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
       },
+      child: widget.child,
     );
   }
 }

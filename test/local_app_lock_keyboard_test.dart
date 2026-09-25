@@ -10,6 +10,34 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('modified digits and deletion keys do not edit a PIN', (
+    tester,
+  ) async {
+    await _pumpSetupHarness(tester);
+    await tester.tap(find.byKey(_SetupHarness.openButtonKey));
+    await tester.pumpAndSettle();
+    await _sendKey(tester, LogicalKeyboardKey.digit1);
+    for (final modifier in [
+      LogicalKeyboardKey.metaLeft,
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.altLeft,
+      LogicalKeyboardKey.shiftLeft,
+    ]) {
+      await tester.sendKeyDownEvent(modifier);
+      await _sendKey(tester, LogicalKeyboardKey.digit9);
+      await _sendKey(tester, LogicalKeyboardKey.backspace);
+      await _sendKey(tester, LogicalKeyboardKey.delete);
+      await tester.sendKeyUpEvent(modifier);
+    }
+    await _sendKeys(tester, [
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter the PIN again to confirm'), findsOneWidget);
+  });
+
   testWidgets(
     'PIN setup accepts top-row and numpad digits plus Backspace and Delete',
     (tester) async {

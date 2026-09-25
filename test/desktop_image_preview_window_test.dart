@@ -1,14 +1,46 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/desktop_image_preview_window.dart';
 import 'package:mithka/chat/image_edit_view.dart';
 import 'package:mithka/chat/image_preview.dart';
 
 void main() {
+  testWidgets('image navigation ignores modified arrow keys', (tester) async {
+    await tester.pumpWidget(
+      const DesktopImagePreviewWindowApp(
+        arguments: DesktopImagePreviewWindowArguments(
+          title: 'Image preview',
+          localeTag: 'en',
+          dark: true,
+          items: [
+            DesktopImagePreviewItemArguments(path: '/tmp/missing-one.png'),
+            DesktopImagePreviewItemArguments(path: '/tmp/missing-two.png'),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    for (final modifier in [
+      LogicalKeyboardKey.metaLeft,
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.altLeft,
+      LogicalKeyboardKey.shiftLeft,
+    ]) {
+      await tester.sendKeyDownEvent(modifier);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyUpEvent(modifier);
+      await tester.pump();
+      expect(find.text('1 / 2'), findsOneWidget);
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(find.text('2 / 2'), findsOneWidget);
+  });
+
   testWidgets('desktop preview builds a routed gallery shell with toolbar', (
     tester,
   ) async {

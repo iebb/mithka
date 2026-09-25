@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/desktop_utility_window.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
@@ -330,15 +331,26 @@ class _DesktopHotkeySettingsViewState extends State<DesktopHotkeySettingsView> {
     BuildContext context,
     DesktopHotkeyController controller,
     DesktopHotkeyAction action,
-  ) => showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) => _DesktopHotkeyRecorderDialog(
-      controller: controller,
-      action: action,
-      titleKey: _actionTitleKey(action),
-    ),
-  );
+  ) async {
+    final owner = Object();
+    controller.setRecording(owner, true);
+    try {
+      await DesktopUtilityWindowService.instance.setHotkeyRecording(true);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _DesktopHotkeyRecorderDialog(
+          controller: controller,
+          action: action,
+          titleKey: _actionTitleKey(action),
+        ),
+      );
+    } finally {
+      controller.setRecording(owner, false);
+      await DesktopUtilityWindowService.instance.setHotkeyRecording(false);
+    }
+  }
 
   String _actionTitleKey(DesktopHotkeyAction action) => switch (action) {
     DesktopHotkeyAction.openSettings => AppStringKeys.desktopHotkeyOpenSettings,
@@ -391,13 +403,15 @@ class _DesktopHotkeyRecorderDialogState
     super.dispose();
   }
 
-  void _handleKey(KeyEvent event) {
-    if (event is! KeyDownEvent || event is KeyRepeatEvent) return;
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       Navigator.of(context).pop();
-      return;
+      return KeyEventResult.handled;
     }
-    if (isDesktopHotkeyModifier(event.logicalKey)) return;
+    if (isDesktopHotkeyModifier(event.logicalKey)) {
+      return KeyEventResult.handled;
+    }
     final keyboard = HardwareKeyboard.instance;
     final gesture = DesktopHotkeyGesture(
       key: event.logicalKey,
@@ -417,13 +431,14 @@ class _DesktopHotkeyRecorderDialogState
       };
     });
     if (_errorKey == null) Navigator.of(context).pop();
+    return KeyEventResult.handled;
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final candidate = _candidate;
-    return KeyboardListener(
+    return Focus(
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _handleKey,

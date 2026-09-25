@@ -12,6 +12,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/keyboard_modifiers.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -808,6 +809,7 @@ class _CredentialChallengeState extends State<_CredentialChallenge> {
   KeyEventResult _handleKeyboardInput(FocusNode node, KeyEvent event) {
     if (widget.type != AppLockCredentialType.pin ||
         event is! KeyDownEvent ||
+        keyboardModifiersPressed() ||
         _busy ||
         widget.biometricPending) {
       return KeyEventResult.ignored;

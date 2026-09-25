@@ -12,6 +12,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/keyboard_modifiers.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -187,7 +188,9 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
   }
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent || keyboardModifiersPressed()) {
+      return KeyEventResult.ignored;
+    }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       unawaited(implementation.closeCurrentDesktopImagePreviewWindow());
       return KeyEventResult.handled;

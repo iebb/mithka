@@ -20,6 +20,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/keyboard_modifiers.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -228,7 +229,12 @@ class _ChatSearchField extends StatelessWidget {
   final VoidCallback onClose;
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
+        keyboardModifiersPressed(
+          allowShift:
+              event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.numpadEnter,
+        )) {
       return KeyEventResult.ignored;
     }
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;

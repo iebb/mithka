@@ -187,6 +187,16 @@ class DesktopHotkeyController extends ChangeNotifier {
   final SharedPreferences _prefs;
   final TargetPlatform platform;
   final Map<DesktopHotkeyAction, DesktopHotkeyGesture> _bindings = {};
+  final Set<Object> _recordingOwners = {};
+
+  bool get isRecording => _recordingOwners.isNotEmpty;
+
+  void setRecording(Object owner, bool recording) {
+    final changed = recording
+        ? _recordingOwners.add(owner)
+        : _recordingOwners.remove(owner);
+    if (changed) notifyListeners();
+  }
 
   bool get available => !kIsWeb && isDesktopTargetPlatform(platform);
 
@@ -302,6 +312,9 @@ class DesktopHotkeyRegistration {
   DesktopHotkeyRegistry? _registry;
   final DesktopHotkeyAction _action;
   final Object _identity;
+
+  /// Re-evaluate eligibility after layout, route, or visibility changes.
+  void refresh() => _registry?._notifyHandlersChanged();
 
   void dispose() {
     _registry?._unregister(_action, _identity);

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -191,6 +192,44 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('settings-search-empty')), findsOneWidget);
     expect(find.text('No matching settings'), findsOneWidget);
+  });
+
+  testWidgets('macOS Control-F keeps its text navigation behavior', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(tester, focusSearch: true);
+    final editable = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings-search-field')),
+        matching: find.byType(EditableText),
+      ),
+    );
+    editable.controller.value = const TextEditingValue(
+      text: 'cache',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    await tester.pump();
+
+    for (final control in [
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.controlRight,
+    ]) {
+      final offset = editable.controller.selection.extentOffset;
+      await tester.sendKeyDownEvent(control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyUpEvent(control);
+      await tester.pump();
+      expect(editable.controller.selection.extentOffset, offset + 1);
+      expect(editable.focusNode.hasFocus, isTrue);
+    }
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('developer destination remains conditional', (tester) async {

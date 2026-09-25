@@ -44,6 +44,7 @@ class AccountSummary {
     required this.name,
     required this.phone,
     this.avatarPath,
+    this.emojiStatusId = 0,
     this.isBotApi = false,
     this.botApiEndpoint,
   });
@@ -52,6 +53,7 @@ class AccountSummary {
   final String name;
   final String phone;
   final String? avatarPath; // resolved via this account's OWN TDLib client
+  final int emojiStatusId;
   final bool isBotApi;
   final Uri? botApiEndpoint;
 }
@@ -261,6 +263,9 @@ class AccountStore extends ChangeNotifier {
           name: name,
           phone: phone,
           avatarPath: avatarPath,
+          emojiStatusId: TDParse.emojiStatusCustomEmojiId(
+            me.obj('emoji_status'),
+          ),
           isBotApi: botApiAccount != null,
           botApiEndpoint: botApiAccount?.endpoint,
         ),

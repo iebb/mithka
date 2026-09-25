@@ -34,6 +34,7 @@ import '../components/ui_components.dart';
 import '../media/video_playback_reporting.dart';
 import '../media/video_view_compatibility.dart';
 import '../platform/adaptive_platform.dart';
+import '../platform/keyboard_modifiers.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -61,7 +62,9 @@ bool storyViewerUsesDesktopControls(
 StoryViewerDesktopCommand? storyViewerDesktopCommandForKey(
   LogicalKeyboardKey key, {
   required bool replyHasFocus,
+  bool hasModifiers = false,
 }) {
+  if (hasModifiers) return null;
   if (key == LogicalKeyboardKey.escape) {
     return StoryViewerDesktopCommand.close;
   }
@@ -549,6 +552,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
     final command = storyViewerDesktopCommandForKey(
       event.logicalKey,
       replyHasFocus: _replyFocus.hasFocus,
+      hasModifiers: keyboardModifiersPressed(),
     );
     switch (command) {
       case StoryViewerDesktopCommand.close:

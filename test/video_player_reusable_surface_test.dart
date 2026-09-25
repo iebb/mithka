@@ -233,6 +233,7 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       var closeCalls = 0;
       var fullscreenCalls = 0;
+      var searchCalls = 0;
       final selectedModes = <VideoDisplayMode>[];
       final reportedVolumes = <double>[];
       try {
@@ -240,6 +241,16 @@ void main() {
         final sourcePath = File('pubspec.yaml').absolute.path;
         await tester.pumpWidget(
           MaterialApp(
+            builder: (context, child) => CallbackShortcuts(
+              bindings: {
+                const SingleActivator(
+                  LogicalKeyboardKey.keyF,
+                  meta: true,
+                ): () =>
+                    searchCalls++,
+              },
+              child: child!,
+            ),
             locale: const Locale('en'),
             localizationsDelegates: const [AppLocalizations.delegate],
             supportedLocales: AppLocalizations.supportedLocales,
@@ -280,6 +291,12 @@ void main() {
           'video-more-menu-action-0',
         );
         final volumeWritesBeforeMenu = reportedVolumes.length;
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        await tester.pump();
+        expect(searchCalls, 1);
+        expect(fullscreenCalls, 1);
         final pauseCallsBeforeMenu = fakePlatform.pauseCalls;
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
         await tester.pump();

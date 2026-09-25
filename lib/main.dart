@@ -901,6 +901,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               final hotkeyController = DesktopHotkeyController.shared;
               final hotkeyChild = DesktopHotkeyHost(
                 controller: hotkeyController,
+                enabled: !appLock.locked,
                 child: DesktopPrimaryHotkeyBindings(
                   controller: hotkeyController,
                   child: appChild,
