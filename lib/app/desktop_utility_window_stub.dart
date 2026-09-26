@@ -38,4 +38,6 @@ Future<void> notifyDesktopUtilitySettingsChanged(
   DesktopUtilityWindowArguments arguments,
 ) async {}
 
+Future<void> notifyDesktopUtilityHiddenSendersChanged() async {}
+
 Future<void> setDesktopUtilityHotkeyRecording(bool recording) async {}

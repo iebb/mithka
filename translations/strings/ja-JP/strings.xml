@@ -1685,6 +1685,17 @@
     <string name="groupManagementSetFailed">設定に失敗しました</string>
     <string name="groupManagementStatistics">統計</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">ユーザー名は使用できないか、権限がありません</string>
+    <string name="hiddenSendersEmpty">非表示のメンバーはいません。グループでメッセージのメニューから「この人を非表示」を選べます。</string>
+    <string name="hiddenSendersEverywhere">すべてのチャット</string>
+    <string name="hiddenSendersNote">この端末でのみ、チャット・通知・AI 要約からメッセージが除かれます。ブロックはされず、相手に通知もされません。</string>
+    <string name="hiddenSendersShow">表示</string>
+    <string name="hiddenSendersShown">{value1} のメッセージを再表示しました</string>
+    <string name="hiddenSendersTitle">非表示のメンバー</string>
+    <string name="hideSenderDone">{value1} のメッセージを非表示にしました</string>
+    <string name="hideSenderEverywhere">すべてのチャットで</string>
+    <string name="hideSenderInThisGroup">このグループのみ</string>
+    <string name="hideSenderMessage">この端末でのみ非表示になります。ブロックや報告はされず、相手に通知もされません。</string>
+    <string name="hideSenderTitle">{value1} のメッセージを非表示にしますか？</string>
     <string name="imageEditAdd">追加</string>
     <string name="imageEditAddText">テキストを追加</string>
     <string name="imageEditBrush">ブラシ</string>
@@ -1886,6 +1897,7 @@
     <string name="messageActionEdit">編集</string>
     <string name="messageActionFavorite">お気に入り</string>
     <string name="messageActionForward">転送</string>
+    <string name="messageActionHideSender">この人を非表示</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">複数選択</string>
     <string name="messageActionPlayMuted">ミュートで再生</string>

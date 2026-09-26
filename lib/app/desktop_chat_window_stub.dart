@@ -16,6 +16,8 @@ void notifyDesktopChatAccountIdentityChanged() {}
 
 Future<void> notifyDesktopChatPresentationChanged() async {}
 
+Future<void> notifyDesktopChatHiddenSendersChanged() async {}
+
 void attachDesktopChatChildPresentationReload(
   Future<void> Function() callback,
 ) {}

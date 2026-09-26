@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:multi_window_manager/multi_window_manager.dart';
 
 import '../settings/desktop_hotkey_controller.dart';
+import '../settings/hidden_sender_store.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'chat_deep_link_controller.dart';
@@ -16,6 +17,7 @@ const _queryMethod = 'mithka.utility.td.query';
 const _sendMethod = 'mithka.utility.td.send';
 const _updateMethod = 'mithka.utility.td.update';
 const _settingsChangedMethod = 'mithka.utility.settings.changed';
+const _hiddenSendersChangedMethod = 'mithka.utility.hidden-senders.changed';
 const _hotkeyRecordingMethod = 'mithka.utility.hotkeys.recording';
 const _presentationChangedMethod = 'mithka.utility.presentation.changed';
 const _openUtilityMethod = 'mithka.utility.open';
@@ -189,6 +191,26 @@ Future<void> notifyDesktopUtilitySettingsChanged(
   } on Object {
     // The primary window may already be closing. Preference writes remain
     // durable and will be loaded on the next primary launch.
+  }
+}
+
+/// Tells the primary window that this child changed the hidden members, so
+/// it re-reads them and passes the change on to the other windows. Unlike a
+/// settings reload, any registered child may ask for this one narrow read.
+Future<void> notifyDesktopUtilityHiddenSendersChanged() async {
+  final source = _childArguments;
+  if (!supportsDesktopUtilityWindows || source == null) return;
+  try {
+    if (MultiWindowManager.current.id <= 0) return;
+    await MultiWindowManager.current
+        .invokeMethodToWindow(
+          0,
+          _hiddenSendersChangedMethod,
+          source.toIpcJson(),
+        )
+        .timeout(const Duration(seconds: 5));
+  } on Object {
+    // The primary window may already be closing; the preference is durable.
   }
 }
 
@@ -508,6 +530,9 @@ class _DesktopUtilityMainBridge with WindowListener {
           fromWindowId,
           arguments is Map && arguments['recording'] == true,
         );
+        return const {'ok': true};
+      case _hiddenSendersChangedMethod:
+        await HiddenSenderStore.shared.reload();
         return const {'ok': true};
       case _settingsChangedMethod:
         if (registered.kind != DesktopUtilityWindowKind.settings) {

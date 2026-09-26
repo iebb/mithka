@@ -42,6 +42,7 @@ enum MessageAction {
   repeat(HeroAppIcons.circlePlus, AppStringKeys.messageActionRepeat),
   report(HeroAppIcons.triangleExclamation, AppStringKeys.messageActionReport),
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
+  hideSender(HeroAppIcons.eyeSlash, AppStringKeys.messageActionHideSender),
   playMuted(HeroAppIcons.volumeXmark, AppStringKeys.messageActionPlayMuted),
   addToPlaylist(HeroAppIcons.music, AppStringKeys.musicPlayerAddToPlaylist),
   saveToPhotos(HeroAppIcons.download, AppStringKeys.messageActionSaveToPhotos),
@@ -316,6 +317,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowQuote = false,
     this.hasSelectedQuote = false,
     this.allowSuggestedPostOffer = false,
+    this.allowHideSender = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -328,6 +330,9 @@ class MessageActionMenu extends StatelessWidget {
   final bool allowQuote;
   final bool hasSelectedQuote;
   final bool allowSuggestedPostOffer;
+
+  /// Offer to hide this sender's messages on this device (groups only).
+  final bool allowHideSender;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
@@ -532,6 +537,7 @@ class MessageActionMenu extends StatelessWidget {
     if (message.stickerSetId != null && canAddEmoji) {
       result.add(MessageAction.viewStickerSet);
     }
+    if (allowHideSender) result.add(MessageAction.hideSender);
     result.add(MessageAction.delete);
     return result;
   }

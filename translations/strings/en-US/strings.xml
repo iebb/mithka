@@ -1692,6 +1692,17 @@
     <string name="groupManagementSetFailed">Setup failed</string>
     <string name="groupManagementStatistics">Statistics</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Username is unavailable or not allowed</string>
+    <string name="hiddenSendersEmpty">No one is hidden. In a group, choose Hide sender from a message’s menu.</string>
+    <string name="hiddenSendersEverywhere">All chats</string>
+    <string name="hiddenSendersNote">Their messages are left out of chats, notifications and AI summaries on this device only. They are not blocked or told.</string>
+    <string name="hiddenSendersShow">Show</string>
+    <string name="hiddenSendersShown">Messages from {value1} are visible again</string>
+    <string name="hiddenSendersTitle">Hidden Members</string>
+    <string name="hideSenderDone">Messages from {value1} are hidden</string>
+    <string name="hideSenderEverywhere">In all chats</string>
+    <string name="hideSenderInThisGroup">In this group</string>
+    <string name="hideSenderMessage">Only on this device. They are not blocked, reported or told.</string>
+    <string name="hideSenderTitle">Hide messages from {value1}?</string>
     <string name="imageEditAdd">Add</string>
     <string name="imageEditAddText">Add text</string>
     <string name="imageEditBrush">Brush</string>
@@ -1893,6 +1904,7 @@
     <string name="messageActionEdit">Edit</string>
     <string name="messageActionFavorite">Favorite</string>
     <string name="messageActionForward">Forward</string>
+    <string name="messageActionHideSender">Hide sender</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">Select multiple</string>
     <string name="messageActionPlayMuted">Play muted</string>

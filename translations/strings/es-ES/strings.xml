@@ -1692,6 +1692,17 @@
     <string name="groupManagementSetFailed">No se pudo configurar</string>
     <string name="groupManagementStatistics">Estadísticas</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">El nombre de usuario no está disponible o no tienes permiso</string>
+    <string name="hiddenSendersEmpty">No hay nadie oculto. En un grupo, elige Ocultar autor en el menú de un mensaje.</string>
+    <string name="hiddenSendersEverywhere">Todos los chats</string>
+    <string name="hiddenSendersNote">Sus mensajes se omiten en chats, notificaciones y resúmenes de IA solo en este dispositivo. No se les bloquea ni se les avisa.</string>
+    <string name="hiddenSendersShow">Mostrar</string>
+    <string name="hiddenSendersShown">Los mensajes de {value1} vuelven a verse</string>
+    <string name="hiddenSendersTitle">Miembros ocultos</string>
+    <string name="hideSenderDone">Los mensajes de {value1} están ocultos</string>
+    <string name="hideSenderEverywhere">En todos los chats</string>
+    <string name="hideSenderInThisGroup">En este grupo</string>
+    <string name="hideSenderMessage">Solo en este dispositivo. No se bloquea, no se denuncia ni se avisa a la persona.</string>
+    <string name="hideSenderTitle">¿Ocultar los mensajes de {value1}?</string>
     <string name="imageEditAdd">Añadir</string>
     <string name="imageEditAddText">Añadir texto</string>
     <string name="imageEditBrush">Pincel</string>
@@ -1893,6 +1904,7 @@
     <string name="messageActionEdit">Editar</string>
     <string name="messageActionFavorite">Guardar en favoritos</string>
     <string name="messageActionForward">Reenviar</string>
+    <string name="messageActionHideSender">Ocultar autor</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">Selección múltiple</string>
     <string name="messageActionPlayMuted">Reproducir sin sonido</string>

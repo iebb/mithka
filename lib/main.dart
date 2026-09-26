@@ -77,6 +77,7 @@ import 'settings/business_service.dart';
 import 'settings/country_message_filter.dart';
 import 'settings/desktop_hotkey_controller.dart';
 import 'settings/developer_mode_controller.dart';
+import 'settings/hidden_sender_store.dart';
 import 'settings/keyword_blocker.dart';
 import 'settings/safety_notice_controller.dart';
 import 'settings/sensitive_content_controller.dart';
@@ -245,6 +246,7 @@ Future<void> _bootstrapAndRunApp() async {
   ]);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   KeywordBlocker.shared.initialize(prefs);
+  HiddenSenderStore.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
   unawaited(SensitiveContentController.shared.initialize());
   MusicPlayerController.shared.initialize(prefs);
@@ -464,6 +466,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
     _theme.addListener(_handleThemePreferencesChange);
+    HiddenSenderStore.shared.addListener(_handleHiddenSendersChange);
     BusinessQuickReplyService.shared.startPreloading(
       enabled: _theme.quickRepliesEnabled,
     );
@@ -520,6 +523,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _performance.dispose();
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
+    HiddenSenderStore.shared.removeListener(_handleHiddenSendersChange);
     _groupRemarks.dispose();
     _folderTags.dispose();
     DesktopMiniAppWindowService.instance.detachMainProxy();
@@ -548,6 +552,12 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
       if (account.slot == slot) return account.userId;
     }
     return null;
+  }
+
+  /// Hidden members changed here, or a child window asked this one to
+  /// re-read them: every other window re-reads them too.
+  void _handleHiddenSendersChange() {
+    unawaited(DesktopChatWindowService.instance.notifyPresentationChanged());
   }
 
   void _handleThemePreferencesChange() {
@@ -626,6 +636,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
 
         _autoDownload.initialize(widget.prefs);
         KeywordBlocker.shared.initialize(widget.prefs);
+        HiddenSenderStore.shared.initialize(widget.prefs);
         CountryMessageFilter.shared.initialize(widget.prefs);
         MusicPlayerController.shared.initialize(widget.prefs);
         BlockedUserService.shared.enabled = nextTheme.hideBlockedUserMessages;

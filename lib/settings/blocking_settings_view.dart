@@ -10,6 +10,8 @@ import '../theme/theme_controller.dart';
 import 'blocked_user_service.dart';
 import 'country_message_filter.dart';
 import 'country_message_filter_view.dart';
+import 'hidden_sender_store.dart';
+import 'hidden_senders_view.dart';
 import 'keyword_blocker_view.dart';
 
 class BlockingSettingsView extends StatelessWidget {
@@ -47,6 +49,25 @@ class BlockingSettingsView extends StatelessWidget {
                     pageBuilder: (_, _, _) => const KeywordBlockerView(),
                   ),
                 ),
+              ),
+              ListenableBuilder(
+                listenable: HiddenSenderStore.shared,
+                builder: (context, _) {
+                  final count = HiddenSenderStore.shared.entries.length;
+                  return SettingsRow(
+                    key: const ValueKey('content-filters-hidden-members'),
+                    title: AppStringKeys.hiddenSendersTitle,
+                    value: count == 0 ? '' : '$count',
+                    leading: const SettingsLeadingIcon(
+                      icon: HeroAppIcons.users,
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      AppPageRoute<void>(
+                        pageBuilder: (_, _, _) => const HiddenSendersView(),
+                      ),
+                    ),
+                  );
+                },
               ),
             ]),
             SettingsSection(

@@ -125,6 +125,17 @@ abstract final class AppStringKeys {
   static const debugBubblePreviewExperimental =
       'debugBubblePreviewExperimental';
   static const debugBubblePreviewGenres = 'debugBubblePreviewGenres';
+  static const hiddenSendersEmpty = 'hiddenSendersEmpty';
+  static const hiddenSendersEverywhere = 'hiddenSendersEverywhere';
+  static const hiddenSendersNote = 'hiddenSendersNote';
+  static const hiddenSendersShow = 'hiddenSendersShow';
+  static const hiddenSendersShown = 'hiddenSendersShown';
+  static const hiddenSendersTitle = 'hiddenSendersTitle';
+  static const hideSenderDone = 'hideSenderDone';
+  static const hideSenderEverywhere = 'hideSenderEverywhere';
+  static const hideSenderInThisGroup = 'hideSenderInThisGroup';
+  static const hideSenderMessage = 'hideSenderMessage';
+  static const hideSenderTitle = 'hideSenderTitle';
   static const mainTabResizeSidebar = 'mainTabResizeSidebar';
   static const messageBubbleApply = 'messageBubbleApply';
   static const messageBubbleRepoApplied = 'messageBubbleRepoApplied';
@@ -1867,6 +1878,7 @@ abstract final class AppStringKeys {
   static const markdownLabel = 'markdownLabel';
   static const mediaSendPreviewTitle = 'mediaSendPreviewTitle';
   static const messageActionBlock = 'messageActionBlock';
+  static const messageActionHideSender = 'messageActionHideSender';
   static const messageActionBlockKeyword = 'messageActionBlockKeyword';
   static const messageActionCopy = 'messageActionCopy';
   static const messageActionCopyImage = 'messageActionCopyImage';

@@ -52,6 +52,7 @@ import '../settings/country_message_filter.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/safety_notice_controller.dart';
@@ -122,6 +123,9 @@ class DesktopUtilityWindowService {
 
   Future<void> notifySettingsChanged(DesktopUtilityWindowArguments arguments) =>
       implementation.notifyDesktopUtilitySettingsChanged(arguments);
+
+  Future<void> notifyHiddenSendersChanged() =>
+      implementation.notifyDesktopUtilityHiddenSendersChanged();
 
   Future<void> setHotkeyRecording(bool recording) =>
       implementation.setDesktopUtilityHotkeyRecording(recording);
@@ -209,6 +213,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   void initState() {
     super.initState();
     KeywordBlocker.shared.initialize(widget.prefs);
+    HiddenSenderStore.shared
+      ..initialize(widget.prefs)
+      ..addListener(_handleHiddenSendersChanged);
     CountryMessageFilter.shared.initialize(widget.prefs);
     MusicPlayerController.shared.initialize(widget.prefs);
     _autoDownload.initialize(widget.prefs);
@@ -293,6 +300,15 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     if (callback != null) source.removeListener(callback);
   }
 
+  /// Hid or showed a member in this window: the primary window re-reads the
+  /// list and passes it on. A reload from the primary is not echoed back.
+  void _handleHiddenSendersChanged() {
+    if (_applyingPresentationReload) return;
+    unawaited(
+      DesktopUtilityWindowService.instance.notifyHiddenSendersChanged(),
+    );
+  }
+
   Future<void> _reloadPresentationPreferences() async {
     if (_presentationReloading) {
       _presentationReloadQueued = true;
@@ -307,6 +323,8 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
           await widget.prefs.reload();
           final desktopHotkeys = DesktopHotkeyController.maybeShared;
           if (desktopHotkeys != null) await desktopHotkeys.reload();
+          // Inside the reload, so the listener does not echo it back.
+          HiddenSenderStore.shared.initialize(widget.prefs);
         } on Object {
           // A transient platform-preferences failure must not unregister an
           // otherwise healthy TD proxy window from the primary bridge.
@@ -387,6 +405,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
 
   @override
   void dispose() {
+    HiddenSenderStore.shared.removeListener(_handleHiddenSendersChanged);
     DesktopUtilityWindowService.instance.detachChildPresentationReload();
     _settingsSyncDebounce?.cancel();
     for (final entry in _settingsSyncSources.entries) {

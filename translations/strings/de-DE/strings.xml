@@ -1692,6 +1692,17 @@
     <string name="groupManagementSetFailed">Festlegen fehlgeschlagen</string>
     <string name="groupManagementStatistics">Statistiken</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Benutzername nicht verfügbar oder keine Berechtigung</string>
+    <string name="hiddenSendersEmpty">Niemand ist ausgeblendet. Wähle in einer Gruppe im Nachrichtenmenü „Absender ausblenden“.</string>
+    <string name="hiddenSendersEverywhere">Alle Chats</string>
+    <string name="hiddenSendersNote">Ihre Nachrichten werden nur auf diesem Gerät aus Chats, Mitteilungen und KI-Zusammenfassungen ausgelassen. Sie werden weder blockiert noch benachrichtigt.</string>
+    <string name="hiddenSendersShow">Anzeigen</string>
+    <string name="hiddenSendersShown">Nachrichten von {value1} sind wieder sichtbar</string>
+    <string name="hiddenSendersTitle">Ausgeblendete Mitglieder</string>
+    <string name="hideSenderDone">Nachrichten von {value1} sind ausgeblendet</string>
+    <string name="hideSenderEverywhere">In allen Chats</string>
+    <string name="hideSenderInThisGroup">In dieser Gruppe</string>
+    <string name="hideSenderMessage">Nur auf diesem Gerät. Die Person wird weder blockiert noch gemeldet oder benachrichtigt.</string>
+    <string name="hideSenderTitle">Nachrichten von {value1} ausblenden?</string>
     <string name="imageEditAdd">Hinzufügen</string>
     <string name="imageEditAddText">Text hinzufügen</string>
     <string name="imageEditBrush">Pinsel</string>
@@ -1893,6 +1904,7 @@
     <string name="messageActionEdit">Bearbeiten</string>
     <string name="messageActionFavorite">Favorit</string>
     <string name="messageActionForward">Weiterleiten</string>
+    <string name="messageActionHideSender">Absender ausblenden</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">Mehrfachauswahl</string>
     <string name="messageActionPlayMuted">Stumm abspielen</string>

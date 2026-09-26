@@ -1685,6 +1685,17 @@
     <string name="groupManagementSetFailed">设置失败</string>
     <string name="groupManagementStatistics">统计</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">用户名不可用或没有权限</string>
+    <string name="hiddenSendersEmpty">没有隐藏任何人。在群组中，可从消息菜单选择“隐藏此人”。</string>
+    <string name="hiddenSendersEverywhere">所有聊天</string>
+    <string name="hiddenSendersNote">他们的消息仅在此设备上从聊天、通知和 AI 摘要中隐藏。不会拉黑对方，对方也不会收到通知。</string>
+    <string name="hiddenSendersShow">显示</string>
+    <string name="hiddenSendersShown">已恢复显示 {value1} 的消息</string>
+    <string name="hiddenSendersTitle">已隐藏的成员</string>
+    <string name="hideSenderDone">已隐藏 {value1} 的消息</string>
+    <string name="hideSenderEverywhere">在所有聊天中</string>
+    <string name="hideSenderInThisGroup">仅在此群组</string>
+    <string name="hideSenderMessage">仅在此设备上生效。不会拉黑或举报对方，对方也不会收到通知。</string>
+    <string name="hideSenderTitle">隐藏 {value1} 的消息？</string>
     <string name="imageEditAdd">添加</string>
     <string name="imageEditAddText">添加文字</string>
     <string name="imageEditBrush">画笔</string>
@@ -1886,6 +1897,7 @@
     <string name="messageActionEdit">编辑</string>
     <string name="messageActionFavorite">收藏</string>
     <string name="messageActionForward">转发</string>
+    <string name="messageActionHideSender">隐藏此人</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">多选</string>
     <string name="messageActionPlayMuted">静音播放</string>

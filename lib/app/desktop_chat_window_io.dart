@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:multi_window_manager/multi_window_manager.dart';
 
+import '../settings/hidden_sender_store.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'chat_deep_link_controller.dart';
@@ -18,6 +19,7 @@ const _updateMethod = 'mithka.chat.td.update';
 const _openUtilityMethod = 'mithka.chat.utility.open';
 const _openPrimaryChatMethod = 'mithka.chat.primary-chat.open';
 const _presentationChangedMethod = 'mithka.chat.presentation.changed';
+const _hiddenSendersChangedMethod = 'mithka.chat.hidden-senders.changed';
 
 const _chatWindowSize = Size(1120, 760);
 const _chatWindowMinimumSize = Size(720, 520);
@@ -72,6 +74,26 @@ Future<void> notifyDesktopChatPresentationChanged() async {
 
 Future<bool> openDesktopChatWindow(DesktopChatWindowArguments arguments) =>
     _mainBridge.open(arguments);
+
+/// Tells the primary window that this chat child hid or showed a member,
+/// so it re-reads the list and passes the change on to the other windows.
+Future<void> notifyDesktopChatHiddenSendersChanged() async {
+  if (!supportsDesktopChatWindows) return;
+  final source = _childArguments;
+  if (source == null) return;
+  try {
+    if (MultiWindowManager.current.id <= 0) return;
+    await MultiWindowManager.current
+        .invokeMethodToWindow(
+          0,
+          _hiddenSendersChangedMethod,
+          source.toIpcJson(),
+        )
+        .timeout(const Duration(seconds: 5));
+  } on Object {
+    // The primary window may already be closing; the preference is durable.
+  }
+}
 
 Future<bool> openChatInPrimaryWindowFromDesktopChat(
   ChatDeepLinkRequest request,
@@ -436,6 +458,9 @@ class _DesktopChatMainBridge with WindowListener {
           return const {'ok': false};
         }
         return {'ok': await DesktopUtilityWindowService.instance.open(utility)};
+      case _hiddenSendersChangedMethod:
+        await HiddenSenderStore.shared.reload();
+        return const {'ok': true};
       case _openPrimaryChatMethod:
         final request = arguments is Map
             ? ChatDeepLinkRequest.tryParseDesktopIpc(arguments['chat'])

@@ -1685,6 +1685,17 @@
     <string name="groupManagementSetFailed">설정에 실패했습니다</string>
     <string name="groupManagementStatistics">통계</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">사용자 이름을 사용할 수 없거나 권한이 없습니다</string>
+    <string name="hiddenSendersEmpty">숨긴 사람이 없습니다. 그룹에서 메시지 메뉴의 ‘이 사람 숨기기’를 선택하세요.</string>
+    <string name="hiddenSendersEverywhere">모든 채팅</string>
+    <string name="hiddenSendersNote">이 기기에서만 채팅, 알림, AI 요약에서 메시지가 제외됩니다. 차단되지 않으며 상대방에게 알림도 가지 않습니다.</string>
+    <string name="hiddenSendersShow">표시</string>
+    <string name="hiddenSendersShown">{value1}님의 메시지를 다시 표시합니다</string>
+    <string name="hiddenSendersTitle">숨긴 멤버</string>
+    <string name="hideSenderDone">{value1}님의 메시지를 숨겼습니다</string>
+    <string name="hideSenderEverywhere">모든 채팅에서</string>
+    <string name="hideSenderInThisGroup">이 그룹에서만</string>
+    <string name="hideSenderMessage">이 기기에서만 숨겨집니다. 차단이나 신고되지 않으며 상대방에게 알림도 가지 않습니다.</string>
+    <string name="hideSenderTitle">{value1}님의 메시지를 숨길까요?</string>
     <string name="imageEditAdd">추가</string>
     <string name="imageEditAddText">텍스트 추가</string>
     <string name="imageEditBrush">브러시</string>
@@ -1886,6 +1897,7 @@
     <string name="messageActionEdit">수정</string>
     <string name="messageActionFavorite">즐겨찾기</string>
     <string name="messageActionForward">전달</string>
+    <string name="messageActionHideSender">이 사람 숨기기</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">다중 선택</string>
     <string name="messageActionPlayMuted">무음 재생</string>

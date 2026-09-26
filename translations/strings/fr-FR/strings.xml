@@ -1692,6 +1692,17 @@
     <string name="groupManagementSetFailed">Échec de la configuration</string>
     <string name="groupManagementStatistics">Statistiques</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Nom d’utilisateur indisponible ou non autorisé</string>
+    <string name="hiddenSendersEmpty">Personne n’est masqué. Dans un groupe, choisissez Masquer l’auteur dans le menu d’un message.</string>
+    <string name="hiddenSendersEverywhere">Toutes les discussions</string>
+    <string name="hiddenSendersNote">Leurs messages sont exclus des discussions, notifications et résumés IA sur cet appareil uniquement. Ils ne sont ni bloqués ni prévenus.</string>
+    <string name="hiddenSendersShow">Afficher</string>
+    <string name="hiddenSendersShown">Les messages de {value1} sont de nouveau visibles</string>
+    <string name="hiddenSendersTitle">Membres masqués</string>
+    <string name="hideSenderDone">Les messages de {value1} sont masqués</string>
+    <string name="hideSenderEverywhere">Dans toutes les discussions</string>
+    <string name="hideSenderInThisGroup">Dans ce groupe</string>
+    <string name="hideSenderMessage">Uniquement sur cet appareil. La personne n’est ni bloquée, ni signalée, ni prévenue.</string>
+    <string name="hideSenderTitle">Masquer les messages de {value1} ?</string>
     <string name="imageEditAdd">Ajouter</string>
     <string name="imageEditAddText">Ajouter du texte</string>
     <string name="imageEditBrush">Pinceau</string>
@@ -1893,6 +1904,7 @@
     <string name="messageActionEdit">Modifier</string>
     <string name="messageActionFavorite">Ajouter aux favoris</string>
     <string name="messageActionForward">Transférer</string>
+    <string name="messageActionHideSender">Masquer l’auteur</string>
     <string name="messageActionInfo">Info</string>
     <string name="messageActionMultiSelect">Sélection multiple</string>
     <string name="messageActionPlayMuted">Lire sans son</string>

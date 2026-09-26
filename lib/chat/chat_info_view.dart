@@ -30,6 +30,8 @@ import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
 import '../settings/chat_folder_service.dart';
 import '../settings/edit_field_view.dart';
+import '../settings/hidden_sender_store.dart';
+import '../settings/hidden_senders_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -821,6 +823,30 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             AppStrings.t(AppStringKeys.chatInfoChatFolders),
             _openChatFolders,
           ),
+          if (_vm.isGroup && !_vm.isChannel)
+            ListenableBuilder(
+              listenable: HiddenSenderStore.shared,
+              builder: (context, _) {
+                final hidden = HiddenSenderStore.shared
+                    .entriesFor(widget.chatId)
+                    .length;
+                if (hidden == 0) return const SizedBox.shrink();
+                return Column(
+                  children: [
+                    const InsetDivider(leadingInset: 14),
+                    _infoRow(
+                      '${AppStrings.t(AppStringKeys.hiddenSendersTitle)} ($hidden)',
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              HiddenSendersView(chatId: widget.chatId),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           const InsetDivider(leadingInset: 14),
           _infoRow(
             AppStrings.t(AppStringKeys.chatStickerPacksTitle),

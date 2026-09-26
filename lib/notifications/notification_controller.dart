@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/chat_deep_link_controller.dart';
 import '../settings/country_chat_blocker.dart';
+import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -373,6 +374,10 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
     final messageText = _notificationText(content);
     if (KeywordBlocker.shared.matches(messageText)) return;
+    // Same id space as ChatMessage.senderId: users positive, chats negative.
+    final sender = raw.obj('sender_id');
+    final senderId = sender?.int64('user_id') ?? sender?.int64('chat_id');
+    if (HiddenSenderStore.shared.hides(senderId, chatId)) return;
     final surface = notificationSurfaceFor(
       lifecycleState: _state,
       inAppBannersEnabled: _inAppBannersEnabled,
