@@ -18,6 +18,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
 import '../tdlib/json_helpers.dart';
@@ -361,16 +362,22 @@ class _ChatCursor {
 
   /// Nothing left to fetch.
   bool exhausted = false;
+
+  /// The newest id of the unbroken run this cursor has processed so far, so
+  /// each message it hands out extends one index range instead of opening
+  /// a new one.
+  int? runHigh;
   final Queue<Map<String, dynamic>> buffer = Queue();
 
   bool get live => buffer.isNotEmpty || !exhausted;
   int get head =>
       buffer.isNotEmpty ? (buffer.first.integer('date') ?? 0) : upperBound;
 
-  Map<String, Object> toJson() => {
+  Map<String, Object?> toJson() => {
     'chat': chatId,
     'bound': upperBound,
     'from': resumeFromId,
+    'run': runHigh,
     'done': exhausted && buffer.isEmpty,
   };
 
@@ -380,9 +387,11 @@ class _ChatCursor {
     final bound = json['bound'];
     final from = json['from'];
     if (chat is! int || bound is! int || from is! int) return null;
+    final run = json['run'];
     return _ChatCursor(chat, bound)
       ..fromMessageId = from
       ..resumeFromId = from
+      ..runHigh = run is int ? run : null
       ..exhausted = json['done'] == true;
   }
 }
@@ -418,6 +427,79 @@ class _ChatListSource {
       ..boundary = boundary
       ..exhausted = json['done'] == true;
   }
+}
+
+/// Message ids already processed, per chat, as inclusive id ranges.
+///
+/// Every chat is read newest first in unbroken runs, so a chat holds a
+/// handful of ranges however many messages it has. A message inside a range
+/// is never counted again, and a read that lands in one jumps below it
+/// rather than paging through messages already seen.
+class _ReadIndex {
+  final Map<int, List<(int, int)>> _ranges = {};
+
+  (int, int)? rangeOf(int chatId, int id) {
+    for (final range in _ranges[chatId] ?? const <(int, int)>[]) {
+      if (range.$1 <= id && id <= range.$2) return range;
+    }
+    return null;
+  }
+
+  void add(int chatId, int low, int high) {
+    var merged = (math.min(low, high), math.max(low, high));
+    final kept = <(int, int)>[];
+    for (final range in _ranges[chatId] ?? const <(int, int)>[]) {
+      if (range.$1 <= merged.$2 && merged.$1 <= range.$2) {
+        merged = (math.min(range.$1, merged.$1), math.max(range.$2, merged.$2));
+      } else {
+        kept.add(range);
+      }
+    }
+    _ranges[chatId] = kept..add(merged);
+  }
+
+  bool hasRanges(int chatId) => _ranges[chatId]?.isNotEmpty ?? false;
+
+  int get rangeCount =>
+      _ranges.values.fold(0, (total, ranges) => total + ranges.length);
+
+  Map<String, List<List<int>>> toJson() => {
+    for (final entry in _ranges.entries)
+      '${entry.key}': [
+        for (final range in entry.value) [range.$1, range.$2],
+      ],
+  };
+
+  void restore(Object? json) {
+    if (json is! Map) return;
+    json.forEach((key, value) {
+      final chatId = int.tryParse('$key');
+      if (chatId == null || value is! List) return;
+      for (final range in value) {
+        if (range is List &&
+            range.length == 2 &&
+            range[0] is int &&
+            range[1] is int) {
+          add(chatId, range[0] as int, range[1] as int);
+        }
+      }
+    });
+  }
+}
+
+/// Messages fetched past a walk's floor, starting right below [after].
+class _Spill {
+  const _Spill({
+    required this.after,
+    required this.messages,
+    required this.nextFrom,
+    required this.exhausted,
+  });
+
+  final int after;
+  final List<Map<String, dynamic>> messages;
+  final int nextFrom;
+  final bool exhausted;
 }
 
 /// One newest-first walk over the messages dated in (floor, ceiling].
@@ -457,7 +539,7 @@ class _Walk {
   final Set<int> knownChats;
   bool exhausted = false;
 
-  Map<String, Object> toJson() => {
+  Map<String, Object?> toJson() => {
     'floor': floor,
     'ceiling': ceiling,
     'cursors': [for (final c in cursors) c.toJson()],
@@ -516,7 +598,19 @@ class ChatPackScanner {
   /// Newest window first.
   final List<_Walk> _walks;
   final ChatPackReferences _refs = ChatPackReferences();
+  final _ReadIndex _read = _ReadIndex();
+
+  /// Messages a newer walk fetched below its floor, per chat: exactly the
+  /// page an older walk needs next once it reaches the same point, handed
+  /// over instead of fetched again.
+  final Map<int, _Spill> _spills = {};
   final LinkedHashMap<int, ChatUsedPack> _packs = LinkedHashMap();
+
+  /// Between a batch's first read and its counts landing in [_refs]: a save
+  /// now would record cursor positions and index ranges past messages not
+  /// yet counted, and a reopened scan would skip them. Saves wait.
+  bool _loading = false;
+  bool _saveAfterLoad = false;
 
   /// Packs looked up this session: previews and added state are current.
   /// The rest came from the saved scan and refresh when they are shown.
@@ -544,6 +638,9 @@ class ChatPackScanner {
   bool _saveAgain = false;
 
   int scannedMessages = 0;
+
+  @visibleForTesting
+  int get readRangeCount => _read.rangeCount;
 
   /// True once every walk has read its window to the end.
   bool get exhausted => _walks.every((walk) => walk.exhausted);
@@ -574,6 +671,7 @@ class ChatPackScanner {
     scanner._top = top;
     scanner.scannedMessages = json.integer('scannedMessages') ?? 0;
     scanner._refs.restore(refs);
+    scanner._read.restore(json['read']);
     final emojiSets = json['emojiSets'];
     if (emojiSets is Map) {
       emojiSets.forEach((key, value) {
@@ -620,6 +718,7 @@ class ChatPackScanner {
     'top': _top,
     'scannedMessages': scannedMessages,
     'refs': _refs.toJson(),
+    'read': _read.toJson(),
     'emojiSets': {
       for (final entry in _emojiSets.entries) '${entry.key}': entry.value,
     },
@@ -648,6 +747,10 @@ class ChatPackScanner {
   Future<void> save({bool force = false}) async {
     final persist = _persist;
     if (persist == null) return;
+    if (_loading) {
+      _saveAfterLoad = true;
+      return;
+    }
     final now = DateTime.now();
     final last = _lastSaved;
     if (!force && last != null && now.difference(last) < _saveInterval) return;
@@ -683,15 +786,24 @@ class ChatPackScanner {
   /// Scans the next [messages] messages and folds them into the packs.
   Future<void> loadMore({int messages = batchSize}) async {
     final batch = <Map<String, dynamic>>[];
-    for (final walk in _walks) {
-      if (batch.length >= messages) break;
-      if (walk.exhausted) continue;
-      batch.addAll(await _next(walk, messages - batch.length));
+    _loading = true;
+    try {
+      for (final walk in _walks) {
+        if (batch.length >= messages) break;
+        if (walk.exhausted) continue;
+        batch.addAll(await _next(walk, messages - batch.length));
+      }
+    } finally {
+      for (final message in batch) {
+        _refs.addMessage(message);
+      }
+      scannedMessages += batch.length;
+      _loading = false;
+      if (_saveAfterLoad) {
+        _saveAfterLoad = false;
+        unawaited(save(force: true));
+      }
     }
-    for (final message in batch) {
-      _refs.addMessage(message);
-    }
-    scannedMessages += batch.length;
     await _resolveEmoji();
     _recount();
     _enqueueUnknown();
@@ -812,6 +924,9 @@ class ChatPackScanner {
       final newest = _newest(walk);
       if (newest == null || newest.head <= walk.floor) {
         walk.exhausted = true;
+        for (final cursor in walk.cursors) {
+          _spill(cursor, cursor.resumeFromId);
+        }
         break;
       }
       if (newest.buffer.isEmpty) {
@@ -820,19 +935,55 @@ class ChatPackScanner {
       }
       final message = newest.buffer.removeFirst();
       final date = message.integer('date') ?? 0;
+      final id = message.int64('id');
+      final above = newest.resumeFromId;
       newest.upperBound = date;
-      newest.resumeFromId = message.int64('id') ?? newest.resumeFromId;
+      newest.resumeFromId = id ?? newest.resumeFromId;
       if (date <= walk.floor) {
-        // Older than this window: an older walk has it, or had it.
-        newest.buffer.clear();
+        // Older than this window: an older walk has it, or had it. Hand
+        // what was fetched to the next walk down instead of dropping it.
+        newest.buffer.addFirst(message);
+        _spill(newest, above);
         newest.exhausted = true;
+        newest.runHigh = null;
         continue;
       }
-      // Newer than this window: a newer walk counts it.
-      if (date > walk.ceiling) continue;
+      if (id == null) continue;
+      // Already processed, by this walk or another: never counted twice.
+      if (_read.rangeOf(newest.chatId, id) != null) {
+        _extendRun(newest, id);
+        continue;
+      }
+      // Newer than this window: a newer walk counts it. Not processed yet,
+      // so it breaks the run.
+      if (date > walk.ceiling) {
+        newest.runHigh = null;
+        continue;
+      }
+      _extendRun(newest, id);
       out.add(message);
     }
     return out;
+  }
+
+  /// Hands [cursor]'s fetched, unused messages — all below this walk's
+  /// floor — to whichever older walk next reads this chat from right below
+  /// [after], the last message this walk handed out.
+  void _spill(_ChatCursor cursor, int after) {
+    if (cursor.buffer.isNotEmpty && after != 0) {
+      _spills[cursor.chatId] = _Spill(
+        after: after,
+        messages: [...cursor.buffer],
+        nextFrom: cursor.fromMessageId,
+        exhausted: cursor.exhausted,
+      );
+    }
+    cursor.buffer.clear();
+  }
+
+  void _extendRun(_ChatCursor cursor, int id) {
+    final high = cursor.runHigh ??= id;
+    _read.add(cursor.chatId, id, high);
   }
 
   _ChatCursor? _newest(_Walk walk) {
@@ -875,27 +1026,38 @@ class ChatPackScanner {
         for (final id in ids)
           if (!walk.knownChats.contains(id)) id,
       ];
-      final dates = await Future.wait(fresh.map(_lastMessageDate));
+      final latest = await Future.wait(fresh.map(_lastMessage));
       for (var i = 0; i < fresh.length; i++) {
         walk.knownChats.add(fresh[i]);
-        final cursor = _ChatCursor(fresh[i], dates[i]);
-        if (dates[i] <= walk.floor) cursor.exhausted = true;
+        final (date, latestId) = latest[i];
+        final cursor = _ChatCursor(fresh[i], date);
+        if (date <= walk.floor) cursor.exhausted = true;
+        // The newest messages were processed already (by a newer walk):
+        // start below them instead of reading them again.
+        final seen = latestId == 0 ? null : _read.rangeOf(fresh[i], latestId);
+        if (seen != null) {
+          cursor
+            ..fromMessageId = seen.$1
+            ..runHigh = seen.$2;
+        }
         walk.cursors.add(cursor);
       }
       // Pinned chats lead the list whatever their dates, so the list's tail
       // is the one that bounds the chats still to come.
-      if (ids.isNotEmpty) source.boundary = await _lastMessageDate(ids.last);
+      if (ids.isNotEmpty) source.boundary = (await _lastMessage(ids.last)).$1;
     } catch (_) {
       source.exhausted = true;
     }
   }
 
-  Future<int> _lastMessageDate(int chatId) async {
+  /// The chat's newest message: (date, id), or zeros when it has none.
+  Future<(int, int)> _lastMessage(int chatId) async {
     try {
       final chat = await _query({'@type': 'getChat', 'chat_id': chatId});
-      return chat.obj('last_message')?.integer('date') ?? 0;
+      final last = chat.obj('last_message');
+      return (last?.integer('date') ?? 0, last?.int64('id') ?? 0);
     } catch (_) {
-      return 0;
+      return (0, 0);
     }
   }
 
@@ -914,6 +1076,27 @@ class ChatPackScanner {
   }
 
   Future<void> _fetch(_ChatCursor cursor) async {
+    if (cursor.fromMessageId == 0 && _read.hasRanges(cursor.chatId)) {
+      // A restored walk reading this chat from the top: if its newest
+      // messages were processed since, start below them without a fetch.
+      final (_, latestId) = await _lastMessage(cursor.chatId);
+      final seen = latestId == 0
+          ? null
+          : _read.rangeOf(cursor.chatId, latestId);
+      if (seen != null) {
+        cursor
+          ..fromMessageId = seen.$1
+          ..runHigh ??= seen.$2;
+      }
+    }
+    final spill = _spills[cursor.chatId];
+    if (spill != null && spill.after == cursor.fromMessageId) {
+      _spills.remove(cursor.chatId);
+      cursor.buffer.addAll(spill.messages);
+      cursor.fromMessageId = spill.nextFrom;
+      if (spill.exhausted && spill.messages.isEmpty) cursor.exhausted = true;
+      return;
+    }
     try {
       final page = await _query({
         '@type': 'getChatHistory',
@@ -926,13 +1109,19 @@ class ChatPackScanner {
       final messages =
           page.objects('messages') ?? const <Map<String, dynamic>>[];
       var added = 0;
+      int? skipDownTo;
       for (final message in messages) {
         final id = message.int64('id');
         if (id == null) continue;
         // The page can repeat the message it started from.
         if (cursor.fromMessageId != 0 && id >= cursor.fromMessageId) continue;
+        // Inside a range already processed: the first one is handed out so
+        // the run links up with the range; the rest are not read at all.
+        if (skipDownTo != null && id >= skipDownTo) continue;
+        final seen = _read.rangeOf(cursor.chatId, id);
+        if (seen != null) skipDownTo = seen.$1;
         cursor.buffer.add(message);
-        cursor.fromMessageId = id;
+        cursor.fromMessageId = seen?.$1 ?? id;
         added += 1;
       }
       if (added == 0) cursor.exhausted = true;

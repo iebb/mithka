@@ -105,6 +105,9 @@ class _FakeTd {
   final requests = <Map<String, dynamic>>[];
   final installed = <int>{20};
 
+  /// Every message id getChatHistory handed out, per chat, in order.
+  final delivered = <int, List<int>>{};
+
   /// Errors getStickerSet raises, once each, keyed by set id.
   final setErrors = <int, List<Map<String, dynamic>>>{};
 
@@ -137,7 +140,11 @@ class _FakeTd {
         );
         // Like TDLib, an uncached first read returns only the newest message.
         final limit = from == 0 ? 1 : request['limit'] as int;
-        return {'messages': older.take(limit).toList()};
+        final page = older.take(limit).toList();
+        (delivered[request['chat_id'] as int] ??= []).addAll(
+          page.map((m) => m['id'] as int),
+        );
+        return {'messages': page};
       case 'getCustomEmojiStickers':
         final ids = (request['custom_emoji_ids'] as List).cast<String>();
         return {
@@ -497,6 +504,76 @@ void main() {
     expect(store.maxConcurrent, 1);
     expect(store.written.last['scannedMessages'], 6);
   });
+
+  test('a resumed older walk skips what a newer walk already read', () async {
+    final store = _MemoryStore();
+    final td = _FakeTd();
+    // Session one: stop after chat 1's newest message, before chat 2 is
+    // read (its first page may be fetched ahead, but nothing is counted).
+    final first = await _service(
+      td,
+      store: store,
+      now: 1000,
+    ).openGlobalScanner();
+    await first.loadMore(messages: 1);
+    await first.settle();
+    await first.save(force: true);
+
+    // 250 new stickers in chat 2 after session one began.
+    td.history[2]!.insertAll(0, [
+      for (var i = 249; i >= 0; i--) _sticker(1000 + i, 1100 + i, 20),
+    ]);
+    td.delivered.clear();
+    final reopened = await _service(
+      td,
+      store: store,
+      now: 2000,
+    ).openGlobalScanner();
+    await reopened.resolveKnown();
+    while (!reopened.exhausted) {
+      await reopened.loadMore();
+    }
+    await reopened.settle();
+
+    // Every message counted exactly once across both sessions.
+    expect(_uses(reopened.stickers), {10: 2, 20: 251, 30: 1});
+    expect(reopened.scannedMessages, 256);
+    // The older walk resumed chat 2 from the top, hit the newer walk's
+    // range on its first message and jumped below it: the 250 new messages
+    // were read once, not twice.
+    final chat2 = td.delivered[2]!;
+    final repeats = chat2.length - chat2.toSet().length;
+    expect(repeats, 0);
+    expect(chat2.length, lessThan(260));
+  });
+
+  test('a long chat is indexed as one range', () async {
+    final td = _longChat(1000);
+    final scanner = _service(td).chatScanner(9);
+    while (!scanner.exhausted) {
+      await scanner.loadMore();
+    }
+    expect(scanner.scannedMessages, 1000);
+    expect(scanner.readRangeCount, 1);
+  });
+
+  test(
+    'a save asked for mid-batch waits for the batch to be counted',
+    () async {
+      final store = _MemoryStore();
+      final td = _FakeTd();
+      final scanner = await _service(td, store: store).openGlobalScanner();
+      final loading = scanner.loadMore(messages: 3);
+      // The batch is still reading; this save must not record half of it.
+      await scanner.save(force: true);
+      expect(store.saved, isEmpty);
+      await loading;
+      await scanner.settle();
+      await Future<void>.delayed(Duration.zero);
+      final saved = jsonDecode(store.saved[777]!) as Map<String, dynamic>;
+      expect(saved['scannedMessages'], 3);
+    },
+  );
 
   test('each account keeps its own scan', () async {
     final store = _MemoryStore();
