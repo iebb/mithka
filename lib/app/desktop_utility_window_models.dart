@@ -16,6 +16,7 @@ enum DesktopUtilityWindowKind {
   calls('calls'),
   savedMessages('saved-messages'),
   files('files'),
+  stickerFinder('sticker-finder'),
   videos('videos'),
   search('search'),
   settings('settings'),

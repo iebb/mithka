@@ -13,6 +13,24 @@ private final class MouseRecipientView: NSView {
 }
 
 class RunnerTests: XCTestCase {
+  func testCopyImageWritesBitmapWithoutFileURL() throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let bitmap = try XCTUnwrap(
+      NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+        isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+      ))
+    let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+
+    XCTAssertTrue(DesktopClipboardImagesPlugin.writeImage(png, to: pasteboard))
+    let item = try XCTUnwrap(pasteboard.pasteboardItems?.first)
+    XCTAssertEqual(item.data(forType: .png), png)
+    XCTAssertNil(item.string(forType: .fileURL))
+    XCTAssertNil(item.string(forType: .string))
+  }
+
   func testDesktopImagePasteAndDropPreserveBytesAndRejectNonImages() throws {
     // A private pasteboard avoids reading or changing the user's clipboard.
     let pasteboard = NSPasteboard.withUniqueName()

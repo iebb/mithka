@@ -766,32 +766,34 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(500, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    Widget menuFor(TargetPlatform platform) => ChangeNotifierProvider.value(
-      value: translation,
-      child: MaterialApp(
-        theme: ThemeData(platform: platform),
-        locale: const Locale('en'),
-        localizationsDelegates: const [AppLocalizations.delegate],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: MessageActionMenu(
-              message: ChatMessage(
-                id: 42,
-                isOutgoing: false,
-                text: '',
-                date: 1,
-                contentType: 'messagePhoto',
-                image: TdFileRef(id: 42),
+    Widget menuFor(TargetPlatform platform, {bool allowForwarding = true}) =>
+        ChangeNotifierProvider.value(
+          value: translation,
+          child: MaterialApp(
+            theme: ThemeData(platform: platform),
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: MessageActionMenu(
+                  message: ChatMessage(
+                    id: 42,
+                    isOutgoing: false,
+                    text: '',
+                    date: 1,
+                    contentType: 'messagePhoto',
+                    image: TdFileRef(id: 42),
+                  ),
+                  isPinned: false,
+                  allowForwarding: allowForwarding,
+                  onSelect: (_) {},
+                ),
               ),
-              isPinned: false,
-              onSelect: (_) {},
             ),
           ),
-        ),
-      ),
-    );
+        );
 
     await tester.pumpWidget(menuFor(TargetPlatform.macOS));
     await tester.pumpAndSettle();
@@ -802,6 +804,11 @@ void main() {
       findsNothing,
     );
     expect(find.text('Save As…'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('message-action-copyImage')),
+      findsOneWidget,
+    );
+    expect(find.text('Copy image'), findsOneWidget);
 
     // MaterialApp lerps between themes, so the platform swap only lands once
     // the theme animation has settled.
@@ -813,5 +820,18 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('message-action-saveAs')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('message-action-copyImage')),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      menuFor(TargetPlatform.macOS, allowForwarding: false),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('message-action-copyImage')),
+      findsNothing,
+    );
   });
 }

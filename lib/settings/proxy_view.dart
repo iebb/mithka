@@ -342,15 +342,16 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     if (!_valid || _saving) return;
     setState(() => _saving = true);
     final config = _config;
-    if (widget.allowOfflineSave) {
-      await ProxyConfig.save(config);
-      unawaited(TdClient.shared.applySavedProxyToActive());
-      if (mounted) Navigator.of(context).pop(true);
-      return;
-    }
     try {
-      await TdClient.shared.applyProxyConfig(config);
-      await ProxyConfig.save(config);
+      if (widget.allowOfflineSave) {
+        // The login page can advance to code/password entry immediately. Wait
+        // for the proxy to reach the active TDLib client before leaving it.
+        await ProxyConfig.save(config);
+        await TdClient.shared.applySavedProxyToActive();
+      } else {
+        await TdClient.shared.applyProxyConfig(config);
+        await ProxyConfig.save(config);
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       debugPrint('🌐 [Mithka] add proxy failed: $error');
@@ -372,16 +373,21 @@ class _ProxyEditViewState extends State<ProxyEditView> {
         onTap: _save,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            AppStrings.t(AppStringKeys.accentColorPickerSave),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: _valid
-                  ? AppTheme.brand
-                  : AppTheme.brand.withValues(alpha: 0.4),
-            ),
-          ),
+          child: _saving
+              ? SizedBox.square(
+                  dimension: 20,
+                  child: AppActivityIndicator(size: 18, color: AppTheme.brand),
+                )
+              : Text(
+                  AppStrings.t(AppStringKeys.accentColorPickerSave),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: _valid
+                        ? AppTheme.brand
+                        : AppTheme.brand.withValues(alpha: 0.4),
+                  ),
+                ),
         ),
       ),
       child: SettingsListView(

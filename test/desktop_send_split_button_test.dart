@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_view_model.dart';
+import 'package:mithka/chat/message_send_options.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -36,6 +37,14 @@ class _SendSplitButtonViewModel extends ChatViewModel {
     String text,
     List<Map<String, dynamic>> entities,
   ) async => true;
+
+  MessageSendConfiguration? selectedConfiguration;
+
+  @override
+  void useNextSendConfiguration(MessageSendConfiguration configuration) {
+    selectedConfiguration = configuration;
+    super.useNextSendConfiguration(configuration);
+  }
 }
 
 void main() {
@@ -44,7 +53,7 @@ void main() {
   testWidgets(
     'desktop composer exposes send options as a visible keyboard control',
     (tester) async {
-      await _pumpComposer(tester, platform: TargetPlatform.macOS);
+      final vm = await _pumpComposer(tester, platform: TargetPlatform.macOS);
       await tester.enterText(find.byType(TextField).first, 'hello');
       await tester.pump();
 
@@ -91,10 +100,46 @@ void main() {
 
       await tester.tap(options);
       await tester.pumpAndSettle();
+      final menu = find.byKey(const ValueKey('messageSendOptionsContextMenu'));
+      expect(menu, findsOneWidget);
       expect(
         find.byKey(const ValueKey('messageSendOptionsSurface')),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(
+        find.byKey(const ValueKey('messageSendOptionsModalFrame')),
+        findsNothing,
+      );
+      expect(
+        tester.getBottomRight(menu).dy,
+        lessThan(tester.getTopRight(options).dy),
+      );
+
+      await tester.tap(find.text('Send silently'));
+      await tester.pump();
+      final confirm = find.byKey(const ValueKey('messageSendOptionsConfirm'));
+      await tester.ensureVisible(confirm);
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(vm.selectedConfiguration?.disableNotification, isTrue);
+      expect(menu, findsNothing);
+
+      await tester.enterText(find.byType(TextField).first, 'again');
+      await tester.pump();
+      await tester.tap(options);
+      await tester.pumpAndSettle();
+      expect(menu, findsOneWidget);
+
+      await tester.tapAt(const Offset(8, 8));
+      await tester.pumpAndSettle();
+      expect(menu, findsNothing);
+
+      await tester.tap(options);
+      await tester.pumpAndSettle();
+      expect(menu, findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(menu, findsNothing);
     },
   );
 
@@ -128,7 +173,7 @@ void main() {
   });
 }
 
-Future<void> _pumpComposer(
+Future<_SendSplitButtonViewModel> _pumpComposer(
   WidgetTester tester, {
   required TargetPlatform platform,
 }) async {
@@ -159,4 +204,5 @@ Future<void> _pumpComposer(
       ),
     ),
   );
+  return vm;
 }

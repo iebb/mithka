@@ -38,6 +38,23 @@ class DesktopClipboardImageService {
 
   static const _channel = MethodChannel('mithka/clipboard');
 
+  /// Places bitmap data on the macOS pasteboard so other apps can paste the
+  /// photo itself instead of receiving a local TDLib file URL.
+  static Future<bool> copyImageFile(File file) async {
+    if (!await file.exists()) return false;
+    try {
+      final data = await file.readAsBytes();
+      if (data.isEmpty) return false;
+      return await _channel.invokeMethod<bool>('writeImage', data) ?? false;
+    } on FileSystemException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   static Future<DesktopClipboardImageReadResult> readAttachments(
     int limit,
   ) async {

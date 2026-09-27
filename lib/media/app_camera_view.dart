@@ -279,10 +279,11 @@ class _AppCameraViewState extends State<AppCameraView>
                         if (controller != null &&
                             controller.value.isInitialized)
                           Center(
-                            child: AspectRatio(
-                              aspectRatio: controller.value.aspectRatio,
-                              child: CameraPreview(controller),
-                            ),
+                            // CameraPreview already applies the preview's
+                            // orientation-aware aspect ratio. A second frame
+                            // with the sensor's landscape ratio makes the
+                            // live image narrow in portrait.
+                            child: CameraPreview(controller),
                           )
                         else if (_initializing)
                           const Center(

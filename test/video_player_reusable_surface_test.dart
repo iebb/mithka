@@ -302,7 +302,7 @@ void main() {
         await tester.pump();
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
-          'video-more-menu-action-2',
+          'video-more-menu-action-3',
           reason: 'ArrowUp wraps from the first to the last visible action',
         );
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);

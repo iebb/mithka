@@ -39,6 +39,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'chat_picker_view.dart';
 import 'forward_options.dart';
@@ -258,12 +259,19 @@ class VideoOnDemandPlayerView extends StatefulWidget {
       _VideoOnDemandPlayerViewState();
 }
 
-class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
+class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView>
+    with SingleTickerProviderStateMixin {
   late VideoPlaybackQueue _queue = widget.queue;
   late Duration? _initialPosition = widget.initialPosition;
   late bool _initialPlaying = widget.initialPlaying;
   late double _lastAudibleVolume;
   late bool _muted;
+  late final AnimationController _queueTransition = AnimationController(
+    vsync: this,
+    duration: AppMotion.deliberate,
+    value: 1,
+  );
+  int _queueTransitionDirection = 1;
 
   @override
   void initState() {
@@ -279,6 +287,9 @@ class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
   void didUpdateWidget(covariant VideoOnDemandPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.queue != oldWidget.queue) {
+      if (widget.queue.current.video.id != _queue.current.video.id) {
+        _startQueueTransition(widget.queue.index >= _queue.index ? 1 : -1);
+      }
       _queue = widget.queue;
       _initialPosition = widget.initialPosition;
       _initialPlaying = widget.initialPlaying;
@@ -298,18 +309,36 @@ class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
       _initialPosition = null;
       _initialPlaying = true;
     });
+    _startQueueTransition(delta);
     widget.onQueueChanged?.call(next);
   }
 
   void _selectOnDemandItem(int index) {
     final next = _queue.moveTo(index);
     if (next == null || identical(next, _queue)) return;
+    final direction = index >= _queue.index ? 1 : -1;
     setState(() {
       _queue = next;
       _initialPosition = null;
       _initialPlaying = true;
     });
+    _startQueueTransition(direction);
     widget.onQueueChanged?.call(next);
+  }
+
+  void _startQueueTransition(int direction) {
+    _queueTransitionDirection = direction >= 0 ? 1 : -1;
+    if (AppMotion.isReduced(context)) {
+      _queueTransition.value = 1;
+    } else {
+      _queueTransition.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _queueTransition.dispose();
+    super.dispose();
   }
 
   void _handleVolumeChanged(double volume) {
@@ -324,7 +353,7 @@ class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
   @override
   Widget build(BuildContext context) {
     final item = _queue.current;
-    return VideoPlayerView(
+    final player = VideoPlayerView(
       key: ValueKey(
         '${item.accountSlot ?? 'active'}:${item.video.id}:${item.messageId ?? 0}',
       ),
@@ -363,6 +392,24 @@ class _VideoOnDemandPlayerViewState extends State<VideoOnDemandPlayerView> {
             streamQuery: widget.streamQuery,
           ),
     );
+    return ColoredBox(
+      color: Colors.black,
+      child: AnimatedBuilder(
+        animation: _queueTransition,
+        child: player,
+        builder: (context, child) {
+          final arrival = AppMotion.standard.transform(_queueTransition.value);
+          return Opacity(
+            key: const ValueKey('video-queue-arrival'),
+            opacity: 0.35 + arrival * 0.65,
+            child: Transform.translate(
+              offset: Offset(0, _queueTransitionDirection * (1 - arrival) * 44),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -399,6 +446,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Object? _lastControllerInitializationError;
   Timer? _streamStallTimer;
   Duration? _streamStallPosition;
+  bool _appInForeground = true;
   bool _retryInFlight = false;
   bool _retryFromPlaybackSnapshot = false;
   bool _lastKnownPlaybackWasPlaying = false;
@@ -439,6 +487,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   Duration _gestureStartPosition = Duration.zero;
   Duration _gestureSeekPosition = Duration.zero;
   int _gestureNavigationDelta = 0;
+  Timer? _heldSeekTimer;
+  int _heldSeekDirection = 0;
+  bool _heldSeekInFlight = false;
+  Timer? _touchControlsHideTimer;
   double _videoZoomScale = 1;
   Offset _videoZoomOffset = Offset.zero;
   Rect _videoZoomViewport = Rect.zero;
@@ -469,7 +521,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     debugLabel: 'video-display-mode-button',
   );
   final List<FocusNode> _moreMenuFocusNodes = List<FocusNode>.generate(
-    4,
+    5,
     (index) => FocusNode(debugLabel: 'video-more-menu-action-$index'),
   );
   final Map<VideoDisplayMode, FocusNode> _modeMenuFocusNodes = {
@@ -534,6 +586,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncStreamStallRecovery(_controller?.value);
     // Leaving the app is where the resume position has to become durable: the
     // process may never be resumed, and the periodic save is coarse.
     if (state == AppLifecycleState.hidden ||
@@ -926,6 +980,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       '${_debugTimestamp()}  controller ready  ${_fmt(c.value.duration)}',
     );
     setState(() => _controller = c);
+    _syncStreamStallRecovery(c.value);
     if (_usesAndroidSystemMediaVolume) {
       unawaited(_syncAndroidSystemVolume(c));
     }
@@ -1362,13 +1417,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   void _syncStreamStallRecovery(VideoPlayerValue? value) {
     final controller = _controller;
     final source = _localPath;
+    final wasPlayingBeforeBuffering =
+        value?.isBuffering == true && _lastKnownPlaybackWasPlaying;
     final shouldWatch =
         controller != null &&
         value != null &&
         value.isInitialized &&
-        value.isBuffering &&
+        (value.isPlaying || wasPlayingBeforeBuffering) &&
         !value.hasError &&
-        _lastKnownPlaybackWasPlaying &&
+        !_completionHandled &&
+        _appInForeground &&
         source != null &&
         (source.startsWith('http://') || source.startsWith('https://')) &&
         _streamServer != null &&
@@ -1399,12 +1457,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       final stalledAt = _streamStallPosition;
       _streamStallPosition = null;
       if (!mounted ||
+          !identical(activeController, controller) ||
           activeController == null ||
           activeValue == null ||
-          !activeValue.isBuffering ||
-          stalledAt == null ||
-          (activeValue.position - stalledAt).abs() >=
-              const Duration(milliseconds: 250)) {
+          !(activeValue.isPlaying ||
+              (activeValue.isBuffering && _lastKnownPlaybackWasPlaying)) ||
+          activeValue.hasError ||
+          _completionHandled ||
+          !_appInForeground ||
+          _systemPiPHandoff ||
+          _systemPiPBusy ||
+          stalledAt == null) {
+        return;
+      }
+      if ((activeValue.position - stalledAt).abs() >=
+          const Duration(milliseconds: 250)) {
+        _syncStreamStallRecovery(activeValue);
         return;
       }
       _recoverAfterStreamFailure(
@@ -2029,6 +2097,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _heldSeekTimer?.cancel();
+    _touchControlsHideTimer?.cancel();
     _releaseVideoOrientation();
     unawaited(_restorePlayerBrightness());
     if (_wakelockActive) {
@@ -2225,8 +2295,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       behavior: HitTestBehavior.translucent,
       onPointerDown: _handleVideoZoomPointerDown,
       onPointerMove: _handleVideoZoomPointerMove,
-      onPointerUp: _handleVideoZoomPointerEnd,
-      onPointerCancel: _handleVideoZoomPointerEnd,
+      onPointerUp: (event) {
+        _stopHeldSeek();
+        _handleVideoZoomPointerEnd(event);
+      },
+      onPointerCancel: (event) {
+        _stopHeldSeek();
+        _handleVideoZoomPointerEnd(event);
+      },
       child: player,
     );
   }
@@ -3105,6 +3181,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
             _updateSurfacePanGesture(details, controller, scope.actions),
         onPanEnd: (_) => _finishSurfacePanGesture(controller),
         onPanCancel: _cancelSurfacePanGesture,
+        onLongPressStart: (details) => _startHeldSeek(
+          details.localPosition,
+          MediaQuery.sizeOf(context).width,
+          scope.actions,
+        ),
+        onLongPressEnd: (_) => _stopHeldSeek(),
         child: surface,
       );
     }
@@ -3146,6 +3228,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Widget _playerOverlay(BuildContext context, FVideoChromeScope scope) {
     _reusablePlayerActions = scope.actions;
+    _syncTouchControlsAutoHide(scope);
     if (_systemPiPActive) {
       return const IgnorePointer(child: SizedBox.expand());
     }
@@ -3159,6 +3242,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                   _activeGesture == _PlayerGesture.volume
               ? _sideLevelIndicator()
               : _gestureIndicator(controller),
+        if (_heldSeekDirection != 0) _heldSeekIndicator(),
         if (_showCompletionPrompt) _completionPrompt(),
         if (_moreMenuVisible)
           _moreMenuOverlay(
@@ -3178,6 +3262,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       );
     }
     return IgnorePointer(child: overlay);
+  }
+
+  void _syncTouchControlsAutoHide(FVideoChromeScope scope) {
+    final shouldHide =
+        !_isDesktopPlatform &&
+        widget.presentation == VideoPlayerPresentation.fullscreen &&
+        !_systemPiPActive &&
+        scope.snapshot.controlsVisible &&
+        !scope.snapshot.value.isPlaying &&
+        !_moreMenuVisible &&
+        !_modeMenuVisible &&
+        !_showCompletionPrompt;
+    if (!shouldHide) {
+      _touchControlsHideTimer?.cancel();
+      _touchControlsHideTimer = null;
+      return;
+    }
+    _touchControlsHideTimer ??= Timer(const Duration(seconds: 5), () {
+      _touchControlsHideTimer = null;
+      if (!mounted ||
+          _moreMenuVisible ||
+          _modeMenuVisible ||
+          _showCompletionPrompt ||
+          _controller?.value.isPlaying == true) {
+        return;
+      }
+      scope.actions.toggleControls();
+    });
   }
 
   KeyEventResult _handlePlayerMenuKeyEvent(KeyEvent event) {
@@ -3227,7 +3339,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         _moreMenuFocusNodes[0],
         _moreMenuFocusNodes[1],
         _moreMenuFocusNodes[2],
-        if (_showsOrientationButton) _moreMenuFocusNodes[3],
+        _moreMenuFocusNodes[3],
+        if (_showsOrientationButton) _moreMenuFocusNodes[4],
       ];
     }
     if (_modeMenuVisible) {
@@ -3410,6 +3523,83 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     _cancelPlaybackGesture();
+  }
+
+  void _startHeldSeek(Offset position, double width, FVideoActions actions) {
+    if (width <= 0 || _videoZoomSuppressPlaybackGestures) return;
+    final direction = position.dx < width * 0.42
+        ? -1
+        : position.dx > width * 0.58
+        ? 1
+        : 0;
+    if (direction == 0) return;
+    _stopHeldSeek();
+    if (!mounted) return;
+    setState(() => _heldSeekDirection = direction);
+    unawaited(_runHeldSeek(actions));
+    _heldSeekTimer = Timer.periodic(
+      const Duration(milliseconds: 450),
+      (_) => unawaited(_runHeldSeek(actions)),
+    );
+    actions.hideControls();
+  }
+
+  Future<void> _runHeldSeek(FVideoActions actions) async {
+    if (!mounted || _heldSeekDirection == 0 || _heldSeekInFlight) return;
+    _heldSeekInFlight = true;
+    try {
+      await actions.seekBy(Duration(seconds: _heldSeekDirection * 10));
+    } catch (_) {
+      _stopHeldSeek();
+    } finally {
+      _heldSeekInFlight = false;
+    }
+  }
+
+  void _stopHeldSeek() {
+    _heldSeekTimer?.cancel();
+    _heldSeekTimer = null;
+    if (_heldSeekDirection == 0) return;
+    if (mounted) setState(() => _heldSeekDirection = 0);
+  }
+
+  Widget _heldSeekIndicator() {
+    final backwards = _heldSeekDirection < 0;
+    return Center(
+      child: IgnorePointer(
+        child: Semantics(
+          liveRegion: true,
+          label: AppStrings.t(
+            backwards
+                ? AppStringKeys.videoPlayerSeekBackwardTenSeconds
+                : AppStringKeys.videoPlayerSeekForwardTenSeconds,
+          ),
+          child: Container(
+            key: const ValueKey('video-held-seek-indicator'),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.76),
+              borderRadius: BorderRadius.circular(AppRadius.card),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppIcon(
+                  backwards ? HeroAppIcons.arrowLeft : HeroAppIcons.arrowRight,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  backwards ? '−10s' : '+10s',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _beginVideoZoomGesture(
@@ -4236,6 +4426,30 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     ),
                                   ),
                                 ),
+                                const _VideoMenuSeparator(),
+                                KeyedSubtree(
+                                  key: const ValueKey('video-more-speed'),
+                                  child: _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.clock,
+                                    label:
+                                        '${AppStringKeys.videoPlayerPlaybackSpeed.l10n(context)} '
+                                        '${_formatPlaybackSpeed(_controller?.value.playbackSpeed ?? _speed)}',
+                                    focusNode: _moreMenuFocusNodes[3],
+                                    onPressed: () {
+                                      final current =
+                                          _controller?.value.playbackSpeed ??
+                                          _speed;
+                                      final actions = _reusablePlayerActions;
+                                      if (actions != null) {
+                                        unawaited(
+                                          actions.setPlaybackSpeed(
+                                            _nextPlaybackSpeed(current),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
                                 if (_showsOrientationButton) ...[
                                   const _VideoMenuSeparator(),
                                   KeyedSubtree(
@@ -4244,7 +4458,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                     ),
                                     child: _FocusableVideoMenuItem(
                                       icon: HeroAppIcons.rotate,
-                                      focusNode: _moreMenuFocusNodes[3],
+                                      focusNode: _moreMenuFocusNodes[4],
                                       label:
                                           (_landscapePlayback
                                                   ? AppStringKeys
@@ -6153,7 +6367,9 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
   bool _thumbnailRequestInFlight = false;
   double? _pendingThumbnailFraction;
   double? _scrubFraction;
+  double? _thumbnailFraction;
   Uint8List? _thumbnail;
+  int _scrubGeneration = 0;
 
   @override
   void dispose() {
@@ -6170,34 +6386,51 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
   }
 
   void _beginScrub(double fraction) {
+    _scrubGeneration++;
     _cancelThumbnailWork();
     widget.scope.actions.beginScrub(fraction);
     setState(() {
       _scrubFraction = fraction;
       _thumbnail = null;
+      _thumbnailFraction = null;
     });
     _queueThumbnail(fraction);
   }
 
   void _updateScrub(double fraction) {
     widget.scope.actions.updateScrub(fraction);
-    setState(() => _scrubFraction = fraction);
+    setState(() {
+      _scrubFraction = fraction;
+      if (_thumbnailFraction != null &&
+          (_thumbnailFraction! - fraction).abs() > 0.005) {
+        _thumbnail = null;
+        _thumbnailFraction = null;
+      }
+    });
     _queueThumbnail(fraction);
   }
 
   void _endScrub(double fraction) {
     _cancelThumbnailWork();
     final finalFraction = _scrubFraction ?? fraction;
-    unawaited(_commitScrub(finalFraction));
+    unawaited(_commitScrub(finalFraction, _scrubGeneration));
   }
 
-  Future<void> _commitScrub(double fraction) async {
-    await widget.scope.actions.endScrub(fraction);
-    if (!mounted) return;
-    setState(() {
-      _scrubFraction = null;
-      _thumbnail = null;
-    });
+  Future<void> _commitScrub(double fraction, int generation) async {
+    try {
+      await widget.scope.actions.endScrub(fraction);
+    } catch (_) {
+      // The player owns command errors; always release this timeline's scrub
+      // preview so the controls remain usable after a failed seek.
+    } finally {
+      if (mounted && generation == _scrubGeneration) {
+        setState(() {
+          _scrubFraction = null;
+          _thumbnail = null;
+          _thumbnailFraction = null;
+        });
+      }
+    }
   }
 
   void _cancelThumbnailWork() {
@@ -6230,7 +6463,10 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
       _thumbnailGeneration++;
       _thumbnailTimeout = null;
       _thumbnailRequestInFlight = false;
-      setState(() => _thumbnail = null);
+      setState(() {
+        _thumbnail = null;
+        _thumbnailFraction = null;
+      });
       _schedulePendingThumbnail();
     });
 
@@ -6248,7 +6484,12 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
     if (pending != null && (pending - fraction).abs() < 0.0001) {
       _pendingThumbnailFraction = null;
     }
-    setState(() => _thumbnail = result);
+    if ((_scrubFraction! - fraction).abs() <= 0.005) {
+      setState(() {
+        _thumbnail = result;
+        _thumbnailFraction = result == null ? null : fraction;
+      });
+    }
     _schedulePendingThumbnail();
   }
 

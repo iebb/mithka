@@ -125,6 +125,32 @@ void main() {
     expect(find.byKey(const ValueKey('camera-preview')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('portrait live preview uses the camera preview aspect ratio', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: AppCameraView(
+          availableCamerasForTesting: () async => [_camera],
+          controllerForTesting: _PreviewController.new,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final preview = tester.getSize(find.byType(CameraPreview));
+    expect(preview.width / preview.height, closeTo(480 / 640, 0.001));
+    expect(preview.width, closeTo(374, 0.001));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
 
 class _PreviewController extends CameraController {

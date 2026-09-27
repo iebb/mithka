@@ -67,123 +67,141 @@ Future<void> showEmojiStatusPicker(
       var statusTab = 0;
       return DefaultTextStyle.merge(
         style: const TextStyle(decoration: TextDecoration.none),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SizedBox(
-                height: maxHeight,
-                child: ListenableBuilder(
-                  listenable: EmojiStore.shared,
-                  builder: (ctx, _) {
-                    final packs = EmojiStore.shared.isPremium
-                        ? EmojiStore.shared.customPacks
-                        : const <CustomEmojiPack>[];
-                    return StatefulBuilder(
-                      builder: (ctx2, setSheet) {
-                        if (statusTab > packs.length) statusTab = 0;
-                        return Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    AppStrings.t(
-                                      AppStringKeys.emojiStatusSetTitle,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: c.textPrimary,
-                                    ),
+        // On desktop the sheet fills the window behind the panel, so a click
+        // around the panel lands on the sheet, never on the route's barrier.
+        // Treat those as outside taps; taps on the panel itself stay there.
+        child: GestureDetector(
+          key: const ValueKey('emoji-status-picker-outside'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(sheetContext).maybePop(),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: Container(
+                decoration: BoxDecoration(
+                  color: c.card,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    height: maxHeight,
+                    child: ListenableBuilder(
+                      listenable: EmojiStore.shared,
+                      builder: (ctx, _) {
+                        final packs = EmojiStore.shared.isPremium
+                            ? EmojiStore.shared.customPacks
+                            : const <CustomEmojiPack>[];
+                        return StatefulBuilder(
+                          builder: (ctx2, setSheet) {
+                            if (statusTab > packs.length) statusTab = 0;
+                            return Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    14,
+                                    16,
+                                    8,
                                   ),
-                                  const Spacer(),
-                                  if (currentStatusId != 0)
-                                    GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () => pick(0),
-                                      child: Text(
+                                  child: Row(
+                                    children: [
+                                      Text(
                                         AppStrings.t(
-                                          AppStringKeys.emojiStatusClear,
+                                          AppStringKeys.emojiStatusSetTitle,
                                         ),
                                         style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.tagRed,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: c.textPrimary,
                                         ),
                                       ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                      const Spacer(),
+                                      if (currentStatusId != 0)
+                                        GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => pick(0),
+                                          child: Text(
+                                            AppStrings.t(
+                                              AppStringKeys.emojiStatusClear,
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: AppTheme.tagRed,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                                child: statusTab == 0
-                                    ? FutureBuilder<List<int>>(
-                                        future: optionsFuture,
-                                        builder: (context, snap) {
-                                          if (snap.connectionState !=
-                                              ConnectionState.done) {
-                                            return const Center(
-                                              child: SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child:
-                                                    CircularProgressIndicator.adaptive(
-                                                      strokeWidth: 2,
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    child: statusTab == 0
+                                        ? FutureBuilder<List<int>>(
+                                            future: optionsFuture,
+                                            builder: (context, snap) {
+                                              if (snap.connectionState !=
+                                                  ConnectionState.done) {
+                                                return const Center(
+                                                  child: SizedBox(
+                                                    width: 24,
+                                                    height: 24,
+                                                    child:
+                                                        CircularProgressIndicator.adaptive(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  ),
+                                                );
+                                              }
+                                              final ids =
+                                                  snap.data ?? const <int>[];
+                                              if (ids.isEmpty &&
+                                                  packs.isEmpty) {
+                                                return Center(
+                                                  child: Text(
+                                                    AppStrings.t(
+                                                      AppStringKeys
+                                                          .emojiStatusNoAvailableStatusesPremiumRequired,
                                                     ),
-                                              ),
-                                            );
-                                          }
-                                          final ids =
-                                              snap.data ?? const <int>[];
-                                          if (ids.isEmpty && packs.isEmpty) {
-                                            return Center(
-                                              child: Text(
-                                                AppStrings.t(
-                                                  AppStringKeys
-                                                      .emojiStatusNoAvailableStatusesPremiumRequired,
-                                                ),
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: c.textSecondary,
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                          return grid(ids);
-                                        },
-                                      )
-                                    : grid([
-                                        for (final e
-                                            in packs[statusTab - 1].emoji)
-                                          if (e.customEmojiId != 0)
-                                            e.customEmojiId,
-                                      ]),
-                              ),
-                            ),
-                            if (packs.isNotEmpty)
-                              _statusTabStrip(
-                                c,
-                                packs,
-                                statusTab,
-                                (i) => setSheet(() => statusTab = i),
-                              ),
-                          ],
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: c.textSecondary,
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                              return grid(ids);
+                                            },
+                                          )
+                                        : grid([
+                                            for (final e
+                                                in packs[statusTab - 1].emoji)
+                                              if (e.customEmojiId != 0)
+                                                e.customEmojiId,
+                                          ]),
+                                  ),
+                                ),
+                                if (packs.isNotEmpty)
+                                  _statusTabStrip(
+                                    c,
+                                    packs,
+                                    statusTab,
+                                    (i) => setSheet(() => statusTab = i),
+                                  ),
+                              ],
+                            );
+                          },
                         );
                       },
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
             ),

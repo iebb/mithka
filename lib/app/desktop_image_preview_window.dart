@@ -12,6 +12,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/desktop_clipboard_images.dart';
 import '../platform/keyboard_modifiers.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
@@ -312,11 +313,26 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
     }
   }
 
-  Future<void> _copyCurrentPath() async {
+  Future<void> _copyCurrent() async {
     final path = _items[_index].path;
     if (path == null) return;
-    await Clipboard.setData(ClipboardData(text: path));
-    _showStatus(AppStrings.t(AppStringKeys.qrScannerCopied));
+    if (Platform.isMacOS) {
+      final copied = await DesktopClipboardImageService.copyImageFile(
+        File(path),
+      );
+      if (!mounted) return;
+      _showStatus(
+        AppStrings.t(
+          copied
+              ? AppStringKeys.qrScannerCopied
+              : AppStringKeys.messageActionCopyImageFailed,
+        ),
+      );
+    } else {
+      await Clipboard.setData(ClipboardData(text: path));
+      if (!mounted) return;
+      _showStatus(AppStrings.t(AppStringKeys.qrScannerCopied));
+    }
     if (mounted) setState(() => _showMore = false);
   }
 
@@ -426,7 +442,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
               bottom: 62,
               child: _PreviewMoreMenu(
                 dark: _dark,
-                onCopy: _copyCurrentPath,
+                onCopy: _copyCurrent,
                 onClose: implementation.closeCurrentDesktopImagePreviewWindow,
               ),
             ),
@@ -778,7 +794,11 @@ class _PreviewMoreMenu extends StatelessWidget {
       children: [
         _PreviewMoreAction(
           icon: HeroAppIcons.clipboard,
-          label: AppStrings.t(AppStringKeys.messageActionCopy),
+          label: AppStrings.t(
+            Platform.isMacOS
+                ? AppStringKeys.messageActionCopyImage
+                : AppStringKeys.messageActionCopy,
+          ),
           dark: dark,
           onTap: onCopy,
         ),
@@ -822,12 +842,18 @@ class _PreviewMoreAction extends StatelessWidget {
               color: dark ? const Color(0xFFCACCD0) : const Color(0xFF545861),
             ),
             const SizedBox(width: 9),
-            Text(
-              label,
-              style: TextStyle(
-                color: dark ? const Color(0xFFE8E9EB) : const Color(0xFF24272D),
-                fontSize: 13,
-                decoration: TextDecoration.none,
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: dark
+                      ? const Color(0xFFE8E9EB)
+                      : const Color(0xFF24272D),
+                  fontSize: 13,
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
           ],

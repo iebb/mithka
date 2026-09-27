@@ -108,6 +108,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
   DesktopHotkeyRegistration? _focusSearchRegistration;
   bool _profileVisible = false;
   bool _statusPickerVisible = false;
+  NavigatorState? _statusPickerNavigator;
 
   @override
   void initState() {
@@ -205,15 +206,26 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     if (pickerContext == null) return;
     _hideProfile();
     _searchController.dismiss();
-    setState(() => _statusPickerVisible = true);
+    setState(() {
+      _statusPickerVisible = true;
+      _statusPickerNavigator = navigator;
+    });
     try {
       await showEmojiStatusPicker(
         pickerContext,
         currentStatusId: currentStatusId,
       );
     } finally {
+      _statusPickerNavigator = null;
       if (mounted) setState(() => _statusPickerVisible = false);
     }
+  }
+
+  /// The picker's barrier covers only the app below the title bar, which
+  /// sits above the app Navigator; a click on the title bar closes it too.
+  void _closeStatusPicker() {
+    if (!_statusPickerVisible) return;
+    unawaited(_statusPickerNavigator?.maybePop());
   }
 
   Future<void> _openEditProfile() async {
@@ -267,6 +279,9 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     final avatarPath = widget.accountAvatarPath ?? activeAccount?.avatarPath;
     final canManageProfile =
         widget.accountReady && activeAccount?.isBotApi != true;
+    // Emoji statuses are a Premium feature; without it the button could only
+    // open a picker that fails on every choice.
+    final canSetStatus = canManageProfile && activeAccount?.isPremium == true;
     final statusId = activeAccount?.emojiStatusId ?? 0;
     final statusMode = context
         .watch<ThemeController?>()
@@ -366,7 +381,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                           ),
                         ),
                       ),
-                      if (canManageProfile && constraints.maxWidth >= 80) ...[
+                      if (canSetStatus && constraints.maxWidth >= 80) ...[
                         const SizedBox(width: 2),
                         AppInteractiveSurface(
                           key: const ValueKey('desktop-title-bar-status'),
@@ -430,6 +445,25 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                         ? () => unawaited(_openEditProfile())
                         : null,
                   ),
+                ),
+              ),
+            ),
+          if (_statusPickerVisible)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MacosDesktopTitleBar.height,
+              child: GestureDetector(
+                key: const ValueKey('desktop-title-bar-status-dismiss'),
+                behavior: HitTestBehavior.opaque,
+                onTap: _closeStatusPicker,
+                // Dims with the picker's own barrier (the Cupertino modal
+                // barrier colour), so the whole window reads as behind it.
+                child: ColoredBox(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0x7A000000)
+                      : const Color(0x33000000),
                 ),
               ),
             ),

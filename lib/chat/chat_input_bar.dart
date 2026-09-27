@@ -547,11 +547,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
   final _desktopActionOwner = Object();
   DesktopHotkeyRegistration? _desktopScreenshotHotkeyRegistration;
   final _desktopSenderPopoverLink = LayerLink();
+  final _desktopSendOptionsLink = LayerLink();
+  final _desktopSendOptionsTargetKey = GlobalKey();
   final _desktopEmojiPopoverLink = LayerLink();
   final _desktopStickerPopoverLink = LayerLink();
   final _desktopSenderPopoverController = OverlayPortalController();
   final _desktopEmojiPopoverController = OverlayPortalController();
   final _desktopStickerPopoverController = OverlayPortalController();
+  MessageSendOptionsContextMenuHandle? _desktopSendOptionsMenu;
   bool _desktopSenderPopoverVisible = false;
   bool _desktopEmojiPopoverVisible = false;
   bool _desktopStickerPopoverVisible = false;
@@ -1267,6 +1270,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _desktopSenderPopoverVisible = false;
     _desktopEmojiPopoverVisible = false;
     _desktopStickerPopoverVisible = false;
+    _desktopSendOptionsMenu?.dismiss();
+    _desktopSendOptionsMenu = null;
     _discardPendingClipboardAttachments();
     _aiReplyGeneration++;
     if (_activeAiReplyProvider case final HostedAiReplyProvider hosted) {
@@ -2666,12 +2671,35 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _showTextSendOptions() async {
-    final configuration = await showMessageSendOptionsSheet(
-      context,
-      allowWhenOnline: widget.vm.canSendWhenOnline,
-      effects: widget.vm.availableMessageEffects,
-      onOpenScheduledMessages: _openScheduledMessages,
-    );
+    MessageSendConfiguration? configuration;
+    if (_usesNativeDesktopComposer(context)) {
+      _hideDesktopPopovers();
+      final target = _desktopSendOptionsTargetKey.currentContext
+          ?.findRenderObject();
+      final anchorTop = target is RenderBox && target.hasSize
+          ? target.localToGlobal(Offset.zero).dy
+          : MediaQuery.sizeOf(context).height;
+      final menu = showMessageSendOptionsContextMenu(
+        context,
+        anchor: _desktopSendOptionsLink,
+        maxHeight: math.max(80, anchorTop - 12),
+        allowWhenOnline: widget.vm.canSendWhenOnline,
+        effects: widget.vm.availableMessageEffects,
+        onOpenScheduledMessages: _openScheduledMessages,
+      );
+      _desktopSendOptionsMenu = menu;
+      configuration = await menu.result;
+      if (identical(_desktopSendOptionsMenu, menu)) {
+        _desktopSendOptionsMenu = null;
+      }
+    } else {
+      configuration = await showMessageSendOptionsSheet(
+        context,
+        allowWhenOnline: widget.vm.canSendWhenOnline,
+        effects: widget.vm.availableMessageEffects,
+        onOpenScheduledMessages: _openScheduledMessages,
+      );
+    }
     if (!mounted || configuration == null) return;
     if (_pendingClipboardAttachments.isNotEmpty) {
       await _sendPendingClipboardAttachments(sendConfiguration: configuration);
@@ -3576,6 +3604,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   // MARK: - Input row
 
   void _hideDesktopPopovers({bool rebuild = true}) {
+    _desktopSendOptionsMenu?.dismiss();
+    _desktopSendOptionsMenu = null;
     final changed =
         _desktopSenderPopoverVisible ||
         _desktopEmojiPopoverVisible ||
@@ -5310,34 +5340,42 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
         ),
         if (!editing)
-          AppInteractiveSurface(
-            key: const ValueKey('desktopComposerSendOptionsButton'),
-            semanticLabel: AppStringKeys.messageSendOptionsTitle.l10n(context),
-            enabled: !disabled,
-            onTap: disabled ? null : () => unawaited(_showTextSendOptions()),
-            borderRadius: const BorderRadius.only(
-              topRight: splitRadius,
-              bottomRight: splitRadius,
-            ),
-            child: Container(
-              key: const ValueKey('desktopComposerSendOptionsControl'),
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color,
-                border: Border(
-                  left: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
-                ),
-                borderRadius: const BorderRadius.only(
-                  topRight: splitRadius,
-                  bottomRight: splitRadius,
-                ),
+          CompositedTransformTarget(
+            key: _desktopSendOptionsTargetKey,
+            link: _desktopSendOptionsLink,
+            child: AppInteractiveSurface(
+              key: const ValueKey('desktopComposerSendOptionsButton'),
+              semanticLabel: AppStringKeys.messageSendOptionsTitle.l10n(
+                context,
               ),
-              child: const AppIcon(
-                HeroAppIcons.chevronDown,
-                size: 12,
-                color: Colors.white,
+              enabled: !disabled,
+              onTap: disabled ? null : () => unawaited(_showTextSendOptions()),
+              borderRadius: const BorderRadius.only(
+                topRight: splitRadius,
+                bottomRight: splitRadius,
+              ),
+              child: Container(
+                key: const ValueKey('desktopComposerSendOptionsControl'),
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color,
+                  border: Border(
+                    left: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topRight: splitRadius,
+                    bottomRight: splitRadius,
+                  ),
+                ),
+                child: const AppIcon(
+                  HeroAppIcons.chevronDown,
+                  size: 12,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

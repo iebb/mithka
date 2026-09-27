@@ -7,6 +7,7 @@
 //
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,7 @@ class AccountSummary {
     required this.phone,
     this.avatarPath,
     this.emojiStatusId = 0,
+    this.isPremium = false,
     this.isBotApi = false,
     this.botApiEndpoint,
   });
@@ -54,14 +56,96 @@ class AccountSummary {
   final String phone;
   final String? avatarPath; // resolved via this account's OWN TDLib client
   final int emojiStatusId;
+
+  /// Telegram Premium, from getMe. Cached with the rest so Premium-only
+  /// entries (Business, the emoji status button) are right from the first
+  /// frame instead of appearing once the account answers.
+  final bool isPremium;
   final bool isBotApi;
   final Uri? botApiEndpoint;
+
+  AccountSummary copyWith({String? avatarPath}) => AccountSummary(
+    slot: slot,
+    userId: userId,
+    name: name,
+    phone: phone,
+    avatarPath: avatarPath ?? this.avatarPath,
+    emojiStatusId: emojiStatusId,
+    isPremium: isPremium,
+    isBotApi: isBotApi,
+    botApiEndpoint: botApiEndpoint,
+  );
+
+  Map<String, Object?> toJson() => {
+    'slot': slot,
+    'userId': userId,
+    'name': name,
+    'phone': phone,
+    'avatarPath': avatarPath,
+    'emojiStatusId': emojiStatusId,
+    'isPremium': isPremium,
+    'isBotApi': isBotApi,
+    'botApiEndpoint': botApiEndpoint?.toString(),
+  };
+
+  static AccountSummary? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final slot = json['slot'];
+    final userId = json['userId'];
+    final name = json['name'];
+    if (slot is! int || userId is! int || name is! String || name.isEmpty) {
+      return null;
+    }
+    final endpoint = json['botApiEndpoint'];
+    final avatarPath = json['avatarPath'];
+    final phone = json['phone'];
+    final statusId = json['emojiStatusId'];
+    return AccountSummary(
+      slot: slot,
+      userId: userId,
+      name: name,
+      phone: phone is String ? phone : '',
+      avatarPath: avatarPath is String ? avatarPath : null,
+      emojiStatusId: statusId is int ? statusId : 0,
+      isPremium: json['isPremium'] == true,
+      isBotApi: json['isBotApi'] == true,
+      botApiEndpoint: endpoint is String ? Uri.tryParse(endpoint) : null,
+    );
+  }
+}
+
+/// What one slot's getMe said about the cached summary for that slot.
+sealed class _SlotIdentity {
+  const _SlotIdentity();
+}
+
+/// The slot answered: this is its identity now.
+final class _SlotResolved extends _SlotIdentity {
+  const _SlotResolved(this.summary, this.avatarFileId);
+  final AccountSummary summary;
+  final int? avatarFileId;
+}
+
+/// The slot is signed out or has no usable identity.
+final class _SlotGone extends _SlotIdentity {
+  const _SlotGone();
+}
+
+/// The slot could not be asked (no client yet, a transient error); keep
+/// whatever was cached rather than blanking the account.
+final class _SlotUnknown extends _SlotIdentity {
+  const _SlotUnknown();
 }
 
 class AccountStore extends ChangeNotifier {
   AccountStore(SharedPreferences prefs)
     : _prefs = prefs,
-      _activeSlot = prefs.getInt('drachma.activeSlot') ?? 0 {
+      _activeSlot = prefs.getInt('drachma.activeSlot') ?? 0,
+      _summaries = _readCachedSummaries(prefs) {
+    // The cached identities let the first frame show the right name and
+    // avatar. Without them the window starts as "Mithka", then remounts when
+    // getMe lands, because its identity key changes from no user to a user.
+    _selfIds.addAll(_summaries.map((summary) => summary.userId));
     // Restore an add-account that was in progress when the app was killed, so
     // its half-created slot can still be cleaned up.
     _pendingSlot = prefs.getInt(_pendingKey);
@@ -86,10 +170,35 @@ class AccountStore extends ChangeNotifier {
 
   static const _pendingKey = 'drachma.pendingSlot';
   static const _returnKey = 'drachma.pendingReturnSlot';
+  static const _summariesKey = 'drachma.accountSummaries';
+
+  static List<AccountSummary> _readCachedSummaries(SharedPreferences prefs) {
+    final raw = prefs.getString(_summariesKey);
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .map(AccountSummary.fromJson)
+          .whereType<AccountSummary>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _writeCachedSummaries() {
+    unawaited(
+      _prefs.setString(
+        _summariesKey,
+        jsonEncode([for (final summary in _summaries) summary.toJson()]),
+      ),
+    );
+  }
 
   final SharedPreferences _prefs;
   int _activeSlot;
-  List<AccountSummary> _summaries = [];
+  List<AccountSummary> _summaries;
   final Set<int> _selfIds = {}; // our own user ids across accounts
 
   // An in-progress "add account": the freshly-created slot whose login has not
@@ -117,6 +226,15 @@ class AccountStore extends ChangeNotifier {
   int get activeSlot => _activeSlot;
   List<AccountSummary> get summaries => _summaries;
   bool get activeIsBotApi => TdClient.shared.isBotApiSlot(_activeSlot);
+
+  /// Whether the active account has Telegram Premium, as last seen.
+  bool get activeIsPremium {
+    for (final summary in _summaries) {
+      if (summary.slot == _activeSlot) return summary.isPremium;
+    }
+    return false;
+  }
+
   int? get activeUserId {
     for (final summary in _summaries) {
       if (summary.slot == _activeSlot) return summary.userId;
@@ -209,70 +327,121 @@ class AccountStore extends ChangeNotifier {
   }
 
   /// Re-reads each account's identity (getMe per client) for the switcher.
+  ///
+  /// The active account goes first and every slot is published as soon as
+  /// it resolves, so a slow secondary account (or a profile photo download)
+  /// never holds back the name in the title bar.
   Future<void> refresh() async {
     _activeSlot = TdClient.shared.activeSlot;
-    final result = <AccountSummary>[];
-    for (final slot in TdClient.shared.configuredSlots) {
-      final cid = TdClient.shared.clientId(slot);
-      if (cid == null) continue;
-      Map<String, dynamic>? me;
-      try {
-        me = await TdClient.shared.queryTo({'@type': 'getMe'}, cid);
-      } catch (_) {}
-      final selfId = me?.int64('id');
-      if (selfId != null) {
-        _selfIds.add(selfId);
-        // The pending add has finished logging in — it's a real account now.
-        if (slot == _pendingSlot) {
-          _pendingSlot = null;
-          _persistPending();
-        }
-      }
-      final parsedName = me != null ? TDParse.userName(me) : '';
-      if (me == null || selfId == null || parsedName.isEmpty) continue;
-      final name = parsedName;
-      final botApiAccount = TdClient.shared.botApiAccount(slot);
-      final phone = botApiAccount == null
-          ? TDParse.formatPhone(me.str('phone_number'))
-          : [
-              if (botApiAccount.username.isNotEmpty)
-                '@${botApiAccount.username}',
-              botApiAccount.endpoint.host,
-            ].join(' · ');
+    final slots = TdClient.shared.configuredSlots;
+    final ordered = [
+      if (slots.contains(_activeSlot)) _activeSlot,
+      ...slots.where((slot) => slot != _activeSlot),
+    ];
+    final resolved = <int, AccountSummary?>{};
 
-      String? avatarPath;
-      final fileId = me.obj('profile_photo')?.obj('small')?.integer('id');
-      if (fileId != null) {
-        try {
-          final res = await TdClient.shared.queryTo({
-            '@type': 'downloadFile',
-            'file_id': fileId,
-            'priority': 1,
-            'offset': 0,
-            'limit': 0,
-            'synchronous': true,
-          }, cid);
-          final path = res.obj('local')?.str('path');
-          if (path != null && path.isNotEmpty) avatarPath = path;
-        } catch (_) {}
-      }
-      result.add(
-        AccountSummary(
-          slot: slot,
-          userId: selfId,
-          name: name,
-          phone: phone,
-          avatarPath: avatarPath,
-          emojiStatusId: TDParse.emojiStatusCustomEmojiId(
-            me.obj('emoji_status'),
-          ),
-          isBotApi: botApiAccount != null,
-          botApiEndpoint: botApiAccount?.endpoint,
-        ),
-      );
+    void publish() {
+      final cached = {for (final summary in _summaries) summary.slot: summary};
+      _summaries = [
+        for (final slot in slots)
+          if (resolved.containsKey(slot)) ?resolved[slot] else ?cached[slot],
+      ];
+      // Saved as each slot resolves: a secondary account that never answers
+      // must not keep the active one out of the next launch's cache.
+      _writeCachedSummaries();
+      notifyListeners();
     }
-    _summaries = result;
-    notifyListeners();
+
+    for (final slot in ordered) {
+      switch (await _identityForSlot(slot)) {
+        case _SlotResolved(:final summary, :final avatarFileId):
+          resolved[slot] = summary;
+          publish();
+          final avatarPath = await _downloadAvatar(slot, avatarFileId);
+          if (avatarPath != null && avatarPath != summary.avatarPath) {
+            resolved[slot] = summary.copyWith(avatarPath: avatarPath);
+            publish();
+          }
+        case _SlotGone():
+          resolved[slot] = null;
+          publish();
+        case _SlotUnknown():
+          break;
+      }
+    }
+    publish();
+  }
+
+  Future<_SlotIdentity> _identityForSlot(int slot) async {
+    final cid = TdClient.shared.clientId(slot);
+    if (cid == null) return const _SlotUnknown();
+    Map<String, dynamic> me;
+    try {
+      me = await TdClient.shared.queryTo({'@type': 'getMe'}, cid);
+    } on TdError catch (error) {
+      return error.code == 401 ? const _SlotGone() : const _SlotUnknown();
+    } catch (_) {
+      return const _SlotUnknown();
+    }
+    final selfId = me.int64('id');
+    if (selfId != null) {
+      _selfIds.add(selfId);
+      // The pending add has finished logging in — it's a real account now.
+      if (slot == _pendingSlot) {
+        _pendingSlot = null;
+        _persistPending();
+      }
+    }
+    final name = TDParse.userName(me);
+    if (selfId == null || name.isEmpty) return const _SlotGone();
+    final botApiAccount = TdClient.shared.botApiAccount(slot);
+    final phone = botApiAccount == null
+        ? TDParse.formatPhone(me.str('phone_number'))
+        : [
+            if (botApiAccount.username.isNotEmpty) '@${botApiAccount.username}',
+            botApiAccount.endpoint.host,
+          ].join(' · ');
+    // Until the photo is on disk, keep the one cached for this same user.
+    String? cachedAvatar;
+    for (final summary in _summaries) {
+      if (summary.slot == slot && summary.userId == selfId) {
+        cachedAvatar = summary.avatarPath;
+      }
+    }
+    final avatarFileId = me.obj('profile_photo')?.obj('small')?.integer('id');
+    return _SlotResolved(
+      AccountSummary(
+        slot: slot,
+        userId: selfId,
+        name: name,
+        phone: phone,
+        avatarPath: avatarFileId == null ? null : cachedAvatar,
+        emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
+        isPremium: me.boolean('is_premium') ?? false,
+        isBotApi: botApiAccount != null,
+        botApiEndpoint: botApiAccount?.endpoint,
+      ),
+      avatarFileId,
+    );
+  }
+
+  Future<String?> _downloadAvatar(int slot, int? fileId) async {
+    final cid = TdClient.shared.clientId(slot);
+    if (cid == null || fileId == null) return null;
+    try {
+      final res = await TdClient.shared.queryTo({
+        '@type': 'downloadFile',
+        'file_id': fileId,
+        'priority': 1,
+        'offset': 0,
+        'limit': 0,
+        'synchronous': true,
+      }, cid);
+      final path = res.obj('local')?.str('path');
+      return path == null || path.isEmpty ? null : path;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Switches to an existing account and re-gates auth on it.

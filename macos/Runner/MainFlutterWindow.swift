@@ -86,9 +86,7 @@ class MainFlutterWindow: NSWindow {
     styleMask.insert(.fullSizeContentView)
     isReleasedWhenClosed = false
     minSize = NSSize(width: 820, height: 560)
-    if #available(macOS 11.0, *) {
-      titlebarSeparatorStyle = .none
-    }
+    titlebarSeparatorStyle = .none
     DispatchQueue.main.async { [weak self] in
       self?.alignTrafficLightsWithTitleBar()
     }
@@ -137,11 +135,38 @@ final class DesktopClipboardImagesPlugin: NSObject, FlutterPlugin {
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard call.method == "readImages" else {
+    switch call.method {
+    case "readImages":
+      result(Self.readImages())
+    case "writeImage":
+      guard let bytes = call.arguments as? FlutterStandardTypedData else {
+        result(false)
+        return
+      }
+      result(Self.writeImage(bytes.data))
+    default:
       result(FlutterMethodNotImplemented)
-      return
     }
-    result(Self.readImages())
+  }
+
+  /// Write only image data. A file URL would make Copy Image paste a local path.
+  static func writeImage(_ data: Data, to pasteboard: NSPasteboard = .general) -> Bool {
+    guard !data.isEmpty else { return false }
+    let png: Data?
+    if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+      png = data
+    } else {
+      let bitmap = NSBitmapImageRep(data: data) ?? NSImage(data: data).flatMap { image in
+        guard let tiff = image.tiffRepresentation else { return nil }
+        return NSBitmapImageRep(data: tiff)
+      }
+      png = bitmap?.representation(using: .png, properties: [:])
+    }
+    guard let png, !png.isEmpty else { return false }
+    let item = NSPasteboardItem()
+    guard item.setData(png, forType: .png) else { return false }
+    pasteboard.clearContents()
+    return pasteboard.writeObjects([item])
   }
 
   static func readImages(from pasteboard: NSPasteboard = .general, limit: Int = Int.max)

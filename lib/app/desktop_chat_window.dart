@@ -20,6 +20,7 @@ import '../l10n/app_localizations.dart';
 import '../settings/ai_settings_controller.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/country_message_filter.dart';
+import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
 import '../settings/sensitive_content_controller.dart';
 import '../settings/translation_controller.dart';
@@ -72,6 +73,9 @@ class DesktopChatWindowService {
 
   Future<void> notifyPresentationChanged() =>
       implementation.notifyDesktopChatPresentationChanged();
+
+  Future<void> notifyHiddenSendersChanged() =>
+      implementation.notifyDesktopChatHiddenSendersChanged();
 
   Future<bool> open(DesktopChatWindowArguments arguments) =>
       implementation.openDesktopChatWindow(arguments);
@@ -140,6 +144,10 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
   bool _presentationReloading = false;
   bool _presentationReloadQueued = false;
 
+  /// Re-reading the hidden members after another window changed them; that
+  /// is not a change of this window's to report back.
+  bool _readingHiddenSenders = false;
+
   @override
   void initState() {
     super.initState();
@@ -151,11 +159,19 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
       _reloadPresentationPreferences,
     );
     KeywordBlocker.shared.initialize(widget.prefs);
+    HiddenSenderStore.shared
+      ..initialize(widget.prefs)
+      ..addListener(_handleHiddenSendersChanged);
     CountryMessageFilter.shared.initialize(widget.prefs);
     MusicPlayerController.shared.initialize(widget.prefs);
     unawaited(_ai.initialize());
     unawaited(SensitiveContentController.shared.initialize());
     unawaited(BlockedUserService.shared.loadBlockedUsers());
+  }
+
+  void _handleHiddenSendersChanged() {
+    if (_readingHiddenSenders) return;
+    unawaited(DesktopChatWindowService.instance.notifyHiddenSendersChanged());
   }
 
   Future<void> _reloadPresentationPreferences() async {
@@ -175,6 +191,9 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
           return;
         }
         if (!mounted) return;
+        _readingHiddenSenders = true;
+        HiddenSenderStore.shared.initialize(widget.prefs);
+        _readingHiddenSenders = false;
 
         final previousTheme = _theme;
         final previousTranslation = _translation;
@@ -209,6 +228,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
 
   @override
   void dispose() {
+    HiddenSenderStore.shared.removeListener(_handleHiddenSendersChanged);
     DesktopChatWindowService.instance.detachChildPresentationReload();
     unawaited(TdClient.shared.closeProxy());
     _calls.dispose();

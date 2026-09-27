@@ -56,6 +56,14 @@ class StickerStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reloads after the installed sets changed elsewhere; a store nobody has
+  /// opened yet stays lazy.
+  void invalidate() {
+    if (!_loaded) return;
+    _loaded = false;
+    loadIfNeeded();
+  }
+
   void loadIfNeeded() {
     if (_loaded) return;
     _loaded = true;

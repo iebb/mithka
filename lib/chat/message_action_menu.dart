@@ -26,6 +26,7 @@ import 'quick_reaction_choice.dart';
 
 enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),
+  copyImage(HeroAppIcons.image, AppStringKeys.messageActionCopyImage),
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
   suggestOffer(HeroAppIcons.penToSquare, AppStringKeys.suggestedPostEditOffer),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
@@ -41,6 +42,7 @@ enum MessageAction {
   repeat(HeroAppIcons.circlePlus, AppStringKeys.messageActionRepeat),
   report(HeroAppIcons.triangleExclamation, AppStringKeys.messageActionReport),
   block(HeroAppIcons.ban, AppStringKeys.messageActionBlock),
+  hideSender(HeroAppIcons.eyeSlash, AppStringKeys.messageActionHideSender),
   playMuted(HeroAppIcons.volumeXmark, AppStringKeys.messageActionPlayMuted),
   addToPlaylist(HeroAppIcons.music, AppStringKeys.musicPlayerAddToPlaylist),
   saveToPhotos(HeroAppIcons.download, AppStringKeys.messageActionSaveToPhotos),
@@ -315,6 +317,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowQuote = false,
     this.hasSelectedQuote = false,
     this.allowSuggestedPostOffer = false,
+    this.allowHideSender = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -327,6 +330,9 @@ class MessageActionMenu extends StatelessWidget {
   final bool allowQuote;
   final bool hasSelectedQuote;
   final bool allowSuggestedPostOffer;
+
+  /// Offer to hide this sender's messages on this device (groups only).
+  final bool allowHideSender;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
@@ -458,6 +464,7 @@ class MessageActionMenu extends StatelessWidget {
   List<MessageAction> _actions(
     TranslationController translation, {
     required bool isDesktop,
+    required bool isMacOS,
   }) {
     if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
@@ -477,6 +484,13 @@ class MessageActionMenu extends StatelessWidget {
       if (translation.enabled && allowTranslation) {
         result.add(MessageAction.translate);
       }
+    }
+    if (isMacOS &&
+        allowForwarding &&
+        message.isPhoto &&
+        message.image != null &&
+        !message.isContentRestricted) {
+      result.add(MessageAction.copyImage);
     }
     if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
       result.add(MessageAction.edit);
@@ -523,6 +537,7 @@ class MessageActionMenu extends StatelessWidget {
     if (message.stickerSetId != null && canAddEmoji) {
       result.add(MessageAction.viewStickerSet);
     }
+    if (allowHideSender) result.add(MessageAction.hideSender);
     result.add(MessageAction.delete);
     return result;
   }
@@ -535,6 +550,7 @@ class MessageActionMenu extends StatelessWidget {
       _actions(
         context.read<TranslationController>(),
         isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+        isMacOS: Theme.of(context).platform == TargetPlatform.macOS,
       ).length,
       availableHeight: MediaQuery.sizeOf(context).height - 24,
     );
@@ -545,6 +561,7 @@ class MessageActionMenu extends StatelessWidget {
     final actions = _actions(
       context.watch<TranslationController>(),
       isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+      isMacOS: Theme.of(context).platform == TargetPlatform.macOS,
     );
     if (_usesVerticalLayout(context)) {
       return _VerticalActionList(actions: actions, onSelect: onSelect);

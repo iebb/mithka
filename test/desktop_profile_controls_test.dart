@@ -30,6 +30,7 @@ void main() {
   late AccountStore accounts;
   late ThemeController theme;
   var statusId = 0;
+  var premium = true;
   final statusRequests = <Map<String, dynamic>>[];
 
   Map<String, dynamic> user() => {
@@ -37,6 +38,7 @@ void main() {
     'id': _userId,
     'first_name': 'Alpha',
     'phone_number': '15550100',
+    'is_premium': premium,
     'emoji_status': statusId == 0
         ? null
         : {
@@ -90,6 +92,7 @@ void main() {
 
   setUp(() async {
     statusId = 0;
+    premium = true;
     statusRequests.clear();
     CustomEmojiCenter.shared.reset();
     EmojiStore.shared.reset();
@@ -193,6 +196,52 @@ void main() {
       expect(find.byType(StatusEmojiView), findsNothing);
       expect(find.byKey(_statusKey), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+    variant: const TargetPlatformVariant({TargetPlatform.macOS}),
+  );
+
+  testWidgets(
+    'a click beside the status panel or on the title bar closes it',
+    (tester) async {
+      await pumpFrame(tester);
+
+      await tester.tap(find.byKey(_statusKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Set status'), findsOneWidget);
+      // Inside the panel, away from any status: stays open.
+      await tester.tap(find.text('Set status'));
+      await tester.pumpAndSettle();
+      expect(find.text('Set status'), findsOneWidget);
+      // The dimmed window above the panel.
+      await tester.tapAt(const Offset(400, 80));
+      await tester.pumpAndSettle();
+      expect(find.text('Set status'), findsNothing);
+
+      await tester.tap(find.byKey(_statusKey));
+      await tester.pumpAndSettle();
+      expect(find.text('Set status'), findsOneWidget);
+      // The title bar is above the app Navigator, outside the barrier.
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-title-bar-status-dismiss')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Set status'), findsNothing);
+      expect(find.byKey(const ValueKey('workspace')), findsOneWidget);
+      expect(statusRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+    variant: const TargetPlatformVariant({TargetPlatform.macOS}),
+  );
+
+  testWidgets(
+    'accounts without Premium get no status button',
+    (tester) async {
+      premium = false;
+      await accounts.refresh();
+      await pumpFrame(tester);
+      expect(accounts.activeIsPremium, isFalse);
+      expect(find.byKey(_accountKey), findsOneWidget);
+      expect(find.byKey(_statusKey), findsNothing);
     },
     variant: const TargetPlatformVariant({TargetPlatform.macOS}),
   );

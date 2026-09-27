@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -121,11 +124,18 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
       final size = MediaQuery.sizeOf(sheetContext);
       final sheet = _MessageSendOptionsSheet(
         centeredModal: useCenteredModal,
+        contextMenu: false,
         initial: initial,
         allowWhenOnline: allowWhenOnline,
         mediaOptions: mediaOptions,
         effects: effects,
-        onOpenScheduledMessages: onOpenScheduledMessages,
+        onSubmit: (value) => Navigator.of(sheetContext).pop(value),
+        onOpenScheduledMessages: onOpenScheduledMessages == null
+            ? null
+            : () {
+                Navigator.of(sheetContext).pop();
+                onOpenScheduledMessages();
+              },
       );
       if (!useCenteredModal) {
         return Align(
@@ -170,21 +180,121 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   );
 }
 
+/// A button-anchored, non-modal send-options surface for desktop composers.
+/// The mobile sheet and its scheduling controls remain available elsewhere.
+class MessageSendOptionsContextMenuHandle {
+  const MessageSendOptionsContextMenuHandle(this.result, this.dismiss);
+
+  final Future<MessageSendConfiguration?> result;
+  final VoidCallback dismiss;
+}
+
+MessageSendOptionsContextMenuHandle showMessageSendOptionsContextMenu(
+  BuildContext context, {
+  required LayerLink anchor,
+  required double maxHeight,
+  MessageSendConfiguration initial = const MessageSendConfiguration(),
+  bool allowWhenOnline = false,
+  bool mediaOptions = false,
+  List<AvailableMessageEffect> effects = const [],
+  VoidCallback? onOpenScheduledMessages,
+}) {
+  final result = Completer<MessageSendConfiguration?>();
+  final overlay = Overlay.of(context);
+  final focusNode = FocusNode(debugLabel: 'message-send-options-context-menu');
+  late final OverlayEntry entry;
+
+  void finish([MessageSendConfiguration? value]) {
+    if (result.isCompleted) return;
+    entry.remove();
+    entry.dispose();
+    focusNode.dispose();
+    result.complete(value);
+  }
+
+  entry = OverlayEntry(
+    builder: (overlayContext) {
+      final size = MediaQuery.sizeOf(overlayContext);
+      final width = math.min(360.0, math.max(0.0, size.width - 24));
+      final rtl = Directionality.of(overlayContext) == ui.TextDirection.rtl;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            key: const ValueKey('messageSendOptionsContextDismiss'),
+            behavior: HitTestBehavior.opaque,
+            onTap: finish,
+            child: const ColoredBox(color: Color(0x00000000)),
+          ),
+          CompositedTransformFollower(
+            link: anchor,
+            showWhenUnlinked: false,
+            targetAnchor: rtl ? Alignment.topLeft : Alignment.topRight,
+            followerAnchor: rtl ? Alignment.bottomLeft : Alignment.bottomRight,
+            offset: const Offset(0, -8),
+            child: Align(
+              alignment: rtl ? Alignment.bottomLeft : Alignment.bottomRight,
+              child: SizedBox(
+                width: width,
+                child: CallbackShortcuts(
+                  bindings: {
+                    const SingleActivator(LogicalKeyboardKey.escape): finish,
+                  },
+                  child: Focus(
+                    focusNode: focusNode,
+                    child: _MessageSendOptionsSheet(
+                      centeredModal: false,
+                      contextMenu: true,
+                      contextMenuMaxHeight: maxHeight,
+                      initial: initial,
+                      allowWhenOnline: allowWhenOnline,
+                      mediaOptions: mediaOptions,
+                      effects: effects,
+                      onSubmit: finish,
+                      onOpenScheduledMessages: onOpenScheduledMessages == null
+                          ? null
+                          : () {
+                              finish();
+                              onOpenScheduledMessages();
+                            },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+  overlay.insert(entry);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!result.isCompleted) focusNode.requestFocus();
+  });
+  return MessageSendOptionsContextMenuHandle(result.future, finish);
+}
+
 class _MessageSendOptionsSheet extends StatefulWidget {
   const _MessageSendOptionsSheet({
     required this.centeredModal,
+    required this.contextMenu,
+    this.contextMenuMaxHeight,
     required this.initial,
     required this.allowWhenOnline,
     required this.mediaOptions,
     required this.effects,
+    required this.onSubmit,
     this.onOpenScheduledMessages,
   });
 
   final bool centeredModal;
+  final bool contextMenu;
+  final double? contextMenuMaxHeight;
   final MessageSendConfiguration initial;
   final bool allowWhenOnline;
   final bool mediaOptions;
   final List<AvailableMessageEffect> effects;
+  final ValueChanged<MessageSendConfiguration> onSubmit;
   final VoidCallback? onOpenScheduledMessages;
 
   @override
@@ -226,21 +336,43 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
     final colors = context.colors;
     final bottomInset = widget.centeredModal
         ? 0.0
+        : widget.contextMenu
+        ? 0.0
         : MediaQuery.paddingOf(context).bottom;
     return Container(
-      key: const ValueKey('messageSendOptionsSurface'),
+      key: ValueKey(
+        widget.contextMenu
+            ? 'messageSendOptionsContextMenu'
+            : 'messageSendOptionsSurface',
+      ),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+        maxHeight: widget.contextMenu
+            ? math.min(
+                math.max(0, MediaQuery.sizeOf(context).height - 24),
+                widget.contextMenuMaxHeight ?? double.infinity,
+              )
+            : MediaQuery.sizeOf(context).height * 0.88,
       ),
       padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
-        color: colors.background,
-        borderRadius: widget.centeredModal
+        color: widget.contextMenu ? colors.panelBackground : colors.background,
+        borderRadius: widget.contextMenu
+            ? BorderRadius.circular(AppRadius.md)
+            : widget.centeredModal
             // A centered modal is the most prominent surface on screen.
             ? BorderRadius.circular(AppRadius.xl)
             : const BorderRadius.vertical(top: Radius.circular(18)),
-        border: widget.centeredModal
+        border: widget.centeredModal || widget.contextMenu
             ? Border.all(color: colors.divider.withValues(alpha: 0.78))
+            : null,
+        boxShadow: widget.contextMenu
+            ? [
+                const BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ]
             : null,
       ),
       clipBehavior: Clip.antiAlias,
@@ -250,7 +382,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!widget.centeredModal)
+            if (!widget.centeredModal && !widget.contextMenu)
               Center(
                 child: Container(
                   key: const ValueKey('messageSendOptionsDragHandle'),
@@ -459,7 +591,6 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  Navigator.of(context).pop();
                   widget.onOpenScheduledMessages?.call();
                 },
                 child: Container(
@@ -486,7 +617,7 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
             GestureDetector(
               key: const ValueKey('messageSendOptionsConfirm'),
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(_value),
+              onTap: () => widget.onSubmit(_value),
               child: Container(
                 height: 50,
                 alignment: Alignment.center,
@@ -542,25 +673,29 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
-  }) => Container(
-    height: 52,
-    padding: const EdgeInsets.only(left: 12, right: 4),
-    decoration: BoxDecoration(
-      color: context.colors.card,
-      borderRadius: BorderRadius.circular(AppRadius.card),
-    ),
-    child: Row(
-      children: [
-        AppIcon(icon, size: 20, color: AppTheme.brand),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(color: context.colors.textPrimary, fontSize: 15),
+  }) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () => onChanged(!value),
+    child: Container(
+      height: 52,
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      decoration: BoxDecoration(
+        color: context.colors.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Row(
+        children: [
+          AppIcon(icon, size: 20, color: AppTheme.brand),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(color: context.colors.textPrimary, fontSize: 15),
+            ),
           ),
-        ),
-        AppSwitch(value: value, onChanged: onChanged),
-      ],
+          AppSwitch(value: value, onChanged: onChanged),
+        ],
+      ),
     ),
   );
 

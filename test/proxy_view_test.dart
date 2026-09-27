@@ -13,6 +13,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   tearDown(() => debugDefaultTargetPlatformOverride = null);
 
+  testWidgets('macOS login proxy save enables after host and port', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    SharedPreferences.setMockInitialValues({});
+    final theme = ThemeController(await SharedPreferences.getInstance());
+    addTearDown(theme.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: theme,
+        child: _shell(const ProxyEditView(allowOfflineSave: true)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextField);
+    expect(fields, findsNWidgets(4));
+    final save = find.text('Save');
+    expect(tester.widget<Text>(save).style?.color, isNot(AppTheme.brand));
+    await tester.enterText(fields.at(0), '127.0.0.1');
+    await tester.enterText(fields.at(1), '1080');
+    await tester.pump();
+    expect(tester.widget<Text>(save).style?.color, AppTheme.brand);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('desktop proxy type uses an anchored in-place selector', (
     tester,
   ) async {

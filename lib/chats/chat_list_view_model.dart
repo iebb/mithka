@@ -17,6 +17,7 @@ import '../app/performance_metrics.dart';
 import '../communities/community_models.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../notifications/scope_notification_settings.dart';
+import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
@@ -824,7 +825,11 @@ class ChatListViewModel extends ChangeNotifier {
             s.lastChatMessage = TDParse.message(last);
             final content = last.obj('content');
             if (content != null) {
-              s.lastMessage = _previewText(TDParse.messageText(content));
+              s.lastMessage = _previewText(
+                TDParse.messageText(content),
+                chatId: id,
+                senderId: s.lastChatMessage?.senderId,
+              );
             }
           } else {
             s.lastMessage = '';
@@ -1138,7 +1143,11 @@ class ChatListViewModel extends ChangeNotifier {
       }
     }
     if (_meId != null) summary.isSavedMessages = summary.peerUserId == _meId;
-    summary.lastMessage = _previewText(summary.lastMessage);
+    summary.lastMessage = _previewText(
+      summary.lastMessage,
+      chatId: summary.id,
+      senderId: summary.lastChatMessage?.senderId,
+    );
     _indexCommunityPeer(summary.id, raw);
     _resolveForumIfNeeded(summary, raw);
     _resolveCommunityIfNeeded(summary, raw);
@@ -1457,8 +1466,10 @@ class ChatListViewModel extends ChangeNotifier {
     await prefs.setBool(_communityCollapsedKey(communityId), collapsed);
   }
 
-  String _previewText(String text) {
-    return KeywordBlocker.shared.matches(text)
+  String _previewText(String text, {int? chatId, int? senderId}) {
+    final hidden =
+        chatId != null && HiddenSenderStore.shared.hides(senderId, chatId);
+    return hidden || KeywordBlocker.shared.matches(text)
         ? AppStringKeys.chatListBlockedPlaceholder
         : text;
   }

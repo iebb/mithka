@@ -18,6 +18,7 @@ import '../app/app_version.dart';
 import '../app/ipad_window_chrome.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
+import '../chat/chat_sticker_packs_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
@@ -740,6 +741,23 @@ class _SettingsViewState extends State<SettingsView> {
         color: const Color(0xFF34A2DF),
         destination: () => const ChatFolderManagementView(),
         searchTerms: const ['folders', 'tabs', 'chat lists', 'organize'],
+      ),
+      _SettingsDestination(
+        id: 'telegram-sticker-finder',
+        owner: _SettingsOwner.telegram,
+        group: 3,
+        order: 15,
+        titleKey: AppStringKeys.chatStickerPacksFinderTitle,
+        icon: HeroAppIcons.solidFaceSmile,
+        color: const Color(0xFFF2A516),
+        destination: () => const ChatStickerPacksView(),
+        searchTerms: const [
+          'stickers',
+          'emoji',
+          'custom emoji',
+          'sticker packs',
+          'add stickers',
+        ],
       ),
       _SettingsDestination(
         id: 'telegram-language',

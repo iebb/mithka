@@ -7,6 +7,7 @@
 //
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -44,12 +45,14 @@ import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
+import '../platform/desktop_clipboard_images.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/ai_endpoint_style.dart';
 import '../settings/ai_settings_controller.dart';
 import '../settings/apple_pcc_api.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/business_tools_views.dart';
+import '../settings/hidden_sender_store.dart';
 import '../settings/quick_reaction_settings_view.dart';
 import '../settings/sensitive_content_controller.dart';
 import '../settings/topic_group_display_mode.dart';
@@ -57,6 +60,7 @@ import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -97,6 +101,7 @@ import 'custom_emoji.dart';
 import 'emoji_store.dart';
 import 'forward_options.dart';
 import 'group_remark_controller.dart';
+import 'hide_sender_dialog.dart';
 import 'image_media_album_bubble.dart';
 import 'image_preview.dart';
 import 'internal_chat_link_router.dart';
@@ -4897,6 +4902,8 @@ class _ChatViewState extends State<ChatView> {
     switch (action) {
       case MessageAction.copy:
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
+      case MessageAction.copyImage:
+        await _copyMessageImage(message);
       case MessageAction.edit:
         unawaited(_editMessage(message));
       case MessageAction.suggestOffer:
@@ -4955,6 +4962,8 @@ class _ChatViewState extends State<ChatView> {
             AppStrings.t(AppStringKeys.chatReportFailed, {'value1': e}),
           );
         }
+      case MessageAction.hideSender:
+        await _hideSender(message);
       case MessageAction.block:
         final confirmed = await confirmDialog(
           context,
@@ -5087,6 +5096,27 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
+  Future<void> _copyMessageImage(ChatMessage message) async {
+    final image = message.isPhoto ? message.image : null;
+    if (image == null) return;
+    try {
+      final path = await TdFileCenter.shared.pathFor(
+        image,
+        accountSlot: _sessionKey.accountSlot,
+      );
+      final copied =
+          path != null &&
+          await DesktopClipboardImageService.copyImageFile(File(path));
+      if (!copied && mounted) {
+        showToast(context, AppStringKeys.messageActionCopyImageFailed);
+      }
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.messageActionCopyImageFailed);
+      }
+    }
+  }
+
   Future<void> _offerSuggestedPost(ChatMessage message) async {
     final loader = ChannelDirectMessageTopicController(
       chatId: _vm.chatId,
@@ -5128,6 +5158,31 @@ class _ChatViewState extends State<ChatView> {
     } finally {
       loader.dispose();
     }
+  }
+
+  /// Hides [message]'s sender on this device, in this group or everywhere.
+  /// Nothing reaches Telegram: unlike Block, the member is not blocked,
+  /// reported or told.
+  Future<void> _hideSender(ChatMessage message) async {
+    final senderId = message.senderId;
+    if (senderId == null) return;
+    final name = _deleteSenderName(message);
+    final scope = await showHideSenderDialog(context, name: name);
+    if (!mounted || scope == null) return;
+    final thisGroup = scope == HideSenderScope.thisGroup;
+    HiddenSenderStore.shared.hide(
+      HiddenSender(
+        senderId: senderId,
+        name: name,
+        chatId: thisGroup ? _vm.chatId : null,
+        chatTitle: thisGroup ? _vm.peerTitle : null,
+        hiddenAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      ),
+    );
+    showToast(
+      context,
+      AppStrings.t(AppStringKeys.hideSenderDone, {'value1': name}),
+    );
   }
 
   Future<void> _performDeleteAction(ChatMessage message) async {
@@ -5189,6 +5244,19 @@ class _ChatViewState extends State<ChatView> {
         );
       },
     );
+  }
+
+  /// Someone else's message in a group; never the group itself posting as
+  /// an anonymous admin, and not in broadcast channels.
+  bool _canHideSender(ChatMessage message) {
+    final senderId = message.senderId;
+    return _vm.isGroup &&
+        !_vm.isChannel &&
+        !message.isOutgoing &&
+        !message.isService &&
+        senderId != null &&
+        senderId != 0 &&
+        senderId != _vm.chatId;
   }
 
   String _deleteSenderName(ChatMessage message) {
@@ -9815,6 +9883,7 @@ class _ChatViewState extends State<ChatView> {
       hasSelectedQuote: _actionQuote != null,
       allowSuggestedPostOffer:
           _vm.isDirectMessagesGroup && !_vm.isAdministeredDirectMessagesGroup,
+      allowHideSender: _canHideSender(_actionTarget!),
       source: _actionSource,
       showingOriginalTranslation: _showOriginalTranslationMessageIds.contains(
         _actionTarget!.id,

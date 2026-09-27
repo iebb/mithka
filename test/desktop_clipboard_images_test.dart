@@ -10,6 +10,35 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
+    'copy image writes bitmap bytes through the owned clipboard channel',
+    () async {
+      const channel = MethodChannel('mithka/clipboard');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final directory = Directory.systemTemp.createTempSync(
+        'mithka-copy-image-',
+      );
+      final photo = File('${directory.path}/photo.png');
+      final bytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+        'AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      );
+      await photo.writeAsBytes(bytes);
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'writeImage');
+        expect(call.arguments, bytes);
+        return true;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(channel, null);
+        directory.deleteSync(recursive: true);
+      });
+
+      expect(await DesktopClipboardImageService.copyImageFile(photo), isTrue);
+    },
+  );
+
+  test(
     'materializes ordered channel images and honors the album limit',
     () async {
       const clipboardChannel = MethodChannel('mithka/clipboard');
