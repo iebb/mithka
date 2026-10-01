@@ -1216,7 +1216,15 @@
     <string name="composerGroupVideoCall">Group video chat</string>
     <string name="composerGroupVoiceCall">Group voice chat</string>
     <string name="composerHoldToTalk">Hold to talk</string>
-    <string name="composerDesktopVoiceHoldSpace">Hold Space or the microphone to record</string>
+    <string name="composerDesktopVoiceHoldSpace">Hold Space or the waveform bar to record</string>
+    <string name="composerRecordingDiscard">Discard recording</string>
+    <string name="composerRecordingFailed">Could not record audio. Check your microphone and try again.</string>
+    <string name="composerRecordingFinishing">Finishing recording…</string>
+    <string name="composerRecordingPreparing">Preparing microphone…</string>
+    <string name="composerRecordingLocked">Recording locked · pause or stop</string>
+    <string name="composerRecordingPaused">Recording paused</string>
+    <string name="composerRecordingReleasePreview">Release to preview · slide up to lock · left to cancel</string>
+    <string name="composerRecordingSendFailed">Send failed. Recording kept — retry or discard.</string>
     <string name="composerDesktopVoiceRelease">Release to send · Esc to cancel</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>

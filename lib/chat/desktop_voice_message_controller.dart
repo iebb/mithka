@@ -4,7 +4,7 @@
 /// behavior testable without requesting microphone access from widget tests.
 enum DesktopVoiceMessageAction { none, start, stop, cancel }
 
-/// Waits for macOS microphone permission and recorder creation before starting
+/// Waits for microphone permission and recorder creation before starting
 /// the press that requested it. Releasing while the system permission sheet is
 /// open cancels that pending start instead of recording after the gesture ends.
 Future<void> prepareDesktopVoiceRecording({

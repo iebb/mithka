@@ -54,7 +54,7 @@ void main() {
     },
   );
 
-  test('tablet split remains limited to sufficiently large landscape UI', () {
+  test('iOS split uses available space in either orientation', () {
     expect(
       usesAdaptiveSplitLayout(
         const Size(1024, 768),
@@ -69,8 +69,29 @@ void main() {
         platform: TargetPlatform.iOS,
         isWeb: false,
       ),
-      isFalse,
+      isTrue,
     );
+  });
+
+  test('iOS compact windows keep one pane and respect both pane minimums', () {
+    for (final size in const [
+      Size(390, 844),
+      Size(844, 390),
+      Size(739, 1000),
+      Size(1000, 599),
+    ]) {
+      expect(
+        usesAdaptiveSplitLayout(size, platform: TargetPlatform.iOS),
+        isFalse,
+        reason: '$size cannot fit two usable panes',
+      );
+    }
+    for (final size in const [Size(740, 1000), Size(800, 800)]) {
+      expect(
+        usesAdaptiveSplitLayout(size, platform: TargetPlatform.iOS),
+        isTrue,
+      );
+    }
   });
 
   test('dragged sidebar width preserves both pane minimums', () {

@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/app/app_navigator.dart';
 import 'package:mithka/media/inline_video_motion_guard.dart';
+import 'package:mithka/theme/app_motion.dart';
 import 'package:video_player/video_player.dart';
 
 const _previewKey = ValueKey('inline-still-preview');
@@ -148,6 +151,128 @@ void main() {
     },
     variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
+
+  for (final size in [const Size(390, 844), const Size(900, 600)]) {
+    for (final viewType in VideoViewType.values) {
+      testWidgets(
+        '$viewType handles a comment-style modal at $size',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final navigator = GlobalKey<NavigatorState>();
+          await tester.pumpWidget(
+            MaterialApp(navigatorKey: navigator, home: const SizedBox.shrink()),
+          );
+          late BuildContext pageContext;
+          final page = AppChatPageRoute<void>(
+            builder: (context) {
+              pageContext = context;
+              return Scaffold(body: Center(child: _inline(viewType)));
+            },
+          );
+          unawaited(navigator.currentState!.push(page));
+          await tester.pumpAndSettle();
+          expect(find.byKey(_surfaceKey), findsOneWidget);
+
+          unawaited(
+            showAppModalSheet<void>(
+              context: pageContext,
+              isScrollControlled: true,
+              useSafeArea: true,
+              builder: (_) => const FractionallySizedBox(
+                widthFactor: 1,
+                heightFactor: 0.72,
+                child: ColoredBox(
+                  key: ValueKey('comment-sheet-body'),
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 80));
+          final detach =
+              defaultTargetPlatform == TargetPlatform.android &&
+              viewType == VideoViewType.platformView;
+          expect(
+            find.byKey(_surfaceKey),
+            detach ? findsNothing : findsOneWidget,
+          );
+          await tester.pumpAndSettle();
+
+          expect(page.isCurrent, isFalse);
+          // A popup does not animate the underlying chat route. This is the
+          // path the scrolling/page-transition tests cannot exercise.
+          expect(page.secondaryAnimation!.isDismissed, isTrue);
+          expect(
+            find.byKey(_surfaceKey),
+            detach ? findsNothing : findsOneWidget,
+          );
+          expect(
+            find.byKey(_previewKey),
+            detach ? findsOneWidget : findsNothing,
+          );
+
+          if (size.width < size.height) {
+            final body = find.byKey(const ValueKey('comment-sheet-body'));
+            final initialTop = tester.getTopLeft(body).dy;
+            final drag = await tester.startGesture(tester.getCenter(body));
+            await drag.moveBy(
+              const Offset(0, 25),
+              timeStamp: const Duration(milliseconds: 100),
+            );
+            await drag.moveBy(
+              const Offset(0, 25),
+              timeStamp: const Duration(milliseconds: 200),
+            );
+            await tester.pump();
+            expect(tester.getTopLeft(body).dy, greaterThan(initialTop));
+            expect(
+              find.byKey(_surfaceKey),
+              detach ? findsNothing : findsOneWidget,
+            );
+            await drag.up(timeStamp: const Duration(milliseconds: 500));
+            await tester.pumpAndSettle();
+            expect(find.byType(BottomSheet), findsOneWidget);
+            expect(
+              find.byKey(_surfaceKey),
+              detach ? findsNothing : findsOneWidget,
+            );
+          }
+
+          // A second popup must not accidentally restore the underlying video
+          // when only the topmost route is dismissed.
+          unawaited(
+            navigator.currentState!.push(
+              RawDialogRoute<void>(
+                pageBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          navigator.currentState!.pop();
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(_surfaceKey),
+            detach ? findsNothing : findsOneWidget,
+          );
+
+          navigator.currentState!.pop();
+          await tester.pumpAndSettle();
+          expect(page.isCurrent, isTrue);
+          expect(find.byKey(_surfaceKey), findsOneWidget);
+          expect(find.byKey(_previewKey), findsNothing);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        variant: const TargetPlatformVariant({
+          TargetPlatform.android,
+          TargetPlatform.iOS,
+        }),
+      );
+    }
+  }
 }
 
 Widget _inline(VideoViewType viewType) => SizedBox(

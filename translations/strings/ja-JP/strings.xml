@@ -1209,7 +1209,15 @@
     <string name="composerGroupVideoCall">グループビデオ通話</string>
     <string name="composerGroupVoiceCall">グループ音声通話</string>
     <string name="composerHoldToTalk">長押しして話す</string>
-    <string name="composerDesktopVoiceHoldSpace">スペースキーまたはマイクを長押しして録音</string>
+    <string name="composerDesktopVoiceHoldSpace">スペースキーまたは波形バーを長押しして録音</string>
+    <string name="composerRecordingDiscard">録音を破棄</string>
+    <string name="composerRecordingFailed">録音できませんでした。マイクを確認して再試行してください。</string>
+    <string name="composerRecordingFinishing">録音を仕上げています…</string>
+    <string name="composerRecordingPreparing">マイクを準備しています…</string>
+    <string name="composerRecordingLocked">録音をロック中 · 一時停止または停止</string>
+    <string name="composerRecordingPaused">録音を一時停止中</string>
+    <string name="composerRecordingReleasePreview">離してプレビュー · 上にスライドしてロック · 左にスライドしてキャンセル</string>
+    <string name="composerRecordingSendFailed">送信に失敗しました。録音は保持されています。再試行または破棄してください。</string>
     <string name="composerDesktopVoiceRelease">離して送信 · Esc でキャンセル</string>
     <string name="composerImage">画像</string>
     <string name="composerImagePreview">[画像]</string>

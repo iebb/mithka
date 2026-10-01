@@ -637,7 +637,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   Widget _tabNavigator(int i) {
     return _TabNavigator(
       navigatorKey: _navKeys[i],
-      observer: dc.TabDepthObserver(i, _tabBar),
+      tabIndex: i,
+      visibility: _tabBar,
       root: _root(i),
     );
   }
@@ -679,12 +680,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     if (_usesDesktopShell()) {
       return _desktopSplitTabs(tabs, selection, activeTabIndex);
     }
-    if (_usesTabletSplit(context)) {
-      return _tabletSplitTabs(tabs, selection, activeTabIndex);
+    final showSplitPanes =
+        _usesTabletSplit(context) && !_hasCompactNavigationStack;
+    if (showSplitPanes || _retainsCompactDetail) {
+      return _tabletSplitTabs(
+        tabs,
+        selection,
+        activeTabIndex,
+        compact: !showSplitPanes,
+      );
     }
     return AnimatedBuilder(
       animation: _tabBar,
       builder: (context, _) {
+        // A route opened on the outer display stays mounted while opening
+        // the device. Adopt the split shell after returning to the tab root.
+        if (_usesTabletSplit(context) && !_hasCompactNavigationStack) {
+          return _tabletSplitTabs(tabs, selection, activeTabIndex);
+        }
         final showTabBar = _tabBar.depth(activeTabIndex) == 0;
         final bottomBar = showTabBar
             ? AnimatedBuilder(
@@ -1103,8 +1116,9 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   Widget _tabletSplitTabs(
     List<_MainTabItem> tabs,
     int selection,
-    int activeTabIndex,
-  ) {
+    int activeTabIndex, {
+    bool compact = false,
+  }) {
     final theme = context.watch<ThemeController>();
     final size = MediaQuery.of(context).size;
     return ValueListenableBuilder<double?>(
@@ -1124,6 +1138,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             : null;
         final selectedChatId = selectedChat?.chatId;
         final canToggleInfoPane =
+            !compact &&
             selectedChat != null &&
             size.width >=
                 sidebarWidth +
@@ -1156,23 +1171,34 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                     Row(
                       children: [
                         SizedBox(
-                          width: sidebarWidth,
-                          child: BottomBarLayout(
-                            overlay: theme.liquidGlassBottomBar,
-                            body: _LazyTabStack(
-                              selection: selection,
-                              items: tabs,
-                              builder: (tab) => _tabletSidebarRoot(tab.index),
-                            ),
-                            footer: AnimatedBuilder(
-                              animation: _unread,
-                              builder: (context, _) => _MainBottomBar(
-                                chatListController: _chatListController,
-                                selection: selection,
-                                onSelect: _select,
-                                items: tabs,
-                                onClearUnread: _chatListController.markAllRead,
-                                unread: _unread.countFor(theme.unreadBadgeMode),
+                          width: compact ? 0 : sidebarWidth,
+                          child: Offstage(
+                            offstage: compact,
+                            child: OverflowBox(
+                              minWidth: sidebarWidth,
+                              maxWidth: sidebarWidth,
+                              child: BottomBarLayout(
+                                overlay: theme.liquidGlassBottomBar,
+                                body: _LazyTabStack(
+                                  selection: selection,
+                                  items: tabs,
+                                  builder: (tab) =>
+                                      _tabletSidebarRoot(tab.index),
+                                ),
+                                footer: AnimatedBuilder(
+                                  animation: _unread,
+                                  builder: (context, _) => _MainBottomBar(
+                                    chatListController: _chatListController,
+                                    selection: selection,
+                                    onSelect: _select,
+                                    items: tabs,
+                                    onClearUnread:
+                                        _chatListController.markAllRead,
+                                    unread: _unread.countFor(
+                                      theme.unreadBadgeMode,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1181,6 +1207,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                           child: _musicAwareContent(
                             _animatedTabletDetailPane(
                               activeTabIndex,
+                              showMessageBackButton: compact,
                               onMessageInfoPressed: canToggleInfoPane
                                   ? () => setState(
                                       () => _closedDesktopInfoChatId =
@@ -1194,15 +1221,16 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                         ),
                       ],
                     ),
-                    Positioned(
-                      left: sidebarWidth - splitResizeHandleWidth / 2,
-                      top: 0,
-                      bottom: 0,
-                      child: _splitResizeHandle(
-                        totalWidth: size.width,
-                        sidebarWidth: sidebarWidth,
+                    if (!compact)
+                      Positioned(
+                        left: sidebarWidth - splitResizeHandleWidth / 2,
+                        top: 0,
+                        bottom: 0,
+                        child: _splitResizeHandle(
+                          totalWidth: size.width,
+                          sidebarWidth: sidebarWidth,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -1567,8 +1595,22 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     // called from didChangeDependencies, where a size dependency would stick to
     // the root element for the life of the app.
     if (usesDesktopShellLayout(Size.zero)) return true;
-    return usesSplitSelectionLayout(MediaQuery.sizeOf(context));
+    if (_hasCompactNavigationStack) return false;
+    return _retainsCompactDetail ||
+        usesSplitSelectionLayout(MediaQuery.sizeOf(context));
   }
+
+  // Closing a foldable display must keep the active detail (and its nested
+  // navigator) mounted. Back returns to the compact tab navigator normally.
+  bool get _retainsCompactDetail =>
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      _selection == 0 &&
+      (_selectedMessageChat != null || _selectedMessageCommunity != null);
+
+  bool get _hasCompactNavigationStack =>
+      _navKeys[_selection].currentState != null &&
+      _tabBar.depth(_selection) > 0;
 
   // MARK: - Drawer overlay (the "我" profile drawer)
 
@@ -2075,23 +2117,37 @@ class _LazyTabStackState extends State<_LazyTabStack>
 }
 
 /// Hosts one tab's navigation stack so pushes stay within the tab.
-class _TabNavigator extends StatelessWidget {
+class _TabNavigator extends StatefulWidget {
   const _TabNavigator({
     required this.navigatorKey,
-    required this.observer,
+    required this.tabIndex,
+    required this.visibility,
     required this.root,
   });
   final GlobalKey<NavigatorState> navigatorKey;
-  final NavigatorObserver observer;
+  final int tabIndex;
+  final dc.TabBarVisibility visibility;
   final Widget root;
+
+  @override
+  State<_TabNavigator> createState() => _TabNavigatorState();
+}
+
+class _TabNavigatorState extends State<_TabNavigator> {
+  // Keep the observer's route stack across window-size rebuilds, but create
+  // a fresh stack when this navigator is replaced by the split shell.
+  late final _observer = dc.TabDepthObserver(
+    widget.tabIndex,
+    widget.visibility,
+  );
 
   @override
   Widget build(BuildContext context) {
     return Navigator(
-      key: navigatorKey,
-      observers: [observer],
+      key: widget.navigatorKey,
+      observers: [_observer],
       onGenerateRoute: (settings) =>
-          MaterialPageRoute(builder: (_) => root, settings: settings),
+          MaterialPageRoute(builder: (_) => widget.root, settings: settings),
     );
   }
 }

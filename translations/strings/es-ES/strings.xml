@@ -1216,7 +1216,15 @@
     <string name="composerGroupVideoCall">Videollamada grupal</string>
     <string name="composerGroupVoiceCall">Llamada de voz grupal</string>
     <string name="composerHoldToTalk">Mantén pulsado para hablar</string>
-    <string name="composerDesktopVoiceHoldSpace">Mantén pulsado Espacio o el micrófono para grabar</string>
+    <string name="composerDesktopVoiceHoldSpace">Mantén pulsado Espacio o la barra de sonido para grabar</string>
+    <string name="composerRecordingDiscard">Descartar grabación</string>
+    <string name="composerRecordingFailed">No se pudo grabar. Comprueba el micrófono e inténtalo de nuevo.</string>
+    <string name="composerRecordingFinishing">Finalizando grabación…</string>
+    <string name="composerRecordingPreparing">Preparando micrófono…</string>
+    <string name="composerRecordingLocked">Grabación bloqueada · pausar o detener</string>
+    <string name="composerRecordingPaused">Grabación pausada</string>
+    <string name="composerRecordingReleasePreview">Suelta para previsualizar · desliza arriba para bloquear · a la izquierda para cancelar</string>
+    <string name="composerRecordingSendFailed">Error de envío. Grabación conservada — reintenta o descarta.</string>
     <string name="composerDesktopVoiceRelease">Suelta para enviar · Esc para cancelar</string>
     <string name="composerImage">Imagen</string>
     <string name="composerImagePreview">[Imagen]</string>

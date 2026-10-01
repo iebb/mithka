@@ -56,6 +56,98 @@ void main() {
     await updates.close();
   });
 
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+      'iOS keeps the topic navigator across resize (reduced motion: $reducedMotion)',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        try {
+          await _setSurfaceSize(tester, const Size(900, 800));
+          await _pumpMainShell(tester, reducedMotion: reducedMotion);
+          tester
+              .widget<ChatListView>(find.byType(ChatListView))
+              .onChatSelected!(ChatListSelection.fromChat(_chat()));
+          await _settle(tester);
+          await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
+          await _settle(tester);
+          final topicState = tester.state(find.byType(TopicChatView));
+          await tester.tap(find.byKey(const ValueKey('topic-header-settings')));
+          await _settle(tester);
+          final settings = find.byKey(const ValueKey('topic-settings'));
+          final settingsElement = tester.element(settings);
+
+          for (final size in const [
+            Size(390, 844),
+            Size(800, 900),
+            Size(900, 800),
+          ]) {
+            tester.view.physicalSize = size;
+            await _settle(tester);
+            expect(tester.element(settings), same(settingsElement));
+            expect(tester.takeException(), isNull);
+          }
+          await tester.tap(find.byKey(const ValueKey('topic-settings-back')));
+          await _settle(tester);
+          expect(tester.state(find.byType(TopicChatView)), same(topicState));
+          tester.view.physicalSize = const Size(390, 844);
+          await _settle(tester);
+          final topic = tester.widget<TopicChatView>(
+            find.byType(TopicChatView),
+          );
+          expect(topic.showBackButton, isTrue);
+          topic.onBack!();
+          await _settle(tester);
+          expect(find.byType(TopicChatView), findsNothing);
+          expect(find.byType(ChatView), findsNothing);
+          expect(find.byType(ChatListView), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await _disposeShell(tester);
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      },
+    );
+  }
+
+  testWidgets('iOS keeps an outer-display route until returning to the list', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await _setSurfaceSize(tester, const Size(390, 844));
+      await _pumpMainShell(tester, reducedMotion: true);
+      final navigator = Navigator.of(tester.element(find.byType(ChatListView)));
+      unawaited(
+        navigator.push(
+          PageRouteBuilder<void>(
+            pageBuilder: (_, _, _) => const SizedBox.expand(
+              key: ValueKey('compact-route'),
+              child: Text('Open conversation'),
+            ),
+          ),
+        ),
+      );
+      await _settle(tester);
+      final route = find.byKey(const ValueKey('compact-route'));
+      final element = tester.element(route);
+      tester.view.physicalSize = const Size(900, 800);
+      await _settle(tester);
+      expect(tester.element(route), same(element));
+      expect(tester.getSize(route).width, 900);
+      navigator.pop();
+      await _settle(tester);
+      expect(route, findsNothing);
+      expect(
+        find.byKey(const ValueKey('tablet-message-empty')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
     testWidgets(
       '$platform topic settings, members and search stay in the detail pane',

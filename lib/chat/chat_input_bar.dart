@@ -19,6 +19,7 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:logger/logger.dart' show Level;
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -65,6 +66,7 @@ import 'contact_share_picker_view.dart';
 import 'custom_emoji.dart';
 import 'desktop_composer_height.dart';
 import 'desktop_voice_message_controller.dart';
+import 'desktop_voice_waveform.dart';
 import 'emoji_catalog.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
@@ -471,6 +473,9 @@ class ChatInputBar extends StatefulWidget {
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
+    this.desktopVoiceRecorderFactory,
+    this.mobileVoiceRecorderFactory,
+    this.microphonePermissionForTesting,
     this.desktopScreenshotCapture,
     this.desktopClipboardAttachmentReader,
     this.desktopUtilityWindowLauncher,
@@ -501,6 +506,12 @@ class ChatInputBar extends StatefulWidget {
   @visibleForTesting
   final VoidCallback? onVoicePanelOpenedForTesting;
   @visibleForTesting
+  final desktop_record.AudioRecorder Function()? desktopVoiceRecorderFactory;
+  @visibleForTesting
+  final FlutterSoundRecorder Function()? mobileVoiceRecorderFactory;
+  @visibleForTesting
+  final Future<PermissionStatus> Function()? microphonePermissionForTesting;
+  @visibleForTesting
   final DesktopScreenshotCapture? desktopScreenshotCapture;
   @visibleForTesting
   final DesktopClipboardAttachmentReader? desktopClipboardAttachmentReader;
@@ -525,7 +536,8 @@ class ChatInputBar extends StatefulWidget {
   State<ChatInputBar> createState() => _ChatInputBarState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar> {
+class _ChatInputBarState extends State<ChatInputBar>
+    with WidgetsBindingObserver {
   static const _clipboardChannel = MethodChannel('mithka/clipboard');
   static const _maximumPendingClipboardAttachments = 10;
   static const _gifTabId = -2;
@@ -574,15 +586,26 @@ class _ChatInputBarState extends State<ChatInputBar> {
   String _gifSearchNextOffset = '';
   bool _gifSearchLoadingMore = false;
 
-  // Mobile voice recording uses flutter_sound/Opus; macOS uses record/AAC.
+  // Mobile uses flutter_sound/Opus; all native desktops use record/AAC.
   FlutterSoundRecorder? _recorder;
   desktop_record.AudioRecorder? _desktopRecorder;
+  Future<void>? _recorderPreparation;
   Future<void>? _desktopRecorderPreparation;
+  Future<void>? _voiceStart;
+  Future<void>? _voiceStop;
+  bool _voiceDisposed = false;
+  bool _voiceUsesDesktopRecorder = false;
+  bool _startingRecording = false;
+  bool _stoppingRecording = false;
+  bool _sendingVoice = false;
+  bool _changingRecordingPause = false;
+  bool _mobilePointerHeld = false;
+  int? _voicePointerId;
+  VoiceNotePreviewResult? _desktopVoiceDraft;
   StreamSubscription<desktop_record.Amplitude>? _desktopRecProgress;
   final _desktopVoiceFocus = FocusNode(debugLabel: 'desktopVoiceMessage');
   bool _desktopSpaceHeld = false;
   bool _desktopPointerHeld = false;
-  bool _desktopStopAfterStart = false;
   bool _recording = false;
   bool _recordingPaused = false;
   bool _recordingLocked = false;
@@ -655,6 +678,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _syncedVmState = _renderedVmState;
     _botPlatform = widget.botPlatformForTesting ?? BotPlatformService();
     DesktopChatComposerActions._register(
@@ -684,6 +708,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       var needsRebuild = false;
       var panelChanged = false;
       if (_focus.hasFocus && _panel != _Panel.none) {
+        if (_panel == _Panel.voice) _cancelVoiceRecording();
         _panel = _Panel.none;
         needsRebuild = true;
         panelChanged = true;
@@ -1092,12 +1117,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _syncedVmState = _renderedVmState;
     final wasAiDraftEligible = _aiDraftEligible;
     final hadQuickReplyContext = _quickReplyContextVisible;
-    final voicePanelWasClosed = !_canSendVoiceNotes && _panel == _Panel.voice;
+    final voicePanelWasClosed =
+        (!_canSendVoiceNotes || vm.editingMessage != null) &&
+        _panel == _Panel.voice;
     if (voicePanelWasClosed) {
-      if (_recording) {
-        _recordCancelled = true;
-        unawaited(_stopRec());
-      }
+      _cancelVoiceRecording();
       _desktopVoiceFocus.unfocus();
       _panel = _Panel.none;
     }
@@ -1222,6 +1246,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void didUpdateWidget(ChatInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
+      _cancelVoiceRecording();
+      _discardDesktopVoiceDraft();
+      if (_panel == _Panel.voice) _panel = _Panel.none;
       _hideDesktopPopovers(rebuild: false);
       _invalidateAiReplyGeneration(discardGeneratedDraft: true);
       _discardPendingClipboardAttachments();
@@ -1261,6 +1288,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _voiceDisposed = true;
+    _recordCancelled = true;
+    _clearVoicePresses();
     _desktopComposerHeightLoadGeneration++;
     _desktopScreenshotHotkeyRegistration?.dispose();
     DesktopChatComposerActions._unregister(_desktopActionOwner);
@@ -1304,8 +1335,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     _inlineBotTimer?.cancel();
     _botPlatformUpdates?.cancel();
     _hideRelayProgress();
-    _recorder?.closeRecorder();
-    _desktopRecorder?.dispose();
+    unawaited(_disposeVoiceRecorders());
     super.dispose();
   }
 
@@ -1490,6 +1520,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   void _setPanel(_Panel next) {
     if (_panel == next && !_quickReplyContextVisible) return;
+    if (_panel == _Panel.voice && next != _Panel.voice) {
+      _cancelVoiceRecording();
+    }
     if (next != _Panel.none) _hideDesktopPopovers(rebuild: false);
     setState(() {
       _panel = next;
@@ -1538,9 +1571,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _toggleVoice() {
     _focus.unfocus();
     final opening = _panel != _Panel.voice;
-    if (!opening && _recording) {
-      _recordCancelled = true;
-      unawaited(_stopRec());
+    if (opening) {
+      _voiceUsesDesktopRecorder = _usesNativeDesktopComposer(context);
     }
     _setPanel(opening ? _Panel.voice : _Panel.none);
     if (opening) {
@@ -1561,40 +1593,64 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _prepareRecorder() async {
-    if (Platform.isMacOS) {
+    if (_voiceUsesDesktopRecorder) {
       await _prepareDesktopRecorder();
       return;
     }
     if (_recorder != null) return;
-    var status = await Permission.microphone.status;
-    if (!status.isGranted && !status.isPermanentlyDenied) {
-      status = await Permission.microphone.request();
-    }
-    if (!status.isGranted) {
-      if (!mounted) return;
-      showToast(
-        context,
-        status.isPermanentlyDenied
-            ? AppStrings.t(AppStringKeys.composerMicrophonePermissionSettings)
-            : AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired),
-      );
-      if (status.isPermanentlyDenied) unawaited(openAppSettings());
-      return;
-    }
-    final r = FlutterSoundRecorder();
+    final pending = _recorderPreparation;
+    if (pending != null) return pending;
+    late final Future<void> preparation;
+    preparation = _createMobileRecorder().whenComplete(() {
+      if (identical(_recorderPreparation, preparation)) {
+        _recorderPreparation = null;
+      }
+    });
+    _recorderPreparation = preparation;
+    await preparation;
+  }
+
+  Future<void> _createMobileRecorder() async {
+    FlutterSoundRecorder? recorder;
     try {
-      await r.openRecorder();
-      await r.setSubscriptionDuration(const Duration(milliseconds: 100));
+      final permission = widget.microphonePermissionForTesting;
+      var status = permission != null
+          ? await permission()
+          : await Permission.microphone.status;
+      if (permission == null &&
+          !status.isGranted &&
+          !status.isPermanentlyDenied) {
+        status = await Permission.microphone.request();
+      }
+      if (_voiceDisposed || !mounted) return;
+      if (!status.isGranted) {
+        showToast(
+          context,
+          AppStrings.t(
+            status.isPermanentlyDenied
+                ? AppStringKeys.composerMicrophonePermissionSettings
+                : AppStringKeys.composerMicrophonePermissionRequired,
+          ),
+        );
+        if (status.isPermanentlyDenied) unawaited(openAppSettings());
+        return;
+      }
+      recorder =
+          widget.mobileVoiceRecorderFactory?.call() ??
+          FlutterSoundRecorder(logLevel: Level.warning);
+      await recorder.openRecorder();
+      await recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
+      if (_voiceDisposed || !mounted) {
+        await recorder.closeRecorder();
+        return;
+      }
+      setState(() => _recorder = recorder);
     } catch (_) {
-      return;
+      try {
+        await recorder?.closeRecorder();
+      } catch (_) {}
+      _showRecordingError();
     }
-    if (!mounted) {
-      await r.closeRecorder();
-      return;
-    }
-    // setState so the panel rebuilds with the recorder ready — otherwise the
-    // press handlers keep seeing a stale `granted == false` and never record.
-    setState(() => _recorder = r);
   }
 
   Future<void> _prepareDesktopRecorder() async {
@@ -1615,12 +1671,15 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _createDesktopRecorder() async {
-    final recorder = desktop_record.AudioRecorder();
+    final recorder =
+        widget.desktopVoiceRecorderFactory?.call() ??
+        desktop_record.AudioRecorder();
     bool allowed;
     try {
       allowed = await recorder.hasPermission();
     } catch (_) {
       await recorder.dispose();
+      _showRecordingError();
       return;
     }
     if (!allowed) {
@@ -1632,75 +1691,113 @@ class _ChatInputBarState extends State<ChatInputBar> {
       );
       return;
     }
-    if (!mounted) {
+    if (_voiceDisposed || !mounted) {
       await recorder.dispose();
       return;
     }
     setState(() => _desktopRecorder = recorder);
   }
 
-  Future<void> _beginDesktopVoiceRecording() => prepareDesktopVoiceRecording(
-    prepare: _prepareDesktopRecorder,
-    shouldStart: () =>
-        mounted &&
-        _desktopRecorder != null &&
-        !_recording &&
-        (_desktopSpaceHeld || _desktopPointerHeld),
-    start: _startDesktopRec,
-  );
+  bool get _voicePressHeld => _voiceUsesDesktopRecorder
+      ? _desktopSpaceHeld || _desktopPointerHeld
+      : _mobilePointerHeld;
 
-  /// Telegram voice notes want OGG/Opus, but not every Android encoder supports
-  /// it — pick the first codec the device can actually record.
-  Future<(Codec, String)?> _pickRecordCodec(
-    FlutterSoundRecorder r,
-    String dir,
-  ) async {
-    const candidates = [
-      (Codec.opusOGG, 'ogg'),
-      (Codec.opusWebM, 'webm'),
-      (Codec.aacADTS, 'aac'),
-      (Codec.aacMP4, 'm4a'),
-    ];
-    for (final (codec, ext) in candidates) {
-      if (await r.isEncoderSupported(codec)) {
-        return (
-          codec,
-          '$dir/voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
-        );
-      }
-    }
-    return null;
-  }
+  bool get _canStartHeldRecording =>
+      mounted &&
+      !_voiceDisposed &&
+      _panel == _Panel.voice &&
+      _canSendVoiceNotes &&
+      !_recordCancelled &&
+      _voicePressHeld;
 
-  Future<void> _startRec() async {
-    if (Platform.isMacOS) {
-      await _startDesktopRec();
-      return;
+  Future<void> _beginVoiceRecording() {
+    if (_voiceDisposed ||
+        _voiceStop != null ||
+        _recording ||
+        _desktopVoiceDraft != null) {
+      return Future<void>.value();
     }
-    final r = _recorder;
-    if (r == null || _recording) return;
-    final dir = await getTemporaryDirectory();
-    final picked = await _pickRecordCodec(r, dir.path);
-    if (picked == null) return;
-    final (codec, path) = picked;
-    _recPath = path;
+    final pending = _voiceStart;
+    if (pending != null) return pending;
     _recordCancelled = false;
     _recordingPaused = false;
     _recordingLocked = false;
     _elapsed = 0;
     _recLevels.clear();
     _recTick.value = (elapsed: 0.0, levels: const <double>[]);
-    try {
-      await r.startRecorder(toFile: _recPath, codec: codec, sampleRate: 48000);
-    } catch (_) {
+    setState(() => _startingRecording = true);
+    late final Future<void> start;
+    start =
+        prepareDesktopVoiceRecording(
+              prepare: _prepareRecorder,
+              shouldStart: () => _canStartHeldRecording,
+              start: _startRec,
+            )
+            .catchError((Object _) {
+              _showRecordingError();
+            })
+            .whenComplete(() {
+              if (identical(_voiceStart, start)) _voiceStart = null;
+              _startingRecording = false;
+              if (mounted && !_voiceDisposed) setState(() {});
+            });
+    _voiceStart = start;
+    return start;
+  }
+
+  void _showRecordingError() {
+    if (mounted && !_voiceDisposed && _panel == _Panel.voice) {
+      showToast(context, AppStrings.t(AppStringKeys.composerRecordingFailed));
+    }
+  }
+
+  Future<void> _startRec() async {
+    if (_voiceUsesDesktopRecorder) {
+      await _startDesktopRec();
       return;
     }
-    if (!mounted) return;
+    final r = _recorder;
+    if (r == null || _recording) return;
+    final dir = await getTemporaryDirectory();
+    const candidates = [
+      (Codec.opusOGG, 'ogg'),
+      (Codec.opusWebM, 'webm'),
+      (Codec.aacADTS, 'aac'),
+      (Codec.aacMP4, 'm4a'),
+    ];
+    var started = false;
+    for (final (codec, extension) in candidates) {
+      if (!_canStartHeldRecording) return;
+      try {
+        if (!await r.isEncoderSupported(codec)) continue;
+        if (!_canStartHeldRecording) return;
+        final path =
+            '${dir.path}/voice_${DateTime.now().microsecondsSinceEpoch}.$extension';
+        _recPath = path;
+        await r.startRecorder(toFile: path, codec: codec, sampleRate: 48000);
+        started = true;
+        break;
+      } catch (_) {
+        // Some devices claim Opus support but fail when opening the encoder.
+        // Close that attempt before trying the next supported container.
+        try {
+          await r.stopRecorder();
+        } catch (_) {}
+        final path = _recPath;
+        _recPath = null;
+        if (path != null) await _deleteTempFile(path);
+      }
+    }
+    if (!started) {
+      _showRecordingError();
+      return;
+    }
+    if (_voiceDisposed || !mounted) return;
     setState(() => _recording = true);
     await _recProgress?.cancel();
     final clock = VoiceRecordingClock();
     _recProgress = r.onProgress?.listen((event) {
-      if (!mounted) return;
+      if (!mounted || _voiceDisposed || !_recording || _recordingPaused) return;
       clock.update(event.duration);
       _elapsed = clock.seconds;
       final level = event.decibels;
@@ -1713,7 +1810,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
       );
     });
     _recTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (!mounted) return;
+      if (!mounted || _voiceDisposed || !_recording) return;
       // Only here to move the clock until the recorder's own progress stream
       // reports; once it has, the timer has nothing left to do.
       if (clock.hasRecorderProgress) {
@@ -1731,15 +1828,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final recorder = _desktopRecorder;
     if (recorder == null || _recording) return;
     final directory = await getTemporaryDirectory();
+    if (!_canStartHeldRecording) return;
     final path =
-        '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        '${directory.path}/voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
     _recPath = path;
-    _recordCancelled = false;
-    _recordingPaused = false;
-    _recordingLocked = false;
-    _elapsed = 0;
-    _recLevels.clear();
-    _recTick.value = (elapsed: 0.0, levels: const <double>[]);
     try {
       await recorder.start(
         const desktop_record.RecordConfig(
@@ -1750,183 +1842,285 @@ class _ChatInputBarState extends State<ChatInputBar> {
         path: path,
       );
     } catch (_) {
+      try {
+        await recorder.cancel();
+      } catch (_) {}
+      await _deleteTempFile(path);
+      _recPath = null;
+      _showRecordingError();
       return;
     }
-    if (!mounted) {
-      await recorder.cancel();
-      return;
-    }
+    if (_voiceDisposed || !mounted) return;
     setState(() => _recording = true);
     await _desktopRecProgress?.cancel();
     _desktopRecProgress = recorder
         .onAmplitudeChanged(const Duration(milliseconds: 100))
         .listen((amplitude) {
-          if (!mounted) return;
+          if (!mounted || _voiceDisposed || !_recording || _recordingPaused) {
+            return;
+          }
           final level = amplitude.current;
           if (level.isFinite) {
             _recLevels.add(level.clamp(-120.0, 0.0));
             _recTick.value = (
               elapsed: _elapsed,
-              levels: _recLevels.reversed.take(42).toList().reversed.toList(),
+              levels: _recLevels.reversed.take(120).toList().reversed.toList(),
             );
           }
         });
     _recTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (!mounted) return;
+      if (!mounted || _voiceDisposed || !_recording) return;
       if (_recordingPaused) return;
       _elapsed += 0.1;
       _recTick.value = (elapsed: _elapsed, levels: _recTick.value.levels);
     });
-    if (_desktopStopAfterStart ||
-        (!_desktopSpaceHeld && !_desktopPointerHeld)) {
-      _desktopStopAfterStart = false;
-      unawaited(_stopRec());
-    }
   }
 
-  Future<void> _stopRec() async {
-    if (Platform.isMacOS) {
-      await _stopDesktopRec();
-      return;
-    }
-    final r = _recorder;
+  Future<void> _stopRec() {
+    final pending = _voiceStop;
+    if (pending != null) return pending;
+    if (_voiceDisposed || !mounted) return Future<void>.value();
+    setState(() => _stoppingRecording = true);
+    late final Future<void> stop;
+    stop = _finishVoiceRecording().whenComplete(() {
+      if (identical(_voiceStop, stop)) _voiceStop = null;
+      _stoppingRecording = false;
+      if (mounted && !_voiceDisposed) setState(() {});
+    });
+    _voiceStop = stop;
+    return stop;
+  }
+
+  Future<void> _finishVoiceRecording() async {
+    // A release/cancel may arrive during permission or native startup. Wait
+    // for that exact start, then finalize it once; never start another clip
+    // or send twice while the previous stop is still asynchronous.
+    await _voiceStart;
+    if (_voiceDisposed || !_recording) return;
+    final target = vm;
+    final duration = _elapsed.round();
+    final levels = List<double>.unmodifiable(_recLevels);
+    final originalPath = _recPath;
     _recTimer?.cancel();
     _recTimer = null;
     await _recProgress?.cancel();
     _recProgress = null;
-    if (r == null || !_recording) return;
-    final secs = _elapsed.round();
-    final cancelled = _recordCancelled;
-    String? url;
-    try {
-      url = await r.stopRecorder();
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      _recording = false;
-      _recordingPaused = false;
-      _recordingLocked = false;
-    });
-    if (cancelled || secs < 1 || url == null) {
-      if (url != null) unawaited(_deleteTempFile(url));
-      return;
-    }
-    final result = await Navigator.of(context).push<VoiceNotePreviewResult>(
-      MaterialPageRoute(
-        builder: (_) => VoiceNotePreviewView(
-          path: url!,
-          duration: secs,
-          levels: List<double>.unmodifiable(_recLevels),
-          allowWhenOnline: vm.canSendWhenOnline,
-          effects: vm.availableMessageEffects,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (result == null) {
-      unawaited(_deleteTempFile(url));
-      return;
-    }
-    final sent = await vm.sendVoice(
-      result.path,
-      result.duration,
-      waveform: result.waveform,
-      sendConfiguration: result.sendConfiguration,
-    );
-    if (!mounted) return;
-    if (sent) {
-      _finishPanelSend();
-    } else {
-      showToast(context, AppStringKeys.topicPostContentActionFailed);
-    }
-  }
-
-  Future<void> _stopDesktopRec() async {
-    _recTimer?.cancel();
-    _recTimer = null;
     await _desktopRecProgress?.cancel();
     _desktopRecProgress = null;
-    final recorder = _desktopRecorder;
-    if (recorder == null || !_recording) return;
-    final cancelled = _recordCancelled;
+    _recording = false;
+    _recordingPaused = false;
+    _recordingLocked = false;
+    _clearVoicePresses();
+    if (mounted && !_voiceDisposed) setState(() {});
     String? recordedPath;
     try {
-      recordedPath = await recorder.stop();
-    } catch (_) {}
+      recordedPath = _voiceUsesDesktopRecorder
+          ? await _desktopRecorder?.stop()
+          : await _recorder?.stopRecorder();
+    } catch (_) {
+      // A failed stop must still release the microphone before another hold.
+      try {
+        if (_voiceUsesDesktopRecorder) {
+          await _desktopRecorder?.cancel();
+        } else {
+          final recorder = _recorder;
+          _recorder = null;
+          await recorder?.closeRecorder();
+        }
+      } catch (_) {}
+    }
     final url = await _waitForRecordingFile(recordedPath);
-    if (!mounted) return;
-    final duration = _elapsed.round();
-    setState(() {
-      _recording = false;
-      _recordingPaused = false;
-      _recordingLocked = false;
-      _desktopSpaceHeld = false;
-      _desktopPointerHeld = false;
-    });
+    _recPath = null;
+    final cancelled =
+        _recordCancelled ||
+        _voiceDisposed ||
+        !mounted ||
+        _panel != _Panel.voice ||
+        !identical(target, vm) ||
+        !_canSendVoiceNotes;
     if (cancelled || duration < 1 || url == null) {
-      if (recordedPath != null) unawaited(_deleteTempFile(recordedPath));
-      if (!cancelled && duration >= 1 && mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.topicPostContentActionFailed),
-        );
+      for (final path in {originalPath, recordedPath}.whereType<String>()) {
+        await _deleteTempFile(path);
       }
+      if (_voiceDisposed || !mounted) return;
+      if (!cancelled && duration >= 1 && url == null) _showRecordingError();
       _elapsed = 0;
       _recLevels.clear();
       _recTick.value = (elapsed: 0.0, levels: const <double>[]);
       return;
     }
-    final sent = await vm.sendVoice(
-      url,
-      duration,
-      waveform: encodeTelegramWaveform(_recLevels),
-    );
-    if (!mounted) return;
+    if (!mounted || _voiceDisposed) return;
+    if (_voiceUsesDesktopRecorder) {
+      setState(
+        () => _desktopVoiceDraft = VoiceNotePreviewResult(
+          path: url,
+          duration: duration,
+          waveform: encodeTelegramWaveform(levels),
+          sendConfiguration: const MessageSendConfiguration(),
+        ),
+      );
+      await _sendDesktopVoiceDraft();
+    } else {
+      final result = await Navigator.of(context).push<VoiceNotePreviewResult>(
+        MaterialPageRoute(
+          builder: (_) => VoiceNotePreviewView(
+            path: url,
+            duration: duration,
+            levels: levels,
+            allowWhenOnline: target.canSendWhenOnline,
+            effects: target.availableMessageEffects,
+          ),
+        ),
+      );
+      if (result == null) {
+        await _deleteTempFile(url);
+        return;
+      }
+      if (_voiceDisposed || !mounted || !identical(target, vm)) return;
+      final sent = await target.sendVoice(
+        result.path,
+        result.duration,
+        waveform: result.waveform,
+        sendConfiguration: result.sendConfiguration,
+      );
+      if (!mounted || _voiceDisposed) return;
+      if (sent) {
+        _finishPanelSend();
+      } else {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.topicPostContentActionFailed),
+        );
+      }
+    }
+  }
+
+  Future<void> _sendDesktopVoiceDraft() async {
+    final draft = _desktopVoiceDraft;
+    if (draft == null || _sendingVoice || !_canSendVoiceNotes) return;
+    final target = vm;
+    setState(() => _sendingVoice = true);
+    var sent = false;
+    try {
+      sent = await target.sendVoice(
+        draft.path,
+        draft.duration,
+        waveform: draft.waveform,
+        sendConfiguration: draft.sendConfiguration,
+      );
+    } catch (_) {}
+    _sendingVoice = false;
+    if (sent) {
+      // TDLib still needs the file for its upload after accepting the send.
+      _desktopVoiceDraft = null;
+    } else if (_voiceDisposed || !mounted || !identical(target, vm)) {
+      await _deleteTempFile(draft.path);
+      _desktopVoiceDraft = null;
+    }
+    if (_voiceDisposed || !mounted || !identical(target, vm)) return;
+    setState(() {});
     if (sent) {
       _finishPanelSend();
     } else {
-      unawaited(_deleteTempFile(url));
       showToast(
         context,
-        AppStrings.t(AppStringKeys.topicPostContentActionFailed),
+        AppStrings.t(AppStringKeys.composerRecordingSendFailed),
       );
     }
   }
 
-  Future<void> _toggleRecPause() async {
-    if (Platform.isMacOS) {
-      final recorder = _desktopRecorder;
-      if (recorder == null || !_recording) return;
-      try {
-        if (_recordingPaused) {
-          await recorder.resume();
-        } else {
-          await recorder.pause();
-        }
-        if (mounted) setState(() => _recordingPaused = !_recordingPaused);
-      } catch (_) {}
-      return;
+  void _discardDesktopVoiceDraft() {
+    if (_sendingVoice) return;
+    final draft = _desktopVoiceDraft;
+    _desktopVoiceDraft = null;
+    if (draft == null) return;
+    unawaited(_deleteTempFile(draft.path));
+    if (mounted && !_voiceDisposed) {
+      _elapsed = 0;
+      _recLevels.clear();
+      _recTick.value = (elapsed: 0.0, levels: const <double>[]);
+      setState(() {});
     }
-    final recorder = _recorder;
-    if (recorder == null || !_recording) return;
+  }
+
+  void _clearVoicePresses() {
+    _desktopSpaceHeld = false;
+    _desktopPointerHeld = false;
+    _mobilePointerHeld = false;
+    _voicePointerId = null;
+  }
+
+  void _cancelVoiceRecording() {
+    _clearVoicePresses();
+    _recordCancelled = true;
+    if (!_voiceDisposed &&
+        (_recording || _voiceStart != null || _voiceStop != null)) {
+      unawaited(_stopRec());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A held gesture can lose its release when the app loses focus. A locked
+    // mobile recording is intentional and must not be discarded by a system
+    // permission sheet, notification, or brief app switch.
+    if (_recordingLocked && state != AppLifecycleState.detached) return;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached ||
+        (state == AppLifecycleState.inactive && _recording)) {
+      _cancelVoiceRecording();
+    }
+  }
+
+  Future<void> _disposeVoiceRecorders() async {
     try {
-      if (_recordingPaused) {
-        await recorder.resumeRecorder();
-      } else {
-        await recorder.pauseRecorder();
-      }
-      if (mounted) setState(() => _recordingPaused = !_recordingPaused);
+      await _voiceStart;
+      await _voiceStop;
     } catch (_) {}
+    try {
+      await _recorder?.closeRecorder();
+    } catch (_) {}
+    try {
+      await _desktopRecorder?.dispose();
+    } catch (_) {}
+    final path = _recPath;
+    if (path != null) await _deleteTempFile(path);
+    _discardDesktopVoiceDraft();
+  }
+
+  Future<void> _toggleRecPause() async {
+    if (!_recording || _stoppingRecording || _changingRecordingPause) return;
+    _changingRecordingPause = true;
+    final paused = _recordingPaused;
+    try {
+      if (_voiceUsesDesktopRecorder) {
+        if (paused) {
+          await _desktopRecorder?.resume();
+        } else {
+          await _desktopRecorder?.pause();
+        }
+      } else if (paused) {
+        await _recorder?.resumeRecorder();
+      } else {
+        await _recorder?.pauseRecorder();
+      }
+      if (mounted && !_voiceDisposed && _recording && !_stoppingRecording) {
+        setState(() => _recordingPaused = !paused);
+      }
+    } catch (_) {
+      _showRecordingError();
+    } finally {
+      _changingRecordingPause = false;
+    }
   }
 
   void _cancelLockedRecording() {
-    if (!_recording) return;
-    _recordCancelled = true;
-    unawaited(_stopRec());
+    _cancelVoiceRecording();
   }
 
   KeyEventResult _handleDesktopVoiceKeyEvent(FocusNode node, KeyEvent event) {
-    if (!Platform.isMacOS || _panel != _Panel.voice) {
+    if (!_voiceUsesDesktopRecorder || _panel != _Panel.voice) {
       return KeyEventResult.ignored;
     }
     if (event is KeyRepeatEvent) {
@@ -1948,24 +2142,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
     switch (action) {
       case DesktopVoiceMessageAction.start:
+        if (_voiceStop != null || _desktopVoiceDraft != null || _sendingVoice) {
+          return KeyEventResult.ignored;
+        }
         _desktopSpaceHeld = true;
-        _desktopStopAfterStart = false;
-        unawaited(_beginDesktopVoiceRecording());
+        unawaited(_beginVoiceRecording());
         return KeyEventResult.handled;
       case DesktopVoiceMessageAction.stop:
         _desktopSpaceHeld = false;
-        if (_recording) {
-          unawaited(_stopRec());
-        } else {
-          _desktopStopAfterStart = true;
-        }
+        if (!_desktopPointerHeld) unawaited(_stopRec());
         return KeyEventResult.handled;
       case DesktopVoiceMessageAction.cancel:
-        _desktopSpaceHeld = false;
-        _desktopPointerHeld = false;
-        if (_recording) {
-          _recordCancelled = true;
-          unawaited(_stopRec());
+        if (_recording || _voiceStart != null) {
+          _cancelVoiceRecording();
+        } else if (_desktopVoiceDraft != null) {
+          _discardDesktopVoiceDraft();
         } else {
           _setPanel(_Panel.none);
           _desktopVoiceFocus.unfocus();
@@ -1977,28 +2168,27 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _desktopVoicePointerDown(PointerDownEvent event) {
-    if (_recording || _desktopPointerHeld) return;
+    if (_recording ||
+        _desktopPointerHeld ||
+        _voiceStop != null ||
+        _desktopVoiceDraft != null ||
+        _sendingVoice) {
+      return;
+    }
+    _voicePointerId = event.pointer;
     _desktopPointerHeld = true;
-    _desktopStopAfterStart = false;
-    unawaited(_beginDesktopVoiceRecording());
+    unawaited(_beginVoiceRecording());
   }
 
   void _desktopVoicePointerUp(PointerEvent event) {
+    if (_voicePointerId != event.pointer) return;
+    _voicePointerId = null;
     _desktopPointerHeld = false;
-    if (_recording) {
-      unawaited(_stopRec());
-    } else {
-      _desktopStopAfterStart = true;
-    }
+    if (!_desktopSpaceHeld) unawaited(_stopRec());
   }
 
   void _desktopVoicePointerCancel(PointerCancelEvent event) {
-    _desktopPointerHeld = false;
-    _desktopStopAfterStart = false;
-    if (_recording) {
-      _recordCancelled = true;
-      unawaited(_stopRec());
-    }
+    if (_voicePointerId == event.pointer) _cancelVoiceRecording();
   }
 
   Future<void> _deleteTempFile(String path) async {
@@ -7463,13 +7653,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _closeDesktopVoicePanel() {
-    if (_recording) {
-      _recordCancelled = true;
-      unawaited(_stopRec());
-    }
-    _desktopSpaceHeld = false;
-    _desktopPointerHeld = false;
-    _desktopStopAfterStart = false;
+    _cancelVoiceRecording();
     _desktopVoiceFocus.unfocus();
     _setPanel(_Panel.none);
   }
@@ -7481,167 +7665,167 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _desktopVoicePanel() {
     final c = context.colors;
-    final granted = _desktopRecorder != null;
-    final label = !granted
-        ? AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired)
-        : !_recording
-        ? AppStrings.t(AppStringKeys.composerDesktopVoiceHoldSpace)
-        : AppStrings.t(AppStringKeys.composerDesktopVoiceRelease);
-    return Container(
-      key: const ValueKey('desktopVoiceMessagePanel'),
-      height: 282,
-      width: double.infinity,
-      color: c.panelBackground,
-      child: Focus(
-        focusNode: _desktopVoiceFocus,
-        autofocus: true,
-        onKeyEvent: _handleDesktopVoiceKeyEvent,
-        child: Stack(
+    final draft = _desktopVoiceDraft;
+    final busy = _startingRecording || _stoppingRecording || _sendingVoice;
+    final label = _sendingVoice
+        ? AppStrings.t(AppStringKeys.feedbackReportSending)
+        : _stoppingRecording
+        ? AppStrings.t(AppStringKeys.composerRecordingFinishing)
+        : _startingRecording
+        ? AppStrings.t(AppStringKeys.composerRecordingPreparing)
+        : draft != null
+        ? AppStrings.t(AppStringKeys.composerRecordingSendFailed)
+        : _recording
+        ? AppStrings.t(AppStringKeys.composerDesktopVoiceRelease)
+        : AppStrings.t(AppStringKeys.composerDesktopVoiceHoldSpace);
+    return Focus(
+      focusNode: _desktopVoiceFocus,
+      autofocus: true,
+      onKeyEvent: _handleDesktopVoiceKeyEvent,
+      onFocusChange: (focused) {
+        if (!focused && _recording) _cancelVoiceRecording();
+      },
+      child: Container(
+        key: const ValueKey('desktopVoiceMessagePanel'),
+        width: double.infinity,
+        color: c.panelBackground,
+        padding: const EdgeInsets.fromLTRB(20, 8, 16, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Positioned(
-              left: 24,
-              top: 18,
-              child: Text(
-                AppStrings.t(AppStringKeys.voiceNotePreviewVoiceMessage),
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            Positioned(
-              top: 10,
-              right: 16,
-              child: Semantics(
-                button: true,
-                label: AppStrings.t(AppStringKeys.composerCloseMenu),
-                child: GestureDetector(
-                  key: const ValueKey('desktopVoicePanelClose'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _closeDesktopVoicePanel,
-                  child: SizedBox.square(
-                    dimension: 36,
-                    child: Center(
-                      child: AppIcon(
-                        HeroAppIcons.xmark,
-                        size: 18,
-                        color: c.textSecondary,
-                      ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppStrings.t(AppStringKeys.voiceNotePreviewVoiceMessage),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ),
+                _desktopVoiceAction(
+                  key: const ValueKey('desktopVoicePanelClose'),
+                  icon: HeroAppIcons.xmark,
+                  label: AppStrings.t(AppStringKeys.composerCloseMenu),
+                  onTap: _closeDesktopVoicePanel,
+                ),
+              ],
             ),
-            Align(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ValueListenableBuilder<_RecTick>(
-                      valueListenable: _recTick,
-                      builder: (context, tick, _) => Text(
-                        _recTime(tick.elapsed),
-                        style: TextStyle(
-                          color: _recording ? c.textPrimary : c.textTertiary,
-                          fontSize: 15,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_recording)
-                      SizedBox(
-                        width: 250,
-                        height: 34,
-                        child: ValueListenableBuilder<_RecTick>(
-                          valueListenable: _recTick,
-                          builder: (context, tick, _) => Row(
-                            children: [
-                              for (final level in tick.levels)
-                                Expanded(
-                                  child: Align(
-                                    child: Container(
-                                      width: 3,
-                                      height:
-                                          (5 +
-                                                  ((level.clamp(-60.0, 0.0) +
-                                                              60) /
-                                                          60) *
-                                                      29)
-                                              .toDouble(),
-                                      decoration: BoxDecoration(
-                                        color: _recordingPaused
-                                            ? c.textTertiary
-                                            : AppTheme.brand,
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      const SizedBox(height: 34),
-                    const SizedBox(height: 14),
-                    Semantics(
-                      button: true,
-                      label: label,
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    label: label,
+                    child: MouseRegion(
+                      cursor: busy || draft != null
+                          ? SystemMouseCursors.basic
+                          : SystemMouseCursors.click,
                       child: Listener(
                         key: const ValueKey('desktopVoiceRecordButton'),
                         behavior: HitTestBehavior.opaque,
                         onPointerDown: _desktopVoicePointerDown,
                         onPointerUp: _desktopVoicePointerUp,
                         onPointerCancel: _desktopVoicePointerCancel,
-                        child: AnimatedScale(
-                          scale: _recording ? 1.08 : 1,
-                          duration: const Duration(milliseconds: 150),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            width: 96,
-                            height: 96,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: granted
-                                  ? AppTheme.brand
-                                  : AppTheme.brand.withValues(alpha: 0.35),
-                              shape: BoxShape.circle,
-                              boxShadow: _recording
-                                  ? [
-                                      BoxShadow(
-                                        color: AppTheme.brand.withValues(
-                                          alpha: 0.28,
+                        child: Container(
+                          height: 52,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: c.card,
+                            borderRadius: BorderRadius.circular(AppRadius.card),
+                            border: Border.all(
+                              color: _recording
+                                  ? AppTheme.brand.withValues(alpha: 0.45)
+                                  : c.divider,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              if (busy && !_recording)
+                                const AppActivityIndicator(size: 18)
+                              else
+                                AppIcon(
+                                  HeroAppIcons.microphone,
+                                  size: 20,
+                                  color: _recording
+                                      ? AppTheme.brand
+                                      : c.textSecondary,
+                                ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: SizedBox(
+                                  height: 30,
+                                  child: ValueListenableBuilder<_RecTick>(
+                                    valueListenable: _recTick,
+                                    builder: (context, tick, _) =>
+                                        DesktopVoiceWaveform(
+                                          key: const ValueKey(
+                                            'desktopVoiceWaveform',
+                                          ),
+                                          levels: tick.levels,
+                                          color: _recordingPaused
+                                              ? c.textTertiary
+                                              : AppTheme.brand,
+                                          baselineColor: c.textTertiary
+                                              .withValues(alpha: 0.3),
                                         ),
-                                        spreadRadius: 8,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: const AppIcon(
-                              HeroAppIcons.microphone,
-                              size: 34,
-                              color: Colors.white,
-                            ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              ValueListenableBuilder<_RecTick>(
+                                valueListenable: _recTick,
+                                builder: (context, tick, _) => Text(
+                                  _recTime(tick.elapsed),
+                                  style: TextStyle(
+                                    color: c.textSecondary,
+                                    fontSize: 14,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _recordCancelled
-                            ? AppTheme.tagRed
-                            : c.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+                if (draft != null) ...[
+                  const SizedBox(width: 8),
+                  _desktopVoiceAction(
+                    key: const ValueKey('desktopVoiceDiscard'),
+                    icon: HeroAppIcons.trash,
+                    label: AppStrings.t(AppStringKeys.composerRecordingDiscard),
+                    onTap: busy ? null : _discardDesktopVoiceDraft,
+                  ),
+                  _desktopVoiceAction(
+                    key: const ValueKey('desktopVoiceRetrySend'),
+                    icon: HeroAppIcons.paperPlane,
+                    label: AppStrings.t(AppStringKeys.composerSend),
+                    onTap: busy
+                        ? null
+                        : () => unawaited(_sendDesktopVoiceDraft()),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: draft != null && !_sendingVoice
+                    ? AppTheme.tagRed
+                    : c.textSecondary,
+                fontSize: 12,
               ),
             ),
           ],
@@ -7650,20 +7834,49 @@ class _ChatInputBarState extends State<ChatInputBar> {
     );
   }
 
+  Widget _desktopVoiceAction({
+    required Key key,
+    required AppIconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) => AppInteractiveSurface(
+    key: key,
+    semanticLabel: label,
+    onTap: onTap,
+    enabled: onTap != null,
+    borderRadius: BorderRadius.circular(AppRadius.control),
+    child: SizedBox.square(
+      dimension: 36,
+      child: Center(
+        child: AppIcon(
+          icon,
+          size: 18,
+          color: onTap != null
+              ? context.colors.textSecondary
+              : context.colors.textTertiary,
+        ),
+      ),
+    ),
+  );
+
   Widget _mobileVoicePanel() {
     final c = context.colors;
     final granted = _recorder != null;
-    final label = !granted
+    final label = _startingRecording
+        ? AppStrings.t(AppStringKeys.composerRecordingPreparing)
+        : _stoppingRecording
+        ? AppStrings.t(AppStringKeys.composerRecordingFinishing)
+        : !granted
         ? AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired)
         : !_recording
         ? AppStrings.t(AppStringKeys.composerHoldToTalk)
         : _recordingLocked
         ? (_recordingPaused
-              ? 'Recording paused'
-              : 'Recording locked · pause or stop')
+              ? AppStrings.t(AppStringKeys.composerRecordingPaused)
+              : AppStrings.t(AppStringKeys.composerRecordingLocked))
         : (_recordCancelled
               ? AppStrings.t(AppStringKeys.composerReleaseFingerToCancel)
-              : 'Release to preview · slide up to lock · left to cancel');
+              : AppStrings.t(AppStringKeys.composerRecordingReleasePreview));
     return Container(
       height: 318,
       width: double.infinity,
@@ -7701,7 +7914,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     label: AppStrings.t(
                       AppStringKeys.videoNotePreviewVideoMessage,
                     ),
-                    onTap: _recording
+                    onTap:
+                        _recording || _startingRecording || _stoppingRecording
                         ? null
                         : () {
                             _setPanel(_Panel.none);
@@ -7768,21 +7982,21 @@ class _ChatInputBarState extends State<ChatInputBar> {
           ),
           const SizedBox(height: 16),
           Listener(
+            key: const ValueKey('mobileVoiceRecordButton'),
             onPointerDown: (e) {
+              if (_recording || _voiceStop != null || _mobilePointerHeld) {
+                return;
+              }
+              _voicePointerId = e.pointer;
+              _mobilePointerHeld = true;
               _pressStartX = e.position.dx;
               _pressStartY = e.position.dy;
-              // Check the recorder live (not the build-time `granted`) so a press
-              // right after the panel opens still records; otherwise prime it.
-              if (_recorder != null) {
-                _startRec();
-              } else {
-                _prepareRecorder();
-              }
+              unawaited(_beginVoiceRecording());
             },
             onPointerMove: (e) {
-              if (!_recording || _recordingLocked) return;
+              if (_voicePointerId != e.pointer || _recordingLocked) return;
               final cancel = e.position.dx - _pressStartX < -70;
-              final lock = e.position.dy - _pressStartY < -70;
+              final lock = _recording && e.position.dy - _pressStartY < -70;
               if (lock) {
                 setState(() {
                   _recordingLocked = true;
@@ -7794,12 +8008,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 setState(() => _recordCancelled = cancel);
               }
             },
-            onPointerUp: (_) {
-              if (_recorder != null) {
-                if (!_recordingLocked) unawaited(_stopRec());
-              } else {
-                _prepareRecorder();
-              }
+            onPointerUp: (e) {
+              if (_voicePointerId != e.pointer) return;
+              _voicePointerId = null;
+              _mobilePointerHeld = false;
+              if (!_recordingLocked) unawaited(_stopRec());
+            },
+            onPointerCancel: (e) {
+              if (_voicePointerId == e.pointer) _cancelVoiceRecording();
             },
             child: AnimatedScale(
               scale: _recording ? 1.12 : 1,

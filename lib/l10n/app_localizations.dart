@@ -1120,6 +1120,15 @@ abstract final class AppStringKeys {
   static const composerHoldToTalk = 'composerHoldToTalk';
   static const composerDesktopVoiceHoldSpace = 'composerDesktopVoiceHoldSpace';
   static const composerDesktopVoiceRelease = 'composerDesktopVoiceRelease';
+  static const composerRecordingDiscard = 'composerRecordingDiscard';
+  static const composerRecordingFailed = 'composerRecordingFailed';
+  static const composerRecordingFinishing = 'composerRecordingFinishing';
+  static const composerRecordingPreparing = 'composerRecordingPreparing';
+  static const composerRecordingLocked = 'composerRecordingLocked';
+  static const composerRecordingPaused = 'composerRecordingPaused';
+  static const composerRecordingReleasePreview =
+      'composerRecordingReleasePreview';
+  static const composerRecordingSendFailed = 'composerRecordingSendFailed';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';

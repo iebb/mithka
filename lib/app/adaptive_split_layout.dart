@@ -124,6 +124,11 @@ bool usesAdaptiveSplitLayout(
   final hasSplitWidth =
       size.width >= splitSidebarMinWidth + splitDetailMinWidth;
   if (!isWeb && isDesktopTargetPlatform(target)) return hasSplitWidth;
+  // An opened iPhone can provide enough room for two panes in either
+  // orientation. Use the current window's space, not its aspect ratio.
+  if (!isWeb && target == TargetPlatform.iOS) {
+    return hasSplitWidth && size.height >= 600;
+  }
   return hasSplitWidth &&
       size.width > size.height &&
       math.min(size.width, size.height) >= 600;

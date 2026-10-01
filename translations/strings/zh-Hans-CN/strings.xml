@@ -1209,7 +1209,15 @@
     <string name="composerGroupVideoCall">群视频</string>
     <string name="composerGroupVoiceCall">群通话</string>
     <string name="composerHoldToTalk">按住说话</string>
-    <string name="composerDesktopVoiceHoldSpace">按住空格键或麦克风录音</string>
+    <string name="composerDesktopVoiceHoldSpace">按住空格键或声波条录音</string>
+    <string name="composerRecordingDiscard">丢弃录音</string>
+    <string name="composerRecordingFailed">无法录音。请检查麦克风后重试。</string>
+    <string name="composerRecordingFinishing">正在完成录音…</string>
+    <string name="composerRecordingPreparing">正在准备麦克风…</string>
+    <string name="composerRecordingLocked">录音已锁定 · 可暂停或停止</string>
+    <string name="composerRecordingPaused">录音已暂停</string>
+    <string name="composerRecordingReleasePreview">松开预览 · 上滑锁定 · 左滑取消</string>
+    <string name="composerRecordingSendFailed">发送失败，录音已保留，可重试或丢弃。</string>
     <string name="composerDesktopVoiceRelease">松开发送 · 按 Esc 取消</string>
     <string name="composerImage">图片</string>
     <string name="composerImagePreview">[图片]</string>

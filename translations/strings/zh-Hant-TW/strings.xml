@@ -1209,7 +1209,15 @@
     <string name="composerGroupVideoCall">群組視訊</string>
     <string name="composerGroupVoiceCall">群組通話</string>
     <string name="composerHoldToTalk">按住說話</string>
-    <string name="composerDesktopVoiceHoldSpace">按住空白鍵或麥克風錄音</string>
+    <string name="composerDesktopVoiceHoldSpace">按住空白鍵或聲波條錄音</string>
+    <string name="composerRecordingDiscard">捨棄錄音</string>
+    <string name="composerRecordingFailed">無法錄音。請檢查麥克風後重試。</string>
+    <string name="composerRecordingFinishing">正在完成錄音…</string>
+    <string name="composerRecordingPreparing">正在準備麥克風…</string>
+    <string name="composerRecordingLocked">錄音已鎖定 · 可暫停或停止</string>
+    <string name="composerRecordingPaused">錄音已暫停</string>
+    <string name="composerRecordingReleasePreview">放開預覽 · 上滑鎖定 · 左滑取消</string>
+    <string name="composerRecordingSendFailed">傳送失敗，錄音已保留，可重試或捨棄。</string>
     <string name="composerDesktopVoiceRelease">放開即可傳送 · 按 Esc 取消</string>
     <string name="composerImage">圖片</string>
     <string name="composerImagePreview">[圖片]</string>

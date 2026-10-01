@@ -1216,7 +1216,15 @@
     <string name="composerGroupVideoCall">Gruppen-Videoanruf</string>
     <string name="composerGroupVoiceCall">Gruppen-Sprachanruf</string>
     <string name="composerHoldToTalk">Zum Sprechen gedrückt halten</string>
-    <string name="composerDesktopVoiceHoldSpace">Leertaste oder Mikrofon zum Aufnehmen gedrückt halten</string>
+    <string name="composerDesktopVoiceHoldSpace">Leertaste oder Wellenformleiste zum Aufnehmen gedrückt halten</string>
+    <string name="composerRecordingDiscard">Aufnahme verwerfen</string>
+    <string name="composerRecordingFailed">Aufnahme fehlgeschlagen. Prüfe dein Mikrofon und versuche es erneut.</string>
+    <string name="composerRecordingFinishing">Aufnahme wird abgeschlossen…</string>
+    <string name="composerRecordingPreparing">Mikrofon wird vorbereitet…</string>
+    <string name="composerRecordingLocked">Aufnahme gesperrt · pausieren oder stoppen</string>
+    <string name="composerRecordingPaused">Aufnahme pausiert</string>
+    <string name="composerRecordingReleasePreview">Für Vorschau loslassen · zum Sperren nach oben, zum Abbrechen nach links wischen</string>
+    <string name="composerRecordingSendFailed">Senden fehlgeschlagen. Aufnahme behalten — erneut senden oder verwerfen.</string>
     <string name="composerDesktopVoiceRelease">Zum Senden loslassen · Esc zum Abbrechen</string>
     <string name="composerImage">Bild</string>
     <string name="composerImagePreview">[Bild]</string>
