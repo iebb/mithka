@@ -64,15 +64,30 @@ class ChatSessionCache {
   final int messageCapacity;
 
   int _totalMessages = 0;
-  final LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>
+
+  /// A forum topic is its own transcript: [forumTopicId] scopes the entry so
+  /// one topic never paints another's messages, and the whole-chat entry
+  /// (null) stays separate from every topic.
+  final LinkedHashMap<
+    ({int accountSlot, int chatId, int? forumTopicId}),
+    ChatSessionRenderState
+  >
   _states =
-      LinkedHashMap<({int accountSlot, int chatId}), ChatSessionRenderState>();
+      LinkedHashMap<
+        ({int accountSlot, int chatId, int? forumTopicId}),
+        ChatSessionRenderState
+      >();
 
   ChatSessionRenderState? read({
     required int accountSlot,
     required int chatId,
+    int? forumTopicId,
   }) {
-    final key = (accountSlot: accountSlot, chatId: chatId);
+    final key = (
+      accountSlot: accountSlot,
+      chatId: chatId,
+      forumTopicId: forumTopicId,
+    );
     final state = _states.remove(key);
     if (state != null) _states[key] = state;
     return state;
@@ -81,12 +96,17 @@ class ChatSessionCache {
   void store({
     required int accountSlot,
     required int chatId,
+    int? forumTopicId,
     required List<ChatMessage> messages,
     required bool anchoredHistory,
     bool olderHistoryExhausted = false,
     ChatFirstContactInfo? firstContactInfo,
   }) {
-    final key = (accountSlot: accountSlot, chatId: chatId);
+    final key = (
+      accountSlot: accountSlot,
+      chatId: chatId,
+      forumTopicId: forumTopicId,
+    );
     final previous = _states.remove(key);
     if (previous != null) _totalMessages -= previous.messages.length;
     if (messages.isEmpty) return;

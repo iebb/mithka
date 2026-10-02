@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">Laden fehlgeschlagen</string>
     <string name="appearanceFontSize">Schriftgröße</string>
     <string name="appearanceFontUnused">Ungenutzt</string>
+    <string name="appearanceForumTopicsAsGroupChat">Forenthemen als normale Gruppe anzeigen</string>
     <string name="appearanceGestures">Gesten</string>
     <string name="appearanceGoogleDownloaded">Von Google heruntergeladen</string>
     <string name="appearanceGroupAssistantPosition">Position archivierter Chats</string>
@@ -1632,6 +1633,8 @@
     <string name="groupManagementAdvancedControls">Erweiterte Einstellungen</string>
     <string name="groupManagementBasicSection">Grundverwaltung</string>
     <string name="groupManagementBoostsAndGiveaways">Boosts und Verlosungen</string>
+    <string name="groupManagementDeleteChannel">Kanal löschen</string>
+    <string name="groupManagementDeleteGroup">Gruppe löschen</string>
     <string name="groupManagementEditFailed">Änderung fehlgeschlagen</string>
     <string name="groupManagementEditable">Einstellbar</string>
     <string name="groupManagementForumTopics">Forum-Themen</string>
@@ -2155,6 +2158,7 @@
     <string name="musicPlayerPlaylistLoadFailed">Wiedergabelisten konnten nicht geladen werden</string>
     <string name="musicPlayerPlaylistName">Name der Wiedergabeliste</string>
     <string name="musicPlayerPlaylists">Wiedergabelisten</string>
+    <string name="musicPlayerPreviousTrack">Zurück</string>
     <string name="musicPlayerQueueTitleWithCount">Warteschlange ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">Aus der Wiedergabeliste entfernen</string>
     <string name="musicPlayerRemovedFromPlaylist">Aus der Wiedergabeliste entfernt</string>

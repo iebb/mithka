@@ -3358,6 +3358,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         chatId: vm.chatId,
         queryId: page.queryId,
         resultId: result.id,
+        topicId: vm.forumTopicSendRef,
         replyTo: vm.replyToInput,
       );
       if (!mounted) return;

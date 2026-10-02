@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">Failed to load</string>
     <string name="appearanceFontSize">Font Size</string>
     <string name="appearanceFontUnused">Unused</string>
+    <string name="appearanceForumTopicsAsGroupChat">Show Forum Topics as Regular Group</string>
     <string name="appearanceGestures">Gestures</string>
     <string name="appearanceGoogleDownloaded">Google downloaded</string>
     <string name="appearanceGroupAssistantPosition">Archived Chats Position</string>
@@ -1632,6 +1633,8 @@
     <string name="groupManagementAdvancedControls">Advanced controls</string>
     <string name="groupManagementBasicSection">Basic management</string>
     <string name="groupManagementBoostsAndGiveaways">Boosts and giveaways</string>
+    <string name="groupManagementDeleteChannel">Delete channel</string>
+    <string name="groupManagementDeleteGroup">Delete group</string>
     <string name="groupManagementEditFailed">Failed to update</string>
     <string name="groupManagementEditable">Editable</string>
     <string name="groupManagementForumTopics">Forum topics</string>
@@ -2155,6 +2158,7 @@
     <string name="musicPlayerPlaylistLoadFailed">Could not load playlists</string>
     <string name="musicPlayerPlaylistName">Playlist name</string>
     <string name="musicPlayerPlaylists">Playlists</string>
+    <string name="musicPlayerPreviousTrack">Previous</string>
     <string name="musicPlayerQueueTitleWithCount">Play queue ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">Remove from playlist</string>
     <string name="musicPlayerRemovedFromPlaylist">Removed from playlist</string>

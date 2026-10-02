@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../chat/chat_view.dart';
@@ -22,6 +23,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'topic_chat_view.dart';
 
 typedef ForumTopicBrowserQuery =
@@ -283,6 +285,24 @@ class _ForumTopicBrowserViewState extends State<ForumTopicBrowserView> {
 
   Future<void> _openTopic(_ForumTopicEntry topic) async {
     final chat = _selectedChat;
+    if (context.read<ThemeController>().forumTopicsAsGroupChat) {
+      // Keep the topic list underneath so back returns to it, as the topic
+      // feed route does.
+      await pushAppChatRoute<void>(
+        context,
+        AppChatPageRoute<void>(
+          builder: (_) => ChatView(
+            chatId: chat.id,
+            title: chat.title,
+            forumTopicId: topic.id,
+            seedMessage: topic.lastMessage,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _loadTopics(chat, refresh: true);
+      return;
+    }
     final routeSession = TopicChatRouteSession();
     final opener = widget.openTopicRoute;
     if (opener != null) {

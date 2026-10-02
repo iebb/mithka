@@ -425,7 +425,10 @@ class _CommunityViewState extends State<CommunityView> {
     if (chat.supportsTopics) {
       final mode = await TopicGroupDisplayPreference.load();
       if (!mounted) return;
-      if (!mode.isChat) {
+      final topicsAsChat = context
+          .read<ThemeController>()
+          .forumTopicsAsGroupChat;
+      if (!mode.isChat && !topicsAsChat) {
         unawaited(
           pushAppChatRoute(
             context,

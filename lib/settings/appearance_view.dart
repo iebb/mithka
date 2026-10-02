@@ -687,6 +687,16 @@ class ChatViewAppearanceSettingsView extends StatelessWidget {
           theme.showPlainMemberRoleTags,
           (value) => theme.showPlainMemberRoleTags = value,
         ),
+        KeyedSubtree(
+          key: const ValueKey('forum-topics-as-group-chat-toggle'),
+          child: appearance._toggleRow(
+            context,
+            HeroAppIcons.hashtag.data,
+            AppStrings.t(AppStringKeys.appearanceForumTopicsAsGroupChat),
+            theme.forumTopicsAsGroupChat,
+            (value) => theme.forumTopicsAsGroupChat = value,
+          ),
+        ),
         appearance._navigationRow(
           context,
           AppStrings.t(AppStringKeys.appearanceSenderNameReadability),

@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">Error al cargar</string>
     <string name="appearanceFontSize">Tamaño de fuente</string>
     <string name="appearanceFontUnused">Sin usar</string>
+    <string name="appearanceForumTopicsAsGroupChat">Mostrar los temas del foro como un grupo normal</string>
     <string name="appearanceGestures">Gestos</string>
     <string name="appearanceGoogleDownloaded">Google descargada</string>
     <string name="appearanceGroupAssistantPosition">Posición de chats archivados</string>
@@ -1632,6 +1633,8 @@
     <string name="groupManagementAdvancedControls">Controles avanzados</string>
     <string name="groupManagementBasicSection">Gestión básica</string>
     <string name="groupManagementBoostsAndGiveaways">Impulsos y sorteos</string>
+    <string name="groupManagementDeleteChannel">Eliminar canal</string>
+    <string name="groupManagementDeleteGroup">Eliminar grupo</string>
     <string name="groupManagementEditFailed">No se pudo modificar</string>
     <string name="groupManagementEditable">Configurable</string>
     <string name="groupManagementForumTopics">Temas del foro</string>
@@ -2155,6 +2158,7 @@
     <string name="musicPlayerPlaylistLoadFailed">No se pudieron cargar las listas</string>
     <string name="musicPlayerPlaylistName">Nombre de la lista</string>
     <string name="musicPlayerPlaylists">Listas de reproducción</string>
+    <string name="musicPlayerPreviousTrack">Anterior</string>
     <string name="musicPlayerQueueTitleWithCount">Cola de reproducción ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">Eliminar de la lista de reproducción</string>
     <string name="musicPlayerRemovedFromPlaylist">Eliminado de la lista de reproducción</string>

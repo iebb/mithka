@@ -34,6 +34,22 @@ Future<void> clearChatHistoryForSelf({
   );
 }
 
+/// Permanently deletes a group or channel for every member. TDLib only allows
+/// this for chats whose `can_be_deleted_for_all_users` is set (the owner of a
+/// supergroup or channel), so the flag is re-read right before the request.
+Future<void> deleteChatForAllMembers({
+  required int chatId,
+  required ChatRemovalQuery query,
+  required void Function() onDeleted,
+}) async {
+  final chat = await query({'@type': 'getChat', 'chat_id': chatId});
+  if (!chatDeleteCapabilities(chat).canDeleteForAllUsers) {
+    throw const ChatRemovalUnavailable();
+  }
+  await query({'@type': 'deleteChat', 'chat_id': chatId});
+  onDeleted();
+}
+
 Future<void> leaveChatAndRemoveFromList({
   required int chatId,
   required ChatRemovalQuery query,

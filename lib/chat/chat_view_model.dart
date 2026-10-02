@@ -33,6 +33,7 @@ import 'chat_send_failure.dart';
 import 'chat_unread_progress.dart';
 import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
+import 'forum_topic_transcript.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
 import 'message_reaction_availability.dart';
@@ -375,6 +376,7 @@ class ChatViewModel extends ChangeNotifier {
     bool sessionAnchoredHistory = false,
     ChatFirstContactInfo? sessionFirstContactInfo,
     ChatMessage? seedMessage,
+    this.forumTopicId,
   }) : _accountClientId = TdClient.shared.activeClientId,
        _accountSlot = TdClient.shared.activeSlot,
        peerTitle = title {
@@ -394,6 +396,56 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   final int chatId;
+
+  /// When set, this transcript shows a single forum topic as an ordinary
+  /// chat: history, search, drafts, sends and live updates are scoped to it.
+  final int? forumTopicId;
+  bool get isForumTopicTranscript => (forumTopicId ?? 0) != 0;
+
+  Map<String, dynamic>? get _forumTopicRef => isForumTopicTranscript
+      ? {'@type': 'messageTopicForum', 'forum_topic_id': forumTopicId}
+      : null;
+
+  /// Whether [raw] (a TDLib `message`) belongs to this transcript.
+  bool _belongsToTranscript(Map<String, dynamic> raw) =>
+      !isForumTopicTranscript ||
+      rawMessageBelongsToForumTopic(raw, forumTopicId!);
+
+  /// Rewrites a chat-wide history request into its topic-scoped equivalent.
+  Map<String, dynamic> _scopedHistoryRequest(Map<String, dynamic> request) =>
+      isForumTopicTranscript
+      ? forumTopicHistoryRequest(request, forumTopicId!)
+      : request;
+
+  /// The topic's display name once loaded; empty for ordinary transcripts.
+  String forumTopicName = '';
+
+  Future<Map<String, dynamic>> _queryHistory(
+    Map<String, dynamic> request,
+  ) async {
+    final scoped = _scopedHistoryRequest(request);
+    if (scoped.type != 'getForumTopicHistory') return _client.query(scoped);
+    try {
+      return await _client.query(scoped);
+    } catch (_) {
+      return _client.query(forumTopicThreadHistoryRequest(scoped));
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadForumTopic() async {
+    try {
+      final topic = await _client.query({
+        '@type': 'getForumTopic',
+        'chat_id': chatId,
+        'forum_topic_id': forumTopicId,
+      });
+      forumTopicName = topic.obj('info')?.str('name') ?? forumTopicName;
+      return topic;
+    } catch (_) {
+      return null;
+    }
+  }
+
   final int? initialMessageId;
   final int? sessionAnchorMessageId;
   final bool? sessionFallbackOpenAtLatest;
@@ -443,6 +495,11 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   MessageTextQuote? get replyQuote => _replyQuote;
+
+  /// The forum-topic destination for inline-bot and gif sends when this
+  /// transcript is scoped to one topic.
+  Map<String, dynamic>? get forumTopicSendRef => _forumTopicRef;
+
   Map<String, dynamic>? get replyToInput => replyTo == null
       ? null
       : {
@@ -612,6 +669,11 @@ class ChatViewModel extends ChangeNotifier {
     if (action.isEmpty) return base;
     return '$base · $action';
   }
+
+  /// The header title for this transcript: the topic's name when a forum topic
+  /// is shown as an ordinary chat, otherwise the peer title.
+  String get displayTitle =>
+      forumTopicName.trim().isNotEmpty ? forumTopicName.trim() : peerTitle;
 
   bool get hasActiveChatAction => _chatActions.isNotEmpty;
 
@@ -791,6 +853,11 @@ class ChatViewModel extends ChangeNotifier {
     final pending = sendConfiguration ?? _nextSendConfiguration;
     if (consumePendingConfiguration && sendConfiguration == null) {
       _nextSendConfiguration = null;
+    }
+    final topic = _forumTopicRef;
+    if (topic != null && request.int64('chat_id') == chatId) {
+      request.remove('message_thread_id');
+      request['topic_id'] = topic;
     }
     final existing = request.obj('options') ?? const <String, dynamic>{};
     if (count > 0 || pending != null || existing.isNotEmpty) {
@@ -1155,6 +1222,7 @@ class ChatViewModel extends ChangeNotifier {
     _client.send({
       '@type': 'sendChatAction',
       'chat_id': chatId,
+      'topic_id': ?_forumTopicRef,
       'action': {'@type': 'chatActionTyping'},
     });
   }
@@ -1300,6 +1368,7 @@ class ChatViewModel extends ChangeNotifier {
       _client.send(
         setTextChatDraftRequest(
           chatId: chatId,
+          topicId: _forumTopicRef,
           formattedText: null,
           date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
         ),
@@ -1316,6 +1385,7 @@ class ChatViewModel extends ChangeNotifier {
     _client.send(
       setTextChatDraftRequest(
         chatId: chatId,
+        topicId: _forumTopicRef,
         date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
         formattedText: {
           '@type': 'formattedText',
@@ -1339,6 +1409,7 @@ class ChatViewModel extends ChangeNotifier {
     await _client.query(
       setTextChatDraftRequest(
         chatId: chatId,
+        topicId: _forumTopicRef,
         date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
         formattedText: text.trim().isEmpty
             ? null
@@ -1847,6 +1918,7 @@ class ChatViewModel extends ChangeNotifier {
     ];
     final requests = buildAttachmentSendRequests(
       chatId: chatId,
+      topicId: _forumTopicRef,
       attachments: attachments,
       caption: caption,
       captionEntities: allEntities,
@@ -2759,6 +2831,7 @@ class ChatViewModel extends ChangeNotifier {
       targetChatId: targetChatId,
       fromChatId: chatId,
       messageIds: messageIds,
+      topicId: targetChatId == chatId ? _forumTopicRef : null,
       options: options,
     );
   }
@@ -3030,7 +3103,10 @@ class ChatViewModel extends ChangeNotifier {
 
     final Map<String, dynamic> response;
     try {
-      response = await _client.queryTo(request, _accountClientId);
+      response = await _client.queryTo(
+        _scopedHistoryRequest(request),
+        _accountClientId,
+      );
     } catch (_) {
       _requireAiReplyContextAccess();
       return AiReplyChatHistoryPage(
@@ -3271,7 +3347,7 @@ class ChatViewModel extends ChangeNotifier {
     try {
       Map<String, dynamic> response;
       try {
-        response = await _client.query({
+        response = await _queryHistory({
           '@type': 'getChatHistory',
           'chat_id': chatId,
           'from_message_id': 0,
@@ -3349,7 +3425,7 @@ class ChatViewModel extends ChangeNotifier {
     _isLoadingNewer = true;
     _newerHistoryDeletedMessageIds.clear();
     try {
-      final response = await _client.query({
+      final response = await _queryHistory({
         '@type': 'getChatHistory',
         'chat_id': chatId,
         'from_message_id': fromMessageId,
@@ -3430,6 +3506,11 @@ class ChatViewModel extends ChangeNotifier {
       return;
     }
     if (_chatOpenWorkIsStale) return;
+    if (isForumTopicTranscript) {
+      final topic = await _loadForumTopic();
+      if (_chatOpenWorkIsStale) return;
+      chat = forumTopicChatSnapshot(chat, topic);
+    }
     peerTitle = chat.str('title') ?? peerTitle;
     _messageSenderFromChat = chat.obj('message_sender_id');
     peerPhoto = TDParse.smallPhoto(chat.obj('photo'));
@@ -4134,7 +4215,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> _loadPinnedMessage() async {
     try {
-      final res = await _client.query({
+      final res = await _queryHistory({
         '@type': 'searchChatMessages',
         'chat_id': chatId,
         'query': '',
@@ -4344,7 +4425,7 @@ class ChatViewModel extends ChangeNotifier {
     }
 
     try {
-      final response = await _client.query({
+      final response = await _queryHistory({
         '@type': 'getChatHistory',
         'chat_id': chatId,
         'from_message_id': messageId,
@@ -4401,7 +4482,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<int?> openNextUnreadMention() async {
     try {
-      final response = await _client.query({
+      final response = await _queryHistory({
         '@type': 'searchChatMessages',
         'chat_id': chatId,
         'query': '',
@@ -4434,7 +4515,7 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<int?> openNextUnreadReaction() async {
     try {
-      final response = await _client.query({
+      final response = await _queryHistory({
         '@type': 'searchChatMessages',
         'chat_id': chatId,
         'query': '',
@@ -4595,7 +4676,7 @@ class ChatViewModel extends ChangeNotifier {
     final changed = unreadMentionCount != next;
     unreadMentionCount = next;
     if (changed) notifyListeners();
-    if (emitLocalUpdate) {
+    if (emitLocalUpdate && !isForumTopicTranscript) {
       _client.emitLocalUpdate({
         '@type': 'updateChatUnreadMentionCount',
         'chat_id': chatId,
@@ -4610,7 +4691,7 @@ class ChatViewModel extends ChangeNotifier {
     final changed = unreadReactionCount != next;
     unreadReactionCount = next;
     if (changed) notifyListeners();
-    if (emitLocalUpdate) {
+    if (emitLocalUpdate && !isForumTopicTranscript) {
       _client.emitLocalUpdate({
         '@type': 'updateChatUnreadReactionCount',
         'chat_id': chatId,
@@ -4631,7 +4712,7 @@ class ChatViewModel extends ChangeNotifier {
     final requestGeneration = _historyWindowGeneration;
     Map<String, dynamic> response;
     try {
-      response = await _client.query({
+      response = await _queryHistory({
         '@type': 'getChatHistory',
         'chat_id': chatId,
         'from_message_id': fromMessageId,
@@ -4760,7 +4841,7 @@ class ChatViewModel extends ChangeNotifier {
         )) {
       Map<String, dynamic> response;
       try {
-        response = await _client.query({
+        response = await _queryHistory({
           '@type': 'getChatHistory',
           'chat_id': chatId,
           'from_message_id': fromMessageId,
@@ -4817,10 +4898,13 @@ class ChatViewModel extends ChangeNotifier {
       final previousMarkedUnread = isMarkedUnread;
       if (previousUnreadCount > 0 || previousMarkedUnread || messageId <= 0) {
         try {
-          final raw = await _client.query({
-            '@type': 'getChat',
-            'chat_id': chatId,
-          });
+          final raw = isForumTopicTranscript
+              ? await _client.query({
+                  '@type': 'getForumTopic',
+                  'chat_id': chatId,
+                  'forum_topic_id': forumTopicId,
+                })
+              : await _client.query({'@type': 'getChat', 'chat_id': chatId});
           final latestRaw = raw.obj('last_message');
           final latest = latestRaw == null ? null : TDParse.message(latestRaw);
           messageId = math.max(
@@ -4863,15 +4947,23 @@ class ChatViewModel extends ChangeNotifier {
           '@type': 'viewMessages',
           'chat_id': chatId,
           'message_ids': [messageId],
+          'source': isForumTopicTranscript
+              ? {'@type': 'messageSourceForumTopicHistory'}
+              : null,
           'force_read': true,
         });
-        _client.emitLocalUpdate({
-          '@type': 'updateChatReadInbox',
-          'chat_id': chatId,
-          'last_read_inbox_message_id': messageId,
-          'unread_count': 0,
-        });
+        // A topic's read position is not the chat's; TDLib reports the
+        // resulting chat-wide counts through its own updates.
+        if (!isForumTopicTranscript) {
+          _client.emitLocalUpdate({
+            '@type': 'updateChatReadInbox',
+            'chat_id': chatId,
+            'last_read_inbox_message_id': messageId,
+            'unread_count': 0,
+          });
+        }
       }
+      if (isForumTopicTranscript) return;
       final chatDelta =
           !isMuted && (previousUnreadCount > 0 || shouldClearMarker) ? -1 : 0;
       final messageDelta = !isMuted && previousUnreadCount > 0
@@ -4912,6 +5004,7 @@ class ChatViewModel extends ChangeNotifier {
     'updateChatBusinessBotManageBar',
     'updateChatHasProtectedContent',
     'updateChatDraftMessage',
+    'updateForumTopic',
     'updateChatMessageAutoDeleteTime',
     'updateChatPaidMessageStarCount',
     'updateDeleteMessages',
@@ -4946,6 +5039,7 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateNewMessage':
         final raw = update.obj('message');
         if (raw == null || raw.int64('chat_id') != chatId) return;
+        if (!_belongsToTranscript(raw)) return;
         final rawContent = raw.obj('content');
         if (rawContent?.type == 'messageChatHasProtectedContentToggled') {
           hasProtectedContent =
@@ -5044,7 +5138,9 @@ class ChatViewModel extends ChangeNotifier {
         unawaited(_refreshMessage(messageId));
 
       case 'updateChatUnreadMentionCount':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         _setUnreadMentionCount(
           update.integer('unread_mention_count') ?? unreadMentionCount,
         );
@@ -5072,7 +5168,9 @@ class ChatViewModel extends ChangeNotifier {
         }
 
       case 'updateChatUnreadReactionCount':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         _setUnreadReactionCount(
           update.integer('unread_reaction_count') ?? unreadReactionCount,
         );
@@ -5179,7 +5277,8 @@ class ChatViewModel extends ChangeNotifier {
       case 'updateChat':
         final chat = update.obj('chat');
         if (chat == null || chat.int64('id') != chatId) return;
-        if (chat.containsKey('last_read_inbox_message_id') &&
+        if (!isForumTopicTranscript &&
+            chat.containsKey('last_read_inbox_message_id') &&
             chat.containsKey('unread_count')) {
           lastReadInboxId =
               chat.int64('last_read_inbox_message_id') ?? lastReadInboxId;
@@ -5188,10 +5287,12 @@ class ChatViewModel extends ChangeNotifier {
           ++_chatReadInboxRevision;
           ++_chatReadStateRevision;
         }
-        unreadMentionCount =
-            chat.integer('unread_mention_count') ?? unreadMentionCount;
-        unreadReactionCount =
-            chat.integer('unread_reaction_count') ?? unreadReactionCount;
+        if (!isForumTopicTranscript) {
+          unreadMentionCount =
+              chat.integer('unread_mention_count') ?? unreadMentionCount;
+          unreadReactionCount =
+              chat.integer('unread_reaction_count') ?? unreadReactionCount;
+        }
         messageAutoDeleteTime = _autoDeleteSeconds(chat);
         _setPaidMessageStarCount(_paidMessageStars(chat), notify: false);
         hasProtectedContent =
@@ -5201,7 +5302,7 @@ class ChatViewModel extends ChangeNotifier {
               chat.obj('permissions')?.boolean('can_send_voice_notes') ??
               canSendVoiceNotes;
         }
-        if (chat.containsKey('draft_message')) {
+        if (!isForumTopicTranscript && chat.containsKey('draft_message')) {
           _applyRemoteDraft(chat.obj('draft_message'), notify: false);
         }
         if (chat.containsKey('action_bar')) {
@@ -5230,8 +5331,35 @@ class ChatViewModel extends ChangeNotifier {
         notifyListeners();
 
       case 'updateChatDraftMessage':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         _applyRemoteDraft(update.obj('draft_message'));
+
+      case 'updateForumTopic':
+        if (!isForumTopicTranscript ||
+            update.int64('chat_id') != chatId ||
+            update.integer('forum_topic_id') != forumTopicId) {
+          return;
+        }
+        lastReadOutboxId =
+            update.int64('last_read_outbox_message_id') ?? lastReadOutboxId;
+        final topicReadInbox = update.int64('last_read_inbox_message_id');
+        if (topicReadInbox != null && topicReadInbox > lastReadInboxId) {
+          lastReadInboxId = topicReadInbox;
+          ++_chatReadInboxRevision;
+          ++_chatReadStateRevision;
+        }
+        _setUnreadMentionCount(
+          update.integer('unread_mention_count') ?? unreadMentionCount,
+        );
+        _setUnreadReactionCount(
+          update.integer('unread_reaction_count') ?? unreadReactionCount,
+        );
+        if (update.containsKey('draft_message')) {
+          _applyRemoteDraft(update.obj('draft_message'), notify: false);
+        }
+        notifyListeners();
 
       case 'updateChatMessageAutoDeleteTime':
         if (update.int64('chat_id') != chatId) return;
@@ -5301,13 +5429,17 @@ class ChatViewModel extends ChangeNotifier {
         notifyListeners();
 
       case 'updateChatReadOutbox':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         lastReadOutboxId =
             update.int64('last_read_outbox_message_id') ?? lastReadOutboxId;
         notifyListeners();
 
       case 'updateChatReadInbox':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         lastReadInboxId =
             update.int64('last_read_inbox_message_id') ?? lastReadInboxId;
         unreadCount = update.integer('unread_count') ?? unreadCount;
@@ -5316,7 +5448,9 @@ class ChatViewModel extends ChangeNotifier {
         notifyListeners();
 
       case 'updateChatIsMarkedAsUnread':
-        if (update.int64('chat_id') != chatId) return;
+        if (update.int64('chat_id') != chatId || isForumTopicTranscript) {
+          return;
+        }
         isMarkedUnread = update.boolean('is_marked_as_unread') ?? false;
         notifyListeners();
 

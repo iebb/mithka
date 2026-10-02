@@ -9,6 +9,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../chats/chat_delete_dialog.dart';
+import '../chats/chat_delete_policy.dart';
+import '../chats/chat_removal_actions.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -55,6 +58,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   bool _canChangeInfo = false;
   bool _canRestrictMembers = false;
   bool _canPromoteMembers = false;
+  bool _canDeleteForAllMembers = false;
+  bool _deleting = false;
 
   Map<String, bool> _permissions = _defaultPermissions;
 
@@ -113,6 +118,9 @@ class _GroupManagementViewState extends State<GroupManagementView> {
       _title = chat.str('title') ?? _title;
       final type = chat.obj('type');
       _isChannel = type?.boolean('is_channel') ?? false;
+      _canDeleteForAllMembers = chatDeleteCapabilities(
+        chat,
+      ).canDeleteForAllUsers;
       _permissions = _readPermissions(chat.obj('permissions'));
       await _loadSelfRights();
 
@@ -430,6 +438,10 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                           ],
                         ),
                       ],
+                      if (_canDeleteForAllMembers) ...[
+                        _gap(),
+                        _deleteChatCard(),
+                      ],
                     ],
                   ),
           ),
@@ -465,6 +477,82 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   }
 
   Widget _divider() => const InsetDivider(leadingInset: 14);
+
+  Widget _deleteChatCard() {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: GestureDetector(
+        key: const ValueKey('group-management-delete-chat'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _deleting ? null : _deleteChat,
+        child: SizedBox(
+          height: 52,
+          child: Center(
+            child: Text(
+              _deleteChatLabel,
+              style: TextStyle(
+                fontSize: 15,
+                color: _deleting ? c.textTertiary : AppTheme.tagRed,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String get _deleteChatLabel => AppStrings.t(
+    _isChannel
+        ? AppStringKeys.groupManagementDeleteChannel
+        : AppStringKeys.groupManagementDeleteGroup,
+  );
+
+  Future<void> _deleteChat() async {
+    final impact = AppStrings.t(AppStringKeys.chatDeleteAllMembersDescription);
+    final confirmed = await showTwoStepDestructiveConfirmation(
+      context,
+      firstTitle: _deleteChatLabel,
+      firstMessage: impact,
+      firstConfirmText: AppStringKeys.confirmContinue,
+      finalTitle: AppStrings.t(AppStringKeys.chatDeleteFinalQuestion, {
+        'value1': _title,
+      }),
+      finalMessage:
+          '$impact\n\n${AppStrings.t(AppStringKeys.chatDeleteFinalWarning)}',
+      finalConfirmText: AppStringKeys.chatDeleteForAllMembers,
+    );
+    if (!mounted || !confirmed) return;
+    setState(() => _deleting = true);
+    try {
+      await deleteChatForAllMembers(
+        chatId: widget.chatId,
+        query: _client.query,
+        onDeleted: () =>
+            _client.emitLocalUpdate(chatLeftLocalUpdate(widget.chatId)),
+      );
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        if (error is ChatRemovalUnavailable) _canDeleteForAllMembers = false;
+      });
+      showToast(
+        context,
+        error is ChatRemovalUnavailable
+            ? AppStringKeys.chatDeleteUnavailable
+            : AppStrings.t(AppStringKeys.chatDeleteActionsFailed, {
+                'value1': error is TdError ? error.message : '$error',
+              }),
+      );
+    }
+  }
 
   Widget _navRow(String title, {String? value, VoidCallback? onTap}) {
     final c = context.colors;

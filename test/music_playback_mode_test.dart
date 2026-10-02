@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/app/app_navigator.dart';
 import 'package:mithka/chat/music_player_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -198,5 +199,177 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('player bar places previous before play and next', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    final player = MusicPlayerController.shared;
+    final track = ChatMessage(
+      id: 1,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      chatId: 2,
+      music: MessageMusic(
+        title: 'Track',
+        duration: 120,
+        file: TdFileRef(id: 3),
+      ),
+    );
+    player
+      ..current = track
+      ..queue = [track]
+      ..hidden = false
+      ..collapsed = false;
+    addTearDown(() {
+      player
+        ..current = null
+        ..queue = const []
+        ..hidden = true
+        ..collapsed = false;
+      theme.dispose();
+    });
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: const MaterialApp(
+          locale: Locale('en'),
+          localizationsDelegates: [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Column(children: [Spacer(), GlobalMusicPlayerBar()]),
+          ),
+        ),
+      ),
+    );
+
+    Finder control(String label) => find.byWidgetPredicate(
+      (widget) => widget is Semantics && widget.properties.label == label,
+    );
+    final previous = control('Previous');
+    final play = control('Play');
+    final next = control('Next');
+    expect(previous, findsOneWidget);
+    expect(play, findsOneWidget);
+    expect(next, findsOneWidget);
+    expect(tester.getCenter(previous).dx, lessThan(tester.getCenter(play).dx));
+    expect(tester.getCenter(play).dx, lessThan(tester.getCenter(next).dx));
+  });
+  test('display queue follows the reverse sequence traversal order', () {
+    final player = MusicPlayerController.shared;
+    final tracks = [
+      for (var i = 1; i <= 3; i++)
+        ChatMessage(
+          id: i,
+          isOutgoing: false,
+          text: '',
+          date: i,
+          chatId: 2,
+          music: MessageMusic(
+            title: 'Track $i',
+            duration: 120,
+            file: TdFileRef(id: 10 + i),
+          ),
+        ),
+    ];
+    player
+      ..queue = tracks
+      ..mode = MusicPlaybackMode.sequence;
+    addTearDown(() {
+      player
+        ..queue = const []
+        ..mode = MusicPlaybackMode.sequence;
+    });
+
+    expect(player.displayQueue.map((item) => item.id), [1, 2, 3]);
+    player.mode = MusicPlaybackMode.reverseSequence;
+    expect(player.displayQueue.map((item) => item.id), [3, 2, 1]);
+    expect(player.queue.map((item) => item.id), [1, 2, 3]);
+    player.mode = MusicPlaybackMode.shuffle;
+    expect(player.displayQueue.map((item) => item.id), [1, 2, 3]);
+  });
+
+  testWidgets('queue sheet reorders rows when reverse sequence is toggled', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    final player = MusicPlayerController.shared;
+    final tracks = [
+      for (var i = 1; i <= 3; i++)
+        ChatMessage(
+          id: i,
+          isOutgoing: false,
+          text: '',
+          date: i,
+          chatId: 2,
+          music: MessageMusic(
+            title: 'Track $i',
+            duration: 120,
+            file: TdFileRef(id: 20 + i),
+          ),
+        ),
+    ];
+    player
+      ..current = tracks.first
+      ..queue = tracks
+      ..mode = MusicPlaybackMode.sequence
+      ..hidden = false
+      ..collapsed = false;
+    addTearDown(() {
+      player
+        ..current = null
+        ..queue = const []
+        ..mode = MusicPlaybackMode.sequence
+        ..hidden = true
+        ..collapsed = false;
+      theme.dispose();
+    });
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          navigatorKey: appNavigatorKey,
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
+            body: Column(children: [Spacer(), GlobalMusicPlayerBar()]),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'Playlist',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    List<double> rowOffsets() => [
+      for (var i = 1; i <= 3; i++)
+        tester.getTopLeft(find.text('Track $i').last).dy,
+    ];
+
+    final forward = rowOffsets();
+    expect(forward[0], lessThan(forward[1]));
+    expect(forward[1], lessThan(forward[2]));
+
+    await tester.tap(find.text('Play in order').last);
+    await tester.pumpAndSettle();
+    expect(player.mode, MusicPlaybackMode.reverseSequence);
+
+    final reversed = rowOffsets();
+    expect(reversed[2], lessThan(reversed[1]));
+    expect(reversed[1], lessThan(reversed[0]));
   });
 }

@@ -938,6 +938,7 @@ class ChatView extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.title,
+    this.forumTopicId,
     this.initialMessageId,
     this.seedMessage,
     this.showBackButton = true,
@@ -959,6 +960,10 @@ class ChatView extends StatefulWidget {
   });
   final int chatId;
   final String title;
+
+  /// When set, the transcript renders this single forum topic as an ordinary
+  /// chat (see ThemeController.forumTopicsAsGroupChat).
+  final int? forumTopicId;
   final int? initialMessageId;
   final ChatMessage? seedMessage;
   final bool showBackButton;
@@ -1146,7 +1151,7 @@ class _KeyboardInsetProbe extends StatelessWidget {
 
 class _ChatViewState extends State<ChatView> {
   late final bool _openAtLatest;
-  late final ({int accountSlot, int chatId}) _sessionKey;
+  late final ({int accountSlot, int chatId, int? forumTopicId}) _sessionKey;
   late _ChatScrollSnapshot? _sessionScrollSnapshot;
   late final ChatSessionRenderState? _sessionRenderState;
   late bool _olderHistoryExhaustedHint;
@@ -1310,7 +1315,10 @@ class _ChatViewState extends State<ChatView> {
   static const _initialTargetAlignment = 0.30;
   static const _initialUnreadAlignment = 0.12;
   static const _pendingTranscriptOrderId = 0x7FFFFFFFFFFFFFFF;
-  static final Map<({int accountSlot, int chatId}), _ChatScrollSnapshot>
+  static final Map<
+    ({int accountSlot, int chatId, int? forumTopicId}),
+    _ChatScrollSnapshot
+  >
   _sessionScrollSnapshots = {};
   static final ChatSessionCache _sessionCache = ChatSessionCache();
   late final ChatAutoScrollPolicy _autoScrollPolicy;
@@ -1355,11 +1363,13 @@ class _ChatViewState extends State<ChatView> {
     _sessionKey = (
       accountSlot: TdClient.shared.activeSlot,
       chatId: widget.chatId,
+      forumTopicId: widget.forumTopicId,
     );
     _sessionRenderState = widget.initialMessageId == null
         ? _sessionCache.read(
             accountSlot: _sessionKey.accountSlot,
             chatId: _sessionKey.chatId,
+            forumTopicId: _sessionKey.forumTopicId,
           )
         : null;
     _olderHistoryExhaustedHint =
@@ -1432,6 +1442,7 @@ class _ChatViewState extends State<ChatView> {
     )..addListener(_onScroll);
     _vm = ChatViewModel(
       chatId: widget.chatId,
+      forumTopicId: widget.forumTopicId,
       title: widget.title,
       markReadOnOpen: _shouldOpenAtBottom,
       initialMessageId: widget.initialMessageId,
@@ -1942,7 +1953,8 @@ class _ChatViewState extends State<ChatView> {
     }
     _sessionCache.store(
       accountSlot: _sessionKey.accountSlot,
-      chatId: widget.chatId,
+      chatId: _sessionKey.chatId,
+      forumTopicId: _sessionKey.forumTopicId,
       messages: _vm.messages,
       anchoredHistory: _vm.anchoredHistory,
       olderHistoryExhausted: olderHistoryExhausted,
@@ -7735,12 +7747,14 @@ class _ChatViewState extends State<ChatView> {
                           ? _handleInfoPressed
                           : _handleFullInfoPressed,
                     ),
-                  if (_vm.supportsTopics) ...[
+                  if (_showsTopicSurfaces) ...[
                     _ChatHeaderAction(
                       key: const ValueKey('chatHeaderTopics'),
                       label: AppStringKeys.topicChatAllTopics.l10n(context),
                       icon: HeroAppIcons.hashtag,
-                      onTap: _openTopicMode,
+                      onTap: () => _topicsFoldedIntoChat
+                          ? unawaited(_showTopicSelector())
+                          : unawaited(_openTopicMode()),
                     ),
                   ],
                 ],
@@ -7764,6 +7778,16 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Whether topics have a dedicated surface (topic feed mode).
+  bool get _topicsFoldedIntoChat =>
+      _vm.supportsTopics &&
+      context.read<ThemeController>().forumTopicsAsGroupChat;
+
+  /// Topics keep their dedicated surface — header chevron, topic picker, and
+  /// the # header action — whenever the chat is a topic chat. In flattened
+  /// mode the picker switches between topic transcripts instead of modes.
+  bool get _showsTopicSurfaces => _vm.supportsTopics;
+
   /// The join screen and a restricted peer both render the chat header over a
   /// page with no transcript behind it. Offering search there would open a
   /// field that can only ever report nothing.
@@ -7780,15 +7804,17 @@ class _ChatViewState extends State<ChatView> {
 
   Widget _headerTitleBlock(String subtitle, bool actionActive) {
     final c = context.colors;
-    final serverTitle = _vm.peerTitle;
-    final displayTitle = _vm.isGroup && !_vm.isChannel
+    final serverTitle = _vm.displayTitle;
+    final displayTitle =
+        _vm.forumTopicId == null && _vm.isGroup && !_vm.isChannel
         ? context.watch<GroupRemarkController?>()?.displayTitleFor(
                 widget.chatId,
                 serverTitle,
               ) ??
               serverTitle
         : serverTitle;
-    final headerTitle = _vm.isGroup && _vm.memberCount > 0
+    final headerTitle =
+        _vm.forumTopicId == null && _vm.isGroup && _vm.memberCount > 0
         ? '$displayTitle(${_vm.memberCount})'
         : displayTitle;
     final titleText = Text(
@@ -7814,7 +7840,7 @@ class _ChatViewState extends State<ChatView> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_vm.supportsTopics)
+        if (_showsTopicSurfaces)
           Row(
             children: [
               Expanded(child: title),
@@ -7840,7 +7866,7 @@ class _ChatViewState extends State<ChatView> {
           ),
       ],
     );
-    if (_vm.supportsTopics) {
+    if (_showsTopicSurfaces) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _showTopicSelector,
@@ -7876,7 +7902,46 @@ class _ChatViewState extends State<ChatView> {
     supportsBotTopics: _vm.supportsBotTopics,
   );
 
+  /// Opens a topic as the ordinary chat transcript (topics-as-group setting).
+  /// Replaces this transcript in place so the navigation stack stays flat.
+  void _openTopicTranscript(int? topicId) {
+    if (topicId == null) {
+      _openWholeChatTranscript();
+      return;
+    }
+    if (topicId == widget.forumTopicId) return;
+    _prepareExitState();
+    unawaited(
+      replaceWithAppChatRoute<void, void>(
+        context,
+        AppChatPageRoute<void>(
+          builder: (_) => ChatView(
+            chatId: widget.chatId,
+            title: widget.title,
+            forumTopicId: topicId,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openWholeChatTranscript() {
+    if (widget.forumTopicId == null) return;
+    _prepareExitState();
+    unawaited(
+      replaceWithAppChatRoute<void, void>(
+        context,
+        AppChatPageRoute<void>(
+          builder: (_) => ChatView(chatId: widget.chatId, title: widget.title),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openTopicMode([int? threadId]) async {
+    // With topics shown as a regular group, the transcript stays put: the
+    // header's topic picker already switches within the chat surface.
+    if (context.read<ThemeController>().forumTopicsAsGroupChat) return;
     await TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel);
     if (!mounted) return;
     final onOpenTopicMode = widget.onOpenTopicMode;
@@ -7958,6 +8023,10 @@ class _ChatViewState extends State<ChatView> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
+                if (context.read<ThemeController>().forumTopicsAsGroupChat) {
+                  _openTopicTranscript(topic?.id);
+                  return;
+                }
                 _openTopicMode(topic?.id);
               },
             );

@@ -1493,7 +1493,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       child:
           selected.supportsTopics &&
               chat != null &&
-              selected.initialMessageId == null
+              selected.initialMessageId == null &&
+              !context.read<ThemeController>().forumTopicsAsGroupChat
           ? _ForumSplitDetailPane(
               chat: chat,
               headerHeight: headerHeight,

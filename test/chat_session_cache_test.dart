@@ -79,6 +79,42 @@ void main() {
     expect(cache.read(accountSlot: 1, chatId: 42)?.messages.single.id, 2);
   });
 
+  test('keeps forum topics and the whole chat isolated', () {
+    final cache = ChatSessionCache();
+    cache.store(
+      accountSlot: 0,
+      chatId: 42,
+      forumTopicId: 7,
+      messages: [_message(7)],
+      anchoredHistory: false,
+      olderHistoryExhausted: true,
+    );
+    cache.store(
+      accountSlot: 0,
+      chatId: 42,
+      forumTopicId: 9,
+      messages: [_message(9)],
+      anchoredHistory: false,
+    );
+    cache.store(
+      accountSlot: 0,
+      chatId: 42,
+      messages: [_message(1)],
+      anchoredHistory: false,
+    );
+
+    final topicA = cache.read(accountSlot: 0, chatId: 42, forumTopicId: 7);
+    final topicB = cache.read(accountSlot: 0, chatId: 42, forumTopicId: 9);
+    final whole = cache.read(accountSlot: 0, chatId: 42);
+    expect(topicA?.messages.single.id, 7);
+    expect(topicA?.olderHistoryExhausted, isTrue);
+    expect(topicB?.messages.single.id, 9);
+    expect(topicB?.olderHistoryExhausted, isFalse);
+    expect(whole?.messages.single.id, 1);
+    expect(whole?.olderHistoryExhausted, isFalse);
+    expect(cache.read(accountSlot: 0, chatId: 42, forumTopicId: 11), isNull);
+  });
+
   test('clear releases every reusable transcript snapshot', () {
     final cache = ChatSessionCache(capacity: 2);
     cache.store(

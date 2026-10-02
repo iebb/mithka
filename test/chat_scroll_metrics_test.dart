@@ -267,7 +267,7 @@ void main() {
     expect(firstPostAwaitCancellation, lessThan(targetParse));
 
     final secondAwait = modelMethod.indexOf(
-      'final response = await _client.query(',
+      'final response = await _queryHistory(',
       targetParse,
     );
     final secondPostAwaitCancellation = modelMethod.indexOf(

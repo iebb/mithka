@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">加载失败</string>
     <string name="appearanceFontSize">字体大小</string>
     <string name="appearanceFontUnused">未使用</string>
+    <string name="appearanceForumTopicsAsGroupChat">论坛话题显示为正常群组</string>
     <string name="appearanceGestures">手势</string>
     <string name="appearanceGoogleDownloaded">Google 已下载</string>
     <string name="appearanceGroupAssistantPosition">归档的聊天位置</string>
@@ -1625,6 +1626,8 @@
     <string name="groupManagementAdvancedControls">高级控制</string>
     <string name="groupManagementBasicSection">基础管理</string>
     <string name="groupManagementBoostsAndGiveaways">助力和抽奖</string>
+    <string name="groupManagementDeleteChannel">永久删除频道</string>
+    <string name="groupManagementDeleteGroup">永久解散群聊</string>
     <string name="groupManagementEditFailed">修改失败</string>
     <string name="groupManagementEditable">可设置</string>
     <string name="groupManagementForumTopics">论坛话题</string>
@@ -2146,6 +2149,7 @@
     <string name="musicPlayerPlaylistLoadFailed">无法加载歌单</string>
     <string name="musicPlayerPlaylistName">歌单名称</string>
     <string name="musicPlayerPlaylists">歌单</string>
+    <string name="musicPlayerPreviousTrack">上一首</string>
     <string name="musicPlayerQueueTitleWithCount">当前播放列表 ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">从播放列表移除</string>
     <string name="musicPlayerRemovedFromPlaylist">已从播放列表移除</string>

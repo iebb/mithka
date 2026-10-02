@@ -39,6 +39,7 @@ Future<void> forwardMessagesWithOptions({
   required int targetChatId,
   required int fromChatId,
   required List<int> messageIds,
+  Map<String, dynamic>? topicId,
   ForwardOptions options = const ForwardOptions(),
 }) async {
   if (messageIds.isEmpty) return;
@@ -51,6 +52,7 @@ Future<void> forwardMessagesWithOptions({
   final response = await client.query({
     '@type': 'forwardMessages',
     'chat_id': targetChatId,
+    'topic_id': ?topicId,
     'from_chat_id': fromChatId,
     'message_ids': messageIds,
     'options': {'@type': 'messageSendOptions'},

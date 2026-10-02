@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_info_view.dart';
+import 'package:mithka/chat/group_management_view.dart';
 import 'package:mithka/chats/chat_delete_policy.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
 import 'package:mithka/chats/chat_removal_actions.dart';
@@ -264,6 +265,116 @@ void main() {
     );
   }
 
+  test('delete for all members requires the TDLib capability', () async {
+    var deleted = 0;
+    backend.canDeleteForAll = false;
+    await expectLater(
+      deleteChatForAllMembers(
+        chatId: 42,
+        query: backend.query,
+        onDeleted: () => deleted++,
+      ),
+      throwsA(isA<ChatRemovalUnavailable>()),
+    );
+    expect(backend.types, ['getChat']);
+    expect(deleted, 0);
+
+    backend
+      ..requests.clear()
+      ..canDeleteForAll = true;
+    await deleteChatForAllMembers(
+      chatId: 42,
+      query: backend.query,
+      onDeleted: () => deleted++,
+    );
+    expect(backend.types, ['getChat', 'deleteChat']);
+    expect(backend.requests.last, {'@type': 'deleteChat', 'chat_id': 42});
+    expect(deleted, 1);
+  });
+
+  test('a failed delete for all members reports no deletion', () async {
+    var deleted = 0;
+    backend
+      ..canDeleteForAll = true
+      ..failDeleteChat = true;
+    await expectLater(
+      deleteChatForAllMembers(
+        chatId: 42,
+        query: backend.query,
+        onDeleted: () => deleted++,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(deleted, 0);
+  });
+
+  for (final canDeleteForAll in [false, true]) {
+    testWidgets('group management offers permanent deletion only to owners '
+        '($canDeleteForAll)', (tester) async {
+      backend.canDeleteForAll = canDeleteForAll;
+      final theme = ThemeController(await SharedPreferences.getInstance());
+      addTearDown(theme.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: const MaterialApp(
+            color: Color(0xffffffff),
+            locale: Locale('en'),
+            localizationsDelegates: [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: GroupManagementView(chatId: 42, title: 'Group'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('group-management-delete-chat'));
+      await tester.dragUntilVisible(
+        canDeleteForAll
+            ? row
+            : find.text(
+                AppStrings.t(
+                  AppStringKeys.groupManagementPermissionCreateTopics,
+                ),
+              ),
+        find.byType(ListView).first,
+        const Offset(0, -300),
+      );
+      expect(row, canDeleteForAll ? findsOneWidget : findsNothing);
+      if (!canDeleteForAll) {
+        expect(backend.types, isNot(contains('deleteChat')));
+        await tester.pumpWidget(const SizedBox.shrink());
+        return;
+      }
+
+      expect(
+        find.text(AppStrings.t(AppStringKeys.groupManagementDeleteGroup)),
+        findsOneWidget,
+      );
+      await tester.drag(find.byType(ListView).first, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(AppStrings.t(AppStringKeys.confirmContinue)).last,
+      );
+      await tester.pumpAndSettle();
+      expect(backend.types, isNot(contains('deleteChat')));
+      await tester.tap(
+        find.text(AppStrings.t(AppStringKeys.chatDeleteForAllMembers)).last,
+      );
+      await tester.pumpAndSettle();
+      expect(backend.types.last, 'deleteChat');
+      expect(localUpdates, [chatLeftLocalUpdate(42)]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   for (final canClear in [false, true]) {
     testWidgets('info shows clear-history only when permitted ($canClear)', (
       tester,
@@ -325,6 +436,7 @@ class _ChatBackend {
   bool failGet = false;
   bool failLeave = false;
   bool failDelete = false;
+  bool failDeleteChat = false;
   bool revokeClearOnLeave = false;
   final requests = <Map<String, dynamic>>[];
   List<String> get types => [
@@ -357,6 +469,9 @@ class _ChatBackend {
         return {'@type': 'ok'};
       case 'deleteChatHistory':
         if (failDelete) throw StateError('cleanup failed');
+        return {'@type': 'ok'};
+      case 'deleteChat':
+        if (failDeleteChat) throw StateError('delete failed');
         return {'@type': 'ok'};
       case 'getMe':
         return {'@type': 'user', 'id': 1};

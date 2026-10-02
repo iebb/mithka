@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">読み込みに失敗しました</string>
     <string name="appearanceFontSize">フォントサイズ</string>
     <string name="appearanceFontUnused">未使用</string>
+    <string name="appearanceForumTopicsAsGroupChat">フォーラムのトピックを通常のグループとして表示</string>
     <string name="appearanceGestures">ジェスチャー</string>
     <string name="appearanceGoogleDownloaded">Google ダウンロード済み</string>
     <string name="appearanceGroupAssistantPosition">アーカイブしたチャットの位置</string>
@@ -1625,6 +1626,8 @@
     <string name="groupManagementAdvancedControls">詳細設定</string>
     <string name="groupManagementBasicSection">基本管理</string>
     <string name="groupManagementBoostsAndGiveaways">ブーストとプレゼント企画</string>
+    <string name="groupManagementDeleteChannel">チャンネルを削除</string>
+    <string name="groupManagementDeleteGroup">グループを削除</string>
     <string name="groupManagementEditFailed">変更できませんでした</string>
     <string name="groupManagementEditable">設定可能</string>
     <string name="groupManagementForumTopics">フォーラムトピック</string>
@@ -2146,6 +2149,7 @@
     <string name="musicPlayerPlaylistLoadFailed">プレイリストを読み込めませんでした</string>
     <string name="musicPlayerPlaylistName">プレイリスト名</string>
     <string name="musicPlayerPlaylists">プレイリスト</string>
+    <string name="musicPlayerPreviousTrack">前の曲</string>
     <string name="musicPlayerQueueTitleWithCount">現在のプレイリスト ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">プレイリストから削除</string>
     <string name="musicPlayerRemovedFromPlaylist">プレイリストから削除しました</string>

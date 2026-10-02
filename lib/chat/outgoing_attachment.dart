@@ -325,6 +325,7 @@ Map<String, dynamic> attachmentInputMessageContent(
 
 List<Map<String, dynamic>> buildAttachmentSendRequests({
   required int chatId,
+  Map<String, dynamic>? topicId,
   required List<OutgoingAttachment> attachments,
   String caption = '',
   List<Map<String, dynamic>> captionEntities = const [],
@@ -351,6 +352,7 @@ List<Map<String, dynamic>> buildAttachmentSendRequests({
     requests.add({
       '@type': batch.isAlbum ? 'sendMessageAlbum' : 'sendMessage',
       'chat_id': chatId,
+      'topic_id': ?topicId,
       if (batch.isAlbum)
         'input_message_contents': contents
       else

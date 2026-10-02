@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_navigator.dart';
 import '../app/bottom_bar_layout.dart';
+import '../chat/chat_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
@@ -493,6 +494,19 @@ class _TopicPostRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        if (context.read<ThemeController>().forumTopicsAsGroupChat) {
+          pushAppChatRoute(
+            context,
+            AppChatPageRoute<void>(
+              builder: (_) => ChatView(
+                chatId: post.chat.id,
+                title: post.chat.title,
+                forumTopicId: post.threadId,
+              ),
+            ),
+          );
+          return;
+        }
         unawaited(
           TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel),
         );

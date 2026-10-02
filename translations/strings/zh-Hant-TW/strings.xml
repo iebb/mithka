@@ -406,6 +406,7 @@
     <string name="appearanceFontLoadFailed">載入失敗</string>
     <string name="appearanceFontSize">字型大小</string>
     <string name="appearanceFontUnused">未使用</string>
+    <string name="appearanceForumTopicsAsGroupChat">論壇話題顯示為一般群組</string>
     <string name="appearanceGestures">手勢</string>
     <string name="appearanceGoogleDownloaded">Google 已下載</string>
     <string name="appearanceGroupAssistantPosition">已封存聊天的位置</string>
@@ -1625,6 +1626,8 @@
     <string name="groupManagementAdvancedControls">進階控制</string>
     <string name="groupManagementBasicSection">基本管理</string>
     <string name="groupManagementBoostsAndGiveaways">助力和抽獎</string>
+    <string name="groupManagementDeleteChannel">永久刪除頻道</string>
+    <string name="groupManagementDeleteGroup">永久解散群組</string>
     <string name="groupManagementEditFailed">修改失敗</string>
     <string name="groupManagementEditable">可設定</string>
     <string name="groupManagementForumTopics">論壇主題</string>
@@ -2146,6 +2149,7 @@
     <string name="musicPlayerPlaylistLoadFailed">無法載入播放清單</string>
     <string name="musicPlayerPlaylistName">播放清單名稱</string>
     <string name="musicPlayerPlaylists">播放清單</string>
+    <string name="musicPlayerPreviousTrack">上一首</string>
     <string name="musicPlayerQueueTitleWithCount">目前播放清單 ({value1})</string>
     <string name="musicPlayerRemoveFromPlaylist">從播放清單移除</string>
     <string name="musicPlayerRemovedFromPlaylist">已從播放清單移除</string>

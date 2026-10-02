@@ -81,6 +81,14 @@ class MusicPlayerController extends ChangeNotifier {
         : AppStrings.t(AppStringKeys.profileDetailMusic);
   }
 
+  /// The queue in the order playback walks it. Reverse sequence plays the
+  /// source list from the end, so the visible list is reversed to match while
+  /// [queue] keeps the source order that traversal indexes into.
+  List<ChatMessage> get displayQueue =>
+      mode == MusicPlaybackMode.reverseSequence
+      ? queue.reversed.toList(growable: false)
+      : queue;
+
   int? get playbackSourceChatId => _playbackSourceChatId;
   bool get playbackSourceIsPlaylist => _playbackSourceIsPlaylist;
   bool get hasEmbeddedPlayerHost => _embeddedPlayerHosts.isNotEmpty;
@@ -850,6 +858,15 @@ class _MusicPlayerBarContents extends StatelessWidget {
           ),
         ),
         _MiniButton(
+          tooltip: AppStrings.t(AppStringKeys.musicPlayerPreviousTrack),
+          onTap: controller.previous,
+          child: AppIcon(
+            const AppIconData(HeroiconsOutline.backward),
+            size: 21,
+            color: c.textPrimary,
+          ),
+        ),
+        _MiniButton(
           tooltip: controller.isPlaying
               ? AppStrings.t(AppStringKeys.musicPlayerPause)
               : AppStrings.t(AppStringKeys.musicPlayerPlay),
@@ -1133,6 +1150,7 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
       builder: (sheetContext, setSheetState) {
         final c = sheetContext.colors;
         final queue = controller.queue;
+        final displayQueue = controller.displayQueue;
         return Container(
           height: MediaQuery.sizeOf(sheetContext).height * 0.58,
           decoration: BoxDecoration(
@@ -1233,12 +1251,12 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                       : ListView.builder(
                           shrinkWrap: true,
                           padding: const EdgeInsets.only(bottom: 78),
-                          itemCount: queue.length,
+                          itemCount: displayQueue.length,
                           itemBuilder: (context, index) => _QueueRow(
                             key: ValueKey(
-                              'music-queue-${queue[index].music?.file?.id ?? queue[index].id}',
+                              'music-queue-${displayQueue[index].music?.file?.id ?? displayQueue[index].id}',
                             ),
-                            message: queue[index],
+                            message: displayQueue[index],
                             playQueue: queue,
                             controller: controller,
                           ),
