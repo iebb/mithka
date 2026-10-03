@@ -833,7 +833,18 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _scroll = ScrollController(initialScrollOffset: _lastScrollOffset);
     _model.addListener(_onModel);
     _scroll.addListener(_onScroll);
-    _tdSub = TdClient.shared.subscribe().listen(_handleTdUpdate);
+    _tdSub = TdClient.shared
+        .updatesOfAny(const [
+          'updateNewMessage',
+          'updateMessageContent',
+          'updateMessageEdited',
+          'updateMessageInteractionInfo',
+          'updateMessageUnreadReactions',
+          'updateDeleteMessages',
+          'updateChatAddedToList',
+          'updateChatRemovedFromList',
+        ])
+        .listen(_handleTdUpdate);
     _model.onAppear();
     _loadMe();
     if (widget.initialChannels.isNotEmpty) {
@@ -2916,7 +2927,15 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
   void initState() {
     super.initState();
     _target = post.threadTarget;
-    _tdSub = TdClient.shared.subscribe().listen(_handleTdUpdate);
+    _tdSub = TdClient.shared
+        .updatesOfAny(const [
+          'updateNewMessage',
+          'updateMessageContent',
+          'updateMessageEdited',
+          'updateMessageInteractionInfo',
+          'updateDeleteMessages',
+        ])
+        .listen(_handleTdUpdate);
     _loadMe();
     _loadComments();
   }
@@ -6373,9 +6392,7 @@ class MomentsViewModel extends ChangeNotifier {
     _started = true;
     loading = true;
     notifyListeners();
-    _sub = TdClient.shared.subscribe().listen((update) {
-      if (update.type == 'updateChatActiveStories') _handle(update);
-    });
+    _sub = TdClient.shared.updatesOf('updateChatActiveStories').listen(_handle);
     unawaited(_loadSelf());
     unawaited(_loadAll());
   }

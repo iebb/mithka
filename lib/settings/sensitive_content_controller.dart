@@ -29,7 +29,12 @@ class SensitiveContentController extends ChangeNotifier {
            activeClientId ?? (() => TdClient.shared.activeClientId),
        _activeSlotChanges =
            activeSlotChanges ?? TdClient.shared.subscribeActiveSlotChanges(),
-       _allUpdates = allUpdates ?? TdClient.shared.subscribeAll();
+       _allUpdates =
+           allUpdates ??
+           TdClient.shared.updatesOf(
+             'updateAuthorizationState',
+             allAccounts: true,
+           );
 
   @visibleForTesting
   factory SensitiveContentController.forTesting({

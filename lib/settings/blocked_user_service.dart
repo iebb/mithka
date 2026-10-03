@@ -30,7 +30,12 @@ class BlockedUserService extends ChangeNotifier {
        _activeSlot = activeSlot ?? (() => TdClient.shared.activeSlot),
        _activeSlotChanges =
            activeSlotChanges ?? TdClient.shared.subscribeActiveSlotChanges(),
-       _allUpdates = allUpdates ?? TdClient.shared.subscribeAll(),
+       _allUpdates =
+           allUpdates ??
+           TdClient.shared.updatesOf(
+             'updateAuthorizationState',
+             allAccounts: true,
+           ),
        _slotForClient = slotForClient ?? TdClient.shared.slotForClient;
 
   @visibleForTesting

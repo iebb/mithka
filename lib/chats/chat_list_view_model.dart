@@ -799,7 +799,32 @@ class ChatListViewModel extends ChangeNotifier {
   // MARK: - Update stream
 
   void _subscribe() {
-    _sub = _client.subscribe().listen(_apply);
+    _sub = _client
+        .updatesOfAny(const [
+          'updateNewChat',
+          'updateChatFolders',
+          'updateChatLastMessage',
+          'updateChatPosition',
+          'updateChatAddedToList',
+          'updateChatRemovedFromList',
+          'mithkaChatLeft',
+          'updateChatDraftMessage',
+          'updateChatReadInbox',
+          'updateChatUnreadMentionCount',
+          'updateMessageMentionRead',
+          'updateChatUnreadReactionCount',
+          'updateMessageUnreadReactions',
+          'updateChatIsMarkedAsUnread',
+          'updateChatTitle',
+          'updateChatNotificationSettings',
+          'updateChatPhoto',
+          'updateCommunity',
+          'updateSupergroup',
+          'updateSupergroupFullInfo',
+          'updateUserFullInfo',
+          'updateUser',
+        ])
+        .listen(_apply);
   }
 
   void _apply(Map<String, dynamic> update) {

@@ -153,19 +153,21 @@ class AccountStore extends ChangeNotifier {
     // Refresh the switcher when one of our own accounts changes (e.g. after a
     // name edit) — TDLib emits updateUser for us. Filtered to known self-ids so
     // it doesn't fire for every contact seen in chats.
-    TdClient.shared.subscribe().listen((u) {
-      if (u.type == 'updateAuthorizationState') {
-        final state = u.obj('authorization_state');
-        if (state?.type == 'authorizationStateReady') {
-          unawaited(_removePendingSessionReplacementSource());
-          unawaited(refresh());
-        }
-        return;
-      }
-      if (u.type != 'updateUser') return;
-      final uid = u.obj('user')?.int64('id');
-      if (uid != null && _selfIds.contains(uid)) refresh();
-    });
+    TdClient.shared
+        .updatesOfAny(const ['updateAuthorizationState', 'updateUser'])
+        .listen((u) {
+          if (u.type == 'updateAuthorizationState') {
+            final state = u.obj('authorization_state');
+            if (state?.type == 'authorizationStateReady') {
+              unawaited(_removePendingSessionReplacementSource());
+              unawaited(refresh());
+            }
+            return;
+          }
+          if (u.type != 'updateUser') return;
+          final uid = u.obj('user')?.int64('id');
+          if (uid != null && _selfIds.contains(uid)) refresh();
+        });
   }
 
   static const _pendingKey = 'drachma.pendingSlot';

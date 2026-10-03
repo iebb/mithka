@@ -424,7 +424,7 @@ class TdClient {
         )[communityId] = object;
       }
     }
-    _allUpdates.add(object);
+    _dispatchToAllSubscribers(object);
     // Same fan-out as the primary engine, so a secondary window's typed
     // `updatesOf` listeners are fed too and not just `subscribe()`.
     _dispatchToActiveSubscribers(object);
@@ -1884,7 +1884,7 @@ class TdClient {
       }
     }
 
-    _allUpdates.add(object);
+    _dispatchToAllSubscribers(object);
     // Most UI consumers only need the active account's updates.
     if (clientId == _activeClientId) _dispatchToActiveSubscribers(object);
 
@@ -2281,16 +2281,24 @@ class TdClient {
   /// A fresh stream of the ACTIVE account's TDLib updates.
   Stream<Map<String, dynamic>> subscribe() => _updates.stream;
 
-  /// Updates of exactly one @type from the active account. Prefer this over
+  /// Updates of exactly one @type from the active account, or from every
+  /// configured account when [allAccounts] is true. Prefer this over
   /// [subscribe] + a type filter: during TDLib bursts (login sync, file
   /// progress) every [subscribe] listener runs for every event, while typed
   /// listeners run only for their own type.
-  Stream<Map<String, dynamic>> updatesOf(String type) =>
-      (_typedUpdates[type] ??= StreamController<Map<String, dynamic>>.broadcast(
-        sync: true,
-      )).stream;
+  Stream<Map<String, dynamic>> updatesOf(
+    String type, {
+    bool allAccounts = false,
+  }) {
+    final controllers = allAccounts ? _typedAllUpdates : _typedUpdates;
+    return (controllers[type] ??=
+            StreamController<Map<String, dynamic>>.broadcast(sync: true))
+        .stream;
+  }
 
   /// Updates of any of [types] from the active account, in arrival order.
+  /// With [allAccounts], inactive accounts are included too; consumers must
+  /// keep identifiers scoped by the update's `@client_id` as with [subscribeAll].
   ///
   /// The same win as [updatesOf] for a consumer that needs several types: a
   /// [subscribe] listener is woken for every event in the app — including the
@@ -2299,7 +2307,10 @@ class TdClient {
   ///
   /// Order is preserved because every controller on this path is synchronous,
   /// so an event is forwarded and delivered before the next one is dispatched.
-  Stream<Map<String, dynamic>> updatesOfAny(Iterable<String> types) {
+  Stream<Map<String, dynamic>> updatesOfAny(
+    Iterable<String> types, {
+    bool allAccounts = false,
+  }) {
     final wanted = types.toSet();
     final subscriptions = <StreamSubscription<Map<String, dynamic>>>[];
     // Lives exactly as long as the stream it hands back; the source
@@ -2311,7 +2322,9 @@ class TdClient {
       sync: true,
       onListen: () {
         for (final type in wanted) {
-          subscriptions.add(updatesOf(type).listen(merged.add));
+          subscriptions.add(
+            updatesOf(type, allAccounts: allAccounts).listen(merged.add),
+          );
         }
       },
       onCancel: () {
@@ -2325,6 +2338,21 @@ class TdClient {
   }
 
   final Map<String, StreamController<Map<String, dynamic>>> _typedUpdates = {};
+  final Map<String, StreamController<Map<String, dynamic>>> _typedAllUpdates =
+      {};
+
+  void _dispatchToAllSubscribers(Map<String, dynamic> update) {
+    _allUpdates.add(update);
+    final type = update['@type'];
+    if (type is! String) return;
+    // Session-lifetime like _allUpdates itself; never closed by design.
+    // ignore: close_sinks
+    final typed = _typedAllUpdates[type];
+    if (typed != null && typed.hasListener) typed.add(update);
+  }
+
+  @visibleForTesting
+  void routeUpdateForTesting(Map<String, dynamic> update) => _route(update);
 
   void _dispatchToActiveSubscribers(Map<String, dynamic> update) {
     _updates.add(update);

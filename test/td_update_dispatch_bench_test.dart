@@ -107,4 +107,115 @@ Future<void> main() async {
           'filter-everything listeners',
     );
   });
+
+  test(
+    'typed multi-account service dispatch avoids unrelated callbacks',
+    () async {
+      final client = TdClient.shared;
+      // Representative long-lived services: chat list, auth, badges, switcher,
+      // moments, notifications, calls, sensitive content, blocked users, files.
+      final watchers = <({bool allAccounts, Set<String> types})>[
+        (
+          allAccounts: false,
+          types: {
+            'updateChatLastMessage',
+            'updateChatPosition',
+            'updateChatReadInbox',
+            'updateUser',
+          },
+        ),
+        (
+          allAccounts: false,
+          types: {'updateAuthorizationState', 'updateOption'},
+        ),
+        (
+          allAccounts: false,
+          types: {
+            'updateUnreadChatCount',
+            'updateUnreadMessageCount',
+            'mithkaUnreadDelta',
+          },
+        ),
+        (allAccounts: false, types: {'updateAuthorizationState', 'updateUser'}),
+        (
+          allAccounts: false,
+          types: {'updateNewMessage', 'updateDeleteMessages'},
+        ),
+        (allAccounts: true, types: {'updateNewMessage', 'updateChatReadInbox'}),
+        (
+          allAccounts: true,
+          types: {'updateCall', 'updateNewCallSignalingData'},
+        ),
+        (allAccounts: true, types: {'updateAuthorizationState'}),
+        (allAccounts: true, types: {'updateAuthorizationState'}),
+        (allAccounts: true, types: {'updateFile'}),
+      ];
+      final activeBurst = [
+        for (final update in _burst())
+          {...update, '@client_id': client.activeClientId},
+      ];
+      final inactiveBurst = [
+        for (final update in activeBurst)
+          {...update, '@client_id': client.activeClientId + 100},
+      ];
+
+      Future<({int microseconds, int callbacks, int hits})> run(
+        bool typed,
+      ) async {
+        var callbacks = 0;
+        var hits = 0;
+        final subscriptions = [
+          for (final watcher in watchers)
+            (typed
+                    ? client.updatesOfAny(
+                        watcher.types,
+                        allAccounts: watcher.allAccounts,
+                      )
+                    : watcher.allAccounts
+                    ? client.subscribeAll()
+                    : client.subscribe())
+                .listen((update) {
+                  callbacks++;
+                  if (watcher.types.contains(update['@type'])) hits++;
+                }),
+        ];
+        final watch = Stopwatch()..start();
+        for (var round = 0; round < 1000; round++) {
+          for (final update in round.isEven ? activeBurst : inactiveBurst) {
+            client.routeUpdateForTesting(update);
+          }
+        }
+        watch.stop();
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+        return (
+          microseconds: watch.elapsedMicroseconds,
+          callbacks: callbacks,
+          hits: hits,
+        );
+      }
+
+      await run(false);
+      await run(true);
+      final broadFirst = await run(false);
+      final typedFirst = await run(true);
+      final typedSecond = await run(true);
+      final broadSecond = await run(false);
+      // A structural assertion is stable across devices; timings are diagnostic.
+      expect(typedFirst.hits, broadFirst.hits);
+      expect(typedSecond.hits, broadSecond.hits);
+      expect(typedFirst.hits, 93000);
+      expect(typedFirst.callbacks, typedFirst.hits);
+      expect(broadFirst.callbacks, 750000);
+      final broadUs = (broadFirst.microseconds + broadSecond.microseconds) / 2;
+      final typedUs = (typedFirst.microseconds + typedSecond.microseconds) / 2;
+      // ignore: avoid_print
+      print(
+        'multi-account dispatch bench: broad=${(broadUs / 1000).toStringAsFixed(1)}ms '
+        'typed=${(typedUs / 1000).toStringAsFixed(1)}ms '
+        'callbacks=${broadFirst.callbacks}->${typedFirst.callbacks}',
+      );
+    },
+  );
 }

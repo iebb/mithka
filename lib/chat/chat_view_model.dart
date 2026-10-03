@@ -5942,22 +5942,14 @@ class ChatViewModel extends ChangeNotifier {
         )
         .toList(growable: false);
     if (repliesToResolve.isEmpty) return;
-    final loadedById = repliesToResolve.length > 1
-        ? <int, ChatMessage>{
-            for (final message in messages) message.id: message,
-          }
-        : null;
+    // This index is already maintained by transcript mutations. Rebuilding a
+    // map for each history page (or scanning the transcript for a live reply)
+    // made quoting increasingly expensive as more history was loaded.
+    _ensureMessageIndexes();
     final unresolved = <int, List<ChatMessage>>{};
     for (final m in repliesToResolve) {
       final rid = m.replyToMessageId!;
-      ChatMessage? quoted = loadedById?[rid];
-      if (loadedById == null) {
-        for (final message in messages) {
-          if (message.id != rid) continue;
-          quoted = message;
-          break;
-        }
-      }
+      final quoted = _messagesById[rid];
       if (quoted != null) {
         _applyReply(m, quoted);
         continue;

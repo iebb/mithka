@@ -77,7 +77,7 @@ void main() {
         );
         expect(find.text('0:02'), findsOneWidget);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-        await _flushIo(tester);
+        await _pumpUntil(tester, () => vm.sends.isNotEmpty);
         expect(recorder.stops, 1);
         expect(vm.sends, hasLength(1));
         expect(vm.sends.single.duration, 2);
@@ -112,7 +112,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       expect(recorder.stops, 0, reason: 'Space is still held');
       await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-      await _flushIo(tester);
+      await _pumpUntil(tester, () => vm.sends.isNotEmpty);
       expect(recorder.stops, 1);
       expect(vm.sends, hasLength(1));
       await _dispose(tester, vm);
@@ -147,7 +147,7 @@ void main() {
       await _flushIo(tester);
       expect(recorder.stops, 1);
       expect(vm.sends, isEmpty);
-      expect(File(recorder.path!).existsSync(), isFalse);
+      await _expectDeleted(tester, recorder.path!);
       await _dispose(tester, vm);
     },
   );
@@ -168,7 +168,7 @@ void main() {
     await _flushIo(tester);
     expect(recorder.stops, 1);
     expect(vm.sends, isEmpty);
-    expect(File(recorder.path!).existsSync(), isFalse);
+    await _expectDeleted(tester, recorder.path!);
     await _dispose(tester, vm);
   });
 
@@ -183,7 +183,7 @@ void main() {
     recorder.amplitudes.add(recording.Amplitude(current: -20, max: -20));
     await tester.pump(const Duration(seconds: 2));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
+    await _pumpUntil(tester, () => vm.sends.isNotEmpty);
     expect(vm.sends, hasLength(1));
     final first = vm.sends.single;
     expect(File(first.path).existsSync(), isTrue);
@@ -227,7 +227,7 @@ void main() {
     expect(recorder.stops, 1);
     expect(vm.sends, isEmpty);
     expect(find.byKey(_panel), findsNothing);
-    expect(File(recorder.path!).existsSync(), isFalse);
+    await _expectDeleted(tester, recorder.path!);
     await _dispose(tester, vm);
   });
 
@@ -244,7 +244,7 @@ void main() {
       expect(recorder.stops, 1);
       expect(recorder.cancels, 1);
       expect(vm.sends, isEmpty);
-      expect(File(recorder.path!).existsSync(), isFalse);
+      await _expectDeleted(tester, recorder.path!);
       expect(
         find.text(
           'Could not record audio. Check your microphone and try again.',
@@ -265,10 +265,10 @@ void main() {
     await _flushIo(tester);
     await tester.pump(const Duration(seconds: 2));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
+    await _pumpUntil(tester, () => vm.sends.isNotEmpty);
     await tester.tap(find.byKey(_discard));
     await _flushIo(tester);
-    expect(File(recorder.path!).existsSync(), isFalse);
+    await _expectDeleted(tester, recorder.path!);
     expect(unrelated.readAsStringSync(), 'keep');
     expect(find.byKey(_retry), findsNothing);
     await _dispose(tester, vm);
@@ -313,7 +313,7 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
       expect(recorder.disposals, 1);
       expect(vm.sends, isEmpty);
-      expect(File(recorder.path!).existsSync(), isFalse);
+      await _expectDeleted(tester, recorder.path!);
       vm.dispose();
     },
   );
@@ -345,7 +345,7 @@ void main() {
       await _flushIo(tester);
       expect(recorder.stops, 1);
       expect(vm.sends, isEmpty);
-      expect(File(recorder.path!).existsSync(), isFalse);
+      await _expectDeleted(tester, recorder.path!);
       await _dispose(tester, vm);
     },
   );
@@ -439,7 +439,7 @@ void main() {
       expect(recorder.codecs, [Codec.opusOGG]);
       expect(recorder.stops, 1);
       expect(vm.sends, isEmpty);
-      expect(File(recorder.path!).existsSync(), isFalse);
+      await _expectDeleted(tester, recorder.path!);
       await _dispose(tester, vm);
     },
   );
@@ -570,6 +570,26 @@ Future<_VoiceViewModel> _openComposer(
   await tester.pump();
   await tester.pump();
   return vm;
+}
+
+/// Voice finalization runs real file I/O (native stop, the recording-file
+/// stabilization poll, temp-file deletion) interleaved with widget-clock
+/// timers, so the number of pumps it needs depends on the host. Pump until
+/// [done] holds instead of assuming a fixed budget, then settle the frames
+/// that follow.
+Future<void> _pumpUntil(WidgetTester tester, bool Function() done) async {
+  for (var attempt = 0; attempt < 200 && !done(); attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  await _flushIo(tester);
+}
+
+Future<void> _expectDeleted(WidgetTester tester, String path) async {
+  await _pumpUntil(tester, () => !File(path).existsSync());
+  expect(File(path).existsSync(), isFalse);
 }
 
 Future<void> _flushIo(WidgetTester tester) async {

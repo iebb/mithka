@@ -215,7 +215,17 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(_androidChannel);
-    _sub = _client.subscribeAll().listen(_handle);
+    _sub = _client
+        .updatesOfAny(const [
+          'updateConnectionState',
+          'updateChatReadInbox',
+          'updateChatNotificationSettings',
+          'updateScopeNotificationSettings',
+          'updateBasicGroup',
+          'updateSupergroup',
+          'updateNewMessage',
+        ], allAccounts: true)
+        .listen(_handle);
     _ready = true;
     // Foreground banners don't require notification permission. Subscribe
     // before asking so an OS permission sheet can't create a blind spot.

@@ -24,7 +24,8 @@ void main() {
       contains('tdVideoStreamQueryForAccount(widget.accountSlot)'),
     );
     expect(player, contains('accountSlot: widget.accountSlot'));
-    expect(files, contains('.subscribeAll()'));
+    expect(files, contains(".updatesOf('updateFile', allAccounts: true)"));
+    expect(files, contains('_client.slotForClient(clientId)'));
     expect(files, contains('.queryForSlot('));
     expect(desktop, contains('mediaKey = (accountSlot: accountSlot'));
     expect(desktop, contains('retainAccountSlot(accountSlot)'));

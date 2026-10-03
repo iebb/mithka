@@ -633,6 +633,44 @@ void main() {
     expect(find.text('Play Animated Status Emoji'), findsNothing);
   });
 
+  testWidgets('name readability page lays out its preview and options', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final controller = ThemeController(prefs);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: _testApp(const SenderNameReadabilitySettingsView()),
+      ),
+    );
+    await tester.pump();
+
+    // The wallpaper used to wrap the names and expand inside the unbounded
+    // settings list, which threw during layout and left the page blank.
+    expect(tester.takeException(), isNull);
+    final preview = tester.getSize(
+      find.byKey(const ValueKey('senderNameReadabilityPreview')),
+    );
+    expect(preview.height, greaterThan(0));
+    expect(preview.height, lessThan(900));
+    expect(find.text('Add Background'), findsOneWidget);
+    expect(find.text('Blend Color'), findsOneWidget);
+    expect(find.text('None'), findsOneWidget);
+
+    await tester.tap(find.text('Add Background'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(
+      controller.senderNameReadabilityMode,
+      SenderNameReadabilityMode.background,
+    );
+  });
+
   test('Simplified Chinese names the interface size controls explicitly', () {
     expect(AppStrings.tForLocale('zhHans', AppStringKeys.appearanceSize), '界面');
     expect(

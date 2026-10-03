@@ -238,16 +238,18 @@ class AuthManager extends ChangeNotifier {
       // Subscribe before start so no early update is missed.
       if (!_subscribed) {
         _subscribed = true;
-        _client.subscribe().listen((update) {
-          if (update.type == 'updateOption' &&
-              update.str('name') == 'can_use_login_passkey') {
-            unawaited(_loadPasskeyAvailability());
-            return;
-          }
-          if (update.type != 'updateAuthorizationState') return;
-          final state = update.obj('authorization_state');
-          if (state != null) _handle(state);
-        });
+        _client
+            .updatesOfAny(const ['updateOption', 'updateAuthorizationState'])
+            .listen((update) {
+              if (update.type == 'updateOption' &&
+                  update.str('name') == 'can_use_login_passkey') {
+                unawaited(_loadPasskeyAvailability());
+                return;
+              }
+              if (update.type != 'updateAuthorizationState') return;
+              final state = update.obj('authorization_state');
+              if (state != null) _handle(state);
+            });
       }
       await _client.start().timeout(_startupTimeout);
       if (_credentialsMissing && !_client.activeIsBotApi) {

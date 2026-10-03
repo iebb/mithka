@@ -10,7 +10,13 @@ import '../theme/theme_controller.dart';
 /// Live unread totals for the active account's main chat list.
 class UnreadBadgeModel extends ChangeNotifier {
   UnreadBadgeModel({Stream<Map<String, dynamic>>? updates})
-    : _updates = updates ?? TdClient.shared.subscribe();
+    : _updates =
+          updates ??
+          TdClient.shared.updatesOfAny(const [
+            'updateUnreadChatCount',
+            'updateUnreadMessageCount',
+            'mithkaUnreadDelta',
+          ]);
 
   final Stream<Map<String, dynamic>> _updates;
   int _chatCount = 0;

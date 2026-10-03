@@ -892,37 +892,46 @@ class ContactsViewModel extends ChangeNotifier {
   }
 
   void _subscribe() {
-    _subscription = TdClient.shared.subscribe().listen((update) {
-      if (_disposed) return;
-      switch (update.type) {
-        case 'updateNewChat':
-          final chat = update.obj('chat');
-          if (chat != null) unawaited(_ingestChat(chat));
-        case 'updateChatAddedToList':
-          final id = update.int64('chat_id');
-          if (id != null) _ensureChatLoaded(id);
-        case 'updateChatPosition':
-          final id = update.int64('chat_id');
-          if (id != null) _ensureChatLoaded(id);
-        case 'updateChatRemovedFromList':
-          final id = update.int64('chat_id');
-          if (id != null) _ensureChatLoaded(id);
-        case 'updateChatTitle':
-          final id = update.int64('chat_id');
-          final existing = id != null ? _chatById(id) : null;
-          if (existing != null) {
-            existing.title = update.str('title') ?? existing.title;
-            _ingest(existing);
+    _subscription = TdClient.shared
+        .updatesOfAny(const [
+          'updateNewChat',
+          'updateChatAddedToList',
+          'updateChatPosition',
+          'updateChatRemovedFromList',
+          'updateChatTitle',
+          'updateChatPhoto',
+        ])
+        .listen((update) {
+          if (_disposed) return;
+          switch (update.type) {
+            case 'updateNewChat':
+              final chat = update.obj('chat');
+              if (chat != null) unawaited(_ingestChat(chat));
+            case 'updateChatAddedToList':
+              final id = update.int64('chat_id');
+              if (id != null) _ensureChatLoaded(id);
+            case 'updateChatPosition':
+              final id = update.int64('chat_id');
+              if (id != null) _ensureChatLoaded(id);
+            case 'updateChatRemovedFromList':
+              final id = update.int64('chat_id');
+              if (id != null) _ensureChatLoaded(id);
+            case 'updateChatTitle':
+              final id = update.int64('chat_id');
+              final existing = id != null ? _chatById(id) : null;
+              if (existing != null) {
+                existing.title = update.str('title') ?? existing.title;
+                _ingest(existing);
+              }
+            case 'updateChatPhoto':
+              final id = update.int64('chat_id');
+              final existing = id != null ? _chatById(id) : null;
+              if (existing != null) {
+                existing.photo = TDParse.smallPhoto(update.obj('photo'));
+                _ingest(existing);
+              }
           }
-        case 'updateChatPhoto':
-          final id = update.int64('chat_id');
-          final existing = id != null ? _chatById(id) : null;
-          if (existing != null) {
-            existing.photo = TDParse.smallPhoto(update.obj('photo'));
-            _ingest(existing);
-          }
-      }
-    });
+        });
   }
 
   ChatSummary? _chatById(int id) => _groupIndex[id] ?? _channelIndex[id];

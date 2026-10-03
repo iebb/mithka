@@ -118,19 +118,16 @@ class TdFileCenter {
   void _startIfNeeded() {
     if (_started) return;
     _started = true;
-    _client
-        .subscribeAll()
-        .where((update) => update.type == 'updateFile')
-        .listen((update) {
-          final file = update.obj('file');
-          final clientId = update.integer('@client_id');
-          final accountSlot = clientId == null
-              ? _client.activeSlot
-              : _client.slotForClient(clientId);
-          if (file != null && accountSlot != null) {
-            _ingest(file, accountSlot: accountSlot);
-          }
-        });
+    _client.updatesOf('updateFile', allAccounts: true).listen((update) {
+      final file = update.obj('file');
+      final clientId = update.integer('@client_id');
+      final accountSlot = clientId == null
+          ? _client.activeSlot
+          : _client.slotForClient(clientId);
+      if (file != null && accountSlot != null) {
+        _ingest(file, accountSlot: accountSlot);
+      }
+    });
   }
 
   /// Records file progress/completion and wakes any waiters.
@@ -144,27 +141,30 @@ class TdFileCenter {
     final path = local.str('path');
 
     if (path != null && path.isNotEmpty) {
-      final playbackPending = _playbackWaiters.remove(k) ?? [];
+      final playbackPending =
+          _playbackWaiters.remove(k) ?? const <Completer<String?>>[];
       for (final c in playbackPending) {
         if (!c.isCompleted) c.complete(path);
       }
     }
 
     final completed = local.boolean('is_downloading_completed') == true;
-    final expectedSize = file.integer('expected_size') ?? 0;
-    final fileSize = file.integer('size') ?? 0;
-    final total = expectedSize > 0 ? expectedSize : fileSize;
-    final downloadedSize = local.integer('downloaded_size') ?? 0;
-    final downloadedPrefix = local.integer('downloaded_prefix_size') ?? 0;
-    final downloadOffset = local.integer('download_offset') ?? 0;
-    final downloaded = completed
-        ? total
-        : math.max(downloadedSize, downloadedPrefix);
     // Lifecycle is map-owned: closed on completion below and via onCancel
     // when the last listener detaches.
     // ignore: close_sinks
     final controller = _progressControllers[k];
-    if (controller != null) {
+    // Most updateFile events have no visible progress UI. Keep resolving paths
+    // and waiters, but do not allocate progress/range snapshots for those files.
+    if (controller != null && !controller.isClosed && controller.hasListener) {
+      final expectedSize = file.integer('expected_size') ?? 0;
+      final fileSize = file.integer('size') ?? 0;
+      final total = expectedSize > 0 ? expectedSize : fileSize;
+      final downloadedSize = local.integer('downloaded_size') ?? 0;
+      final downloadedPrefix = local.integer('downloaded_prefix_size') ?? 0;
+      final downloadOffset = local.integer('download_offset') ?? 0;
+      final downloaded = completed
+          ? total
+          : math.max(downloadedSize, downloadedPrefix);
       if (completed && total > 0) {
         _downloadedRanges[k] = <TdFileByteRange>[
           TdFileByteRange(start: 0, end: total),
@@ -177,20 +177,19 @@ class TdFileCenter {
           total: total,
         );
       }
-    }
-    final progress = TdFileProgress(
-      fileId: id,
-      downloaded: downloaded,
-      prefixDownloaded: completed ? total : downloadedPrefix,
-      total: total,
-      isActive: local.boolean('is_downloading_active') == true,
-      isCompleted: completed,
-      downloadedRanges: List<TdFileByteRange>.unmodifiable(
-        _downloadedRanges[k] ?? const <TdFileByteRange>[],
-      ),
-    );
-    if (controller != null && !controller.isClosed) {
-      controller.add(progress);
+      controller.add(
+        TdFileProgress(
+          fileId: id,
+          downloaded: downloaded,
+          prefixDownloaded: completed ? total : downloadedPrefix,
+          total: total,
+          isActive: local.boolean('is_downloading_active') == true,
+          isCompleted: completed,
+          downloadedRanges: List<TdFileByteRange>.unmodifiable(
+            _downloadedRanges[k] ?? const <TdFileByteRange>[],
+          ),
+        ),
+      );
     }
 
     if (!completed) return;
@@ -204,7 +203,7 @@ class TdFileCenter {
     unawaited(finished?.close());
 
     _remember(k, path);
-    final pending = _waiters.remove(k) ?? [];
+    final pending = _waiters.remove(k) ?? const <Completer<String?>>[];
     for (final c in pending) {
       if (!c.isCompleted) c.complete(path);
     }

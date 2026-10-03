@@ -55,6 +55,7 @@ enum _Kind {
   chatAction('updateChatAction (typing)'),
   user('updateUser (sender changed)'),
   newMessage('updateNewMessage'),
+  newReply('updateNewMessage (reply)'),
   readReceipt('read receipts');
 
   const _Kind(this.label);
@@ -161,6 +162,17 @@ List<Map<String, dynamic>> _burst(_Kind kind, int count) => [
         '@type': 'updateNewMessage',
         'message': _rawMessage(count + step, 'arriving $step'),
       },
+      _Kind.newReply => {
+        '@type': 'updateNewMessage',
+        'message': {
+          ..._rawMessage(count + step, 'reply $step'),
+          'reply_to': {
+            '@type': 'messageReplyToMessage',
+            'chat_id': _chatId,
+            'message_id': _targetId(step, count),
+          },
+        },
+      },
       _Kind.readReceipt =>
         step.isEven
             ? {
@@ -254,6 +266,12 @@ void main() {
         );
       case _Kind.newMessage:
         expect(viewModel.messages.length, count + _burstSize);
+      case _Kind.newReply:
+        expect(viewModel.messages.length, count + _burstSize);
+        expect(
+          viewModel.messages.skip(count).where((m) => m.replyToPreview != null),
+          hasLength(_burstSize),
+        );
       case _Kind.readReceipt:
         expect(viewModel.lastReadInboxId, greaterThan(0));
         expect(viewModel.lastReadOutboxId, greaterThan(0));

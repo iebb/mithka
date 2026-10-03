@@ -149,34 +149,39 @@ class CallManager extends ChangeNotifier {
     _protocolReady = _warmProtocol();
     // Outbound media signaling → TDLib. (v3/v4 calls negotiate WebRTC over this.)
     _engine.onSignalingData = _sendSignaling;
-    _sub = _client.subscribeAll().listen((update) {
-      final clientId = update.integer('@client_id');
-      if (clientId == null) return;
-      switch (update.type) {
-        case 'updateCall':
-          final c = update.obj('call');
-          final accountSlot = _client.slotForClient(clientId);
-          if (c != null && accountSlot != null) {
-            _handle(c, accountSlot: accountSlot, clientId: clientId);
+    _sub = _client
+        .updatesOfAny(const [
+          'updateCall',
+          'updateNewCallSignalingData',
+        ], allAccounts: true)
+        .listen((update) {
+          final clientId = update.integer('@client_id');
+          if (clientId == null) return;
+          switch (update.type) {
+            case 'updateCall':
+              final c = update.obj('call');
+              final accountSlot = _client.slotForClient(clientId);
+              if (c != null && accountSlot != null) {
+                _handle(c, accountSlot: accountSlot, clientId: clientId);
+              }
+            case 'updateNewCallSignalingData':
+              final active = call;
+              if (active == null || active.clientId != clientId) return;
+              final signalingCallId = update.integer('call_id');
+              if (signalingCallId != null &&
+                  active.callId != 0 &&
+                  signalingCallId != active.callId) {
+                return;
+              }
+              // Inbound media signaling → the engine. `data` is base64 in TDLib JSON.
+              final d = update.str('data');
+              if (d != null) {
+                try {
+                  _engine.receiveSignaling(base64.decode(d));
+                } catch (_) {}
+              }
           }
-        case 'updateNewCallSignalingData':
-          final active = call;
-          if (active == null || active.clientId != clientId) return;
-          final signalingCallId = update.integer('call_id');
-          if (signalingCallId != null &&
-              active.callId != 0 &&
-              signalingCallId != active.callId) {
-            return;
-          }
-          // Inbound media signaling → the engine. `data` is base64 in TDLib JSON.
-          final d = update.str('data');
-          if (d != null) {
-            try {
-              _engine.receiveSignaling(base64.decode(d));
-            } catch (_) {}
-          }
-      }
-    });
+        });
   }
 
   void _sendSignaling(Uint8List data) {

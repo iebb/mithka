@@ -88,6 +88,24 @@ void main() {
     expect(await download, isNotNull);
   });
 
+  test('unwatched completion still resolves a pending path', () async {
+    const fileId = 920010;
+    final path = TdFileCenter.shared.path(fileId, accountSlot: accountSlot);
+    await Future<void>.delayed(Duration.zero);
+    updates.add({
+      '@type': 'updateFile',
+      'file': backend.file(fileId, completed: true),
+    });
+    expect(await path, '/tmp/mithka-priority-$fileId');
+    expect(
+      TdFileCenter.shared.cachedPath(
+        TdFileRef(id: fileId),
+        accountSlot: accountSlot,
+      ),
+      '/tmp/mithka-priority-$fileId',
+    );
+  });
+
   test('whole-file progress and completion arrive after startup', () async {
     const fileId = 920005;
     backend.totalSize = 0;
