@@ -951,6 +951,7 @@ class ChatView extends StatefulWidget {
     this.trailingPaneWidth = 0,
     this.requestComposerFocusOnReady = false,
     this.onOpenTopicMode,
+    this.onOpenTopicTranscript,
     this.onChatKindResolved,
     this.onInfoPressed,
     this.onOpenFullInfo,
@@ -976,6 +977,11 @@ class ChatView extends StatefulWidget {
   final double trailingPaneWidth;
   final bool requestComposerFocusOnReady;
   final ValueChanged<int?>? onOpenTopicMode;
+
+  /// Lets an owning shell switch this chat to a topic transcript (or the
+  /// whole chat for null) when topics show as a regular group, so the new
+  /// transcript is built with the shell's current wiring.
+  final ValueChanged<int?>? onOpenTopicTranscript;
   final ValueChanged<ChatKind>? onChatKindResolved;
   final VoidCallback? onInfoPressed;
   final VoidCallback? onOpenFullInfo;
@@ -7908,11 +7914,16 @@ class _ChatViewState extends State<ChatView> {
 
   /// Opens a topic, or the whole chat for null, as the ordinary chat
   /// transcript (topics-as-group setting). Replaces this transcript in place
-  /// so the navigation stack stays flat; a split detail pane swaps its own
-  /// content and keeps the app shell beside it.
+  /// so the navigation stack stays flat. An owning shell rebuilds the
+  /// transcript itself; a bare split detail pane swaps its own content.
   void _openTopicTranscript(int? topicId) {
     if (topicId == widget.forumTopicId) return;
     _prepareExitState();
+    final onOpenTopicTranscript = widget.onOpenTopicTranscript;
+    if (onOpenTopicTranscript != null) {
+      onOpenTopicTranscript(topicId);
+      return;
+    }
     if (ChatPane.replace(
       context,
       (onBack) => ChatView(

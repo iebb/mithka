@@ -1488,7 +1488,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     return KeyedSubtree(
       key: ValueKey(
         'message-detail-${selected.chatId}-${selected.supportsTopics}-'
-        '${selected.initialMessageId ?? 0}-${selected.composerFocusRequestId}',
+        '${selected.initialMessageId ?? 0}-${selected.forumTopicId ?? 0}-'
+        '${selected.composerFocusRequestId}',
       ),
       child:
           selected.supportsTopics &&
@@ -1513,6 +1514,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
               title: selected.title,
               seedMessage: chat?.lastChatMessage,
               initialMessageId: selected.initialMessageId,
+              forumTopicId: selected.forumTopicId,
               showBackButton: showBackButton,
               headerHeight: headerHeight,
               headerColor: headerColor,
@@ -1526,6 +1528,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
               onInfoPressed: onInfoPressed,
               onOpenFullInfo: onOpenFullInfo,
               onOpenUserProfile: onOpenUserProfile,
+              onOpenTopicTranscript: (topicId) =>
+                  _openSelectedChatTopic(selected.chatId, topicId),
               onBack: () => setState(() => _selectedMessageChat = null),
             ),
     );
@@ -1567,11 +1571,27 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             current.chatId == nextSelection.chatId &&
             current.supportsTopics == nextSelection.supportsTopics &&
             current.initialMessageId == nextSelection.initialMessageId &&
+            current.forumTopicId == nextSelection.forumTopicId &&
             current.composerFocusRequestId ==
                 nextSelection.composerFocusRequestId)) {
       return;
     }
     _messageChatExitController.prepareExit();
+  }
+
+  /// Swaps the selected chat to one of its topics (or back to the whole chat)
+  /// through the shell, so the transcript keeps the live info pane, back
+  /// button and other shell-owned wiring.
+  void _openSelectedChatTopic(int chatId, int? topicId) {
+    final current = _selectedMessageChat;
+    if (current == null ||
+        current.chatId != chatId ||
+        current.forumTopicId == topicId) {
+      return;
+    }
+    final next = current.withForumTopic(topicId);
+    _prepareMessageChatReplacement(next);
+    setState(() => _selectedMessageChat = next);
   }
 
   void _handleSelectedChatKindResolved(int chatId, ChatKind kind) {
