@@ -48,6 +48,8 @@ Future<void> selectRange(
   int start,
   int end,
 ) async {
+  // Nested selection containers register their content after layout.
+  await tester.pumpAndSettle();
   await waitForText(tester, text);
   final paragraph = tester.renderObject<RenderParagraph>(text);
   Offset position(int offset) => paragraph.localToGlobal(
@@ -162,6 +164,240 @@ void main() {
     TargetPlatform.windows,
     TargetPlatform.linux,
   ]) {
+    for (final album in [false, true]) {
+      testWidgets(
+        '${platform.name} ${album ? 'album caption' : 'message'} clicks without dragging do not select text',
+        (tester) async {
+          MessageTextQuote? selected;
+          final message = ChatMessage(
+            id: 78,
+            isOutgoing: false,
+            date: 1,
+            contentType: album ? 'messagePhoto' : 'messageText',
+            text: sourceText,
+            image: album ? TdFileRef(id: 1) : null,
+          );
+          void onQuoteChanged(ChatMessage _, MessageTextQuote? quote) =>
+              selected = quote;
+          await tester.pumpWidget(
+            app(
+              album
+                  ? ImageMediaAlbumBubble(
+                      messages: [
+                        ChatMessage(
+                          id: 77,
+                          isOutgoing: false,
+                          date: 1,
+                          contentType: 'messagePhoto',
+                          text: '',
+                          image: TdFileRef(id: 2),
+                        ),
+                        message,
+                      ],
+                      peerTitle: 'Test',
+                      isGroup: false,
+                      imageBuilder: (_, _, _, _) => const SizedBox.shrink(),
+                      onDesktopQuoteChanged: onQuoteChanged,
+                    )
+                  : MessageBubble(
+                      message: message,
+                      peerTitle: 'Test',
+                      isGroup: false,
+                      onDesktopQuoteChanged: onQuoteChanged,
+                    ),
+              platform,
+            ),
+          );
+          await tester.pumpAndSettle();
+          final text = find.text(sourceText, findRichText: true);
+          final paragraph = tester.renderObject<RenderParagraph>(text);
+          final position = textPosition(tester, text, 24);
+          // Include rapid repeated clicks: only a drag should select content.
+          for (var click = 0; click < 3; click++) {
+            final clickGesture = await tester.startGesture(
+              position,
+              kind: PointerDeviceKind.mouse,
+            );
+            await tester.pump(kPressTimeout + const Duration(milliseconds: 20));
+            expect(paragraph.selections, isEmpty);
+            expect(selected, isNull);
+            await clickGesture.up();
+            await clickGesture.removePointer();
+            await tester.pump(const Duration(milliseconds: 80));
+            expect(paragraph.selections, isEmpty);
+            expect(selected, isNull);
+          }
+          await tester.pump(const Duration(seconds: 1));
+          // Minor pointer jitter must not turn a click into a selection.
+          final gesture = await tester.startGesture(
+            position,
+            kind: PointerDeviceKind.mouse,
+          );
+          await gesture.moveBy(const Offset(0.5, 0));
+          await gesture.up();
+          await gesture.removePointer();
+          await tester.pump();
+          expect(paragraph.selections, isEmpty);
+          expect(selected, isNull);
+
+          await tester.pump(const Duration(seconds: 1));
+          await selectRange(tester, text, 20, 28);
+          expect(selected?.text, 'selected');
+          // A primary click clears an existing drag selection, rather than
+          // creating a new word selection from the preceding drag's tap count.
+          await tester.tapAt(position, kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          expect(paragraph.selections, isEmpty);
+          expect(selected, isNull);
+          tester
+              .state<SelectionAreaState>(find.byType(SelectionArea).first)
+              .selectableRegion
+              .selectAll(SelectionChangedCause.keyboard);
+          await tester.pump();
+          expect(selected?.text, sourceText);
+
+          // Word-wise selection still works when the second click is dragged.
+          await tester.pump(const Duration(seconds: 1));
+          await tester.tapAt(position, kind: PointerDeviceKind.mouse);
+          await tester.pump(const Duration(milliseconds: 80));
+          final wordDrag = await tester.startGesture(
+            position,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pump(kPressTimeout + const Duration(milliseconds: 20));
+          expect(paragraph.selections, isEmpty);
+          await wordDrag.moveTo(textPosition(tester, text, 26));
+          await wordDrag.up();
+          await wordDrag.removePointer();
+          await tester.pump();
+          expect(selected?.text, 'selected');
+          expect(selected?.position, 20);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        variant: TargetPlatformVariant.only(platform),
+      );
+
+      testWidgets(
+        '${platform.name} ${album ? 'album caption' : 'message'} secondary click opens actions without selecting a word',
+        (tester) async {
+          MessageTextQuote? selected;
+          var menus = 0;
+          final message = ChatMessage(
+            id: 78,
+            isOutgoing: false,
+            date: 1,
+            contentType: album ? 'messagePhoto' : 'messageText',
+            text: sourceText,
+            image: album ? TdFileRef(id: 1) : null,
+          );
+          void onQuoteChanged(ChatMessage _, MessageTextQuote? quote) =>
+              selected = quote;
+          await tester.pumpWidget(
+            app(
+              album
+                  ? ImageMediaAlbumBubble(
+                      messages: [
+                        ChatMessage(
+                          id: 77,
+                          isOutgoing: false,
+                          date: 1,
+                          contentType: 'messagePhoto',
+                          text: '',
+                          image: TdFileRef(id: 2),
+                        ),
+                        message,
+                      ],
+                      peerTitle: 'Test',
+                      isGroup: false,
+                      imageBuilder: (_, _, _, _) => const SizedBox.shrink(),
+                      onDesktopQuoteChanged: onQuoteChanged,
+                      onLongPress: (_, _, _) => menus++,
+                    )
+                  : MessageBubble(
+                      message: message,
+                      peerTitle: 'Test',
+                      isGroup: false,
+                      onDesktopQuoteChanged: onQuoteChanged,
+                      onLongPress: (_, _, _) => menus++,
+                    ),
+              platform,
+            ),
+          );
+          await tester.pumpAndSettle();
+          final text = find.text(sourceText, findRichText: true);
+          await tester.tapAt(
+            textPosition(tester, text, 24),
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await tester.pump();
+          expect(menus, 1);
+          expect(
+            tester.renderObject<RenderParagraph>(text).selections,
+            isEmpty,
+          );
+          expect(selected, isNull);
+          await selectRange(tester, text, 20, 28);
+          expect(selected?.text, 'selected');
+          // Opening actions elsewhere in this message must retain the exact
+          // drag-selected quote instead of replacing it with the clicked word.
+          await tester.tapAt(
+            textPosition(tester, text, 3),
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await tester.pump();
+          expect(menus, 2);
+          expect(selected?.text, 'selected');
+          expect(selected?.position, 20);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        variant: TargetPlatformVariant.only(platform),
+      );
+    }
+
+    testWidgets(
+      '${platform.name} mouse click still activates an inline text action',
+      (tester) async {
+        String? command;
+        MessageTextQuote? selected;
+        await tester.pumpWidget(
+          app(
+            MessageBubble(
+              message: ChatMessage(
+                id: 78,
+                isOutgoing: false,
+                date: 1,
+                text: '/help',
+                contentType: 'messageText',
+                textEntities: const [
+                  MessageTextEntity(
+                    offset: 0,
+                    length: 5,
+                    type: 'textEntityTypeBotCommand',
+                  ),
+                ],
+              ),
+              peerTitle: 'Test',
+              isGroup: false,
+              onBotCommandTap: (value) => command = value,
+              onDesktopQuoteChanged: (_, quote) => selected = quote,
+            ),
+            platform,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final text = find.text('/help', findRichText: true);
+        await tester.tap(text, kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        expect(command, '/help');
+        expect(tester.renderObject<RenderParagraph>(text).selections, isEmpty);
+        expect(selected, isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+      variant: TargetPlatformVariant.only(platform),
+    );
+
     testWidgets(
       '${platform.name} quotes the selected occurrence directly from the menu',
       (tester) async {
@@ -194,6 +430,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       },
+      variant: TargetPlatformVariant.only(platform),
     );
   }
 
@@ -480,6 +717,7 @@ void main() {
         TargetPlatform.macOS,
       ),
     );
+    await tester.pumpAndSettle();
     tester
         .state<SelectionAreaState>(find.byType(SelectionArea).first)
         .selectableRegion
@@ -570,6 +808,7 @@ void main() {
             TargetPlatform.macOS,
           ),
         );
+        await tester.pumpAndSettle();
         tester
             .state<SelectionAreaState>(find.byType(SelectionArea).first)
             .selectableRegion

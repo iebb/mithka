@@ -18,6 +18,7 @@ import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import 'chat_appearance_preview.dart';
 import 'desktop_message_quote_source.dart';
+import 'desktop_message_text_selection.dart';
 import 'media_album_layout.dart';
 import 'media_preview_geometry.dart';
 import 'media_spoiler.dart';
@@ -496,9 +497,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
                                     );
                                   }
                                 },
-                                child: SelectionArea(
-                                  contextMenuBuilder: (_, _) =>
-                                      const SizedBox.shrink(),
+                                child: DesktopMessageTextSelectionArea(
                                   child: selectionContent,
                                 ),
                               );

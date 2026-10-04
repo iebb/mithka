@@ -43,6 +43,7 @@ import 'bot_button_presentation.dart';
 import 'chat_appearance_preview.dart';
 import 'custom_emoji.dart';
 import 'desktop_message_quote_source.dart';
+import 'desktop_message_text_selection.dart';
 import 'file_detail_view.dart';
 import 'inline_video_autoplay.dart';
 import 'link_handler.dart';
@@ -990,9 +991,8 @@ class _MessageBubbleState extends State<MessageBubble>
                 onPointerCancel: _handleDesktopPointerCancel,
                 child: KeyedSubtree(
                   key: ValueKey('messageTextSelectionArea-${message.id}'),
-                  child: SelectionArea(
-                    key: _desktopSelectionAreaKey,
-                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                  child: DesktopMessageTextSelectionArea(
+                    selectionAreaKey: _desktopSelectionAreaKey,
                     child: contentBody,
                   ),
                 ),
