@@ -1030,73 +1030,76 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       builder: (context, _) => Column(
         children: [
           Expanded(
-            child: ValueListenableBuilder<double?>(
-              valueListenable: _splitSidebarWidth,
-              builder: (context, requestedWidth, _) {
-                // The window size is read here, not in the root build, so a
-                // resize frame rebuilds these two pane widths instead of the
-                // whole shell.
-                final size = MediaQuery.sizeOf(context);
-                final contentWidth = size.width - desktopNavigationRailWidth;
-                final geometry = resolveDesktopShellGeometry(
-                  totalWidth: size.width,
-                  requestedSidebarWidth:
-                      requestedWidth ?? defaultSplitSidebarWidth(contentWidth),
-                  infoPaneRequested: infoPaneRequested,
-                );
-                _desktopListPaneVisible = geometry.showListPane;
-                final canToggleInfoPane =
-                    geometry.showListPane &&
-                    selectedChat != null &&
-                    canShowDesktopInfoPane(
-                      totalWidth: size.width,
-                      sidebarWidth: geometry.sidebarWidth,
-                    );
-                final contextPaneExtent = geometry.showInfoPane
-                    ? desktopInfoPaneHandleWidth + desktopInfoPaneWidth
-                    : 0.0;
-                return Stack(
-                  children: [
-                    Row(
-                      children: [
-                        rail,
-                        if (geometry.showListPane)
+            child: MusicPlayerShellScope(
+              child: ValueListenableBuilder<double?>(
+                valueListenable: _splitSidebarWidth,
+                builder: (context, requestedWidth, _) {
+                  // The window size is read here, not in the root build, so a
+                  // resize frame rebuilds these two pane widths instead of the
+                  // whole shell.
+                  final size = MediaQuery.sizeOf(context);
+                  final contentWidth = size.width - desktopNavigationRailWidth;
+                  final geometry = resolveDesktopShellGeometry(
+                    totalWidth: size.width,
+                    requestedSidebarWidth:
+                        requestedWidth ??
+                        defaultSplitSidebarWidth(contentWidth),
+                    infoPaneRequested: infoPaneRequested,
+                  );
+                  _desktopListPaneVisible = geometry.showListPane;
+                  final canToggleInfoPane =
+                      geometry.showListPane &&
+                      selectedChat != null &&
+                      canShowDesktopInfoPane(
+                        totalWidth: size.width,
+                        sidebarWidth: geometry.sidebarWidth,
+                      );
+                  final contextPaneExtent = geometry.showInfoPane
+                      ? desktopInfoPaneHandleWidth + desktopInfoPaneWidth
+                      : 0.0;
+                  return Stack(
+                    children: [
+                      Row(
+                        children: [
+                          rail,
+                          if (geometry.showListPane)
+                            SizedBox(
+                              key: const ValueKey('desktop-list-pane'),
+                              width: geometry.sidebarWidth,
+                              child: sidebarPane,
+                            ),
                           SizedBox(
-                            key: const ValueKey('desktop-list-pane'),
-                            width: geometry.sidebarWidth,
-                            child: sidebarPane,
+                            key: const ValueKey('desktop-conversation-pane'),
+                            width:
+                                geometry.conversationWidth + contextPaneExtent,
+                            child: geometry.showListPane || hasDesktopDetail
+                                ? conversationPane(
+                                    showBackButton:
+                                        desktopDetailNeedsBackButton(geometry),
+                                    showInfoPane: geometry.showInfoPane,
+                                    canToggleInfoPane: canToggleInfoPane,
+                                  )
+                                : sidebarOnlyPane,
                           ),
-                        SizedBox(
-                          key: const ValueKey('desktop-conversation-pane'),
-                          width: geometry.conversationWidth + contextPaneExtent,
-                          child: geometry.showListPane || hasDesktopDetail
-                              ? conversationPane(
-                                  showBackButton: desktopDetailNeedsBackButton(
-                                    geometry,
-                                  ),
-                                  showInfoPane: geometry.showInfoPane,
-                                  canToggleInfoPane: canToggleInfoPane,
-                                )
-                              : sidebarOnlyPane,
-                        ),
-                      ],
-                    ),
-                    if (geometry.showListPane)
-                      Positioned(
-                        left:
-                            desktopNavigationRailWidth +
-                            geometry.sidebarWidth -
-                            splitResizeHandleWidth / 2,
-                        top: 0,
-                        bottom: 0,
-                        child: _splitResizeHandle(
-                          totalWidth: contentWidth,
-                          sidebarWidth: geometry.sidebarWidth,
-                        ),
+                        ],
                       ),
-                  ],
-                );
-              },
+                      if (geometry.showListPane)
+                        Positioned(
+                          left:
+                              desktopNavigationRailWidth +
+                              geometry.sidebarWidth -
+                              splitResizeHandleWidth / 2,
+                          top: 0,
+                          bottom: 0,
+                          child: _splitResizeHandle(
+                            totalWidth: contentWidth,
+                            sidebarWidth: geometry.sidebarWidth,
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
           _fixedMusicPlayer(safeBottom: true),
@@ -1166,72 +1169,76 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           builder: (context, _) => Column(
             children: [
               Expanded(
-                child: Stack(
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: compact ? 0 : sidebarWidth,
-                          child: Offstage(
-                            offstage: compact,
-                            child: OverflowBox(
-                              minWidth: sidebarWidth,
-                              maxWidth: sidebarWidth,
-                              child: BottomBarLayout(
-                                overlay: theme.liquidGlassBottomBar,
-                                body: _LazyTabStack(
-                                  selection: selection,
-                                  items: tabs,
-                                  builder: (tab) =>
-                                      _tabletSidebarRoot(tab.index),
-                                ),
-                                footer: AnimatedBuilder(
-                                  animation: _unread,
-                                  builder: (context, _) => _MainBottomBar(
-                                    chatListController: _chatListController,
+                child: MusicPlayerShellScope(
+                  child: Stack(
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: compact ? 0 : sidebarWidth,
+                            child: Offstage(
+                              offstage: compact,
+                              child: OverflowBox(
+                                minWidth: sidebarWidth,
+                                maxWidth: sidebarWidth,
+                                child: BottomBarLayout(
+                                  overlay: theme.liquidGlassBottomBar,
+                                  body: _LazyTabStack(
                                     selection: selection,
-                                    onSelect: _select,
                                     items: tabs,
-                                    onClearUnread:
-                                        _chatListController.markAllRead,
-                                    unread: _unread.countFor(
-                                      theme.unreadBadgeMode,
+                                    builder: (tab) =>
+                                        _tabletSidebarRoot(tab.index),
+                                  ),
+                                  footer: AnimatedBuilder(
+                                    animation: _unread,
+                                    builder: (context, _) => _MainBottomBar(
+                                      chatListController: _chatListController,
+                                      selection: selection,
+                                      onSelect: _select,
+                                      items: tabs,
+                                      onClearUnread:
+                                          _chatListController.markAllRead,
+                                      unread: _unread.countFor(
+                                        theme.unreadBadgeMode,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        Expanded(
-                          child: _musicAwareContent(
-                            _animatedTabletDetailPane(
-                              activeTabIndex,
-                              showMessageBackButton: compact,
-                              onMessageInfoPressed: canToggleInfoPane
-                                  ? () => setState(
-                                      () => _closedDesktopInfoChatId =
-                                          showInfoPane ? selectedChatId : null,
-                                    )
-                                  : null,
-                              messageTrailingPane: contextPane,
-                              messageTrailingPaneWidth: desktopInfoPaneWidth,
+                          Expanded(
+                            child: _musicAwareContent(
+                              _animatedTabletDetailPane(
+                                activeTabIndex,
+                                showMessageBackButton: compact,
+                                onMessageInfoPressed: canToggleInfoPane
+                                    ? () => setState(
+                                        () => _closedDesktopInfoChatId =
+                                            showInfoPane
+                                            ? selectedChatId
+                                            : null,
+                                      )
+                                    : null,
+                                messageTrailingPane: contextPane,
+                                messageTrailingPaneWidth: desktopInfoPaneWidth,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    if (!compact)
-                      Positioned(
-                        left: sidebarWidth - splitResizeHandleWidth / 2,
-                        top: 0,
-                        bottom: 0,
-                        child: _splitResizeHandle(
-                          totalWidth: size.width,
-                          sidebarWidth: sidebarWidth,
-                        ),
+                        ],
                       ),
-                  ],
+                      if (!compact)
+                        Positioned(
+                          left: sidebarWidth - splitResizeHandleWidth / 2,
+                          top: 0,
+                          bottom: 0,
+                          child: _splitResizeHandle(
+                            totalWidth: size.width,
+                            sidebarWidth: sidebarWidth,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
               _fixedMusicPlayer(safeBottom: true),

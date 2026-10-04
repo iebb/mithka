@@ -55,6 +55,10 @@
         <receiver
             android:name="com.gurfdev.light_compressor_v2.CompressionCancelReceiver"
             tools:node="remove" />
+        <!-- Media notification buttons for the in-app music player. -->
+        <receiver
+            android:name=".NowPlayingActionReceiver"
+            android:exported="false" />
         <meta-data
             android:name="io.sentry.dsn"
             android:value="${sentryDsn}" />

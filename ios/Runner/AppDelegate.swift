@@ -27,6 +27,7 @@ import UserNotifications
   private var telegramPasskeyBridge: TelegramPasskeyBridge?
   private var premiumAuthPurchaseBridge: PremiumAuthPurchaseBridge?
   private var mithkaProBridge: MithkaProBridge?
+  private var nowPlayingBridge: NowPlayingBridge?
   private var applePCCBridge: ApplePCCBridge?
   private var privacyShieldView: UIView?
 
@@ -542,6 +543,9 @@ import UserNotifications
       messenger: engineBridge.applicationRegistrar.messenger()
     )
     mithkaProBridge = MithkaProBridge(
+      messenger: engineBridge.applicationRegistrar.messenger()
+    )
+    nowPlayingBridge = NowPlayingBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
     applePCCBridge = ApplePCCBridge(

@@ -32,6 +32,7 @@
 		9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E331E1000100000001 /* MediaDropBridge.swift */; };
 		9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */; };
 		9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E731E1000100000001 /* MithkaProBridge.swift */; };
+		9A4F20F231E1000100000001 /* NowPlayingBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F131E1000100000001 /* NowPlayingBridge.swift */; };
 		9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */; };
 		9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */; };
 		A17D0FF131E1000100000001 /* HandoffBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF031E1000100000001 /* HandoffBridge.swift */; };
@@ -129,6 +130,7 @@
 		9A4F20E331E1000100000001 /* MediaDropBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MediaDropBridge.swift; sourceTree = "<group>"; };
 		9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TelegramAccountSecurityBridge.swift; sourceTree = "<group>"; };
 		9A4F20E731E1000100000001 /* MithkaProBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MithkaProBridge.swift; sourceTree = "<group>"; };
+		9A4F20F131E1000100000001 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
 		9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationBridge.swift; sourceTree = "<group>"; };
 		9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ApplePCCBridge.swift; sourceTree = "<group>"; };
 		9AE1F80607B45379F5468F27 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -268,6 +270,7 @@
 				9A4F20E331E1000100000001 /* MediaDropBridge.swift */,
 				9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */,
 				9A4F20E731E1000100000001 /* MithkaProBridge.swift */,
+				9A4F20F131E1000100000001 /* NowPlayingBridge.swift */,
 				9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */,
 				9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */,
 				AC39B11131E1000100000001 /* NativeBottomTabBar.swift */,
@@ -694,6 +697,7 @@
 				9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */,
 				9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */,
 				9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */,
+				9A4F20F231E1000100000001 /* NowPlayingBridge.swift in Sources */,
 				9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */,
 				9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */,
 				AC39B11031E1000100000001 /* NativeBottomTabBar.swift in Sources */,

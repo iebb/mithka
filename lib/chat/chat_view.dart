@@ -7300,6 +7300,10 @@ class _ChatViewState extends State<ChatView> {
   // MARK: - Composer area (input bar / join bar / disabled bar)
 
   Widget _chatMusicPlayer() {
+    // In split layouts the shell shows the player under every pane.
+    if (MusicPlayerShellScope.providesPlayer(context)) {
+      return const SizedBox.shrink();
+    }
     return AnimatedBuilder(
       animation: MusicPlayerController.shared,
       builder: (context, _) {
