@@ -6397,9 +6397,13 @@ class _ChatViewState extends State<ChatView> {
             iconColor: topic.iconColor,
           ),
       ],
-      selectedTopicId: null,
+      selectedTopicId: widget.forumTopicId,
       hasForumTabs: _vm.hasForumTabs,
       onSelected: (id) {
+        if (_topicsFoldedIntoChat) {
+          _openTopicTranscript(id);
+          return;
+        }
         if (id != null) unawaited(_openTopicMode(id));
       },
       child: child,
@@ -7902,15 +7906,37 @@ class _ChatViewState extends State<ChatView> {
     supportsBotTopics: _vm.supportsBotTopics,
   );
 
-  /// Opens a topic as the ordinary chat transcript (topics-as-group setting).
-  /// Replaces this transcript in place so the navigation stack stays flat.
+  /// Opens a topic, or the whole chat for null, as the ordinary chat
+  /// transcript (topics-as-group setting). Replaces this transcript in place
+  /// so the navigation stack stays flat; a split detail pane swaps its own
+  /// content and keeps the app shell beside it.
   void _openTopicTranscript(int? topicId) {
-    if (topicId == null) {
-      _openWholeChatTranscript();
-      return;
-    }
     if (topicId == widget.forumTopicId) return;
     _prepareExitState();
+    if (ChatPane.replace(
+      context,
+      (onBack) => ChatView(
+        // A distinct key per transcript: ChatView reads its topic only once.
+        key: ValueKey(('pane-topic-transcript', widget.chatId, topicId)),
+        chatId: widget.chatId,
+        title: widget.title,
+        forumTopicId: topicId,
+        showBackButton: widget.showBackButton,
+        headerHeight: widget.headerHeight,
+        headerColor: widget.headerColor,
+        showHeaderDivider: widget.showHeaderDivider,
+        trailingPane: widget.trailingPane,
+        trailingPaneWidth: widget.trailingPaneWidth,
+        exitController: widget.exitController,
+        onChatKindResolved: widget.onChatKindResolved,
+        onInfoPressed: widget.onInfoPressed,
+        onOpenFullInfo: widget.onOpenFullInfo,
+        onOpenUserProfile: widget.onOpenUserProfile,
+        onBack: onBack,
+      ),
+    )) {
+      return;
+    }
     unawaited(
       replaceWithAppChatRoute<void, void>(
         context,
@@ -7925,23 +7951,13 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  void _openWholeChatTranscript() {
-    if (widget.forumTopicId == null) return;
-    _prepareExitState();
-    unawaited(
-      replaceWithAppChatRoute<void, void>(
-        context,
-        AppChatPageRoute<void>(
-          builder: (_) => ChatView(chatId: widget.chatId, title: widget.title),
-        ),
-      ),
-    );
-  }
-
   Future<void> _openTopicMode([int? threadId]) async {
-    // With topics shown as a regular group, the transcript stays put: the
-    // header's topic picker already switches within the chat surface.
-    if (context.read<ThemeController>().forumTopicsAsGroupChat) return;
+    // With topics shown as a regular group there is no topic feed: open the
+    // requested topic as an ordinary transcript instead.
+    if (_topicsFoldedIntoChat) {
+      if (threadId != null) _openTopicTranscript(threadId);
+      return;
+    }
     await TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel);
     if (!mounted) return;
     final onOpenTopicMode = widget.onOpenTopicMode;

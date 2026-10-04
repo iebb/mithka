@@ -435,6 +435,87 @@ void main() {
     },
   );
 
+  for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
+    testWidgets('$platform topics-as-group rail opens the tapped topic', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await _setSurfaceSize(tester, const Size(1180, 820));
+        await _pumpMainShell(
+          tester,
+          reducedMotion: true,
+          forumTopicsAsGroupChat: true,
+        );
+        tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
+          ChatListSelection.fromChat(_chat()),
+        );
+        await _settle(tester);
+        final sidebar = tester.getRect(find.byType(ChatListView));
+        final navigator = Navigator.of(
+          tester.element(find.byType(ChatView)),
+          rootNavigator: true,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('topic-navigation-item-88')),
+        );
+        await _settle(tester);
+        expect(find.byType(TopicChatView), findsNothing);
+        expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 88);
+        expect(
+          requests.lastWhere(
+            (request) => request['@type'] == 'getForumTopicHistory',
+          )['forum_topic_id'],
+          88,
+        );
+        expect(tester.getRect(find.byType(ChatListView)), sidebar);
+        expect(navigator.canPop(), isFalse);
+
+        await tester.tap(
+          find.byKey(const ValueKey('topic-navigation-item-all')),
+        );
+        await _settle(tester);
+        expect(
+          tester.widget<ChatView>(find.byType(ChatView)).forumTopicId,
+          isNull,
+        );
+        expect(tester.getRect(find.byType(ChatListView)), sidebar);
+        expect(navigator.canPop(), isFalse);
+        expect(tester.takeException(), isNull);
+        await _disposeShell(tester);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
+  testWidgets('topics-as-group picker opens the tapped topic on a phone', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await _setSurfaceSize(tester, const Size(390, 844));
+      await _pumpMainShell(
+        tester,
+        reducedMotion: true,
+        forumTopicsAsGroupChat: true,
+      );
+      ChatDeepLinkController.shared.openChat(chatId: -42, title: 'Forum');
+      await _settle(tester);
+      expect(find.byType(ChatView), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
+      await _settle(tester);
+      await tester.tap(find.text('Topic 1'));
+      await _settle(tester);
+      expect(find.byType(TopicChatView), findsNothing);
+      expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 78);
+      expect(tester.takeException(), isNull);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('failed topic loading leaves navigation usable', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     try {
@@ -551,10 +632,12 @@ Future<_MainShellHarness> _pumpMainShell(
   WidgetTester tester, {
   bool reducedMotion = false,
   bool showChannelsTab = false,
+  bool forumTopicsAsGroupChat = false,
   List<NavigatorObserver> navigatorObservers = const [],
 }) async {
   SharedPreferences.setMockInitialValues({
     'showChannelsTab': showChannelsTab,
+    'forumTopicsAsGroupChat': forumTopicsAsGroupChat,
     'showMomentsTab': false,
     'communitiesEnabled': false,
   });
