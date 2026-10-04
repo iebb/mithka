@@ -907,6 +907,7 @@
     <string name="chatInfoGroupVideos">群組影片</string>
     <string name="chatInfoLeaveGroup">退出群組</string>
     <string name="chatInfoLoadFoldersFailed">無法載入聊天資料夾</string>
+    <string name="chatInfoManageChannel">管理頻道</string>
     <string name="chatInfoManageGroup">管理群組</string>
     <string name="chatInfoMoveToGroupAssistant">封存</string>
     <string name="chatInfoNewFolder">新增資料夾</string>
@@ -996,8 +997,12 @@
     <string name="chatMembersRemoveFailedPermission">移除失敗，可能沒有權限</string>
     <string name="chatMembersRemoveMemberConfirmation">要將 {value1} 移出群組嗎？</string>
     <string name="chatMembersRemoveMemberTitle">移除成員</string>
+    <string name="chatMembersRemovedTitle">黑名單</string>
     <string name="chatMembersSetTitle">設定名牌</string>
+    <string name="chatMembersSubscribersTitleWithCount">訂閱者 ({value1})</string>
     <string name="chatMembersTitleWithCount">群組成員 ({value1})</string>
+    <string name="chatMembersUnban">解除封鎖</string>
+    <string name="chatMembersUnbanConfirmation">將 {value1} 移出黑名單？</string>
     <string name="chatMembersUpdateFailed">無法修改此成員。</string>
     <string name="chatMenu">選單</string>
     <string name="chatMessageInputPlaceholder">傳送訊息…</string>
@@ -1626,6 +1631,8 @@
     <string name="groupManagementAdvancedControls">進階控制</string>
     <string name="groupManagementBasicSection">基本管理</string>
     <string name="groupManagementBoostsAndGiveaways">助力和抽獎</string>
+    <string name="groupManagementChannelName">頻道名稱</string>
+    <string name="groupManagementChannelSubscribers">訂閱者</string>
     <string name="groupManagementDeleteChannel">永久刪除頻道</string>
     <string name="groupManagementDeleteGroup">永久解散群組</string>
     <string name="groupManagementEditFailed">修改失敗</string>
@@ -1693,6 +1700,8 @@
     <string name="groupManagementPostingPermissions">發言權限</string>
     <string name="groupManagementPublicUsername">公開使用者名稱</string>
     <string name="groupManagementReadOnly">唯讀</string>
+    <string name="groupManagementRemovedUsers">黑名單</string>
+    <string name="groupManagementRetry">重試</string>
     <string name="groupManagementSetFailed">設定失敗</string>
     <string name="groupManagementStatistics">統計</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">使用者名稱不可用或沒有權限</string>

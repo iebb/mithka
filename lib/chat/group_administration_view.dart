@@ -73,15 +73,18 @@ class _GroupAdvancedAdministrationViewState
 
   Future<void> _load() async {
     try {
+      // getChat and getSupergroup are local database reads, so the page
+      // renders as soon as they land. getSupergroupFullInfo refetches from the
+      // network when the cached copy is stale; Telegram flood-limits that
+      // method and TDLib silently queues flood-waited queries for 30 seconds
+      // or more, so it fills in later instead of gating the page.
       final values = await Future.wait([
         _service.getChat(widget.chatId),
         _service.getSupergroup(widget.supergroupId),
-        _service.getSupergroupFullInfo(widget.supergroupId),
       ]);
       if (!mounted) return;
       final chat = values[0];
       final supergroup = values[1];
-      final full = values[2];
       setState(() {
         _isChannel = supergroup.boolean('is_channel') ?? false;
         _signMessages = supergroup.boolean('sign_messages') ?? false;
@@ -91,19 +94,8 @@ class _GroupAdvancedAdministrationViewState
         _protectedContent = chat.boolean('has_protected_content') ?? false;
         _availableReactions =
             chat.obj('available_reactions') ?? _availableReactions;
-        _slowMode = full.integer('slow_mode_delay') ?? 0;
-        _linkedChatId = full.int64('linked_chat_id') ?? 0;
-        _hiddenMembers = full.boolean('has_hidden_members') ?? false;
-        _canHideMembers = full.boolean('can_hide_members') ?? false;
-        _antiSpam = full.boolean('has_aggressive_anti_spam_enabled') ?? false;
-        _canToggleAntiSpam =
-            full.boolean('can_toggle_aggressive_anti_spam') ?? false;
         _automaticTranslation =
             supergroup.boolean('has_automatic_translation') ?? false;
-        _allHistoryAvailable =
-            full.boolean('is_all_history_available') ?? false;
-        _description = full.str('description') ?? '';
-        _hasPhoto = full.obj('photo') != null;
         final activeUsernames = supergroup.obj(
           'usernames',
         )?['active_usernames'];
@@ -117,6 +109,33 @@ class _GroupAdvancedAdministrationViewState
         context,
         context.l10n.t(AppStringKeys.groupAdminErrorLoad, {'value1': error}),
       );
+      return;
+    }
+    unawaited(_loadFullInfo());
+  }
+
+  Future<void> _loadFullInfo() async {
+    try {
+      final full = await _service
+          .getSupergroupFullInfo(widget.supergroupId)
+          .timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      setState(() {
+        _slowMode = full.integer('slow_mode_delay') ?? 0;
+        _linkedChatId = full.int64('linked_chat_id') ?? 0;
+        _hiddenMembers = full.boolean('has_hidden_members') ?? false;
+        _canHideMembers = full.boolean('can_hide_members') ?? false;
+        _antiSpam = full.boolean('has_aggressive_anti_spam_enabled') ?? false;
+        _canToggleAntiSpam =
+            full.boolean('can_toggle_aggressive_anti_spam') ?? false;
+        _allHistoryAvailable =
+            full.boolean('is_all_history_available') ?? false;
+        _description = full.str('description') ?? '';
+        _hasPhoto = full.obj('photo') != null;
+      });
+    } catch (_) {
+      // Rows gated on full-info capability flags stay hidden until a later
+      // visit succeeds; everything else on the page keeps working.
     }
   }
 

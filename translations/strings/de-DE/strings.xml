@@ -907,6 +907,7 @@
     <string name="chatInfoGroupVideos">Gruppenvideos</string>
     <string name="chatInfoLeaveGroup">Gruppe verlassen</string>
     <string name="chatInfoLoadFoldersFailed">Chat-Ordner konnten nicht geladen werden</string>
+    <string name="chatInfoManageChannel">Kanal verwalten</string>
     <string name="chatInfoManageGroup">Gruppe verwalten</string>
     <string name="chatInfoMoveToGroupAssistant">Archivieren</string>
     <string name="chatInfoNewFolder">Neuer Ordner</string>
@@ -998,8 +999,12 @@
     <string name="chatMembersRemoveFailedPermission">Entfernen fehlgeschlagen, möglicherweise fehlen Berechtigungen</string>
     <string name="chatMembersRemoveMemberConfirmation">{value1} aus der Gruppe entfernen?</string>
     <string name="chatMembersRemoveMemberTitle">Mitglied entfernen</string>
+    <string name="chatMembersRemovedTitle">Entfernte Benutzer</string>
     <string name="chatMembersSetTitle">Titel festlegen</string>
+    <string name="chatMembersSubscribersTitleWithCount">Abonnenten ({value1})</string>
     <string name="chatMembersTitleWithCount">Gruppenmitglieder ({value1})</string>
+    <string name="chatMembersUnban">Entbannen</string>
+    <string name="chatMembersUnbanConfirmation">{value1} aus der Liste der entfernten Benutzer entfernen?</string>
     <string name="chatMembersUpdateFailed">Mitglied konnte nicht aktualisiert werden.</string>
     <string name="chatMenu">Menü</string>
     <string name="chatMessageInputPlaceholder">Nachricht senden…</string>
@@ -1633,6 +1638,8 @@
     <string name="groupManagementAdvancedControls">Erweiterte Einstellungen</string>
     <string name="groupManagementBasicSection">Grundverwaltung</string>
     <string name="groupManagementBoostsAndGiveaways">Boosts und Verlosungen</string>
+    <string name="groupManagementChannelName">Kanalname</string>
+    <string name="groupManagementChannelSubscribers">Abonnenten</string>
     <string name="groupManagementDeleteChannel">Kanal löschen</string>
     <string name="groupManagementDeleteGroup">Gruppe löschen</string>
     <string name="groupManagementEditFailed">Änderung fehlgeschlagen</string>
@@ -1700,6 +1707,8 @@
     <string name="groupManagementPostingPermissions">Schreibberechtigungen</string>
     <string name="groupManagementPublicUsername">Öffentlicher Benutzername</string>
     <string name="groupManagementReadOnly">Schreibgeschützt</string>
+    <string name="groupManagementRemovedUsers">Entfernte Benutzer</string>
+    <string name="groupManagementRetry">Erneut versuchen</string>
     <string name="groupManagementSetFailed">Festlegen fehlgeschlagen</string>
     <string name="groupManagementStatistics">Statistiken</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Benutzername nicht verfügbar oder keine Berechtigung</string>

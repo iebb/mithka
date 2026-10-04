@@ -907,6 +907,7 @@
     <string name="chatInfoGroupVideos">群视频</string>
     <string name="chatInfoLeaveGroup">退出群聊</string>
     <string name="chatInfoLoadFoldersFailed">无法加载聊天分组</string>
+    <string name="chatInfoManageChannel">管理频道</string>
     <string name="chatInfoManageGroup">管理群</string>
     <string name="chatInfoMoveToGroupAssistant">归档</string>
     <string name="chatInfoNewFolder">新建分组</string>
@@ -996,8 +997,12 @@
     <string name="chatMembersRemoveFailedPermission">移除失败，可能没有权限</string>
     <string name="chatMembersRemoveMemberConfirmation">将 {value1} 移出群聊？</string>
     <string name="chatMembersRemoveMemberTitle">移除成员</string>
+    <string name="chatMembersRemovedTitle">黑名单</string>
     <string name="chatMembersSetTitle">设置名牌</string>
+    <string name="chatMembersSubscribersTitleWithCount">订阅者 ({value1})</string>
     <string name="chatMembersTitleWithCount">群成员 ({value1})</string>
+    <string name="chatMembersUnban">解除封禁</string>
+    <string name="chatMembersUnbanConfirmation">将 {value1} 移出黑名单？</string>
     <string name="chatMembersUpdateFailed">无法修改该成员。</string>
     <string name="chatMenu">菜单</string>
     <string name="chatMessageInputPlaceholder">发送消息…</string>
@@ -1626,6 +1631,8 @@
     <string name="groupManagementAdvancedControls">高级控制</string>
     <string name="groupManagementBasicSection">基础管理</string>
     <string name="groupManagementBoostsAndGiveaways">助力和抽奖</string>
+    <string name="groupManagementChannelName">频道名称</string>
+    <string name="groupManagementChannelSubscribers">订阅者</string>
     <string name="groupManagementDeleteChannel">永久删除频道</string>
     <string name="groupManagementDeleteGroup">永久解散群聊</string>
     <string name="groupManagementEditFailed">修改失败</string>
@@ -1693,6 +1700,8 @@
     <string name="groupManagementPostingPermissions">发言权限</string>
     <string name="groupManagementPublicUsername">公开用户名</string>
     <string name="groupManagementReadOnly">只读</string>
+    <string name="groupManagementRemovedUsers">黑名单</string>
+    <string name="groupManagementRetry">重试</string>
     <string name="groupManagementSetFailed">设置失败</string>
     <string name="groupManagementStatistics">统计</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">用户名不可用或没有权限</string>

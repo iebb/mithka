@@ -26,7 +26,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'chat_administrator_edit_view.dart';
 
-enum ChatMembersMode { members, administrators }
+enum ChatMembersMode { members, administrators, banned }
 
 class GroupMember {
   GroupMember({
@@ -88,6 +88,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
   bool _canPromote = false;
   bool _canManageTags = false;
   bool _isCreator = false;
+  bool _isChannel = false;
   int? _openRowId;
 
   @override
@@ -103,6 +104,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
         'chat_id': widget.chatId,
       });
       final type = chat.obj('type');
+      _isChannel = type?.boolean('is_channel') ?? false;
       await _loadSelfPermissions();
       List<Map<String, dynamic>> raw = [];
       if (type?.type == 'chatTypeBasicGroup') {
@@ -122,30 +124,41 @@ class _ChatMembersViewState extends State<ChatMembersView> {
         final sgid = type?.int64('supergroup_id');
         if (sgid != null) {
           // getSupergroupFullInfo has the accurate member_count;
-          // getSupergroupMembers only returns an approximate count.
+          // getSupergroupMembers only returns an approximate count. Only the
+          // member list needs it, and the query can stall behind Telegram's
+          // flood limits, so skip it for the administrator and banned lists.
           int? fullCount;
-          try {
-            final fullInfo = await TdClient.shared.query({
-              '@type': 'getSupergroupFullInfo',
-              'supergroup_id': sgid,
-            });
-            fullCount = fullInfo.integer('member_count');
-          } catch (_) {}
+          if (widget.mode == ChatMembersMode.members) {
+            try {
+              final fullInfo = await TdClient.shared.query({
+                '@type': 'getSupergroupFullInfo',
+                'supergroup_id': sgid,
+              });
+              fullCount = fullInfo.integer('member_count');
+            } catch (_) {}
+          }
           final res = await TdClient.shared.query({
             '@type': 'getSupergroupMembers',
             'supergroup_id': sgid,
             'filter': {
-              '@type': widget.mode == ChatMembersMode.administrators
-                  ? 'supergroupMembersFilterAdministrators'
-                  : 'supergroupMembersFilterRecent',
+              '@type': switch (widget.mode) {
+                ChatMembersMode.administrators =>
+                  'supergroupMembersFilterAdministrators',
+                ChatMembersMode.banned => 'supergroupMembersFilterBanned',
+                ChatMembersMode.members => 'supergroupMembersFilterRecent',
+              },
             },
             'offset': 0,
             'limit': 200,
           });
           raw = res.objects('members') ?? const <Map<String, dynamic>>[];
-          _total = widget.mode == ChatMembersMode.administrators
-              ? raw.length
-              : fullCount ?? res.integer('member_count') ?? raw.length;
+          _total = switch (widget.mode) {
+            // The filter-specific response carries the exact list size.
+            ChatMembersMode.administrators => raw.length,
+            ChatMembersMode.banned => res.integer('member_count') ?? raw.length,
+            ChatMembersMode.members =>
+              fullCount ?? res.integer('member_count') ?? raw.length,
+          };
         }
       }
       await _resolve(raw);
@@ -194,7 +207,11 @@ class _ChatMembersViewState extends State<ChatMembersView> {
       final status = entry.obj('status');
       var role = _memberRole(status);
       final title = _memberTitle(entry, status);
-      role ??= MemberRole.member;
+      // Banned entries carry no member role to render; a "member" tag would be
+      // wrong for a user who cannot even rejoin.
+      if (role == null && widget.mode != ChatMembersMode.banned) {
+        role = MemberRole.member;
+      }
       try {
         final user = await TdClient.shared.query({
           '@type': 'getUser',
@@ -263,6 +280,38 @@ class _ChatMembersViewState extends State<ChatMembersView> {
           context,
           AppStrings.t(AppStringKeys.chatMembersRemoveFailedPermission),
         );
+      }
+    }
+  }
+
+  Future<void> _unbanMember(GroupMember m) async {
+    if (!_canRemove) return;
+    final ok = await confirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.chatMembersUnban),
+      message: AppStrings.t(AppStringKeys.chatMembersUnbanConfirmation, {
+        'value1': m.name,
+      }),
+      confirmText: AppStrings.t(AppStringKeys.chatMembersUnban),
+    );
+    if (!ok) return;
+    try {
+      await TdClient.shared.query({
+        '@type': 'setChatMemberStatus',
+        'chat_id': widget.chatId,
+        'member_id': {'@type': 'messageSenderUser', 'user_id': m.id},
+        // A member status lifts the ban without re-adding the user; they
+        // return to "left" and can rejoin on their own.
+        'status': {'@type': 'chatMemberStatusMember'},
+      });
+      if (!mounted) return;
+      setState(() {
+        _members.removeWhere((x) => x.id == m.id);
+        if (_total > 0) _total--;
+      });
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.chatMembersUpdateFailed);
       }
     }
   }
@@ -398,13 +447,27 @@ class _ChatMembersViewState extends State<ChatMembersView> {
       body: Column(
         children: [
           NavHeader(
-            title: widget.mode == ChatMembersMode.administrators
-                ? AppStrings.t(AppStringKeys.chatMembersAdministratorsTitle)
-                : _total > 0
-                ? AppStrings.t(AppStringKeys.chatMembersTitleWithCount, {
-                    'value1': _total,
-                  })
-                : AppStrings.t(AppStringKeys.chatInfoGroupMembers),
+            title: switch (widget.mode) {
+              ChatMembersMode.administrators => AppStrings.t(
+                AppStringKeys.chatMembersAdministratorsTitle,
+              ),
+              ChatMembersMode.banned => AppStrings.t(
+                AppStringKeys.chatMembersRemovedTitle,
+              ),
+              ChatMembersMode.members =>
+                _total > 0
+                    ? AppStrings.t(
+                        _isChannel
+                            ? AppStringKeys.chatMembersSubscribersTitleWithCount
+                            : AppStringKeys.chatMembersTitleWithCount,
+                        {'value1': _total},
+                      )
+                    : AppStrings.t(
+                        _isChannel
+                            ? AppStringKeys.groupManagementChannelSubscribers
+                            : AppStringKeys.chatInfoGroupMembers,
+                      ),
+            },
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -439,7 +502,15 @@ class _ChatMembersViewState extends State<ChatMembersView> {
                           ),
                       ];
                       final trailingActions = <MemberRowAction>[
-                        if (widget.mode == ChatMembersMode.administrators &&
+                        if (widget.mode == ChatMembersMode.banned && _canRemove)
+                          MemberRowAction(
+                            title: AppStringKeys.chatMembersUnban,
+                            icon: HeroAppIcons.circleCheck,
+                            color: AppTheme.brand,
+                            onTap: () => _unbanMember(m),
+                          )
+                        else if (widget.mode ==
+                                ChatMembersMode.administrators &&
                             _canPromote &&
                             m.role == MemberRole.admin)
                           MemberRowAction(

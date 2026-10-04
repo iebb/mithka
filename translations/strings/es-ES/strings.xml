@@ -907,6 +907,7 @@
     <string name="chatInfoGroupVideos">Videos del grupo</string>
     <string name="chatInfoLeaveGroup">Salir del grupo</string>
     <string name="chatInfoLoadFoldersFailed">No se pudieron cargar las carpetas de chats</string>
+    <string name="chatInfoManageChannel">Gestionar canal</string>
     <string name="chatInfoManageGroup">Gestionar grupo</string>
     <string name="chatInfoMoveToGroupAssistant">Archivar</string>
     <string name="chatInfoNewFolder">Nueva carpeta</string>
@@ -998,8 +999,12 @@
     <string name="chatMembersRemoveFailedPermission">No se pudo quitar; puede que no tengas permiso</string>
     <string name="chatMembersRemoveMemberConfirmation">¿Quitar a {value1} del grupo?</string>
     <string name="chatMembersRemoveMemberTitle">Quitar miembro</string>
+    <string name="chatMembersRemovedTitle">Usuarios eliminados</string>
     <string name="chatMembersSetTitle">Definir cargo</string>
+    <string name="chatMembersSubscribersTitleWithCount">Suscriptores ({value1})</string>
     <string name="chatMembersTitleWithCount">Miembros del grupo ({value1})</string>
+    <string name="chatMembersUnban">Desbloquear</string>
+    <string name="chatMembersUnbanConfirmation">¿Quitar a {value1} de los usuarios eliminados?</string>
     <string name="chatMembersUpdateFailed">No se pudo actualizar este miembro.</string>
     <string name="chatMenu">Menú</string>
     <string name="chatMessageInputPlaceholder">Enviar mensaje…</string>
@@ -1633,6 +1638,8 @@
     <string name="groupManagementAdvancedControls">Controles avanzados</string>
     <string name="groupManagementBasicSection">Gestión básica</string>
     <string name="groupManagementBoostsAndGiveaways">Impulsos y sorteos</string>
+    <string name="groupManagementChannelName">Nombre del canal</string>
+    <string name="groupManagementChannelSubscribers">Suscriptores</string>
     <string name="groupManagementDeleteChannel">Eliminar canal</string>
     <string name="groupManagementDeleteGroup">Eliminar grupo</string>
     <string name="groupManagementEditFailed">No se pudo modificar</string>
@@ -1700,6 +1707,8 @@
     <string name="groupManagementPostingPermissions">Permisos para publicar</string>
     <string name="groupManagementPublicUsername">Nombre de usuario público</string>
     <string name="groupManagementReadOnly">Solo lectura</string>
+    <string name="groupManagementRemovedUsers">Usuarios eliminados</string>
+    <string name="groupManagementRetry">Reintentar</string>
     <string name="groupManagementSetFailed">No se pudo configurar</string>
     <string name="groupManagementStatistics">Estadísticas</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">El nombre de usuario no está disponible o no tienes permiso</string>

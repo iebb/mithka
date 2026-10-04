@@ -907,6 +907,7 @@
     <string name="chatInfoGroupVideos">グループ動画</string>
     <string name="chatInfoLeaveGroup">グループを退出</string>
     <string name="chatInfoLoadFoldersFailed">チャットフォルダを読み込めません</string>
+    <string name="chatInfoManageChannel">チャンネルを管理</string>
     <string name="chatInfoManageGroup">グループを管理</string>
     <string name="chatInfoMoveToGroupAssistant">アーカイブ</string>
     <string name="chatInfoNewFolder">新規フォルダ</string>
@@ -996,8 +997,12 @@
     <string name="chatMembersRemoveFailedPermission">削除に失敗しました。権限がない可能性があります</string>
     <string name="chatMembersRemoveMemberConfirmation">{value1}をグループから削除しますか？</string>
     <string name="chatMembersRemoveMemberTitle">メンバーを削除</string>
+    <string name="chatMembersRemovedTitle">削除済みユーザー</string>
     <string name="chatMembersSetTitle">肩書きを設定</string>
+    <string name="chatMembersSubscribersTitleWithCount">サブスクライバー（{value1}）</string>
     <string name="chatMembersTitleWithCount">グループメンバー（{value1}）</string>
+    <string name="chatMembersUnban">ブロック解除</string>
+    <string name="chatMembersUnbanConfirmation">{value1} のブロックを解除しますか？</string>
     <string name="chatMembersUpdateFailed">このメンバーを更新できませんでした。</string>
     <string name="chatMenu">メニュー</string>
     <string name="chatMessageInputPlaceholder">メッセージを送信…</string>
@@ -1626,6 +1631,8 @@
     <string name="groupManagementAdvancedControls">詳細設定</string>
     <string name="groupManagementBasicSection">基本管理</string>
     <string name="groupManagementBoostsAndGiveaways">ブーストとプレゼント企画</string>
+    <string name="groupManagementChannelName">チャンネル名</string>
+    <string name="groupManagementChannelSubscribers">サブスクライバー</string>
     <string name="groupManagementDeleteChannel">チャンネルを削除</string>
     <string name="groupManagementDeleteGroup">グループを削除</string>
     <string name="groupManagementEditFailed">変更できませんでした</string>
@@ -1693,6 +1700,8 @@
     <string name="groupManagementPostingPermissions">投稿権限</string>
     <string name="groupManagementPublicUsername">公開ユーザー名</string>
     <string name="groupManagementReadOnly">読み取り専用</string>
+    <string name="groupManagementRemovedUsers">削除済みユーザー</string>
+    <string name="groupManagementRetry">再試行</string>
     <string name="groupManagementSetFailed">設定に失敗しました</string>
     <string name="groupManagementStatistics">統計</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">ユーザー名は使用できないか、権限がありません</string>
