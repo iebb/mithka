@@ -238,6 +238,7 @@ class ChatListSelection {
     this.chat,
     this.resolvedKind,
     this.initialMessageId,
+    this.forumTopicId,
     this.composerFocusRequestId = 0,
   });
 
@@ -248,13 +249,18 @@ class ChatListSelection {
        title = chat.title,
        chat = chat,
        resolvedKind = chat.kind,
-       initialMessageId = null;
+       initialMessageId = null,
+       forumTopicId = null;
 
   final int chatId;
   final String title;
   final ChatSummary? chat;
   final ChatKind? resolvedKind;
   final int? initialMessageId;
+
+  /// The forum topic shown as an ordinary transcript when topics are folded
+  /// into the group chat; null shows the whole chat.
+  final int? forumTopicId;
   final int composerFocusRequestId;
 
   ChatKind? get kind => chat?.kind ?? resolvedKind;
@@ -267,6 +273,16 @@ class ChatListSelection {
     chat: chat,
     resolvedKind: kind,
     initialMessageId: initialMessageId,
+    forumTopicId: forumTopicId,
+    composerFocusRequestId: composerFocusRequestId,
+  );
+
+  ChatListSelection withForumTopic(int? topicId) => ChatListSelection(
+    chatId: chatId,
+    title: title,
+    chat: chat,
+    resolvedKind: resolvedKind,
+    forumTopicId: topicId,
     composerFocusRequestId: composerFocusRequestId,
   );
 }

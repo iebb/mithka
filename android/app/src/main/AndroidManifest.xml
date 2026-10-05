@@ -35,11 +35,11 @@
          Mithka never opts into background compression, so keep them out of the
          release manifest and the Google Play foreground-service declaration. -->
     <uses-permission
-        android:name="android.permission.FOREGROUND_SERVICE"
-        tools:node="remove" />
-    <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
         tools:node="remove" />
+    <!-- Keeps music playback alive while the app is backgrounded. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:label="Mithka"
@@ -55,6 +55,16 @@
         <receiver
             android:name="com.gurfdev.light_compressor_v2.CompressionCancelReceiver"
             tools:node="remove" />
+        <!-- Media notification buttons for the in-app music player. -->
+        <receiver
+            android:name=".NowPlayingActionReceiver"
+            android:exported="false" />
+        <!-- Keeps the media notification (and playback) alive while the app
+             is backgrounded. Started and stopped by NowPlayingPlugin. -->
+        <service
+            android:name=".MediaPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <meta-data
             android:name="io.sentry.dsn"
             android:value="${sentryDsn}" />

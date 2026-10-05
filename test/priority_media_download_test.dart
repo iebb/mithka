@@ -106,6 +106,32 @@ void main() {
     );
   });
 
+  test('a foreground resolver raises a background download priority', () async {
+    const fileId = 920011;
+    final background = TdFileCenter.shared.path(
+      fileId,
+      accountSlot: accountSlot,
+    );
+    final foreground = TdFileCenter.shared.path(
+      fileId,
+      accountSlot: accountSlot,
+      priority: 32,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(backend.requests.map((request) => request['priority']).toList(), [
+      16,
+      32,
+    ]);
+    expect(backend.replacedDownloads, 0);
+    updates.add({
+      '@type': 'updateFile',
+      'file': backend.file(fileId, completed: true),
+    });
+    expect(await background, '/tmp/mithka-priority-$fileId');
+    expect(await foreground, '/tmp/mithka-priority-$fileId');
+  });
+
   test('whole-file progress and completion arrive after startup', () async {
     const fileId = 920005;
     backend.totalSize = 0;

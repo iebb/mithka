@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/app_navigator.dart';
@@ -22,6 +24,47 @@ void main() {
     expect(player.mode, MusicPlaybackMode.shuffle);
     player.cycleMode();
     expect(player.mode, MusicPlaybackMode.sequence);
+  });
+
+  test('the prefetched track follows the playback order', () {
+    final player = MusicPlayerController.shared;
+    ChatMessage track(int id) => ChatMessage(
+      id: id,
+      isOutgoing: false,
+      text: '',
+      date: 1,
+      music: MessageMusic(
+        title: 'Track $id',
+        file: TdFileRef(id: id),
+      ),
+    );
+    final tracks = [track(1), track(2), track(3)];
+    player
+      ..queue = tracks
+      ..current = tracks[1];
+    addTearDown(() {
+      player
+        ..mode = MusicPlaybackMode.sequence
+        ..queue = const []
+        ..current = null;
+    });
+
+    player.mode = MusicPlaybackMode.sequence;
+    expect(player.upcomingTrack()?.id, 3);
+    player.mode = MusicPlaybackMode.reverseSequence;
+    expect(player.upcomingTrack()?.id, 1);
+    player.mode = MusicPlaybackMode.repeatOne;
+    expect(player.upcomingTrack(), isNull);
+    player.mode = MusicPlaybackMode.shuffle;
+    final shuffled = player.upcomingTrack();
+    expect(shuffled, isNotNull);
+    expect(shuffled!.id, isNot(2));
+    expect(player.upcomingTrack()?.id, shuffled.id);
+
+    player
+      ..mode = MusicPlaybackMode.sequence
+      ..current = tracks[2];
+    expect(player.upcomingTrack(), isNull);
   });
 
   test('reverse sequence next and finished traversal move backward', () {
@@ -371,5 +414,94 @@ void main() {
     final reversed = rowOffsets();
     expect(reversed[2], lessThan(reversed[1]));
     expect(reversed[1], lessThan(reversed[0]));
+  });
+
+  group('shuffle', () {
+    ChatMessage track(int id) => ChatMessage(
+      id: id,
+      isOutgoing: false,
+      text: '',
+      date: id,
+      music: MessageMusic(
+        title: 'Track $id',
+        file: TdFileRef(id: id),
+      ),
+    );
+
+    tearDown(() {
+      MusicPlayerController.shared
+        ..mode = MusicPlaybackMode.sequence
+        ..queue = const []
+        ..current = null;
+    });
+
+    test('a pass starts with the given track and covers every track once', () {
+      final order = MusicPlayerController.shuffledOrder(
+        [1, 2, 3, 4, 5, 6],
+        4,
+        Random(7),
+      );
+      expect(order.first, 4);
+      expect(order.toSet(), {1, 2, 3, 4, 5, 6});
+      expect(order, hasLength(6));
+    });
+
+    test('next walks the pass and previous walks back through it', () {
+      final player = MusicPlayerController.shared;
+      final tracks = [for (var i = 1; i <= 5; i++) track(i)];
+      player
+        ..queue = tracks
+        ..current = tracks[2]
+        ..mode = MusicPlaybackMode.shuffle;
+
+      final played = <int>[3];
+      for (var i = 0; i < 4; i++) {
+        final next = player.adjacentTrack(1, manual: false)!;
+        played.add(next.id);
+        player.current = next;
+      }
+      expect(played.toSet(), {1, 2, 3, 4, 5});
+      // Automatic advance at the end of a pass starts a new one with a
+      // different track instead of repeating the last.
+      final wrapped = player.adjacentTrack(1, manual: false);
+      expect(wrapped, isNotNull);
+      expect(wrapped!.id, isNot(played.last));
+
+      for (var i = played.length - 2; i >= 0; i--) {
+        final previous = player.adjacentTrack(-1, manual: true)!;
+        expect(previous.id, played[i]);
+        player.current = previous;
+      }
+      expect(player.adjacentTrack(-1, manual: false), isNull);
+    });
+
+    test('changing mode starts a new pass', () {
+      final player = MusicPlayerController.shared;
+      final tracks = [for (var i = 1; i <= 8; i++) track(i)];
+      player
+        ..queue = tracks
+        ..current = tracks.first
+        ..mode = MusicPlaybackMode.repeatOne;
+      player.cycleMode();
+      expect(player.mode, MusicPlaybackMode.shuffle);
+      final next = player.adjacentTrack(1, manual: true);
+      expect(next, isNotNull);
+      expect(next!.id, isNot(1));
+    });
+  });
+
+  test('playback mode survives a restart', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final player = MusicPlayerController.shared;
+    addTearDown(() => player.mode = MusicPlaybackMode.sequence);
+    player.initialize(prefs);
+    player.mode = MusicPlaybackMode.repeatOne;
+    player.cycleMode();
+    expect(prefs.getString('mithka.musicPlaybackMode.v1'), 'shuffle');
+
+    player.mode = MusicPlaybackMode.sequence;
+    player.initialize(prefs);
+    expect(player.mode, MusicPlaybackMode.shuffle);
   });
 }

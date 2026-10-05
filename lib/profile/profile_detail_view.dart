@@ -27,11 +27,11 @@ import '../chat/chat_search_view.dart';
 import '../chat/chat_wallpaper.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/full_image_viewer.dart';
+import '../chat/music_player_controller.dart';
 import '../chat/secret_chat_service.dart';
 import '../chat/sticker_item.dart';
 import '../chat/sticker_preview.dart';
 import '../chat/telegram_rich_text.dart';
-import '../chat/voice_audio.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -100,7 +100,6 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   List<int> _archivedStoryIds = const [];
   String _musicTitle = '';
   ChatMessage? _musicMessage;
-  final VoicePlayer _musicPlayer = VoicePlayer();
   bool _musicPressed = false;
   bool _hideIdentity = false;
   bool _isMe = false;
@@ -126,7 +125,6 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   @override
   void dispose() {
     _wallpaperController.removeListener(_onWallpaperChanged);
-    _musicPlayer.dispose();
     super.dispose();
   }
 
@@ -1105,21 +1103,39 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
 
   Widget _musicRow() {
     final c = context.colors;
+    final controller = MusicPlayerController.shared;
     final title = _musicTitle.trim();
     final music = _musicMessage?.music;
     final musicFile = music?.file;
     final canPlay = musicFile != null;
-    final toggle = canPlay ? () => _musicPlayer.toggleAudio(musicFile) : null;
+    final chatId = _chatId;
+    final toggle = canPlay && chatId != null
+        ? () {
+            // Route through the shared player so the track joins the global
+            // queue, the mini bar and the system media controls.
+            if (controller.isActive(musicFile)) {
+              controller.toggleCurrent();
+            } else if (_musicMessage != null) {
+              unawaited(
+                controller.playChat(
+                  _musicMessage!,
+                  chatId,
+                  title: title.isEmpty ? _name : title,
+                ),
+              );
+            }
+          }
+        : null;
     return AnimatedBuilder(
-      animation: _musicPlayer,
+      animation: controller,
       builder: (context, _) {
-        final active = _musicPlayer.isActive(music?.file);
-        final playing = active && _musicPlayer.isPlaying;
-        final loading = active && _musicPlayer.isLoading;
-        final total = active && _musicPlayer.total.inMilliseconds > 0
-            ? _musicPlayer.total
+        final active = controller.isActive(music?.file);
+        final playing = active && controller.isPlaying;
+        final loading = active && controller.isLoading;
+        final total = active && controller.total.inMilliseconds > 0
+            ? controller.total
             : Duration(seconds: music?.duration ?? 0);
-        final position = active ? _musicPlayer.position : Duration.zero;
+        final position = active ? controller.position : Duration.zero;
         final totalMs = math.max(1, total.inMilliseconds);
         final value = (position.inMilliseconds / totalMs).clamp(0.0, 1.0);
         return GestureDetector(
@@ -1162,14 +1178,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                             value: value.toDouble(),
                             position: position,
                             total: total,
-                            onChanged: (v) => _musicPlayer.seekFraction(
-                              v,
-                              music?.duration ?? 0,
-                            ),
-                            onChangeEnd: (v) => _musicPlayer.seekFraction(
-                              v,
-                              music?.duration ?? 0,
-                            ),
+                            onChanged: controller.seekFraction,
+                            onChangeEnd: controller.seekFraction,
                           ),
                         ],
                       ],

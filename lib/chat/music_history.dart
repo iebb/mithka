@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+/// Cap for the persisted recently-played chats list; older entries beyond
+/// this many are dropped on every update.
+const playedMusicChatsLimit = 20;
+
 class PlayedMusicChat {
   const PlayedMusicChat({
     required this.chatId,
@@ -33,14 +37,16 @@ class PlayedMusicChat {
 
 List<PlayedMusicChat> updatePlayedMusicChats(
   Iterable<PlayedMusicChat> existing,
-  PlayedMusicChat played,
-) {
+  PlayedMusicChat played, {
+  int limit = playedMusicChatsLimit,
+}) {
   final updated = <PlayedMusicChat>[
     played,
     for (final item in existing)
       if (item.chatId != played.chatId) item,
   ];
   updated.sort((a, b) => b.lastPlayedAt.compareTo(a.lastPlayedAt));
+  if (updated.length > limit) updated.removeRange(limit, updated.length);
   return List.unmodifiable(updated);
 }
 

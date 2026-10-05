@@ -41,6 +41,64 @@ class AudioInterruptionResumePolicy {
   void clear() => _resumeAfterInterruption = false;
 }
 
+/// Reads the native playback position on a fixed cadence while playing.
+///
+/// flutter_sound's `onProgress` stream is driven by a native timer that does
+/// not fire reliably on every device (Android MediaPlayer sessions can go
+/// silent after prepare, upstream issue #1155), which froze the scrubber and
+/// elapsed time. Polling the same native position keeps progress moving no
+/// matter which source delivers it. A read that started before a seek is
+/// discarded, so a stale position never snaps the scrubber back.
+@visibleForTesting
+class PlaybackProgressPoller {
+  PlaybackProgressPoller({
+    required this.read,
+    required this.onProgress,
+    this.interval = const Duration(milliseconds: 250),
+  });
+
+  final Future<({Duration position, Duration duration})?> Function() read;
+  final void Function(Duration position, Duration duration) onProgress;
+  final Duration interval;
+
+  Timer? _timer;
+  int _generation = 0;
+  bool _reading = false;
+
+  bool get isRunning => _timer != null;
+
+  void start() {
+    if (_timer != null) return;
+    _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+    _generation++;
+  }
+
+  /// Drops any read already in flight. Call when the position jumps (seek).
+  void invalidate() => _generation++;
+
+  Future<void> _tick() async {
+    if (_reading) return;
+    _reading = true;
+    final generation = _generation;
+    try {
+      final value = await read();
+      if (value == null || generation != _generation || _timer == null) {
+        return;
+      }
+      onProgress(value.position, value.duration);
+    } catch (_) {
+      // The player may be between tracks; the next tick reads again.
+    } finally {
+      _reading = false;
+    }
+  }
+}
+
 class VoicePlayer extends ChangeNotifier {
   FlutterSoundPlayer? _player;
   bool isPlaying = false;
@@ -58,9 +116,40 @@ class VoicePlayer extends ChangeNotifier {
   StreamSubscription<AudioInterruptionEvent>? _interruption;
   StreamSubscription<void>? _becomingNoisy;
   final _interruptionPolicy = AudioInterruptionResumePolicy();
+  late final PlaybackProgressPoller _poller = PlaybackProgressPoller(
+    read: _readProgress,
+    onProgress: _applyProgress,
+  );
 
   FlutterSoundPlayer get _sound =>
       _player ??= FlutterSoundPlayer(logLevel: Level.warning);
+
+  Future<({Duration position, Duration duration})?> _readProgress() async {
+    final player = _player;
+    if (_disposed || player == null || !player.isPlaying) return null;
+    // ignore: deprecated_member_use
+    final progress = await player.getProgress();
+    final position = progress['progress'];
+    if (position == null) return null;
+    return (position: position, duration: progress['duration'] ?? total);
+  }
+
+  void _applyProgress(Duration nextPosition, Duration duration) {
+    if (_disposed || !isPlaying) return;
+    final nextTotal = duration.inMilliseconds > 0 ? duration : total;
+    if (nextPosition == position && nextTotal == total) return;
+    position = nextPosition;
+    total = nextTotal;
+    notifyListeners();
+  }
+
+  void _syncPolling() {
+    if (isPlaying && !_disposed) {
+      _poller.start();
+    } else {
+      _poller.stop();
+    }
+  }
 
   Future<AudioSession> _prepareAudioSession() async {
     // Re-apply the music category before every new track. Calls and other
@@ -80,12 +169,25 @@ class VoicePlayer extends ChangeNotifier {
   /// True when this player is the one bound to [file] (playing or paused).
   bool isActive(TdFileRef? file) => file != null && _fileId == file.id;
 
-  Future<void> _ensureOpen() async {
-    if (_opened) return;
-    final player = _sound;
-    await player.openPlayer();
-    await player.setSubscriptionDuration(const Duration(milliseconds: 60));
-    _opened = true;
+  /// True when a loaded track is paused (not stopped or finished).
+  bool get isPaused => _fileId != null && _player?.isPaused == true;
+
+  Future<void>? _opening;
+
+  /// Opens the native player once. Rapid taps start several loads at the
+  /// same time; they share one open instead of racing a second openPlayer.
+  Future<void> _ensureOpen() {
+    if (_opened) return Future.value();
+    return _opening ??= () async {
+      try {
+        final player = _sound;
+        await player.openPlayer();
+        await player.setSubscriptionDuration(const Duration(milliseconds: 60));
+        _opened = true;
+      } finally {
+        _opening = null;
+      }
+    }();
   }
 
   Future<void> toggleVoice(TdFileRef? file) =>
@@ -101,6 +203,17 @@ class VoicePlayer extends ChangeNotifier {
       try {
         await player.stopPlayer();
       } catch (_) {}
+      // Give the shared audio session back (calls, other media apps).
+      try {
+        final session = await _prepareAudioSession();
+        if (!_disposed) {
+          await session.setActive(
+            false,
+            avAudioSessionSetActiveOptions:
+                AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
+          );
+        }
+      } catch (_) {}
     }
     unawaited(_progress?.cancel());
     _progress = null;
@@ -110,6 +223,7 @@ class VoicePlayer extends ChangeNotifier {
     isLoading = false;
     position = Duration.zero;
     total = Duration.zero;
+    _syncPolling();
     notifyListeners();
   }
 
@@ -126,10 +240,19 @@ class VoicePlayer extends ChangeNotifier {
         await player.pausePlayer();
         isPlaying = false;
       } else {
+        // Calls and other audio apps can deactivate our shared audio
+        // session while we are paused; re-activate it before resuming, the
+        // same way interruption-end recovery does.
         _interruptionPolicy.clear();
+        try {
+          final session = await _prepareAudioSession();
+          if (_disposed) return;
+          await session.setActive(true);
+        } catch (_) {}
         await player.resumePlayer();
         isPlaying = true;
       }
+      _syncPolling();
       notifyListeners();
       return;
     }
@@ -146,14 +269,22 @@ class VoicePlayer extends ChangeNotifier {
     total = Duration.zero;
     isPlaying = false;
     isLoading = true;
+    _syncPolling();
     notifyListeners();
-    final path = await TdFileCenter.shared.pathFor(file);
+    // Opening the native player and activating the audio session do not
+    // depend on the file. Run them while the path resolves instead of after
+    // it, so a cached track starts as soon as its path is known.
+    final audioReady = _prepareOutput();
+    final path =
+        TdFileCenter.shared.cachedPath(file) ??
+        await TdFileCenter.shared.pathFor(file, priority: 32);
+    final ready = await audioReady;
     if (_disposed) return;
     // The user may have tapped another note while this file resolved —
     // don't clobber the newer load's state or start the stale file.
     if (_fileId != file.id) return;
     isLoading = false;
-    if (path == null) {
+    if (path == null || ready == null) {
       _fileId = null;
       notifyListeners();
       return;
@@ -162,21 +293,28 @@ class VoicePlayer extends ChangeNotifier {
     await _start(0, codec: codec);
   }
 
-  Future<void> _start(int fromMs, {required Codec codec}) async {
+  Future<AudioSession?> _prepareOutput() async {
     try {
       await _ensureOpen();
       final session = await _prepareAudioSession();
-      if (_disposed) return;
       await session.setActive(true);
+      return session;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _start(int fromMs, {required Codec codec}) async {
+    try {
+      if (_disposed) return;
       final player = _sound;
       unawaited(_progress?.cancel());
       _progress = player.onProgress?.listen((e) {
-        position = e.position;
-        if (e.duration.inMilliseconds > 0) total = e.duration;
-        notifyListeners();
+        _applyProgress(e.position, e.duration);
       });
       isPlaying = true;
       position = Duration(milliseconds: fromMs);
+      _syncPolling();
       notifyListeners();
       await player.startPlayer(
         fromURI: _path,
@@ -188,6 +326,7 @@ class VoicePlayer extends ChangeNotifier {
           final finishedFileId = _fileId;
           isPlaying = false;
           position = Duration.zero;
+          _syncPolling();
           notifyListeners();
           if (finishedFileId != null) onFinished?.call(finishedFileId);
         },
@@ -199,8 +338,49 @@ class VoicePlayer extends ChangeNotifier {
     } catch (_) {
       if (_disposed) return;
       isPlaying = false;
+      _syncPolling();
       notifyListeners();
     }
+  }
+
+  /// Resumes a paused track. No-op when nothing is loaded or already playing.
+  Future<void> resume() async {
+    final player = _player;
+    if (_fileId == null || player == null || !player.isPaused) return;
+    _interruptionPolicy.clear();
+    // Calls and other audio apps can deactivate our shared audio session
+    // while we are paused; re-activate it before resuming, the same way
+    // interruption-end recovery does.
+    try {
+      final session = await _prepareAudioSession();
+      if (_disposed) return;
+      await session.setActive(true);
+    } catch (_) {}
+    try {
+      await player.resumePlayer();
+    } catch (_) {
+      return;
+    }
+    if (_disposed) return;
+    isPlaying = true;
+    _syncPolling();
+    notifyListeners();
+  }
+
+  /// Pauses the playing track. No-op when nothing is playing.
+  Future<void> pause() async {
+    final player = _player;
+    if (player == null || !player.isPlaying) return;
+    _interruptionPolicy.clear();
+    try {
+      await player.pausePlayer();
+    } catch (_) {
+      return;
+    }
+    if (_disposed) return;
+    isPlaying = false;
+    _syncPolling();
+    notifyListeners();
   }
 
   Future<void> cycleSpeed() async {
@@ -233,6 +413,7 @@ class VoicePlayer extends ChangeNotifier {
       }
       if (_disposed) return;
       isPlaying = false;
+      _syncPolling();
       notifyListeners();
       return;
     }
@@ -251,10 +432,12 @@ class VoicePlayer extends ChangeNotifier {
       await session.setActive(true);
       await current.resumePlayer();
       isPlaying = true;
+      _syncPolling();
       notifyListeners();
     } catch (_) {
       if (_disposed) return;
       isPlaying = false;
+      _syncPolling();
       notifyListeners();
     }
   }
@@ -267,6 +450,7 @@ class VoicePlayer extends ChangeNotifier {
     } catch (_) {}
     if (_disposed) return;
     isPlaying = false;
+    _syncPolling();
     notifyListeners();
   }
 
@@ -278,6 +462,7 @@ class VoicePlayer extends ChangeNotifier {
         ? total
         : Duration(seconds: fallbackSeconds);
     final target = Duration(milliseconds: (dur.inMilliseconds * f).round());
+    _poller.invalidate();
     position = target;
     notifyListeners();
     final player = _player;
@@ -285,12 +470,14 @@ class VoicePlayer extends ChangeNotifier {
       try {
         await player.seekToPlayer(target);
       } catch (_) {}
+      _poller.invalidate();
     }
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _poller.stop();
     _interruptionPolicy.clear();
     _progress?.cancel();
     _interruption?.cancel();

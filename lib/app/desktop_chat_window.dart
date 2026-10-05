@@ -396,6 +396,7 @@ class _DesktopStandaloneChatSurfaceState
     extends State<_DesktopStandaloneChatSurface> {
   ChatKind? _kind;
   bool _contextDismissed = false;
+  int? _forumTopicId;
 
   @override
   void didUpdateWidget(_DesktopStandaloneChatSurface oldWidget) {
@@ -403,6 +404,12 @@ class _DesktopStandaloneChatSurfaceState
     if (oldWidget.arguments.chatId == widget.arguments.chatId) return;
     _kind = null;
     _contextDismissed = false;
+    _forumTopicId = null;
+  }
+
+  void _openTopicTranscript(int? topicId) {
+    if (_forumTopicId == topicId) return;
+    setState(() => _forumTopicId = topicId);
   }
 
   void _handleKindResolved(ChatKind kind) {
@@ -492,9 +499,15 @@ class _DesktopStandaloneChatSurfaceState
           )
         : null;
     final chat = ChatView(
-      key: ValueKey('desktop-standalone-chat-${widget.arguments.chatId}'),
+      key: ValueKey((
+        'desktop-standalone-chat',
+        widget.arguments.chatId,
+        _forumTopicId,
+      )),
       chatId: widget.arguments.chatId,
       title: widget.arguments.title,
+      forumTopicId: _forumTopicId,
+      onOpenTopicTranscript: _openTopicTranscript,
       showBackButton: false,
       requestComposerFocusOnReady: true,
       onChatKindResolved: _handleKindResolved,

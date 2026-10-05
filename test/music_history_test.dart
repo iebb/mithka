@@ -34,4 +34,22 @@ void main() {
       expect(decoded.last.title, 'First');
     },
   );
+
+  test('played music chats are capped at the persistence limit', () {
+    final existing = List.generate(
+      playedMusicChatsLimit,
+      (i) => PlayedMusicChat(chatId: i + 1, title: 'Chat $i', lastPlayedAt: i),
+    );
+
+    final updated = updatePlayedMusicChats(
+      existing,
+      const PlayedMusicChat(chatId: 999, title: 'New chat', lastPlayedAt: 1000),
+    );
+
+    expect(updated, hasLength(playedMusicChatsLimit));
+    expect(updated.first.chatId, 999);
+    // Oldest entries fall off the end to make room for the new one.
+    expect(updated.map((chat) => chat.chatId), isNot(contains(1)));
+    expect(updated.last.lastPlayedAt, lessThan(updated.first.lastPlayedAt));
+  });
 }

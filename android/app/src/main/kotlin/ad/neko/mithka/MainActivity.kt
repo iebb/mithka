@@ -52,6 +52,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var telegramPasskeys: TelegramPasskeyPlugin? = null
     private var accountBackup: AccountBackupPlugin? = null
     private var mithkaPro: MithkaProPlugin? = null
+    private var nowPlaying: NowPlayingPlugin? = null
     private var mediaDropChannel: MethodChannel? = null
     private var shareIntentChannel: MethodChannel? = null
     private var pendingSharePayload: Map<String, Any?>? = null
@@ -152,6 +153,10 @@ class MainActivity : FlutterFragmentActivity() {
         )
         mithkaPro = MithkaProPlugin(
             this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        nowPlaying = NowPlayingPlugin(
+            applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
         )
         val plugin = CallMediaPlugin(
@@ -1093,6 +1098,8 @@ class MainActivity : FlutterFragmentActivity() {
         accountBackup = null
         mithkaPro?.dispose()
         mithkaPro = null
+        nowPlaying?.dispose()
+        nowPlaying = null
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)
