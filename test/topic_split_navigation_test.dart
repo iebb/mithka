@@ -11,6 +11,7 @@ import 'package:mithka/channels/topic_channels_view.dart';
 import 'package:mithka/channels/topic_chat_view.dart';
 import 'package:mithka/chat/chat_members_view.dart';
 import 'package:mithka/chat/chat_view.dart';
+import 'package:mithka/chat/desktop_chat_context_pane.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
 import 'package:mithka/l10n/app_locale_controller.dart';
@@ -488,6 +489,52 @@ void main() {
       }
     });
   }
+
+  testWidgets('topics-as-group topic transcript keeps the shell info pane', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await _setSurfaceSize(tester, const Size(1400, 820));
+      await _pumpMainShell(
+        tester,
+        reducedMotion: true,
+        forumTopicsAsGroupChat: true,
+      );
+      tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
+        ChatListSelection.fromChat(_chat()),
+      );
+      await _settle(tester);
+      expect(find.byType(DesktopChatContextPane), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('topic-navigation-item-88')));
+      await _settle(tester);
+      expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 88);
+      expect(find.byType(DesktopChatContextPane), findsOneWidget);
+
+      final toggle = find.byKey(const ValueKey('chatHeaderGroupContextToggle'));
+      await tester.tap(toggle);
+      await _settle(tester);
+      expect(find.byType(DesktopChatContextPane), findsNothing);
+      expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 88);
+
+      await tester.tap(toggle);
+      await _settle(tester);
+      expect(find.byType(DesktopChatContextPane), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('topic-navigation-item-all')));
+      await _settle(tester);
+      expect(
+        tester.widget<ChatView>(find.byType(ChatView)).forumTopicId,
+        isNull,
+      );
+      expect(find.byType(DesktopChatContextPane), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('topics-as-group picker opens the tapped topic on a phone', (
     tester,

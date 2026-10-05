@@ -26,6 +26,7 @@ import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'music_history.dart';
+import 'music_now_playing.dart';
 import 'music_playlist_service.dart';
 import 'voice_audio.dart';
 
@@ -38,21 +39,30 @@ const musicSheetGrabberKey = ValueKey<String>('music-sheet-grabber');
 
 enum MusicPlaybackMode { sequence, reverseSequence, repeatOne, shuffle }
 
-class MusicPlayerController extends ChangeNotifier {
-  MusicPlayerController._() {
+class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
+  MusicPlayerController._({VoicePlayer? player})
+    : _player = player ?? VoicePlayer() {
     _player.onFinished = _onFinished;
     _player.addListener(notifyListeners);
   }
 
   static final MusicPlayerController shared = MusicPlayerController._();
 
-  final VoicePlayer _player = VoicePlayer();
+  /// A controller bound to an instrumented [VoicePlayer], for tests that
+  /// need real playback-state transitions without the native audio stack.
+  @visibleForTesting
+  factory MusicPlayerController.forTest({VoicePlayer? player}) =>
+      MusicPlayerController._(player: player);
+
+  final VoicePlayer _player;
+  late final MusicNowPlayingBridge _nowPlaying = MusicNowPlayingBridge(this);
   final Set<Object> _embeddedPlayerHosts = <Object>{};
   SharedPreferences? _prefs;
   int _accountSlot = 0;
   int? _loadedSlot;
   int? _playedChatsSlot;
 
+  @override
   ChatMessage? current;
   List<ChatMessage> queue = const [];
   List<MusicPlaylist> playlists = const [];
@@ -63,15 +73,30 @@ class MusicPlayerController extends ChangeNotifier {
   int _playbackSourceRevision = 0;
   bool playlistsLoading = false;
   MusicPlaybackMode mode = MusicPlaybackMode.sequence;
+
+  /// File ids in shuffle play order. Built lazily with the current track
+  /// first, so previous walks back through what was actually played.
+  List<int> _shuffleOrder = const [];
+  final Random _random = Random();
+
+  /// Previous restarts the current track once it has played this long, like
+  /// Telegram and the system players do.
+  static const previousRestartThreshold = Duration(seconds: 3);
+  static const _modePrefsKey = 'mithka.musicPlaybackMode.v1';
   bool hidden = true;
   bool collapsed = false;
 
   bool get hasTrack => current?.music?.file != null;
   bool get isVisible => hasTrack && !hidden;
+  @override
   bool get isPlaying => _player.isPlaying;
+  @override
   bool get isLoading => _player.isLoading;
+  @override
   Duration get position => _player.position;
+  @override
   Duration get total => _player.total;
+  @override
   String get playbackSourceTitle {
     final title = _playbackSourceTitle.trim();
     if (title.isNotEmpty) return title;
@@ -97,6 +122,10 @@ class MusicPlayerController extends ChangeNotifier {
   // opened. main() calls this before TDLib reaches authorizationStateReady.
   void initialize(SharedPreferences prefs) {
     _prefs = prefs;
+    mode =
+        MusicPlaybackMode.values.asNameMap()[prefs.getString(_modePrefsKey)] ??
+        mode;
+    _nowPlaying.attach();
     setActiveAccountSlot(TdClient.shared.activeSlot);
     _loadPlayedMusicChats(force: true);
   }
@@ -238,6 +267,7 @@ class MusicPlayerController extends ChangeNotifier {
     ChatMessage message,
     int chatId, {
     String? title,
+    bool toggleIfActive = true,
   }) async {
     final accountSlot = _accountSlot;
     _recordPlayedMusicChat(chatId, title ?? message.senderName);
@@ -249,7 +279,7 @@ class MusicPlayerController extends ChangeNotifier {
     // Replace the previous source immediately. The full chat track list is
     // loaded asynchronously, but an old playlist must never remain visible or
     // become eligible for next-track playback in the meantime.
-    play(message, visibleQueue: [message]);
+    play(message, visibleQueue: [message], toggleIfActive: toggleIfActive);
     try {
       final tracks = await _playlistServiceForSlot(
         accountSlot,
@@ -270,13 +300,21 @@ class MusicPlayerController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void playPlaylist(MusicPlaylist playlist, ChatMessage message) {
+  void playPlaylist(
+    MusicPlaylist playlist,
+    ChatMessage message, {
+    bool toggleIfActive = false,
+  }) {
     _setPlaybackSource(
       chatId: playlist.chatId,
       title: playlist.title,
       isPlaylist: true,
     );
-    play(message, visibleQueue: playlist.tracks);
+    play(
+      message,
+      visibleQueue: playlist.tracks,
+      toggleIfActive: toggleIfActive,
+    );
   }
 
   Future<List<ChatMessage>> loadChatTracks(int chatId) {
@@ -284,10 +322,28 @@ class MusicPlayerController extends ChangeNotifier {
     return _playlistServiceForSlot(slot).loadTracks(chatId);
   }
 
+  /// Plays [message] with [visibleQueue] as the queue. With [toggleIfActive]
+  /// (a play/pause button on the track itself) the loaded track pauses or
+  /// resumes; otherwise (picking it from a list) it keeps playing.
   void play(
     ChatMessage message, {
     List<ChatMessage> visibleQueue = const [],
     bool reveal = true,
+    bool toggleIfActive = true,
+  }) => _playTrack(
+    message,
+    visibleQueue: visibleQueue,
+    reveal: reveal,
+    toggle: toggleIfActive,
+  );
+
+  void _playTrack(
+    ChatMessage message, {
+    required List<ChatMessage> visibleQueue,
+    required bool reveal,
+    bool toggle = false,
+    bool keepShuffleOrder = false,
+    bool restart = false,
   }) {
     final music = message.music;
     final file = music?.file;
@@ -297,33 +353,134 @@ class MusicPlayerController extends ChangeNotifier {
     );
     current = _playlistCopyOf(message);
     queue = nextQueue.isEmpty ? [current!] : nextQueue;
+    // A track picked by hand starts a new shuffle pass from that track.
+    if (!keepShuffleOrder) _shuffleOrder = const [];
     if (reveal) {
       hidden = false;
       collapsed = false;
     }
     notifyListeners();
-    // Keep every played track in TDLib's persistent local file cache. The
-    // player waits on the same coalesced download, so this does not duplicate
-    // network work.
-    unawaited(TdFileCenter.shared.pathFor(file));
-    unawaited(_player.toggleAudio(file));
+    if (_player.isActive(file)) {
+      if (_player.isLoading) return;
+      // A retained file id can also belong to a stopped or finished player.
+      // Only a live native player can seek/resume; otherwise start it again.
+      if (restart && (_player.isPlaying || _player.isPaused)) {
+        seekFraction(0);
+        if (_player.isPaused) unawaited(_player.resume());
+        return;
+      }
+      if (_player.isPlaying) {
+        if (toggle) unawaited(_player.pause());
+        return;
+      }
+      if (_player.isPaused) {
+        unawaited(_player.resume());
+        return;
+      }
+    }
+    // The player resolves the file at foreground priority, which also keeps
+    // the track in TDLib's persistent local cache. Once it is playing, warm
+    // the next track so skipping or auto-advance starts from disk.
+    unawaited(_startAndPrefetch(file));
   }
 
+  Future<void> _startAndPrefetch(TdFileRef file) async {
+    await _player.toggleAudio(file);
+    if (!_player.isActive(file) || !_player.isPlaying) return;
+    final next = upcomingTrack()?.music?.file;
+    if (next == null || next.id == file.id) return;
+    if (TdFileCenter.shared.cachedPath(next) != null) return;
+    unawaited(TdFileCenter.shared.pathFor(next));
+  }
+
+  /// The track automatic advance would play next, or null for repeat one and
+  /// when playback would stop at the end of the queue (or shuffle pass).
+  @visibleForTesting
+  ChatMessage? upcomingTrack() {
+    final active = current;
+    if (active == null) return null;
+    if (mode == MusicPlaybackMode.repeatOne) return null;
+    final playable = queue.where((item) => item.music?.file != null).toList();
+    if (mode == MusicPlaybackMode.shuffle) {
+      final activeId = active.music?.file?.id;
+      if (activeId == null || playable.length < 2) return null;
+      final order = _ensureShuffleOrder(playable, activeId);
+      final index = order.indexOf(activeId);
+      if (index < 0 || index + 1 >= order.length) return null;
+      return _trackWithId(playable, order[index + 1]);
+    }
+    final index = playable.indexWhere(
+      (item) => item.music?.file?.id == active.music?.file?.id,
+    );
+    if (index < 0) return null;
+    final nextIndex = resolveAdjacentIndex(
+      currentIndex: index,
+      itemCount: playable.length,
+      delta: 1,
+      wrap: false,
+      mode: mode,
+    );
+    return nextIndex == null ? null : playable[nextIndex];
+  }
+
+  @override
   void toggleCurrent() {
     final file = current?.music?.file;
-    if (file == null) return;
+    if (file == null || isLoading) return;
     hidden = false;
     notifyListeners();
     unawaited(_player.toggleAudio(file));
   }
 
+  /// Resumes the current track; used by lock-screen / control-center play.
+  @override
+  void resume() {
+    final file = current?.music?.file;
+    if (file == null || isPlaying || isLoading) return;
+    // A track that finished (or whose native start failed) stays retained
+    // but stopped, not paused: the native resume is a no-op there, so start
+    // the current file again instead of ignoring the Play command.
+    if (_player.isActive(file) && _player.isPaused) {
+      unawaited(_player.resume());
+    } else {
+      unawaited(_player.toggleAudio(file));
+    }
+  }
+
+  /// Pauses the current track; used by lock-screen / control-center pause.
+  @override
+  void pause() => unawaited(_player.pause());
+
+  @override
   void next() => _playAdjacent(1, manual: true);
 
-  void previous() => _playAdjacent(-1, manual: true);
+  @override
+  void previous() {
+    final file = current?.music?.file;
+    if (file != null &&
+        _player.isActive(file) &&
+        !_player.isLoading &&
+        position >= previousRestartThreshold) {
+      seekFraction(0);
+      return;
+    }
+    _playAdjacent(-1, manual: true);
+  }
 
   void seekFraction(double fraction) {
     final fallback = current?.music?.duration ?? 0;
     unawaited(_player.seekFraction(fraction, fallback));
+  }
+
+  /// Seeks to an absolute [target]; used by the system media scrubber.
+  @override
+  void seekTo(Duration target) {
+    final fallback = current?.music?.duration ?? 0;
+    final totalMs = total.inMilliseconds > 0
+        ? total.inMilliseconds
+        : fallback * 1000;
+    if (totalMs <= 0) return;
+    seekFraction(target.inMilliseconds / totalMs);
   }
 
   void cycleMode() {
@@ -333,7 +490,34 @@ class MusicPlayerController extends ChangeNotifier {
       MusicPlaybackMode.repeatOne => MusicPlaybackMode.shuffle,
       MusicPlaybackMode.shuffle => MusicPlaybackMode.sequence,
     };
+    _shuffleOrder = const [];
+    unawaited(_prefs?.setString(_modePrefsKey, mode.name));
     notifyListeners();
+  }
+
+  /// A shuffle pass over [ids] that starts with [first].
+  @visibleForTesting
+  static List<int> shuffledOrder(List<int> ids, int first, Random random) {
+    final rest = ids.where((id) => id != first).toList()..shuffle(random);
+    return [first, ...rest];
+  }
+
+  List<int> _ensureShuffleOrder(List<ChatMessage> playable, int currentId) {
+    final ids = [for (final item in playable) item.music!.file!.id];
+    final order = _shuffleOrder;
+    if (order.length == ids.length &&
+        order.contains(currentId) &&
+        ids.toSet().containsAll(order)) {
+      return order;
+    }
+    return _shuffleOrder = shuffledOrder(ids, currentId, _random);
+  }
+
+  ChatMessage? _trackWithId(List<ChatMessage> playable, int fileId) {
+    for (final item in playable) {
+      if (item.music?.file?.id == fileId) return item;
+    }
+    return null;
   }
 
   @visibleForTesting
@@ -371,6 +555,7 @@ class MusicPlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   void closeWidget() {
     _stopPlayback(clearCurrent: true);
     notifyListeners();
@@ -381,7 +566,12 @@ class MusicPlayerController extends ChangeNotifier {
     if (mode == MusicPlaybackMode.repeatOne) {
       final currentMessage = current;
       if (currentMessage != null) {
-        play(currentMessage, visibleQueue: queue, reveal: false);
+        _playTrack(
+          currentMessage,
+          visibleQueue: queue,
+          reveal: false,
+          keepShuffleOrder: true,
+        );
       }
       return;
     }
@@ -389,25 +579,56 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   void _playAdjacent(int delta, {required bool manual}) {
-    final active = current;
+    final activeId = current?.music?.file?.id;
+    final step = _adjacent(delta, manual: manual);
+    if (step == null) return;
+    if (step.shuffleOrder != null) _shuffleOrder = step.shuffleOrder!;
+    _playTrack(
+      step.track,
+      visibleQueue: queue,
+      reveal: manual,
+      keepShuffleOrder: true,
+      // A one-track queue wraps onto itself: start it over, don't pause it.
+      restart: step.track.music?.file?.id == activeId,
+    );
+  }
+
+  /// The track next ([delta] 1) or previous ([delta] -1) leads to. A manual
+  /// skip wraps around the queue; automatic advance stops at its end. Shuffle
+  /// walks a fixed random order, so every track plays once per pass and
+  /// previous returns to the track that actually played before.
+  @visibleForTesting
+  ChatMessage? adjacentTrack(int delta, {required bool manual}) =>
+      _adjacent(delta, manual: manual)?.track;
+
+  ({ChatMessage track, List<int>? shuffleOrder})? _adjacent(
+    int delta, {
+    required bool manual,
+  }) {
     final playable = queue.where((item) => item.music?.file != null).toList();
-    if (active == null || playable.isEmpty) return;
+    final activeId = current?.music?.file?.id;
+    if (activeId == null || playable.isEmpty) return null;
     if (mode == MusicPlaybackMode.shuffle && playable.length > 1) {
-      final activeFileId = active.music?.file?.id;
-      final choices = playable
-          .where((item) => item.music?.file?.id != activeFileId)
-          .toList();
-      play(
-        choices[Random().nextInt(choices.length)],
-        visibleQueue: playable,
-        reveal: manual,
+      final order = _ensureShuffleOrder(playable, activeId);
+      final index = order.indexOf(activeId) + delta;
+      if (index >= order.length) {
+        // The pass is over: continue with a fresh one that doesn't open with
+        // the track that just played.
+        final fresh = shuffledOrder(order, activeId, _random);
+        final track = _trackWithId(playable, fresh[1]);
+        return track == null ? null : (track: track, shuffleOrder: fresh);
+      }
+      if (index < 0 && !manual) return null;
+      final track = _trackWithId(
+        playable,
+        order[index < 0 ? order.length - 1 : index],
       );
-      return;
+      return track == null ? null : (track: track, shuffleOrder: null);
     }
     final index = playable.indexWhere(
-      (item) => item.music?.file?.id == active.music?.file?.id,
+      (item) => item.music?.file?.id == activeId,
     );
-    if (index < 0) return;
+    if (index < 0) return null;
     final nextIndex = resolveAdjacentIndex(
       currentIndex: index,
       itemCount: playable.length,
@@ -415,8 +636,9 @@ class MusicPlayerController extends ChangeNotifier {
       wrap: manual,
       mode: mode,
     );
-    if (nextIndex == null) return;
-    play(playable[nextIndex], visibleQueue: playable, reveal: manual);
+    return nextIndex == null
+        ? null
+        : (track: playable[nextIndex], shuffleOrder: null);
   }
 
   void _stopPlayback({required bool clearCurrent}) {
@@ -556,37 +778,11 @@ class _GlobalMusicPlayerOverlayState extends State<GlobalMusicPlayerOverlay> {
             return const SizedBox.shrink();
           }
           final width = MediaQuery.sizeOf(context).width;
-          final deleteOpacity = controller.collapsed
-              ? 0.0
-              : (-_dragX / (width * 0.5)).clamp(0.0, 1.0);
           final duration = _dragging
               ? Duration.zero
               : const Duration(milliseconds: 220);
           return Stack(
             children: [
-              if (deleteOpacity > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: _bottomOffset,
-                  child: SafeArea(
-                    top: false,
-                    child: Opacity(
-                      opacity: deleteOpacity,
-                      child: Container(
-                        height: 70,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 22),
-                        color: const Color(0xFFFF3B30),
-                        child: AppIcon(
-                          HeroAppIcons.trash,
-                          size: 24,
-                          color: _musicWhite.withValues(alpha: 0.95),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               AnimatedPositioned(
                 duration: duration,
                 curve: Curves.easeOutCubic,
@@ -616,6 +812,20 @@ class _GlobalMusicPlayerOverlayState extends State<GlobalMusicPlayerOverlay> {
   }
 }
 
+/// Marks a subtree whose shell already renders the expanded
+/// [GlobalMusicPlayerBar]. Panes inside it (a split-view conversation) must
+/// not add a second bar of their own.
+class MusicPlayerShellScope extends InheritedWidget {
+  const MusicPlayerShellScope({super.key, required super.child});
+
+  static bool providesPlayer(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<MusicPlayerShellScope>() !=
+      null;
+
+  @override
+  bool updateShouldNotify(MusicPlayerShellScope oldWidget) => false;
+}
+
 class GlobalMusicPlayerBar extends StatefulWidget {
   const GlobalMusicPlayerBar({super.key, this.bottomPadding = 0});
 
@@ -632,6 +842,24 @@ class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
   int _settleRevision = 0;
 
   MusicPlayerController get controller => MusicPlayerController.shared;
+
+  // Hosts build this as a const widget, so a parent rebuild never reaches it.
+  // Listen directly or the bar freezes on stale progress and play state.
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
 
   void _onHorizontalDragStart(DragStartDetails details) {
     if (_settling) return;
@@ -703,11 +931,7 @@ class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
             1.0,
           )
         : 0.0;
-    final subtitle = [
-      if ((music.performer ?? '').trim().isNotEmpty) music.performer!.trim(),
-      if (total.inSeconds > 0)
-        '${_duration(controller.position.inSeconds)} / ${_duration(total.inSeconds)}',
-    ].join(' · ');
+    final subtitle = (music.performer ?? '').trim().replaceAll('\n', ' ');
     final width = MediaQuery.sizeOf(context).width;
     final slideDuration = _dragging
         ? Duration.zero
@@ -723,7 +947,7 @@ class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
       onHorizontalDragCancel: _onHorizontalDragCancel,
       child: SizedBox(
         width: double.infinity,
-        height: 70 + widget.bottomPadding,
+        height: musicPlayerBarHeight + widget.bottomPadding,
         child: ClipRect(
           child: Stack(
             fit: StackFit.expand,
@@ -752,7 +976,7 @@ class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
                     14,
                     8,
                     10,
-                    8 + widget.bottomPadding,
+                    2 + widget.bottomPadding,
                   ),
                   decoration: BoxDecoration(
                     color: c.background,
@@ -772,6 +996,7 @@ class _GlobalMusicPlayerBarState extends State<GlobalMusicPlayerBar> {
                     message: message,
                     music: music,
                     fraction: fraction,
+                    total: total,
                     subtitle: subtitle,
                   ),
                 ),
@@ -790,6 +1015,7 @@ class _MusicPlayerBarContents extends StatelessWidget {
     required this.message,
     required this.music,
     required this.fraction,
+    required this.total,
     required this.subtitle,
   });
 
@@ -797,14 +1023,29 @@ class _MusicPlayerBarContents extends StatelessWidget {
   final ChatMessage message;
   final MessageMusic music;
   final double fraction;
+  final Duration total;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(child: _infoRow(context)),
+        _MusicScrubber(
+          key: musicPlayerProgressKey,
+          fraction: fraction,
+          total: total,
+          onSeek: controller.seekFraction,
+        ),
+      ],
+    );
+  }
+
+  Widget _infoRow(BuildContext context) {
     final c = context.colors;
     return Row(
       children: [
-        _MusicCover(music: music, size: 46),
+        _MusicCover(music: music, size: 40),
         const SizedBox(width: 10),
         Expanded(
           child: GestureDetector(
@@ -824,21 +1065,13 @@ class _MusicPlayerBarContents extends StatelessWidget {
                     color: c.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 5),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: _MusicProgress(
-                    fraction: fraction,
-                    backgroundColor: c.searchFill,
-                  ),
-                ),
                 if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: c.textTertiary),
+                    style: TextStyle(fontSize: 12, color: c.textTertiary),
                   ),
                 ],
               ],
@@ -930,11 +1163,15 @@ class _CollapsedMusicPlayer extends StatelessWidget {
                   color: _musicBlack.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
-                child: AppIcon(
-                  controller.isPlaying ? HeroAppIcons.pause : HeroAppIcons.play,
-                  size: 20,
-                  color: _musicWhite,
-                ),
+                child: controller.isLoading
+                    ? const _ArcSpinner(size: 18, color: _musicWhite)
+                    : AppIcon(
+                        controller.isPlaying
+                            ? HeroAppIcons.pause
+                            : HeroAppIcons.play,
+                        size: 20,
+                        color: _musicWhite,
+                      ),
               ),
             ),
           ],
@@ -973,32 +1210,208 @@ class _MusicCover extends StatelessWidget {
   }
 }
 
-class _MusicProgress extends StatelessWidget {
-  const _MusicProgress({required this.fraction, required this.backgroundColor});
+@visibleForTesting
+const musicPlayerProgressKey = ValueKey<String>('music-player-progress');
+
+/// Height of the expanded player bar, excluding host bottom padding.
+const double musicPlayerBarHeight = 82;
+
+/// Seekable scrubber of the expanded player bar, modeled on Telegram iOS:
+/// a rounded line with elapsed time on the left and remaining time on the
+/// right. The whole row is the touch target. A tap jumps to that point; a drag
+/// moves relative to where it started, so grabbing the line never makes the
+/// position jump. While touched the line thickens and a knob appears. The
+/// drag previews locally and seeks once on release, so progress events from
+/// the player don't fight the finger.
+class _MusicScrubber extends StatefulWidget {
+  const _MusicScrubber({
+    super.key,
+    required this.fraction,
+    required this.total,
+    required this.onSeek,
+  });
 
   final double fraction;
-  final Color backgroundColor;
+  final Duration total;
+  final ValueChanged<double> onSeek;
+
+  @override
+  State<_MusicScrubber> createState() => _MusicScrubberState();
+}
+
+class _MusicScrubberState extends State<_MusicScrubber> {
+  static const double _labelWidth = 44;
+  static const double _labelGap = 8;
+
+  final GlobalKey _trackKey = GlobalKey();
+  bool _touching = false;
+  double? _scrubFraction;
+  double _dragStartFraction = 0;
+  double _dragStartX = 0;
+
+  double get _trackWidth => _trackKey.currentContext?.size?.width ?? 0;
+
+  double _fractionAt(Offset globalPosition) {
+    final box = _trackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.width <= 0) return 0;
+    return (box.globalToLocal(globalPosition).dx / box.size.width).clamp(
+      0.0,
+      1.0,
+    );
+  }
+
+  void _setTouching(bool value) {
+    if (_touching != value) setState(() => _touching = value);
+  }
+
+  void _onDragStart(DragStartDetails details) {
+    setState(() {
+      _touching = true;
+      _dragStartFraction = widget.fraction.clamp(0.0, 1.0);
+      _dragStartX = details.globalPosition.dx;
+      _scrubFraction = _dragStartFraction;
+    });
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    final width = _trackWidth;
+    if (width <= 0) return;
+    final delta = (details.globalPosition.dx - _dragStartX) / width;
+    setState(
+      () => _scrubFraction = (_dragStartFraction + delta).clamp(0.0, 1.0),
+    );
+  }
+
+  void _endDrag() {
+    final value = _scrubFraction;
+    setState(() {
+      _touching = false;
+      _scrubFraction = null;
+    });
+    if (value != null) widget.onSeek(value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 3,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(color: backgroundColor),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: fraction.clamp(0.0, 1.0),
-              heightFactor: 1,
-              child: const ColoredBox(color: musicPlayerAccent),
+    final c = context.colors;
+    final fraction = (_scrubFraction ?? widget.fraction).clamp(0.0, 1.0);
+    final totalMs = widget.total.inMilliseconds;
+    final elapsed = Duration(milliseconds: (totalMs * fraction).round());
+    final remaining = widget.total - elapsed;
+    final labelStyle = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      color: _touching ? c.textSecondary : c.textTertiary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setTouching(true),
+      onTapUp: (details) {
+        _setTouching(false);
+        widget.onSeek(_fractionAt(details.globalPosition));
+      },
+      onTapCancel: () => _setTouching(false),
+      onHorizontalDragStart: _onDragStart,
+      onHorizontalDragUpdate: _onDragUpdate,
+      onHorizontalDragEnd: (_) => _endDrag(),
+      onHorizontalDragCancel: _endDrag,
+      child: SizedBox(
+        height: 26,
+        child: Row(
+          children: [
+            SizedBox(
+              width: _labelWidth,
+              child: Text(
+                totalMs > 0 ? _duration(elapsed.inSeconds) : '-:--',
+                style: labelStyle,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: _labelGap),
+            Expanded(
+              child: TweenAnimationBuilder<double>(
+                key: _trackKey,
+                tween: Tween(end: _touching ? 1 : 0),
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutBack,
+                builder: (context, emphasis, _) => CustomPaint(
+                  size: const Size(double.infinity, 26),
+                  painter: _MusicScrubberPainter(
+                    fraction: fraction,
+                    emphasis: emphasis,
+                    trackColor: c.textTertiary.withValues(alpha: 0.24),
+                    fillColor: musicPlayerAccent,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: _labelGap),
+            SizedBox(
+              width: _labelWidth,
+              child: Text(
+                totalMs > 0 ? '-${_duration(remaining.inSeconds)}' : '-:--',
+                textAlign: TextAlign.right,
+                style: labelStyle,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _MusicScrubberPainter extends CustomPainter {
+  const _MusicScrubberPainter({
+    required this.fraction,
+    required this.emphasis,
+    required this.trackColor,
+    required this.fillColor,
+  });
+
+  final double fraction;
+
+  /// 0 at rest, 1 while touched. Overshoots slightly with the spring curve.
+  final double emphasis;
+  final Color trackColor;
+  final Color fillColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final thickness = 4 + 3 * emphasis;
+    final radius = Radius.circular(thickness / 2);
+    final top = (size.height - thickness) / 2;
+    final track = Rect.fromLTWH(0, top, size.width, thickness);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(track, radius),
+      Paint()..color = trackColor,
+    );
+    final x = size.width * fraction.clamp(0.0, 1.0);
+    if (x > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, top, max(x, thickness), thickness),
+          radius,
+        ),
+        Paint()..color = fillColor,
+      );
+    }
+    final knob = 7 * emphasis;
+    if (knob > 0.5) {
+      canvas.drawCircle(
+        Offset(x, size.height / 2),
+        knob,
+        Paint()..color = fillColor,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MusicScrubberPainter old) =>
+      old.fraction != fraction ||
+      old.emphasis != emphasis ||
+      old.trackColor != trackColor ||
+      old.fillColor != fillColor;
 }
 
 class _ArcSpinner extends StatefulWidget {
@@ -1146,8 +1559,65 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
   if (navigatorContext == null) return;
   _showMusicBottomSheet<void>(
     navigatorContext,
-    builder: (sheetContext) => StatefulBuilder(
-      builder: (sheetContext, setSheetState) {
+    builder: (_) => _MusicQueueSheet(
+      controller: controller,
+      navigatorContext: navigatorContext,
+    ),
+  );
+}
+
+/// The now-playing queue. It follows the controller live, so auto-advance
+/// and mode changes show up while it is open, and it opens scrolled to the
+/// current track.
+class _MusicQueueSheet extends StatefulWidget {
+  const _MusicQueueSheet({
+    required this.controller,
+    required this.navigatorContext,
+  });
+
+  final MusicPlayerController controller;
+  final BuildContext navigatorContext;
+
+  @override
+  State<_MusicQueueSheet> createState() => _MusicQueueSheetState();
+}
+
+class _MusicQueueSheetState extends State<_MusicQueueSheet> {
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _firstRowKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealCurrent());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _revealCurrent() {
+    if (!mounted || !_scroll.hasClients) return;
+    final controller = widget.controller;
+    final currentId = controller.current?.music?.file?.id;
+    final index = controller.displayQueue.indexWhere(
+      (item) => item.music?.file?.id == currentId,
+    );
+    final row = _firstRowKey.currentContext?.size?.height ?? 0;
+    if (index <= 0 || row <= 0) return;
+    final position = _scroll.position;
+    final target = index * row - (position.viewportDimension - row) / 2;
+    _scroll.jumpTo(target.clamp(0.0, position.maxScrollExtent));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (sheetContext, _) {
         final c = sheetContext.colors;
         final queue = controller.queue;
         final displayQueue = controller.displayQueue;
@@ -1191,10 +1661,7 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                           Expanded(
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                controller.cycleMode();
-                                setSheetState(() {});
-                              },
+                              onTap: controller.cycleMode,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 6,
@@ -1226,7 +1693,9 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                             ),
                             onTap: () {
                               Navigator.of(sheetContext).pop();
-                              unawaited(showMusicPlaylists(navigatorContext));
+                              unawaited(
+                                showMusicPlaylists(widget.navigatorContext),
+                              );
                             },
                           ),
                         ],
@@ -1249,16 +1718,24 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
                           ),
                         )
                       : ListView.builder(
-                          shrinkWrap: true,
+                          controller: _scroll,
                           padding: const EdgeInsets.only(bottom: 78),
-                          itemCount: displayQueue.length,
-                          itemBuilder: (context, index) => _QueueRow(
-                            key: ValueKey(
-                              'music-queue-${displayQueue[index].music?.file?.id ?? displayQueue[index].id}',
-                            ),
-                            message: displayQueue[index],
+                          prototypeItem: _QueueRow(
+                            message: displayQueue.first,
                             playQueue: queue,
                             controller: controller,
+                          ),
+                          itemCount: displayQueue.length,
+                          itemBuilder: (context, index) => KeyedSubtree(
+                            key: index == 0 ? _firstRowKey : null,
+                            child: _QueueRow(
+                              key: ValueKey(
+                                'music-queue-${displayQueue[index].music?.file?.id ?? displayQueue[index].id}',
+                              ),
+                              message: displayQueue[index],
+                              playQueue: queue,
+                              controller: controller,
+                            ),
                           ),
                         ),
                 ),
@@ -1267,8 +1744,8 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
           ),
         );
       },
-    ),
-  );
+    );
+  }
 }
 
 Future<void> showMusicPlaylists(
@@ -1515,7 +1992,6 @@ class _MusicPlaylistsSheet extends StatelessWidget {
               else
                 Flexible(
                   child: ListView.separated(
-                    shrinkWrap: true,
                     padding: const EdgeInsets.only(bottom: 12),
                     itemCount: controller.playlists.length,
                     separatorBuilder: (_, _) => Padding(
@@ -1994,6 +2470,7 @@ class _PlayedChatTracksSheet extends StatelessWidget {
                                 tracks.first,
                                 source.chatId,
                                 title: source.title,
+                                toggleIfActive: false,
                               ),
                             );
                           },
@@ -2021,6 +2498,7 @@ class _PlayedChatTracksSheet extends StatelessWidget {
                             message,
                             source.chatId,
                             title: source.title,
+                            toggleIfActive: false,
                           ),
                         ),
                       ),
@@ -2088,7 +2566,11 @@ class _QueueRow extends StatelessWidget {
         if (play != null) {
           play(message);
         } else {
-          controller.play(message, visibleQueue: playQueue);
+          controller.play(
+            message,
+            visibleQueue: playQueue,
+            toggleIfActive: false,
+          );
         }
       },
       child: Container(

@@ -310,6 +310,15 @@ void main() {
     expect(child, contains('showBackButton: false'));
   });
 
+  test('standalone window switches topic transcripts in place', () {
+    final child = File('lib/app/desktop_chat_window.dart').readAsStringSync();
+
+    // A topic opened from the rail must be rebuilt by the window surface so
+    // it keeps the context pane, instead of a bare ChatView route on top.
+    expect(child, contains('onOpenTopicTranscript: _openTopicTranscript'));
+    expect(child, contains('forumTopicId: _forumTopicId'));
+  });
+
   test('wide standalone group and channel chats expose a context pane', () {
     expect(
       desktopStandaloneChatUsesContextPane(width: 1100, kind: ChatKind.group),

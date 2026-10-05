@@ -126,6 +126,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.8.0")
     // Edge-to-edge: WindowCompat.setDecorFitsSystemWindows.
     implementation("androidx.core:core-ktx:1.18.0")
+    // MediaSession + MediaStyle notification for the system music controls.
+    implementation("androidx.media:media:1.7.1")
     // Android's system passkey picker. The Play Services adapter keeps the
     // same Credential Manager API working on pre-Android 14 devices.
     implementation("androidx.credentials:credentials:1.6.0")

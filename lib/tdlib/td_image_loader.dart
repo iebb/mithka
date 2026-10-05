@@ -75,6 +75,7 @@ class TdFileCenter {
   bool _started = false;
   static const _cacheCapacity = 4096;
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
+  static const _pathPriority = 16;
 
   String _key(int slot, int fileId) => '$slot:$fileId';
 
@@ -90,7 +91,15 @@ class TdFileCenter {
 
   /// Resolves a file reference without downloading it again when the source
   /// file used for an outgoing message is still available locally.
-  Future<String?> pathFor(TdFileRef ref, {int? accountSlot}) async {
+  ///
+  /// [priority] is TDLib's download priority (1..32). Something the user is
+  /// waiting on right now, such as the track they just tapped, passes 32 so it
+  /// is not queued behind background media downloads.
+  Future<String?> pathFor(
+    TdFileRef ref, {
+    int? accountSlot,
+    int priority = _pathPriority,
+  }) async {
     final slot = accountSlot ?? _client.activeSlot;
     final localPath = ref.localPath;
     if (localPath != null && localPath.isNotEmpty) {
@@ -100,7 +109,7 @@ class TdFileCenter {
         return localPath;
       }
     }
-    return path(ref.id, accountSlot: slot);
+    return path(ref.id, accountSlot: slot, priority: priority);
   }
 
   /// The already-resolved path for [ref], or null when nothing is cached.
@@ -462,12 +471,16 @@ class TdFileCenter {
     _cache.remove(_key(slot, fileId));
   }
 
-  Future<void> _requestPathDownload(int fileId, int accountSlot) async {
+  Future<void> _requestPathDownload(
+    int fileId,
+    int accountSlot, {
+    int priority = _pathPriority,
+  }) async {
     try {
       final response = await _client.queryForSlot({
         '@type': 'downloadFile',
         'file_id': fileId,
-        'priority': 16,
+        'priority': priority,
         'offset': 0,
         'limit': 0,
         'synchronous': false,
@@ -490,7 +503,11 @@ class TdFileCenter {
   }
 
   /// Returns a local path for the file id, downloading if needed.
-  Future<String?> path(int fileId, {int? accountSlot}) async {
+  Future<String?> path(
+    int fileId, {
+    int? accountSlot,
+    int priority = _pathPriority,
+  }) async {
     _startIfNeeded();
 
     final slot = accountSlot ?? _client.activeSlot;
@@ -499,6 +516,12 @@ class TdFileCenter {
     if (cached != null) return cached;
     final pending = _waiters[k];
     if (pending != null && pending.isNotEmpty) {
+      // A background resolver (for example a next-track prefetch) may own
+      // this download at a lower priority. Re-requesting the same whole-file
+      // range only raises TDLib's priority; it does not restart the transfer.
+      if (priority > _pathPriority) {
+        unawaited(_requestPathDownload(fileId, slot, priority: priority));
+      }
       final completer = Completer<String?>();
       pending.add(completer);
       return completer.future.timeout(
@@ -518,7 +541,7 @@ class TdFileCenter {
     // A lost TDLib response previously meant the first resolver never reached
     // its 180-second timeout (only later joined callers did). _ingest handles
     // both an immediate completed response and the eventual updateFile event.
-    unawaited(_requestPathDownload(fileId, slot));
+    unawaited(_requestPathDownload(fileId, slot, priority: priority));
 
     // Otherwise wait for the completing updateFile.
     final existing = _cache[k];
