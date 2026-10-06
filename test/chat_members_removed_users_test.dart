@@ -133,7 +133,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(statusUpdates, hasLength(1));
-    expect(statusUpdates.single['status']['@type'], 'chatMemberStatusMember');
+    expect(statusUpdates.single['status']['@type'], 'chatMemberStatusLeft');
     expect(find.text('Banned User'), findsNothing);
     expect(find.text('Removed Users'), findsOneWidget);
   });

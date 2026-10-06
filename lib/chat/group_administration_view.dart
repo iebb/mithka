@@ -24,10 +24,15 @@ class GroupAdvancedAdministrationView extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.supergroupId,
+    this.query,
   });
 
   final int chatId;
   final int supergroupId;
+
+  /// Overrides the TDLib transport in tests. Production callers leave this
+  /// null and the view talks to the shared client.
+  final GroupAdministrationQuery? query;
 
   @override
   State<GroupAdvancedAdministrationView> createState() =>
@@ -38,6 +43,13 @@ class _GroupAdvancedAdministrationViewState
     extends State<GroupAdvancedAdministrationView> {
   final _service = GroupAdministrationService();
   bool _loading = true;
+  // Full-info (description, slow mode, linked chat, history) is network-bound
+  // and can stall behind TDLib's flood control, while everything else on this
+  // page is local. Editors backed by those values stay disabled until a
+  // successful load lands, so an open editor can never hold a stale default.
+  bool _fullInfoLoading = true;
+  bool _fullInfoFailed = false;
+  int _fullInfoEpoch = 0;
   bool _isChannel = false;
   bool _protectedContent = false;
   bool _hiddenMembers = false;
@@ -64,6 +76,12 @@ class _GroupAdvancedAdministrationViewState
       !_isChannel && !_isForum && _linkedChatId == 0 && !_isPublic;
   bool get _forumToggleApplies =>
       !_isChannel && (_isForum || _linkedChatId == 0);
+
+  /// Separate service instance for full-info so tests can inject a transport
+  /// with its own timeout behavior; production sees the shared client either
+  /// way.
+  GroupAdministrationService get _fullInfoService =>
+      GroupAdministrationService(query: widget.query);
 
   @override
   void initState() {
@@ -115,11 +133,16 @@ class _GroupAdvancedAdministrationViewState
   }
 
   Future<void> _loadFullInfo() async {
+    final epoch = ++_fullInfoEpoch;
+    setState(() {
+      _fullInfoLoading = true;
+      _fullInfoFailed = false;
+    });
     try {
-      final full = await _service
+      final full = await _fullInfoService
           .getSupergroupFullInfo(widget.supergroupId)
           .timeout(const Duration(seconds: 15));
-      if (!mounted) return;
+      if (!mounted || epoch != _fullInfoEpoch) return;
       setState(() {
         _slowMode = full.integer('slow_mode_delay') ?? 0;
         _linkedChatId = full.int64('linked_chat_id') ?? 0;
@@ -132,11 +155,27 @@ class _GroupAdvancedAdministrationViewState
             full.boolean('is_all_history_available') ?? false;
         _description = full.str('description') ?? '';
         _hasPhoto = full.obj('photo') != null;
+        _fullInfoLoading = false;
       });
     } catch (_) {
-      // Rows gated on full-info capability flags stay hidden until a later
-      // visit succeeds; everything else on the page keeps working.
+      if (!mounted || epoch != _fullInfoEpoch) return;
+      // Rows gated on full-info capability flags stay hidden; the values
+      // themselves stay disabled until a retry succeeds.
+      setState(() {
+        _fullInfoLoading = false;
+        _fullInfoFailed = true;
+      });
     }
+  }
+
+  /// Full-info-backed editors (description, slow mode, discussion group,
+  /// history) unlock only after a successful full-info load; opening them
+  /// earlier would seed editors with stale defaults.
+  bool get _fullInfoReady => !_fullInfoLoading && !_fullInfoFailed;
+
+  Future<void> _retryFullInfo() async {
+    if (!_fullInfoFailed) return;
+    await _loadFullInfo();
   }
 
   Future<void> _setProtected(bool value) async {
@@ -495,7 +534,9 @@ class _GroupAdvancedAdministrationViewState
                 children: [
                   _AdminNavRow(
                     title: AppStringKeys.groupAdminDescription.l10n(context),
-                    value: _description.isEmpty
+                    value: _fullInfoLoading
+                        ? AppStringKeys.groupAdminLoading.l10n(context)
+                        : _description.isEmpty
                         ? AppStringKeys.groupAdminNotSet.l10n(context)
                         : _description,
                     leading: AppIcon(
@@ -503,7 +544,7 @@ class _GroupAdvancedAdministrationViewState
                       size: 21,
                       color: context.colors.textSecondary,
                     ),
-                    onTap: _editDescription,
+                    onTap: _fullInfoReady ? _editDescription : null,
                   ),
                   _AdminNavRow(
                     title: _hasPhoto
@@ -535,8 +576,10 @@ class _GroupAdvancedAdministrationViewState
                   if (!_isChannel)
                     _AdminNavRow(
                       title: AppStringKeys.groupAdminSlowMode.l10n(context),
-                      value: _slowModeLabel(context, _slowMode),
-                      onTap: _pickSlowMode,
+                      value: _fullInfoLoading
+                          ? AppStringKeys.groupAdminLoading.l10n(context)
+                          : _slowModeLabel(context, _slowMode),
+                      onTap: _fullInfoReady ? _pickSlowMode : null,
                     ),
                   _AdminSwitchRow(
                     title: AppStringKeys.groupAdminProtectContent.l10n(context),
@@ -575,10 +618,12 @@ class _GroupAdvancedAdministrationViewState
                       title: AppStringKeys.groupAdminDiscussionGroup.l10n(
                         context,
                       ),
-                      value: _linkedChatId == 0
+                      value: _fullInfoLoading
+                          ? AppStringKeys.groupAdminLoading.l10n(context)
+                          : _linkedChatId == 0
                           ? AppStringKeys.groupAdminNotLinked.l10n(context)
                           : AppStringKeys.groupAdminLinked.l10n(context),
-                      onTap: _openDiscussion,
+                      onTap: _fullInfoReady ? _openDiscussion : null,
                     ),
                   if (_canHideMembers)
                     _AdminSwitchRow(
@@ -608,7 +653,7 @@ class _GroupAdvancedAdministrationViewState
                         context,
                       ),
                       value: _allHistoryAvailable,
-                      onChanged: _setHistory,
+                      onChanged: _fullInfoReady ? _setHistory : null,
                     ),
                   if (_forumToggleApplies)
                     _AdminSwitchRow(
@@ -624,6 +669,10 @@ class _GroupAdvancedAdministrationViewState
                     ),
                 ],
               ),
+              if (_fullInfoFailed) ...[
+                const SizedBox(height: 20),
+                _AdminFullInfoError(onRetry: _retryFullInfo),
+              ],
             ],
           ),
   );
@@ -2563,6 +2612,55 @@ class _ChatBoostsAdministrationViewState
   }
 }
 
+/// Shown when the background full-info load failed: the editors it backs
+/// stay disabled until Retry succeeds.
+class _AdminFullInfoError extends StatelessWidget {
+  const _AdminFullInfoError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          AppIcon(
+            HeroAppIcons.triangleExclamation,
+            size: 20,
+            color: AppTheme.tagRed,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              AppStrings.t(AppStringKeys.groupManagementLoadFailed),
+              style: AppTextStyle.footnote(c.textSecondary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            key: const ValueKey('group-admin-fullinfo-retry'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onRetry,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Text(
+                AppStrings.t(AppStringKeys.groupManagementRetry),
+                style: AppTextStyle.bodyLarge(AppTheme.brand),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AdminPage extends StatelessWidget {
   const _AdminPage({required this.title, required this.child, this.trailing});
 
@@ -2752,7 +2850,7 @@ class _AdminSwitchRow extends StatelessWidget {
 
   final String title;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -2764,7 +2862,11 @@ class _AdminSwitchRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: AppTextStyle.bodyLarge(context.colors.textPrimary),
+              style: AppTextStyle.bodyLarge(
+                onChanged == null
+                    ? context.colors.textTertiary
+                    : context.colors.textPrimary,
+              ),
             ),
           ),
           _AdminToggle(value: value, onChanged: onChanged),
@@ -2775,15 +2877,15 @@ class _AdminSwitchRow extends StatelessWidget {
 }
 
 class _AdminToggle extends StatelessWidget {
-  const _AdminToggle({required this.value, required this.onChanged});
+  const _AdminToggle({required this.value, this.onChanged});
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.opaque,
-    onTap: () => onChanged(!value),
+    onTap: onChanged == null ? null : () => onChanged!(!value),
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOut,

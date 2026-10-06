@@ -1509,6 +1509,7 @@
     <string name="groupAdminHideMembers">멤버 숨기기</string>
     <string name="groupAdminHistoryForNewMembers">새 멤버에게 기록 공개</string>
     <string name="groupAdminHour">1 시간</string>
+    <string name="groupAdminLoading">불러오는 중…</string>
     <string name="groupAdminLinked">연결됨</string>
     <string name="groupAdminMessagesSection">메시지</string>
     <string name="groupAdminMinute">1분</string>

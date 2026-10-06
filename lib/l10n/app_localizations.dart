@@ -1631,6 +1631,7 @@ abstract final class AppStringKeys {
       'groupAdminHistoryForNewMembers';
   static const groupAdminHour = 'groupAdminHour';
   static const groupAdminLinked = 'groupAdminLinked';
+  static const groupAdminLoading = 'groupAdminLoading';
   static const groupAdminMinute = 'groupAdminMinute';
   static const groupAdminMinutes = 'groupAdminMinutes';
   static const groupAdminMessagesSection = 'groupAdminMessagesSection';

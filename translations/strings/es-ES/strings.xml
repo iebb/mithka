@@ -1516,6 +1516,7 @@
     <string name="groupAdminHideMembers">Ocultar miembros</string>
     <string name="groupAdminHistoryForNewMembers">Historial visible para nuevos miembros</string>
     <string name="groupAdminHour">1 hora</string>
+    <string name="groupAdminLoading">Cargando…</string>
     <string name="groupAdminLinked">Vinculado</string>
     <string name="groupAdminMessagesSection">Mensajes</string>
     <string name="groupAdminMinute">1 minuto</string>

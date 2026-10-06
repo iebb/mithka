@@ -1509,6 +1509,7 @@
     <string name="groupAdminHideMembers">隱藏成員</string>
     <string name="groupAdminHistoryForNewMembers">新成員可看見歷史訊息</string>
     <string name="groupAdminHour">1 小時</string>
+    <string name="groupAdminLoading">載入中…</string>
     <string name="groupAdminLinked">已連結</string>
     <string name="groupAdminMessagesSection">訊息</string>
     <string name="groupAdminMinute">1 分鐘</string>
