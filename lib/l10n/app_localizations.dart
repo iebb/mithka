@@ -1537,6 +1537,11 @@ abstract final class AppStringKeys {
   static const featureDisableSafetyNotice = 'featureDisableSafetyNotice';
   static const featureSafety = 'featureSafety';
   static const featureTitle = 'featureTitle';
+  static const fileDetailApkInstallGranted = 'fileDetailApkInstallGranted';
+  static const fileDetailApkInstallMessage = 'fileDetailApkInstallMessage';
+  static const fileDetailApkInstallOpenSettings =
+      'fileDetailApkInstallOpenSettings';
+  static const fileDetailApkInstallTitle = 'fileDetailApkInstallTitle';
   static const fileDetailDownloadProgress = 'fileDetailDownloadProgress';
   static const fileDetailNoAppCanOpenFile = 'fileDetailNoAppCanOpenFile';
   static const fileDetailOpen = 'fileDetailOpen';

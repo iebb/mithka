@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:open_filex/open_filex.dart';
 
+import '../chat/file_opener.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -66,10 +66,11 @@ class _RetainedDownloadsPanelState extends State<RetainedDownloadsPanel> {
 
   Future<void> _open(RetainedDownload item) async {
     try {
-      final result = await OpenFilex.open(item.path);
-      if (result.type != ResultType.done && mounted) {
-        showToast(context, AppStringKeys.fileDetailNoAppCanOpenFile);
-      }
+      await openDownloadedFile(
+        context,
+        item.path,
+        mimeType: mimeForFileName(item.fileName),
+      );
     } catch (_) {
       if (mounted) {
         showToast(context, AppStringKeys.downloadsRetainedUnavailable);

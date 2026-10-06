@@ -1415,7 +1415,11 @@
     <string name="feedbackReportSending">보내는 중…</string>
     <string name="feedbackReportSent">신고를 보냈습니다 · ID {value1}</string>
     <string name="feedbackReportTitle">문제 신고</string>
-    <string name="fileDetailDownloadProgress">파일 다운로드 중…({value1}/{value2})</string>
+        <string name="fileDetailApkInstallGranted">설치가 허용되었습니다. 파일을 다시 열면 설치할 수 있습니다.</string>
+    <string name="fileDetailApkInstallMessage">Android에서 APK 파일을 설치하려면 먼저 Mithka에 권한을 허용해야 합니다. 시스템 설정에서 허용하면 설치 관리자가 열립니다.</string>
+    <string name="fileDetailApkInstallOpenSettings">설정 열기</string>
+    <string name="fileDetailApkInstallTitle">앱 설치를 허용할까요?</string>
+<string name="fileDetailDownloadProgress">파일 다운로드 중…({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">이 파일을 열 수 있는 앱이 없습니다</string>
     <string name="fileDetailOpen">열기</string>
     <string name="gallerySendLiveAsVideo">동영상으로 전송</string>

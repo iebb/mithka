@@ -1415,7 +1415,11 @@
     <string name="feedbackReportSending">送信中…</string>
     <string name="feedbackReportSent">レポートを送信しました · ID {value1}</string>
     <string name="feedbackReportTitle">問題を報告</string>
-    <string name="fileDetailDownloadProgress">ファイルをダウンロード中…（{value1}/{value2}）</string>
+        <string name="fileDetailApkInstallGranted">インストールが許可されました。もう一度ファイルを開くとインストールできます。</string>
+    <string name="fileDetailApkInstallMessage">Android で APK ファイルをインストールするには、先に Mithka への許可が必要です。システム設定で許可すると、インストーラーが開きます。</string>
+    <string name="fileDetailApkInstallOpenSettings">設定を開く</string>
+    <string name="fileDetailApkInstallTitle">アプリのインストールを許可しますか？</string>
+<string name="fileDetailDownloadProgress">ファイルをダウンロード中…（{value1}/{value2}）</string>
     <string name="fileDetailNoAppCanOpenFile">このファイルを開けるアプリがありません</string>
     <string name="fileDetailOpen">開く</string>
     <string name="gallerySendLiveAsVideo">動画として送信</string>

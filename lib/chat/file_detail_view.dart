@@ -12,7 +12,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:open_filex/open_filex.dart';
 
 import '../components/app_icons.dart';
 import '../components/document_file_icon.dart';
@@ -24,6 +23,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'file_opener.dart';
 
 class FileDetailView extends StatefulWidget {
   const FileDetailView({
@@ -149,65 +149,12 @@ class _FileDetailViewState extends State<FileDetailView> {
   Future<void> _open() async {
     final p = _path;
     if (p == null) return;
-    final ext = widget.doc.ext.toLowerCase();
-    final r = await OpenFilex.open(p, type: _mimeForExt(ext));
-    if (r.type != ResultType.done && mounted) {
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.fileDetailNoAppCanOpenFile),
-      );
-    }
+    await openDownloadedFile(
+      context,
+      p,
+      mimeType: mimeForExtension(widget.doc.ext),
+    );
   }
-
-  /// Map a lowercase file extension (without the dot) to an Android MIME type.
-  /// TDLib download paths may not preserve the original extension, so we
-  /// supply the type explicitly so the system can route the intent correctly.
-  String? _mimeForExt(String ext) {
-    if (ext.isEmpty) return null;
-    return _mimeMap[ext];
-  }
-
-  static const _mimeMap = <String, String>{
-    'apk': 'application/vnd.android.package-archive',
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx':
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx':
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'txt': 'text/plain',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'svg': 'image/svg+xml',
-    'webp': 'image/webp',
-    'bmp': 'image/bmp',
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
-    'flac': 'audio/flac',
-    'aac': 'audio/aac',
-    'mp4': 'video/mp4',
-    'avi': 'video/x-msvideo',
-    'mkv': 'video/x-matroska',
-    'webm': 'video/webm',
-    'mov': 'video/quicktime',
-    'html': 'text/html',
-    'css': 'text/css',
-    'js': 'application/javascript',
-    'json': 'application/json',
-    'xml': 'text/xml',
-    'zip': 'application/zip',
-    'rar': 'application/x-rar-compressed',
-    '7z': 'application/x-7z-compressed',
-    'tar': 'application/x-tar',
-    'gz': 'application/gzip',
-    'csv': 'text/csv',
-  };
 
   @override
   void dispose() {

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:open_filex/open_filex.dart';
 
+import '../chat/file_opener.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -510,10 +510,11 @@ class _DownloadsViewState extends State<DownloadsView> {
 
   Future<void> _open(_DownloadItem item) async {
     if (!item.completed || item.path.isEmpty) return;
-    final result = await OpenFilex.open(item.path);
-    if (result.type != ResultType.done && mounted) {
-      showToast(context, result.message);
-    }
+    await openDownloadedFile(
+      context,
+      item.path,
+      mimeType: mimeForFileName(item.title),
+    );
   }
 
   @override

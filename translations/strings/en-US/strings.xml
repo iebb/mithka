@@ -1422,7 +1422,11 @@
     <string name="feedbackReportSending">Sending…</string>
     <string name="feedbackReportSent">Report sent · ID {value1}</string>
     <string name="feedbackReportTitle">Report a Problem</string>
-    <string name="fileDetailDownloadProgress">Downloading file… ({value1}/{value2})</string>
+        <string name="fileDetailApkInstallGranted">Install permission granted. Open the file again to install.</string>
+    <string name="fileDetailApkInstallMessage">Android requires your approval before Mithka can install APK files. Allow it in system settings, then the installer will open.</string>
+    <string name="fileDetailApkInstallOpenSettings">Open Settings</string>
+    <string name="fileDetailApkInstallTitle">Allow app installs?</string>
+<string name="fileDetailDownloadProgress">Downloading file… ({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">No app can open this file</string>
     <string name="fileDetailOpen">Open</string>
     <string name="gallerySendLiveAsVideo">Send as video</string>

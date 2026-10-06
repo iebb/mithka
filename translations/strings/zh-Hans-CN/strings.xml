@@ -1415,7 +1415,11 @@
     <string name="feedbackReportSending">正在发送…</string>
     <string name="feedbackReportSent">报告已发送 · 编号 {value1}</string>
     <string name="feedbackReportTitle">报告问题</string>
-    <string name="fileDetailDownloadProgress">文件下载中…({value1}/{value2})</string>
+        <string name="fileDetailApkInstallGranted">已允许安装应用，再次打开文件即可安装。</string>
+    <string name="fileDetailApkInstallMessage">Android 需要你先授权，Mithka 才能安装 APK 文件。请在系统设置中允许，之后会自动打开安装器。</string>
+    <string name="fileDetailApkInstallOpenSettings">去设置</string>
+    <string name="fileDetailApkInstallTitle">允许安装应用？</string>
+<string name="fileDetailDownloadProgress">文件下载中…({value1}/{value2})</string>
     <string name="fileDetailNoAppCanOpenFile">没有可打开此文件的应用</string>
     <string name="fileDetailOpen">打开</string>
     <string name="gallerySendLiveAsVideo">以视频发送</string>
