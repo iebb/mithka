@@ -14,6 +14,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/performance_metrics.dart';
+import '../chat/chat_description_cache.dart';
 import '../communities/community_models.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../notifications/scope_notification_settings.dart';
@@ -1076,6 +1077,17 @@ class ChatListViewModel extends ChangeNotifier {
         final fullInfo = update.obj('supergroup_full_info');
         if (chatId == null || fullInfo == null) return;
         _applyChatCommunityId(chatId, fullInfo.int64('community_id'));
+        // The chat list hears every full-info push the app fetches, and a
+        // channel's description is only in there. Remembering it is what lets
+        // an info page paint the text without waiting on its own
+        // flood-limited getSupergroupFullInfo.
+        unawaited(
+          ChatDescriptionCache.shared.store(
+            accountSlot: _client.activeSlot,
+            chatId: chatId,
+            description: fullInfo.str('description') ?? '',
+          ),
+        );
 
       case 'updateUserFullInfo':
         final userId = update.int64('user_id');

@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
+import '../chat/chat_description_cache.dart';
 import '../chat/chat_members_cache.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
@@ -384,6 +385,7 @@ class AuthManager extends ChangeNotifier {
         // slot — drop every strip rather than risk painting one account's
         // members under another's chat.
         ChatMembersCache.shared.clear();
+        unawaited(ChatDescriptionCache.shared.clear());
         _set(const AuthLoggingOut());
       case 'authorizationStateClosing':
         break;

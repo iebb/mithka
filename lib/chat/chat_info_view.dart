@@ -40,6 +40,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'add_members_view.dart';
+import 'chat_description_cache.dart';
 import 'chat_members_cache.dart';
 import 'chat_members_view.dart';
 import 'chat_search_view.dart';
@@ -2074,6 +2075,15 @@ class ChatInfoViewModel extends ChangeNotifier {
   // Group / channel description (plain text) with link entities parsed
   String description = '';
   List<MessageTextEntity> descriptionEntities = const [];
+  // Peer id of the full info this page reads its description from.
+  int? _supergroupId;
+  int? _basicGroupId;
+  StreamSubscription<Map<String, dynamic>>? _fullInfoUpdates;
+
+  static const _fullInfoUpdateTypes = [
+    'updateSupergroupFullInfo',
+    'updateBasicGroupFullInfo',
+  ];
 
   String? takeNotice() {
     final value = _notice;
@@ -2192,10 +2202,80 @@ class ChatInfoViewModel extends ChangeNotifier {
     }
     notifyListeners();
     if (isGroup) {
+      _watchFullInfo(type);
+      await _seedDescriptionFromCache();
       await _loadGroupMeta(chat);
       await _loadSelfPermissions(chat);
     }
     await _loadMembers(chat);
+  }
+
+  /// A supergroup's or channel's description lives only in its full info, and
+  /// Telegram flood-limits the fetch: TDLib answers a limited
+  /// getSupergroupFullInfo tens of seconds later, so a page that waits for its
+  /// own query shows nothing. Whoever else asks for the same full info — the
+  /// chat list's community lookups, an open transcript — makes TDLib push it,
+  /// so hear those pushes and fill the card in the moment the text lands.
+  void _watchFullInfo(Map<String, dynamic>? type) {
+    switch (type?.type) {
+      case 'chatTypeSupergroup':
+        _supergroupId = type?.int64('supergroup_id');
+      case 'chatTypeBasicGroup':
+        _basicGroupId = type?.int64('basic_group_id');
+      default:
+        return;
+    }
+    _fullInfoUpdates ??= TdClient.shared
+        .updatesOfAny(_fullInfoUpdateTypes)
+        .listen(_handleFullInfoUpdate);
+  }
+
+  void _handleFullInfoUpdate(Map<String, dynamic> update) {
+    switch (update.type) {
+      case 'updateSupergroupFullInfo':
+        if (update.int64('supergroup_id') != _supergroupId) return;
+        final fullInfo = update.obj('supergroup_full_info') ?? update;
+        memberCount = fullInfo.integer('member_count') ?? memberCount;
+        _applyDescription(fullInfo.str('description') ?? '');
+      case 'updateBasicGroupFullInfo':
+        if (update.int64('basic_group_id') != _basicGroupId) return;
+        final fullInfo = update.obj('basic_group_full_info') ?? update;
+        _applyDescription(fullInfo.str('description') ?? '');
+      default:
+        return;
+    }
+    notifyListeners();
+  }
+
+  /// Paints the last known description before the network pass, so the card is
+  /// on screen while the fresh copy is still queued behind a flood wait.
+  Future<void> _seedDescriptionFromCache() async {
+    final cached = await ChatDescriptionCache.shared.read(
+      accountSlot: TdClient.shared.activeSlot,
+      chatId: chatId,
+    );
+    if (cached == null || description.isNotEmpty) return;
+    _setDescription(cached);
+    notifyListeners();
+  }
+
+  void _applyDescription(String text) {
+    if (text == description) return;
+    _setDescription(text);
+    unawaited(
+      ChatDescriptionCache.shared.store(
+        accountSlot: TdClient.shared.activeSlot,
+        chatId: chatId,
+        description: text,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _fullInfoUpdates?.cancel();
+    _fullInfoUpdates = null;
+    super.dispose();
   }
 
   /// Public @username (supergroups) → determines searchability + the 群号 line's
@@ -2227,7 +2307,7 @@ class ChatInfoViewModel extends ChangeNotifier {
             'supergroup_id': sgid,
           });
           final desc = info.str('description') ?? '';
-          _setDescription(desc);
+          _applyDescription(desc);
           memberCount = info.integer('member_count') ?? memberCount;
           final linkedDirectMessagesChatId =
               info.int64('direct_messages_chat_id') ?? 0;
@@ -2333,7 +2413,7 @@ class ChatInfoViewModel extends ChangeNotifier {
         await _resolveMembers(raw);
         // Extract description from basic group full info.
         final desc = full.str('description') ?? '';
-        _setDescription(desc);
+        _applyDescription(desc);
       } else if (type?.type == 'chatTypeSupergroup') {
         final sgid = type?.int64('supergroup_id');
         if (sgid == null) return;
