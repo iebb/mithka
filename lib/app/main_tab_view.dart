@@ -1424,6 +1424,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         'tablet-message-chat-${_selectedMessageChat!.chatId}-'
         '${_selectedMessageChat!.supportsTopics}-'
         '${_selectedMessageChat!.initialMessageId ?? 0}-'
+        '${_selectedMessageChat!.forumTopicId ?? 0}-'
         '${_selectedMessageChat!.composerFocusRequestId}',
       ),
       0 => const ValueKey('tablet-message-empty'),

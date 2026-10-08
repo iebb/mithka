@@ -1,10 +1,13 @@
 import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../chat/custom_emoji.dart';
 import '../components/app_icons.dart';
+import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 class TopicNavigationItem {
   const TopicNavigationItem({
@@ -12,12 +15,19 @@ class TopicNavigationItem {
     required this.name,
     this.iconCustomEmojiId = 0,
     this.iconColor = 0,
+    this.unreadCount = 0,
+    this.isMuted = false,
   });
 
   final int id;
   final String name;
   final int iconCustomEmojiId;
   final int iconColor;
+
+  /// Live unread messages in this topic, maintained through the shared forum
+  /// topic index; 0 when unknown.
+  final int unreadCount;
+  final bool isMuted;
 }
 
 /// The group's has_forum_tabs setting selects top tabs; other wide topic
@@ -159,6 +169,31 @@ class _TopicNavigation extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (topic != null && topic.unreadCount > 0) ...[
+                      const SizedBox(width: 6),
+                      // The horizontal strip is too tight for the pill badge,
+                      // so there the count rides inline in the badge color;
+                      // the vertical rail has room for the real pill.
+                      if (vertical)
+                        UnreadBadge(
+                          key: ValueKey('topic-navigation-unread-${topic.id}'),
+                          count: topic.unreadCount,
+                          muted: topic.isMuted,
+                        )
+                      else
+                        Text(
+                          context
+                              .watch<ThemeController>()
+                              .unreadBadgeOverflowMode
+                              .format(topic.unreadCount),
+                          style: AppTextStyle.caption(
+                            topic.isMuted
+                                ? c.textTertiary
+                                : AppTheme.unreadBadge,
+                            weight: AppTextWeight.semibold,
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),

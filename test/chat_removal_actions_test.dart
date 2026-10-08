@@ -333,12 +333,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       final row = find.byKey(const ValueKey('group-management-delete-chat'));
+      // Create-topics only renders in forum supergroups, so anchor the
+      // scroll on pin messages, which is always the section's last row.
       await tester.dragUntilVisible(
         canDeleteForAll
             ? row
             : find.text(
                 AppStrings.t(
-                  AppStringKeys.groupManagementPermissionCreateTopics,
+                  AppStringKeys.groupManagementPermissionPinMessages,
                 ),
               ),
         find.byType(ListView).first,
@@ -476,6 +478,7 @@ class _ChatBackend {
       case 'getMe':
         return {'@type': 'user', 'id': 1};
       case 'getSupergroup':
+        return {'@type': 'supergroup', 'id': 10, 'is_forum': false};
       case 'getChatMember':
         return {
           'status': {'@type': 'chatMemberStatusMember'},

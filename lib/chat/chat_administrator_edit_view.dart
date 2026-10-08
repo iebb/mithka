@@ -18,6 +18,7 @@ class ChatAdministratorEditView extends StatefulWidget {
     required this.status,
     required this.canEdit,
     this.canTransferOwnership = false,
+    this.isChannel = false,
   });
 
   final int chatId;
@@ -26,6 +27,7 @@ class ChatAdministratorEditView extends StatefulWidget {
   final Map<String, dynamic>? status;
   final bool canEdit;
   final bool canTransferOwnership;
+  final bool isChannel;
 
   @override
   State<ChatAdministratorEditView> createState() =>
@@ -50,13 +52,18 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     'can_delete_stories',
     'can_manage_direct_messages',
     'can_manage_tags',
+    'can_send_welcome_messages',
     'is_anonymous',
   ];
+
+  /// Labels for admin rights. Keys ending in Group/Channel disambiguate the
+  /// same right by chat type, mirroring official Telegram wording; the
+  /// matching variant is resolved in [_labelFor].
   static const _labels = <String, String>{
     'can_manage_chat': AppStringKeys.chatAdminManageChat,
     'can_change_info': AppStringKeys.groupManagementPermissionEditGroupInfo,
-    'can_post_messages': 'Post messages',
-    'can_edit_messages': 'Edit messages',
+    'can_post_messages': AppStringKeys.chatAdminPermissionPostMessages,
+    'can_edit_messages': AppStringKeys.chatAdminPermissionEditMessages,
     'can_delete_messages': AppStringKeys.chatAdminDeleteMessages,
     'can_invite_users': AppStringKeys.addMembersInviteMembersTitle,
     'can_restrict_members': AppStringKeys.chatAdminRestrictMembers,
@@ -64,12 +71,33 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
     'can_manage_topics': AppStringKeys.groupManagementPermissionCreateTopics,
     'can_manage_video_chats': AppStringKeys.chatAdminManageVideoChats,
     'can_promote_members': AppStringKeys.chatAdminPromoteMembers,
-    'can_post_stories': 'Post stories',
-    'can_edit_stories': 'Edit stories',
-    'can_delete_stories': 'Delete stories',
-    'can_manage_direct_messages': 'Manage direct messages',
-    'can_manage_tags': 'Manage member tags',
+    'can_post_stories': AppStringKeys.chatAdminPermissionPostStories,
+    'can_edit_stories': AppStringKeys.chatAdminPermissionEditStories,
+    'can_delete_stories': AppStringKeys.chatAdminPermissionDeleteStories,
+    'can_manage_direct_messages':
+        AppStringKeys.chatAdminPermissionManageDirectMessages,
+    'can_manage_tags': AppStringKeys.chatAdminPermissionManageTags,
+    'can_send_welcome_messages': AppStringKeys.chatAdminSendWelcomeMessages,
     'is_anonymous': AppStringKeys.chatAdminAnonymous,
+  };
+
+  String _labelFor(String key) => switch (key) {
+    'can_change_info' => AppStrings.t(
+      widget.isChannel
+          ? AppStringKeys.chatAdminPermissionChangeInfoChannel
+          : AppStringKeys.chatAdminPermissionChangeInfoGroup,
+    ),
+    'can_edit_messages' => AppStrings.t(
+      widget.isChannel
+          ? AppStringKeys.chatAdminPermissionEditMessagesOfOthers
+          : AppStringKeys.chatAdminPermissionEditMessages,
+    ),
+    'can_delete_messages' => AppStrings.t(
+      widget.isChannel
+          ? AppStringKeys.chatAdminPermissionDeleteMessagesOfOthers
+          : AppStringKeys.chatAdminDeleteMessages,
+    ),
+    _ => AppStrings.t(_labels[key] ?? key),
   };
 
   late final Map<String, bool> _rights;
@@ -270,7 +298,7 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
                     if (entry.key != _labels.keys.first)
                       const InsetDivider(leadingInset: 14),
                     SettingsSwitchRow(
-                      title: entry.value,
+                      title: _labelFor(entry.key),
                       value: _rights[entry.key] ?? false,
                       onChanged: widget.canEdit
                           ? (value) =>

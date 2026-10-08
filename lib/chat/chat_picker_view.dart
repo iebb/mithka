@@ -19,6 +19,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'forward_markdown.dart';
 import 'forward_options.dart';
 
 class ChatPickerResult {
@@ -33,6 +34,7 @@ class ChatPickerView extends StatefulWidget {
     super.key,
     this.title = AppStringKeys.chatPickerChooseChat,
     this.showForwardOptions = false,
+    this.markdownOffer = const ForwardMarkdownOffer.none(),
     this.allowChannels = true,
     this.allowedKinds,
     this.allowedChatIds,
@@ -41,6 +43,10 @@ class ChatPickerView extends StatefulWidget {
   });
   final String title;
   final bool showForwardOptions;
+
+  /// Markdown detected in the forwarded text: the picker offers a "render
+  /// Markdown" chip, pre-checked only when the offer is strong.
+  final ForwardMarkdownOffer markdownOffer;
   final bool allowChannels;
   final Set<ChatKind>? allowedKinds;
   final Set<int>? allowedChatIds;
@@ -60,6 +66,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   String _query = '';
   bool _removeCaption = false;
   bool _removeSender = false;
+  late bool _renderMarkdown = widget.markdownOffer.suggested;
 
   @override
   void initState() {
@@ -169,12 +176,14 @@ class _ChatPickerViewState extends State<ChatPickerView> {
 
   void _popPickedChat(ChatSummary chat) {
     if (widget.showForwardOptions) {
+      final renderMarkdown = widget.markdownOffer.available && _renderMarkdown;
       Navigator.of(context).pop(
         ChatPickerResult(
           chat: chat,
           forwardOptions: ForwardOptions(
             removeCaption: _removeCaption,
             removeSender: _removeSender,
+            richText: renderMarkdown,
           ),
         ),
       );
@@ -314,33 +323,47 @@ class _ChatPickerViewState extends State<ChatPickerView> {
           borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.divider, width: 0.5),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: _forwardOption(
-                label: AppStringKeys.chatForwardRemoveCaption,
-                selected: _removeCaption,
-                onTap: () {
-                  setState(() {
-                    _removeCaption = !_removeCaption;
-                    if (_removeCaption) _removeSender = true;
-                  });
-                },
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _forwardOption(
+                    label: AppStringKeys.chatForwardRemoveCaption,
+                    selected: _removeCaption,
+                    onTap: () {
+                      setState(() {
+                        _removeCaption = !_removeCaption;
+                        if (_removeCaption) _removeSender = true;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _forwardOption(
+                    label: AppStringKeys.chatForwardRemoveSender,
+                    selected: _removeSender,
+                    onTap: () {
+                      setState(() {
+                        _removeSender = !_removeSender;
+                        if (!_removeSender) _removeCaption = false;
+                      });
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _forwardOption(
-                label: AppStringKeys.chatForwardRemoveSender,
-                selected: _removeSender,
-                onTap: () {
-                  setState(() {
-                    _removeSender = !_removeSender;
-                    if (!_removeSender) _removeCaption = false;
-                  });
-                },
+            if (widget.markdownOffer.available) ...[
+              const SizedBox(height: 8),
+              _forwardOption(
+                label: AppStringKeys.chatForwardRenderMarkdown,
+                selected: _renderMarkdown,
+                onTap: () => setState(() => _renderMarkdown = !_renderMarkdown),
               ),
-            ),
+            ],
           ],
         ),
       ),

@@ -27,6 +27,7 @@ import '../app/desktop_video_window.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../app/video_split_controller.dart';
+import '../auth/account_store.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
 import '../channels/topic_chat_view.dart';
@@ -58,6 +59,7 @@ import '../settings/sensitive_content_controller.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
+import '../tdlib/forum_topic_index.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -99,6 +101,7 @@ import 'chat_wallpaper.dart';
 import 'checklist_composer_view.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
+import 'forward_markdown.dart';
 import 'forward_options.dart';
 import 'group_remark_controller.dart';
 import 'hide_sender_dialog.dart';
@@ -1536,6 +1539,16 @@ class _ChatViewState extends State<ChatView> {
     _detachExitController?.call();
     _detachExitController = widget.exitController?.register(_prepareExitState);
   }
+
+  /// Whether this chat's topics are known — resolved live or seeded from the
+  /// process-wide index — so a pane rebuilt for another topic keeps its rail
+  /// instead of flashing an "All"-only strip until getChat resolves.
+  bool get _topicsKnown =>
+      _vm.supportsTopics ||
+      ForumTopicIndex.shared.knowsTopics(
+        _sessionKey.accountSlot,
+        widget.chatId,
+      );
 
   @override
   void didChangeDependencies() {
@@ -3989,6 +4002,33 @@ class _ChatViewState extends State<ChatView> {
     });
   }
 
+  /// Markdown detection over the messages about to be forwarded: the picker
+  /// offers the render option when any message carries convertible markers and
+  /// pre-checks it when at least one looks like authored Markdown.
+  ForwardMarkdownOffer _forwardMarkdownOffer(List<int> messageIds) {
+    // Both gates are client-side: the re-send is a normal sendMessage, the
+    // server never sees a "rich text forward" mode. The settings toggle keeps
+    // detection opt-in; Premium is required by product decision, and the
+    // cached AccountStore flag is authoritative enough for hiding a chip.
+    final theme = context.read<ThemeController>();
+    if (!theme.forwardRichMarkdown) return const ForwardMarkdownOffer.none();
+    if (!(context.read<AccountStore?>()?.activeIsPremium ?? false)) {
+      return const ForwardMarkdownOffer.none();
+    }
+    var available = false;
+    final byId = {for (final message in _vm.messages) message.id: message};
+    for (final id in messageIds) {
+      final message = byId[id];
+      if (message == null) continue;
+      // Detection is heuristic and must never break forwarding: any parse or
+      // match failure degrades to "no offer", leaving a regular forward.
+      final offer = forwardMarkdownOfferForMessage(message);
+      if (offer.suggested) return offer;
+      if (offer.available) available = true;
+    }
+    return ForwardMarkdownOffer(available: available, suggested: false);
+  }
+
   Future<void> _forwardSelected() async {
     final ids = _orderedSelectedIds();
     if (ids.isEmpty) return;
@@ -3998,9 +4038,10 @@ class _ChatViewState extends State<ChatView> {
     }
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
+        builder: (_) => ChatPickerView(
           title: AppStringKeys.chatForwardToTitle,
           showForwardOptions: true,
+          markdownOffer: _forwardMarkdownOffer(ids),
         ),
       ),
     );
@@ -6128,9 +6169,10 @@ class _ChatViewState extends State<ChatView> {
     }
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
+        builder: (_) => ChatPickerView(
           title: AppStringKeys.chatForwardToTitle,
           showForwardOptions: true,
+          markdownOffer: _forwardMarkdownOffer([message.id]),
         ),
       ),
     );
@@ -6389,7 +6431,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _withTopicNavigation(Widget child) {
-    if (!_vm.supportsTopics ||
+    if (!_topicsKnown ||
         !usesSplitSelectionLayout(MediaQuery.sizeOf(context))) {
       return child;
     }
@@ -6401,6 +6443,8 @@ class _ChatViewState extends State<ChatView> {
             name: topic.name,
             iconCustomEmojiId: topic.iconCustomEmojiId,
             iconColor: topic.iconColor,
+            unreadCount: topic.unreadCount,
+            isMuted: topic.isMuted,
           ),
       ],
       selectedTopicId: widget.forumTopicId,
@@ -7794,13 +7838,12 @@ class _ChatViewState extends State<ChatView> {
 
   /// Whether topics have a dedicated surface (topic feed mode).
   bool get _topicsFoldedIntoChat =>
-      _vm.supportsTopics &&
-      context.read<ThemeController>().forumTopicsAsGroupChat;
+      _topicsKnown && context.read<ThemeController>().forumTopicsAsGroupChat;
 
   /// Topics keep their dedicated surface — header chevron, topic picker, and
   /// the # header action — whenever the chat is a topic chat. In flattened
   /// mode the picker switches between topic transcripts instead of modes.
-  bool get _showsTopicSurfaces => _vm.supportsTopics;
+  bool get _showsTopicSurfaces => _topicsKnown;
 
   /// The join screen and a restricted peer both render the chat header over a
   /// page with no transcript behind it. Offering search there would open a
@@ -8052,6 +8095,22 @@ class _ChatViewState extends State<ChatView> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: c.textPrimary, fontSize: 16),
               ),
+              // The centered sheet variant lays tiles out at a narrow width;
+              // an unsized badge can exceed the whole row, so wrap it in a
+              // bounded box rather than handing the pill to ListTile directly.
+              trailing: topic == null || topic.unreadCount <= 0
+                  ? null
+                  : SizedBox(
+                      width: 64,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: UnreadBadge(
+                          key: ValueKey('topic-selector-unread-${topic.id}'),
+                          count: topic.unreadCount,
+                          muted: topic.isMuted,
+                        ),
+                      ),
+                    ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 if (context.read<ThemeController>().forumTopicsAsGroupChat) {

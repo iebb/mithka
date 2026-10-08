@@ -19,6 +19,7 @@ import '../notifications/notification_settings_payload.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
+import '../tdlib/forum_topic_index.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -34,6 +35,7 @@ import 'chat_unread_progress.dart';
 import 'checklist_composer_view.dart';
 import 'checklist_service.dart';
 import 'forum_topic_transcript.dart';
+import 'forward_markdown.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
 import 'message_reaction_availability.dart';
@@ -346,12 +348,19 @@ class ForumTopicOption {
     required this.name,
     this.iconCustomEmojiId = 0,
     this.iconColor = 0,
+    this.unreadCount = 0,
+    this.isMuted = false,
   });
 
   final int id;
   final String name;
   final int iconCustomEmojiId;
   final int iconColor;
+
+  /// Live unread messages in this topic, maintained through the shared topic
+  /// index; 0 when unknown.
+  final int unreadCount;
+  final bool isMuted;
 }
 
 class _DraftMention {
@@ -380,6 +389,12 @@ class ChatViewModel extends ChangeNotifier {
   }) : _accountClientId = TdClient.shared.activeClientId,
        _accountSlot = TdClient.shared.activeSlot,
        peerTitle = title {
+    // A pane rebuilt for another topic renders its rail from the shared index
+    // on the first frame; loadForumTopics refreshes it moments later.
+    final indexed = ForumTopicIndex.shared.topicsFor(_accountSlot, chatId);
+    if (indexed.isNotEmpty) {
+      forumTopics = [for (final entry in indexed) _optionFromIndex(entry)];
+    }
     _historyAnchorMessageId = initialMessageId ?? sessionAnchorMessageId;
     if (sessionMessages != null && sessionMessages.isNotEmpty) {
       _allMessages = List<ChatMessage>.from(sessionMessages);
@@ -401,6 +416,33 @@ class ChatViewModel extends ChangeNotifier {
   /// chat: history, search, drafts, sends and live updates are scoped to it.
   final int? forumTopicId;
   bool get isForumTopicTranscript => (forumTopicId ?? 0) != 0;
+
+  void _onForumTopicIndexChanged() {
+    // Only the rail is live-indexed here: a transcript's own unread state
+    // arrives through its chat-scoped updates, and topics of other chats
+    // never move this view model.
+    final indexed = ForumTopicIndex.shared.topicsFor(_accountSlot, chatId);
+    if (indexed.isEmpty) return;
+    if (indexed.length == forumTopics.length) {
+      var same = true;
+      for (var i = 0; i < indexed.length; i++) {
+        final entry = indexed[i];
+        final option = forumTopics[i];
+        if (entry.id != option.id ||
+            entry.unreadCount != option.unreadCount ||
+            entry.isMuted != option.isMuted ||
+            entry.name != option.name ||
+            entry.iconCustomEmojiId != option.iconCustomEmojiId ||
+            entry.iconColor != option.iconColor) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+    forumTopics = [for (final entry in indexed) _optionFromIndex(entry)];
+    notifyListeners();
+  }
 
   Map<String, dynamic>? get _forumTopicRef => isForumTopicTranscript
       ? {'@type': 'messageTopicForum', 'forum_topic_id': forumTopicId}
@@ -488,10 +530,17 @@ class ChatViewModel extends ChangeNotifier {
   final List<_DraftMention> _draftMentions = [];
   ChatMessage? _replyTo;
   MessageTextQuote? _replyQuote;
+
+  /// Bumped every time the pending reply changes. A send stamps the
+  /// revision it captured; when it completes, it only consumes the reply
+  /// if the user hasn't picked a different one in the meantime.
+  int _replyRevision = 0;
+
   ChatMessage? get replyTo => _replyTo;
   set replyTo(ChatMessage? message) {
     _replyTo = message;
     _replyQuote = null;
+    _replyRevision++;
   }
 
   MessageTextQuote? get replyQuote => _replyQuote;
@@ -508,6 +557,34 @@ class ChatViewModel extends ChangeNotifier {
           if (!isSecretChat && _replyQuote != null)
             'quote': _replyQuote!.toInputJson(),
         };
+
+  /// Panel sends (sticker, GIF, voice note, poll, …) can't attach the reply
+  /// anchor inside their content payloads, so they route through this helper:
+  /// it stamps the pending reply onto the request and returns the revision
+  /// the stamp was taken at. The send later consumes the reply only when
+  /// that revision is still current, so completing an older send never
+  /// clears a reply the user selected meanwhile. Failed sends keep the
+  /// reply for retry, mirroring the text path's contract.
+  ({Map<String, dynamic> request, int revision}) _withReplyAnchor(
+    Map<String, dynamic> request,
+  ) {
+    final revision = _replyRevision;
+    if (replyTo != null) {
+      request['reply_to'] = replyToInput;
+    }
+    return (request: request, revision: revision);
+  }
+
+  /// Consumes the pending reply only if it is still the one [revision]
+  /// stamped. A newer selection survives; a consumed anchor reports false.
+  bool _consumeReplyAnchorIfCurrent(int revision) {
+    if (replyTo == null) return false;
+    if (revision != _replyRevision) return false;
+    replyTo = null;
+    notifyListeners();
+    return true;
+  }
+
   ChatMessage? editingMessage;
   String? _draftBeforeEditing;
   String _formattedDraftBeforeEditing = '';
@@ -582,6 +659,11 @@ class ChatViewModel extends ChangeNotifier {
   List<ForumTopicOption> forumTopics = const [];
   int messageAutoDeleteTime = 0;
   int paidMessageStarCount = 0;
+
+  /// Non-null once [loadForumTopics] registered the shared-index listener.
+  /// ChangeNotifier.addListener returns void, so this only records whether
+  /// the one-per-model registration happened (refreshes reuse it).
+  bool _forumTopicIndexListening = false;
   bool peerRequiresPremiumOrContact = false;
   bool peerIsUnavailable = false;
 
@@ -910,6 +992,19 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  /// Panel fire-and-forget sends: stamps the reply anchor, submits the
+  /// request and consumes the reply only after the send actually
+  /// succeeded — and only if the user hasn't selected a newer reply in
+  /// the meantime. A failed send keeps the reply for retry.
+  void _submitPanelMessage(Map<String, dynamic> request) {
+    final stamped = _withReplyAnchor(request);
+    unawaited(
+      _submitMessageRequest(stamped.request).then((sent) {
+        if (sent) _consumeReplyAnchorIfCurrent(stamped.revision);
+      }),
+    );
+  }
+
   void _submitMessageRequestWithoutWaiting(Map<String, dynamic> request) {
     unawaited(_submitMessageRequest(request));
   }
@@ -1198,6 +1293,10 @@ class ChatViewModel extends ChangeNotifier {
     _isDisposed = true;
     KeywordBlocker.shared.removeListener(_applyKeywordFilter);
     HiddenSenderStore.shared.removeListener(_applyKeywordFilter);
+    if (_forumTopicIndexListening) {
+      ForumTopicIndex.shared.removeListener(_onForumTopicIndexChanged);
+      _forumTopicIndexListening = false;
+    }
     _sub?.cancel();
     _typingTimer?.cancel();
     _draftSaveTimer?.cancel();
@@ -1551,12 +1650,13 @@ class ChatViewModel extends ChangeNotifier {
         'text': {'@type': 'formattedText', 'text': trimmed},
       },
     };
+    final replyRevision = _replyRevision;
     if (replyTo != null) {
       request['reply_to'] = replyToInput;
     }
     final sent = await _submitMessageRequest(request);
     if (!sent) return false;
-    replyTo = null;
+    _consumeReplyAnchorIfCurrent(replyRevision);
     _clearDraft();
     notifyListeners();
     return true;
@@ -1637,7 +1737,7 @@ class ChatViewModel extends ChangeNotifier {
     if (!canSendMessages) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -1672,12 +1772,13 @@ class ChatViewModel extends ChangeNotifier {
         },
       },
     };
+    final replyRevision = _replyRevision;
     if (replyTo != null) {
       request['reply_to'] = replyToInput;
     }
     final sent = await _submitMessageRequest(request);
     if (!sent) return false;
-    replyTo = null;
+    _consumeReplyAnchorIfCurrent(replyRevision);
     _clearDraft();
     notifyListeners();
     return true;
@@ -1707,13 +1808,14 @@ class ChatViewModel extends ChangeNotifier {
           ? botApiDirectRichMessageInputContent(html, files, blocks: blocks)
           : richMessageInputContent(blocks),
     };
+    final replyRevision = _replyRevision;
     if (replyTo != null) {
       request['reply_to'] = replyToInput;
     }
-    replyTo = null;
     final pendingMessage = await _client.query(
       _withPaidMessageOptions(request),
     );
+    _consumeReplyAnchorIfCurrent(replyRevision);
     final pendingMessageId = pendingMessage.int64('id');
     if (pendingMessageId != null &&
         pendingMessage.obj('sending_state') != null) {
@@ -1827,12 +1929,13 @@ class ChatViewModel extends ChangeNotifier {
       'chat_id': chatId,
       'input_message_content': {'@type': 'inputMessageDice', 'emoji': emoji},
     };
+    final replyRevision = _replyRevision;
     if (replyTo != null) {
       request['reply_to'] = replyToInput;
     }
     final sent = await _submitMessageRequest(request);
     if (!sent) return false;
-    replyTo = null;
+    _consumeReplyAnchorIfCurrent(replyRevision);
     _clearDraft();
     notifyListeners();
     return true;
@@ -1916,6 +2019,7 @@ class ChatViewModel extends ChangeNotifier {
       ...captionEntities,
       ..._mentionEntitiesFor(caption, captionEntities),
     ];
+    final replyRevision = _replyRevision;
     final requests = buildAttachmentSendRequests(
       chatId: chatId,
       topicId: _forumTopicRef,
@@ -1925,7 +2029,6 @@ class ChatViewModel extends ChangeNotifier {
       replyTo: replyToInput,
       sendConfiguration: sendConfiguration,
     );
-    replyTo = null;
     _clearDraft();
     notifyListeners();
     try {
@@ -1938,6 +2041,7 @@ class ChatViewModel extends ChangeNotifier {
           ),
         );
       }
+      _consumeReplyAnchorIfCurrent(replyRevision);
     } catch (error) {
       _publishSendFailure(
         ChatSendFailure.fromError(
@@ -1955,7 +2059,7 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -1980,7 +2084,7 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2006,7 +2110,7 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
   }) {
     final captionText = captionEntities.isEmpty ? caption.trim() : caption;
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2031,14 +2135,18 @@ class ChatViewModel extends ChangeNotifier {
   Future<bool> sendGif(GifItem gif) async {
     if (!canSendMessages) return false;
     try {
+      final stamped = _withReplyAnchor(
+        gifSendRequest(chatId: chatId, gif: gif),
+      );
       final pendingMessage = await _client.query(
-        _withPaidMessageOptions(gifSendRequest(chatId: chatId, gif: gif)),
+        _withPaidMessageOptions(stamped.request),
       );
       final pendingMessageId = pendingMessage.int64('id');
       if (pendingMessageId != null &&
           pendingMessage.obj('sending_state') != null) {
         await _waitForMessageSend(pendingMessageId);
       }
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       debugPrint('Failed to send GIF: $error');
@@ -2055,14 +2163,14 @@ class ChatViewModel extends ChangeNotifier {
   Future<bool> sendSticker(StickerItem sticker) async {
     if (!canSendMessages) return false;
     try {
-      final pendingMessage = await _client.query(
-        stickerMessageRequest(sticker),
-      );
+      final stamped = _withReplyAnchor(stickerMessageRequest(sticker));
+      final pendingMessage = await _client.query(stamped.request);
       final pendingMessageId = pendingMessage.int64('id');
       if (pendingMessageId != null &&
           pendingMessage.obj('sending_state') != null) {
         await _waitForMessageSend(pendingMessageId);
       }
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       debugPrint('Failed to send sticker: $error');
@@ -2101,7 +2209,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void sendDocument(String path, {String caption = ''}) {
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2117,7 +2225,7 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void sendLocation(double latitude, double longitude) {
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2141,7 +2249,7 @@ class ChatViewModel extends ChangeNotifier {
     final venueTitle = title.trim();
     if (venueTitle.isEmpty) return false;
     try {
-      await _client.query(
+      final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
           '@type': 'sendMessage',
           'chat_id': chatId,
@@ -2164,6 +2272,8 @@ class ChatViewModel extends ChangeNotifier {
           },
         }),
       );
+      await _client.query(stamped.request);
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       _publishSendFailure(
@@ -2179,7 +2289,7 @@ class ChatViewModel extends ChangeNotifier {
   Future<bool> sendContact(MessageContactCard contact) async {
     if (contact.phoneNumber.trim().isEmpty) return false;
     try {
-      await _client.query(
+      final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
           '@type': 'sendMessage',
           'chat_id': chatId,
@@ -2196,6 +2306,8 @@ class ChatViewModel extends ChangeNotifier {
           },
         }),
       );
+      await _client.query(stamped.request);
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       _publishSendFailure(
@@ -2217,7 +2329,7 @@ class ChatViewModel extends ChangeNotifier {
   }) async {
     if (!canSendMessages || !canSendVoiceNotes) return false;
     try {
-      await _client.query(
+      final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
           '@type': 'sendMessage',
           'chat_id': chatId,
@@ -2233,6 +2345,8 @@ class ChatViewModel extends ChangeNotifier {
           },
         }, sendConfiguration: sendConfiguration),
       );
+      await _client.query(stamped.request);
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       if (_isVoiceMessageRestrictionError(error)) {
@@ -2257,7 +2371,7 @@ class ChatViewModel extends ChangeNotifier {
         const MessageSendConfiguration(),
   }) async {
     try {
-      await _client.query(
+      final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
           '@type': 'sendMessage',
           'chat_id': chatId,
@@ -2273,6 +2387,8 @@ class ChatViewModel extends ChangeNotifier {
           },
         }, sendConfiguration: sendConfiguration),
       );
+      await _client.query(stamped.request);
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       debugPrint('Failed to send video note: $error');
@@ -2288,7 +2404,7 @@ class ChatViewModel extends ChangeNotifier {
 
   /// 音频: send a picked audio file as a music message (TDLib computes metadata).
   void sendAudio(String path) {
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2354,7 +2470,7 @@ class ChatViewModel extends ChangeNotifier {
   /// 清单: send a checklist (to-do list). Creating checklists needs Premium.
   void sendChecklist(ChecklistComposerResult draft) {
     if (draft.title.trim().isEmpty || draft.tasks.isEmpty) return;
-    _submitMessageRequestWithoutWaiting({
+    _submitPanelMessage({
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
@@ -2401,7 +2517,7 @@ class ChatViewModel extends ChangeNotifier {
     if (question.isEmpty || options.length < 2) return false;
     if (draft.isQuiz && draft.correctOptionIndexes.isEmpty) return false;
     try {
-      await _client.query(
+      final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
           '@type': 'sendMessage',
           'chat_id': chatId,
@@ -2450,6 +2566,8 @@ class ChatViewModel extends ChangeNotifier {
           },
         }),
       );
+      await _client.query(stamped.request);
+      _consumeReplyAnchorIfCurrent(stamped.revision);
       return true;
     } catch (error) {
       debugPrint('Failed to send poll: $error');
@@ -2826,14 +2944,76 @@ class ChatViewModel extends ChangeNotifier {
     ForwardOptions options = const ForwardOptions(),
   }) async {
     if (hasProtectedContent) throw const ForwardBlockedException();
-    await forwardMessagesWithOptions(
-      client: _client,
-      targetChatId: targetChatId,
-      fromChatId: chatId,
-      messageIds: messageIds,
-      topicId: targetChatId == chatId ? _forumTopicRef : null,
-      options: options,
+    final forwardQuery = forwardQueryForOwner(
+      _client,
+      accountSlot: _accountSlot,
+      clientId: _accountClientId,
     );
+    var richText = options.richText;
+    // Second gate: entry points already hide the option for non-Premium, but
+    // forwardMany is callable without them (bot relay, shortcuts), so the
+    // entitlement is re-checked here against the live TDLib state.
+    if (richText) {
+      final user = await forwardQuery({'@type': 'getMe'});
+      richText = user.boolean('is_premium') ?? false;
+    }
+    if (!richText) {
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: targetChatId,
+        fromChatId: chatId,
+        messageIds: messageIds,
+        topicId: targetChatId == chatId ? _forumTopicRef : null,
+        options: options,
+        query: forwardQuery,
+      );
+      return;
+    }
+    // Process the selection in order so a mix of converted and ordinary
+    // messages still arrives in the order the user picked them: ordinary
+    // messages are flushed as contiguous forwardMessages batches before the
+    // next converted re-send.
+    final byId = {for (final message in _allMessages) message.id: message};
+    final pendingIds = <int>[];
+    Future<void> flush() async {
+      if (pendingIds.isEmpty) return;
+      final ids = List<int>.of(pendingIds);
+      pendingIds.clear();
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: targetChatId,
+        fromChatId: chatId,
+        messageIds: ids,
+        topicId: targetChatId == chatId ? _forumTopicRef : null,
+        options: options,
+        query: forwardQuery,
+      );
+    }
+
+    for (final id in messageIds) {
+      final message = byId[id];
+      // Markdown detection is best-effort: any message that fails detection
+      // or conversion simply falls back to the regular forward batch.
+      if (message == null ||
+          !forwardMarkdownOfferForMessage(message).available) {
+        pendingIds.add(id);
+        continue;
+      }
+      // Flush the ordinary messages selected before this one so the re-send
+      // lands after them; if the conversion fails the message rejoins the
+      // pending batch and order is still preserved.
+      await flush();
+      final sent = await sendMarkdownRichTextForward(
+        query: forwardQuery,
+        fromChatId: chatId,
+        messageId: id,
+        targetChatId: targetChatId,
+        text: message.text,
+        topicId: targetChatId == chatId ? _forumTopicRef : null,
+      );
+      if (!sent) pendingIds.add(id);
+    }
+    await flush();
   }
 
   Future<void> saveToFavorites(int messageId) async {
@@ -3957,6 +4137,13 @@ class ChatViewModel extends ChangeNotifier {
     if (!supportsTopics || forumTopicsLoading) return;
     forumTopicsLoading = true;
     notifyListeners();
+    // One listener per view model, not per refresh: dispose removes only
+    // one copy, so a refresh-added duplicate would survive disposal and
+    // keep mutating this model's topics.
+    if (!_forumTopicIndexListening) {
+      ForumTopicIndex.shared.addListener(_onForumTopicIndexChanged);
+      _forumTopicIndexListening = true;
+    }
     try {
       final response = await _client.query({
         '@type': 'getForumTopics',
@@ -3978,6 +4165,19 @@ class ChatViewModel extends ChangeNotifier {
             topic.str('name') ??
             AppStrings.t(AppStringKeys.topicChatTopicTitle);
         final icon = info.obj('icon') ?? topic.obj('icon');
+        final pageUnread =
+            topic.integer('unread_count') ?? info.integer('unread_count') ?? 0;
+        final live = ForumTopicIndex.shared.entryFor(_accountSlot, chatId, id);
+        final pageRead =
+            info.integer('last_read_inbox_message_id') ??
+            topic.integer('last_read_inbox_message_id') ??
+            0;
+        final pageLast = topic.obj('last_message')?.int64('id') ?? 0;
+        // A live counter that already saw newer traffic wins over the page's
+        // snapshot; otherwise the page is authoritative.
+        final unread = live != null && live.readsAheadOfPage(pageRead, pageLast)
+            ? live.unreadCount
+            : (pageUnread < 0 ? 0 : pageUnread);
         topics.add(
           ForumTopicOption(
             id: id,
@@ -3992,10 +4192,22 @@ class ChatViewModel extends ChangeNotifier {
                 info.integer('icon_color') ??
                 topic.integer('icon_color') ??
                 0,
+            unreadCount: unread,
+            isMuted:
+                (topic.obj('notification_settings')?.integer('mute_for') ?? 0) >
+                0,
           ),
         );
       }
       forumTopics = topics;
+      ForumTopicIndex.shared.storeAll(_accountSlot, chatId, [
+        for (final topic in raw) ?ForumTopicIndexEntry.fromTopic(topic),
+      ]);
+      // storeAll merged the live counters; show exactly what it kept.
+      final stored = ForumTopicIndex.shared.topicsFor(_accountSlot, chatId);
+      if (stored.isNotEmpty) {
+        forumTopics = [for (final entry in stored) _optionFromIndex(entry)];
+      }
     } catch (_) {
       forumTopics = const [];
     } finally {
@@ -4003,6 +4215,16 @@ class ChatViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  ForumTopicOption _optionFromIndex(ForumTopicIndexEntry entry) =>
+      ForumTopicOption(
+        id: entry.id,
+        name: entry.name,
+        iconCustomEmojiId: entry.iconCustomEmojiId,
+        iconColor: entry.iconColor,
+        unreadCount: entry.unreadCount,
+        isMuted: entry.isMuted,
+      );
 
   int? _forumTopicId(Map<String, dynamic> topic, Map<String, dynamic> info) {
     return info.integer('forum_topic_id') ??

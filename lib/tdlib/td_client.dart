@@ -36,6 +36,7 @@ import '../settings/api_credentials_config.dart';
 import '../settings/proxy_config.dart';
 import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
+import 'forum_topic_index.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
 import 'td_user_index.dart';
@@ -405,6 +406,7 @@ class TdClient {
     final object = <String, dynamic>{...source, '@client_id': _activeClientId};
     AvatarAnimationIndex.shared.observe(_activeSlot, object);
     TdUserIndex.shared.observe(_activeSlot, object);
+    ForumTopicIndex.shared.observe(_activeSlot, object);
     if (object.type == 'updateChatFolders') {
       _latestChatFoldersByClient[_activeClientId] = object;
     }
@@ -1743,6 +1745,7 @@ class TdClient {
       }
       _slotForClient.remove(cid);
       TdUserIndex.shared.clearSlot(slot);
+      ForumTopicIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
       _latestTextCompositionStylesByClient.remove(cid);
@@ -1772,6 +1775,7 @@ class TdClient {
       _failPending('TDLib client closed', clientId: cid);
       _slotForClient.remove(cid);
       TdUserIndex.shared.clearSlot(slot);
+      ForumTopicIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
       _latestTextCompositionStylesByClient.remove(cid);
@@ -1824,6 +1828,7 @@ class TdClient {
         _activeSlot;
     AvatarAnimationIndex.shared.observe(slot, object);
     TdUserIndex.shared.observe(slot, object);
+    ForumTopicIndex.shared.observe(slot, object);
 
     // Responses to our requests carry the "@extra" we attached (any client).
     final extra = object.str('@extra');
@@ -1851,6 +1856,7 @@ class TdClient {
     if (object.type == 'updateAuthorizationState' &&
         object.obj('authorization_state')?.type == 'authorizationStateClosed') {
       TdUserIndex.shared.clearSlot(slot);
+      ForumTopicIndex.shared.clearSlot(slot);
       _unconfirmedSlotForClient.remove(clientId);
       final waiter = _clientClosedWaiters.remove(clientId);
       if (waiter != null && !waiter.isCompleted) waiter.complete();

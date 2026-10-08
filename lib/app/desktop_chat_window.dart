@@ -37,6 +37,7 @@ import 'desktop_chat_window_stub.dart'
     if (dart.library.io) 'desktop_chat_window_io.dart'
     as implementation;
 import 'desktop_utility_window_models.dart';
+import 'detail_content_reveal.dart';
 import 'global_video_split_host.dart';
 
 export 'desktop_chat_window_models.dart';
@@ -519,7 +520,14 @@ class _DesktopStandaloneChatSurfaceState
       onOpenFullInfo: () => unawaited(_openFullInfo()),
       onOpenUserProfile: _openUserProfile,
     );
-    return chat;
+    return DetailContentReveal(
+      motionKey: ValueKey((
+        'desktop-standalone-topic',
+        widget.arguments.chatId,
+        _forumTopicId,
+      )),
+      child: chat,
+    );
   }
 }
 

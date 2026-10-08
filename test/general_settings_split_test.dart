@@ -41,6 +41,7 @@ void main() {
       'chat-behavior-open-at-latest',
       'chat-behavior-saved-messages-identity',
       'chat-behavior-preserve-sender',
+      'chat-behavior-forward-rich-markdown',
       'chat-behavior-save-captured-photos',
       'chat-behavior-quick-replies',
       'chat-behavior-link-browser',
@@ -65,7 +66,7 @@ void main() {
     );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(8),
+      findsNWidgets(9),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(

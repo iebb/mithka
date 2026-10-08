@@ -121,10 +121,21 @@ abstract final class AppStringKeys {
   static const appearancePreviewMessageSample =
       'appearancePreviewMessageSample';
   static const appearancePreviewUsersSample = 'appearancePreviewUsersSample';
+  static const appearanceShowFolderBadges = 'appearanceShowFolderBadges';
   static const chatInputResizeMessageInput = 'chatInputResizeMessageInput';
+  static const chatMembersRemovedTitle = 'chatMembersRemovedTitle';
+  static const chatMembersSubscribersTitleWithCount =
+      'chatMembersSubscribersTitleWithCount';
+  static const chatMembersUnban = 'chatMembersUnban';
+  static const chatMembersUnbanConfirmation = 'chatMembersUnbanConfirmation';
   static const debugBubblePreviewExperimental =
       'debugBubblePreviewExperimental';
   static const debugBubblePreviewGenres = 'debugBubblePreviewGenres';
+  static const groupManagementChannelName = 'groupManagementChannelName';
+  static const groupManagementChannelSubscribers =
+      'groupManagementChannelSubscribers';
+  static const groupManagementRemovedUsers = 'groupManagementRemovedUsers';
+  static const groupManagementRetry = 'groupManagementRetry';
   static const hiddenSendersEmpty = 'hiddenSendersEmpty';
   static const hiddenSendersEverywhere = 'hiddenSendersEverywhere';
   static const hiddenSendersNote = 'hiddenSendersNote';
@@ -753,8 +764,30 @@ abstract final class AppStringKeys {
   static const chatAdminDeleteMessages = 'chatAdminDeleteMessages';
   static const chatAdminManageChat = 'chatAdminManageChat';
   static const chatAdminManageVideoChats = 'chatAdminManageVideoChats';
+  static const chatAdminPermissionChangeInfoChannel =
+      'chatAdminPermissionChangeInfoChannel';
+  static const chatAdminPermissionChangeInfoGroup =
+      'chatAdminPermissionChangeInfoGroup';
+  static const chatAdminPermissionDeleteMessagesOfOthers =
+      'chatAdminPermissionDeleteMessagesOfOthers';
+  static const chatAdminPermissionDeleteStories =
+      'chatAdminPermissionDeleteStories';
+  static const chatAdminPermissionEditMessages =
+      'chatAdminPermissionEditMessages';
+  static const chatAdminPermissionEditMessagesOfOthers =
+      'chatAdminPermissionEditMessagesOfOthers';
+  static const chatAdminPermissionEditStories =
+      'chatAdminPermissionEditStories';
+  static const chatAdminPermissionManageDirectMessages =
+      'chatAdminPermissionManageDirectMessages';
+  static const chatAdminPermissionManageTags = 'chatAdminPermissionManageTags';
+  static const chatAdminPermissionPostMessages =
+      'chatAdminPermissionPostMessages';
+  static const chatAdminPermissionPostStories =
+      'chatAdminPermissionPostStories';
   static const chatAdminPromoteMembers = 'chatAdminPromoteMembers';
   static const chatAdminRestrictMembers = 'chatAdminRestrictMembers';
+  static const chatAdminSendWelcomeMessages = 'chatAdminSendWelcomeMessages';
   static const chatAdminsOnlyPosting = 'chatAdminsOnlyPosting';
   static const chatAllMembersMuted = 'chatAllMembersMuted';
   static const chatAndOthersCount = 'chatAndOthersCount';
@@ -807,6 +840,9 @@ abstract final class AppStringKeys {
   static const chatForwardProtected = 'chatForwardProtected';
   static const chatForwardRemoveCaption = 'chatForwardRemoveCaption';
   static const chatForwardRemoveSender = 'chatForwardRemoveSender';
+  static const chatForwardRenderMarkdown = 'chatForwardRenderMarkdown';
+  static const chatForwardRenderMarkdownPremium =
+      'chatForwardRenderMarkdownPremium';
   static const chatForwardToTitle = 'chatForwardToTitle';
   static const chatInfoAlbum = 'chatInfoAlbum';
   static const chatInfoAutoDeleteMessages = 'chatInfoAutoDeleteMessages';
@@ -849,6 +885,7 @@ abstract final class AppStringKeys {
   static const chatInfoGroupVideos = 'chatInfoGroupVideos';
   static const chatInfoLeaveGroup = 'chatInfoLeaveGroup';
   static const chatInfoLoadFoldersFailed = 'chatInfoLoadFoldersFailed';
+  static const chatInfoManageChannel = 'chatInfoManageChannel';
   static const chatInfoManageGroup = 'chatInfoManageGroup';
   static const chatInfoMoveToGroupAssistant = 'chatInfoMoveToGroupAssistant';
   static const chatInfoNewFolder = 'chatInfoNewFolder';
@@ -901,6 +938,7 @@ abstract final class AppStringKeys {
   static const chatMembersAdminSave = 'chatMembersAdminSave';
   static const chatMembersDemote = 'chatMembersDemote';
   static const chatMembersDemoteConfirmation = 'chatMembersDemoteConfirmation';
+  static const chatMembersNoResults = 'chatMembersNoResults';
   static const chatMembersPromote = 'chatMembersPromote';
   static const chatMembersPromoteFirst = 'chatMembersPromoteFirst';
   static const chatMembersRemoveFailedPermission =
@@ -908,8 +946,16 @@ abstract final class AppStringKeys {
   static const chatMembersRemoveMemberConfirmation =
       'chatMembersRemoveMemberConfirmation';
   static const chatMembersRemoveMemberTitle = 'chatMembersRemoveMemberTitle';
+  static const chatMembersRestrict = 'chatMembersRestrict';
+  static const chatMembersRestrictApply = 'chatMembersRestrictApply';
+  static const chatMembersRestrictDuration = 'chatMembersRestrictDuration';
+  static const chatMembersRestrictFailed = 'chatMembersRestrictFailed';
+  static const chatMembersRestrictForever = 'chatMembersRestrictForever';
+  static const chatMembersRestrictTitle = 'chatMembersRestrictTitle';
+  static const chatMembersSearchHint = 'chatMembersSearchHint';
   static const chatMembersSetTitle = 'chatMembersSetTitle';
   static const chatMembersTitleWithCount = 'chatMembersTitleWithCount';
+  static const chatMembersUnrestrict = 'chatMembersUnrestrict';
   static const chatMembersUpdateFailed = 'chatMembersUpdateFailed';
   static const chatMenu = 'chatMenu';
   static const chatMessageInputPlaceholder = 'chatMessageInputPlaceholder';
@@ -1565,6 +1611,9 @@ abstract final class AppStringKeys {
   static const generalOpenChatAtLatestMessage =
       'generalOpenChatAtLatestMessage';
   static const generalRepeatPreserveSender = 'generalRepeatPreserveSender';
+  static const generalForwardRichMarkdown = 'generalForwardRichMarkdown';
+  static const generalForwardRichMarkdownHint =
+      'generalForwardRichMarkdownHint';
   static const generalSaveCapturedPhotos = 'generalSaveCapturedPhotos';
   static const generalSaveCapturedPhotosHint = 'generalSaveCapturedPhotosHint';
   static const generalSendMessageWithEnter = 'generalSendMessageWithEnter';
@@ -1741,6 +1790,8 @@ abstract final class AppStringKeys {
       'groupManagementPermissionCreateTopics';
   static const groupManagementPermissionEditGroupInfo =
       'groupManagementPermissionEditGroupInfo';
+  static const groupManagementPermissionEditOwnTag =
+      'groupManagementPermissionEditOwnTag';
   static const groupManagementPermissionLinkPreviews =
       'groupManagementPermissionLinkPreviews';
   static const groupManagementPermissionPinMessages =
@@ -1755,6 +1806,8 @@ abstract final class AppStringKeys {
       'groupManagementPermissionSendPhotos';
   static const groupManagementPermissionSendPolls =
       'groupManagementPermissionSendPolls';
+  static const groupManagementPermissionSendReactions =
+      'groupManagementPermissionSendReactions';
   static const groupManagementPermissionSendStickersAndGifs =
       'groupManagementPermissionSendStickersAndGifs';
   static const groupManagementPermissionSendVideoMessages =

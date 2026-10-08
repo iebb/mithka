@@ -1,10 +1,12 @@
 //
 //  group_management_view.dart
 //
-//  Telegram-style group management for admins/owners. This intentionally maps
-//  to real TDLib capabilities instead of showing non-Telegram automation controls
-//  that Telegram groups cannot perform natively.
+//  Telegram-style group/channel management for admins/owners. This intentionally
+//  maps to real TDLib capabilities instead of showing non-Telegram automation
+//  controls that Telegram groups cannot perform natively.
 //
+
+import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -32,10 +34,12 @@ class GroupManagementView extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.title,
+    this.isChannel = false,
   });
 
   final int chatId;
   final String title;
+  final bool isChannel;
 
   @override
   State<GroupManagementView> createState() => _GroupManagementViewState();
@@ -55,11 +59,24 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   bool _joinToSend = false;
   bool _joinByRequest = false;
   bool _loading = true;
+  bool _loadFailed = false;
   bool _canChangeInfo = false;
   bool _canRestrictMembers = false;
   bool _canPromoteMembers = false;
   bool _canDeleteForAllMembers = false;
   bool _deleting = false;
+
+  /// Lifecycle of the getSupergroup-backed values. The page renders from the
+  /// local database immediately, but the public username and the join
+  /// toggles are only known once getSupergroup lands; their controls stay
+  /// disabled until then so a save can never submit an unloaded blank
+  /// (which TDLib would treat as "clear the username") and a toggle can
+  /// never flip an unknown state.
+  int _metaEpoch = 0;
+  bool _metaLoading = true;
+  bool _metaFailed = false;
+
+  bool get _metaKnown => !_metaLoading && !_metaFailed;
 
   Map<String, bool> _permissions = _defaultPermissions;
 
@@ -76,12 +93,15 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     'can_send_polls': AppStringKeys.groupManagementPermissionSendPolls,
     'can_send_other_messages':
         AppStringKeys.groupManagementPermissionSendStickersAndGifs,
-    'can_add_web_page_previews':
+    'can_add_link_previews':
         AppStringKeys.groupManagementPermissionLinkPreviews,
+    'can_react_to_messages':
+        AppStringKeys.groupManagementPermissionSendReactions,
+    'can_edit_tag': AppStringKeys.groupManagementPermissionEditOwnTag,
     'can_invite_users': AppStringKeys.addMembersInviteMembersTitle,
     'can_pin_messages': AppStringKeys.groupManagementPermissionPinMessages,
     'can_change_info': AppStringKeys.groupManagementPermissionEditGroupInfo,
-    'can_manage_topics': AppStringKeys.groupManagementPermissionCreateTopics,
+    'can_create_topics': AppStringKeys.groupManagementPermissionCreateTopics,
   };
 
   static const _defaultPermissions = <String, bool>{
@@ -94,65 +114,64 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     'can_send_audios': true,
     'can_send_polls': true,
     'can_send_other_messages': true,
-    'can_add_web_page_previews': true,
+    'can_add_link_previews': true,
+    'can_react_to_messages': true,
+    'can_edit_tag': true,
     'can_invite_users': true,
     'can_pin_messages': false,
     'can_change_info': false,
-    'can_manage_topics': true,
+    'can_create_topics': true,
   };
 
   @override
   void initState() {
     super.initState();
     _title = widget.title;
+    _isChannel = widget.isChannel;
     _load();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+    });
+    Map<String, dynamic>? chat;
     try {
-      final chat = await _client.query({
+      chat = await _client.query({
         '@type': 'getChat',
         'chat_id': widget.chatId,
       });
-      _title = chat.str('title') ?? _title;
-      final type = chat.obj('type');
-      _isChannel = type?.boolean('is_channel') ?? false;
-      _canDeleteForAllMembers = chatDeleteCapabilities(
-        chat,
-      ).canDeleteForAllUsers;
-      _permissions = _readPermissions(chat.obj('permissions'));
-      await _loadSelfRights();
-
-      if (type?.type == 'chatTypeSupergroup') {
-        _supergroupId = type?.int64('supergroup_id');
-        if (_supergroupId != null) {
-          final sg = await _client.query({
-            '@type': 'getSupergroup',
-            'supergroup_id': _supergroupId,
-          });
-          _username =
-              sg.obj('usernames')?.str('editable_username') ??
-              sg.str('username') ??
-              '';
-          _joinToSend = sg.boolean('join_to_send_messages') ?? false;
-          _joinByRequest = sg.boolean('join_by_request') ?? false;
-          _isForum = sg.boolean('is_forum') ?? false;
-          try {
-            final full = await _client.query({
-              '@type': 'getSupergroupFullInfo',
-              'supergroup_id': _supergroupId,
-            });
-            _canGetStatistics = full.boolean('can_get_statistics') ?? false;
-          } catch (_) {}
-        }
-      }
     } catch (_) {
-      if (mounted) {
-        showToast(context, AppStringKeys.groupManagementLoadFailed);
-      }
+      chat = null;
     }
-    if (mounted) setState(() => _loading = false);
+    if (!mounted) return;
+    if (chat == null) {
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
+      return;
+    }
+    _title = chat.str('title') ?? _title;
+    final type = chat.obj('type');
+    _isChannel = type?.boolean('is_channel') ?? _isChannel;
+    _canDeleteForAllMembers = chatDeleteCapabilities(chat).canDeleteForAllUsers;
+    _permissions = _readPermissions(chat.obj('permissions'));
+    _supergroupId = type?.type == 'chatTypeSupergroup'
+        ? type?.int64('supergroup_id')
+        : null;
+    // getChat reads the local database, so the page renders as soon as it
+    // lands. Everything after it is cache-backed but can stall: Telegram
+    // flood-limits channels.getFullChannel hard, TDLib silently queues
+    // flood-waited queries for 30 seconds or more, and a page-wide await on
+    // getSupergroupFullInfo keeps the management screen on the spinner the
+    // whole time. Rights, supergroup metadata and the optional statistics
+    // probe fill in progressively instead of gating the page.
+    setState(() => _loading = false);
+    unawaited(_loadSelfRights());
+    unawaited(_loadSupergroupMeta());
+    unawaited(_loadFullInfo());
   }
 
   Future<void> _loadSelfRights() async {
@@ -179,6 +198,59 @@ class _GroupManagementViewState extends State<GroupManagementView> {
           _canPromoteMembers = rights?.boolean('can_promote_members') ?? false;
       }
     } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadSupergroupMeta() async {
+    final supergroupId = _supergroupId;
+    if (supergroupId == null) return;
+    final epoch = ++_metaEpoch;
+    setState(() {
+      _metaLoading = true;
+      _metaFailed = false;
+    });
+    try {
+      final sg = await _client.query({
+        '@type': 'getSupergroup',
+        'supergroup_id': supergroupId,
+      });
+      if (!mounted || epoch != _metaEpoch) return;
+      setState(() {
+        _username =
+            sg.obj('usernames')?.str('editable_username') ??
+            sg.str('username') ??
+            '';
+        _joinToSend = sg.boolean('join_to_send_messages') ?? false;
+        _joinByRequest = sg.boolean('join_by_request') ?? false;
+        _isForum = sg.boolean('is_forum') ?? false;
+        _metaLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || epoch != _metaEpoch) return;
+      // The metadata-backed controls stay disabled and a retry card is
+      // offered; everything else on the page keeps working.
+      setState(() => _metaFailed = true);
+    }
+  }
+
+  Future<void> _retrySupergroupMeta() => _loadSupergroupMeta();
+
+  Future<void> _loadFullInfo() async {
+    final supergroupId = _supergroupId;
+    if (supergroupId == null) return;
+    try {
+      final full = await _client.query({
+        '@type': 'getSupergroupFullInfo',
+        'supergroup_id': supergroupId,
+      }, timeout: const Duration(seconds: 15));
+      if (!mounted) return;
+      setState(
+        () => _canGetStatistics = full.boolean('can_get_statistics') ?? false,
+      );
+    } catch (_) {
+      // Statistics stays hidden when the probe fails or is flood-limited; the
+      // rest of the page works regardless.
+    }
   }
 
   Map<String, bool> _readPermissions(Map<String, dynamic>? raw) {
@@ -198,12 +270,18 @@ class _GroupManagementViewState extends State<GroupManagementView> {
       child: Column(
         children: [
           NavHeader(
-            title: AppStringKeys.chatInfoManageGroup,
+            title: AppStrings.t(
+              _isChannel
+                  ? AppStringKeys.chatInfoManageChannel
+                  : AppStringKeys.chatInfoManageGroup,
+            ),
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
             child: _loading
                 ? const Center(child: _GroupManagementSpinner())
+                : _loadFailed
+                ? _GroupManagementLoadError(onRetry: _load)
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
                     children: [
@@ -212,7 +290,9 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                         [
                           _navRow(
                             AppStrings.t(
-                              AppStringKeys.groupManagementGroupName,
+                              _isChannel
+                                  ? AppStringKeys.groupManagementChannelName
+                                  : AppStringKeys.groupManagementGroupName,
                             ),
                             value: _title,
                             onTap: _editTitle,
@@ -227,7 +307,13 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                                       AppStringKeys.groupManagementNotSet,
                                     )
                                   : '@$_username',
-                              onTap: _canChangeInfo ? _editUsername : null,
+                              // Gated on metadata, not just rights: opening
+                              // the editor before getSupergroup lands would
+                              // pre-fill a blank, and saving that blank
+                              // clears the username server-side.
+                              onTap: (_canChangeInfo && _metaKnown)
+                                  ? _editUsername
+                                  : null,
                             ),
                           _navRow(
                             AppStrings.t(
@@ -272,7 +358,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                                 AppStringKeys.groupManagementJoinBeforePosting,
                               ),
                               _joinToSend,
-                              _canChangeInfo,
+                              _canChangeInfo && _metaKnown,
                               _setJoinToSend,
                             ),
                             _divider(),
@@ -282,10 +368,51 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                                     .groupManagementAdminApprovalRequired,
                               ),
                               _joinByRequest,
-                              _canChangeInfo,
+                              _canChangeInfo && _metaKnown,
                               _setJoinByRequest,
                             ),
                           ],
+                        ),
+                      ],
+                      if (_supergroupId != null && _metaFailed) ...[
+                        _gap(),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  AppStrings.t(
+                                    AppStringKeys.groupManagementLoadFailed,
+                                  ),
+                                  style: AppTextStyle.footnote(
+                                    context.colors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              GestureDetector(
+                                key: const ValueKey(
+                                  'group-management-meta-retry',
+                                ),
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _retrySupergroupMeta,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                  child: Text(
+                                    AppStrings.t(
+                                      AppStringKeys.groupManagementRetry,
+                                    ),
+                                    style: AppTextStyle.footnote(
+                                      AppTheme.brand,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                       _gap(),
@@ -389,7 +516,12 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                         ),
                         [
                           _navRow(
-                            AppStrings.t(AppStringKeys.groupManagementMembers),
+                            AppStrings.t(
+                              _isChannel
+                                  ? AppStringKeys
+                                        .groupManagementChannelSubscribers
+                                  : AppStringKeys.groupManagementMembers,
+                            ),
                             onTap: _openMembers,
                           ),
                           _divider(),
@@ -404,18 +536,33 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                                   ),
                             onTap: _openAdministrators,
                           ),
-                          _divider(),
-                          _navRow(
-                            AppStrings.t(AppStringKeys.groupManagementLogTitle),
-                            onTap: () => Navigator.of(context).push(
-                              _pageRoute(
-                                GroupManagementLogView(
-                                  chatId: widget.chatId,
-                                  title: _title,
+                          if (_supergroupId != null && _canRestrictMembers) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementRemovedUsers,
+                              ),
+                              onTap: _openRemovedUsers,
+                            ),
+                          ],
+                          // The admin log only exists for supergroups and
+                          // channels; basic groups have no event log to show.
+                          if (_supergroupId != null) ...[
+                            _divider(),
+                            _navRow(
+                              AppStrings.t(
+                                AppStringKeys.groupManagementLogTitle,
+                              ),
+                              onTap: () => Navigator.of(context).push(
+                                _pageRoute(
+                                  GroupManagementLogView(
+                                    chatId: widget.chatId,
+                                    title: _title,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                       if (!_isChannel) ...[
@@ -425,7 +572,11 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                             AppStringKeys.groupManagementPostingPermissions,
                           ),
                           [
-                            for (final entry in _permissionLabels.entries) ...[
+                            // can_create_topics is a member right only in
+                            // forum supergroups; hide it everywhere else.
+                            for (final entry in _permissionLabels.entries.where(
+                              (e) => e.key != 'can_create_topics' || _isForum,
+                            )) ...[
                               if (entry.key != _permissionLabels.keys.first)
                                 _divider(),
                               _switchRow(
@@ -637,7 +788,9 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     final value = await Navigator.of(context).push<String>(
       _pageRoute(
         EditFieldView(
-          title: AppStringKeys.groupManagementGroupName,
+          title: _isChannel
+              ? AppStringKeys.groupManagementChannelName
+              : AppStringKeys.groupManagementGroupName,
           initial: _title,
           maxLength: 128,
         ),
@@ -670,6 +823,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
         ),
       ),
     );
+    // An empty value is valid: TDLib documents it as "remove the username".
     if (!mounted || value == null || value == _username) return;
     try {
       await _client.query({
@@ -758,6 +912,18 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     );
   }
 
+  void _openRemovedUsers() {
+    Navigator.of(context).push(
+      _pageRoute(
+        ChatMembersView(
+          chatId: widget.chatId,
+          title: _title,
+          mode: ChatMembersMode.banned,
+        ),
+      ),
+    );
+  }
+
   void _openAppearance() {
     final supergroupId = _supergroupId;
     if (supergroupId == null) return;
@@ -816,6 +982,60 @@ class _GroupManagementSwitch extends StatelessWidget {
                   : const Color(0xFFFFFFFF),
               shape: BoxShape.circle,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupManagementLoadError extends StatelessWidget {
+  const _GroupManagementLoadError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Container(
+          decoration: BoxDecoration(
+            color: c.card,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                HeroAppIcons.triangleExclamation,
+                size: 24,
+                color: AppTheme.tagRed,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                AppStrings.t(AppStringKeys.groupManagementLoadFailed),
+                style: TextStyle(fontSize: 15, color: c.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                key: const ValueKey('group-management-load-retry'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onRetry,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    AppStrings.t(AppStringKeys.groupManagementRetry),
+                    style: TextStyle(fontSize: 15, color: AppTheme.brand),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -914,12 +914,17 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           if (_vm.isGroup && _vm.canManageGroup) ...[
             const InsetDivider(leadingInset: 14),
             _infoRow(
-              AppStrings.t(AppStringKeys.chatInfoManageGroup),
+              AppStrings.t(
+                _vm.isChannel
+                    ? AppStringKeys.chatInfoManageChannel
+                    : AppStringKeys.chatInfoManageGroup,
+              ),
               () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => GroupManagementView(
                     chatId: widget.chatId,
                     title: _vm.title,
+                    isChannel: _vm.isChannel,
                   ),
                 ),
               ),

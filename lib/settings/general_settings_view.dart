@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../auth/account_store.dart';
 import '../chat/link_browser.dart';
 import '../components/app_icons.dart';
 import '../components/settings_selection_row.dart';
@@ -190,6 +191,9 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
+    // The cached Premium flag decides on the first frame, so the row never
+    // shifts between enabled and locked after the account answers.
+    final isPremium = context.watch<AccountStore?>()?.activeIsPremium ?? false;
     final supportsInternalBrowser = internalBrowserSupported(
       platform: Theme.of(context).platform,
     );
@@ -239,6 +243,19 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                   icon: HeroAppIcons.arrowsRotate,
                 ),
                 onChanged: (value) => theme.preserveSenderWhenRepeating = value,
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-forward-rich-markdown'),
+                title: AppStringKeys.generalForwardRichMarkdown,
+                subtitle: isPremium
+                    ? AppStringKeys.generalForwardRichMarkdownHint
+                    : AppStringKeys.chatForwardRenderMarkdownPremium,
+                value: theme.forwardRichMarkdown,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.code),
+                enabled: isPremium,
+                // Locked off for non-Premium instead of silently storing the
+                // preference, so the switch the user sees is the live state.
+                onChanged: (value) => theme.forwardRichMarkdown = value,
               ),
               // Only mobile composers offer a camera button, so only they can
               // put a capture in the system album.

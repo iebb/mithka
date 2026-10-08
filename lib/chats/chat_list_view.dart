@@ -139,19 +139,23 @@ class ChatFolderRail extends StatelessWidget {
     super.key,
     required this.filters,
     required this.selectedFolderId,
-    required this.onSelect,
+    this.onSelect,
     this.keyForFolder,
     this.onEdit,
     this.highlights = const {},
+    this.showUnreadBadges = false,
   });
   final List<ChatFilterOption> filters;
   final int? selectedFolderId;
-  final ValueChanged<ChatFilterOption> onSelect;
+  final ValueChanged<ChatFilterOption>? onSelect;
   final Key? Function(int? folderId)? keyForFolder;
   final ValueChanged<ChatFilterOption>? onEdit;
 
   /// Live page-transition highlights; omitted for a settled folder rail.
   final Map<int?, double> highlights;
+
+  /// Whether folder glyphs carry their unread-chat count.
+  final bool showUnreadBadges;
 
   double _highlight(ChatFilterOption filter) =>
       highlights[filter.folderId] ??
@@ -159,6 +163,7 @@ class ChatFolderRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final showBadges = showUnreadBadges;
     return ListView(
       key: const PageStorageKey('side-chat-folders'),
       padding: const EdgeInsets.only(bottom: 8),
@@ -180,7 +185,7 @@ class ChatFolderRail extends StatelessWidget {
               semanticLabel: filter.title.l10n(context),
               selected: filter.folderId == selectedFolderId,
               borderRadius: BorderRadius.circular(AppRadius.control),
-              onTap: () => onSelect(filter),
+              onTap: () => onSelect?.call(filter),
               child: Container(
                 key: ValueKey('side-folder-${filter.folderId ?? 'all'}'),
                 constraints: const BoxConstraints(minHeight: 56),
@@ -202,6 +207,10 @@ class ChatFolderRail extends StatelessWidget {
                         c.linkBlue,
                         _highlight(filter),
                       )!,
+                      badgeCount: filter.isAll || !showBadges
+                          ? 0
+                          : filter.unreadChatCount,
+                      badgeAccent: filter.hasUnmutedUnread,
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -2281,6 +2290,7 @@ class _ChatListViewState extends State<ChatListView>
     animation: _folderDrag,
     builder: (context, _) => ChatFolderRail(
       filters: _model.filters,
+      showUnreadBadges: context.watch<ThemeController>().showFolderUnreadBadges,
       selectedFolderId: _model.selectedFilter.folderId,
       highlights: {
         for (final filter in _model.filters)
@@ -2297,6 +2307,7 @@ class _ChatListViewState extends State<ChatListView>
 
   Widget _chatFolderTabs() {
     final c = context.colors;
+    final showBadges = context.watch<ThemeController>().showFolderUnreadBadges;
     final selectedFolderId = _model.selectedFilter.folderId;
     // The strip scrolls horizontally, so its height is fixed; grow it with the
     // label that sits above the selection indicator.
@@ -2353,6 +2364,10 @@ class _ChatListViewState extends State<ChatListView>
                             filter.isAll ? 'All' : filter.iconName,
                             size: 17,
                             color: accent ?? c.textSecondary,
+                            badgeCount: showBadges && !filter.isAll
+                                ? filter.unreadChatCount
+                                : 0,
+                            badgeAccent: filter.hasUnmutedUnread,
                           ),
                           const SizedBox(width: AppSpacing.xs + 1),
                           ConstrainedBox(

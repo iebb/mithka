@@ -5,10 +5,19 @@ typedef ForwardQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
 class ForwardOptions {
-  const ForwardOptions({this.removeCaption = false, this.removeSender = false});
+  const ForwardOptions({
+    this.removeCaption = false,
+    this.removeSender = false,
+    this.richText = false,
+  });
 
   final bool removeCaption;
   final bool removeSender;
+
+  /// Re-send literal Markdown markers as rich-text entities (a newly authored
+  /// message) instead of copying the message as-is. Ignored by the plain
+  /// forward request builders; callers branch on it first.
+  final bool richText;
 
   bool get sendCopy => removeSender || removeCaption;
 }
@@ -19,6 +28,20 @@ class ForwardBlockedException implements Exception {
   @override
   String toString() => 'ForwardBlockedException';
 }
+
+/// Pins source ids and permission probes to the client that supplied them.
+/// Switching the selected account must not re-author cached source text as
+/// another account. A replaced/removed source client cannot serve the copy.
+ForwardQuery forwardQueryForOwner(
+  TdClient client, {
+  required int accountSlot,
+  required int clientId,
+}) => (request) {
+  if (client.clientId(accountSlot) != clientId) {
+    throw StateError('The source account is unavailable');
+  }
+  return client.queryTo(request, clientId);
+};
 
 bool isForwardProtectedError(Object error) {
   if (error is ForwardBlockedException) return true;
@@ -41,15 +64,17 @@ Future<void> forwardMessagesWithOptions({
   required List<int> messageIds,
   Map<String, dynamic>? topicId,
   ForwardOptions options = const ForwardOptions(),
+  ForwardQuery? query,
 }) async {
   if (messageIds.isEmpty) return;
+  final requestQuery = query ?? client.query;
   await assertForwardAllowed(
-    query: client.query,
+    query: requestQuery,
     fromChatId: fromChatId,
     messageIds: messageIds,
     options: options,
   );
-  final response = await client.query({
+  final response = await requestQuery({
     '@type': 'forwardMessages',
     'chat_id': targetChatId,
     'topic_id': ?topicId,

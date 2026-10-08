@@ -1114,6 +1114,8 @@ class _TopicChatViewState extends State<TopicChatView> {
                     name: topic.name,
                     iconCustomEmojiId: topic.iconCustomEmojiId,
                     iconColor: topic.iconColor?.toARGB32() ?? 0,
+                    unreadCount: topic.unreadCount,
+                    isMuted: topic.isMuted,
                   ),
               ],
               selectedTopicId: _selectedThreadId,
