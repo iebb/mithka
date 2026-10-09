@@ -13,6 +13,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'emoji_catalog.dart';
 import 'image_preview.dart';
+import 'link_preview_fixer.dart';
 import 'message_action_menu.dart';
 import 'message_bubble.dart';
 import 'outgoing_attachment.dart';
@@ -29,6 +30,8 @@ Map<String, dynamic> buildReplySheetTextRequest({
   int? legacyMessageThreadId,
   int? replyToMessageId,
 }) {
+  final text = formatted.toTdJson();
+  final linkPreview = LinkPreviewFixer.shared.optionsForFormattedText(text);
   return {
     '@type': 'sendMessage',
     'chat_id': chatId,
@@ -41,7 +44,8 @@ Map<String, dynamic> buildReplySheetTextRequest({
       },
     'input_message_content': {
       '@type': 'inputMessageText',
-      'text': formatted.toTdJson(),
+      'text': text,
+      'link_preview_options': ?linkPreview,
     },
   };
 }

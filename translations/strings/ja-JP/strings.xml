@@ -1468,6 +1468,8 @@
     <string name="generalNetworkUsage">ネットワーク使用量</string>
     <string name="generalOpenChatAtLatestMessage">チャットを最新メッセージで開く</string>
     <string name="generalRepeatPreserveSender">+1 で送信者を保持</string>
+    <string name="generalFixLinkPreviews">リンクプレビューを修正</string>
+    <string name="generalFixLinkPreviewsHint">x.com や Instagram などのリンクはコミュニティミラーからプレビューを取得します。メッセージ内のリンクは変わりません。ミラーへ送信する前にクエリとフラグメントは削除されます。</string>
     <string name="generalForwardRichMarkdown">転送時にMarkdownを反映</string>
     <string name="generalForwardRichMarkdownHint">Markdown形式のテキスト（AIの返信など）をリッチテキストとして転送するか選べます</string>
     <string name="generalKeepChatContextPaneClosed">グループのサイドパネルを閉じたままにする</string>

@@ -1611,6 +1611,8 @@ abstract final class AppStringKeys {
   static const generalOpenChatAtLatestMessage =
       'generalOpenChatAtLatestMessage';
   static const generalRepeatPreserveSender = 'generalRepeatPreserveSender';
+  static const generalFixLinkPreviews = 'generalFixLinkPreviews';
+  static const generalFixLinkPreviewsHint = 'generalFixLinkPreviewsHint';
   static const generalForwardRichMarkdown = 'generalForwardRichMarkdown';
   static const generalForwardRichMarkdownHint =
       'generalForwardRichMarkdownHint';

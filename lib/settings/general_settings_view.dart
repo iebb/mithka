@@ -5,11 +5,14 @@
 //  Port of the Swift `GeneralSettingsView` / `GeneralSettingsViewModel`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../chat/link_browser.dart';
+import '../chat/link_preview_fixer.dart';
 import '../components/app_icons.dart';
 import '../components/settings_selection_row.dart';
 import '../components/toast.dart';
@@ -266,6 +269,20 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 // Locked off for non-Premium instead of silently storing the
                 // preference, so the switch the user sees is the live state.
                 onChanged: (value) => theme.forwardRichMarkdown = value,
+              ),
+              // Reads its own preference store, so the row rebuilds when the
+              // switch is flipped from another surface.
+              ListenableBuilder(
+                listenable: LinkPreviewFixer.shared,
+                builder: (context, _) => SettingsSwitchRow(
+                  key: const ValueKey('chat-behavior-fix-link-previews'),
+                  title: AppStringKeys.generalFixLinkPreviews,
+                  subtitle: AppStringKeys.generalFixLinkPreviewsHint,
+                  value: LinkPreviewFixer.shared.enabled,
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.link),
+                  onChanged: (value) =>
+                      unawaited(LinkPreviewFixer.shared.setEnabled(value)),
+                ),
               ),
               // Only mobile composers offer a camera button, so only they can
               // put a capture in the system album.

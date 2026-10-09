@@ -12,6 +12,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import 'link_preview_fixer.dart';
 import 'message_send_options.dart';
 
 class ScheduledMessagesView extends StatefulWidget {
@@ -114,6 +115,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
     if (!mounted || text == null || text.isEmpty) return;
     try {
       if (entry.raw.obj('content')?.type == 'messageText') {
+        final linkPreview = LinkPreviewFixer.shared.optionsFor(text);
         await _client.query({
           '@type': 'editMessageText',
           'chat_id': widget.chatId,
@@ -121,6 +123,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           'input_message_content': {
             '@type': 'inputMessageText',
             'text': {'@type': 'formattedText', 'text': text},
+            'link_preview_options': ?linkPreview,
           },
         });
       } else {

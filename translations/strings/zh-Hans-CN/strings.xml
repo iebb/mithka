@@ -1468,6 +1468,8 @@
     <string name="generalNetworkUsage">网络使用情况</string>
     <string name="generalOpenChatAtLatestMessage">打开聊天显示最新消息</string>
     <string name="generalRepeatPreserveSender">+1 时保留发送者</string>
+    <string name="generalFixLinkPreviews">修复链接预览</string>
+    <string name="generalFixLinkPreviewsHint">x.com、Instagram 等站点的链接改由社区镜像生成预览，消息里的链接保持不变；请求镜像前会去掉链接的查询参数和片段。</string>
     <string name="generalForwardRichMarkdown">转发时渲染 Markdown</string>
     <string name="generalForwardRichMarkdownHint">识别 Markdown 排版的文本（如 AI 回复），转发时可渲染为富文本</string>
     <string name="generalKeepChatContextPaneClosed">保持群侧栏收起</string>

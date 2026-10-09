@@ -1475,6 +1475,8 @@
     <string name="generalNetworkUsage">Utilisation du réseau</string>
     <string name="generalOpenChatAtLatestMessage">Ouvrir les discussions au dernier message</string>
     <string name="generalRepeatPreserveSender">Conserver l’expéditeur avec +1</string>
+    <string name="generalFixLinkPreviews">Corriger les aperçus de liens</string>
+    <string name="generalFixLinkPreviewsHint">Récupère les aperçus des liens vers x.com, Instagram et des sites similaires depuis des miroirs communautaires. Le lien de votre message reste inchangé ; sa requête et son fragment sont retirés avant l'envoi au miroir.</string>
     <string name="generalForwardRichMarkdown">Rendre le Markdown lors du transfert</string>
     <string name="generalForwardRichMarkdownHint">Proposer d’envoyer le texte Markdown (réponses IA) en texte enrichi</string>
     <string name="generalKeepChatContextPaneClosed">Garder le panneau latéral du groupe fermé</string>

@@ -19,6 +19,7 @@ import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/forward_options.dart';
 import '../chat/group_remark_controller.dart';
+import '../chat/link_preview_fixer.dart';
 import '../chat/message_replies_sheet.dart';
 import '../chat/outgoing_attachment.dart';
 import '../chat/rich_text_composer_view.dart';
@@ -893,13 +894,16 @@ class _TopicChatViewState extends State<TopicChatView> {
   }
 
   Future<void> _sendForumMessage(Map<String, dynamic> request) async {
-    if (!request.containsKey('topic_id')) {
-      await TdClient.shared.query(request);
+    // The topic composer builds its own request, so it opts into the same
+    // preview fix as the main chat composer.
+    final outgoing = LinkPreviewFixer.shared.applyTo(request);
+    if (!outgoing.containsKey('topic_id')) {
+      await TdClient.shared.query(outgoing);
       return;
     }
     await sendScopedForumTopicMessage(
       query: TdClient.shared.query,
-      request: request,
+      request: outgoing,
     );
   }
 

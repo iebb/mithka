@@ -51,6 +51,7 @@ import 'call/call_overlay_host.dart';
 import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
 import 'chat/group_remark_controller.dart';
+import 'chat/link_preview_fixer.dart';
 import 'chat/music_player_controller.dart';
 import 'chats/chat_folder_tag_controller.dart';
 import 'components/drawer_controller.dart' as dc;
@@ -246,6 +247,7 @@ Future<void> _bootstrapAndRunApp() async {
   ]);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   KeywordBlocker.shared.initialize(prefs);
+  LinkPreviewFixer.shared.initialize(prefs);
   HiddenSenderStore.shared.initialize(prefs);
   CountryMessageFilter.shared.initialize(prefs);
   unawaited(SensitiveContentController.shared.initialize());

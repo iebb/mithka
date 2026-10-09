@@ -1475,6 +1475,8 @@
     <string name="generalNetworkUsage">Uso de red</string>
     <string name="generalOpenChatAtLatestMessage">Abrir chats en el mensaje más reciente</string>
     <string name="generalRepeatPreserveSender">Conservar remitente al usar +1</string>
+    <string name="generalFixLinkPreviews">Arreglar vistas previas de enlaces</string>
+    <string name="generalFixLinkPreviewsHint">Obtiene las vistas previas de enlaces a x.com, Instagram y sitios similares desde réplicas de la comunidad. El enlace de tu mensaje no cambia; la consulta y el fragmento se eliminan antes de pedirlos.</string>
     <string name="generalForwardRichMarkdown">Renderizar Markdown al reenviar</string>
     <string name="generalForwardRichMarkdownHint">Ofrecer enviar texto con Markdown (como respuestas de IA) como texto enriquecido</string>
     <string name="generalKeepChatContextPaneClosed">Mantener cerrado el panel lateral del grupo</string>

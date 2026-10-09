@@ -20,6 +20,7 @@ import '../chat/chat_view_model.dart';
 import '../chat/checklist_composer_view.dart';
 import '../chat/contact_share_picker_view.dart';
 import '../chat/group_remark_controller.dart';
+import '../chat/link_preview_fixer.dart';
 import '../chat/location_picker_view.dart';
 import '../chat/music_player_controller.dart';
 import '../chat/outgoing_attachment.dart';
@@ -213,6 +214,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   void initState() {
     super.initState();
     KeywordBlocker.shared.initialize(widget.prefs);
+    LinkPreviewFixer.shared.initialize(widget.prefs);
     HiddenSenderStore.shared
       ..initialize(widget.prefs)
       ..addListener(_handleHiddenSendersChanged);

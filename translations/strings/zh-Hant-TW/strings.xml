@@ -1468,6 +1468,8 @@
     <string name="generalNetworkUsage">網路用量</string>
     <string name="generalOpenChatAtLatestMessage">開啟聊天時顯示最新訊息</string>
     <string name="generalRepeatPreserveSender">+1 時保留傳送者</string>
+    <string name="generalFixLinkPreviews">修復連結預覽</string>
+    <string name="generalFixLinkPreviewsHint">x.com、Instagram 等站點的連結改由社群鏡像產生預覽，訊息中的連結保持不變；請求鏡像前會移除連結的查詢參數與片段。</string>
     <string name="generalForwardRichMarkdown">轉發時渲染 Markdown</string>
     <string name="generalForwardRichMarkdownHint">識別 Markdown 排版的文字（如 AI 回覆），轉發時可渲染為富文本</string>
     <string name="generalKeepChatContextPaneClosed">保持群組側欄收合</string>

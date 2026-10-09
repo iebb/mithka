@@ -38,6 +38,7 @@ import 'forum_topic_transcript.dart';
 import 'forward_markdown.dart';
 import 'forward_options.dart';
 import 'gif_item.dart';
+import 'link_preview_fixer.dart';
 import 'message_reaction_availability.dart';
 import 'message_send_options.dart';
 import 'message_text_quote.dart';
@@ -989,9 +990,17 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
+  /// Points TDLib at a preview mirror for the message's first link when the user
+  /// opted in to fixing link previews. Requests that already carry
+  /// `link_preview_options` keep them: an explicit choice beats a preference.
+  Map<String, dynamic> _withFixedLinkPreview(Map<String, dynamic> request) =>
+      LinkPreviewFixer.shared.applyTo(request);
+
   Future<bool> _submitMessageRequest(Map<String, dynamic> request) async {
     try {
-      await _client.query(_withPaidMessageOptions(request));
+      await _client.query(
+        _withPaidMessageOptions(_withFixedLinkPreview(request)),
+      );
       return true;
     } catch (error) {
       _publishSendFailure(
@@ -1706,7 +1715,9 @@ class ChatViewModel extends ChangeNotifier {
       },
       'input_message_content': content,
     };
-    final response = await _client.query(_withPaidMessageOptions(request));
+    final response = await _client.query(
+      _withPaidMessageOptions(_withFixedLinkPreview(request)),
+    );
     final message = TDParse.message(response);
     if (message != null) {
       _merge([message]);
@@ -3159,6 +3170,15 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> entities = const [],
   }) async {
     if (text.trim().isEmpty) return;
+    final parsed = TDParse.textEntities({
+      '@type': 'formattedText',
+      'text': text,
+      'entities': entities,
+    });
+    final previewUrl = LinkPreviewFixer.shared.previewUrl(
+      text,
+      entities: parsed,
+    );
     await _client.query({
       '@type': 'editMessageText',
       'chat_id': chatId,
@@ -3173,14 +3193,10 @@ class ChatViewModel extends ChangeNotifier {
         'link_preview_options': {
           '@type': 'linkPreviewOptions',
           'is_disabled': false,
+          'url': ?previewUrl,
         },
         'clear_draft': false,
       },
-    });
-    final parsed = TDParse.textEntities({
-      '@type': 'formattedText',
-      'text': text,
-      'entities': entities,
     });
     _replaceText(
       id,

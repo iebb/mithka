@@ -1475,6 +1475,8 @@
     <string name="generalNetworkUsage">Network usage</string>
     <string name="generalOpenChatAtLatestMessage">Open chats at latest message</string>
     <string name="generalRepeatPreserveSender">Preserve sender when using +1</string>
+    <string name="generalFixLinkPreviews">Fix link previews</string>
+    <string name="generalFixLinkPreviewsHint">Fetches previews for links to x.com, Instagram and similar sites from community mirrors. The link in your message is unchanged; its query and fragment are dropped before the mirror is asked.</string>
     <string name="generalForwardRichMarkdown">Render Markdown when forwarding</string>
     <string name="generalForwardRichMarkdownHint">Offer to send Markdown-formatted text (like AI replies) as rich text</string>
     <string name="generalKeepChatContextPaneClosed">Keep the group side panel closed</string>

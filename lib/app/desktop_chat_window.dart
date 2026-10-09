@@ -12,6 +12,7 @@ import '../chat/chat_members_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/desktop_chat_context_pane.dart';
 import '../chat/group_remark_controller.dart';
+import '../chat/link_preview_fixer.dart';
 import '../chat/music_player_controller.dart';
 import '../chats/chat_folder_tag_controller.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
@@ -160,6 +161,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
       _reloadPresentationPreferences,
     );
     KeywordBlocker.shared.initialize(widget.prefs);
+    LinkPreviewFixer.shared.initialize(widget.prefs);
     HiddenSenderStore.shared
       ..initialize(widget.prefs)
       ..addListener(_handleHiddenSendersChanged);

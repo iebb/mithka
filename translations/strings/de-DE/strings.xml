@@ -1475,6 +1475,8 @@
     <string name="generalNetworkUsage">Netzwerknutzung</string>
     <string name="generalOpenChatAtLatestMessage">Chat mit neuester Nachricht öffnen</string>
     <string name="generalRepeatPreserveSender">Absender bei +1 beibehalten</string>
+    <string name="generalFixLinkPreviews">Linkvorschauen reparieren</string>
+    <string name="generalFixLinkPreviewsHint">Holt Vorschauen für Links zu x.com, Instagram und ähnlichen Seiten von Community-Spiegeln. Der Link in Ihrer Nachricht bleibt unverändert; Query und Fragment werden vor der Anfrage entfernt.</string>
     <string name="generalForwardRichMarkdown">Markdown beim Weiterleiten darstellen</string>
     <string name="generalForwardRichMarkdownHint">Bei Markdown-Texten (z. B. KI-Antworten) Weiterleitung als Rich Text anbieten</string>
     <string name="generalKeepChatContextPaneClosed">Gruppen-Seitenleiste geschlossen lassen</string>
