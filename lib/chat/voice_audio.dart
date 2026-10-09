@@ -12,6 +12,8 @@ import 'dart:async';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+// ignore: depend_on_referenced_packages
+import 'package:flutter_sound_platform_interface/flutter_sound_player_platform_interface.dart';
 import 'package:logger/logger.dart' show Level;
 
 import '../tdlib/td_image_loader.dart';
@@ -100,6 +102,40 @@ class PlaybackProgressPoller {
 }
 
 class VoicePlayer extends ChangeNotifier {
+  /// How long a native startPlayer/stopPlayer call may hang before the load
+  /// is treated as failed. flutter_sound can leave its start completer
+  /// pending forever when the platform player never reports prepared
+  /// (broken container, missing file, session errors), which used to leave
+  /// the UI spinner stuck with no way to retry.
+  ///
+  /// Non-const so tests can shrink it instead of waiting real seconds.
+  @visibleForTesting
+  // ignore: prefer_const_constructors
+  static Duration nativeCallTimeout = Duration(seconds: 15);
+
+  /// The number of start attempts on one native player before the load
+  /// reports a failure instead of spinning again. A hung start retires the
+  /// native player anyway; this bounds the retry loop when starts fail
+  /// fast.
+  ///
+  /// Non-const so tests can shrink it instead of waiting real seconds.
+  @visibleForTesting
+  static int maxStartAttempts = 3;
+
+  /// Builds the native player. Indirect so tests can observe how many
+  /// native instances were created across a recovery.
+  @visibleForTesting
+  FlutterSoundPlayer Function() nativePlayerFactory = () =>
+      FlutterSoundPlayer(logLevel: Level.warning);
+
+  /// Test seam: replaces the audio-session activation inside output
+  /// preparation. A test can hold a start at exactly that await and
+  /// release it after a stop or a dispose, exercising the ownership
+  /// re-check that must cancel the start before it touches the native
+  /// player. The native open still runs for real.
+  @visibleForTesting
+  Future<AudioSession?> Function()? audioSessionActivationOverride;
+
   FlutterSoundPlayer? _player;
   bool isPlaying = false;
   bool isLoading = false;
@@ -108,10 +144,22 @@ class VoicePlayer extends ChangeNotifier {
   double speed = 1;
   void Function(int fileId)? onFinished;
 
+  /// Notified with the file id whose playback failed to start. Unlike
+  /// [onFinished] the player keeps the file bound so the UI can show the
+  /// failure and the next tap retries cleanly.
+  void Function(int fileId, Object error)? onFailed;
+
   int? _fileId;
   String? _path;
   bool _opened = false;
+  int _startAttempts = 0;
   bool _disposed = false;
+
+  /// Monotonic token of the current playback. Bumped by stop, dispose and
+  /// every native-player retirement, so an in-flight start or a native
+  /// callback can tell whether the playback it was issued for is still the
+  /// one bound to the player.
+  int _playbackGeneration = 0;
   StreamSubscription<PlaybackDisposition>? _progress;
   StreamSubscription<AudioInterruptionEvent>? _interruption;
   StreamSubscription<void>? _becomingNoisy;
@@ -121,8 +169,113 @@ class VoicePlayer extends ChangeNotifier {
     onProgress: _applyProgress,
   );
 
-  FlutterSoundPlayer get _sound =>
-      _player ??= FlutterSoundPlayer(logLevel: Level.warning);
+  FlutterSoundPlayer get _sound => _player ??= nativePlayerFactory();
+
+  /// Retires the current native player and resets the open bookkeeping.
+  ///
+  /// flutter_sound serializes every verb (open, start, stop, close) behind
+  /// one non-reentrant lock. A startPlayer whose completer never completes
+  /// (Android MediaPlayer prepare that never reports prepared, a lost native
+  /// reply) holds that lock forever: every later stopPlayer/closePlayer on
+  /// the same instance queues behind the dead start and never runs. The only
+  /// recovery is to abandon the instance — a fresh openPlayer gets a fresh
+  /// lock and a fresh native session.
+  /// Releases a native player instance for good.
+  ///
+  /// [wasOpened] tells whether the instance's openPlayer ever completed in
+  /// our bookkeeping. Every path is bound to this exact instance and can
+  /// never close a fresh player a later load opened.
+  ///
+  /// The dart-side session slot is what the platform's dispatcher routes
+  /// reverse callbacks (audioPlayerFinishedPlaying, late completions)
+  /// through: `closeSession` frees the slot for reuse, so it may only run
+  /// AFTER the platform acknowledged the close of this exact session.
+  /// Freeing it earlier would let a fresh session reuse the slot and a late
+  /// event for this instance would be routed to the new owner — stopping
+  /// its playback. Closing the platform session first and waiting for the
+  /// acknowledgment keeps the routing table pinned while stray events
+  /// still arrive; a slot whose close never gets acknowledged stays
+  /// occupied forever (safe: the SDK's closePlayer verb never registers a
+  /// duplicate session, so the list only grows by leaked slot).
+  void _releaseNative(FlutterSoundPlayer player, {required bool wasOpened}) {
+    if (wasOpened) {
+      // The regular verb close queues behind the instance's operation
+      // lock. A start whose completion never arrives pins that lock
+      // forever, and a queued closePlayer runs the moment the late
+      // completion releases it. A verb close that completes has already
+      // released the native session and freed the callback slot itself —
+      // no further cleanup follows. Only when it fails or times out does
+      // the native session still need releasing: close it on the
+      // platform interface directly. The dart-side slot stays registered
+      // until that close is acknowledged, so late events keep routing to
+      // this retired instance instead of a fresh one.
+      unawaited(
+        player
+            .closePlayer()
+            .timeout(nativeCallTimeout)
+            .catchError((Object _) {
+              _platformClose(player);
+            })
+            // A wedged lock releases late: the verb close then runs on an
+            // instance whose platform session was already closed above,
+            // and _closePlayer can throw (e.g. the platform close above
+            // already answered). Keep the release silent either way: the
+            // native session is released, nothing else can happen here.
+            .catchError((Object _) {}),
+      );
+      return;
+    }
+    // An instance whose openPlayer never completed can never be released
+    // by the verb at all — closePlayer returns early on the uninitialized
+    // flag without touching the platform — so its native session goes
+    // straight to the platform interface.
+    _platformClose(player);
+  }
+
+  /// Closes [player]'s native session on the platform interface and frees
+  /// its dart-side callback slot only after the platform acknowledged the
+  /// close.
+  void _platformClose(FlutterSoundPlayer player) {
+    unawaited(
+      FlutterSoundPlayerPlatform.instance
+          .closePlayer(player)
+          .timeout(nativeCallTimeout)
+          .then((_) {
+            // Acknowledged: no further reverse callback can be routed
+            // through this slot, so freeing it is safe now.
+            FlutterSoundPlayerPlatform.instance.closeSession(player);
+          })
+          .catchError((Object _) {
+            // The platform close was not acknowledged. Keep the slot
+            // occupied: recycling it now would let the next session reuse
+            // it and receive this instance's late events. A leaked slot is
+            // bounded — the SDK registers one slot per openPlayer call.
+          }),
+    );
+  }
+
+  /// Retires the current native player and resets the open bookkeeping.
+  ///
+  /// flutter_sound serializes every verb (open, start, stop, close) behind
+  /// one non-reentrant lock. A startPlayer whose completer never completes
+  /// (Android MediaPlayer prepare that never reports prepared, a lost native
+  /// reply) holds that lock forever: every later stopPlayer/closePlayer on
+  /// the same instance queues behind the dead start and never runs. The only
+  /// recovery is to abandon the instance — a fresh openPlayer gets a fresh
+  /// lock and a fresh native session. The abandoned instance still owns a
+  /// native session, so its release is queued rather than forgotten.
+  void _retireNativePlayer() {
+    final retired = _player;
+    final wasOpened = _opened;
+    _player = null;
+    _opened = false;
+    _opening = null;
+    // Callbacks still registered on the retired instance may fire at any
+    // time; invalidating the generation makes them no-ops.
+    _playbackGeneration++;
+    if (retired == null) return;
+    _releaseNative(retired, wasOpened: wasOpened);
+  }
 
   Future<({Duration position, Duration duration})?> _readProgress() async {
     final player = _player;
@@ -181,9 +334,24 @@ class VoicePlayer extends ChangeNotifier {
     return _opening ??= () async {
       try {
         final player = _sound;
-        await player.openPlayer();
+        await player.openPlayer().timeout(
+          nativeCallTimeout,
+          onTimeout: () {
+            // openPlayer's future completes from the platform's reverse
+            // openPlayerCompleted callback; a platform that never sends it
+            // would pin this player's operation lock forever. Fail the open
+            // so the load surfaces an error and the wedged instance is
+            // dropped (never reused).
+            throw TimeoutException('openPlayer');
+          },
+        );
         await player.setSubscriptionDuration(const Duration(milliseconds: 60));
-        _opened = true;
+        // The open may have outlived its own retirement (a stop timed out
+        // on this instance's lock and dropped it while the open was still
+        // pending). A late success must not mark a fresh instance open.
+        if (_player == player) {
+          _opened = true;
+        }
       } finally {
         _opening = null;
       }
@@ -198,20 +366,29 @@ class VoicePlayer extends ChangeNotifier {
 
   Future<void> stop() async {
     _interruptionPolicy.clear();
+    // Cancels any start still awaiting its audio session: it must not
+    // reach the native player for a track the user just stopped.
+    _playbackGeneration++;
     final player = _player;
     if (player != null && (player.isPlaying || player.isPaused)) {
       try {
-        await player.stopPlayer();
-      } catch (_) {}
+        await player.stopPlayer().timeout(nativeCallTimeout);
+      } catch (_) {
+        // The stop never completed: this native instance may be wedged,
+        // so never reuse it (see _retireNativePlayer).
+        _retireNativePlayer();
+      }
       // Give the shared audio session back (calls, other media apps).
       try {
-        final session = await _prepareAudioSession();
+        final session = await _prepareAudioSession().timeout(nativeCallTimeout);
         if (!_disposed) {
-          await session.setActive(
-            false,
-            avAudioSessionSetActiveOptions:
-                AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
-          );
+          await session
+              .setActive(
+                false,
+                avAudioSessionSetActiveOptions:
+                    AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
+              )
+              .timeout(const Duration(seconds: 8));
         }
       } catch (_) {}
     }
@@ -229,6 +406,17 @@ class VoicePlayer extends ChangeNotifier {
 
   Future<void> _toggle(TdFileRef? file, {required Codec codec}) async {
     if (file == null) return;
+
+    // A native start that timed out leaves the shared flutter_sound lock
+    // held forever. While a start attempt is in flight, the same instance
+    // cannot serve a second one — queueing another tap behind the dead
+    // start only queues it on the dead lock.
+    if (_starting) {
+      debugPrint(
+        'VoicePlayer: ignoring tap on ${file.id}, a start is in flight',
+      );
+      return;
+    }
 
     // Same note already loaded → pause / resume.
     final player = _player;
@@ -260,8 +448,10 @@ class VoicePlayer extends ChangeNotifier {
     if (player != null && (player.isPlaying || player.isPaused)) {
       _interruptionPolicy.clear();
       try {
-        await player.stopPlayer();
-      } catch (_) {}
+        await player.stopPlayer().timeout(nativeCallTimeout);
+      } catch (_) {
+        _retireNativePlayer();
+      }
     }
 
     _fileId = file.id;
@@ -271,75 +461,202 @@ class VoicePlayer extends ChangeNotifier {
     isLoading = true;
     _syncPolling();
     notifyListeners();
+    if (_startAttempts >= maxStartAttempts) {
+      // Fresh native player, fresh counter: the user asked to try again.
+      _retireNativePlayer();
+      _startAttempts = 0;
+    }
     // Opening the native player and activating the audio session do not
     // depend on the file. Run them while the path resolves instead of after
     // it, so a cached track starts as soon as its path is known.
     final audioReady = _prepareOutput();
-    final path =
-        TdFileCenter.shared.cachedPath(file) ??
-        await TdFileCenter.shared.pathFor(file, priority: 32);
-    final ready = await audioReady;
+    String? path;
+    Object? pathError;
+    try {
+      path =
+          TdFileCenter.shared.cachedPath(file) ??
+          await TdFileCenter.shared.pathFor(file, priority: 32);
+    } catch (error) {
+      pathError = error;
+    }
     if (_disposed) return;
     // The user may have tapped another note while this file resolved —
     // don't clobber the newer load's state or start the stale file.
     if (_fileId != file.id) return;
     isLoading = false;
-    if (path == null || ready == null) {
+    // A session that will not activate is logged but not fatal: iOS can
+    // refuse or stall activation while another audio app holds the session,
+    // yet the player can still start and the interruption listener recovers
+    // later. Blocking on it here used to leave the spinner stuck forever.
+    if (path == null) {
+      debugPrint(
+        'VoicePlayer: failed to resolve ${file.id}'
+        '${pathError == null ? '' : ': $pathError'}',
+      );
       _fileId = null;
       notifyListeners();
+      onFailed?.call(file.id, pathError ?? StateError('path unavailable'));
       return;
     }
     _path = path;
-    await _start(0, codec: codec);
+    if (_nativeOpenFailed) {
+      // The open timed out and retired the native player. A start on a
+      // fresh instance needs its own openPlayer round trip; report the
+      // failure and let the next tap run the full load again.
+      debugPrint('VoicePlayer: open timed out for ${file.id}');
+      isPlaying = false;
+      isLoading = false;
+      _syncPolling();
+      notifyListeners();
+      onFailed?.call(file.id, TimeoutException('openPlayer'));
+      return;
+    }
+    await _start(
+      0,
+      codec: codec,
+      audioReady: audioReady,
+      generation: _playbackGeneration,
+      path: path,
+    );
   }
 
   Future<AudioSession?> _prepareOutput() async {
-    try {
+    final activation = audioSessionActivationOverride;
+    if (activation != null) {
+      // Keep the native open real (retirement bookkeeping depends on it);
+      // only the session activation is held by the test.
       await _ensureOpen();
-      final session = await _prepareAudioSession();
-      await session.setActive(true);
+      return activation();
+    }
+    try {
+      try {
+        await _ensureOpen();
+      } catch (error) {
+        // A wedged openPlayer pins that instance's operation lock
+        // forever; drop it so nothing ever reuses it.
+        _retireNativePlayer();
+        rethrow;
+      }
+      final session = await _prepareAudioSession().timeout(nativeCallTimeout);
+      try {
+        await session.setActive(true).timeout(const Duration(seconds: 8));
+      } catch (_) {
+        // Activation refused or stalled; playback still attempts to start.
+      }
       return session;
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _start(int fromMs, {required Codec codec}) async {
+  /// True when the native player could not even be opened (wedged
+  /// openPlayer). The load must fail instead of attempting a start: the
+  /// flutter_sound lock of the retired instance is gone with it, but a
+  /// fresh instance needs its own open round trip first.
+  bool get _nativeOpenFailed => _player == null && _opening == null && !_opened;
+
+  bool _starting = false;
+  Future<void> _start(
+    int fromMs, {
+    required Codec codec,
+    required int generation,
+    required String path,
+    Future<AudioSession?>? audioReady,
+  }) async {
+    isPlaying = true;
+    position = Duration(milliseconds: fromMs);
+    _syncPolling();
+    notifyListeners();
+    unawaited(_progress?.cancel());
+    _progress = null;
+    final fileId = _fileId;
+    _starting = true;
+    _startAttempts++;
+    FlutterSoundPlayer? startOn;
     try {
-      if (_disposed) return;
-      final player = _sound;
-      unawaited(_progress?.cancel());
-      _progress = player.onProgress?.listen((e) {
-        _applyProgress(e.position, e.duration);
-      });
-      isPlaying = true;
-      position = Duration(milliseconds: fromMs);
-      _syncPolling();
-      notifyListeners();
-      await player.startPlayer(
-        fromURI: _path,
-        codec: codec,
-        whenFinished: () {
-          // The platform can deliver this after dispose(); notifying a
-          // disposed ChangeNotifier throws.
-          if (_disposed) return;
-          final finishedFileId = _fileId;
+      final ready = await audioReady?.timeout(nativeCallTimeout);
+      if (ready == null) {
+        debugPrint('VoicePlayer: audio session inactive, starting anyway');
+      }
+      // The await above straddles user actions and native recovery. A stop,
+      // a dispose, another load or a retirement during it must cancel this
+      // start before it touches the native player: the captured path may
+      // already be cleared and the player replaced.
+      if (_disposed || _fileId != fileId) {
+        return;
+      }
+      if (generation != _playbackGeneration) {
+        // Our own preparation retired the native player (a wedged
+        // openPlayer): the load must fail, not silently vanish. Any other
+        // cancellation already returned above — a stop clears the file, a
+        // newer load replaces it.
+        if (_nativeOpenFailed) {
+          debugPrint('VoicePlayer: open timed out for $fileId');
           isPlaying = false;
-          position = Duration.zero;
+          isLoading = false;
           _syncPolling();
           notifyListeners();
-          if (finishedFileId != null) onFinished?.call(finishedFileId);
-        },
-      );
-      await player.setSpeed(speed);
-      if (fromMs > 0) {
-        await player.seekToPlayer(Duration(milliseconds: fromMs));
+          onFailed?.call(fileId!, TimeoutException('openPlayer'));
+        }
+        return;
       }
-    } catch (_) {
-      if (_disposed) return;
+      // _prepareOutput may have retired and replaced the native player
+      // (a wedged openPlayer); always start on the current one.
+      startOn = _sound;
+      _progress = startOn.onProgress?.listen((e) {
+        _applyProgress(e.position, e.duration);
+      });
+      await startOn
+          .startPlayer(
+            fromURI: path,
+            codec: codec,
+            whenFinished: () {
+              // The platform can deliver this after dispose(), or from an
+              // instance whose start timed out and was retired while a new
+              // track already plays. Only the playback that registered the
+              // callback may act on it; notifying a disposed
+              // ChangeNotifier throws.
+              if (_disposed ||
+                  generation != _playbackGeneration ||
+                  fileId == null ||
+                  fileId != _fileId) {
+                return;
+              }
+              isPlaying = false;
+              position = Duration.zero;
+              _syncPolling();
+              notifyListeners();
+              onFinished?.call(fileId);
+            },
+          )
+          .timeout(nativeCallTimeout);
+      _startAttempts = 0; // A clean start resets the retry budget.
+      if (_disposed || generation != _playbackGeneration) return;
+      await startOn.setSpeed(speed);
+      if (fromMs > 0) {
+        await startOn.seekToPlayer(Duration(milliseconds: fromMs));
+      }
+    } catch (error) {
+      final stale = _disposed || generation != _playbackGeneration;
+      if (!stale) {
+        debugPrint('VoicePlayer: failed to start ${fileId ?? -1}: $error');
+      }
+      // The failed instance may hold the flutter_sound operation lock
+      // forever (a start whose completer never completed never releases
+      // it). stopPlayer on the same instance would queue behind the dead
+      // start; drop the instance instead so the next tap opens a new one.
+      // A stale start must not retire a player a newer playback owns.
+      if (startOn != null && startOn == _player) {
+        _retireNativePlayer();
+      }
+      if (stale) return;
       isPlaying = false;
+      isLoading = false;
       _syncPolling();
       notifyListeners();
+      if (fileId != null) onFailed?.call(fileId, error);
+    } finally {
+      _starting = false;
     }
   }
 
@@ -477,12 +794,26 @@ class VoicePlayer extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // Any start still awaiting its audio session must not reach the native
+    // player afterwards.
+    _playbackGeneration++;
     _poller.stop();
     _interruptionPolicy.clear();
     _progress?.cancel();
     _interruption?.cancel();
     _becomingNoisy?.cancel();
-    if (_opened) _player?.closePlayer();
+    final player = _player;
+    final wasOpened = _opened;
+    _player = null;
+    if (player != null) {
+      // Release whatever native session the current instance owns — a
+      // close on an opened instance, a direct platform close when the
+      // openPlayer never completed (the verb would early-return and leak
+      // it). Disposal means no later load can exist, so releasing the
+      // current instance is always safe. Both paths are bounded so a
+      // wedged operation lock cannot hang dispose.
+      _releaseNative(player, wasOpened: wasOpened);
+    }
     super.dispose();
   }
 }

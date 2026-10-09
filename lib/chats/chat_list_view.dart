@@ -144,6 +144,7 @@ class ChatFolderRail extends StatelessWidget {
     this.onEdit,
     this.highlights = const {},
     this.showUnreadBadges = false,
+    this.badgeOverflowMode = UnreadBadgeOverflowMode.capped,
   });
   final List<ChatFilterOption> filters;
   final int? selectedFolderId;
@@ -154,8 +155,12 @@ class ChatFolderRail extends StatelessWidget {
   /// Live page-transition highlights; omitted for a settled folder rail.
   final Map<int?, double> highlights;
 
-  /// Whether folder glyphs carry their unread-chat count.
+  /// Whether folder labels carry their unread-chat count.
   final bool showUnreadBadges;
+
+  /// Formats the badge count; capped by default like every other unread
+  /// badge until the user asks for exact numbers.
+  final UnreadBadgeOverflowMode badgeOverflowMode;
 
   double _highlight(ChatFilterOption filter) =>
       highlights[filter.folderId] ??
@@ -207,28 +212,45 @@ class ChatFolderRail extends StatelessWidget {
                         c.linkBlue,
                         _highlight(filter),
                       )!,
-                      badgeCount: filter.isAll || !showBadges
-                          ? 0
-                          : filter.unreadChatCount,
-                      badgeAccent: filter.hasUnmutedUnread,
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      filter.title.l10n(context),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: _highlight(filter) >= 0.5
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: Color.lerp(
-                          c.textSecondary,
-                          c.linkBlue,
-                          _highlight(filter),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            filter.title.l10n(context),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: _highlight(filter) >= 0.5
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: Color.lerp(
+                                c.textSecondary,
+                                c.linkBlue,
+                                _highlight(filter),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        if (showBadges &&
+                            !filter.isAll &&
+                            filter.unreadChatCount > 0) ...[
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: FolderUnreadBadge(
+                              label: badgeOverflowMode.format(
+                                filter.unreadChatCount,
+                              ),
+                              accent: filter.hasUnmutedUnread,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -2291,6 +2313,9 @@ class _ChatListViewState extends State<ChatListView>
     builder: (context, _) => ChatFolderRail(
       filters: _model.filters,
       showUnreadBadges: context.watch<ThemeController>().showFolderUnreadBadges,
+      badgeOverflowMode: context
+          .watch<ThemeController>()
+          .unreadBadgeOverflowMode,
       selectedFolderId: _model.selectedFilter.folderId,
       highlights: {
         for (final filter in _model.filters)
@@ -2307,7 +2332,9 @@ class _ChatListViewState extends State<ChatListView>
 
   Widget _chatFolderTabs() {
     final c = context.colors;
-    final showBadges = context.watch<ThemeController>().showFolderUnreadBadges;
+    final theme = context.watch<ThemeController>();
+    final showBadges = theme.showFolderUnreadBadges;
+    final badgeOverflow = theme.unreadBadgeOverflowMode;
     final selectedFolderId = _model.selectedFilter.folderId;
     // The strip scrolls horizontally, so its height is fixed; grow it with the
     // label that sits above the selection indicator.
@@ -2364,10 +2391,6 @@ class _ChatListViewState extends State<ChatListView>
                             filter.isAll ? 'All' : filter.iconName,
                             size: 17,
                             color: accent ?? c.textSecondary,
-                            badgeCount: showBadges && !filter.isAll
-                                ? filter.unreadChatCount
-                                : 0,
-                            badgeAccent: filter.hasUnmutedUnread,
                           ),
                           const SizedBox(width: AppSpacing.xs + 1),
                           ConstrainedBox(
@@ -2385,6 +2408,17 @@ class _ChatListViewState extends State<ChatListView>
                               ),
                             ),
                           ),
+                          if (showBadges &&
+                              !filter.isAll &&
+                              filter.unreadChatCount > 0) ...[
+                            const SizedBox(width: 5),
+                            FolderUnreadBadge(
+                              label: badgeOverflow.format(
+                                filter.unreadChatCount,
+                              ),
+                              accent: filter.hasUnmutedUnread,
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 7),

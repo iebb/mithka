@@ -1470,6 +1470,8 @@
     <string name="generalRepeatPreserveSender">+1 時保留傳送者</string>
     <string name="generalForwardRichMarkdown">轉發時渲染 Markdown</string>
     <string name="generalForwardRichMarkdownHint">識別 Markdown 排版的文字（如 AI 回覆），轉發時可渲染為富文本</string>
+    <string name="generalKeepChatContextPaneClosed">保持群組側欄收合</string>
+    <string name="generalKeepChatContextPaneClosedHint">平板和桌面版進入群組或頻道時，不再自動展開右側的成員與公告面板，聊天頂端按鈕仍可手動開啟</string>
     <string name="generalSaveCapturedPhotos">拍攝的照片儲存到系統相簿</string>
     <string name="generalSaveCapturedPhotosHint">關閉後改用應用程式內建相機拍攝，照片不會進入系統相簿。</string>
     <string name="generalSendMessageWithEnter">按 Enter 傳送訊息</string>
@@ -1736,6 +1738,10 @@
     <string name="groupManagementRetry">重試</string>
     <string name="groupManagementSetFailed">設定失敗</string>
     <string name="groupManagementStatistics">統計</string>
+    <string name="groupManagementUpgradeConfirmMessage">群組將升級為超級群，原始基本群會被停用，聊天會遷移到新的超級群。此操作無法復原。</string>
+    <string name="groupManagementUpgradeConfirmTitle">轉換為超級群？</string>
+    <string name="groupManagementUpgradeFailed">無法轉換群組。</string>
+    <string name="groupManagementUpgradeToSupergroup">轉換為超級群</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">使用者名稱不可用或沒有權限</string>
     <string name="hiddenSendersEmpty">沒有隱藏任何人。在群組中，可從訊息選單選擇「隱藏此人」。</string>
     <string name="hiddenSendersEverywhere">所有聊天</string>
@@ -2195,6 +2201,7 @@
     <string name="musicPlayerRemoveFromPlaylist">從播放清單移除</string>
     <string name="musicPlayerRemovedFromPlaylist">已從播放清單移除</string>
     <string name="musicPlayerShowPlaylist">播放清單</string>
+<string name="musicPlayerStartFailed">無法播放這首歌</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="other">{count} 首歌曲</item>
     </plurals>

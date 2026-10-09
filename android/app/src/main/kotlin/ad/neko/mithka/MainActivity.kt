@@ -1,9 +1,10 @@
 package ad.neko.mithka
 
+import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -22,6 +23,7 @@ import android.util.Log
 import android.view.DragEvent
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -376,6 +378,66 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 var clipboardDescription: ClipDescription? = null
                 val requestedMimeType: String?
+                if (call.method == "writeImage") {
+                    val bytes = call.arguments as? ByteArray
+                    if (bytes == null || bytes.isEmpty()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val mimeType = when {
+                        bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+                            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
+                        bytes.size >= 4 && bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() &&
+                            bytes[2] == 0x46.toByte() && bytes[3] == 0x38.toByte() -> "image/gif"
+                        bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() &&
+                            bytes[2] == 0xFF.toByte() -> "image/jpeg"
+                        bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+                            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+                            bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() &&
+                            bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte() -> "image/webp"
+                        else -> {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                    }
+                    val clipboard =
+                        getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    // Android's clipboard has no raw-bytes clip: an image
+                    // must be shared as a content URI other apps can resolve.
+                    // Write the bytes to this app's cache and hand the clip a
+                    // FileProvider URI from the open_filex provider already
+                    // merged into the manifest (it covers cache-path).
+                    val extension = when (mimeType) {
+                        "image/gif" -> "gif"
+                        "image/jpeg" -> "jpg"
+                        "image/webp" -> "webp"
+                        else -> "png"
+                    }
+                    try {
+                        val directory = File(cacheDir, "clipboard")
+                        if (!directory.exists()) directory.mkdirs()
+                        // One image per copy: drop the previous clip's file so
+                        // repeated copies cannot grow the cache without bound.
+                        directory.listFiles()?.forEach { it.delete() }
+                        val file = File(
+                            directory,
+                            "image-${System.currentTimeMillis()}.$extension"
+                        )
+                        file.writeBytes(bytes)
+                        val uri = FileProvider.getUriForFile(
+                            this,
+                            "$packageName.fileProvider.com.crazecoder.openfile",
+                            file
+                        )
+                        clipboard.setPrimaryClip(
+                            ClipData.newUri(contentResolver, mimeType, uri)
+                        )
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.success(false)
+                    }
+                    return@setMethodCallHandler
+                }
                 val uri = when (call.method) {
                     "readImage" -> {
                         val clipboard =

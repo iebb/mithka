@@ -13,7 +13,12 @@ bool imagePreviewCanUseIndependentWindow({
   String? primaryActionLabel,
   Future<void> Function(int index)? onPrimaryAction,
   Future<void> Function(int index)? onMore,
-}) => primaryActionLabel == null && onPrimaryAction == null && onMore == null;
+  ImageViewerMessageActions? messageActions,
+}) =>
+    primaryActionLabel == null &&
+    onPrimaryAction == null &&
+    onMore == null &&
+    messageActions == null;
 
 /// Opens the selected image in an independent native window on desktop.
 ///
@@ -26,6 +31,7 @@ Future<void> openImagePreview(
   String? primaryActionLabel,
   Future<void> Function(int index)? onPrimaryAction,
   Future<void> Function(int index)? onMore,
+  ImageViewerMessageActions? messageActions,
 }) async {
   if (items.isEmpty) return;
   final index = startIndex.clamp(0, items.length - 1);
@@ -33,6 +39,7 @@ Future<void> openImagePreview(
     primaryActionLabel: primaryActionLabel,
     onPrimaryAction: onPrimaryAction,
     onMore: onMore,
+    messageActions: messageActions,
   )) {
     final opened = await DesktopImagePreviewWindowService.instance.open(
       items,
@@ -51,6 +58,7 @@ Future<void> openImagePreview(
         primaryActionLabel: primaryActionLabel,
         onPrimaryAction: onPrimaryAction,
         onMore: onMore,
+        messageActions: messageActions,
       ),
     ),
   );

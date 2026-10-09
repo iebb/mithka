@@ -1477,6 +1477,8 @@
     <string name="generalRepeatPreserveSender">Conserver l’expéditeur avec +1</string>
     <string name="generalForwardRichMarkdown">Rendre le Markdown lors du transfert</string>
     <string name="generalForwardRichMarkdownHint">Proposer d’envoyer le texte Markdown (réponses IA) en texte enrichi</string>
+    <string name="generalKeepChatContextPaneClosed">Garder le panneau latéral du groupe fermé</string>
+    <string name="generalKeepChatContextPaneClosedHint">Sur tablette et ordinateur, un groupe ou un canal s’ouvre sans le panneau des membres et de l’annonce à droite. Le bouton de l’en-tête du chat l’ouvre toujours</string>
     <string name="generalSaveCapturedPhotos">Enregistrer les photos prises dans l’album système</string>
     <string name="generalSaveCapturedPhotosHint">Désactivé, les photos sont prises avec l’appareil photo intégré et n’arrivent jamais dans l’album.</string>
     <string name="generalSendMessageWithEnter">Envoyer avec Entrée</string>
@@ -1743,6 +1745,10 @@
     <string name="groupManagementRetry">Réessayer</string>
     <string name="groupManagementSetFailed">Échec de la configuration</string>
     <string name="groupManagementStatistics">Statistiques</string>
+    <string name="groupManagementUpgradeConfirmMessage">Le groupe est mis à niveau en supergroupe. Le groupe de base d'origine est désactivé et la discussion passe au nouveau supergroupe. Cette action est irréversible.</string>
+    <string name="groupManagementUpgradeConfirmTitle">Convertir en supergroupe ?</string>
+    <string name="groupManagementUpgradeFailed">Impossible de convertir le groupe.</string>
+    <string name="groupManagementUpgradeToSupergroup">Convertir en supergroupe</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Nom d’utilisateur indisponible ou non autorisé</string>
     <string name="hiddenSendersEmpty">Personne n’est masqué. Dans un groupe, choisissez Masquer l’auteur dans le menu d’un message.</string>
     <string name="hiddenSendersEverywhere">Toutes les discussions</string>
@@ -2204,6 +2210,7 @@
     <string name="musicPlayerRemoveFromPlaylist">Retirer de la liste de lecture</string>
     <string name="musicPlayerRemovedFromPlaylist">Retiré de la liste de lecture</string>
     <string name="musicPlayerShowPlaylist">Liste de lecture</string>
+<string name="musicPlayerStartFailed">Impossible de lire ce titre</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="one">{count} morceau</item>
         <item quantity="other">{count} morceaux</item>

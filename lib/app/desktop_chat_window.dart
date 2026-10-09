@@ -396,7 +396,10 @@ class _DesktopStandaloneChatSurface extends StatefulWidget {
 class _DesktopStandaloneChatSurfaceState
     extends State<_DesktopStandaloneChatSurface> {
   ChatKind? _kind;
-  bool _contextDismissed = false;
+
+  /// This window's hand-made pane choice. Null follows the app-wide default in
+  /// [ThemeController.hideChatContextPane].
+  bool? _contextDismissed;
   int? _forumTopicId;
 
   @override
@@ -404,7 +407,7 @@ class _DesktopStandaloneChatSurfaceState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.arguments.chatId == widget.arguments.chatId) return;
     _kind = null;
-    _contextDismissed = false;
+    _contextDismissed = null;
     _forumTopicId = null;
   }
 
@@ -417,7 +420,7 @@ class _DesktopStandaloneChatSurfaceState
     if (_kind == kind) return;
     setState(() {
       _kind = kind;
-      _contextDismissed = false;
+      _contextDismissed = null;
     });
   }
 
@@ -425,7 +428,9 @@ class _DesktopStandaloneChatSurfaceState
       desktopStandaloneChatUsesContextPane(
         width: MediaQuery.sizeOf(context).width,
         kind: _kind,
-        dismissed: _contextDismissed,
+        dismissed:
+            _contextDismissed ??
+            context.watch<ThemeController>().hideChatContextPane,
       );
 
   Future<void> _openFullInfo() async {
@@ -482,7 +487,11 @@ class _DesktopStandaloneChatSurfaceState
       unawaited(_openFullInfo());
       return;
     }
-    setState(() => _contextDismissed = !_contextDismissed);
+    setState(
+      () => _contextDismissed =
+          !(_contextDismissed ??
+              context.read<ThemeController>().hideChatContextPane),
+    );
   }
 
   @override

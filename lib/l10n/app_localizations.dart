@@ -1614,6 +1614,10 @@ abstract final class AppStringKeys {
   static const generalForwardRichMarkdown = 'generalForwardRichMarkdown';
   static const generalForwardRichMarkdownHint =
       'generalForwardRichMarkdownHint';
+  static const generalKeepChatContextPaneClosed =
+      'generalKeepChatContextPaneClosed';
+  static const generalKeepChatContextPaneClosedHint =
+      'generalKeepChatContextPaneClosedHint';
   static const generalSaveCapturedPhotos = 'generalSaveCapturedPhotos';
   static const generalSaveCapturedPhotosHint = 'generalSaveCapturedPhotosHint';
   static const generalSendMessageWithEnter = 'generalSendMessageWithEnter';
@@ -1823,6 +1827,13 @@ abstract final class AppStringKeys {
   static const groupManagementPublicUsername = 'groupManagementPublicUsername';
   static const groupManagementReadOnly = 'groupManagementReadOnly';
   static const groupManagementSetFailed = 'groupManagementSetFailed';
+  static const groupManagementUpgradeConfirmMessage =
+      'groupManagementUpgradeConfirmMessage';
+  static const groupManagementUpgradeConfirmTitle =
+      'groupManagementUpgradeConfirmTitle';
+  static const groupManagementUpgradeFailed = 'groupManagementUpgradeFailed';
+  static const groupManagementUpgradeToSupergroup =
+      'groupManagementUpgradeToSupergroup';
   static const groupManagementUsernameUnavailableOrForbidden =
       'groupManagementUsernameUnavailableOrForbidden';
   static const imageEditAdd = 'imageEditAdd';
@@ -2177,6 +2188,7 @@ abstract final class AppStringKeys {
       'musicPlayerRemovedFromPlaylist';
   static const musicPlayerRemoveFromPlaylist = 'musicPlayerRemoveFromPlaylist';
   static const musicPlayerShowPlaylist = 'musicPlayerShowPlaylist';
+  static const musicPlayerStartFailed = 'musicPlayerStartFailed';
   static const musicPlayerTrackCount = 'musicPlayerTrackCount';
   static const myAlbumNoPhotos = 'myAlbumNoPhotos';
   static const netemoMusicLabel = 'netemoMusicLabel';

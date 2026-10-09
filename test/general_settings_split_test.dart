@@ -39,6 +39,7 @@ void main() {
     for (final key in const [
       'chat-behavior-enter-to-send',
       'chat-behavior-open-at-latest',
+      'chat-behavior-context-pane',
       'chat-behavior-saved-messages-identity',
       'chat-behavior-preserve-sender',
       'chat-behavior-forward-rich-markdown',
@@ -66,7 +67,7 @@ void main() {
     );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(9),
+      findsNWidgets(10),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(
@@ -89,6 +90,22 @@ void main() {
     );
     await tester.pump();
     expect(theme.openChatsAtLatest, isTrue);
+
+    expect(
+      theme.hideChatContextPane,
+      isFalse,
+      reason:
+          'the group context pane stays opt-out so nothing changes for '
+          'the layouts that already rely on it',
+    );
+    await tester.tap(find.byKey(const ValueKey('chat-behavior-context-pane')));
+    await tester.pump();
+    expect(theme.hideChatContextPane, isTrue);
+    expect(prefs.getBool('hideChatContextPane'), isTrue);
+
+    final restoredPaneTheme = ThemeController(prefs);
+    addTearDown(restoredPaneTheme.dispose);
+    expect(restoredPaneTheme.hideChatContextPane, isTrue);
 
     await tester.tap(
       find.byKey(const ValueKey('chat-behavior-saved-messages-identity')),
@@ -113,6 +130,8 @@ void main() {
 
     final browserRow = find.byKey(const ValueKey('chat-behavior-link-browser'));
     await tester.ensureVisible(browserRow);
+    // The jump needs a frame before the row's on-screen position is real.
+    await tester.pump();
     expect(
       find.descendant(
         of: browserRow,
@@ -160,9 +179,12 @@ void main() {
 
     await tester.pumpWidget(_app(theme, const ChatBehaviorSettingsView()));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey('chat-behavior-video-playback')),
+    final playbackRow = find.byKey(
+      const ValueKey('chat-behavior-video-playback'),
     );
+    await tester.ensureVisible(playbackRow);
+    await tester.pump();
+    await tester.tap(playbackRow);
     await tester.pumpAndSettle();
 
     expect(find.byType(VideoPlaybackSettingsView), findsOneWidget);

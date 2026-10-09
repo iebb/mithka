@@ -1477,6 +1477,8 @@
     <string name="generalRepeatPreserveSender">Conservar remitente al usar +1</string>
     <string name="generalForwardRichMarkdown">Renderizar Markdown al reenviar</string>
     <string name="generalForwardRichMarkdownHint">Ofrecer enviar texto con Markdown (como respuestas de IA) como texto enriquecido</string>
+    <string name="generalKeepChatContextPaneClosed">Mantener cerrado el panel lateral del grupo</string>
+    <string name="generalKeepChatContextPaneClosedHint">En tabletas y escritorio, un grupo o canal se abre sin el panel de miembros y anuncios de la derecha. El botón de la cabecera del chat lo abre igual</string>
     <string name="generalSaveCapturedPhotos">Guardar las fotos tomadas en el álbum del sistema</string>
     <string name="generalSaveCapturedPhotosHint">Al desactivarlo, las fotos se toman con la cámara integrada y nunca llegan al álbum.</string>
     <string name="generalSendMessageWithEnter">Enviar mensajes con Enter</string>
@@ -1743,6 +1745,10 @@
     <string name="groupManagementRetry">Reintentar</string>
     <string name="groupManagementSetFailed">No se pudo configurar</string>
     <string name="groupManagementStatistics">Estadísticas</string>
+    <string name="groupManagementUpgradeConfirmMessage">El grupo se actualiza a un supergrupo. El grupo básico original se desactiva y el chat pasa al nuevo supergrupo. Esto no se puede deshacer.</string>
+    <string name="groupManagementUpgradeConfirmTitle">¿Convertir en supergrupo?</string>
+    <string name="groupManagementUpgradeFailed">No se pudo convertir el grupo.</string>
+    <string name="groupManagementUpgradeToSupergroup">Convertir en supergrupo</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">El nombre de usuario no está disponible o no tienes permiso</string>
     <string name="hiddenSendersEmpty">No hay nadie oculto. En un grupo, elige Ocultar autor en el menú de un mensaje.</string>
     <string name="hiddenSendersEverywhere">Todos los chats</string>
@@ -2204,6 +2210,7 @@
     <string name="musicPlayerRemoveFromPlaylist">Eliminar de la lista de reproducción</string>
     <string name="musicPlayerRemovedFromPlaylist">Eliminado de la lista de reproducción</string>
     <string name="musicPlayerShowPlaylist">Lista de reproducción</string>
+<string name="musicPlayerStartFailed">No se pudo reproducir esta canción</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="one">{count} canción</item>
         <item quantity="other">{count} canciones</item>

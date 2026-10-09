@@ -43,6 +43,7 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   MusicPlayerController._({VoicePlayer? player})
     : _player = player ?? VoicePlayer() {
     _player.onFinished = _onFinished;
+    _player.onFailed = _onPlaybackFailed;
     _player.addListener(notifyListeners);
   }
 
@@ -576,6 +577,25 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
       return;
     }
     _playAdjacent(1, manual: false);
+  }
+
+  /// A track that failed to start (download stall, native start timeout,
+  /// unsupported container). Stay on the track so the user can retry, but
+  /// stop auto-advance: skipping past the failure silently would look like
+  /// playback never started.
+  void _onPlaybackFailed(int fileId, Object error) {
+    debugPrint('MusicPlayerController: track $fileId failed to start: $error');
+    final overlay = appNavigatorKey.currentState?.overlay;
+    if (overlay == null) {
+      // No shell yet (tests, early startup): the state change still notifies.
+      notifyListeners();
+      return;
+    }
+    showToastOverlay(
+      overlay,
+      AppStrings.t(AppStringKeys.musicPlayerStartFailed),
+    );
+    notifyListeners();
   }
 
   void _playAdjacent(int delta, {required bool manual}) {
@@ -1567,8 +1587,8 @@ void _showMusicQueue(BuildContext context, MusicPlayerController controller) {
 }
 
 /// The now-playing queue. It follows the controller live, so auto-advance
-/// and mode changes show up while it is open, and it opens scrolled to the
-/// current track.
+/// and mode changes show up while it is open, and it keeps the playing row
+/// in view: opening jumps to it, and a later reorder scrolls back to it.
 class _MusicQueueSheet extends StatefulWidget {
   const _MusicQueueSheet({
     required this.controller,
@@ -1584,32 +1604,78 @@ class _MusicQueueSheet extends StatefulWidget {
 
 class _MusicQueueSheetState extends State<_MusicQueueSheet> {
   final ScrollController _scroll = ScrollController();
-  final GlobalKey _firstRowKey = GlobalKey();
+  final GlobalKey _prototypeRowKey = GlobalKey();
+  int? _revealedFileId;
+  int? _revealedIndex;
+  bool _animated = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _revealCurrent());
+    widget.controller.addListener(_onControllerChanged);
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
     _scroll.dispose();
     super.dispose();
   }
 
+  // The playing row moves while the sheet is open in two ways: auto-advance
+  // and manual skips change which track is current, and a mode change or a
+  // queue edit moves that same track to another index. Follow both, or the
+  // row drifts out of view until the sheet is reopened.
+  void _onControllerChanged() {
+    if (!mounted) return;
+    final (id, index) = _currentPlacement();
+    if (id == null) return;
+    if (id == _revealedFileId && index == _revealedIndex) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealCurrent());
+  }
+
+  /// The playing track's file id next to its index in the order the sheet
+  /// shows, which is not [MusicPlayerController.queue]'s own while reverse
+  /// sequence flips it.
+  (int?, int) _currentPlacement() {
+    final controller = widget.controller;
+    final id = controller.current?.music?.file?.id;
+    if (id == null) return (null, -1);
+    return (
+      id,
+      controller.displayQueue.indexWhere((item) => item.music?.file?.id == id),
+    );
+  }
+
   void _revealCurrent() {
     if (!mounted || !_scroll.hasClients) return;
-    final controller = widget.controller;
-    final currentId = controller.current?.music?.file?.id;
-    final index = controller.displayQueue.indexWhere(
-      (item) => item.music?.file?.id == currentId,
-    );
-    final row = _firstRowKey.currentContext?.size?.height ?? 0;
-    if (index <= 0 || row <= 0) return;
+    final (currentId, index) = _currentPlacement();
+    if (currentId == null || index < 0) return;
+    if (currentId == _revealedFileId && index == _revealedIndex) return;
+    // The prototype stays laid out when the first visible row is recycled,
+    // and its live extent follows text-size and presentation changes.
+    final row = _prototypeRowKey.currentContext?.size?.height ?? 0;
+    if (row <= 0) return;
+    _revealedFileId = currentId;
+    _revealedIndex = index;
     final position = _scroll.position;
-    final target = index * row - (position.viewportDimension - row) / 2;
-    _scroll.jumpTo(target.clamp(0.0, position.maxScrollExtent));
+    final target = (index * row - (position.viewportDimension - row) / 2).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    if (target == position.pixels) return;
+    if (_animated) {
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      // The opening jump should not animate over the whole list.
+      _scroll.jumpTo(target);
+      _animated = true;
+    }
   }
 
   @override
@@ -1721,21 +1787,19 @@ class _MusicQueueSheetState extends State<_MusicQueueSheet> {
                           controller: _scroll,
                           padding: const EdgeInsets.only(bottom: 78),
                           prototypeItem: _QueueRow(
+                            key: _prototypeRowKey,
                             message: displayQueue.first,
                             playQueue: queue,
                             controller: controller,
                           ),
                           itemCount: displayQueue.length,
-                          itemBuilder: (context, index) => KeyedSubtree(
-                            key: index == 0 ? _firstRowKey : null,
-                            child: _QueueRow(
-                              key: ValueKey(
-                                'music-queue-${displayQueue[index].music?.file?.id ?? displayQueue[index].id}',
-                              ),
-                              message: displayQueue[index],
-                              playQueue: queue,
-                              controller: controller,
+                          itemBuilder: (context, index) => _QueueRow(
+                            key: ValueKey(
+                              'music-queue-${displayQueue[index].music?.file?.id ?? displayQueue[index].id}',
                             ),
+                            message: displayQueue[index],
+                            playQueue: queue,
+                            controller: controller,
                           ),
                         ),
                 ),

@@ -1470,6 +1470,8 @@
     <string name="generalRepeatPreserveSender">+1 사용 시 보낸 사람 유지</string>
     <string name="generalForwardRichMarkdown">전달할 때 Markdown 렌더링</string>
     <string name="generalForwardRichMarkdownHint">Markdown 형식 텍스트(AI 답장 등)을 리치 텍스트로 전달할지 선택해요</string>
+    <string name="generalKeepChatContextPaneClosed">그룹 옆 패널을 닫힌 상태로 두기</string>
+    <string name="generalKeepChatContextPaneClosedHint">태블릿과 데스크톱에서 그룹이나 채널을 열 때 오른쪽 멤버·공지 패널이 자동으로 나타나지 않아요. 대화 상단 버튼으로는 열 수 있어요</string>
     <string name="generalSaveCapturedPhotos">촬영한 사진을 시스템 앨범에 저장</string>
     <string name="generalSaveCapturedPhotosHint">끄면 앱 내 카메라로 촬영하며 사진이 앨범에 저장되지 않습니다.</string>
     <string name="generalSendMessageWithEnter">Enter 키로 메시지 보내기</string>
@@ -1736,6 +1738,10 @@
     <string name="groupManagementRetry">다시 시도</string>
     <string name="groupManagementSetFailed">설정에 실패했습니다</string>
     <string name="groupManagementStatistics">통계</string>
+    <string name="groupManagementUpgradeConfirmMessage">그룹이 수퍼그룹으로 업그레이드됩니다. 원본 기본 그룹은 비활성화되고 채팅은 새 수퍼그룹으로 이동합니다. 이 작업은 되돌릴 수 없습니다.</string>
+    <string name="groupManagementUpgradeConfirmTitle">수퍼그룹으로 전환할까요?</string>
+    <string name="groupManagementUpgradeFailed">그룹을 전환할 수 없습니다.</string>
+    <string name="groupManagementUpgradeToSupergroup">수퍼그룹으로 전환</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">사용자 이름을 사용할 수 없거나 권한이 없습니다</string>
     <string name="hiddenSendersEmpty">숨긴 사람이 없습니다. 그룹에서 메시지 메뉴의 ‘이 사람 숨기기’를 선택하세요.</string>
     <string name="hiddenSendersEverywhere">모든 채팅</string>
@@ -2195,6 +2201,7 @@
     <string name="musicPlayerRemoveFromPlaylist">재생 목록에서 제거</string>
     <string name="musicPlayerRemovedFromPlaylist">재생 목록에서 제거됨</string>
     <string name="musicPlayerShowPlaylist">재생 목록</string>
+<string name="musicPlayerStartFailed">이 곡을 재생할 수 없어요</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="other">{count}곡</item>
     </plurals>

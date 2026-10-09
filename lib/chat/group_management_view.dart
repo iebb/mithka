@@ -15,6 +15,7 @@ import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../chats/chat_removal_actions.dart';
 import '../components/app_icons.dart';
+import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../profile/qr_code_view.dart';
@@ -65,6 +66,10 @@ class _GroupManagementViewState extends State<GroupManagementView> {
   bool _canPromoteMembers = false;
   bool _canDeleteForAllMembers = false;
   bool _deleting = false;
+  bool _isCreator = false;
+  bool _isBasicGroup = false;
+  int? _basicGroupId;
+  bool _basicGroupUpgraded = false;
 
   /// Lifecycle of the getSupergroup-backed values. The page renders from the
   /// local database immediately, but the public username and the join
@@ -161,6 +166,8 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     _supergroupId = type?.type == 'chatTypeSupergroup'
         ? type?.int64('supergroup_id')
         : null;
+    _isBasicGroup = type?.type == 'chatTypeBasicGroup';
+    _basicGroupId = _isBasicGroup ? type?.int64('basic_group_id') : null;
     // getChat reads the local database, so the page renders as soon as it
     // lands. Everything after it is cache-backed but can stall: Telegram
     // flood-limits channels.getFullChannel hard, TDLib silently queues
@@ -172,6 +179,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     unawaited(_loadSelfRights());
     unawaited(_loadSupergroupMeta());
     unawaited(_loadFullInfo());
+    unawaited(_loadBasicGroupMeta());
   }
 
   Future<void> _loadSelfRights() async {
@@ -190,6 +198,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
           _canChangeInfo = true;
           _canRestrictMembers = true;
           _canPromoteMembers = true;
+          _isCreator = true;
         case 'chatMemberStatusAdministrator':
           final rights = status?.obj('rights');
           _canChangeInfo = rights?.boolean('can_change_info') ?? false;
@@ -250,6 +259,30 @@ class _GroupManagementViewState extends State<GroupManagementView> {
     } catch (_) {
       // Statistics stays hidden when the probe fails or is flood-limited; the
       // rest of the page works regardless.
+    }
+  }
+
+  /// Probes whether this basic group was already migrated. TDLib keeps
+  /// upgraded_to_supergroup_id on the getBasicGroup object, so the upgrade
+  /// entry can only be offered for a group that is still a plain basic group.
+  /// The probe never gates the page: when it fails the entry stays as the
+  /// local database described it and everything else keeps working.
+  Future<void> _loadBasicGroupMeta() async {
+    final basicGroupId = _basicGroupId;
+    if (basicGroupId == null) return;
+    try {
+      final group = await _client.query({
+        '@type': 'getBasicGroup',
+        'basic_group_id': basicGroupId,
+      });
+      if (!mounted) return;
+      setState(
+        () => _basicGroupUpgraded =
+            (group.int64('upgraded_to_supergroup_id') ?? 0) != 0,
+      );
+    } catch (_) {
+      // An unreachable getBasicGroup leaves the entry visible; the upgrade
+      // call itself reports the failure to the user.
     }
   }
 
@@ -589,6 +622,23 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                           ],
                         ),
                       ],
+                      if (_isBasicGroup &&
+                          !_basicGroupUpgraded &&
+                          _isCreator) ...[
+                        _gap(),
+                        _section(
+                          AppStrings.t(
+                            AppStringKeys.groupManagementBasicSection,
+                          ),
+                          [
+                            _navRow(
+                              AppStringKeys.groupManagementUpgradeToSupergroup
+                                  .l10n(context),
+                              onTap: _confirmUpgrade,
+                            ),
+                          ],
+                        ),
+                      ],
                       if (_canDeleteForAllMembers) ...[
                         _gap(),
                         _deleteChatCard(),
@@ -838,6 +888,31 @@ class _GroupManagementViewState extends State<GroupManagementView> {
           context,
           AppStringKeys.groupManagementUsernameUnavailableOrForbidden,
         );
+      }
+    }
+  }
+
+  /// Upgrades this basic group to a supergroup. TDLib deactivates the basic
+  /// group and opens the new supergroup chat; this view closes so the shell
+  /// lands there via the chat stack.
+  Future<void> _confirmUpgrade() async {
+    final ok = await confirmDialog(
+      context,
+      title: AppStringKeys.groupManagementUpgradeConfirmTitle,
+      message: AppStringKeys.groupManagementUpgradeConfirmMessage,
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    try {
+      final chat = await _client.query({
+        '@type': 'upgradeBasicGroupChatToSupergroupChat',
+        'chat_id': widget.chatId,
+      });
+      if (!mounted) return;
+      Navigator.of(context).pop(chat.int64('id'));
+    } catch (_) {
+      if (mounted) {
+        showToast(context, AppStringKeys.groupManagementUpgradeFailed);
       }
     }
   }

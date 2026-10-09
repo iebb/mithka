@@ -1477,6 +1477,8 @@
     <string name="generalRepeatPreserveSender">Absender bei +1 beibehalten</string>
     <string name="generalForwardRichMarkdown">Markdown beim Weiterleiten darstellen</string>
     <string name="generalForwardRichMarkdownHint">Bei Markdown-Texten (z. B. KI-Antworten) Weiterleitung als Rich Text anbieten</string>
+    <string name="generalKeepChatContextPaneClosed">Gruppen-Seitenleiste geschlossen lassen</string>
+    <string name="generalKeepChatContextPaneClosedHint">Auf Tablets und dem Desktop öffnet eine Gruppe oder ein Kanal nicht automatisch das Mitglieder- und Ankündigungsfeld rechts. Die Schaltfläche im Chat-Kopf öffnet es weiterhin</string>
     <string name="generalSaveCapturedPhotos">Aufgenommene Fotos im System-Album speichern</string>
     <string name="generalSaveCapturedPhotosHint">Aus: Fotos werden mit der App-Kamera aufgenommen und gelangen nie ins Album.</string>
     <string name="generalSendMessageWithEnter">Nachricht mit Eingabetaste senden</string>
@@ -1743,6 +1745,10 @@
     <string name="groupManagementRetry">Erneut versuchen</string>
     <string name="groupManagementSetFailed">Festlegen fehlgeschlagen</string>
     <string name="groupManagementStatistics">Statistiken</string>
+    <string name="groupManagementUpgradeConfirmMessage">Die Gruppe wird zu einer Supergruppe aktualisiert. Die ursprüngliche einfache Gruppe wird deaktiviert und der Chat in die neue Supergruppe verschoben. Das kann nicht rückgängig gemacht werden.</string>
+    <string name="groupManagementUpgradeConfirmTitle">In Supergruppe umwandeln?</string>
+    <string name="groupManagementUpgradeFailed">Gruppe konnte nicht umgewandelt werden.</string>
+    <string name="groupManagementUpgradeToSupergroup">In Supergruppe umwandeln</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Benutzername nicht verfügbar oder keine Berechtigung</string>
     <string name="hiddenSendersEmpty">Niemand ist ausgeblendet. Wähle in einer Gruppe im Nachrichtenmenü „Absender ausblenden“.</string>
     <string name="hiddenSendersEverywhere">Alle Chats</string>
@@ -2204,6 +2210,7 @@
     <string name="musicPlayerRemoveFromPlaylist">Aus der Wiedergabeliste entfernen</string>
     <string name="musicPlayerRemovedFromPlaylist">Aus der Wiedergabeliste entfernt</string>
     <string name="musicPlayerShowPlaylist">Wiedergabeliste</string>
+<string name="musicPlayerStartFailed">Titel konnte nicht abgespielt werden</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="one">{count} Titel</item>
         <item quantity="other">{count} Titel</item>

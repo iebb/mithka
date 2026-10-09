@@ -1143,6 +1143,8 @@ class ThemeController extends ChangeNotifier {
         );
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
+    // Wide chats show the group context pane on arrival; this opts out.
+    _hideChatContextPane = _prefs.getBool(_hideChatContextPaneKey) ?? false;
     _linkOpenMode = LinkOpenMode.values.firstWhere(
       (mode) => mode.name == _prefs.getString(_linkOpenModeKey),
       orElse: () => LinkOpenMode.defaultBrowser,
@@ -1264,6 +1266,7 @@ class ThemeController extends ChangeNotifier {
       'mobileMessageActionMenuStyle.v1';
   static const _enterToSendKey = 'enterToSend';
   static const _openChatsAtLatestKey = 'openChatsAtLatest';
+  static const _hideChatContextPaneKey = 'hideChatContextPane';
   static const _linkOpenModeKey = 'linkOpenMode.v1';
   static const _showSavedMessagesIdentityKey = 'showSavedMessagesIdentity';
   static const _preserveSenderWhenRepeatingKey = 'preserveSenderWhenRepeating';
@@ -1351,6 +1354,7 @@ class ThemeController extends ChangeNotifier {
   late MobileMessageActionMenuStyle _mobileMessageActionMenuStyle;
   bool _enterToSend = false;
   bool _openChatsAtLatest = false;
+  bool _hideChatContextPane = false;
   late LinkOpenMode _linkOpenMode;
   bool _showSavedMessagesIdentity = false;
   bool _preserveSenderWhenRepeating = true;
@@ -1812,6 +1816,10 @@ class ThemeController extends ChangeNotifier {
       _mobileMessageActionMenuStyle;
   bool get enterToSend => _enterToSend;
   bool get openChatsAtLatest => _openChatsAtLatest;
+
+  /// Whether a wide chat keeps its trailing group context pane closed until
+  /// the chat header button opens it.
+  bool get hideChatContextPane => _hideChatContextPane;
   LinkOpenMode get linkOpenMode => _linkOpenMode;
   bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
@@ -2670,6 +2678,13 @@ class ThemeController extends ChangeNotifier {
     if (_openChatsAtLatest == value) return;
     _openChatsAtLatest = value;
     _prefs.setBool(_openChatsAtLatestKey, value);
+    notifyListeners();
+  }
+
+  set hideChatContextPane(bool value) {
+    if (_hideChatContextPane == value) return;
+    _hideChatContextPane = value;
+    _prefs.setBool(_hideChatContextPaneKey, value);
     notifyListeners();
   }
 

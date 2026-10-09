@@ -536,6 +536,64 @@ void main() {
     }
   });
 
+  for (final shell in const [TargetPlatform.macOS, TargetPlatform.iOS]) {
+    testWidgets('$shell keeps the group pane closed when the setting asks', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = shell;
+      try {
+        // Both shells have room for the trailing pane at this width; the
+        // desktop one takes the rail path, iOS the tablet split path.
+        await _setSurfaceSize(tester, const Size(1400, 820));
+        await _pumpMainShell(
+          tester,
+          reducedMotion: true,
+          forumTopicsAsGroupChat: true,
+          hideChatContextPane: true,
+        );
+        tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
+          ChatListSelection.fromChat(_chat()),
+        );
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsNothing);
+
+        final toggle = find.byKey(
+          const ValueKey('chatHeaderGroupContextToggle'),
+        );
+        await tester.tap(toggle);
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
+
+        await tester.tap(toggle);
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsNothing);
+
+        final theme = tester
+            .element(find.byType(ChatListView))
+            .read<ThemeController>();
+        theme.hideChatContextPane = false;
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
+        await tester.tap(toggle);
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsNothing);
+
+        // A changed default invalidates the previous manual choice. Turning
+        // automatic opening back on must not keep that earlier dismissal.
+        theme.hideChatContextPane = true;
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsNothing);
+        theme.hideChatContextPane = false;
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _disposeShell(tester);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
   testWidgets('topics-as-group picker opens the tapped topic on a phone', (
     tester,
   ) async {
@@ -680,11 +738,13 @@ Future<_MainShellHarness> _pumpMainShell(
   bool reducedMotion = false,
   bool showChannelsTab = false,
   bool forumTopicsAsGroupChat = false,
+  bool hideChatContextPane = false,
   List<NavigatorObserver> navigatorObservers = const [],
 }) async {
   SharedPreferences.setMockInitialValues({
     'showChannelsTab': showChannelsTab,
     'forumTopicsAsGroupChat': forumTopicsAsGroupChat,
+    'hideChatContextPane': hideChatContextPane,
     'showMomentsTab': false,
     'communitiesEnabled': false,
   });

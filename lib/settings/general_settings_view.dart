@@ -229,6 +229,16 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 onChanged: (value) => theme.openChatsAtLatest = value,
               ),
               SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-context-pane'),
+                title: AppStringKeys.generalKeepChatContextPaneClosed,
+                subtitle: AppStringKeys.generalKeepChatContextPaneClosedHint,
+                value: theme.hideChatContextPane,
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.tableColumns,
+                ),
+                onChanged: (value) => theme.hideChatContextPane = value,
+              ),
+              SettingsSwitchRow(
                 key: const ValueKey('chat-behavior-saved-messages-identity'),
                 title: AppStringKeys.generalShowSavedMessagesIdentity,
                 value: theme.showSavedMessagesIdentity,

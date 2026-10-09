@@ -1477,6 +1477,8 @@
     <string name="generalRepeatPreserveSender">Preserve sender when using +1</string>
     <string name="generalForwardRichMarkdown">Render Markdown when forwarding</string>
     <string name="generalForwardRichMarkdownHint">Offer to send Markdown-formatted text (like AI replies) as rich text</string>
+    <string name="generalKeepChatContextPaneClosed">Keep the group side panel closed</string>
+    <string name="generalKeepChatContextPaneClosedHint">On tablet and desktop, a group or channel opens without the member and announcement panel on the right. The chat header button still opens it</string>
     <string name="generalSaveCapturedPhotos">Save captured photos to the system album</string>
     <string name="generalSaveCapturedPhotosHint">When off, photos are taken with the in-app camera and never reach the album.</string>
     <string name="generalSendMessageWithEnter">Send messages with Enter</string>
@@ -1743,6 +1745,10 @@
     <string name="groupManagementRetry">Retry</string>
     <string name="groupManagementSetFailed">Setup failed</string>
     <string name="groupManagementStatistics">Statistics</string>
+    <string name="groupManagementUpgradeConfirmMessage">The group is upgraded to a supergroup. The original basic group is deactivated and the chat moves to the new supergroup. This can't be undone.</string>
+    <string name="groupManagementUpgradeConfirmTitle">Convert to supergroup?</string>
+    <string name="groupManagementUpgradeFailed">Couldn't convert the group.</string>
+    <string name="groupManagementUpgradeToSupergroup">Convert to supergroup</string>
     <string name="groupManagementUsernameUnavailableOrForbidden">Username is unavailable or not allowed</string>
     <string name="hiddenSendersEmpty">No one is hidden. In a group, choose Hide sender from a message’s menu.</string>
     <string name="hiddenSendersEverywhere">All chats</string>
@@ -2204,6 +2210,7 @@
     <string name="musicPlayerRemoveFromPlaylist">Remove from playlist</string>
     <string name="musicPlayerRemovedFromPlaylist">Removed from playlist</string>
     <string name="musicPlayerShowPlaylist">Playlist</string>
+<string name="musicPlayerStartFailed">Could not play this track</string>
     <plurals name="musicPlayerTrackCount">
         <item quantity="one">{count} track</item>
         <item quantity="other">{count} tracks</item>

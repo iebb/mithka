@@ -1,0 +1,189 @@
+name: Windows arm64 release recovery
+
+# Rebuild only the Windows arm64 artifacts of the currently pinned release.
+# No packages, Play bundles, Apple builds, tags, or announcements are published.
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact current release commit (40 hexadecimal characters)
+        required: true
+        type: string
+      original_run_id:
+        description: Original multi-platform release workflow run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-arm64-release-recovery
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    name: Recover Windows arm64
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Verify original release provenance
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseSha = $env:RELEASE_SHA
+          if ($releaseSha -notmatch '^[0-9a-f]{40}$' -or $env:ORIGINAL_RUN_ID -notmatch '^[0-9]+$') {
+            throw 'Expected an exact release commit and numeric workflow run'
+          }
+          if ((git rev-parse HEAD) -ne $releaseSha -or (git rev-parse origin/release) -ne $releaseSha) {
+            throw 'Recovery must use the current release commit'
+          }
+          $originalRun = (& gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:ORIGINAL_RUN_ID") | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $originalRun.head_sha -ne $releaseSha -or
+              $originalRun.head_branch -ne 'release' -or $originalRun.event -ne 'push' -or
+              $originalRun.path -ne '.github/workflows/release.yml') {
+            throw 'Original run does not match the release source and workflow'
+          }
+          $originalJobs = (& gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:ORIGINAL_RUN_ID/jobs?per_page=100") | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify original build jobs' }
+          $qualityJob = @($originalJobs.jobs | Where-Object { $_.name -eq 'Required quality gate / Analyze and test' -and $_.conclusion -eq 'success' })
+          $x64Job = @($originalJobs.jobs | Where-Object { $_.name -eq 'Build Windows x64' -and $_.conclusion -eq 'success' })
+          if ($qualityJob.Count -ne 1 -or $x64Job.Count -ne 1) {
+            throw 'Original release needs a passed quality gate and x64 build'
+          }
+          # Keep the exact original public build stamp; never persist raw logs.
+          $originalTrace = (& gh api --allow-escape-sequences "repos/$env:GITHUB_REPOSITORY/actions/jobs/$($x64Job[0].id)/logs") -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read original build provenance' }
+          $stamps = @([regex]::Matches($originalTrace, '--build-number="(\d{8})"') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+          if ($stamps.Count -ne 1) { throw 'Original build stamp is ambiguous' }
+          $versionLine = Get-Content pubspec.yaml | Where-Object { $_ -match '^version:' } | Select-Object -First 1
+          $versionMatch = [regex]::Match($versionLine, '^version:\s*(\d+\.\d+\.\d+)\+\d+\s*$')
+          if (-not $versionMatch.Success) { throw 'Release version must be X.Y.Z+build' }
+          $releaseVersion = $versionMatch.Groups[1].Value
+          $releaseDate = '20' + $stamps[0].Substring(0, 6)
+          @(
+            "SOURCE_SHA=$releaseSha",
+            "SOURCE_SHORT=$($releaseSha.Substring(0, 7))",
+            "BUILD_STAMP=$($stamps[0])",
+            "APP_VERSION=$releaseVersion",
+            "RELEASE_DATE=$releaseDate",
+            "ARTIFACT_LABEL=$releaseVersion-$releaseDate"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Verified release $releaseVersion and original build $($stamps[0])"
+
+      - name: Install pinned Flutter arm64
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 3.44.2 https://github.com/flutter/flutter.git /c/flutter
+          printf '%s\n' 'C:\flutter\bin' >> "$GITHUB_PATH"
+          /c/flutter/bin/flutter --version
+          test "$(/c/flutter/bin/cache/dart-sdk/bin/dart --version 2>&1 | head -1 | grep -c 'windows_arm64')" -eq 1
+
+      - name: Prepare original native dependencies
+        shell: bash
+        run: |
+          scripts/build-tdjson-desktop.sh windows native-libs/tdjson.dll arm64
+          flutter pub get
+          python3 scripts/drop-windows-plugin.py firebase_core \
+            --reason 'Firebase publishes no Windows ARM64 binaries'
+          flutter pub get
+          for generated in windows/flutter/generated_plugin_registrant.cc windows/flutter/generated_plugins.cmake; do
+            if grep -qi firebase "$generated"; then
+              echo "Unexpected Firebase registration in Windows arm64" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare configured client build inputs
+        shell: bash
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          : "${TELEGRAM_API_ID:?missing configured client API ID}"
+          : "${TELEGRAM_API_HASH:?missing configured client API hash}"
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<EOF
+          class Secrets {
+            static const int apiId = ${TELEGRAM_API_ID};
+            static const String apiHash = '${TELEGRAM_API_HASH}';
+            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
+          }
+          EOF
+
+      - name: Build original Windows arm64 source with MSVC compatibility
+        shell: pwsh
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          # Compiler opt-in only: preserve the plugins' supported legacy ABI.
+          $env:CL = "$env:CL /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          flutter build windows --release --no-pub `
+            --build-name="$env:APP_VERSION" `
+            --build-number="$env:BUILD_STAMP" `
+            --dart-define="GIT_COMMIT=$env:SOURCE_SHORT" `
+            --dart-define="CI_BUILD_STAMP=$env:BUILD_STAMP" `
+            --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows arm64 compilation failed' }
+
+      - name: Verify and package arm64 binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseBundle = 'build\windows\arm64\runner\Release'
+          Copy-Item native-libs\tdjson.dll "$releaseBundle\tdjson.dll"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class ReleaseNativeCheck {
+            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+            public static extern IntPtr LoadLibrary(string path);
+            [DllImport("kernel32", SetLastError = true)]
+            public static extern IntPtr GetProcAddress(IntPtr module, string name);
+            [DllImport("kernel32", SetLastError = true)]
+            public static extern bool FreeLibrary(IntPtr module);
+          }
+          '@
+          $releaseModule = [ReleaseNativeCheck]::LoadLibrary((Resolve-Path "$releaseBundle\tdjson.dll"))
+          if ($releaseModule -eq [IntPtr]::Zero) {
+            throw "Packaged TDJSON cannot load on arm64: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+          }
+          try {
+            foreach ($symbol in @('td_create_client_id', 'td_mithka_export_session_string', 'td_mithka_import_session_string', 'td_mithka_last_error', 'td_mithka_set_transfer_boost')) {
+              if ([ReleaseNativeCheck]::GetProcAddress($releaseModule, $symbol) -eq [IntPtr]::Zero) {
+                throw "Packaged TDJSON lacks required symbol $symbol"
+              }
+            }
+          } finally { [void][ReleaseNativeCheck]::FreeLibrary($releaseModule) }
+          New-Item -ItemType Directory -Force dist\package | Out-Null
+          Copy-Item $releaseBundle dist\package\Mithka -Recurse
+          Compress-Archive -Path dist\package\Mithka -DestinationPath "dist\mithka-$env:ARTIFACT_LABEL-windows-arm64.zip"
+          $releaseInstaller = & scripts\build-windows-installer.ps1 `
+            -Architecture arm64 -BuildDirectory $releaseBundle -OutputDirectory dist `
+            -Version $env:APP_VERSION -ArtifactLabel $env:ARTIFACT_LABEL
+          if (-not (Test-Path -LiteralPath $releaseInstaller -PathType Leaf)) { throw 'Missing arm64 installer' }
+
+      - name: Upload verified recovery artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovered-windows-arm64-${{ inputs.release_sha }}
+          path: |
+            dist/*-windows-arm64.zip
+            dist/*-windows-arm64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove generated client inputs
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath lib/config/secrets.dart -Force -ErrorAction SilentlyContinue

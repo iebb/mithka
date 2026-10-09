@@ -1448,6 +1448,13 @@ class ChatFolderSettingsView extends StatelessWidget {
               theme.showFolderUnreadBadges,
               (value) => theme.showFolderUnreadBadges = value,
             ),
+            const AppearanceView()._toggleRow(
+              context,
+              HeroAppIcons.solidBell.data,
+              AppStrings.t(AppStringKeys.appearanceCapUnreadCountAt99),
+              theme.capUnreadBadgeAt99,
+              (value) => theme.capUnreadBadgeAt99 = value,
+            ),
           ]),
         ],
       ),

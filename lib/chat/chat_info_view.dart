@@ -919,15 +919,29 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                     ? AppStringKeys.chatInfoManageChannel
                     : AppStringKeys.chatInfoManageGroup,
               ),
-              () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => GroupManagementView(
-                    chatId: widget.chatId,
-                    title: _vm.title,
-                    isChannel: _vm.isChannel,
+              () async {
+                final upgradedChatId = await Navigator.of(context).push<int>(
+                  MaterialPageRoute(
+                    builder: (_) => GroupManagementView(
+                      chatId: widget.chatId,
+                      title: _vm.title,
+                      isChannel: _vm.isChannel,
+                    ),
                   ),
-                ),
-              ),
+                );
+                // A basic group upgraded to a supergroup pops the new
+                // chat id: TDLib has already deactivated the old chat,
+                // so the shell must open the new one or it would sit on
+                // a dead conversation.
+                if (upgradedChatId != null && mounted) {
+                  await openChatFromCurrentWindow(
+                    context,
+                    chatId: upgradedChatId,
+                    title: _vm.title,
+                    replaceCurrent: true,
+                  );
+                }
+              },
             ),
           ],
         ],

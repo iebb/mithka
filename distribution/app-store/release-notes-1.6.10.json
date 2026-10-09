@@ -1,0 +1,4 @@
+{
+  "en-US": "Mithka 1.6.10 improves group and forum-topic navigation, member search and moderation, and folder unread badges. A new preference keeps the group side panel closed until needed. Gallery actions make copying, saving, and returning to the source chat easier. Music and voice playback recover more reliably, and the queue follows the playing track after reordering. Reply handling, rich-text forwarding, media opening, localization, and desktop interactions are also improved.",
+  "zh-Hans": "1.6.10 优化群组与论坛话题导航、成员搜索和管理，以及聊天分组未读徽标。新增群组侧栏默认收起选项，图库支持复制、保存和返回原聊天。改进音乐与语音播放恢复，播放列表在重新排序后保持定位到当前曲目，并提升回复、富文本转发、媒体打开、多语言和桌面交互体验。"
+}

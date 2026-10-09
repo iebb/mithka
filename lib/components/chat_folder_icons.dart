@@ -75,98 +75,72 @@ class ChatFolderIcon extends StatelessWidget {
     super.key,
     required this.size,
     required this.color,
-    this.badgeCount = 0,
-    this.badgeAccent = false,
   });
   final String name;
   final double size;
   final Color color;
 
-  /// Unread-chat count drawn as a pill on the glyph's top-right corner.
-  /// Zero draws nothing. [badgeAccent] picks the accent fill; otherwise the
-  /// badge is grey, matching Telegram's all-muted folder badges.
-  final int badgeCount;
-  final bool badgeAccent;
-
   @override
   Widget build(BuildContext context) {
-    Widget icon;
     if (!const {'Cat', 'Crown', 'Flower', 'Mask'}.contains(name)) {
-      icon = AppIcon(chatFolderIcon(name), size: size, color: color);
-    } else {
-      icon = CustomPaint(
-        size: Size.square(size),
-        painter: _FolderGlyphPainter(name, color),
-      );
+      return AppIcon(chatFolderIcon(name), size: size, color: color);
     }
-    if (badgeCount <= 0) return icon;
-    final c = context.colors;
-    return _FolderBadgeIcon(
-      icon: icon,
-      glyphSize: size,
-      label: badgeCount > 99 ? '99+' : '$badgeCount',
-      color: badgeAccent ? AppTheme.brand : c.textTertiary,
-      textColor: c.badgeText,
+    return CustomPaint(
+      size: Size.square(size),
+      painter: _FolderGlyphPainter(name, color),
     );
   }
 }
 
-/// The folder glyph with its unread badge pinned to the glyph's top-right.
-class _FolderBadgeIcon extends StatelessWidget {
-  const _FolderBadgeIcon({
-    required this.icon,
-    required this.glyphSize,
+/// Standalone unread pill for folder tabs and rails. Native Telegram places
+/// the folder badge after the tab's content with its own spacing, vertically
+/// centred, never overlaid on it — so the badge reserves layout width of its
+/// own and cannot cover the glyph or the title.
+class FolderUnreadBadge extends StatelessWidget {
+  const FolderUnreadBadge({
+    super.key,
     required this.label,
-    required this.color,
-    required this.textColor,
+    this.accent = false,
   });
 
-  final Widget icon;
-  final double glyphSize;
+  /// Pre-formatted count text. Callers run the count through
+  /// [UnreadBadgeOverflowMode] so folder badges honour the app-wide
+  /// cap-at-99+ setting.
   final String label;
-  final Color color;
-  final Color textColor;
+
+  /// Accent fill when the folder holds an unmuted unread chat; grey when all
+  /// of them are muted, matching Telegram's inactive folder badges.
+  final bool accent;
 
   @override
   Widget build(BuildContext context) {
-    final badgeHeight = math.max(13.0, glyphSize * 0.58);
-    final overhang = badgeHeight * 0.42;
-    return SizedBox(
-      width: glyphSize + overhang,
-      height: glyphSize + overhang,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(left: 0, top: 0, child: icon),
-          Positioned(
-            right: 0,
-            top: 0,
-            child: Container(
-              constraints: BoxConstraints(
-                minWidth: badgeHeight,
-                minHeight: badgeHeight,
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: label.length > 1 ? 4 : 0,
-              ),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(badgeHeight / 2),
-              ),
-              child: Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: (badgeHeight * 0.62).clamp(9.0, 11.0),
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                  height: 1,
-                ),
-              ),
+    final c = context.colors;
+    return Container(
+      constraints: const BoxConstraints(
+        minWidth: AppMetric.unreadBadgeMin,
+        minHeight: AppMetric.unreadBadgeMin,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: label.length > 1 ? AppSpacing.xs + 1 : 0,
+      ),
+      decoration: BoxDecoration(
+        color: accent ? AppTheme.brand : c.textTertiary,
+        borderRadius: BorderRadius.circular(AppMetric.unreadBadgeMin / 2),
+      ),
+      child: Align(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: AppTextStyle.caption(
+              c.badgeText,
+              weight: AppTextWeight.semibold,
             ),
           ),
-        ],
+        ),
       ),
     );
   }

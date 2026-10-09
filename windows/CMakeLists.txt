@@ -67,6 +67,9 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/winrt_coroutine_compat.cmake")
+mithka_apply_legacy_winrt_coroutine_compat()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

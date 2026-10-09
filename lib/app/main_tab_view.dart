@@ -106,7 +106,12 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   final _chatPaneController = ChatPaneController();
   CommunityListSelection? _selectedMessageCommunity;
   ArchivedChatListSelection? _selectedArchivedChats;
-  int? _closedDesktopInfoChatId;
+
+  /// Chat whose trailing group context pane was toggled by hand, and what it
+  /// was toggled to. Chats without a choice follow the pane default below.
+  int? _contextPaneToggleChatId;
+  bool _contextPaneToggleShown = false;
+  bool? _observedContextPaneDefault;
   Widget? _selectedChannelDetail;
   Widget? _selectedContactDetail;
   Widget? _selectedMomentDetail;
@@ -339,8 +344,30 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     if (accounts == null || accounts.activeSlot == _observedAccountSlot) return;
     _messageChatExitController.prepareExit();
     _observedAccountSlot = accounts.activeSlot;
-    _closedDesktopInfoChatId = null;
+    _contextPaneToggleChatId = null;
   }
+
+  /// The pane default in force. Changing it drops the per-chat choices, which
+  /// only meant something against the default they were made under.
+  bool _contextPaneHiddenByDefault(ThemeController theme) {
+    final hidden = theme.hideChatContextPane;
+    if (_observedContextPaneDefault != hidden) {
+      _observedContextPaneDefault = hidden;
+      _contextPaneToggleChatId = null;
+    }
+    return hidden;
+  }
+
+  bool _showsContextPane(int? chatId, {required bool hiddenByDefault}) =>
+      chatId != null &&
+      (_contextPaneToggleChatId == chatId
+          ? _contextPaneToggleShown
+          : !hiddenByDefault);
+
+  void _toggleContextPane(int? chatId, {required bool shown}) => setState(() {
+    _contextPaneToggleChatId = chatId;
+    _contextPaneToggleShown = !shown;
+  });
 
   late final List<GlobalKey<NavigatorState>> _navKeys = List.generate(
     4,
@@ -794,9 +821,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     final selectedChat = desktopChatKindUsesContextPane(messageSelection?.kind)
         ? messageSelection
         : null;
-    final infoPaneRequested =
-        selectedChat != null && _closedDesktopInfoChatId != selectedChat.chatId;
     final infoPaneChatId = selectedChat?.chatId;
+    final infoPaneRequested = _showsContextPane(
+      infoPaneChatId,
+      hiddenByDefault: _contextPaneHiddenByDefault(theme),
+    );
     // Built once per shell rebuild and handed to the geometry builder below by
     // identity, so a resize frame or a divider drag never reconstructs it.
     final contextPane = selectedChat == null
@@ -1013,11 +1042,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           onMessageOpenFullInfo: onOpenFullInfo,
           onMessageOpenUserProfile: _openDesktopUserProfile,
           onMessageInfoPressed: canToggleInfoPane
-              ? () => setState(
-                  () => _closedDesktopInfoChatId = showInfoPane
-                      ? infoPaneChatId
-                      : null,
-                )
+              ? () => _toggleContextPane(infoPaneChatId, shown: showInfoPane)
               : null,
           messageTrailingPane: showInfoPane ? contextPane : null,
           messageTrailingPaneWidth: desktopInfoPaneWidth,
@@ -1149,7 +1174,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                     desktopInfoPaneHandleWidth +
                     desktopInfoPaneWidth;
         final showInfoPane =
-            canToggleInfoPane && _closedDesktopInfoChatId != selectedChatId;
+            canToggleInfoPane &&
+            _showsContextPane(
+              selectedChatId,
+              hiddenByDefault: _contextPaneHiddenByDefault(theme),
+            );
         final contextPane = showInfoPane
             ? KeyedSubtree(
                 key: ValueKey(
@@ -1213,11 +1242,9 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                                 activeTabIndex,
                                 showMessageBackButton: compact,
                                 onMessageInfoPressed: canToggleInfoPane
-                                    ? () => setState(
-                                        () => _closedDesktopInfoChatId =
-                                            showInfoPane
-                                            ? selectedChatId
-                                            : null,
+                                    ? () => _toggleContextPane(
+                                        selectedChatId,
+                                        shown: showInfoPane,
                                       )
                                     : null,
                                 messageTrailingPane: contextPane,

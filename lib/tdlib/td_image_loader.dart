@@ -10,6 +10,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+
 import 'json_helpers.dart';
 import 'td_client.dart';
 import 'td_models.dart';
@@ -122,6 +124,13 @@ class TdFileCenter {
   String? cachedPath(TdFileRef ref, {int? accountSlot}) {
     final slot = accountSlot ?? _client.activeSlot;
     return _cache[_key(slot, ref.id)];
+  }
+
+  /// Seeds a resolved path for [fileId]. Tests use this to skip the
+  /// download round trip so player logic can be driven synchronously.
+  @visibleForTesting
+  void rememberForTest(int accountSlot, int fileId, String path) {
+    _remember(_key(accountSlot, fileId), path);
   }
 
   void _startIfNeeded() {

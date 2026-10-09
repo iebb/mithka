@@ -17,10 +17,37 @@ import 'package:flutter/widgets.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/macos_desktop_title_bar.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
+import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../l10n/app_localizations.dart';
+import '../platform/adaptive_platform.dart';
+import '../platform/desktop_clipboard_images.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'media_download_service.dart';
+import 'media_library_saver.dart';
+
+/// Per-item actions for the viewer's own `…` menu, supplied by entry points
+/// that know which message each image belongs to.
+class ImageViewerMessageActions {
+  const ImageViewerMessageActions({
+    required this.messageIds,
+    required this.onViewInChat,
+    this.onReply,
+  });
+
+  /// The message id behind each gallery item, aligned with [FullImageViewer.items].
+  final List<int?> messageIds;
+
+  /// Jumps back to the chat and highlights the message. Null entries mean the
+  /// entry point cannot resolve an anchor (e.g. profile photos).
+  final Future<void> Function(int messageId) onViewInChat;
+
+  /// Same jump, but arms the composer with a reply to the message first.
+  final Future<void> Function(int messageId)? onReply;
+}
 
 class FullImageViewer extends StatefulWidget {
   const FullImageViewer({
@@ -30,6 +57,7 @@ class FullImageViewer extends StatefulWidget {
     this.primaryActionLabel,
     this.onPrimaryAction,
     this.onMore,
+    this.messageActions,
   });
 
   final List<TdFileRef> items;
@@ -37,6 +65,9 @@ class FullImageViewer extends StatefulWidget {
   final String? primaryActionLabel;
   final Future<void> Function(int index)? onPrimaryAction;
   final Future<void> Function(int index)? onMore;
+
+  /// Enables View in Chat / Reply for galleries opened from a chat.
+  final ImageViewerMessageActions? messageActions;
 
   @override
   State<FullImageViewer> createState() => _FullImageViewerState();
@@ -52,6 +83,7 @@ class _FullImageViewerState extends State<FullImageViewer> {
   final _pageKeys = <int, GlobalKey<_ViewerPageState>>{};
   int? _gesturePage;
   bool _runningAction = false;
+  bool _menuVisible = false;
 
   int get _max => widget.items.isEmpty ? 0 : widget.items.length - 1;
 
@@ -66,6 +98,127 @@ class _FullImageViewerState extends State<FullImageViewer> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  int? get _currentMessageId {
+    final actions = widget.messageActions;
+    if (actions == null || _index >= actions.messageIds.length) return null;
+    return actions.messageIds[_index];
+  }
+
+  Future<void> _viewInChat({bool reply = false}) async {
+    final messageId = _currentMessageId;
+    if (messageId == null) return;
+    final actions = widget.messageActions!;
+    if (mounted) setState(() => _menuVisible = false);
+    // Close only this gallery route. Its chat may be nested in a tab or
+    // pushed above the root's home; unwinding to the root's first route
+    // would dispose the latter before the message jump can be applied.
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    if (route != null && !route.isFirst) {
+      Navigator.of(context).pop();
+    }
+    final replyHandler = reply ? actions.onReply : null;
+    if (replyHandler != null) {
+      await replyHandler(messageId);
+    } else {
+      await actions.onViewInChat(messageId);
+    }
+  }
+
+  Future<void> _copyCurrentImage() async {
+    if (mounted) setState(() => _menuVisible = false);
+    final ref = widget.items[_index];
+    try {
+      final path = await TdFileCenter.shared.pathFor(ref);
+      final copied =
+          path != null &&
+          await DesktopClipboardImageService.copyImageFile(File(path));
+      if (!mounted) return;
+      showToast(
+        context,
+        copied
+            ? AppStringKeys.qrScannerCopied
+            : AppStringKeys.messageActionCopyImageFailed,
+        visibleFor: const Duration(seconds: 2),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.messageActionCopyImageFailed,
+        visibleFor: const Duration(seconds: 2),
+      );
+    }
+  }
+
+  Future<void> _saveCurrentImage() async {
+    if (mounted) setState(() => _menuVisible = false);
+    final ref = widget.items[_index];
+    final isDesktop = isDesktopTargetPlatform(defaultTargetPlatform);
+    try {
+      if (isDesktop) {
+        final outcome = await MediaDownloadService.saveMedia(
+          file: ref,
+          isVideo: false,
+        );
+        if (!mounted) return;
+        final feedback = MediaDownloadService.feedbackFor(outcome);
+        if (feedback != null) {
+          showToast(context, feedback, visibleFor: const Duration(seconds: 2));
+        }
+        return;
+      }
+      DateTime? progressShownAt;
+      final progressTimer = Timer(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        progressShownAt = DateTime.now();
+        showToast(
+          context,
+          AppStringKeys.chatSavingToPhotos,
+          visibleFor: const Duration(milliseconds: 900),
+        );
+      });
+      MediaLibrarySaveResult result;
+      try {
+        final path = await TdFileCenter.shared.pathFor(ref);
+        if (path == null || !await File(path).exists()) {
+          result = MediaLibrarySaveResult.failed;
+        } else {
+          result = await MediaLibrarySaver.savePreparedFile(
+            File(path),
+            isVideo: false,
+          );
+        }
+      } finally {
+        progressTimer.cancel();
+      }
+      if (!mounted) return;
+      if (progressShownAt case final shownAt?) {
+        final remaining =
+            const Duration(milliseconds: 1400) -
+            DateTime.now().difference(shownAt);
+        if (remaining > Duration.zero) {
+          await Future<void>.delayed(remaining);
+        }
+        if (!mounted) return;
+      }
+      showToast(context, switch (result) {
+        MediaLibrarySaveResult.saved => AppStringKeys.chatSavedToPhotos,
+        MediaLibrarySaveResult.permissionDenied =>
+          AppStringKeys.chatSaveToPhotosPermissionDenied,
+        MediaLibrarySaveResult.failed || MediaLibrarySaveResult.unsupported =>
+          AppStringKeys.chatSaveToPhotosFailed,
+      }, visibleFor: const Duration(seconds: 2));
+    } catch (_) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.chatSaveToPhotosFailed,
+        visibleFor: const Duration(seconds: 2),
+      );
+    }
   }
 
   Future<void> _runAction(Future<void> Function(int index) action) async {
@@ -213,20 +366,52 @@ class _FullImageViewerState extends State<FullImageViewer> {
                           : const SizedBox.shrink(),
                     ),
                   ),
-                  if (widget.onMore != null)
-                    _circleAppIcon(
-                      HeroAppIcons.ellipsis,
-                      _runningAction
-                          ? null
-                          : () => unawaited(_runAction(widget.onMore!)),
-                      key: const ValueKey('image-viewer-more'),
-                    )
-                  else
-                    const SizedBox(width: 40, height: 40),
+                  _circleAppIcon(
+                    HeroAppIcons.ellipsis,
+                    _runningAction
+                        ? null
+                        : () {
+                            if (widget.onMore != null) {
+                              unawaited(_runAction(widget.onMore!));
+                            } else {
+                              setState(() => _menuVisible = !_menuVisible);
+                            }
+                          },
+                    key: const ValueKey('image-viewer-more'),
+                  ),
                 ],
               ),
             ),
           ),
+          if (_menuVisible)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: (_) => setState(() => _menuVisible = false),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          if (_menuVisible)
+            Positioned(
+              top:
+                  MediaQuery.of(context).padding.top +
+                  iPadWindowChromeInsetOf(context) +
+                  56,
+              right: 16 + _chromeInset,
+              child: _ViewerActionsMenu(
+                canCopy: DesktopClipboardImageService.canWriteImage,
+                messageActions: _currentMessageId == null
+                    ? null
+                    : widget.messageActions,
+                onCopy: () => unawaited(_copyCurrentImage()),
+                onSave: () => unawaited(_saveCurrentImage()),
+                onViewInChat: () => unawaited(_viewInChat()),
+                onReply: widget.messageActions?.onReply == null
+                    ? null
+                    : () => unawaited(_viewInChat(reply: true)),
+                onDismiss: () => setState(() => _menuVisible = false),
+              ),
+            ),
           if (widget.primaryActionLabel != null &&
               widget.onPrimaryAction != null)
             Positioned(
@@ -522,6 +707,128 @@ class _ViewerPageState extends State<_ViewerPage> {
           width: cacheWidth,
           height: cacheHeight,
           policy: ResizeImagePolicy.fit,
+        ),
+      ),
+    );
+  }
+}
+
+/// The dropdown opened by the viewer's `…` button: copy / save the current
+/// image, and jump back to its chat when the entry point supplied message
+/// anchors. Styled after the desktop preview window's more menu.
+class _ViewerActionsMenu extends StatelessWidget {
+  const _ViewerActionsMenu({
+    required this.canCopy,
+    required this.onCopy,
+    required this.onSave,
+    required this.onViewInChat,
+    required this.onDismiss,
+    this.messageActions,
+    this.onReply,
+  });
+
+  final bool canCopy;
+  final ImageViewerMessageActions? messageActions;
+  final VoidCallback onCopy;
+  final VoidCallback onSave;
+  final VoidCallback onViewInChat;
+  final VoidCallback? onReply;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('image-viewer-actions-menu'),
+      width: 204,
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xF5222327),
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: const Color(0xFF3B3D42)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (messageActions != null) ...[
+            _ViewerActionsMenuItem(
+              key: const ValueKey('image-viewer-action-view-in-chat'),
+              icon: HeroAppIcons.arrowRight,
+              label: AppStringKeys.messageViewInChat.l10n(context),
+              onTap: onViewInChat,
+            ),
+            if (onReply != null)
+              _ViewerActionsMenuItem(
+                key: const ValueKey('image-viewer-action-reply'),
+                icon: HeroAppIcons.quoteLeft,
+                label: AppStringKeys.chatInputBarReply.l10n(context),
+                onTap: onReply!,
+              ),
+          ],
+          if (canCopy)
+            _ViewerActionsMenuItem(
+              key: const ValueKey('image-viewer-action-copy'),
+              icon: HeroAppIcons.image,
+              label: AppStringKeys.messageActionCopyImage.l10n(context),
+              onTap: onCopy,
+            ),
+          _ViewerActionsMenuItem(
+            key: const ValueKey('image-viewer-action-save'),
+            icon: HeroAppIcons.download,
+            label: AppStringKeys.messageActionSaveToPhotos.l10n(context),
+            onTap: onSave,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewerActionsMenuItem extends StatelessWidget {
+  const _ViewerActionsMenuItem({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final AppIconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      onTap: onTap,
+      child: SizedBox(
+        height: 36,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          child: Row(
+            children: [
+              AppIcon(icon, size: 16, color: const Color(0xFFCACCD0)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFE8E9EB),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

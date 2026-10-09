@@ -250,6 +250,31 @@ import UserNotifications
         }
         return
       }
+      if call.method == "writeImage" {
+        guard let bytes = call.arguments as? FlutterStandardTypedData, !bytes.data.isEmpty else {
+          result(false)
+          return
+        }
+        let data = bytes.data
+        let type: String
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+          type = "public.png"
+        } else if data.starts(with: [0x47, 0x49, 0x46, 0x38]) {
+          type = "com.compuserve.gif"
+        } else if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+          type = "public.jpeg"
+        } else if data.count >= 12,
+                  data.starts(with: [0x52, 0x49, 0x46, 0x46]),
+                  data[8..<12].elementsEqual([0x57, 0x45, 0x42, 0x50]) {
+          type = "org.webmproject.webp"
+        } else {
+          result(false)
+          return
+        }
+        UIPasteboard.general.setData(data, forPasteboardType: type)
+        result(true)
+        return
+      }
       guard call.method == "readImage" else {
         result(FlutterMethodNotImplemented)
         return
