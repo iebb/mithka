@@ -284,7 +284,9 @@ class HeroAppIcons {
   static const bell = AppIconData(HeroiconsOutline.bell);
   static const bellSlash = AppIconData(HeroiconsOutline.bellSlash);
   static const bookmark = AppIconData(HeroiconsOutline.bookmark);
+  static const bug = AppIconData(HeroiconsOutline.bugAnt);
   static const venue = AppIconData(HeroiconsOutline.buildingStorefront);
+  static const cake = AppIconData(HeroiconsOutline.cake);
   static const camera = AppIconData(HeroiconsOutline.camera);
   static const check = AppIconData(HeroiconsOutline.check);
   static const checkDouble = AppIconData(HeroiconsOutline.check);
@@ -432,6 +434,7 @@ class HeroAppIcons {
     HeroiconsOutline.exclamationTriangle,
   );
   static const upload = AppIconData(HeroiconsOutline.arrowUpTray);
+  static const user = AppIconData(HeroiconsOutline.user);
   static const userPlus = AppIconData(HeroiconsOutline.userPlus);
   static const users = AppIconData(HeroiconsOutline.userGroup);
   static const video = AppIconData(HeroiconsOutline.videoCamera);

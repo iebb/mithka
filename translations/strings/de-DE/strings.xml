@@ -1430,7 +1430,9 @@
     <string name="emojiCategorySymbols">Symbole</string>
     <string name="emojiCategoryTravelAndPlaces">Reisen und Orte</string>
     <string name="emojiFontCatalogSystemDefault">Systemstandard</string>
+    <string name="emojiPanelPreview">Emoji-Vorschau</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">Gesicht mit Freudentränen</string>
+    <string name="emojiRecentsSection">Zuletzt verwendet</string>
     <string name="emojiStatusClear">Entfernen</string>
     <string name="emojiStatusNoAvailableStatuses">Für dieses emoji-Paket sind keine Status verfügbar</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">Keine Status verfügbar (Premium erforderlich)</string>
@@ -3567,4 +3569,5 @@
     <string name="downloadsRemoveRetainedConfirm">Behaltene Kopie von „{name}“ löschen? Chatnachrichten und Download-Cache bleiben unverändert.</string>
     <string name="downloadsRetainedUnavailable">Kein Zugriff auf behaltene Dateien. Bitte erneut versuchen.</string>
     <string name="downloadsNoRetained">Noch keine behaltenen Dateien. Nach Abschluss eines Datei- oder Video-Downloads kannst du sie über das Schildsymbol behalten.</string>
+    <string name="composerMediaPicker">Emoji, Sticker und GIFs</string>
 </resources>

@@ -278,7 +278,7 @@ void main() {
       lessThan(tester.getTopLeft(input).dy),
     );
     expect(
-      tester.getSize(find.byKey(const ValueKey('desktopComposerEmojiAction'))),
+      tester.getSize(find.byKey(const ValueKey('desktopComposerMediaAction'))),
       const Size.square(32),
     );
     final richTextAction = find.byKey(
@@ -443,7 +443,7 @@ void main() {
       findsOneWidget,
     );
     final toolbar = find.byKey(const ValueKey('desktopComposerToolbar'));
-    final emoji = find.byKey(const ValueKey('desktopComposerEmojiAction'));
+    final emoji = find.byKey(const ValueKey('desktopComposerMediaAction'));
     expect(tester.getSize(toolbar).width, 300);
     expect(
       tester.getTopLeft(emoji).dx,
@@ -481,7 +481,7 @@ void main() {
     );
   });
 
-  testWidgets('desktop emoji action toggles the anchored popover', (
+  testWidgets('desktop media action toggles the anchored popover', (
     tester,
   ) async {
     await _pumpComposer(
@@ -492,19 +492,21 @@ void main() {
 
     await tester.tapAt(
       tester.getCenter(
-        find.byKey(const ValueKey('desktopComposerEmojiAction')),
+        find.byKey(const ValueKey('desktopComposerMediaAction')),
       ),
     );
     await tester.pump();
+    expect(find.byKey(const ValueKey('mediaKindSegments')), findsOneWidget);
     expect(find.byKey(const ValueKey('emojiPanelTabs')), findsOneWidget);
 
     await tester.tapAt(
       tester.getCenter(
-        find.byKey(const ValueKey('desktopComposerEmojiAction')),
+        find.byKey(const ValueKey('desktopComposerMediaAction')),
       ),
     );
     await tester.pump();
 
+    expect(find.byKey(const ValueKey('mediaKindSegments')), findsNothing);
     expect(find.byKey(const ValueKey('emojiPanelTabs')), findsNothing);
     expect(find.byKey(const ValueKey('composerFunctionPanel')), findsNothing);
   });

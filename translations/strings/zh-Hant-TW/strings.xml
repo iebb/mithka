@@ -1423,7 +1423,9 @@
     <string name="emojiCategorySymbols">符號</string>
     <string name="emojiCategoryTravelAndPlaces">旅行與地點</string>
     <string name="emojiFontCatalogSystemDefault">系統預設</string>
+    <string name="emojiPanelPreview">表情符號預覽</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">笑到流淚表情</string>
+    <string name="emojiRecentsSection">最近使用</string>
     <string name="emojiStatusClear">清除</string>
     <string name="emojiStatusNoAvailableStatuses">此表情包暫無可用狀態</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">暫無可用狀態（需要 Premium）</string>
@@ -3556,4 +3558,5 @@
     <string name="downloadsRemoveRetainedConfirm">刪除「{name}」的保留副本？不會影響聊天訊息和下載快取。</string>
     <string name="downloadsRetainedUnavailable">無法存取保留的檔案，請重試。</string>
     <string name="downloadsNoRetained">尚無保留的檔案。檔案或影片下載完成後，點擊盾牌按鈕即可保留。</string>
+    <string name="composerMediaPicker">表情符號、貼圖和 GIF</string>
 </resources>

@@ -1430,7 +1430,9 @@
     <string name="emojiCategorySymbols">Symbols</string>
     <string name="emojiCategoryTravelAndPlaces">Travel &amp; Places</string>
     <string name="emojiFontCatalogSystemDefault">System default</string>
+    <string name="emojiPanelPreview">Emoji preview</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">Face with tears of joy</string>
+    <string name="emojiRecentsSection">Recently Used</string>
     <string name="emojiStatusClear">Clear</string>
     <string name="emojiStatusNoAvailableStatuses">No available statuses in this emoji pack</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">No available statuses (Premium required)</string>
@@ -3567,4 +3569,5 @@
     <string name="downloadsRemoveRetainedConfirm">Delete the retained copy of “{name}”? Chat messages and the download cache are not affected.</string>
     <string name="downloadsRetainedUnavailable">Cannot access retained files. Please retry.</string>
     <string name="downloadsNoRetained">No retained files yet. After a file or video finishes downloading, use its shield button to keep it.</string>
+    <string name="composerMediaPicker">Emoji, stickers and GIFs</string>
 </resources>

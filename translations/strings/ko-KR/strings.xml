@@ -1423,7 +1423,9 @@
     <string name="emojiCategorySymbols">기호</string>
     <string name="emojiCategoryTravelAndPlaces">여행 및 장소</string>
     <string name="emojiFontCatalogSystemDefault">시스템 기본값</string>
+    <string name="emojiPanelPreview">이모지 미리보기</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">기쁨의 눈물 얼굴</string>
+    <string name="emojiRecentsSection">최근 사용</string>
     <string name="emojiStatusClear">지우기</string>
     <string name="emojiStatusNoAvailableStatuses">이 emoji 팩에는 사용 가능한 상태가 없습니다</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">사용 가능한 상태가 없습니다(Premium 필요)</string>
@@ -3556,4 +3558,5 @@
     <string name="downloadsRemoveRetainedConfirm">“{name}”의 보관된 사본을 삭제할까요? 채팅 메시지와 다운로드 캐시에는 영향을 주지 않습니다.</string>
     <string name="downloadsRetainedUnavailable">보관된 파일에 접근할 수 없습니다. 다시 시도하세요.</string>
     <string name="downloadsNoRetained">보관된 파일이 없습니다. 파일이나 동영상 다운로드가 완료되면 방패 버튼을 눌러 보관하세요.</string>
+    <string name="composerMediaPicker">이모티콘, 스티커 및 GIF</string>
 </resources>

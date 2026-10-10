@@ -67,7 +67,9 @@ import 'custom_emoji.dart';
 import 'desktop_composer_height.dart';
 import 'desktop_voice_message_controller.dart';
 import 'desktop_voice_waveform.dart';
-import 'emoji_catalog.dart';
+import 'emoji_panel.dart';
+import 'emoji_panel_layout.dart';
+import 'emoji_recents_store.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
 import 'gif_item.dart';
@@ -98,6 +100,11 @@ import 'voice_note_preview_view.dart';
 import 'voice_recording_clock.dart';
 
 enum _Panel { none, function, emoji, sticker, voice }
+
+/// The kind of media the unified composer panel is showing. Both
+/// `_Panel.emoji` and `_Panel.sticker` render the same unified media panel;
+/// this picks which segment (and secondary strip) is active.
+enum _MediaKind { emoji, sticker, gif }
 
 enum _RichTextSendMode { direct, botRelay }
 
@@ -561,20 +568,19 @@ class _ChatInputBarState extends State<ChatInputBar>
   final _desktopSenderPopoverLink = LayerLink();
   final _desktopSendOptionsLink = LayerLink();
   final _desktopSendOptionsTargetKey = GlobalKey();
-  final _desktopEmojiPopoverLink = LayerLink();
-  final _desktopStickerPopoverLink = LayerLink();
+  // Single anchor for the unified emoji/sticker/GIF media popover.
+  final _desktopMediaPopoverLink = LayerLink();
   final _desktopSenderPopoverController = OverlayPortalController();
-  final _desktopEmojiPopoverController = OverlayPortalController();
-  final _desktopStickerPopoverController = OverlayPortalController();
+  final _desktopMediaPopoverController = OverlayPortalController();
   MessageSendOptionsContextMenuHandle? _desktopSendOptionsMenu;
   bool _desktopSenderPopoverVisible = false;
-  bool _desktopEmojiPopoverVisible = false;
-  bool _desktopStickerPopoverVisible = false;
+  bool _desktopMediaPopoverVisible = false;
   bool _wasEditingMessage = false;
   int? _syncedEditingMessageId;
   int _syncedComposerRevision = -1;
   int _syncedComposerFocusTick = 0;
   _Panel _panel = _Panel.none;
+  _MediaKind _mediaKind = _MediaKind.emoji;
   String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
   int? _stickerPack; // active sticker pack id
   Timer? _panelSearchTimer;
@@ -732,6 +738,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     });
     vm.addListener(_syncFromVm);
     EmojiStore.shared.addListener(_onStore);
+    EmojiRecentsStore.shared.addListener(_onStore);
     StickerStore.shared.addListener(_onStore);
     GifStore.shared.addListener(_onStore);
     _botPlatformUpdates = TdClient.shared
@@ -1320,8 +1327,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     // while the portal is already being unmounted asserts because it no
     // longer has a z-order slot, so only clear our logical state here.
     _desktopSenderPopoverVisible = false;
-    _desktopEmojiPopoverVisible = false;
-    _desktopStickerPopoverVisible = false;
+    _desktopMediaPopoverVisible = false;
     _desktopSendOptionsMenu?.dismiss();
     _desktopSendOptionsMenu = null;
     _discardPendingClipboardAttachments();
@@ -1336,6 +1342,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _aiReplyWorkingContextSnapshot = null;
     vm.removeListener(_syncFromVm);
     EmojiStore.shared.removeListener(_onStore);
+    EmojiRecentsStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
     GifStore.shared.removeListener(_onStore);
     if (widget.quickReplyLoader == null) {
@@ -1408,7 +1415,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     var gifs = const <GifItem>[];
     var gifNextOffset = '';
     try {
-      if ((_panel == _Panel.emoji || _desktopEmojiPopoverVisible) &&
+      if (_mediaPanelOpen &&
+          _mediaKind == _MediaKind.emoji &&
           _emojiTab == _emojiSearchTab) {
         final results = await Future.wait([
           TdClient.shared.query({
@@ -1437,7 +1445,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
         emoji = values;
         customEmoji = parseStickers(results.last.objects('stickers'));
-      } else if ((_panel == _Panel.sticker || _desktopStickerPopoverVisible) &&
+      } else if (_mediaPanelOpen &&
+          _mediaKind == _MediaKind.sticker &&
           _stickerPack == _stickerSearchTabId) {
         final results = await Future.wait<dynamic>([
           TdClient.shared.query({
@@ -1449,11 +1458,13 @@ class _ChatInputBarState extends State<ChatInputBar>
             'offset': 0,
             'limit': 100,
           }),
-          _searchGifs(query),
         ]);
         final result = results.first as Map<String, dynamic>;
-        final gifPage = results.last as (List<GifItem>, String);
         stickers = parseStickers(result.objects('stickers'));
+      } else if (_mediaPanelOpen &&
+          _mediaKind == _MediaKind.gif &&
+          _gifSearchSelected) {
+        final gifPage = await _searchGifs(query);
         gifs = gifPage.$1;
         gifNextOffset = gifPage.$2;
       }
@@ -1533,11 +1544,25 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  bool get _isPanelSearchSelected =>
-      ((_panel == _Panel.emoji || _desktopEmojiPopoverVisible) &&
-          _emojiTab == _emojiSearchTab) ||
-      ((_panel == _Panel.sticker || _desktopStickerPopoverVisible) &&
-          _stickerPack == _stickerSearchTabId);
+  /// True when the unified emoji/sticker/GIF panel is open, either inline or
+  /// as the desktop media popover.
+  bool get _mediaPanelOpen =>
+      _panel == _Panel.emoji ||
+      _panel == _Panel.sticker ||
+      _desktopMediaPopoverVisible;
+
+  /// The GIF segment's secondary strip is a search bar plus the saved-GIFs
+  /// tab, mirroring the emoji and sticker search tabs.
+  bool get _gifSearchSelected => _stickerPack == _stickerSearchTabId;
+
+  bool get _isPanelSearchSelected {
+    if (!_mediaPanelOpen) return false;
+    return switch (_mediaKind) {
+      _MediaKind.emoji => _emojiTab == _emojiSearchTab,
+      _MediaKind.sticker => _stickerPack == _stickerSearchTabId,
+      _MediaKind.gif => _gifSearchSelected,
+    };
+  }
 
   void _setPanel(_Panel next) {
     if (_panel == next && !_quickReplyContextVisible) return;
@@ -1574,10 +1599,74 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
+  void _selectMediaKind(_MediaKind kind) {
+    if (_mediaKind == kind) return;
+    var stickerPack = _stickerPack;
+    if (kind == _MediaKind.sticker && _stickerPack == _gifTabId) {
+      // The saved-GIFs tab belongs to the GIF segment; hand the sticker
+      // segment a real sticker tab when it resumes.
+      final packs = StickerStore.shared.packs;
+      stickerPack = packs.isNotEmpty
+          ? packs.first.id
+          : StickerStore.recentPackId;
+    }
+    setState(() {
+      _mediaKind = kind;
+      _stickerPack = stickerPack;
+    });
+    switch (kind) {
+      case _MediaKind.emoji:
+        EmojiStore.shared.loadIfNeeded();
+        EmojiRecentsStore.shared.loadIfNeeded();
+      case _MediaKind.sticker:
+        final activeId =
+            _stickerPack ??
+            (StickerStore.shared.packs.isNotEmpty
+                ? StickerStore.shared.packs.first.id
+                : StickerStore.recentPackId);
+        if (activeId == StickerStore.recentPackId ||
+            activeId == _stickerSearchTabId) {
+          StickerStore.shared.loadIfNeeded();
+        } else {
+          StickerStore.shared.loadPack(activeId);
+        }
+      case _MediaKind.gif:
+        GifStore.shared.loadIfNeeded();
+    }
+    if (_isPanelSearchSelected && _panelSearch.text.trim().isNotEmpty) {
+      _queuePanelSearch();
+    }
+  }
+
+  /// Toggles the unified media panel from the composer's media button.
+  ///
+  /// Opening keeps the last-used segment (emoji until the user picks
+  /// another); tapping again closes the panel. Switching segments inside an
+  /// open panel goes through [_selectMediaKind] instead.
+  void _toggleMediaPanel() {
+    if (_mediaPanelOpen) {
+      _toggle(_Panel.none);
+      return;
+    }
+    switch (_mediaKind) {
+      case _MediaKind.emoji:
+        EmojiStore.shared.loadIfNeeded();
+        EmojiRecentsStore.shared.loadIfNeeded();
+      case _MediaKind.sticker:
+        StickerStore.shared.loadIfNeeded();
+      case _MediaKind.gif:
+        GifStore.shared.loadIfNeeded();
+    }
+    _toggle(_mediaKind == _MediaKind.emoji ? _Panel.emoji : _Panel.sticker);
+    if (_mediaPanelOpen &&
+        _isPanelSearchSelected &&
+        _panelSearch.text.trim().isNotEmpty) {
+      _queuePanelSearch();
+    }
+  }
+
   void _finishPanelSend() {
-    if (_desktopSenderPopoverVisible ||
-        _desktopEmojiPopoverVisible ||
-        _desktopStickerPopoverVisible) {
+    if (_desktopSenderPopoverVisible || _desktopMediaPopoverVisible) {
       _hideDesktopPopovers();
     } else {
       _setPanel(_Panel.none);
@@ -3217,12 +3306,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                   _functionPanel(),
                 if (editingMessage == null &&
                     !desktopComposer &&
-                    _panel == _Panel.emoji)
-                  _emojiPanel(),
-                if (editingMessage == null &&
-                    !desktopComposer &&
-                    _panel == _Panel.sticker)
-                  _stickerPanel(),
+                    (_panel == _Panel.emoji || _panel == _Panel.sticker))
+                  _mediaPanel(),
                 if (editingMessage == null && _panel == _Panel.voice)
                   _voicePanel(),
               ],
@@ -3818,21 +3903,14 @@ class _ChatInputBarState extends State<ChatInputBar>
   void _hideDesktopPopovers({bool rebuild = true}) {
     _desktopSendOptionsMenu?.dismiss();
     _desktopSendOptionsMenu = null;
-    final changed =
-        _desktopSenderPopoverVisible ||
-        _desktopEmojiPopoverVisible ||
-        _desktopStickerPopoverVisible;
+    final changed = _desktopSenderPopoverVisible || _desktopMediaPopoverVisible;
     if (_desktopSenderPopoverVisible) {
       _desktopSenderPopoverController.hide();
       _desktopSenderPopoverVisible = false;
     }
-    if (_desktopEmojiPopoverVisible) {
-      _desktopEmojiPopoverController.hide();
-      _desktopEmojiPopoverVisible = false;
-    }
-    if (_desktopStickerPopoverVisible) {
-      _desktopStickerPopoverController.hide();
-      _desktopStickerPopoverVisible = false;
+    if (_desktopMediaPopoverVisible) {
+      _desktopMediaPopoverController.hide();
+      _desktopMediaPopoverVisible = false;
     }
     if (changed && rebuild && mounted) setState(() {});
   }
@@ -3847,8 +3925,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     setState(() => _desktopSenderPopoverVisible = true);
   }
 
-  void _toggleDesktopEmojiPopover() {
-    if (_desktopEmojiPopoverVisible) {
+  void _toggleDesktopMediaPopover() {
+    if (_desktopMediaPopoverVisible) {
       _hideDesktopPopovers();
       return;
     }
@@ -3857,28 +3935,17 @@ class _ChatInputBarState extends State<ChatInputBar>
       _panel = _Panel.none;
       widget.onPanelGeometryChanged?.call();
     }
-    EmojiStore.shared.loadIfNeeded();
-    _desktopEmojiPopoverController.show();
-    setState(() => _desktopEmojiPopoverVisible = true);
-    if (_isPanelSearchSelected && _panelSearch.text.trim().isNotEmpty) {
-      _queuePanelSearch();
+    switch (_mediaKind) {
+      case _MediaKind.emoji:
+        EmojiStore.shared.loadIfNeeded();
+        EmojiRecentsStore.shared.loadIfNeeded();
+      case _MediaKind.sticker:
+        StickerStore.shared.loadIfNeeded();
+      case _MediaKind.gif:
+        GifStore.shared.loadIfNeeded();
     }
-  }
-
-  void _toggleDesktopStickerPopover() {
-    if (_desktopStickerPopoverVisible) {
-      _hideDesktopPopovers();
-      return;
-    }
-    _hideDesktopPopovers(rebuild: false);
-    if (_panel != _Panel.none) {
-      _panel = _Panel.none;
-      widget.onPanelGeometryChanged?.call();
-    }
-    StickerStore.shared.loadIfNeeded();
-    GifStore.shared.loadIfNeeded();
-    _desktopStickerPopoverController.show();
-    setState(() => _desktopStickerPopoverVisible = true);
+    _desktopMediaPopoverController.show();
+    setState(() => _desktopMediaPopoverVisible = true);
     if (_isPanelSearchSelected && _panelSearch.text.trim().isNotEmpty) {
       _queuePanelSearch();
     }
@@ -3979,31 +4046,17 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Widget _desktopEmojiPopover(BuildContext overlayContext) {
+  Widget _desktopMediaPopover(BuildContext overlayContext) {
     final size = MediaQuery.sizeOf(overlayContext);
     final width = math.max(300.0, math.min(420.0, size.width - 24));
     final height = math.max(220.0, math.min(360.0, size.height - 88));
     return _desktopPopoverOverlay(
       overlayContext: overlayContext,
-      link: _desktopEmojiPopoverLink,
-      surfaceKey: const ValueKey('desktopEmojiPopover'),
+      link: _desktopMediaPopoverLink,
+      surfaceKey: const ValueKey('desktopMediaPopover'),
       width: width,
       onDismiss: _hideDesktopPopovers,
-      child: _emojiPanel(height: height, popover: true),
-    );
-  }
-
-  Widget _desktopStickerPopover(BuildContext overlayContext) {
-    final size = MediaQuery.sizeOf(overlayContext);
-    final width = math.max(300.0, math.min(420.0, size.width - 24));
-    final height = math.max(220.0, math.min(360.0, size.height - 88));
-    return _desktopPopoverOverlay(
-      overlayContext: overlayContext,
-      link: _desktopStickerPopoverLink,
-      surfaceKey: const ValueKey('desktopStickerPopover'),
-      width: width,
-      onDismiss: _hideDesktopPopovers,
-      child: _stickerPanel(height: height, popover: true),
+      child: _mediaPanel(height: height, popover: true),
     );
   }
 
@@ -5990,34 +6043,18 @@ class _ChatInputBarState extends State<ChatInputBar>
                     ),
                   ],
                   CompositedTransformTarget(
-                    link: _desktopEmojiPopoverLink,
+                    link: _desktopMediaPopoverLink,
                     child: OverlayPortal(
-                      controller: _desktopEmojiPopoverController,
-                      overlayChildBuilder: _desktopEmojiPopover,
+                      controller: _desktopMediaPopoverController,
+                      overlayChildBuilder: _desktopMediaPopover,
                       child: _desktopIcon(
-                        key: const ValueKey('desktopComposerEmojiAction'),
+                        key: const ValueKey('desktopComposerMediaAction'),
                         icon: HeroAppIcons.solidFaceSmile,
                         semanticLabel: AppStrings.t(
-                          AppStringKeys.composerEmoji,
+                          AppStringKeys.composerMediaPicker,
                         ),
-                        active: _desktopEmojiPopoverVisible,
-                        onTap: _toggleDesktopEmojiPopover,
-                      ),
-                    ),
-                  ),
-                  CompositedTransformTarget(
-                    link: _desktopStickerPopoverLink,
-                    child: OverlayPortal(
-                      controller: _desktopStickerPopoverController,
-                      overlayChildBuilder: _desktopStickerPopover,
-                      child: _desktopIcon(
-                        key: const ValueKey('desktopComposerStickerAction'),
-                        icon: HeroAppIcons.grip,
-                        semanticLabel: AppStrings.t(
-                          AppStringKeys.composerStickers,
-                        ),
-                        active: _desktopStickerPopoverVisible,
-                        onTap: _toggleDesktopStickerPopover,
+                        active: _desktopMediaPopoverVisible,
+                        onTap: _toggleDesktopMediaPopover,
                       ),
                     ),
                   ),
@@ -6325,35 +6362,10 @@ class _ChatInputBarState extends State<ChatInputBar>
               _takePhoto,
             ),
           _icon(
-            HeroAppIcons.grip,
-            AppStrings.t(AppStringKeys.composerStickers),
-            _panel == _Panel.sticker,
-            () {
-              _toggle(_Panel.sticker);
-              if (_panel == _Panel.sticker) {
-                StickerStore.shared.loadIfNeeded();
-                GifStore.shared.loadIfNeeded();
-                if (_isPanelSearchSelected &&
-                    _panelSearch.text.trim().isNotEmpty) {
-                  _queuePanelSearch();
-                }
-              }
-            },
-          ),
-          _icon(
             HeroAppIcons.solidFaceSmile,
-            AppStrings.t(AppStringKeys.composerEmoji),
-            _panel == _Panel.emoji,
-            () {
-              _toggle(_Panel.emoji);
-              if (_panel == _Panel.emoji) {
-                EmojiStore.shared.loadIfNeeded();
-                if (_isPanelSearchSelected &&
-                    _panelSearch.text.trim().isNotEmpty) {
-                  _queuePanelSearch();
-                }
-              }
-            },
+            AppStrings.t(AppStringKeys.composerMediaPicker),
+            _panel == _Panel.emoji || _panel == _Panel.sticker,
+            _toggleMediaPanel,
           ),
           _icon(
             _panel != _Panel.none
@@ -7377,21 +7389,203 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  // MARK: - Emoji panel (standard catalog → inserts into the field)
+  // MARK: - Unified media panel (emoji / stickers / GIF)
 
-  Widget _emojiPanel({double height = 326, bool popover = false}) {
+  /// Telegram-iOS style unified picker: one panel with a top segmented
+  /// selector (Emoji | Stickers | GIF) above each kind's own tab strip and
+  /// content. Rendered for both `_Panel.emoji` and `_Panel.sticker`.
+  Widget _mediaPanel({double height = 376, bool popover = false}) {
     final c = context.colors;
     return Container(
-      key: popover ? const ValueKey('desktopEmojiPopoverContent') : null,
+      key: popover ? const ValueKey('desktopMediaPopoverContent') : null,
       height: height,
       color: c.panelBackground,
       child: Column(
         children: [
-          _emojiTabStrip(),
-          if (_emojiTab == _emojiSearchTab) _panelSearchField(),
-          Expanded(child: _emojiContent()),
+          _mediaKindSegmentControl(),
+          _mediaSecondaryStrip(),
+          if (_isPanelSearchSelected) _panelSearchField(),
+          Expanded(child: _mediaContent()),
         ],
       ),
+    );
+  }
+
+  Widget _mediaSecondaryStrip() => switch (_mediaKind) {
+    _MediaKind.emoji => _emojiTabStrip(),
+    _MediaKind.sticker => _stickerTabStrip(),
+    _MediaKind.gif => _gifTabStrip(),
+  };
+
+  Widget _mediaContent() {
+    return switch (_mediaKind) {
+      _MediaKind.emoji => _emojiContent(),
+      _MediaKind.sticker => _stickerContent(),
+      _MediaKind.gif =>
+        _gifSearchSelected ? _gifSearchContent() : _gifContent(),
+    };
+  }
+
+  Widget _mediaKindSegmentControl() {
+    final c = context.colors;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    Widget segment(_MediaKind kind, AppIconData icon, String label) {
+      final selected = _mediaKind == kind;
+      final content = AnimatedContainer(
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        height: 30,
+        decoration: BoxDecoration(
+          color: selected ? c.card : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(
+              icon,
+              size: 16,
+              color: selected ? AppTheme.brand : c.textSecondary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? c.textPrimary : c.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          child: GestureDetector(
+            key: ValueKey('mediaSegment-${kind.name}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _selectMediaKind(kind),
+            // Large text scales shrink the pill content instead of clipping.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: content,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('mediaKindSegments'),
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          segment(
+            _MediaKind.emoji,
+            HeroAppIcons.solidFaceSmile,
+            AppStrings.t(AppStringKeys.composerEmoji),
+          ),
+          segment(
+            _MediaKind.sticker,
+            HeroAppIcons.grip,
+            AppStrings.t(AppStringKeys.composerStickers),
+          ),
+          segment(
+            _MediaKind.gif,
+            HeroAppIcons.gif,
+            AppStrings.t(AppStringKeys.downloadsMediaAnimation),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gifTabStrip() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('gifPanelTabs'),
+      decoration: BoxDecoration(
+        color: c.inputBarBackground,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: SizedBox(
+        height: 50,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          children: [
+            _emojiTabButton(
+              key: const ValueKey('gifSearchTab'),
+              selected: _gifSearchSelected,
+              onTap: () => _selectStickerTab(_stickerSearchTabId),
+              child: AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 20,
+                color: _gifSearchSelected ? AppTheme.brand : c.textSecondary,
+              ),
+            ),
+            _emojiTabButton(
+              key: const ValueKey('gifSavedTab'),
+              selected: !_gifSearchSelected,
+              onTap: () => _selectStickerTab(_gifTabId),
+              child: AppIcon(
+                HeroAppIcons.gif,
+                size: 22,
+                color: !_gifSearchSelected ? AppTheme.brand : c.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _gifSearchContent() {
+    if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
+    if (_gifSearchResults.isEmpty && _gifSearchNextOffset.isEmpty) {
+      return _panelSearchState();
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 1.2,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+      ),
+      itemCount:
+          _gifSearchResults.length + (_gifSearchNextOffset.isNotEmpty ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == _gifSearchResults.length) {
+          return _gifSearchLoadMoreTile();
+        }
+        return _gifTile(_gifSearchResults[index], search: true);
+      },
     );
   }
 
@@ -7411,71 +7605,33 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
       }
       if (pack != null) {
-        return GridView.builder(
-          padding: const EdgeInsets.all(12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
+        final packEmoji = pack.emoji;
+        return LayoutBuilder(
+          builder: (context, constraints) => GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: emojiPanelColumnCount(constraints.maxWidth),
+            ),
+            itemCount: packEmoji.length,
+            itemBuilder: (context, index) {
+              final item = packEmoji[index];
+              return item.customEmojiId != 0
+                  ? EmojiPanelCell(
+                      customItem: item,
+                      onTap: () => _controller.insertCustomEmoji(
+                        item.customEmojiId,
+                        item.emoji,
+                      ),
+                    )
+                  : const SizedBox();
+            },
           ),
-          itemCount: pack.emoji.length,
-          itemBuilder: (context, index) {
-            final item = pack!.emoji[index];
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () =>
-                  _controller.insertCustomEmoji(item.customEmojiId, item.emoji),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: item.customEmojiId != 0
-                    ? CustomEmojiView(
-                        id: item.customEmojiId,
-                        size: 34,
-                        color: context.colors.textPrimary,
-                      )
-                    : const SizedBox(),
-              ),
-            );
-          },
         );
       }
     }
-    return CustomScrollView(
-      slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        for (final category in EmojiCatalog.categories) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 14, top: 6, bottom: 2),
-              child: Text(
-                category.name.l10n(context),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 8,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final emoji = category.emojis[index];
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _controller.insertText(emoji),
-                  child: Center(
-                    child: Text(emoji, style: const TextStyle(fontSize: 26)),
-                  ),
-                );
-              }, childCount: category.emojis.length),
-            ),
-          ),
-        ],
-        const SliverToBoxAdapter(child: SizedBox(height: 8)),
-      ],
+    return StandardEmojiPane(
+      insertText: _controller.insertText,
+      insertCustomEmoji: _controller.insertCustomEmoji,
     );
   }
 
@@ -7532,48 +7688,55 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget _emojiSearchContent() {
     final count = _emojiSearchResults.length + _customEmojiSearchResults.length;
     if (count == 0) return _panelSearchState();
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 8,
-      ),
-      itemCount: count,
-      itemBuilder: (context, index) {
-        if (index < _emojiSearchResults.length) {
-          final emoji = _emojiSearchResults[index];
+    return LayoutBuilder(
+      builder: (context, constraints) => GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: emojiPanelColumnCount(constraints.maxWidth),
+        ),
+        itemCount: count,
+        itemBuilder: (context, index) {
+          if (index < _emojiSearchResults.length) {
+            final emoji = _emojiSearchResults[index];
+            return EmojiPanelCell(
+              key: ValueKey('emojiSearch-$emoji'),
+              emoji: emoji,
+              onTap: () {
+                EmojiRecentsStore.shared.record(emoji);
+                _controller.insertText(emoji);
+              },
+            );
+          }
+          final item =
+              _customEmojiSearchResults[index - _emojiSearchResults.length];
           return GestureDetector(
-            key: ValueKey('emojiSearch-$emoji'),
+            key: ValueKey('customEmojiSearch-${item.customEmojiId}'),
             behavior: HitTestBehavior.opaque,
-            onTap: () => _controller.insertText(emoji),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 26)),
+            onTap: () {
+              if (item.customEmojiId != 0) {
+                EmojiRecentsStore.shared.recordCustom(
+                  item.customEmojiId,
+                  item.emoji,
+                );
+                _controller.insertCustomEmoji(item.customEmojiId, item.emoji);
+              } else if (item.emoji.isNotEmpty) {
+                EmojiRecentsStore.shared.record(item.emoji);
+                _controller.insertText(item.emoji);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: item.customEmojiId != 0
+                  ? CustomEmojiView(
+                      id: item.customEmojiId,
+                      size: 34,
+                      color: context.colors.textPrimary,
+                    )
+                  : StickerPreview(item: item),
             ),
           );
-        }
-        final item =
-            _customEmojiSearchResults[index - _emojiSearchResults.length];
-        return GestureDetector(
-          key: ValueKey('customEmojiSearch-${item.customEmojiId}'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            if (item.customEmojiId != 0) {
-              _controller.insertCustomEmoji(item.customEmojiId, item.emoji);
-            } else if (item.emoji.isNotEmpty) {
-              _controller.insertText(item.emoji);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(2),
-            child: item.customEmojiId != 0
-                ? CustomEmojiView(
-                    id: item.customEmojiId,
-                    size: 34,
-                    color: context.colors.textPrimary,
-                  )
-                : StickerPreview(item: item),
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -8165,22 +8328,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     ),
   );
 
-  Widget _stickerPanel({double height = 326, bool popover = false}) {
-    final c = context.colors;
-    return Container(
-      key: popover ? const ValueKey('desktopStickerPopoverContent') : null,
-      height: height,
-      color: c.panelBackground,
-      child: Column(
-        children: [
-          _stickerTabStrip(),
-          if (_stickerPack == _stickerSearchTabId) _panelSearchField(),
-          Expanded(child: _stickerContent()),
-        ],
-      ),
-    );
-  }
-
   Widget _stickerContent() {
     final store = StickerStore.shared;
     final packs = store.packs;
@@ -8277,52 +8424,10 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Widget _stickerSearchContent() {
     if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
-    if (_stickerSearchResults.isEmpty && _gifSearchResults.isEmpty) {
+    if (_stickerSearchResults.isEmpty) {
       return _panelSearchState();
     }
-    return CustomScrollView(
-      slivers: [
-        if (_stickerSearchResults.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.all(12),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) =>
-                    _stickerTile(_stickerSearchResults[index], search: true),
-                childCount: _stickerSearchResults.length,
-              ),
-            ),
-          ),
-        if (_gifSearchResults.isNotEmpty || _gifSearchNextOffset.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.all(8),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 1.2,
-                mainAxisSpacing: 4,
-                crossAxisSpacing: 4,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (index == _gifSearchResults.length) {
-                    return _gifSearchLoadMoreTile();
-                  }
-                  return _gifTile(_gifSearchResults[index], search: true);
-                },
-                childCount:
-                    _gifSearchResults.length +
-                    (_gifSearchNextOffset.isNotEmpty ? 1 : 0),
-              ),
-            ),
-          ),
-      ],
-    );
+    return _stickerGrid(_stickerSearchResults, search: true);
   }
 
   Widget _stickerTile(StickerItem item, {bool search = false}) =>

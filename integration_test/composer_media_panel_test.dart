@@ -104,8 +104,11 @@ void main() {
               onMediaSendTapped: () => mediaSendTaps++,
               onMessageSent: () {
                 messageSentCallbacks++;
+                // The unified panel's segment control is present while the
+                // panel is open in any kind, so its absence proves the send
+                // closed the panel before this callback ran.
                 panelWasClosedBeforeSendCallback = find
-                    .byKey(const ValueKey('stickerPanelTabs'))
+                    .byKey(const ValueKey('mediaKindSegments'))
                     .evaluate()
                     .isEmpty;
               },
@@ -115,14 +118,21 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byIcon(HeroAppIcons.grip.data));
+    // One media button opens the unified panel; the sticker grip entry is gone.
+    expect(find.byIcon(HeroAppIcons.grip.data), findsNothing);
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('mediaKindSegments')), findsOneWidget);
+    expect(panelGeometryChanges, 1);
+
+    // Switch to the sticker segment and surface its search tab.
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
     await tester.pump();
     final stickerTabs = find.byKey(const ValueKey('stickerPanelTabs'));
     final search = find.byKey(const ValueKey('composerMediaSearch'));
     expect(stickerTabs, findsOneWidget);
     expect(search, findsNothing);
     expect(find.byIcon(HeroAppIcons.palette.data), findsNothing);
-    expect(panelGeometryChanges, 1);
 
     await tester.tap(find.byKey(const ValueKey('stickerSearchTab')));
     await tester.pump();
@@ -147,9 +157,11 @@ void main() {
     expect(panelWasClosedBeforeSendCallback, isTrue);
     expect(panelGeometryChanges, 2);
 
-    await tester.tap(find.byIcon(HeroAppIcons.grip.data));
+    // Reopening keeps the last-used (sticker) segment; switch it to GIF.
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
     await tester.pump();
-    await tester.tap(find.byIcon(HeroAppIcons.gif.data));
+    expect(panelGeometryChanges, 3);
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
     await tester.pump();
     expect(find.byKey(const ValueKey('gif-200')), findsOneWidget);
 
@@ -157,7 +169,7 @@ void main() {
     await tester.pump();
     expect(mediaSendTaps, 2);
     expect(messageSentCallbacks, 1);
-    expect(stickerTabs, findsOneWidget);
+    expect(find.byKey(const ValueKey('gifPanelTabs')), findsOneWidget);
 
     vm.gifSend.complete(true);
     await tester.pump();
@@ -166,12 +178,15 @@ void main() {
     expect(panelWasClosedBeforeSendCallback, isTrue);
     expect(panelGeometryChanges, 4);
 
-    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    // Reopen and switch to the emoji segment.
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
+    await tester.pump();
+    expect(panelGeometryChanges, 5);
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-emoji')));
     await tester.pump();
     final emojiTabs = find.byKey(const ValueKey('emojiPanelTabs'));
     expect(emojiTabs, findsOneWidget);
     expect(search, findsNothing);
-    expect(panelGeometryChanges, 5);
 
     await tester.tap(find.byKey(const ValueKey('emojiSearchTab')));
     await tester.pump();
@@ -183,6 +198,7 @@ void main() {
 
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
     await tester.pump();
+    expect(find.byKey(const ValueKey('mediaKindSegments')), findsNothing);
     expect(panelGeometryChanges, 6);
   });
 

@@ -1423,7 +1423,9 @@
     <string name="emojiCategorySymbols">記号</string>
     <string name="emojiCategoryTravelAndPlaces">旅行と場所</string>
     <string name="emojiFontCatalogSystemDefault">システム標準</string>
+    <string name="emojiPanelPreview">絵文字プレビュー</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">うれし泣きの顔</string>
+    <string name="emojiRecentsSection">最近使用</string>
     <string name="emojiStatusClear">クリア</string>
     <string name="emojiStatusNoAvailableStatuses">この絵文字パックには利用可能なステータスがありません</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">利用可能なステータスはありません（Premium が必要）</string>
@@ -3556,4 +3558,5 @@
     <string name="downloadsRemoveRetainedConfirm">「{name}」の保持したコピーを削除しますか？チャットのメッセージとダウンロードキャッシュには影響しません。</string>
     <string name="downloadsRetainedUnavailable">保持したファイルにアクセスできません。再試行してください。</string>
     <string name="downloadsNoRetained">保持したファイルはありません。ファイルや動画のダウンロード完了後、盾のボタンで保持できます。</string>
+    <string name="composerMediaPicker">絵文字・ステッカー・GIF</string>
 </resources>

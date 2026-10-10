@@ -1430,7 +1430,9 @@
     <string name="emojiCategorySymbols">Symboles</string>
     <string name="emojiCategoryTravelAndPlaces">Voyages et lieux</string>
     <string name="emojiFontCatalogSystemDefault">Par défaut du système</string>
+    <string name="emojiPanelPreview">Aperçu de l'emoji</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">Visage riant aux larmes</string>
+    <string name="emojiRecentsSection">Utilisés récemment</string>
     <string name="emojiStatusClear">Effacer</string>
     <string name="emojiStatusNoAvailableStatuses">Aucun statut disponible pour ce pack d’emoji</string>
     <string name="emojiStatusNoAvailableStatusesPremiumRequired">Aucun statut disponible (Premium requis)</string>
@@ -3567,4 +3569,5 @@
     <string name="downloadsRemoveRetainedConfirm">Supprimer la copie conservée de « {name} » ? Les messages et le cache de téléchargement ne seront pas modifiés.</string>
     <string name="downloadsRetainedUnavailable">Impossible d’accéder aux fichiers conservés. Réessayez.</string>
     <string name="downloadsNoRetained">Aucun fichier conservé. Une fois le téléchargement d’un fichier ou d’une vidéo terminé, utilisez son bouton bouclier pour le conserver.</string>
+    <string name="composerMediaPicker">Emoji, stickers et GIF</string>
 </resources>
