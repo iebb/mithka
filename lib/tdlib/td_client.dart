@@ -2366,6 +2366,10 @@ class TdClient {
   @visibleForTesting
   void routeUpdateForTesting(Map<String, dynamic> update) => _route(update);
 
+  /// Clears the pushed folder snapshots so a test can model a cold session.
+  @visibleForTesting
+  void clearChatFoldersForTesting() => _latestChatFoldersByClient.clear();
+
   void _dispatchToActiveSubscribers(Map<String, dynamic> update) {
     _updates.add(update);
     final type = update['@type'];

@@ -190,6 +190,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   final TextEditingController _search = TextEditingController();
   final VoicePlayer _voice = VoicePlayer();
   StreamSubscription? _fileSub;
+  StreamSubscription? _folderSub;
   Timer? _searchDebounce;
   String _query = '';
   int _requestGeneration = 0;
@@ -257,6 +258,19 @@ class _SharedMediaViewState extends State<SharedMediaView> {
     _load(_tab);
     if (_isMusicHub) {
       unawaited(_refreshMusicHubSources());
+      // TDLib pushes the folder list only when it changes, and it can land
+      // after the library has already been read as empty. While this tab is
+      // open, follow those pushes so the playlists appear without the user
+      // having to close and reopen the hub.
+      _folderSub = _client
+          .subscribeAll()
+          .where((update) {
+            if (update.type != 'updateChatFolders') return false;
+            final clientId = update.integer('@client_id');
+            return clientId != null &&
+                _client.slotForClient(clientId) == _accountSlot;
+          })
+          .listen((_) => unawaited(_refreshMusicHubSources()));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         MusicPlayerController.shared.attachEmbeddedPlayerHost(this);
@@ -269,6 +283,7 @@ class _SharedMediaViewState extends State<SharedMediaView> {
   void dispose() {
     _searchDebounce?.cancel();
     _fileSub?.cancel();
+    _folderSub?.cancel();
     _voice.dispose();
     _search.dispose();
     if (_musicPlayerHostAttached) {
@@ -881,7 +896,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               AppStrings.t(AppStringKeys.musicPlayerPlaylists),
               onAdd: () => unawaited(createMusicPlaylist(context)),
             ),
-            if (controller.playlists.isEmpty)
+            if (controller.playlists.isEmpty && controller.playlistsLoading)
+              _musicSourcesLoading()
+            else if (controller.playlists.isEmpty)
               _musicSourcesEmpty(
                 AppStrings.t(AppStringKeys.musicPlayerNoPlaylists),
                 showCreate: playedChats.isEmpty,
@@ -1000,6 +1017,18 @@ class _SharedMediaViewState extends State<SharedMediaView> {
           ],
         ],
       ),
+    );
+  }
+
+  /// Shown while the playlist library is still being read from Telegram. The
+  /// tab used to jump straight to the "create your first playlist" empty state
+  /// during the load, so a real library briefly — and on a slow folder push,
+  /// persistently — read as if it had been deleted.
+  Widget _musicSourcesLoading() {
+    return const Padding(
+      key: ValueKey('music-playlists-loading'),
+      padding: EdgeInsets.symmetric(vertical: 42),
+      child: Center(child: AppActivityIndicator(size: 22)),
     );
   }
 

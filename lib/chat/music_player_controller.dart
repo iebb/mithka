@@ -152,6 +152,7 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
       folderUpdate: () => clientId == null
           ? null
           : TdClient.shared.latestChatFoldersUpdateForClient(clientId),
+      folderWait: MusicPlaylistService.waiterForClient(clientId),
     );
   }
 
