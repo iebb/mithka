@@ -1477,6 +1477,11 @@
     <string name="generalRepeatPreserveSender">Conserver l’expéditeur avec +1</string>
     <string name="generalForwardRichMarkdown">Rendre le Markdown lors du transfert</string>
     <string name="generalForwardRichMarkdownHint">Proposer d’envoyer le texte Markdown (réponses IA) en texte enrichi</string>
+    <string name="generalPanguSpacing">Espacement Pangu</string>
+    <string name="generalPanguSpacingNote">Insère une espace entre les caractères CJK et les lettres ou chiffres demi-chasse pour rendre le texte mixte plus lisible. Les messages reçus ne sont réespacés qu’à l’écran ; l’envoi et la modification changent le texte réellement envoyé. Le code, les liens, les mentions et les hashtags restent inchangés.</string>
+    <string name="generalPanguOnReceive">Messages reçus</string>
+    <string name="generalPanguOnSend">Messages envoyés</string>
+    <string name="generalPanguOnEdit">Messages modifiés</string>
     <string name="generalKeepChatContextPaneClosed">Garder le panneau latéral du groupe fermé</string>
     <string name="generalKeepChatContextPaneClosedHint">Sur tablette et ordinateur, un groupe ou un canal s’ouvre sans le panneau des membres et de l’annonce à droite. Le bouton de l’en-tête du chat l’ouvre toujours</string>
     <string name="generalSaveCapturedPhotos">Enregistrer les photos prises dans l’album système</string>

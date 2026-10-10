@@ -1477,6 +1477,11 @@
     <string name="generalRepeatPreserveSender">Absender bei +1 beibehalten</string>
     <string name="generalForwardRichMarkdown">Markdown beim Weiterleiten darstellen</string>
     <string name="generalForwardRichMarkdownHint">Bei Markdown-Texten (z. B. KI-Antworten) Weiterleitung als Rich Text anbieten</string>
+    <string name="generalPanguSpacing">Pangu-Leerzeichen</string>
+    <string name="generalPanguSpacingNote">Fügt zwischen CJK-Zeichen und halbbreiten Buchstaben oder Ziffern ein Leerzeichen ein, damit gemischter Text besser lesbar ist. Empfangene Nachrichten werden nur auf dem Bildschirm neu gesetzt; Senden und Bearbeiten ändern den Text, der wirklich verschickt wird. Code, Links, Erwähnungen und Hashtags bleiben unverändert.</string>
+    <string name="generalPanguOnReceive">Empfangene Nachrichten</string>
+    <string name="generalPanguOnSend">Ausgehende Nachrichten</string>
+    <string name="generalPanguOnEdit">Bearbeitete Nachrichten</string>
     <string name="generalKeepChatContextPaneClosed">Gruppen-Seitenleiste geschlossen lassen</string>
     <string name="generalKeepChatContextPaneClosedHint">Auf Tablets und dem Desktop öffnet eine Gruppe oder ein Kanal nicht automatisch das Mitglieder- und Ankündigungsfeld rechts. Die Schaltfläche im Chat-Kopf öffnet es weiterhin</string>
     <string name="generalSaveCapturedPhotos">Aufgenommene Fotos im System-Album speichern</string>

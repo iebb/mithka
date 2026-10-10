@@ -853,4 +853,45 @@ void main() {
     expect(selected, isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('盘古之白 spacing never changes what a selection quotes', (
+    tester,
+  ) async {
+    MessageTextQuote? selected;
+    const source = '中文English中文';
+    const painted = '中文 English 中文';
+    final message = ChatMessage(
+      id: 78,
+      isOutgoing: false,
+      date: 1,
+      text: source,
+      contentType: 'messageText',
+    );
+    theme.panguOnReceive = true;
+    await tester.pumpWidget(
+      app(
+        MessageBubble(
+          message: message,
+          peerTitle: 'Test',
+          isGroup: false,
+          onDesktopQuoteChanged: (_, quote) => selected = quote,
+        ),
+        TargetPlatform.macOS,
+      ),
+    );
+    final text = find.text(painted, findRichText: true);
+
+    // The whole painted line still quotes the stored message verbatim.
+    await selectRange(tester, text, 0, painted.length);
+    expect(selected?.text, source);
+    expect(selected?.position, 0);
+
+    // One word: the inserted spaces on both sides stay out of the quote, and
+    // its offset addresses the source, not the painted string.
+    final word = painted.indexOf('English');
+    await selectRange(tester, text, word, word + 7);
+    expect(selected?.text, 'English');
+    expect(selected?.position, source.indexOf('English'));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

@@ -6324,6 +6324,12 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final themeController = context.watch<ThemeController>();
     _themingEnabled = themeController.themingEnabled;
+    // The model has no theme access of its own, so the outgoing 盘古之白
+    // switches are mirrored on every build: flipping one in Settings takes
+    // effect on the next send without recreating the transcript.
+    _vm
+      ..panguOnSend = themeController.panguOnSend
+      ..panguOnEdit = themeController.panguOnEdit;
     final dark = Theme.of(context).brightness == Brightness.dark;
     _resolvedCloudTheme = themeController.cloudThemeFor(
       dark ? Brightness.dark : Brightness.light,

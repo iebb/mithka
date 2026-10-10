@@ -1477,6 +1477,11 @@
     <string name="generalRepeatPreserveSender">Preserve sender when using +1</string>
     <string name="generalForwardRichMarkdown">Render Markdown when forwarding</string>
     <string name="generalForwardRichMarkdownHint">Offer to send Markdown-formatted text (like AI replies) as rich text</string>
+    <string name="generalPanguSpacing">Pangu spacing</string>
+    <string name="generalPanguSpacingNote">Adds a space between CJK characters and half-width letters or digits so mixed text reads better. Received messages are only re-spaced on screen; sending and editing change the text that goes out. Code, links, mentions and hashtags stay untouched.</string>
+    <string name="generalPanguOnReceive">Received messages</string>
+    <string name="generalPanguOnSend">Outgoing messages</string>
+    <string name="generalPanguOnEdit">Edited messages</string>
     <string name="generalKeepChatContextPaneClosed">Keep the group side panel closed</string>
     <string name="generalKeepChatContextPaneClosedHint">On tablet and desktop, a group or channel opens without the member and announcement panel on the right. The chat header button still opens it</string>
     <string name="generalSaveCapturedPhotos">Save captured photos to the system album</string>

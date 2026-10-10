@@ -1470,6 +1470,11 @@
     <string name="generalRepeatPreserveSender">+1 時保留傳送者</string>
     <string name="generalForwardRichMarkdown">轉發時渲染 Markdown</string>
     <string name="generalForwardRichMarkdownHint">識別 Markdown 排版的文字（如 AI 回覆），轉發時可渲染為富文本</string>
+    <string name="generalPanguSpacing">盤古之白</string>
+    <string name="generalPanguSpacingNote">在中文（含日文、韓文）與半形英文、數字之間補一個空格，讓混排文字更易讀。接收訊息只在本地顯示時排版，傳送和編輯會改變真正傳出去的文字。程式碼、連結、@提及和主題標籤內部不會被改動。</string>
+    <string name="generalPanguOnReceive">接收訊息</string>
+    <string name="generalPanguOnSend">傳送訊息</string>
+    <string name="generalPanguOnEdit">編輯訊息</string>
     <string name="generalKeepChatContextPaneClosed">保持群組側欄收合</string>
     <string name="generalKeepChatContextPaneClosedHint">平板和桌面版進入群組或頻道時，不再自動展開右側的成員與公告面板，聊天頂端按鈕仍可手動開啟</string>
     <string name="generalSaveCapturedPhotos">拍攝的照片儲存到系統相簿</string>

@@ -1614,6 +1614,11 @@ abstract final class AppStringKeys {
   static const generalForwardRichMarkdown = 'generalForwardRichMarkdown';
   static const generalForwardRichMarkdownHint =
       'generalForwardRichMarkdownHint';
+  static const generalPanguSpacing = 'generalPanguSpacing';
+  static const generalPanguSpacingNote = 'generalPanguSpacingNote';
+  static const generalPanguOnReceive = 'generalPanguOnReceive';
+  static const generalPanguOnSend = 'generalPanguOnSend';
+  static const generalPanguOnEdit = 'generalPanguOnEdit';
   static const generalKeepChatContextPaneClosed =
       'generalKeepChatContextPaneClosed';
   static const generalKeepChatContextPaneClosedHint =

@@ -199,15 +199,21 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
 
   ChatViewModel get _pickerViewModel {
     final existing = _composerPickerViewModel;
-    if (existing != null) return existing;
+    if (existing != null) return _withPanguPreferences(existing);
     final created = ChatViewModel(
       chatId: widget.arguments.chatId!,
       title: widget.arguments.title,
       markReadOnOpen: false,
     )..onAppear();
     _composerPickerViewModel = created;
-    return created;
+    return _withPanguPreferences(created);
   }
+
+  /// The picker window has no chat view to mirror 盘古之白 from, so its model
+  /// reads the switches straight off this window's theme controller.
+  ChatViewModel _withPanguPreferences(ChatViewModel model) => model
+    ..panguOnSend = _theme.panguOnSend
+    ..panguOnEdit = _theme.panguOnEdit;
 
   @override
   void initState() {

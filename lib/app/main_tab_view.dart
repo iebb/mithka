@@ -28,6 +28,7 @@ import '../chat/desktop_chat_context_pane.dart';
 import '../chat/media_send_preview_view.dart';
 import '../chat/music_player_controller.dart';
 import '../chat/outgoing_attachment.dart';
+import '../chat/pangu_spacing.dart';
 import '../chats/archived_chats_view.dart';
 import '../chats/chat_list_view.dart';
 import '../communities/community_view.dart';
@@ -302,13 +303,19 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             ),
           );
       if (!mounted || preview == null || preview.attachments.isEmpty) return;
+      // Read the switch before the await below: the caption is plain text, so
+      // 盘古之白 has no entities to move.
+      final spaceCaption = context.read<ThemeController>().panguOnSend;
       final resolved = await resolveAttachmentListDimensions(
         preview.attachments,
       );
+      final spacedCaption = spaceCaption
+          ? PanguSpacing.transformUnannotated(preview.caption).text
+          : preview.caption;
       final requests = buildAttachmentSendRequests(
         chatId: picked.id,
         attachments: resolved,
-        caption: preview.caption,
+        caption: spacedCaption,
         sendConfiguration: preview.sendConfiguration,
       );
       for (final request in requests) {

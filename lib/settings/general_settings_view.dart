@@ -320,6 +320,40 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
               ),
             ],
           ),
+          // 盘古之白: spacing between CJK and half-width text. Receiving only
+          // repaints, while sending and editing change what the other side
+          // gets, so the three stay independent switches.
+          SettingsSection(
+            titleKey: AppStringKeys.generalPanguSpacing,
+            rows: [
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-pangu-receive'),
+                title: AppStringKeys.generalPanguOnReceive,
+                value: theme.panguOnReceive,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.inbox),
+                onChanged: (value) => theme.panguOnReceive = value,
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-pangu-send'),
+                title: AppStringKeys.generalPanguOnSend,
+                value: theme.panguOnSend,
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.paperPlane,
+                ),
+                onChanged: (value) => theme.panguOnSend = value,
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('chat-behavior-pangu-edit'),
+                title: AppStringKeys.generalPanguOnEdit,
+                value: theme.panguOnEdit,
+                leading: const SettingsLeadingIcon(
+                  icon: HeroAppIcons.penToSquare,
+                ),
+                onChanged: (value) => theme.panguOnEdit = value,
+              ),
+            ],
+          ),
+          const SettingsNote(text: AppStringKeys.generalPanguSpacingNote),
         ],
       ),
     );

@@ -29,6 +29,7 @@ import '../chat/media_spoiler.dart';
 import '../chat/message_reaction_availability.dart';
 import '../chat/music_player_controller.dart';
 import '../chat/outgoing_attachment.dart';
+import '../chat/pangu_spacing.dart';
 import '../chat/quick_reaction_choice.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
@@ -4115,13 +4116,24 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
       return;
     }
     setState(() => _sending = true);
+    // Read the switch before any await: 盘古之白 applies to whatever this
+    // composer posts, body and captions alike.
+    final spaceOutgoing = context.read<ThemeController>().panguOnSend;
     try {
-      final formatted = _richTextPayload?.text.trim() == text
+      final parsed = _richTextPayload?.text.trim() == text
           ? _richTextPayload!
           : await parseTelegramMarkdownWithTdLib(
               text,
               query: TdClient.shared.query,
             );
+      // Spacing lands after Markdown parsing, so the entity offsets TDLib
+      // produced stay valid for the text that goes out.
+      final spaced = PanguSpacing.gated(
+        enabled: spaceOutgoing,
+        text: parsed.text,
+        entities: parsed.entities,
+      );
+      final formatted = FormattedTextPayload(spaced.text, spaced.entities);
       if (_attachments.isEmpty) {
         await _sendTextPost(channel, formatted);
       } else {

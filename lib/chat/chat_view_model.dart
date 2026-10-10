@@ -42,6 +42,7 @@ import 'message_reaction_availability.dart';
 import 'message_send_options.dart';
 import 'message_text_quote.dart';
 import 'outgoing_attachment.dart';
+import 'pangu_spacing.dart';
 import 'poll_composer_view.dart';
 import 'quick_reaction_choice.dart';
 import 'rich_message_source.dart';
@@ -492,6 +493,14 @@ class ChatViewModel extends ChangeNotifier {
   final int? sessionAnchorMessageId;
   final bool? sessionFallbackOpenAtLatest;
   final bool markReadOnOpen;
+
+  /// 盘古之白 for outgoing text, mirrored from ThemeController by the view that
+  /// owns this model: the model itself has no theme access.
+  bool panguOnSend = false;
+
+  /// 盘古之白 for edits, which rewrite a message the other side already read.
+  bool panguOnEdit = false;
+
   int? _historyAnchorMessageId;
   int? get historyAnchorMessageId => _historyAnchorMessageId;
 
@@ -1404,10 +1413,15 @@ class ChatViewModel extends ChangeNotifier {
     final message = editingMessage;
     if (message == null) return false;
     if (!editingMessageUsesCaption && text.trim().isEmpty) return false;
+    final spaced = _spacedOutgoing(text, entities, editing: true);
     if (editingMessageUsesCaption) {
-      await editMessageCaption(message.id, text, entities: entities);
+      await editMessageCaption(
+        message.id,
+        spaced.text,
+        entities: spaced.entities,
+      );
     } else {
-      await editMessageText(message.id, text, entities: entities);
+      await editMessageText(message.id, spaced.text, entities: spaced.entities);
     }
     if (editingMessage?.id == message.id) {
       _restoreComposerAfterMessageEdit();
@@ -1653,13 +1667,14 @@ class ChatViewModel extends ChangeNotifier {
     if (!canSendMessages) return false;
     final trimmed = draft.trim();
     if (trimmed.isEmpty) return false;
+    final spaced = _spacedOutgoing(trimmed, const []);
 
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
       'input_message_content': {
         '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': trimmed},
+        'text': {'@type': 'formattedText', 'text': spaced.text},
       },
     };
     final replyRevision = _replyRevision;
@@ -1683,15 +1698,16 @@ class ChatViewModel extends ChangeNotifier {
     if (!canSendMessages || !isDirectMessagesGroup) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty && attachment == null) return;
+    final spaced = _spacedOutgoing(trimmed, const []);
     Map<String, dynamic> content;
     if (attachment == null) {
       content = {
         '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': trimmed},
+        'text': {'@type': 'formattedText', 'text': spaced.text},
       };
     } else {
       final resolved = await resolveAttachmentDimensions(attachment);
-      content = attachmentInputMessageContent(resolved, caption: trimmed);
+      content = attachmentInputMessageContent(resolved, caption: spaced.text);
     }
     final request = <String, dynamic>{
       '@type': 'sendMessage',
@@ -1771,7 +1787,11 @@ class ChatViewModel extends ChangeNotifier {
     if (entities.isEmpty && _diceEmojis.contains(text.trim())) {
       return _sendDice(text);
     }
-    final allEntities = [...entities, ..._mentionEntitiesFor(text, entities)];
+    final spaced = _spacedOutgoing(text, entities);
+    final allEntities = [
+      ...spaced.entities,
+      ..._mentionEntitiesFor(spaced.text, spaced.entities),
+    ];
     final request = <String, dynamic>{
       '@type': 'sendMessage',
       'chat_id': chatId,
@@ -1779,7 +1799,7 @@ class ChatViewModel extends ChangeNotifier {
         '@type': 'inputMessageText',
         'text': {
           '@type': 'formattedText',
-          'text': text,
+          'text': spaced.text,
           if (allEntities.isNotEmpty) 'entities': allEntities,
         },
       },
@@ -2019,6 +2039,20 @@ class ChatViewModel extends ChangeNotifier {
     return out;
   }
 
+  /// Spaces text this model is about to send, moving its entities onto the new
+  /// offsets. Applied here rather than in each composer so every surface that
+  /// reaches a send — mobile, desktop, picker windows, media captions — spaces
+  /// text the same way, and so mention detection still sees the final text.
+  ({String text, List<Map<String, dynamic>> entities}) _spacedOutgoing(
+    String text,
+    List<Map<String, dynamic>> entities, {
+    bool editing = false,
+  }) => PanguSpacing.gated(
+    enabled: editing ? panguOnEdit : panguOnSend,
+    text: text,
+    entities: entities,
+  );
+
   Future<void> sendAttachments(
     List<OutgoingAttachment> attachments, {
     String caption = '',
@@ -2027,16 +2061,17 @@ class ChatViewModel extends ChangeNotifier {
         const MessageSendConfiguration(),
   }) async {
     if (attachments.isEmpty) return;
+    final spaced = _spacedOutgoing(caption, captionEntities);
     final allEntities = [
-      ...captionEntities,
-      ..._mentionEntitiesFor(caption, captionEntities),
+      ...spaced.entities,
+      ..._mentionEntitiesFor(spaced.text, spaced.entities),
     ];
     final replyRevision = _replyRevision;
     final requests = buildAttachmentSendRequests(
       chatId: chatId,
       topicId: _forumTopicRef,
       attachments: attachments,
-      caption: caption,
+      caption: spaced.text,
       captionEntities: allEntities,
       replyTo: replyToInput,
       sendConfiguration: sendConfiguration,

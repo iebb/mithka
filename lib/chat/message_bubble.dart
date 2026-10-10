@@ -57,6 +57,7 @@ import 'message_special_content.dart';
 import 'message_swipe_reply.dart';
 import 'mobile_message_text_selection.dart';
 import 'music_player_controller.dart';
+import 'pangu_spacing.dart';
 import 'sensitive_content_reveal_prompt.dart';
 import 'stretchable_message_bubble_background.dart';
 import 'video_sticker_view.dart';
@@ -227,6 +228,9 @@ class _MessageBubbleState extends State<MessageBubble>
   double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
   final Set<String> _revealedSpoilers = {};
+  // 盘古之白 results for this bubble's texts. A rebuild reuses the spaced text
+  // and the very same entity list, so the paragraphs below keep their spans.
+  final PanguDisplayMemo _panguSpacing = PanguDisplayMemo();
   bool _showRestrictedContent = false;
   int? _desktopSecondaryPointer;
   Offset? _desktopSecondaryPosition;
@@ -262,11 +266,22 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
-  Widget _desktopQuoteSource(ChatMessage source, String text, Widget child) {
+  Widget _desktopQuoteSource(
+    ChatMessage source,
+    String text,
+    Widget child, {
+    List<MessageTextEntity> entities = const [],
+  }) {
+    // The paragraphs paint the spaced text while a quote range still has to
+    // address the stored message, so the selection is mapped back through the
+    // very insertions the renderer made.
+    final spaced = _displaySpacing(text, entities);
     final selectable = DesktopMessageQuoteSource(
       key: ValueKey((source.id, text)),
       message: source,
       displayedText: text,
+      renderedText: spaced.text,
+      renderedSpacing: spaced.insertedOffsets,
       onChanged: widget.onDesktopQuoteChanged,
       child: child,
     );
@@ -2015,6 +2030,7 @@ class _MessageBubbleState extends State<MessageBubble>
               textFontSize,
             ),
           ),
+          entities: displayEntities,
         ),
       if (displayRichBlocks.isNotEmpty) ...[
         if (displayText.isNotEmpty) const SizedBox(height: 8),
@@ -4075,18 +4091,7 @@ class _MessageBubbleState extends State<MessageBubble>
                     ),
                     if ((message.replyPreviewText ?? '').isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      _richText(
-                        message.replyPreviewText!,
-                        faded,
-                        faded,
-                        0,
-                        message.replyPreviewText!.length,
-                        outgoing,
-                        false,
-                        maxLines: 2,
-                        entities: message.replyPreviewEntities,
-                        fontSize: 14,
-                      ),
+                      _replyPreviewText(faded, outgoing),
                     ],
                   ],
                 ),
@@ -4153,6 +4158,36 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
+  /// Spaces one rendered text for display, when 盘古之白 is on.
+  ///
+  /// The stored message is never rewritten: copy, quote, edit, forward and
+  /// search all keep reading [ChatMessage.text]. Only what the bubble paints
+  /// changes, together with the entity ranges that style it.
+  PanguDisplay _displaySpacing(String text, List<MessageTextEntity> entities) {
+    if (!_theme.panguOnReceive) return PanguDisplay(text, entities, const []);
+    return _panguSpacing.resolve(text, entities);
+  }
+
+  /// The quoted reply's two-line preview, spaced like the body it answers.
+  Widget _replyPreviewText(Color faded, bool outgoing) {
+    final spaced = _displaySpacing(
+      message.replyPreviewText ?? '',
+      message.replyPreviewEntities,
+    );
+    return _richText(
+      spaced.text,
+      faded,
+      faded,
+      0,
+      spaced.text.length,
+      outgoing,
+      false,
+      maxLines: 2,
+      entities: spaced.entities,
+      fontSize: 14,
+    );
+  }
+
   List<Widget> _richTextWidgets(
     String text,
     Color base,
@@ -4165,18 +4200,23 @@ class _MessageBubbleState extends State<MessageBubble>
     final resolvedFontSize = fontSize == AppTextSize.body
         ? AppTextSize.messageBody()
         : fontSize;
-    final sourceEntities = entities ?? message.textEntities;
+    // 盘古之白 is a display pass: the spaced text and its shifted entities are
+    // resolved once here so every slice below — inline run, quote block, code
+    // block — works on the same pair. The stored message keeps its own text.
+    final spaced = _displaySpacing(text, entities ?? message.textEntities);
+    final sourceText = spaced.text;
+    final sourceEntities = spaced.entities;
     final blocks =
         sourceEntities.where((e) => e.isBlockQuote || e.isPreBlock).toList()
           ..sort((a, b) => a.offset.compareTo(b.offset));
     if (blocks.isEmpty) {
       return [
         _richText(
-          text,
+          sourceText,
           base,
           link,
           0,
-          text.length,
+          sourceText.length,
           outgoing,
           appendMeta,
           entities: sourceEntities,
@@ -4189,13 +4229,13 @@ class _MessageBubbleState extends State<MessageBubble>
     var cursor = 0;
     var metaAdded = false;
     for (final block in blocks) {
-      final start = block.offset.clamp(0, text.length).toInt();
-      final end = block.end.clamp(start, text.length).toInt();
+      final start = block.offset.clamp(0, sourceText.length).toInt();
+      final end = block.end.clamp(start, sourceText.length).toInt();
       if (end <= cursor) continue;
       if (start > cursor) {
         widgets.add(
           _richText(
-            text,
+            sourceText,
             base,
             link,
             cursor,
@@ -4212,7 +4252,7 @@ class _MessageBubbleState extends State<MessageBubble>
         block.isPreBlock
             ? _preBlock(
                 block,
-                text,
+                sourceText,
                 start,
                 end,
                 base,
@@ -4222,7 +4262,7 @@ class _MessageBubbleState extends State<MessageBubble>
               )
             : _quoteBlock(
                 block,
-                text,
+                sourceText,
                 start,
                 end,
                 base,
@@ -4234,15 +4274,15 @@ class _MessageBubbleState extends State<MessageBubble>
       );
       cursor = end;
     }
-    if (cursor < text.length) {
+    if (cursor < sourceText.length) {
       widgets.add(const SizedBox(height: 5));
       widgets.add(
         _richText(
-          text,
+          sourceText,
           base,
           link,
           cursor,
-          text.length,
+          sourceText.length,
           outgoing,
           appendMeta,
           entities: sourceEntities,
@@ -5191,6 +5231,7 @@ class _MessageBubbleState extends State<MessageBubble>
                           captionEntities,
                         ),
                       ),
+                      entities: captionEntities,
                     ),
                   if (_showsTranslationBlockFor(message)) ...[
                     const SizedBox(height: 7),
@@ -5801,6 +5842,7 @@ class _MessageBubbleState extends State<MessageBubble>
                           ),
                         ),
                       ),
+                      entities: displayCaptionEntities,
                     ),
                     if (translationSource != null &&
                         _showsTranslationBlockFor(translationSource)) ...[

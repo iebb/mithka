@@ -21,6 +21,7 @@ import '../chat/forward_options.dart';
 import '../chat/group_remark_controller.dart';
 import '../chat/message_replies_sheet.dart';
 import '../chat/outgoing_attachment.dart';
+import '../chat/pangu_spacing.dart';
 import '../chat/rich_text_composer_view.dart';
 import '../chat/rich_text_format.dart';
 import '../components/app_icons.dart';
@@ -830,13 +831,20 @@ class _TopicChatViewState extends State<TopicChatView> {
     if (!canComposeInTopicSurface(chat: widget.chat, forumTopicId: threadId)) {
       return;
     }
+    // 盘古之白 after Markdown parsing, so entity offsets stay valid.
+    final spaced = PanguSpacing.gated(
+      enabled: context.read<ThemeController>().panguOnSend,
+      text: formatted.text,
+      entities: formatted.entities,
+    );
+    final payload = FormattedTextPayload(spaced.text, spaced.entities);
     try {
       final request = <String, dynamic>{
         '@type': 'sendMessage',
         'chat_id': widget.chat.id,
         'input_message_content': {
           '@type': 'inputMessageText',
-          'text': formatted.toTdJson(),
+          'text': payload.toTdJson(),
         },
       };
       if (threadId != null) _attachForumTopic(request, threadId);
@@ -867,11 +875,16 @@ class _TopicChatViewState extends State<TopicChatView> {
     if (!canComposeInTopicSurface(chat: widget.chat, forumTopicId: threadId)) {
       return;
     }
+    final spaced = PanguSpacing.gated(
+      enabled: context.read<ThemeController>().panguOnSend,
+      text: result.text,
+      entities: result.entities,
+    );
     final requests = buildAttachmentSendRequests(
       chatId: widget.chat.id,
       attachments: result.attachments,
-      caption: result.text,
-      captionEntities: result.entities,
+      caption: spaced.text,
+      captionEntities: spaced.entities,
     );
     for (final request in requests) {
       if (threadId != null) _attachForumTopic(request, threadId);

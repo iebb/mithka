@@ -1470,6 +1470,11 @@
     <string name="generalRepeatPreserveSender">+1 で送信者を保持</string>
     <string name="generalForwardRichMarkdown">転送時にMarkdownを反映</string>
     <string name="generalForwardRichMarkdownHint">Markdown形式のテキスト（AIの返信など）をリッチテキストとして転送するか選べます</string>
+    <string name="generalPanguSpacing">盤古の白</string>
+    <string name="generalPanguSpacingNote">CJK（中国語・日本語・韓国語）と半角英数字の間にスペースを入れ、混在したテキストを読みやすくします。受信メッセージは画面の表示だけを整え、送信と編集は実際に送るテキストを変えます。コード・リンク・メンション・ハッシュタグの中は変更しません。</string>
+    <string name="generalPanguOnReceive">受信メッセージ</string>
+    <string name="generalPanguOnSend">送信メッセージ</string>
+    <string name="generalPanguOnEdit">編集メッセージ</string>
     <string name="generalKeepChatContextPaneClosed">グループのサイドパネルを閉じたままにする</string>
     <string name="generalKeepChatContextPaneClosedHint">タブレットやデスクトップでグループやチャンネルを開いたとき、右側のメンバーと告知のパネルを自動では開きません。チャット上部のボタンからは開けます</string>
     <string name="generalSaveCapturedPhotos">撮影した写真をシステムのアルバムに保存</string>

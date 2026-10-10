@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'custom_emoji.dart';
 import 'link_handler.dart';
+import 'pangu_spacing.dart';
 
 class TelegramRichText extends StatefulWidget {
   const TelegramRichText({
@@ -54,6 +55,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   final _recognizers = <GestureRecognizer>[];
   final Set<String> _revealedSpoilers = {};
 
+  // 盘古之白 for display. The memo keeps one result per text so a rebuild hands
+  // the span cache below the same entity list instead of a fresh one.
+  final PanguDisplayMemo _spacing = PanguDisplayMemo();
+  PanguDisplay _display = const PanguDisplay('', [], []);
+
   List<InlineSpan>? _spanCache;
   String? _spanCacheText;
   List<MessageTextEntity>? _spanCacheEntities;
@@ -80,6 +86,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
 
   @override
   Widget build(BuildContext context) {
+    // A nullable read: this renderer is also mounted where no theme controller
+    // is in scope, and 盘古之白 is simply off there.
+    _display = (context.watch<ThemeController?>()?.panguOnReceive ?? false)
+        ? _spacing.resolve(widget.text, widget.entities)
+        : PanguDisplay(widget.text, widget.entities, const []);
     final baseStyle =
         widget.style ??
         DefaultTextStyle.of(
@@ -117,11 +128,11 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     final mentionTap = widget.onMentionTap != null;
     // A code span resolves the monospace family and the inline-code fill from
     // the ambient theme, which no key below can see — leave those uncached.
-    final cacheable = !widget.entities.any(_isCodeEntity);
+    final cacheable = !_display.entities.any(_isCodeEntity);
     if (cacheable &&
         _spanCache != null &&
-        _spanCacheText == widget.text &&
-        identical(_spanCacheEntities, widget.entities) &&
+        _spanCacheText == _display.text &&
+        identical(_spanCacheEntities, _display.entities) &&
         _spanCacheBaseStyle == baseStyle &&
         _spanCacheLinkColor == linkColor &&
         _spanCacheUnderlineLinks == widget.underlineLinks &&
@@ -133,8 +144,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     final spans = _spans(context, baseStyle, linkColor);
     if (!cacheable) return spans;
     _spanCache = spans;
-    _spanCacheText = widget.text;
-    _spanCacheEntities = widget.entities;
+    _spanCacheText = _display.text;
+    _spanCacheEntities = _display.entities;
     _spanCacheBaseStyle = baseStyle;
     _spanCacheLinkColor = linkColor;
     _spanCacheUnderlineLinks = widget.underlineLinks;
@@ -155,8 +166,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       entity.end <= textLength;
 
   bool _hasBlockQuote() {
-    final textLength = widget.text.length;
-    return widget.entities.any(
+    final textLength = _display.text.length;
+    return _display.entities.any(
       (entity) => entity.isBlockQuote && _isEntityInRange(entity, textLength),
     );
   }
@@ -166,7 +177,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     TextStyle baseStyle,
     Color linkColor,
   ) {
-    final text = widget.text;
+    final text = _display.text;
     final entities = _validEntities(text.length);
     final blocks = entities.where((entity) => entity.isBlockQuote).toList()
       ..sort((a, b) => a.offset.compareTo(b.offset));
@@ -283,7 +294,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     TextStyle baseStyle,
     Color linkColor,
   ) {
-    final text = widget.text;
+    final text = _display.text;
     if (text.isEmpty) return const [];
     final entities = _validEntities(text.length);
     if (entities.isEmpty) {
@@ -313,7 +324,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   }
 
   List<MessageTextEntity> _validEntities(int textLength) {
-    return widget.entities
+    return _display.entities
         .where((entity) => _isEntityInRange(entity, textLength))
         .toList()
       ..sort((a, b) {

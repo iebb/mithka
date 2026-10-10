@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../platform/adaptive_platform.dart';
 import '../tdlib/td_models.dart';
 import 'message_text_quote.dart';
+import 'pangu_spacing.dart';
 
 typedef DesktopQuoteChanged =
     void Function(ChatMessage message, MessageTextQuote? quote);
@@ -20,12 +21,23 @@ class DesktopMessageQuoteSource extends StatefulWidget {
     required this.displayedText,
     required this.child,
     this.onChanged,
+    this.renderedText,
+    this.renderedSpacing = const <int>[],
   });
 
   final ChatMessage message;
+
+  /// The body as stored. A quote range always addresses this text.
   final String displayedText;
   final Widget child;
   final DesktopQuoteChanged? onChanged;
+
+  /// What the paragraphs actually paint, when that differs from
+  /// [displayedText] because 盘古之白 spaced the text for display.
+  final String? renderedText;
+
+  /// The inserted spaces, as UTF-16 offsets in [displayedText].
+  final List<int> renderedSpacing;
 
   @override
   State<DesktopMessageQuoteSource> createState() =>
@@ -148,7 +160,8 @@ class _QuoteSelectionDelegate extends StaticSelectionContainerDelegate {
     visit(root);
     // Transformed source text, non-text widgets, or disjoint selections must
     // fail closed, never quote a guessed occurrence or unseen intervening text.
-    if (rendered.toString() != widget.displayedText || selected.isEmpty) {
+    final painted = widget.renderedText ?? widget.displayedText;
+    if (rendered.toString() != painted || selected.isEmpty) {
       return null;
     }
     selected.sort((a, b) => a.start.compareTo(b.start));
@@ -158,10 +171,18 @@ class _QuoteSelectionDelegate extends StaticSelectionContainerDelegate {
       if (range.start > end) return null;
       end = math.max(end, range.end);
     }
-    return quoteMessageRange(
-      widget.message,
+    // Selection offsets address the painted text; the quote has to address the
+    // stored one, so display spacing is taken back out first.
+    final mapped = PanguSpacing.reverseRange(
       start: start,
       end: end,
+      insertedOffsets: widget.renderedSpacing,
+      sourceLength: widget.displayedText.length,
+    );
+    return quoteMessageRange(
+      widget.message,
+      start: mapped.start,
+      end: mapped.end,
       // The chat validates the server's current limit before setting a reply.
       maxLength: widget.displayedText.length,
     );

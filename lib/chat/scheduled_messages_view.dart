@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
@@ -12,7 +13,9 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import '../theme/theme_controller.dart';
 import 'message_send_options.dart';
+import 'pangu_spacing.dart';
 
 class ScheduledMessagesView extends StatefulWidget {
   const ScheduledMessagesView({
@@ -112,6 +115,13 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
       actionLabel: AppStrings.t(AppStringKeys.scheduledMessagesSaveAction),
     );
     if (!mounted || text == null || text.isEmpty) return;
+    // 盘古之白 for the text as it is authored; a scheduled message has not gone
+    // out yet, so it follows the sending switch rather than the edit one. The
+    // draft has no entities, so the tokens TDLib will detect in it are protected
+    // from the raw text.
+    final spaced = context.read<ThemeController>().panguOnSend
+        ? PanguSpacing.transformUnannotated(text).text
+        : text;
     try {
       if (entry.raw.obj('content')?.type == 'messageText') {
         await _client.query({
@@ -120,7 +130,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           'message_id': entry.message.id,
           'input_message_content': {
             '@type': 'inputMessageText',
-            'text': {'@type': 'formattedText', 'text': text},
+            'text': {'@type': 'formattedText', 'text': spaced},
           },
         });
       } else {
@@ -128,7 +138,7 @@ class _ScheduledMessagesViewState extends State<ScheduledMessagesView> {
           '@type': 'editMessageCaption',
           'chat_id': widget.chatId,
           'message_id': entry.message.id,
-          'caption': {'@type': 'formattedText', 'text': text},
+          'caption': {'@type': 'formattedText', 'text': spaced},
           'show_caption_above_media':
               entry.raw.obj('content')?.boolean('show_caption_above_media') ??
               false,

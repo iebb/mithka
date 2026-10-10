@@ -1470,6 +1470,11 @@
     <string name="generalRepeatPreserveSender">+1 사용 시 보낸 사람 유지</string>
     <string name="generalForwardRichMarkdown">전달할 때 Markdown 렌더링</string>
     <string name="generalForwardRichMarkdownHint">Markdown 형식 텍스트(AI 답장 등)을 리치 텍스트로 전달할지 선택해요</string>
+    <string name="generalPanguSpacing">판구 띄어쓰기</string>
+    <string name="generalPanguSpacingNote">CJK(중국어·일본어·한국어) 문자와 반각 영문·숫자 사이에 공백을 넣어 섞인 텍스트를 읽기 좋게 만들어요. 받은 메시지는 화면에서만 띄어 쓰고, 보내기와 수정은 실제로 나가는 텍스트를 바꿔요. 코드, 링크, 멘션, 해시태그 내부는 그대로 둬요.</string>
+    <string name="generalPanguOnReceive">받은 메시지</string>
+    <string name="generalPanguOnSend">보내는 메시지</string>
+    <string name="generalPanguOnEdit">수정하는 메시지</string>
     <string name="generalKeepChatContextPaneClosed">그룹 옆 패널을 닫힌 상태로 두기</string>
     <string name="generalKeepChatContextPaneClosedHint">태블릿과 데스크톱에서 그룹이나 채널을 열 때 오른쪽 멤버·공지 패널이 자동으로 나타나지 않아요. 대화 상단 버튼으로는 열 수 있어요</string>
     <string name="generalSaveCapturedPhotos">촬영한 사진을 시스템 앨범에 저장</string>
