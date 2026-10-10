@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../tdlib/gram_js_session.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -327,6 +328,12 @@ class AccountBackupService {
     return (await _exportActiveAccountSession()).backup;
   }
 
+  /// Exports the active account as a GramJS string session.
+  Future<String> exportActiveGramJsSession() async {
+    final backup = await exportActiveSession();
+    return gramJsSessionFromTdSessionString(backup.sessionString);
+  }
+
   Future<_ExportedAccountSession> _exportActiveAccountSession() async {
     final slot = TdClient.shared.activeSlot;
     final me = await TdClient.shared.query({'@type': 'getMe'});
@@ -369,9 +376,23 @@ class AccountBackupService {
     return slot;
   }
 
+  /// Imports a pasted session string in either supported format.
+  ///
+  /// A GramJS session names no account, so TDLib resolves it while the slot is
+  /// created; a packed TDLib session is verified against its own user id.
   Future<int> restoreSessionString(String sessionString) async {
-    TdClient.shared.validateSessionString(sessionString);
-    return TdClient.shared.restoreSessionSlot(sessionString);
+    final trimmed = sessionString.trim();
+    switch (detectSessionStringFormat(trimmed)) {
+      case SessionStringFormat.gramJs:
+        return TdClient.shared.restoreGramJsSessionSlot(trimmed);
+      case SessionStringFormat.pyrogram:
+        TdClient.shared.validateSessionString(trimmed);
+        return TdClient.shared.restoreSessionSlot(trimmed);
+      case SessionStringFormat.unknown:
+        throw const FormatException(
+          'Session string is neither a Pyrogram nor a GramJS session',
+        );
+    }
   }
 
   Future<TdFreshSessionResult> createFreshSessionFromSlot(int sourceSlot) {

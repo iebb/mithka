@@ -5208,7 +5208,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                                             label:
                                                 originalPaste?.label ??
                                                 AppStringKeys
-                                                    .accountBackupLoadPyrogramPaste
+                                                    .accountBackupLoadSessionPaste
                                                     .l10n(context),
                                             onPressed: () => unawaited(
                                               _handlePaste(originalPaste),

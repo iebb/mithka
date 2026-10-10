@@ -182,6 +182,11 @@ abstract final class AppStringKeys {
   static const feedbackReportTitle = 'feedbackReportTitle';
   static const accentColorPickerSave = 'accentColorPickerSave';
   static const accountBackupCopied = 'accountBackupCopied';
+  static const accountBackupCopyGramJsMessage =
+      'accountBackupCopyGramJsMessage';
+  static const accountBackupCopyGramJsSession =
+      'accountBackupCopyGramJsSession';
+  static const accountBackupCopyGramJsTitle = 'accountBackupCopyGramJsTitle';
   static const accountBackupCopyPyrogramMessage =
       'accountBackupCopyPyrogramMessage';
   static const accountBackupCopyPyrogramSession =
@@ -220,18 +225,15 @@ abstract final class AppStringKeys {
   static const accountBackupLoginAndroid = 'accountBackupLoginAndroid';
   static const accountBackupLoginDescription = 'accountBackupLoginDescription';
   static const accountBackupLoginICloud = 'accountBackupLoginICloud';
-  static const accountBackupLoadPyrogramConfirm =
-      'accountBackupLoadPyrogramConfirm';
-  static const accountBackupLoadPyrogramMessage =
-      'accountBackupLoadPyrogramMessage';
-  static const accountBackupLoadPyrogramPaste =
-      'accountBackupLoadPyrogramPaste';
-  static const accountBackupLoadPyrogramPlaceholder =
-      'accountBackupLoadPyrogramPlaceholder';
-  static const accountBackupLoadPyrogramSession =
-      'accountBackupLoadPyrogramSession';
-  static const accountBackupLoadPyrogramTitle =
-      'accountBackupLoadPyrogramTitle';
+  static const accountBackupLoadSession = 'accountBackupLoadSession';
+  static const accountBackupLoadSessionConfirm =
+      'accountBackupLoadSessionConfirm';
+  static const accountBackupLoadSessionMessage =
+      'accountBackupLoadSessionMessage';
+  static const accountBackupLoadSessionPaste = 'accountBackupLoadSessionPaste';
+  static const accountBackupLoadSessionPlaceholder =
+      'accountBackupLoadSessionPlaceholder';
+  static const accountBackupLoadSessionTitle = 'accountBackupLoadSessionTitle';
   static const accountBackupNotice = 'accountBackupNotice';
   static const accountBackupNoticeAndroid = 'accountBackupNoticeAndroid';
   static const accountBackupNoticeICloud = 'accountBackupNoticeICloud';

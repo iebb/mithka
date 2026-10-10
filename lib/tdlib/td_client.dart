@@ -37,8 +37,10 @@ import '../settings/proxy_config.dart';
 import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
 import 'forum_topic_index.dart';
+import 'gram_js_session.dart';
 import 'json_helpers.dart';
 import 'td_bindings.dart';
+import 'td_session_string.dart';
 import 'td_user_index.dart';
 
 /// An error returned by TDLib (its "error" object).
@@ -103,24 +105,6 @@ class TdClientProxyTransport {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>) query;
   final Future<void> Function(Map<String, dynamic>) send;
   final Stream<Map<String, dynamic>> updates;
-}
-
-class _TdSessionStringInfo {
-  const _TdSessionStringInfo({
-    required this.rawSize,
-    required this.dcId,
-    required this.apiId,
-    required this.testMode,
-    required this.userId,
-    required this.isBot,
-  });
-
-  final int rawSize;
-  final int dcId;
-  final int apiId;
-  final bool testMode;
-  final int userId;
-  final bool isBot;
 }
 
 @visibleForTesting
@@ -235,9 +219,50 @@ class TdClient {
   static final TdClient shared = TdClient._();
   static const defaultQueryTimeout = Duration(seconds: 30);
 
+  /// A private instance for tests that exercise the real restore lifecycle
+  /// against synthetic bindings instead of tdjson.
+  @visibleForTesting
+  factory TdClient.forTesting() => TdClient._();
+
+  TdBindings? _debugBindings;
+  Future<Map<String, dynamic>> Function(
+    Map<String, dynamic> request,
+    int clientId,
+  )?
+  _debugQueryOverride;
+
+  /// Points a [TdClient.forTesting] instance at synthetic bindings, mock
+  /// preferences and a scratch support directory, and optionally scripts the
+  /// answers [queryTo] would otherwise wait for TDLib to give.
+  @visibleForTesting
+  void prepareForTesting({
+    required SharedPreferences prefs,
+    required String supportDir,
+    TdBindings? bindings,
+    Future<Map<String, dynamic>> Function(
+      Map<String, dynamic> request,
+      int clientId,
+    )?
+    queryOverride,
+    bool isShuttingDown = false,
+  }) {
+    _prefs = prefs;
+    _supportDir = supportDir;
+    _debugBindings = bindings;
+    _debugQueryOverride = queryOverride;
+    _isShuttingDown = isShuttingDown;
+  }
+
+  /// Answers the close handshake a test's fake bindings started, so slot
+  /// cleanup does not sit on the real 15-second close timeout.
+  @visibleForTesting
+  void debugCompleteClientClosed(int clientId) {
+    _clientClosedWaiters.remove(clientId)?.complete();
+  }
+
   // Lazy: only opened when first used, so demo/simulator builds (no tdjson) can
   // touch the singleton (e.g. read activeSlot) without resolving symbols.
-  late final TdBindings _bindings = TdBindings.open();
+  late final TdBindings _bindings = _debugBindings ?? TdBindings.open();
   TdClientProxyTransport? _proxyTransport;
   StreamSubscription<Map<String, dynamic>>? _proxyUpdateSub;
 
@@ -1052,7 +1077,7 @@ class TdClient {
     if (trimmedSessionString.isEmpty) {
       throw ArgumentError.value(sessionString, 'sessionString', 'is empty');
     }
-    final info = _decodeSessionString(trimmedSessionString);
+    final info = TdSessionString.decode(trimmedSessionString);
     if (reuseExisting) {
       final existingSlot = await _readySlotForUserId(info.userId);
       if (existingSlot != null) {
@@ -1060,7 +1085,26 @@ class TdClient {
         return existingSlot;
       }
     }
-    return _restoreImportedSessionSlot(trimmedSessionString, info.userId);
+    return _restoreImportedSessionSlot(
+      trimmedSessionString,
+      expectedUserId: info.userId,
+    );
+  }
+
+  /// Restores a GramJS string session into its own account slot.
+  ///
+  /// A GramJS session names an endpoint instead of an api id and a user id, so
+  /// the packed string carries the local api id and [tdSessionUnknownUserId].
+  /// TDLib resolves the real account once the imported session connects, and a
+  /// slot that already holds it is reused instead of duplicated.
+  Future<int> restoreGramJsSessionSlot(String gramJsSession) async {
+    final session = GramJsSession.parse(gramJsSession);
+    final api = ApiCredentialsConfig.fromPrefs(_prefs);
+    final packed = tdSessionStringFromGramJsSession(
+      session,
+      apiId: api.isUsable ? api.apiId : Secrets.apiId,
+    );
+    return _restoreImportedSessionSlot(packed);
   }
 
   Future<void> acceptLoginQrLink(String link) async {
@@ -1158,36 +1202,55 @@ class TdClient {
   }
 
   Future<int> _restoreImportedSessionSlot(
-    String sessionString,
-    int expectedUserId,
-  ) async {
+    String sessionString, {
+    int? expectedUserId,
+  }) async {
     final newSlot = _nextSlot();
-    final dbDir = Directory(_databaseDirectory(newSlot));
-    if (await dbDir.exists()) {
-      await dbDir.delete(recursive: true);
-    }
-    await dbDir.create(recursive: true);
-    final sessionFile = File('${dbDir.path}/td.binlog');
-    _ensureAcceptingNewClients();
-    _bindings.importSessionString(sessionString, sessionFile.path);
-
-    final cid = _bindings.createClientId();
+    // Claim the slot before the first await: two concurrent imports must not
+    // compute the same "next" slot and then share one database directory.
     if (!_slots.contains(newSlot)) _slots.add(newSlot);
-    _clientForSlot[newSlot] = cid;
-    _slotForClient[cid] = newSlot;
-    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
-    _bindings.send(cid, jsonEncode({'@type': 'getOption', 'name': 'version'}));
+    final dbDir = Directory(_databaseDirectory(newSlot));
     try {
-      await _waitForRestoredSessionReady(newSlot, cid, expectedUserId);
+      if (await dbDir.exists()) {
+        await dbDir.delete(recursive: true);
+      }
+      await dbDir.create(recursive: true);
+      final sessionFile = File('${dbDir.path}/td.binlog');
+      _ensureAcceptingNewClients();
+      _bindings.importSessionString(sessionString, sessionFile.path);
+
+      final cid = _bindings.createClientId();
+      _clientForSlot[newSlot] = cid;
+      _slotForClient[cid] = newSlot;
+      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+      _bindings.send(
+        cid,
+        jsonEncode({'@type': 'getOption', 'name': 'version'}),
+      );
+      final restoredUserId = await _waitForRestoredSessionReady(
+        newSlot,
+        cid,
+        expectedUserId,
+      );
+      if (expectedUserId == null) {
+        // The account of a session without a user id is only known once the
+        // imported client is ready, so check for an existing login afterwards.
+        final existingSlot = await _readySlotForUserId(
+          restoredUserId,
+          exceptSlot: newSlot,
+        );
+        if (existingSlot != null) {
+          await _discardImportedSlot(newSlot, dbDir);
+          setActive(existingSlot);
+          _persist();
+          return existingSlot;
+        }
+      }
       setActive(newSlot);
       _persist();
       return newSlot;
     } catch (error) {
-      await _closeAndForgetSlot(newSlot);
-      await _deleteDirectoryIfPresent(dbDir);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      await _deleteDirectoryIfPresent(dbDir);
-      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+      await _discardImportedSlot(newSlot, dbDir);
       if (_isRequestAborted(error)) {
         throw const TdSessionRestoreException(
           'Saved account session is invalid or has been revoked',
@@ -1197,25 +1260,39 @@ class TdClient {
     }
   }
 
+  /// Closes an imported slot and removes its database. The directory is removed
+  /// twice because TDLib can still flush while its client shuts down.
+  Future<void> _discardImportedSlot(int slot, Directory dbDir) async {
+    await _closeAndForgetSlot(slot);
+    await _deleteDirectoryIfPresent(dbDir);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await _deleteDirectoryIfPresent(dbDir);
+    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+  }
+
   Future<TdFreshSessionResult> _createFreshSessionWithQrLogin({
     required int sourceClientId,
     required int expectedUserId,
   }) async {
     final newSlot = _nextSlot();
-    final dbDir = Directory(_databaseDirectory(newSlot));
-    if (await dbDir.exists()) {
-      await dbDir.delete(recursive: true);
-    }
-    await dbDir.create(recursive: true);
-
-    _ensureAcceptingNewClients();
-    final cid = _bindings.createClientId();
+    // Claim the slot before the first await, as in the import path above.
     if (!_slots.contains(newSlot)) _slots.add(newSlot);
-    _clientForSlot[newSlot] = cid;
-    _slotForClient[cid] = newSlot;
-    if (kDebugMode) unawaited(_persistDebugLiveClientIds());
-    _bindings.send(cid, jsonEncode({'@type': 'getOption', 'name': 'version'}));
+    final dbDir = Directory(_databaseDirectory(newSlot));
     try {
+      if (await dbDir.exists()) {
+        await dbDir.delete(recursive: true);
+      }
+      await dbDir.create(recursive: true);
+
+      _ensureAcceptingNewClients();
+      final cid = _bindings.createClientId();
+      _clientForSlot[newSlot] = cid;
+      _slotForClient[cid] = newSlot;
+      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+      _bindings.send(
+        cid,
+        jsonEncode({'@type': 'getOption', 'name': 'version'}),
+      );
       await _waitForQrLoginReady(cid);
       await queryTo({
         '@type': 'requestQrCodeAuthentication',
@@ -1235,11 +1312,7 @@ class TdClient {
       _persist();
       return TdFreshSessionResult(slot: newSlot, needsInteractiveLogin: !ready);
     } catch (error) {
-      await _closeAndForgetSlot(newSlot);
-      await _deleteDirectoryIfPresent(dbDir);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      await _deleteDirectoryIfPresent(dbDir);
-      if (kDebugMode) unawaited(_persistDebugLiveClientIds());
+      await _discardImportedSlot(newSlot, dbDir);
       if (_isRequestAborted(error)) {
         throw const TdSessionRestoreException(
           'Saved account session is invalid or has been revoked',
@@ -1333,22 +1406,44 @@ class TdClient {
     throw TimeoutException('Timed out waiting for QR login token');
   }
 
-  Future<void> _waitForRestoredSessionReady(
+  /// Waits until an imported session is authorized and reports its account.
+  ///
+  /// [expectedUserId] is null for sessions that carry no user id, where TDLib
+  /// has to ask Telegram which account the auth key belongs to first.
+  Future<int> _waitForRestoredSessionReady(
     int slot,
     int clientId,
-    int expectedUserId,
+    int? expectedUserId,
   ) async {
     final deadline = DateTime.now().add(const Duration(seconds: 20));
+    var parametersSent = false;
     while (DateTime.now().isBefore(deadline)) {
-      final state = await queryTo({
-        '@type': 'getAuthorizationState',
-      }, clientId).timeout(const Duration(seconds: 3));
+      final Map<String, dynamic> state;
+      try {
+        state = await queryTo({
+          '@type': 'getAuthorizationState',
+        }, clientId).timeout(const Duration(seconds: 3));
+      } on TimeoutException {
+        // A session without a user id leaves TDLib queueing
+        // getAuthorizationState until it has resolved the account, so a slow
+        // answer is part of the import rather than a reason to abandon it.
+        if (!parametersSent) {
+          parametersSent = true;
+          _sendParameters(clientId);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        continue;
+      }
       switch (state.type) {
         case 'authorizationStateWaitTdlibParameters':
-          _sendParameters(clientId);
+          // TDLib reopens its database for every setTdlibParameters it accepts
+          // before initialization, so bootstrap the client exactly once.
+          if (!parametersSent) {
+            parametersSent = true;
+            _sendParameters(clientId);
+          }
         case 'authorizationStateReady':
-          await _verifyRestoredSessionStable(slot, clientId, expectedUserId);
-          return;
+          return _verifyRestoredSessionStable(slot, clientId, expectedUserId);
         case 'authorizationStateWaitPhoneNumber':
           throw StateError(
             'Restored account session is not authorized for slot $slot',
@@ -1368,16 +1463,25 @@ class TdClient {
     );
   }
 
-  Future<void> _verifyRestoredSessionStable(
+  /// Confirms an imported session stays authorized and reports its account.
+  ///
+  /// [expectedUserId] is null when the session string names no account, in
+  /// which case whatever TDLib resolved is the answer instead of a check.
+  Future<int> _verifyRestoredSessionStable(
     int slot,
     int clientId,
-    int expectedUserId,
+    int? expectedUserId,
   ) async {
     final me = await queryTo({
       '@type': 'getMe',
     }, clientId).timeout(const Duration(seconds: 5));
     final restoredUserId = me.int64('id');
-    if (restoredUserId != expectedUserId) {
+    if (restoredUserId == null) {
+      throw TdSessionRestoreException(
+        'Restored account session for slot $slot reported no user id',
+      );
+    }
+    if (expectedUserId != null && restoredUserId != expectedUserId) {
       throw TdSessionRestoreException(
         'Restored account user mismatch for slot $slot: expected $expectedUserId, got $restoredUserId',
       );
@@ -1393,6 +1497,7 @@ class TdClient {
         'Restored account session closed during verification for slot $slot: ${state.type}',
       );
     }
+    return restoredUserId;
   }
 
   Future<File> sessionFileForSlot(int slot) async {
@@ -1505,7 +1610,7 @@ class TdClient {
     if (sessionString.trim().isEmpty) {
       throw StateError('TDLib session string backup is empty');
     }
-    final info = _decodeSessionString(sessionString);
+    final info = TdSessionString.decode(sessionString);
     if (info.apiId != apiId) {
       throw StateError(
         'TDLib session string API id mismatch: expected $apiId, got ${info.apiId}',
@@ -1520,7 +1625,7 @@ class TdClient {
   }
 
   void validateSessionString(String sessionString, {int? expectedUserId}) {
-    final info = _decodeSessionString(sessionString);
+    final info = TdSessionString.decode(sessionString);
     if (expectedUserId != null && info.userId != expectedUserId) {
       throw StateError(
         'TDLib session string user mismatch: expected $expectedUserId, got ${info.userId}',
@@ -1528,8 +1633,9 @@ class TdClient {
     }
   }
 
-  Future<int?> _readySlotForUserId(int userId) async {
+  Future<int?> _readySlotForUserId(int userId, {int? exceptSlot}) async {
     for (final entry in _clientForSlot.entries) {
+      if (entry.key == exceptSlot) continue;
       try {
         final state = await queryTo({
           '@type': 'getAuthorizationState',
@@ -1551,59 +1657,6 @@ class TdClient {
   /// Handoff uses the Telegram user id instead of a slot because slot numbers
   /// are installation-local and have no meaning on the receiving device.
   Future<int?> readySlotForUserId(int userId) => _readySlotForUserId(userId);
-
-  static _TdSessionStringInfo _decodeSessionString(String sessionString) {
-    final normalized = sessionString.trim();
-    if (normalized.isEmpty) {
-      throw const FormatException('TDLib session string is empty');
-    }
-
-    final Uint8List bytes;
-    try {
-      bytes = base64Url.decode(base64Url.normalize(normalized));
-    } on FormatException catch (error) {
-      throw FormatException(
-        'TDLib session string is not valid base64url',
-        error,
-      );
-    }
-
-    const rawLength = 271;
-    if (bytes.length != rawLength) {
-      throw FormatException(
-        'TDLib session string decoded size is ${bytes.length}, expected $rawLength',
-      );
-    }
-
-    final dcId = bytes[0];
-    final apiId = ByteData.sublistView(bytes, 1, 5).getUint32(0);
-    final testMode = bytes[5] != 0;
-    final authKey = bytes.sublist(6, 262);
-    final userId = ByteData.sublistView(bytes, 262, 270).getUint64(0);
-    final isBot = bytes[270] != 0;
-
-    if (dcId == 0) {
-      throw const FormatException('TDLib session string has invalid DC id');
-    }
-    if (apiId == 0) {
-      throw const FormatException('TDLib session string has invalid API id');
-    }
-    if (userId == 0) {
-      throw const FormatException('TDLib session string has invalid user id');
-    }
-    if (authKey.every((byte) => byte == 0)) {
-      throw const FormatException('TDLib session string has an empty auth key');
-    }
-
-    return _TdSessionStringInfo(
-      rawSize: bytes.length,
-      dcId: dcId,
-      apiId: apiId,
-      testMode: testMode,
-      userId: userId,
-      isBot: isBot,
-    );
-  }
 
   /// Routes future query/send/broadcast to the given account slot.
   void setActive(int slot) {
@@ -2185,6 +2238,15 @@ class TdClient {
     }
     if (timeout <= Duration.zero) {
       throw ArgumentError.value(timeout, 'timeout', 'must be positive');
+    }
+    final debugQuery = _debugQueryOverride;
+    if (debugQuery != null) {
+      final result = await debugQuery(
+        Map<String, dynamic>.from(request),
+        clientId,
+      );
+      if (result.type == 'error') throw TdError(result);
+      return result;
     }
     final proxy = _proxyTransport;
     if (proxy != null) {

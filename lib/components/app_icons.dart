@@ -304,6 +304,7 @@ class HeroAppIcons {
   static const clipboard = AppIconData(HeroiconsOutline.clipboard);
   static const clock = AppIconData(HeroiconsOutline.clock);
   static const code = AppIconData(HeroiconsOutline.codeBracket);
+  static const commandLine = AppIconData(HeroiconsOutline.commandLine);
   static const cloud = AppIconData(HeroiconsOutline.cloud);
   static const cloudArrowDown = AppIconData(HeroiconsOutline.cloudArrowDown);
   static const comment = AppIconData(HeroiconsOutline.chatBubbleOvalLeft);
