@@ -172,3 +172,33 @@ void disableLoopingMediaAudioTracks(VideoPlayerController controller) {
     // The active video_player backend is not FVP.
   }
 }
+
+/// Video decoder override for muted looping WebM (Telegram video stickers),
+/// by [platform]. FVP prefers MDK's VT decoder on Apple platforms, and that
+/// decoder's VP9 path presents frames faster than the media clock for the
+/// alpha-enhanced WebM Telegram stickers are encoded as, so sticker playback
+/// visibly runs too fast. Plain FFmpeg decodes those clips with correct
+/// pacing and still outputs yuva420p through MDK's enhancement-layer merge.
+/// Returns null when the platform's default decoder order is fine.
+@visibleForTesting
+List<String>? webmLoopingDecoderOverride(TargetPlatform platform) {
+  return switch (platform) {
+    TargetPlatform.iOS => const <String>['FFmpeg'],
+    _ => null,
+  };
+}
+
+/// Applies [webmLoopingDecoderOverride] to a looping WebM controller before
+/// playback starts. Must run after `initialize()` so FVP has registered the
+/// player; MDK selects the decoder when decoding starts, not before. Other
+/// video_player backends (and platform fakes in tests) reject the call and
+/// keep their own decoder selection.
+void applyWebmLoopingDecoderOverride(VideoPlayerController controller) {
+  final decoders = webmLoopingDecoderOverride(defaultTargetPlatform);
+  if (decoders == null) return;
+  try {
+    controller.setVideoDecoders(decoders);
+  } catch (_) {
+    // The active video_player backend is not FVP.
+  }
+}

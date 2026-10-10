@@ -228,6 +228,7 @@ class _VideoStickerViewState extends State<VideoStickerView>
       diagnostics.initialized(value: c.value);
       await c.setVolume(0);
       disableLoopingMediaAudioTracks(c);
+      applyWebmLoopingDecoderOverride(c);
       if (!_ownsLoad(generation, ref, slot, lease)) {
         await _disposeInitializingLoad(c, lease);
         return;
