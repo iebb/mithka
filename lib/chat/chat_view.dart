@@ -9240,7 +9240,7 @@ class _ChatViewState extends State<ChatView> {
       final fullInfo = await TdClient.shared.query(
         communityFullInfoRequest(preview.id),
       );
-      for (final peer in fullInfo.objects('peers') ?? const []) {
+      for (final peer in communityCatalogEntries(fullInfo)) {
         final chatId = peer.int64('chat_id');
         if (chatId == null) continue;
         try {

@@ -343,6 +343,48 @@ void main() {
       });
     });
 
+    test('reads catalog entries from both response shapes', () {
+      const upstreamChat = {
+        '@type': 'communityChat',
+        'chat_id': 42,
+        'can_view_history': true,
+        'is_hidden': false,
+      };
+      expect(
+        communityCatalogEntries({
+          '@type': 'communityFullInfo',
+          'photo': null,
+          'chats': [upstreamChat],
+          'administrator_count': 0,
+          'banned_count': 0,
+          'add_chat_request_count': 0,
+        }),
+        [upstreamChat],
+      );
+      const patchedPeer = {
+        '@type': 'mithkaCommunityPeerInfo',
+        'chat_id': 42,
+        'can_view_history': true,
+      };
+      expect(
+        communityCatalogEntries({
+          '@type': 'mithkaCommunityPeerCatalog',
+          'peers': [patchedPeer],
+        }),
+        [patchedPeer],
+      );
+      expect(communityCatalogEntries({'@type': 'ok'}), isEmpty);
+      // Upstream chats win when a response somehow carries both keys.
+      expect(
+        communityCatalogEntries({
+          '@type': 'communityFullInfo',
+          'chats': [upstreamChat],
+          'peers': [patchedPeer],
+        }),
+        [upstreamChat],
+      );
+    });
+
     test('global community preference defaults on and persists', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();

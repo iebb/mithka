@@ -1352,7 +1352,7 @@ class ChatListViewModel extends ChangeNotifier {
     _client
         .query(communityFullInfoRequest(communityId))
         .then((result) async {
-          final entries = result.objects('peers') ?? const [];
+          final entries = communityCatalogEntries(result);
           for (final entry in entries) {
             if (_disposed) return;
             final chatId = entry.int64('chat_id');
@@ -1379,9 +1379,8 @@ class ChatListViewModel extends ChangeNotifier {
           }
         })
         .catchError((_) {
-          // Stock TDLib builds don't expose getCommunityFullInfo. Mithka's
-          // patched builds do; retaining this fallback keeps older sessions
-          // usable until their native library is updated.
+          // Bot API sessions and native libraries older than the upstream
+          // getCommunityFullInfo merge expose no community catalogue.
         })
         .whenComplete(() => _loadingCommunityCatalogs.remove(communityId));
   }
