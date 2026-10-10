@@ -2344,6 +2344,8 @@
     <string name="privacyAddExceptions">Ajouter des exceptions</string>
     <string name="privacyAddUsers">Ajouter des utilisateurs</string>
     <string name="privacyAlwaysShareWith">Toujours partager avec</string>
+    <string name="privacyAutoRevealRestrictedMedia">Afficher automatiquement les médias restreints</string>
+    <string name="privacyAutoRevealRestrictedMediaHint">Ignore la confirmation dans l'application et affiche immédiatement le contenu restreint. Votre réglage Telegram sur le contenu sensible reste inchangé.</string>
     <string name="privacyBio">Biographie</string>
     <string name="privacyBirthDate">Date de naissance</string>
     <string name="privacyBlockedUsers">Liste noire</string>

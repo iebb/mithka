@@ -243,7 +243,17 @@ class _MessageBubbleState extends State<MessageBubble>
       widget.sensitiveContentController ?? SensitiveContentController.shared;
 
   bool get _revealsRestrictedContent =>
-      _showRestrictedContent || _sensitiveContentController.enabled;
+      _showRestrictedContent ||
+      _sensitiveContentController.enabled ||
+      (_theme.autoRevealRestrictedMedia && message.hasRestrictedRevealContent);
+
+  /// A long press flips the per-message reveal, so content uncovered by hand can
+  /// be masked again. Reveals that come from the account option or from the
+  /// auto-reveal preference are not per-message state: there the press belongs
+  /// to the ordinary action menu.
+  bool get _togglesRestrictedContentOnLongPress =>
+      message.hasRestrictedRevealContent &&
+      (_showRestrictedContent || !_revealsRestrictedContent);
 
   Rect? _bubbleBounds() {
     final box = _bubbleKey.currentContext?.findRenderObject() as RenderBox?;
@@ -294,7 +304,7 @@ class _MessageBubbleState extends State<MessageBubble>
       unawaited(_showSensitiveContentUnblockPrompt(anchor: _bubbleBounds()));
       return;
     }
-    if (message.hasRestrictedRevealContent) {
+    if (_togglesRestrictedContentOnLongPress) {
       setState(() => _showRestrictedContent = !_showRestrictedContent);
       return;
     }
@@ -825,6 +835,14 @@ class _MessageBubbleState extends State<MessageBubble>
   @override
   void didUpdateWidget(covariant MessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A bubble is stateful per list slot, not per message: a list rebinds the
+    // same State object to another message as rows move. The manual reveal is
+    // the reader's confirmation for ONE message, so it must not follow the
+    // slot onto a message that was never confirmed.
+    if (oldWidget.message.id != widget.message.id ||
+        oldWidget.message.chatId != widget.message.chatId) {
+      _showRestrictedContent = false;
+    }
     final oldController =
         oldWidget.sensitiveContentController ??
         SensitiveContentController.shared;

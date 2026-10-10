@@ -20,6 +20,7 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import 'account_security_views.dart';
 import 'auto_delete_view.dart';
 import 'passkeys_view.dart';
@@ -237,6 +238,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
   @override
   Widget build(BuildContext context) {
     final sensitiveContent = context.watch<SensitiveContentController>();
+    final theme = context.watch<ThemeController>();
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.privacySecurityTitle),
       onBack: () => Navigator.of(context).pop(),
@@ -293,6 +295,13 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                 sensitiveContent.enabled,
                 (value) => unawaited(_setSensitiveContentEnabled(value)),
               ),
+            _SwitchRow(
+              HeroAppIcons.eye,
+              AppStrings.t(AppStringKeys.privacyAutoRevealRestrictedMedia),
+              theme.autoRevealRestrictedMedia,
+              (value) => theme.autoRevealRestrictedMedia = value,
+              subtitle: AppStringKeys.privacyAutoRevealRestrictedMediaHint,
+            ),
             _Row(
               HeroAppIcons.stopwatch,
               AppStringKeys.chatInfoAutoDeleteMessages,
@@ -342,6 +351,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
         title: row.title,
         value: row.value,
         leading: leading,
+        subtitle: row.subtitle,
         titleColor: destructive ? AppTheme.tagRed : null,
         onChanged: row.onChanged,
       );
@@ -389,10 +399,19 @@ class _Row extends _SettingsEntry {
 }
 
 class _SwitchRow extends _SettingsEntry {
-  _SwitchRow(super.icon, super.title, this.value, this.onChanged);
+  _SwitchRow(
+    super.icon,
+    super.title,
+    this.value,
+    this.onChanged, {
+    this.subtitle,
+  });
 
   final bool value;
   final ValueChanged<bool> onChanged;
+
+  /// Localization key for the explanatory line under the title.
+  final String? subtitle;
 
   @override
   VoidCallback get onTap =>

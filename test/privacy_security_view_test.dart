@@ -86,4 +86,88 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('the auto-reveal row flips a local preference and nothing else', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final requests = <Map<String, dynamic>>[];
+    final controller = SensitiveContentController.forTesting(
+      query: (request) async {
+        requests.add(request);
+        return {'@type': 'ok'};
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeController>.value(value: theme),
+          ChangeNotifierProvider<SensitiveContentController>.value(
+            value: controller,
+          ),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            brightness: Brightness.light,
+            extensions: [AppColors.light],
+          ),
+          home: const PrivacySecurityView(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(theme.autoRevealRestrictedMedia, isFalse);
+    final row = find.text(
+      AppStrings.tForLocale(
+        'en',
+        AppStringKeys.privacyAutoRevealRestrictedMedia,
+      ),
+    );
+    expect(row, findsOneWidget);
+    // The explanatory line says out loud that the account option is untouched.
+    expect(
+      find.text(
+        AppStrings.tForLocale(
+          'en',
+          AppStringKeys.privacyAutoRevealRestrictedMediaHint,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(row);
+    await tester.pump();
+
+    expect(theme.autoRevealRestrictedMedia, isTrue);
+    expect(preferences.getBool('autoRevealRestrictedMedia'), isTrue);
+    // Flipping this row must not write the account's sensitive-content option.
+    expect(requests, isEmpty);
+    expect(controller.enabled, isFalse);
+
+    await tester.tap(row);
+    await tester.pump();
+    expect(theme.autoRevealRestrictedMedia, isFalse);
+    expect(preferences.getBool('autoRevealRestrictedMedia'), isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

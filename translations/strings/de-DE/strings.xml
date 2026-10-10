@@ -2344,6 +2344,8 @@
     <string name="privacyAddExceptions">Ausnahmen hinzufügen</string>
     <string name="privacyAddUsers">Benutzer hinzufügen</string>
     <string name="privacyAlwaysShareWith">Immer teilen mit</string>
+    <string name="privacyAutoRevealRestrictedMedia">Eingeschränkte Medien automatisch anzeigen</string>
+    <string name="privacyAutoRevealRestrictedMediaHint">Überspringt die Bestätigung in der App und zeigt eingeschränkte Nachrichteninhalte sofort an. Ihre Telegram-Einstellung für sensible Inhalte bleibt unverändert.</string>
     <string name="privacyBio">Biografie</string>
     <string name="privacyBirthDate">Geburtsdatum</string>
     <string name="privacyBlockedUsers">Blockierte Nutzer</string>

@@ -2334,6 +2334,8 @@
     <string name="privacyAddExceptions">예외 추가</string>
     <string name="privacyAddUsers">사용자 추가</string>
     <string name="privacyAlwaysShareWith">항상 공유</string>
+    <string name="privacyAutoRevealRestrictedMedia">제한된 미디어 자동 표시</string>
+    <string name="privacyAutoRevealRestrictedMediaHint">앱 내 확인창을 건너뛰고 제한된 메시지 내용을 바로 표시합니다. Telegram의 민감한 콘텐츠 설정은 변경되지 않습니다.</string>
     <string name="privacyBio">소개</string>
     <string name="privacyBirthDate">생년월일</string>
     <string name="privacyBlockedUsers">차단 목록</string>

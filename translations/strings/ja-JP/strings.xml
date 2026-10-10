@@ -2334,6 +2334,8 @@
     <string name="privacyAddExceptions">例外を追加</string>
     <string name="privacyAddUsers">ユーザーを追加</string>
     <string name="privacyAlwaysShareWith">常に共有</string>
+    <string name="privacyAutoRevealRestrictedMedia">制限付きメディアを自動的に表示</string>
+    <string name="privacyAutoRevealRestrictedMediaHint">アプリ内の確認をスキップして、制限付きメッセージの内容をすぐに表示します。Telegram のセンシティブなコンテンツ設定は変更されません。</string>
     <string name="privacyBio">自己紹介</string>
     <string name="privacyBirthDate">生年月日</string>
     <string name="privacyBlockedUsers">ブロック済みユーザー</string>

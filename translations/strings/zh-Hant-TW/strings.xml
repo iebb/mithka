@@ -2334,6 +2334,8 @@
     <string name="privacyAddExceptions">新增例外</string>
     <string name="privacyAddUsers">新增使用者</string>
     <string name="privacyAlwaysShareWith">一律分享給</string>
+    <string name="privacyAutoRevealRestrictedMedia">自動顯示受限媒體</string>
+    <string name="privacyAutoRevealRestrictedMediaHint">僅跳過應用程式內的確認提示，直接顯示被 Telegram 標記為受限的訊息內容；不會修改帳號的敏感內容設定。</string>
     <string name="privacyBio">個人簡介</string>
     <string name="privacyBirthDate">出生日期</string>
     <string name="privacyBlockedUsers">黑名單</string>
