@@ -22,9 +22,10 @@ import '../settings/topic_group_display_mode.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'community_edit_view.dart';
 import 'community_models.dart';
 
-enum _CommunityHeaderAction { toggleCollapsed }
+enum _CommunityHeaderAction { toggleCollapsed, editProfile }
 
 class CommunityChatListRow extends StatelessWidget {
   const CommunityChatListRow({
@@ -265,6 +266,22 @@ class _CommunityViewState extends State<CommunityView> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _onHeaderAction(_CommunityHeaderAction action) async {
+    switch (action) {
+      case _CommunityHeaderAction.editProfile:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => CommunityEditView(community: widget.community),
+          ),
+        );
+        // The editor mutates the shared summary in place (name), so one
+        // rebuild keeps the hub header in sync after popping.
+        if (mounted) setState(() {});
+      case _CommunityHeaderAction.toggleCollapsed:
+        _setCollapsed(!_collapsed);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -317,8 +334,26 @@ class _CommunityViewState extends State<CommunityView> {
     tooltip: '',
     color: context.colors.background,
     padding: EdgeInsets.zero,
-    onSelected: (_) => _setCollapsed(!_collapsed),
+    onSelected: _onHeaderAction,
     itemBuilder: (context) => [
+      if (widget.community.canChangeInfo)
+        PopupMenuItem<_CommunityHeaderAction>(
+          value: _CommunityHeaderAction.editProfile,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                child: AppIcon(
+                  HeroAppIcons.penToSquare,
+                  size: 16,
+                  color: context.colors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(AppStringKeys.communityEditAction.l10n(context)),
+            ],
+          ),
+        ),
       PopupMenuItem<_CommunityHeaderAction>(
         value: _CommunityHeaderAction.toggleCollapsed,
         child: Row(

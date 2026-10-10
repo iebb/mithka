@@ -1136,6 +1136,17 @@ abstract final class AppStringKeys {
   static const communityChatRemovedByService = 'communityChatRemovedByService';
   static const communityChatsYouAreIn = 'communityChatsYouAreIn';
   static const communityChatsYouCanView = 'communityChatsYouCanView';
+  static const communityEditAction = 'communityEditAction';
+  static const communityEditChangePhoto = 'communityEditChangePhoto';
+  static const communityEditChangePhotoHint = 'communityEditChangePhotoHint';
+  static const communityEditNameLabel = 'communityEditNameLabel';
+  static const communityEditNameTitle = 'communityEditNameTitle';
+  static const communityEditPhotoSaveFailed = 'communityEditPhotoSaveFailed';
+  static const communityEditPhotoUpdated = 'communityEditPhotoUpdated';
+  static const communityEditSaveFailed = 'communityEditSaveFailed';
+  static const communityEditSection = 'communityEditSection';
+  static const communityEditTitle = 'communityEditTitle';
+  static const communityEditUnsupported = 'communityEditUnsupported';
   static const communityNoChats = 'communityNoChats';
   static const communityShowAsOneChat = 'communityShowAsOneChat';
   static const communityShowAsOneChatDescription =
