@@ -301,6 +301,12 @@ class TdClient {
   int get activeSlot => _activeSlot;
   int get activeClientId => _activeClientId;
   bool get hasActiveClient => _activeClientId != 0;
+
+  /// True from the moment a shutdown is asked for, while the slot and client
+  /// mappings can still be in place. [queryTo] already rejects work in this
+  /// window, so pinned readers must treat it as "account gone" instead of
+  /// reporting a query failure.
+  bool get isShuttingDown => _isShuttingDown || _shutdownComplete;
   int? get proxyAccountUserId => _proxyTransport?.accountUserId;
   List<int> get configuredSlots => List.unmodifiable(_slots);
   int? clientId(int slot) => _clientForSlot[slot];

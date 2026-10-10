@@ -1020,7 +1020,7 @@ class _ChatListViewState extends State<ChatListView>
   bool _isRefreshing = false;
   bool _viewTickerEnabled = true;
   bool _modelDirtyWhileInactive = false;
-  bool _reactivationSyncScheduled = false;
+  bool _reactivationFollowUpPending = false;
   int _lastVisibleRows = 1;
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
   final ScrollController _folderTabScrollController = ScrollController();
@@ -1087,14 +1087,28 @@ class _ChatListViewState extends State<ChatListView>
     _viewTickerEnabled = tickerEnabled;
     if (!reactivated ||
         !_modelDirtyWhileInactive ||
-        _reactivationSyncScheduled) {
+        _reactivationFollowUpPending) {
       return;
     }
-    _reactivationSyncScheduled = true;
+    // TickerMode.valuesOf registers an inherited-widget dependency, so the flip
+    // that brings this list back already rebuilds it in this same frame with
+    // everything the model applied while a conversation covered it. Only the
+    // work that needs a finished frame is still owed: scheduling a second full
+    // rebuild for the next frame put it in the middle of the returning
+    // transition, where the list is rasterizing itself again anyway.
+    _modelDirtyWhileInactive = false;
+    _reactivationFollowUpPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _reactivationSyncScheduled = false;
-      if (!mounted || !_viewTickerEnabled || !_modelDirtyWhileInactive) return;
-      _onModel();
+      _reactivationFollowUpPending = false;
+      if (!mounted) return;
+      if (!_viewTickerEnabled) {
+        // Covered again before the frame ended: keep the follow-up owed so the
+        // next reactivation runs it.
+        _modelDirtyWhileInactive = true;
+        return;
+      }
+      _showModelNotice();
+      _runPendingScrollRequest();
     });
   }
 
@@ -1105,15 +1119,21 @@ class _ChatListViewState extends State<ChatListView>
       return;
     }
     _modelDirtyWhileInactive = false;
-    if (_model.notice != null && mounted) {
-      final text = _model.notice!;
-      _model.clearNotice();
-      showToast(context, text);
-    }
+    _showModelNotice();
     setState(() {});
-    if (_pendingScrollToFirstUnreadRequest != null) {
-      _tryScrollToFirstUnread();
-    }
+    _runPendingScrollRequest();
+  }
+
+  void _showModelNotice() {
+    final notice = _model.notice;
+    if (notice == null || !mounted) return;
+    _model.clearNotice();
+    showToast(context, notice);
+  }
+
+  void _runPendingScrollRequest() {
+    if (_pendingScrollToFirstUnreadRequest == null) return;
+    _tryScrollToFirstUnread();
   }
 
   void _onScroll() {
@@ -1311,18 +1331,23 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  void _openCommunity(CommunityGroupEntry entry) {
+  void _openCommunity(CommunityGroupEntry entry) =>
+      _openCommunityHub(entry.community);
+
+  /// Opens the community hub, whether the caller came from the folded
+  /// chat-list row or from a member chat's corner badge.
+  void _openCommunityHub(CommunitySummary community) {
     if (!context.read<ThemeController>().communitiesEnabled) return;
     final selection = CommunityListSelection(
-      community: entry.community,
-      chats: _model.chatsInCommunity(entry.community.id),
-      viewableChats: _model.viewableChatsInCommunity(entry.community.id),
+      community: community,
+      chats: _model.chatsInCommunity(community.id),
+      viewableChats: _model.viewableChatsInCommunity(community.id),
       onCollapsedChanged: (value) =>
-          _model.setCommunityCollapsed(entry.community.id, value),
+          _model.setCommunityCollapsed(community.id, value),
       updates: _model,
-      chatsProvider: () => _model.chatsInCommunity(entry.community.id),
+      chatsProvider: () => _model.chatsInCommunity(community.id),
       viewableChatsProvider: () =>
-          _model.viewableChatsInCommunity(entry.community.id),
+          _model.viewableChatsInCommunity(community.id),
     );
     final onCommunitySelected = widget.onCommunitySelected;
     if (onCommunitySelected != null) {
@@ -2646,7 +2671,16 @@ class _ChatListViewState extends State<ChatListView>
     return ChatListSelectionHighlight(
       key: ValueKey(chat.id),
       selected: selected,
-      child: ChatRowView(chat: chat, selected: selected),
+      child: ChatRowView(
+        chat: chat,
+        selected: selected,
+        avatarBadge: _communityBadge(
+          chat,
+          communitiesEnabled: context
+              .read<ThemeController>()
+              .communitiesEnabled,
+        ),
+      ),
     );
   }
 
@@ -2902,9 +2936,24 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
+  /// A community's chats are ordinary rows again once "Show as One Chat" is
+  /// off, and without this marker the hub has no entry point at all.
+  Widget? _communityBadge(
+    ChatSummary chat, {
+    required bool communitiesEnabled,
+  }) {
+    final community = _model.communityBadgeFor(
+      chat.id,
+      communitiesEnabled: communitiesEnabled,
+    );
+    if (community == null) return null;
+    return CommunityAvatarBadge(onTap: () => _openCommunityHub(community));
+  }
+
   Widget _swipeRow(ChatSummary chat) {
     final selected = widget.selectedChatId == chat.id;
-    final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
+    final theme = context.watch<ThemeController>();
+    final swipeMode = theme.chatListSwipeMode;
     final platform = Theme.of(context).platform;
     final desktopContextMenu = !kIsWeb && isDesktopTargetPlatform(platform);
     final desktopTouchGestures =
@@ -2974,6 +3023,10 @@ class _ChatListViewState extends State<ChatListView>
           chat: chat,
           selected: selected,
           onClearUnread: () => _model.markRead(chat),
+          avatarBadge: _communityBadge(
+            chat,
+            communitiesEnabled: theme.communitiesEnabled,
+          ),
         ),
       ),
     );

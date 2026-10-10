@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/chat/image_media_album_bubble.dart';
+import 'package:mithka/chat/message_swipe_reply.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -322,5 +323,104 @@ void main() {
     await tester.longPressAt(tester.getCenter(translation));
     await tester.pump();
     expect(selectedText, 'album');
+  });
+
+  testWidgets('a swipe on the album row replies with the interaction owner', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final selecting = ValueNotifier<bool>(false);
+    addTearDown(selecting.dispose);
+    final messages = [
+      ChatMessage(
+        id: 31,
+        isOutgoing: false,
+        text: '',
+        date: 1,
+        contentType: 'messagePhoto',
+        mediaAlbumId: 94,
+        image: TdFileRef(id: 131),
+        imageWidth: 1600,
+        imageHeight: 1200,
+      ),
+      ChatMessage(
+        id: 32,
+        isOutgoing: false,
+        text: '',
+        date: 1,
+        contentType: 'messagePhoto',
+        mediaAlbumId: 94,
+        commentCount: 3,
+        image: TdFileRef(id: 132),
+        imageWidth: 1200,
+        imageHeight: 1600,
+      ),
+    ];
+    ChatMessage? replied;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.iOS,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(
+            body: SizedBox(
+              width: 340,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: selecting,
+                builder: (context, isSelecting, _) => MessageSwipeReplyRow(
+                  // The transcript's own wiring: one row, the member that owns
+                  // the album's interaction as the target, and no swipe while
+                  // multi-select holds the row.
+                  swipeEnabled: !isSelecting,
+                  onReply: () =>
+                      replied = selectMediaAlbumInteractionOwner(messages),
+                  child: ImageMediaAlbumBubble(
+                    messages: messages,
+                    peerTitle: 'Design Circle',
+                    isGroup: true,
+                    selecting: isSelecting,
+                    imageBuilder: (context, message, width, height) =>
+                        ColoredBox(
+                          key: ValueKey('album-tile-${message.id}'),
+                          color: const Color(0xFF45C4BE),
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final rowRect = tester.getRect(find.byType(ImageMediaAlbumBubble));
+    Future<void> dragRowLeft() async {
+      final gesture = await tester.startGesture(
+        Offset(rowRect.right - 4, rowRect.center.dy),
+      );
+      for (var step = 0; step < 8; step++) {
+        await gesture.moveBy(const Offset(-20, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await dragRowLeft();
+    expect(replied?.id, 32);
+
+    replied = null;
+    selecting.value = true;
+    await tester.pump();
+    await dragRowLeft();
+    expect(replied, isNull);
   });
 }

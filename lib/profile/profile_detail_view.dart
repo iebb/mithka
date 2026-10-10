@@ -23,6 +23,7 @@ import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
 import '../chat/audio_search_view.dart';
+import '../chat/chat_first_contact_info.dart';
 import '../chat/chat_search_view.dart';
 import '../chat/chat_wallpaper.dart';
 import '../chat/custom_emoji.dart';
@@ -55,6 +56,7 @@ import 'profile_contact_service.dart';
 import 'profile_gifts.dart';
 import 'profile_identity_summary.dart';
 import 'profile_username_pill.dart';
+import 'registration_date_estimate.dart';
 
 @visibleForTesting
 bool profileFeaturedPhotosUseDesktopWindow(
@@ -109,8 +111,10 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   String _lastName = '';
   String _rawPhone = '';
   bool _isBot = false;
+  bool _isRegularUser = false;
   bool _hasLoadedUser = false;
   bool _isCreatingSecretChat = false;
+  ChatFirstContactInfo? _accountInfo; // Telegram's own registration month
   final ChatWallpaperController _wallpaperController =
       ChatWallpaperController.shared;
 
@@ -160,6 +164,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _isPremium = user.boolean('is_premium') ?? false;
           _isContact = _isMe || (user.boolean('is_contact') ?? false);
           _isBot = user.obj('type')?.type == 'userTypeBot';
+          _isRegularUser = user.obj('type')?.type == 'userTypeRegular';
           _hasLoadedUser = true;
           _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
             user.obj('emoji_status'),
@@ -223,8 +228,20 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         'force': false,
       });
       final chatId = chat.int64('id');
-      if (!mounted || chatId == null) return;
-      setState(() => _chatId = chatId);
+      // Telegram only attaches account_info to the action bar of a private chat
+      // it considers worth a second look, so this is a bonus: the registration
+      // row falls back to the user-ID estimate when it is absent. A month
+      // Telegram did report stays true after the bar goes away — becoming a
+      // contact removes it — so the last known value is kept.
+      final accountInfo = ChatFirstContactInfo.fromActionBar(
+        chat.obj('action_bar'),
+      );
+      if (!mounted) return;
+      setState(() {
+        _accountInfo = accountInfo ?? _accountInfo;
+        if (chatId != null) _chatId = chatId;
+      });
+      if (chatId == null) return;
       unawaited(_wallpaperController.load(chatId));
       unawaited(_loadStoryCollections(chatId));
     } catch (_) {}
@@ -402,6 +419,35 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         : 'tg://user?id=${widget.userId}';
     Clipboard.setData(ClipboardData(text: link));
     showToast(context, AppStrings.t(AppStringKeys.profileDetailCardLinkCopied));
+  }
+
+  /// Copies a single profile field on a long press. Everything here is a value
+  /// people want somewhere else — an ID for a bot, a username for a mention, a
+  /// number for a dialer — and none of it has another use for a long press.
+  /// Copying on a plain tap would fire while the page is only being read, so
+  /// the gesture is deliberate.
+  /// Puts [value] on the clipboard and says whether that worked. The toast
+  /// waits for the platform call: a clipboard that refused the write must not
+  /// be reported as a copy that happened.
+  Future<void> _copyValue(String value) async {
+    final text = value.trim();
+    if (text.isEmpty) return;
+    unawaited(HapticFeedback.mediumImpact());
+    var copied = true;
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (_) {
+      copied = false;
+    }
+    if (!mounted) return;
+    showToast(
+      context,
+      AppStrings.t(
+        copied
+            ? AppStringKeys.profileDetailCopied
+            : AppStringKeys.profileDetailCopyFailed,
+      ),
+    );
   }
 
   Future<void> _showProfileContextMenu() async {
@@ -595,15 +641,59 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     child: const SizedBox(height: 12),
   );
 
-  List<(String, String)> get _infoRows => [
-    if (_bio.isNotEmpty) (AppStrings.t(AppStringKeys.profileDetailBio), _bio),
-    if (_birthday.isNotEmpty)
-      (AppStrings.t(AppStringKeys.profileDetailBirthday), _birthday),
-    if (_location.isNotEmpty)
-      (AppStrings.t(AppStringKeys.profileDetailLocation), _location),
-    if (_businessHours.isNotEmpty)
-      (AppStrings.t(AppStringKeys.profileDetailBusinessHours), _businessHours),
-  ];
+  List<(String, String)> get _infoRows {
+    final registration = _registrationText;
+    return [
+      if (_bio.isNotEmpty) (AppStrings.t(AppStringKeys.profileDetailBio), _bio),
+      if (_birthday.isNotEmpty)
+        (AppStrings.t(AppStringKeys.profileDetailBirthday), _birthday),
+      if (registration.isNotEmpty)
+        (
+          AppStrings.t(AppStringKeys.chatFirstContactRegistration),
+          registration,
+        ),
+      if (_location.isNotEmpty)
+        (AppStrings.t(AppStringKeys.profileDetailLocation), _location),
+      if (_businessHours.isNotEmpty)
+        (
+          AppStrings.t(AppStringKeys.profileDetailBusinessHours),
+          _businessHours,
+        ),
+    ];
+  }
+
+  /// Registration month: Telegram's own value when the chat's action bar
+  /// carries one, otherwise where this user ID sits in the ID sequence. Empty
+  /// — and the row left out entirely — unless the profile is a verified regular
+  /// user with an ID inside the anchor table's fitted range.
+  String get _registrationText {
+    final locale = Localizations.localeOf(context).toString();
+    final accountInfo = _accountInfo;
+    if (accountInfo != null && accountInfo.hasRegistrationDate) {
+      return _yearMonth(
+        DateTime(accountInfo.registrationYear, accountInfo.registrationMonth),
+        locale,
+      );
+    }
+    // The table is fitted on private user accounts and excludes bots. Unknown
+    // and deleted profiles do not establish which population their ID belongs
+    // to, so only a regular user can receive an estimate.
+    if (!_hasLoadedUser || !_isRegularUser) return '';
+    final estimate = estimateRegistrationDate(widget.userId);
+    if (estimate == null) return '';
+    return AppStrings.t(AppStringKeys.profileDetailRegistrationAroundValue1, {
+      'value1': _yearMonth(estimate, locale),
+    });
+  }
+
+  String _yearMonth(DateTime value, String locale) {
+    try {
+      return DateFormat.yMMMM(locale).format(value);
+    } catch (_) {
+      // An unknown locale must not cost the row its value.
+      return '${value.year}-${value.month.toString().padLeft(2, '0')}';
+    }
+  }
 
   bool get _hasProfileCollections =>
       _postStoryIds.isNotEmpty || _archivedStoryIds.isNotEmpty;
@@ -809,6 +899,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     final c = context.colors;
     final identityLines = fullProfileIdentityLines(
       formattedPhone: _phone,
+      rawPhone: _rawPhone,
       usernames: _usernames,
       userId: widget.userId,
       hidePhone: _hideIdentity,
@@ -866,31 +957,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   for (final line in identityLines)
-                                    Padding(
-                                      padding: EdgeInsets.only(
-                                        top:
-                                            line.kind ==
-                                                ProfileIdentityKind.username
-                                            ? 3
-                                            : 0,
-                                      ),
-                                      child:
-                                          line.kind ==
-                                              ProfileIdentityKind.username
-                                          ? ProfileUsernamePill(
-                                              username: line.text,
-                                            )
-                                          : Text(
-                                              line.text,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                height: 1.28,
-                                                color: c.textSecondary,
-                                              ),
-                                            ),
-                                    ),
+                                    _identityLine(line),
                                 ],
                               ),
                             ),
@@ -966,6 +1033,33 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// One identity row (phone / Telegram ID / username). A long press copies it:
+  /// the row shows [ProfileIdentityLine.text] while the clipboard gets the
+  /// undecorated [ProfileIdentityLine.copyText].
+  Widget _identityLine(ProfileIdentityLine line) {
+    final c = context.colors;
+    final isUsername = line.kind == ProfileIdentityKind.username;
+    return Padding(
+      padding: EdgeInsets.only(top: isUsername ? 3 : 0),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () => _copyValue(line.copyText),
+        child: isUsername
+            ? ProfileUsernamePill(username: line.text)
+            : Text(
+                line.text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.28,
+                  color: c.textSecondary,
+                ),
+              ),
       ),
     );
   }
@@ -1699,24 +1793,31 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
       child: Column(
         children: [
           for (var i = 0; i < rows.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    rows[i].$1,
-                    style: TextStyle(fontSize: 16, color: c.textPrimary),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      rows[i].$2,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontSize: 15, color: c.textSecondary),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: () => _copyValue(rows[i].$2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      rows[i].$1,
+                      style: TextStyle(fontSize: 16, color: c.textPrimary),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        rows[i].$2,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 15, color: c.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             if (i < rows.length - 1) const InsetDivider(leadingInset: 16),

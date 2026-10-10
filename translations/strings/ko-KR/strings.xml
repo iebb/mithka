@@ -2450,6 +2450,8 @@
     <string name="profileDetailBirthday">생일</string>
     <string name="profileDetailBusinessHours">영업시간</string>
     <string name="profileDetailCardLinkCopied">명함 링크가 복사되었습니다</string>
+    <string name="profileDetailCopied">복사됨</string>
+    <string name="profileDetailCopyFailed">복사하지 못했습니다</string>
     <string name="profileDetailCopyLink">링크 복사</string>
     <string name="profileDetailFeaturedPhotos">대표 사진</string>
     <string name="profileDetailGifts">선물</string>
@@ -2458,6 +2460,7 @@
     <string name="profileDetailMonthDayDate">{value1}월 {value2}일</string>
     <string name="profileDetailMusic">음악</string>
     <string name="profileDetailPosts">게시물</string>
+    <string name="profileDetailRegistrationAroundValue1">{value1}경</string>
     <string name="profileDetailSendMessage">메시지 보내기</string>
     <string name="profileDetailYearMonthDate">{value1}년 {value2}월</string>
     <string name="profileLogOutAccount">계정 로그아웃</string>
@@ -2525,6 +2528,10 @@
     <string name="proxyPort">포트</string>
     <string name="proxySecret">비밀 키</string>
     <string name="proxyServer">서버</string>
+    <string name="proxyStatusConnected">연결됨</string>
+    <string name="proxyStatusConnecting">연결 중</string>
+    <string name="proxyStatusOff">사용 안 함</string>
+    <string name="proxyStatusUnreachable">네트워크 없음</string>
     <string name="proxyTitle">프록시</string>
     <string name="publicDiscoveryBotsSection">봇</string>
     <string name="publicDiscoveryDiscover">발견하다</string>

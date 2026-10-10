@@ -2,8 +2,9 @@
 //  chat_row_view.dart
 //
 //  Reusable chat-list row: avatar with the unread count badged on its top-right
-//  corner; title + preview; and a right column holding the timestamp (top) and
-//  the mute bell at the row's bottom-right. Port of the Swift `ChatRowView`.
+//  corner and an optional marker on its bottom-right one; title + preview; and
+//  a right column holding the timestamp (top) and the mute bell at the row's
+//  bottom-right. Port of the Swift `ChatRowView`.
 //
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class ChatRowView extends StatelessWidget {
     this.selected = false,
     this.onClearUnread,
     this.avatarBuilder,
+    this.avatarBadge,
     this.titleTrailing,
     this.trailingIndicator,
   });
@@ -48,6 +50,10 @@ class ChatRowView extends StatelessWidget {
   final bool selected;
   final VoidCallback? onClearUnread;
   final Widget Function(double size)? avatarBuilder;
+
+  /// Marker pinned to the avatar's bottom-right corner. It lives inside the
+  /// avatar box, so its own gesture wins over the row's.
+  final Widget? avatarBadge;
   final Widget? titleTrailing;
   final Widget? trailingIndicator;
 
@@ -274,6 +280,8 @@ class ChatRowView extends StatelessWidget {
                 ),
               ),
             ),
+          if (avatarBadge case final badge?)
+            Positioned(right: 0, bottom: 0, child: badge),
         ],
       ),
     );

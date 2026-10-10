@@ -43,6 +43,9 @@ jobs:
           python3 translations/tools/gen_assets.py --check
           python3 tool/check_l10n_strings.py
 
+      - name: Verify the registration anchors match their pinned dataset
+        run: python3 tool/gen_registration_anchors.py --check
+
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
 

@@ -16,6 +16,7 @@ import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/message_action_menu.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -202,6 +203,108 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(replied(), isNull);
+    expect(replyIcon, findsNothing);
+  });
+
+  testWidgets('a swipe that starts beside the bubble still replies', (
+    tester,
+  ) async {
+    final replied = await pumpBubble(tester);
+    final bubble = tester.getRect(
+      find.byKey(const ValueKey('messageTapTarget-78')),
+    );
+
+    // Far past the bubble's trailing edge. The row is the target, not the
+    // bubble, so a two-word message can be answered from the empty margin.
+    final gesture = await tester.startGesture(
+      Offset(bubble.right + 120, bubble.center.dy),
+    );
+    for (var step = 0; step < 8; step++) {
+      await gesture.moveBy(const Offset(-20, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(replyIcon, findsOneWidget);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(replied()?.id, 78);
+  });
+
+  testWidgets('a swipe that starts on the avatar still replies', (
+    tester,
+  ) async {
+    final replied = await pumpBubble(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PhotoAvatar).first),
+    );
+    for (var step = 0; step < 8; step++) {
+      await gesture.moveBy(const Offset(-20, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(replied()?.id, 78);
+  });
+
+  testWidgets('a vertical drag on the row scrolls the transcript', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final theme = ThemeController(preferences);
+    addTearDown(theme.dispose);
+    final scrollController = ScrollController();
+    addTearDown(scrollController.dispose);
+    ChatMessage? replied;
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          theme: ThemeData(
+            platform: TargetPlatform.android,
+            extensions: [AppColors.light],
+          ),
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: ListView(
+              controller: scrollController,
+              children: [
+                MessageBubble(
+                  message: ChatMessage(
+                    id: 78,
+                    isOutgoing: false,
+                    text: 'Swipe me',
+                    date: 1785862260,
+                  ),
+                  peerTitle: 'Test',
+                  isGroup: false,
+                  onReply: (message) => replied = message,
+                ),
+                const SizedBox(height: 1200),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(scrollController.offset, 0);
+
+    final gesture = await tester.startGesture(tester.getCenter(bubbleText));
+    for (var step = 0; step < 8; step++) {
+      await gesture.moveBy(const Offset(0, -30));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(scrollController.offset, greaterThan(0));
+    expect(replied, isNull);
     expect(replyIcon, findsNothing);
   });
 

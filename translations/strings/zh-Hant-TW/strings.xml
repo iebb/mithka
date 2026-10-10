@@ -2450,6 +2450,8 @@
     <string name="profileDetailBirthday">生日</string>
     <string name="profileDetailBusinessHours">營業時間</string>
     <string name="profileDetailCardLinkCopied">已複製名片連結</string>
+    <string name="profileDetailCopied">已複製</string>
+    <string name="profileDetailCopyFailed">複製失敗</string>
     <string name="profileDetailCopyLink">複製連結</string>
     <string name="profileDetailFeaturedPhotos">精選照片</string>
     <string name="profileDetailGifts">禮物</string>
@@ -2458,6 +2460,7 @@
     <string name="profileDetailMonthDayDate">{value1}月{value2}日</string>
     <string name="profileDetailMusic">音樂</string>
     <string name="profileDetailPosts">動態</string>
+    <string name="profileDetailRegistrationAroundValue1">約 {value1}</string>
     <string name="profileDetailSendMessage">傳送訊息</string>
     <string name="profileDetailYearMonthDate">{value1}年{value2}</string>
     <string name="profileLogOutAccount">登出帳號</string>
@@ -2525,6 +2528,10 @@
     <string name="proxyPort">連接埠</string>
     <string name="proxySecret">密鑰</string>
     <string name="proxyServer">伺服器</string>
+    <string name="proxyStatusConnected">已連線</string>
+    <string name="proxyStatusConnecting">連線中</string>
+    <string name="proxyStatusOff">未啟用</string>
+    <string name="proxyStatusUnreachable">無網路</string>
     <string name="proxyTitle">代理</string>
     <string name="publicDiscoveryBotsSection">機器人</string>
     <string name="publicDiscoveryDiscover">發現</string>

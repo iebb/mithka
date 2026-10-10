@@ -145,6 +145,60 @@ class _CommunityStackedAvatar extends StatelessWidget {
   }
 }
 
+/// Corner marker on a chat row whose chat belongs to a community. Tapping it
+/// opens the community hub instead of the chat, which is the only route into
+/// the hub while the community is shown as separate chats.
+class CommunityAvatarBadge extends StatelessWidget {
+  const CommunityAvatarBadge({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  /// Extra tap room, added towards the avatar's centre. The plate alone is too
+  /// small for a fingertip, and slop hanging off the avatar would fall outside
+  /// the row's avatar stack and land on the row's own tap instead.
+  static const double hitSlop = 7;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = AppMetric.communityBadgeSize();
+    return Semantics(
+      button: true,
+      label: AppStrings.t(AppStringKeys.communityTitle),
+      child: GestureDetector(
+        key: const ValueKey('community-avatar-badge'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: size + hitSlop,
+          height: size + hitSlop,
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: Container(
+              key: const ValueKey('community-avatar-badge-plate'),
+              width: size,
+              height: size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.brand,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white,
+                  width: AppMetric.badgeOutlinePadding,
+                ),
+              ),
+              child: AppIcon(
+                HeroAppIcons.objectGroup,
+                size: size * 0.62,
+                color: AppTheme.onBrand,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class CommunityView extends StatefulWidget {
   const CommunityView({
     super.key,

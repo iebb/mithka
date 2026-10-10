@@ -4,7 +4,7 @@
 //  One conversation message, reference-styled. Plain rounded bubbles (no tail).
 //  Renders text (with highlighted links), inline images (tap → full-screen
 //  viewer), stickers (.tgs Lottie), voice notes, location cards, and document
-//  cards. Shows a "+1" quick-repeat badge for a duplicate tail. Swipe a bubble
+//  cards. Shows a "+1" quick-repeat badge for a duplicate tail. Swipe the row
 //  left to reply. Port of the Swift `MessageBubble`.
 //
 
@@ -54,6 +54,7 @@ import 'media_spoiler.dart';
 import 'message_action_menu.dart';
 import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
+import 'message_swipe_reply.dart';
 import 'mobile_message_text_selection.dart';
 import 'music_player_controller.dart';
 import 'sensitive_content_reveal_prompt.dart';
@@ -207,9 +208,6 @@ class MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<MessageBubble>
     with SingleTickerProviderStateMixin {
-  static const double _replyTrigger = 48;
-  static const double _replyRestingLimit = 72;
-  static const double _replyHardLimit = 104;
   static const double _bubbleMaxWidthFraction = 0.75;
   static const double _desktopBubbleMaxWidth = 720;
 
@@ -217,7 +215,7 @@ class _MessageBubbleState extends State<MessageBubble>
   final GlobalKey _bubbleKey = GlobalKey();
   final GlobalKey<SelectionAreaState> _desktopSelectionAreaKey = GlobalKey();
   final List<TapGestureRecognizer> _linkRecognizers = [];
-  late final AnimationController _swipeController;
+  late final MessageSwipeReplyController _swipe;
   bool _stickerReady = false;
   bool _videoStickerReady = false;
   bool _musicPressed = false;
@@ -358,9 +356,9 @@ class _MessageBubbleState extends State<MessageBubble>
         return;
       }
       _desktopTouchHorizontal = true;
-      _swipeController.stop();
+      _swipe.beginDrag();
     }
-    _swipeController.value = _rubberBandSwipe(math.min(0, travel.dx));
+    _swipe.dragTo(math.min(0, travel.dx));
     _clearDesktopTouchSelection();
   }
 
@@ -386,7 +384,7 @@ class _MessageBubbleState extends State<MessageBubble>
     _desktopTouchVelocity?.addPosition(event.timeStamp, event.position);
     if (_desktopTouchHorizontal) {
       final velocity = _desktopTouchVelocity?.getVelocity().pixelsPerSecond.dx;
-      _finishReplyDrag(primaryVelocity: velocity);
+      _swipe.finish(onReply: _replyToThisMessage, primaryVelocity: velocity);
     }
     if (_desktopTouchHorizontal || _desktopTouchLongPressTriggered) {
       _clearDesktopTouchSelection();
@@ -444,7 +442,7 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   void _cancelDesktopTouchGesture() {
-    if (_desktopTouchHorizontal) _cancelReplyDrag();
+    if (_desktopTouchHorizontal) _swipe.cancel();
     _resetDesktopTouchGesture();
   }
 
@@ -821,7 +819,7 @@ class _MessageBubbleState extends State<MessageBubble>
   void initState() {
     super.initState();
     _sensitiveContentController.addListener(_handleSensitiveContentChange);
-    _swipeController = AnimationController.unbounded(vsync: this);
+    _swipe = MessageSwipeReplyController(vsync: this);
   }
 
   @override
@@ -843,7 +841,7 @@ class _MessageBubbleState extends State<MessageBubble>
   void dispose() {
     _desktopTouchLongPressTimer?.cancel();
     _sensitiveContentController.removeListener(_handleSensitiveContentChange);
-    _swipeController.dispose();
+    _swipe.dispose();
     _hoveringTimestamp.dispose();
     _voice.dispose();
     for (final r in _linkRecognizers) {
@@ -859,92 +857,28 @@ class _MessageBubbleState extends State<MessageBubble>
     final outgoing = widget.meId != null
         ? message.senderId == widget.meId
         : message.isOutgoing;
+    final mobileSelectionArmed = widget.mobileTextSelectionAreaKey != null;
     return LayoutBuilder(
       builder: (context, constraints) {
         _layoutWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        // The swipe offset only moves this Stack, so it drives an
-        // AnimatedBuilder instead of setState: every drag update and every
-        // frame of the settle animation used to rebuild the whole bubble —
-        // spans, recognizers, colour chains and all — to shift it sideways.
-        return AnimatedBuilder(
-          animation: _swipeController,
+        // The swipe claims the whole row rather than the bubble, so the drag
+        // can start on the empty space beside a short bubble or on the avatar.
+        // A desktop mouse drag selects text instead, and the desktop touch path
+        // drives the same controller from raw pointers.
+        return buildMessageSwipeReply(
+          context: context,
+          controller: _swipe,
+          swipeEnabled: !mobileSelectionArmed,
+          onReply: widget.onReply == null ? null : _replyToThisMessage,
           child: _row(outgoing),
-          builder: (context, child) {
-            final swipeX = _swipeController.value;
-            return Stack(
-              alignment: Alignment.centerRight,
-              clipBehavior: Clip.none,
-              children: [
-                // Every mounted bubble paid for this icon — an Icon is a glyph
-                // layout, and at rest it is invisible behind opacity 0. Swap in
-                // a const placeholder until a swipe actually starts. The child
-                // count stays the same so the sibling below keeps its element.
-                if (swipeX == 0)
-                  const SizedBox.shrink()
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Opacity(
-                      opacity: (math.min(
-                        1,
-                        math.max(0, -swipeX) / 50,
-                      )).toDouble(),
-                      child: AppIcon(
-                        HeroAppIcons.reply,
-                        size: 18,
-                        color: AppTheme.brand,
-                      ),
-                    ),
-                  ),
-                Transform.translate(offset: Offset(swipeX, 0), child: child),
-              ],
-            );
-          },
         );
       },
     );
   }
 
-  double _rubberBandSwipe(double value) {
-    if (value >= -_replyRestingLimit) {
-      return value.clamp(-_replyHardLimit, 0).toDouble();
-    }
-    final extra = -value - _replyRestingLimit;
-    final damped = _replyRestingLimit + extra * 0.34;
-    return -damped.clamp(0, _replyHardLimit).toDouble();
-  }
-
-  void _onDragUpdate(DragUpdateDetails d) {
-    _swipeController.stop();
-    final next = _rubberBandSwipe(_swipeController.value + d.delta.dx);
-    _swipeController.value = next;
-  }
-
-  void _onDragEnd(DragEndDetails d) {
-    _finishReplyDrag(primaryVelocity: d.primaryVelocity);
-  }
-
-  void _finishReplyDrag({double? primaryVelocity}) {
-    if (_swipeController.value < -_replyTrigger ||
-        primaryVelocity != null && primaryVelocity < -650) {
-      widget.onReply?.call(message);
-    }
-    _swipeController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 190),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  void _cancelReplyDrag() {
-    _swipeController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 190),
-      curve: Curves.easeOutCubic,
-    );
-  }
+  void _replyToThisMessage() => widget.onReply?.call(message);
 
   bool _supportsDesktopTouchGestures(TargetPlatform platform) =>
       platform == TargetPlatform.windows || platform == TargetPlatform.linux;
@@ -958,7 +892,6 @@ class _MessageBubbleState extends State<MessageBubble>
     final platform = Theme.of(context).platform;
     final desktopInteraction = isDesktopTargetPlatform(platform);
     final desktopTouchInteraction = _supportsDesktopTouchGestures(platform);
-    final mobileSelectionArmed = widget.mobileTextSelectionAreaKey != null;
     final contentBody = _contentBody(outgoing);
     final body = GestureDetector(
       key: _bubbleKey,
@@ -969,15 +902,6 @@ class _MessageBubbleState extends State<MessageBubble>
           ? _handleLongPress
           : null,
       onSecondaryTapUp: desktopInteraction ? null : _handleSecondaryTapUp,
-      onHorizontalDragStart: desktopInteraction || mobileSelectionArmed
-          ? null
-          : (_) => _swipeController.stop(),
-      onHorizontalDragUpdate: desktopInteraction || mobileSelectionArmed
-          ? null
-          : _onDragUpdate,
-      onHorizontalDragEnd: desktopInteraction || mobileSelectionArmed
-          ? null
-          : _onDragEnd,
       child: KeyedSubtree(
         key: ValueKey('messageTapTarget-${message.id}'),
         child: desktopInteraction

@@ -23,12 +23,12 @@ class CommunitySummary {
     required this.isAdministrator,
     required this.canEditChatList,
     this.photo,
-    this.collapsed = true,
+    this.collapsed = false,
   });
 
   factory CommunitySummary.fromTd(
     Map<String, dynamic> object, {
-    bool collapsed = true,
+    bool collapsed = false,
   }) {
     final status = object.obj('status');
     final isCreator = status?.type == 'communityMemberStatusCreator';
@@ -67,6 +67,31 @@ class CommunitySummary {
     isAdministrator = other.isAdministrator;
     canEditChatList = other.canEditChatList;
     photo = other.photo;
+  }
+}
+
+/// Decides which community, if any, a chat row advertises on its avatar corner.
+///
+/// That marker is the only route into a hub once the community's chats are
+/// listed separately, so it disappears exactly where it would promise nothing:
+/// with communities switched off, for a chat in no community, for a folded
+/// community (its own row is the entry point then) and for one the account
+/// cannot open.
+abstract final class CommunityRowBadge {
+  static CommunitySummary? communityFor({
+    required int chatId,
+    required Map<int, int> communityByChat,
+    required Map<int, CommunitySummary> communities,
+    required bool communitiesEnabled,
+  }) {
+    if (!communitiesEnabled) return null;
+    final communityId = communityByChat[chatId];
+    if (communityId == null) return null;
+    final community = communities[communityId];
+    if (community == null || community.collapsed || !community.haveAccess) {
+      return null;
+    }
+    return community;
   }
 }
 

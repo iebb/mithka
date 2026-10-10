@@ -573,6 +573,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _wasEditingMessage = false;
   int? _syncedEditingMessageId;
   int _syncedComposerRevision = -1;
+  int _syncedComposerFocusTick = 0;
   _Panel _panel = _Panel.none;
   String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
   int? _stickerPack; // active sticker pack id
@@ -698,6 +699,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         );
     _wasEditingMessage = vm.editingMessage != null;
     _syncedEditingMessageId = vm.editingMessage?.id;
+    _syncedComposerFocusTick = vm.composerFocusTick;
     _controller.setFormattedText(
       vm.composerFormattedDraft,
       vm.composerDraftEntities,
@@ -1112,6 +1114,11 @@ class _ChatInputBarState extends State<ChatInputBar>
     final revision = vm.composerRevision;
     final revisionChanged = revision != _syncedComposerRevision;
     _syncedComposerRevision = revision;
+    final focusTick = vm.composerFocusTick;
+    if (focusTick != _syncedComposerFocusTick) {
+      _syncedComposerFocusTick = focusTick;
+      _focusComposerForTranscriptReply();
+    }
     final hadText = _hasText;
     final previousVmState = _syncedVmState;
     _syncedVmState = _renderedVmState;
@@ -1210,6 +1217,19 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
+  /// Raises the caret for a reply target picked on the transcript. Skipped
+  /// where nothing can be sent: a keyboard over a composer that cannot speak
+  /// only hides the conversation.
+  void _focusComposerForTranscriptReply() {
+    final owner = vm;
+    if (!mounted || !owner.canSendMessages) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(vm, owner) && owner.canSendMessages) {
+        _focus.requestFocus();
+      }
+    });
+  }
+
   void _requestInitialFocusIfReady() {
     if (_initialFocusRequestConsumed ||
         !widget.requestInitialFocus ||
@@ -1246,6 +1266,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   void didUpdateWidget(ChatInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
+      _syncedComposerFocusTick = widget.vm.composerFocusTick;
       _cancelVoiceRecording();
       _discardDesktopVoiceDraft();
       if (_panel == _Panel.voice) _panel = _Panel.none;

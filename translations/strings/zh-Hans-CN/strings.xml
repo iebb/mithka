@@ -2450,6 +2450,8 @@
     <string name="profileDetailBirthday">生日</string>
     <string name="profileDetailBusinessHours">营业时间</string>
     <string name="profileDetailCardLinkCopied">已复制名片链接</string>
+    <string name="profileDetailCopied">已复制</string>
+    <string name="profileDetailCopyFailed">复制失败</string>
     <string name="profileDetailCopyLink">复制链接</string>
     <string name="profileDetailFeaturedPhotos">精选照片</string>
     <string name="profileDetailGifts">礼物</string>
@@ -2458,6 +2460,7 @@
     <string name="profileDetailMonthDayDate">{value1}月{value2}日</string>
     <string name="profileDetailMusic">音乐</string>
     <string name="profileDetailPosts">动态</string>
+    <string name="profileDetailRegistrationAroundValue1">约 {value1}</string>
     <string name="profileDetailSendMessage">发消息</string>
     <string name="profileDetailYearMonthDate">{value1}年{value2}</string>
     <string name="profileLogOutAccount">退出账号</string>
@@ -2525,6 +2528,10 @@
     <string name="proxyPort">端口</string>
     <string name="proxySecret">密钥</string>
     <string name="proxyServer">服务器</string>
+    <string name="proxyStatusConnected">已连接</string>
+    <string name="proxyStatusConnecting">连接中</string>
+    <string name="proxyStatusOff">未启用</string>
+    <string name="proxyStatusUnreachable">无网络</string>
     <string name="proxyTitle">代理</string>
     <string name="publicDiscoveryBotsSection">机器人</string>
     <string name="publicDiscoveryDiscover">发现</string>

@@ -45,7 +45,7 @@ void main() {
       expect(community.haveAccess, isTrue);
       expect(community.isAdministrator, isTrue);
       expect(community.canEditChatList, isTrue);
-      expect(community.collapsed, isTrue);
+      expect(community.collapsed, isFalse);
     });
 
     test('collapses linked chats at the first chat position', () {
@@ -63,6 +63,7 @@ void main() {
         haveAccess: true,
         isAdministrator: false,
         canEditChatList: true,
+        collapsed: true,
       );
 
       final entries = CommunityChatListProjection.build(
@@ -89,7 +90,6 @@ void main() {
         haveAccess: true,
         isAdministrator: false,
         canEditChatList: false,
-        collapsed: false,
       );
 
       final entries = CommunityChatListProjection.build(
@@ -100,6 +100,39 @@ void main() {
 
       expect(entries, everyElement(isA<CommunityChatEntry>()));
       expect(entries, hasLength(2));
+    });
+
+    test('separate chats keep a corner route into the hub', () {
+      final community = CommunitySummary.fromTd({
+        '@type': 'community',
+        'id': '42',
+        'name': 'Formula Paddock',
+        'have_access': true,
+      });
+      expect(community.collapsed, isFalse);
+      const communityByChat = {1: 42};
+      final communities = {42: community};
+      CommunitySummary? badgeFor(int chatId, {bool enabled = true}) =>
+          CommunityRowBadge.communityFor(
+            chatId: chatId,
+            communityByChat: communityByChat,
+            communities: communities,
+            communitiesEnabled: enabled,
+          );
+
+      expect(badgeFor(1), same(community));
+      expect(badgeFor(2), isNull);
+      expect(badgeFor(1, enabled: false), isNull);
+
+      // Folded, the community owns the chat-list row and its member chats are
+      // not rendered on their own.
+      community.collapsed = true;
+      expect(badgeFor(1), isNull);
+      community.collapsed = false;
+
+      // Without access the hub is not openable at all.
+      community.haveAccess = false;
+      expect(badgeFor(1), isNull);
     });
 
     test('global disable keeps every community chat as a normal row', () {
@@ -470,12 +503,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('community-header-menu')));
       await tester.pumpAndSettle();
       expect(find.text('Show as One Chat'), findsOneWidget);
-      expect(find.byIcon(HeroAppIcons.check.data), findsOneWidget);
+      // Separate chats is the shipping default, so the row starts unchecked.
+      expect(find.byIcon(HeroAppIcons.check.data), findsNothing);
 
       await tester.tap(find.text('Show as One Chat'));
       await tester.pumpAndSettle();
 
-      expect(collapsed, isFalse);
+      expect(collapsed, isTrue);
     });
 
     testWidgets('feature settings exposes the global community switch', (

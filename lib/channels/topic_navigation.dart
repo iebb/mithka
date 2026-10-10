@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:provider/provider.dart';
 
 import '../app/adaptive_split_layout.dart';
 import '../chat/custom_emoji.dart';
@@ -7,7 +6,6 @@ import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/theme_controller.dart';
 
 class TopicNavigationItem {
   const TopicNavigationItem({
@@ -171,28 +169,11 @@ class _TopicNavigation extends StatelessWidget {
                     ),
                     if (topic != null && topic.unreadCount > 0) ...[
                       const SizedBox(width: 6),
-                      // The horizontal strip is too tight for the pill badge,
-                      // so there the count rides inline in the badge color;
-                      // the vertical rail has room for the real pill.
-                      if (vertical)
-                        UnreadBadge(
-                          key: ValueKey('topic-navigation-unread-${topic.id}'),
-                          count: topic.unreadCount,
-                          muted: topic.isMuted,
-                        )
-                      else
-                        Text(
-                          context
-                              .watch<ThemeController>()
-                              .unreadBadgeOverflowMode
-                              .format(topic.unreadCount),
-                          style: AppTextStyle.caption(
-                            topic.isMuted
-                                ? c.textTertiary
-                                : AppTheme.unreadBadge,
-                            weight: AppTextWeight.semibold,
-                          ),
-                        ),
+                      UnreadBadge(
+                        key: ValueKey('topic-navigation-unread-${topic.id}'),
+                        count: topic.unreadCount,
+                        muted: topic.isMuted,
+                      ),
                     ],
                   ],
                 ),

@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Regenerates the account-age anchor table from the pinned UserID dataset.
+
+    python3 tool/gen_registration_anchors.py            # from data/tg_points.json
+    python3 tool/gen_registration_anchors.py --check    # CI: fail if stale
+    python3 tool/gen_registration_anchors.py --refresh  # re-download the pin
+
+Telegram hands out user IDs roughly in creation order, so a table of
+`(user ID, known creation date)` anchors plus linear interpolation gives a
+month-accurate account age without asking any third party which profiles the
+user is looking at.
+
+The source is the MIT-licensed reference dataset maintained by
+WizardLoop/CreationDate (`data/tg_points.json`, `[[userId, "YYYY-MM-DD"], ...]`),
+vendored at a pinned revision and checked in next to this script so the shipped
+table can always be rebuilt from what the repository contains. `--refresh`
+re-downloads exactly that revision; it never floats to the upstream default
+branch, because a table whose input can change silently is not reproducible.
+
+Two properties of the input shape the output:
+
+* Submitted anchors are noisy — a larger ID can carry an earlier date, and the
+  pinned revision has 84 such inversions out of 211 adjacent pairs — so the
+  script runs an isotonic regression (PAVA) over them before emitting the
+  table. That keeps the shipped curve monotone: two profiles can never disagree
+  about which account is older purely because of anchor noise.
+* The dataset covers private user accounts and excludes bots, so the table is
+  only ever an interpolation *inside* the fitted ID range. Nothing extrapolates
+  past the newest anchor, and the estimator says so by returning no answer
+  there rather than a bound it cannot support.
+
+Writes `lib/profile/registration_date_anchors.dart`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+import urllib.request
+from datetime import date, timedelta
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "lib" / "profile" / "registration_date_anchors.dart"
+DATASET = ROOT / "data" / "tg_points.json"
+
+# The dataset revision this table is built from: the upstream commit that last
+# changed data/tg_points.json. Pinned on purpose — see --refresh.
+DATASET_OWNER = "WizardLoop/CreationDate"
+DATASET_REVISION = "f37728802d3607307c65c16750a8e5efc33aa4cd"
+DATASET_URL = (
+    "https://raw.githubusercontent.com"
+    f"/{DATASET_OWNER}/{DATASET_REVISION}/data/tg_points.json"
+)
+EPOCH = date(1970, 1, 1)
+
+
+def load_payload(raw: bytes) -> list[list[object]]:
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("dataset must be a list of [userId, date] pairs")
+    return payload
+
+
+def read_anchors(payload: list[list[object]]) -> list[tuple[int, date]]:
+    anchors: dict[int, date] = {}
+    for entry in payload:
+        raw_id, raw_date = entry[0], entry[1]
+        user_id = int(raw_id)
+        if user_id < 0:
+            continue
+        day = date.fromisoformat(str(raw_date)[:10])
+        # A repeated ID keeps its earliest submission; a later one is noise.
+        if user_id not in anchors or day < anchors[user_id]:
+            anchors[user_id] = day
+    return sorted(anchors.items())
+
+
+def inversions(anchors: list[tuple[int, date]]) -> int:
+    """Adjacent pairs where a larger ID carries an earlier date."""
+    return sum(
+        1
+        for (_, earlier), (_, later) in zip(anchors, anchors[1:])
+        if later < earlier
+    )
+
+
+def isotonic(anchors: list[tuple[int, date]]) -> list[tuple[int, int]]:
+    """PAVA over days-since-epoch, then block edges as `(user ID, days)`."""
+    blocks: list[list[float]] = []  # value, weight, first index, last index
+    for index, (_, day) in enumerate(anchors):
+        value = float((day - EPOCH).days)
+        block = [value, 1.0, index, index]
+        while blocks and blocks[-1][0] > block[0]:
+            previous = blocks.pop()
+            weight = previous[1] + block[1]
+            block = [
+                (previous[0] * previous[1] + block[0] * block[1]) / weight,
+                weight,
+                previous[2],
+                block[3],
+            ]
+        blocks.append(block)
+
+    table: list[tuple[int, int]] = []
+    for value, _, first, last in blocks:
+        days = round(value)
+        for index in (first, last):
+            user_id = anchors[index][0]
+            if not table or table[-1] != (user_id, days):
+                table.append((user_id, days))
+    return table
+
+
+def dart_source(
+    table: list[tuple[int, int]],
+    digest: str,
+    points: int,
+    inverted: int,
+) -> str:
+    ids = "\n".join(f"  {user_id}," for user_id, _ in table)
+    days = "\n".join(f"  {value}," for _, value in table)
+    oldest = (EPOCH + timedelta(days=table[0][1])).isoformat()
+    newest = (EPOCH + timedelta(days=table[-1][1])).isoformat()
+    return f"""//
+//  registration_date_anchors.dart
+//
+//  Generated by tool/gen_registration_anchors.py — do not edit by hand.
+//
+//  Anchor points for account-age estimation: user IDs Telegram has already
+//  handed out paired with the day the account was created, as days since the
+//  Unix epoch. Both lists are sorted by user ID and the days never decrease,
+//  because an isotonic regression (PAVA) runs over the input first — submitted
+//  anchors are noisy enough ({inverted} of {points - 1} adjacent pairs invert)
+//  that a larger ID could otherwise carry an earlier date.
+//
+//  Provenance, so this table can be rebuilt and audited:
+//    dataset   {DATASET_OWNER} (MIT), data/tg_points.json vendored in-repo
+//    revision  {DATASET_REVISION}
+//    sha256    {digest}
+//    input     {points} submitted points -> {len(table)} anchors
+//    fitted    {oldest} .. {newest}
+//
+//  The upstream dataset records private user accounts and excludes bots, so
+//  this table only supports interpolation between its first and last anchor.
+//  Nothing here extrapolates, and callers must not read a bound into an ID
+//  outside the fitted range.
+//
+
+/// User IDs of the anchor accounts, ascending.
+const List<int> registrationAnchorUserIds = [
+{ids}
+];
+
+/// Creation day of each anchor, in days since 1970-01-01 (UTC).
+const List<int> registrationAnchorDaysSinceEpoch = [
+{days}
+];
+
+/// Upstream commit `data/tg_points.json` was taken from.
+const String registrationDatasetRevision =
+    '{DATASET_REVISION}';
+
+/// SHA-256 of the vendored `data/tg_points.json` this table was built from.
+///
+/// A test recomputes it from the checked-in file, so a dataset swapped without
+/// regenerating the table — or a table regenerated without shipping its input —
+/// fails instead of drifting.
+const String registrationDatasetSha256 =
+    '{digest}';
+"""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source",
+        default=str(DATASET),
+        help="dataset to read (default: the vendored data/tg_points.json)",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=f"re-download the pinned revision {DATASET_REVISION[:12]} first",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when the generated file would change",
+    )
+    args = parser.parse_args()
+
+    if args.refresh:
+        with urllib.request.urlopen(DATASET_URL, timeout=30) as response:
+            raw = response.read()
+        DATASET.parent.mkdir(parents=True, exist_ok=True)
+        DATASET.write_bytes(raw)
+        print(f"refreshed {DATASET.relative_to(ROOT)} from {DATASET_URL}")
+    else:
+        raw = Path(args.source).read_bytes()
+
+    digest = hashlib.sha256(raw).hexdigest()
+    payload = load_payload(raw)
+    anchors = read_anchors(payload)
+    if len(anchors) < 2:
+        print("source dataset has fewer than two anchors", file=sys.stderr)
+        return 1
+    table = isotonic(anchors)
+    rendered = dart_source(table, digest, len(anchors), inversions(anchors))
+
+    if args.check:
+        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if current != rendered:
+            print(
+                f"{OUTPUT.relative_to(ROOT)} is stale for {digest[:16]}…; "
+                "run tool/gen_registration_anchors.py",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+
+    OUTPUT.write_text(rendered, encoding="utf-8")
+    newest = (EPOCH + timedelta(days=table[-1][1])).isoformat()
+    print(
+        f"wrote {OUTPUT.relative_to(ROOT)}: {len(table)} anchors "
+        f"from {len(anchors)} submitted points, newest {newest}, "
+        f"sha256 {digest[:16]}…"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

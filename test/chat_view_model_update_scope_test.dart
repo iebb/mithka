@@ -359,4 +359,56 @@ void main() {
       isTrue,
     );
   });
+
+  test('a transcript on its way out ignores the sync its own exit requests', () {
+    final vm = ChatViewModel(
+      chatId: _chatId,
+      title: 'Test',
+      markReadOnOpen: false,
+    );
+    addTearDown(vm.dispose);
+    final previousFullViewRevision = vm.fullViewRevision;
+
+    expect(
+      chatViewSyncsModelNotification(
+        viewTickerEnabled: true,
+        exitStatePrepared: false,
+      ),
+      isTrue,
+    );
+
+    // Marking the conversation read on the way out emits this local update, so
+    // it arrives while the route is still animating and the transcript is still
+    // mounted.
+    vm.applyLiveUpdateForTesting({
+      '@type': 'updateChatReadInbox',
+      'chat_id': _chatId,
+      'last_read_inbox_message_id': 7,
+      'unread_count': 0,
+    });
+
+    expect(
+      chatViewRequiresFullSync(
+        previousRevision: previousFullViewRevision,
+        nextRevision: vm.fullViewRevision,
+      ),
+      isTrue,
+    );
+    expect(
+      chatViewSyncsModelNotification(
+        viewTickerEnabled: true,
+        exitStatePrepared: true,
+      ),
+      isFalse,
+    );
+    // A covered transcript defers instead, so it still owes the sync once the
+    // surface above it is gone.
+    expect(
+      chatViewSyncsModelNotification(
+        viewTickerEnabled: false,
+        exitStatePrepared: false,
+      ),
+      isFalse,
+    );
+  });
 }

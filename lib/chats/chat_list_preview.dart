@@ -118,8 +118,7 @@ Future<void> showChatListPreview(
       actions: actions,
       meName: meName,
       mePhoto: mePhoto,
-      loadMessages:
-          loadMessages ?? () => loadChatListPreviewMessages(chat: chat),
+      loadMessages: loadMessages,
     ),
     transitionBuilder: (dialogContext, animation, _, child) {
       if (reduceMotion) return child;
@@ -152,31 +151,187 @@ Future<void> showChatListPreview(
   selected.onSelected();
 }
 
+/// TDLib chooses how many messages every `getChatHistory` page carries, so the
+/// newest page can hold a single message even in a busy chat. Paging stops once
+/// the slice is filled, the history is exhausted, or this many pages arrive.
+const int _maxPreviewHistoryPages = 5;
+
+/// The concrete TDLib client a preview load is pinned to.
+///
+/// Chat, message and user ids are account-scoped, so a load that outlives an
+/// account switch must not quietly continue against the replacement account.
+///
+/// Pinning is deliberately weaker than [TdClient.retainAccountSlot]. A peek is
+/// read-only and short: when its account goes away the load should die, and it
+/// must never hold that account's client open or defer its local-data deletion.
+abstract interface class ChatPreviewOwner {
+  int get clientId;
+
+  /// Query bound to [clientId]. It never resolves the foreground account.
+  ChatListPreviewQuery get query;
+
+  /// False once the user switched accounts, this slot's client was replaced or
+  /// closed, or shutdown started. Whatever was collected after that point
+  /// belongs to an account the preview no longer represents.
+  bool get isCurrent;
+}
+
+/// Supplies the owner a preview load runs against.
+abstract interface class ChatPreviewAccounts {
+  /// Null when nothing can be pinned: nothing logged in, shutdown already
+  /// running, or a client replaced between the reads.
+  ChatPreviewOwner? pinActiveOwner();
+}
+
+final class _TdChatPreviewOwner implements ChatPreviewOwner {
+  _TdChatPreviewOwner(this._client, this._slot, this._clientId);
+
+  final TdClient _client;
+  final int _slot;
+  final int _clientId;
+
+  @override
+  int get clientId => _clientId;
+
+  @override
+  ChatListPreviewQuery get query =>
+      (request) => _client.queryTo(request, _clientId);
+
+  @override
+  bool get isCurrent =>
+      // Shutdown refuses queries before the slot and active-client mappings
+      // necessarily disappear, so the latch belongs to "still this account".
+      !_client.isShuttingDown &&
+      _client.clientId(_slot) == _clientId &&
+      _client.activeClientId == _clientId;
+}
+
+/// Production registry: pins the foreground account's concrete client the way
+/// the switcher reads each account's identity, without retaining anything.
+final class _TdChatPreviewAccounts implements ChatPreviewAccounts {
+  const _TdChatPreviewAccounts();
+
+  @override
+  ChatPreviewOwner? pinActiveOwner() {
+    final client = TdClient.shared;
+    if (client.isShuttingDown) return null;
+    final slot = client.activeSlot;
+    final clientId = client.activeClientId;
+    if (clientId == 0) return null;
+    // A session swap or a QR reset can replace the slot's client between those
+    // two reads; pinning that would page an account nobody peeked at.
+    if (client.clientId(slot) != clientId) return null;
+    return _TdChatPreviewOwner(client, slot, clientId);
+  }
+}
+
+const ChatPreviewAccounts _tdChatPreviewAccounts = _TdChatPreviewAccounts();
+
+/// The oldest message id in a `Messages` page, read from the raw payload so an
+/// unparseable entry still moves the boundary instead of stalling the loop.
+int _oldestRawMessageId(List<Map<String, dynamic>> rawMessages) {
+  var oldest = 0;
+  for (final raw in rawMessages) {
+    final id = raw.int64('id') ?? 0;
+    if (id <= 0) continue;
+    if (oldest == 0 || id < oldest) oldest = id;
+  }
+  return oldest;
+}
+
 /// Fetches and parses a bounded recent-history slice for the preview.
+///
+/// Every history page and every sender lookup runs against the account that was
+/// foreground when the peek started, and the result is dropped when that owner
+/// expires mid-flight or [cancelled] flips, so a switched-away account's rows
+/// never reach the preview.
+///
+/// The load owns no account resources. Dismissing the peek, logging out or
+/// deleting that account while a page is in flight needs no release handshake:
+/// the pinned client simply stops being current, and TDLib failing the stranded
+/// request reads as expiry too.
 ///
 /// This intentionally uses only read APIs. In particular, it never calls
 /// `openChat`, `viewMessages`, or `closeChat`, so peeking does not clear unread
 /// state or interfere with the active full-chat session.
 Future<List<ChatMessage>> loadChatListPreviewMessages({
   required ChatSummary chat,
-  ChatListPreviewQuery? query,
   int limit = 18,
+  ChatPreviewAccounts accounts = _tdChatPreviewAccounts,
+  bool Function()? cancelled,
 }) async {
-  final runQuery = query ?? TdClient.shared.query;
-  final response = await runQuery({
-    '@type': 'getChatHistory',
-    'chat_id': chat.id,
-    'from_message_id': 0,
-    'offset': 0,
-    'limit': limit.clamp(1, 24),
-    'only_local': false,
-  });
-  final messages =
-      (response.objects('messages') ?? const <Map<String, dynamic>>[])
-          .map(TDParse.message)
-          .whereType<ChatMessage>()
-          .toList()
-        ..sort((a, b) => a.id.compareTo(b.id));
+  final owner = accounts.pinActiveOwner();
+  // No owner, nothing to page. The surface keeps its chat-list fallback.
+  if (owner == null) return const [];
+  return _loadOwnedPreviewMessages(
+    chat: chat,
+    wanted: limit.clamp(1, 24),
+    owner: owner,
+    expired: () => cancelled?.call() == true || !owner.isCurrent,
+  );
+}
+
+Future<List<ChatMessage>> _loadOwnedPreviewMessages({
+  required ChatSummary chat,
+  required int wanted,
+  required ChatPreviewOwner owner,
+  required bool Function() expired,
+}) async {
+  final byId = <int, ChatMessage>{};
+  // `Messages` carries total_count and messages only — no cursor. getChatHistory
+  // pages backwards from an *inclusive* from_message_id at offset 0, so the
+  // oldest id already seen is the only supported boundary; 0 starts at the
+  // latest message.
+  var fromMessageId = 0;
+
+  for (
+    var page = 0;
+    page < _maxPreviewHistoryPages && byId.length < wanted;
+    page++
+  ) {
+    if (expired()) return const [];
+    final Map<String, dynamic> response;
+    try {
+      response = await owner.query({
+        '@type': 'getChatHistory',
+        'chat_id': chat.id,
+        'from_message_id': fromMessageId,
+        'offset': 0,
+        'limit': wanted,
+        'only_local': false,
+      });
+    } catch (_) {
+      // A closed or replaced client, and shutdown, land here. Everything
+      // fetched before that belongs to an owner the preview has lost.
+      if (expired()) return const [];
+      // Losing an older page only shortens the tail, so keep what arrived. A
+      // first-page failure still belongs to the caller: the surface then flags
+      // the chat-list fallback instead of passing it off as fetched history.
+      if (byId.isEmpty) rethrow;
+      break;
+    }
+    if (expired()) return const [];
+    final rawMessages =
+        response.objects('messages') ?? const <Map<String, dynamic>>[];
+    if (rawMessages.isEmpty) break;
+    for (final raw in rawMessages) {
+      final message = TDParse.message(raw);
+      if (message == null) continue;
+      byId.putIfAbsent(message.id, () => message);
+    }
+    final oldest = _oldestRawMessageId(rawMessages);
+    // An inclusive boundary repeats itself, so a page that reached nothing older
+    // than the cursor has hit the first message of the chat; re-asking from the
+    // same id would fetch the same page forever.
+    if (oldest <= 0) break;
+    if (fromMessageId != 0 && oldest >= fromMessageId) break;
+    fromMessageId = oldest;
+  }
+
+  final ordered = byId.values.toList()..sort((a, b) => a.id.compareTo(b.id));
+  final messages = ordered.length > wanted
+      ? ordered.sublist(ordered.length - wanted)
+      : ordered;
 
   for (final message in messages) {
     if (message.isOutgoing && !message.senderIsChat) {
@@ -186,13 +341,17 @@ Future<List<ChatMessage>> loadChatListPreviewMessages({
       message.senderPhoto = chat.photo;
     }
   }
-  await _hydratePreviewSenders(messages, query: runQuery);
+  await _hydratePreviewSenders(messages, owner: owner, expired: expired);
+  // Hydration is asynchronous too: an owner lost while names were in flight
+  // invalidates the slice exactly like a late history page does.
+  if (expired()) return const [];
   return messages;
 }
 
 Future<void> _hydratePreviewSenders(
   List<ChatMessage> messages, {
-  required ChatListPreviewQuery query,
+  required ChatPreviewOwner owner,
+  required bool Function() expired,
 }) async {
   final bySender = <(bool, int), List<ChatMessage>>{};
   for (final message in messages) {
@@ -209,13 +368,15 @@ Future<void> _hydratePreviewSenders(
 
   await Future.wait(
     bySender.entries.map((entry) async {
+      if (expired()) return;
       final (isChat, senderId) = entry.key;
       try {
-        final raw = await query(
+        final raw = await owner.query(
           isChat
               ? {'@type': 'getChat', 'chat_id': senderId}
               : {'@type': 'getUser', 'user_id': senderId},
         );
+        if (expired()) return;
         final name = isChat ? raw.str('title') ?? '' : TDParse.userName(raw);
         final photo = TDParse.smallPhoto(
           isChat ? raw.obj('photo') : raw.obj('profile_photo'),
@@ -243,14 +404,19 @@ class ChatListPreviewSurface extends StatefulWidget {
     super.key,
     required this.chat,
     required this.actions,
-    required this.loadMessages,
+    this.loadMessages,
+    this.accounts,
     this.meName,
     this.mePhoto,
   });
 
   final ChatSummary chat;
   final List<ChatListPreviewAction> actions;
-  final ChatListPreviewLoader loadMessages;
+
+  /// Null loads through [loadChatListPreviewMessages], pinned to the account
+  /// that is foreground when the peek starts and abandoned on dismissal.
+  final ChatListPreviewLoader? loadMessages;
+  final ChatPreviewAccounts? accounts;
   final String? meName;
   final TdFileRef? mePhoto;
 
@@ -258,11 +424,20 @@ class ChatListPreviewSurface extends StatefulWidget {
   State<ChatListPreviewSurface> createState() => _ChatListPreviewSurfaceState();
 }
 
-class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
+final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
   final ScrollController _scrollController = ScrollController();
   late List<ChatMessage> _messages;
   bool _loading = true;
   bool _failed = false;
+  bool _cancelled = false;
+
+  late final ChatListPreviewLoader _loadMessages =
+      widget.loadMessages ??
+      () => loadChatListPreviewMessages(
+        chat: widget.chat,
+        accounts: widget.accounts ?? _tdChatPreviewAccounts,
+        cancelled: () => _cancelled,
+      );
 
   @override
   void initState() {
@@ -273,7 +448,7 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
 
   Future<void> _load() async {
     try {
-      final loaded = await widget.loadMessages();
+      final loaded = await _loadMessages();
       if (!mounted) return;
       setState(() {
         if (loaded.isNotEmpty) _messages = loaded;
@@ -294,6 +469,10 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
 
   @override
   void dispose() {
+    // Dismissing the peek stops its paging. The load holds no account lease, so
+    // the pinned account stays free to close or delete while its last request
+    // is still outstanding.
+    _cancelled = true;
     _scrollController.dispose();
     super.dispose();
   }

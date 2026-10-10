@@ -466,6 +466,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   bool? _lastSystemPiPMuted;
   Rect? _lastSystemPiPSourceRect;
   FVideoActions? _reusablePlayerActions;
+
+  /// Control visibility for the loading chrome, which mithka owns until the
+  /// package player takes over. Reset whenever playback re-enters loading.
+  bool _loadingControlsVisible = true;
+  _LoadingVideoActions? _loadingActions;
   bool _debuggerVisible = false;
   bool _onDemandPanelVisible = false;
   final List<String> _debugEvents = <String>[];
@@ -1321,6 +1326,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       setState(() {
         _controller = null;
         _failed = false;
+        _loadingControlsVisible = true;
       });
     }
     _updateWakelock();
@@ -1387,7 +1393,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       _localPath = null;
       _retryFromPlaybackSnapshot =
           resumeOverride != null || playOverride != null;
-      setState(() => _failed = false);
+      setState(() {
+        _failed = false;
+        _loadingControlsVisible = true;
+      });
       await _load(resumeOverride: resumeOverride, playOverride: playOverride);
       if (_controller != null) _retryFromPlaybackSnapshot = false;
     } finally {
@@ -2205,7 +2214,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Widget _playbackSurface(VideoPlayerController? controller) {
     final player = controller == null
-        ? _loadingState()
+        ? _loadingSurface()
         : _reusablePlayer(controller);
     if (widget.presentation != VideoPlayerPresentation.fullscreen ||
         controller == null) {
@@ -4660,7 +4669,97 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     );
   }
 
-  Widget _loadingState() {
+  /// The player must look the same from the moment it opens, so the chrome is
+  /// drawn over the loading placeholder instead of appearing only once the
+  /// first frame decodes. Playback commands stay inert until the controller is
+  /// initialized; close, the menus and the display mode already work.
+  Widget _loadingSurface() {
+    if (widget.presentation != VideoPlayerPresentation.fullscreen || _failed) {
+      return _loadingState();
+    }
+    final scope = _loadingChromeScope();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _loadingPlaceholder(),
+        // The package player owns surface taps once it is mounted. Until then
+        // this layer keeps controls that were tapped away recoverable.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: () => _handleLoadingSurfaceTap(scope),
+          ),
+        ),
+        _playerChrome(context, scope),
+        _playerOverlay(context, scope),
+      ],
+    );
+  }
+
+  FVideoChromeScope _loadingChromeScope() => FVideoChromeScope(
+    snapshot: FVideoChromeSnapshot(
+      value: _loadingChromeValue(),
+      playbackState: FVideoPlaybackState.initializing,
+      displayPosition: _controller?.value.position ?? Duration.zero,
+      controlsVisible: _loadingControlsVisible,
+      isScrubbing: false,
+      bufferingIndicatorVisible: false,
+      isFullscreen: true,
+      volume: _volume,
+    ),
+    actions: _loadingActions ??= _LoadingVideoActions(
+      readControlsVisible: () => _loadingControlsVisible,
+      onControlsVisibilityChanged: _setLoadingControlsVisible,
+    ),
+    labels: _playerLabels,
+    previous: widget.previousVideo == null
+        ? null
+        : () => widget.onNavigate?.call(-1),
+    next: widget.nextVideo == null ? null : () => widget.onNavigate?.call(1),
+  );
+
+  /// Metadata-backed stand-in for the controller value, so the timeline, the
+  /// subtitle and the aspect ratio are already right while loading.
+  VideoPlayerValue _loadingChromeValue() {
+    final value = _controller?.value;
+    final width = widget.width;
+    final height = widget.height;
+    return VideoPlayerValue(
+      duration: value != null && value.duration > Duration.zero
+          ? value.duration
+          : Duration(seconds: widget.durationSeconds ?? 0),
+      size: width != null && height != null && width > 0 && height > 0
+          ? Size(width.toDouble(), height.toDouble())
+          : value?.size ?? Size.zero,
+      position: value?.position ?? Duration.zero,
+      volume: _volume,
+      playbackSpeed: _speed,
+    );
+  }
+
+  void _handleLoadingSurfaceTap(FVideoChromeScope scope) {
+    if (_moreMenuVisible || _modeMenuVisible) {
+      _dismissMenusAndControls(scope: scope);
+      return;
+    }
+    scope.actions.toggleControls();
+  }
+
+  void _setLoadingControlsVisible(bool visible) {
+    // A request that lands after the player went live belongs to the package
+    // player, not to the loading chrome that captured it.
+    if (!mounted ||
+        _loadingControlsVisible == visible ||
+        _controller?.value.isInitialized == true) {
+      return;
+    }
+    setState(() => _loadingControlsVisible = visible);
+  }
+
+  /// Loading artwork without chrome: the thumbnail or a dark box, plus the
+  /// spinner, or the retry action once playback failed.
+  Widget _loadingPlaceholder() {
     final aspect =
         widget.width != null &&
             widget.height != null &&
@@ -4700,6 +4799,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                 : const _VideoLoadingRing(size: 44),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _loadingState() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _loadingPlaceholder(),
         PositionedDirectional(
           top:
               MediaQuery.paddingOf(context).top +
@@ -5228,6 +5336,63 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Playback facade for the loading chrome.
+///
+/// Commands that need a decoded frame are inert until the package player takes
+/// over, while control visibility keeps working so the chrome behaves the same
+/// before and after the first frame.
+class _LoadingVideoActions implements FVideoActions {
+  _LoadingVideoActions({
+    required this.readControlsVisible,
+    required this.onControlsVisibilityChanged,
+  });
+
+  final bool Function() readControlsVisible;
+  final ValueChanged<bool> onControlsVisibilityChanged;
+
+  @override
+  void showControls() => onControlsVisibilityChanged(true);
+
+  @override
+  void hideControls() => onControlsVisibilityChanged(false);
+
+  @override
+  void toggleControls() => onControlsVisibilityChanged(!readControlsVisible());
+
+  @override
+  Future<void> togglePlayback() async {}
+
+  @override
+  Future<void> seekTo(Duration position) async {}
+
+  @override
+  Future<void> seekBy(Duration delta) async {}
+
+  @override
+  Future<void> setVolume(double volume) async {}
+
+  @override
+  Future<void> toggleMute() async {}
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) async {}
+
+  @override
+  void requestFullscreen(bool fullscreen) {}
+
+  @override
+  Future<void> requestPictureInPicture(bool pictureInPicture) async {}
+
+  @override
+  void beginScrub(double fraction) {}
+
+  @override
+  void updateScrub(double fraction) {}
+
+  @override
+  Future<void> endScrub(double fraction) async {}
 }
 
 /// Owned-icon action styling shared with detached-window chrome controls.
@@ -5829,6 +5994,11 @@ class _MithkaVideoCenterTransport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // While loading, the placeholder spinner owns the middle of the screen and
+    // transport buttons could not do anything yet.
+    if (scope.snapshot.playbackState == FVideoPlaybackState.initializing) {
+      return const SizedBox.shrink();
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -5874,6 +6044,9 @@ class _MithkaVideoCompactTransport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (scope.snapshot.playbackState == FVideoPlaybackState.initializing) {
+      return const SizedBox.shrink();
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

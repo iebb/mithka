@@ -2460,6 +2460,8 @@
     <string name="profileDetailBirthday">Geburtstag</string>
     <string name="profileDetailBusinessHours">Geschäftszeiten</string>
     <string name="profileDetailCardLinkCopied">Visitenkartenlink kopiert</string>
+    <string name="profileDetailCopied">Kopiert</string>
+    <string name="profileDetailCopyFailed">Kopieren fehlgeschlagen</string>
     <string name="profileDetailCopyLink">Link kopieren</string>
     <string name="profileDetailFeaturedPhotos">Ausgewählte Fotos</string>
     <string name="profileDetailGifts">Geschenke</string>
@@ -2468,6 +2470,7 @@
     <string name="profileDetailMonthDayDate">{value2}. {value1}</string>
     <string name="profileDetailMusic">Musik</string>
     <string name="profileDetailPosts">Beiträge</string>
+    <string name="profileDetailRegistrationAroundValue1">Etwa {value1}</string>
     <string name="profileDetailSendMessage">Nachricht senden</string>
     <string name="profileDetailYearMonthDate">{value1}, {value2}</string>
     <string name="profileLogOutAccount">Konto abmelden</string>
@@ -2535,6 +2538,10 @@
     <string name="proxyPort">Port</string>
     <string name="proxySecret">Geheimnis</string>
     <string name="proxyServer">Server</string>
+    <string name="proxyStatusConnected">Verbunden</string>
+    <string name="proxyStatusConnecting">Wird verbunden</string>
+    <string name="proxyStatusOff">Aus</string>
+    <string name="proxyStatusUnreachable">Kein Netzwerk</string>
     <string name="proxyTitle">Proxy</string>
     <string name="publicDiscoveryBotsSection">Bots</string>
     <string name="publicDiscoveryDiscover">Entdecken</string>

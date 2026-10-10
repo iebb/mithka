@@ -19,6 +19,7 @@ import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../channels/topic_channels_view.dart';
 import '../channels/topic_chat_view.dart';
+import '../channels/topic_list_host.dart';
 import '../chat/chat_info_view.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_picker_view.dart';
@@ -121,6 +122,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   // Held in a notifier so a divider drag moves two pane widths instead of
   // rebuilding the rail, the chat list and the conversation per pointer move.
   final _splitSidebarWidth = ValueNotifier<double?>(null);
+  late final TopicListHost _topicListHost = TopicListHost();
   bool _desktopListPaneVisible = true;
   bool? _wasUsingSplitSelection;
   DesktopHotkeyRegistration? _newChatHotkeyRegistration;
@@ -229,6 +231,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     _chatListController.dispose();
     _unread.dispose();
     _tabBar.dispose();
+    _topicListHost.dispose();
     _splitSidebarWidth.dispose();
     super.dispose();
   }
@@ -639,6 +642,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       providers: [
         ChangeNotifierProvider.value(value: _tabBar),
         ChangeNotifierProvider.value(value: _unread),
+        ChangeNotifierProvider.value(value: _topicListHost),
       ],
       // Material ancestor so the tab content (bare Containers) gets a proper
       // DefaultTextStyle instead of the debug red/yellow-underline fallback.
@@ -1091,20 +1095,32 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                             SizedBox(
                               key: const ValueKey('desktop-list-pane'),
                               width: geometry.sidebarWidth,
-                              child: sidebarPane,
+                              child: _sidebarWithTopicList(
+                                context,
+                                sidebarPane,
+                                overlayVisible: geometry.showListPane,
+                              ),
                             ),
                           SizedBox(
                             key: const ValueKey('desktop-conversation-pane'),
                             width:
                                 geometry.conversationWidth + contextPaneExtent,
-                            child: geometry.showListPane || hasDesktopDetail
-                                ? conversationPane(
-                                    showBackButton:
-                                        desktopDetailNeedsBackButton(geometry),
-                                    showInfoPane: geometry.showInfoPane,
-                                    canToggleInfoPane: canToggleInfoPane,
-                                  )
-                                : sidebarOnlyPane,
+                            child: TopicListPlacementScope(
+                              placement:
+                                  geometry.showListPane && activeTabIndex == 0
+                                  ? TopicListPlacement.sidebar
+                                  : TopicListPlacement.inline,
+                              child: geometry.showListPane || hasDesktopDetail
+                                  ? conversationPane(
+                                      showBackButton:
+                                          desktopDetailNeedsBackButton(
+                                            geometry,
+                                          ),
+                                      showInfoPane: geometry.showInfoPane,
+                                      canToggleInfoPane: canToggleInfoPane,
+                                    )
+                                  : sidebarOnlyPane,
+                            ),
                           ),
                         ],
                       ),
@@ -1140,6 +1156,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         2 => _selectedContactDetail != null,
         _ => _selectedMomentDetail != null,
       };
+
+  /// Telegram iOS paints a forum's topic list over the chat list column
+  /// instead of carving a rail out of the conversation pane.
+  Widget _sidebarWithTopicList(
+    BuildContext context,
+    Widget sidebar, {
+    required bool overlayVisible,
+  }) {
+    if (!overlayVisible) return sidebar;
+    final host = context.watch<TopicListHost>();
+    if (host.attachment == null || host.listHidden) return sidebar;
+    return Stack(
+      children: [
+        sidebar,
+        Positioned.fill(child: ForumTopicListPane(host: host)),
+      ],
+    );
+  }
 
   Widget _tabletSplitTabs(
     List<_MainTabItem> tabs,
@@ -1210,45 +1244,55 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                               child: OverflowBox(
                                 minWidth: sidebarWidth,
                                 maxWidth: sidebarWidth,
-                                child: BottomBarLayout(
-                                  overlay: theme.liquidGlassBottomBar,
-                                  body: _LazyTabStack(
-                                    selection: selection,
-                                    items: tabs,
-                                    builder: (tab) =>
-                                        _tabletSidebarRoot(tab.index),
-                                  ),
-                                  footer: AnimatedBuilder(
-                                    animation: _unread,
-                                    builder: (context, _) => _MainBottomBar(
-                                      chatListController: _chatListController,
+                                child: _sidebarWithTopicList(
+                                  context,
+                                  BottomBarLayout(
+                                    overlay: theme.liquidGlassBottomBar,
+                                    body: _LazyTabStack(
                                       selection: selection,
-                                      onSelect: _select,
                                       items: tabs,
-                                      onClearUnread:
-                                          _chatListController.markAllRead,
-                                      unread: _unread.countFor(
-                                        theme.unreadBadgeMode,
+                                      builder: (tab) =>
+                                          _tabletSidebarRoot(tab.index),
+                                    ),
+                                    footer: AnimatedBuilder(
+                                      animation: _unread,
+                                      builder: (context, _) => _MainBottomBar(
+                                        chatListController: _chatListController,
+                                        selection: selection,
+                                        onSelect: _select,
+                                        items: tabs,
+                                        onClearUnread:
+                                            _chatListController.markAllRead,
+                                        unread: _unread.countFor(
+                                          theme.unreadBadgeMode,
+                                        ),
                                       ),
                                     ),
                                   ),
+                                  overlayVisible: !compact,
                                 ),
                               ),
                             ),
                           ),
                           Expanded(
                             child: _musicAwareContent(
-                              _animatedTabletDetailPane(
-                                activeTabIndex,
-                                showMessageBackButton: compact,
-                                onMessageInfoPressed: canToggleInfoPane
-                                    ? () => _toggleContextPane(
-                                        selectedChatId,
-                                        shown: showInfoPane,
-                                      )
-                                    : null,
-                                messageTrailingPane: contextPane,
-                                messageTrailingPaneWidth: desktopInfoPaneWidth,
+                              TopicListPlacementScope(
+                                placement: compact || activeTabIndex != 0
+                                    ? TopicListPlacement.inline
+                                    : TopicListPlacement.sidebar,
+                                child: _animatedTabletDetailPane(
+                                  activeTabIndex,
+                                  showMessageBackButton: compact,
+                                  onMessageInfoPressed: canToggleInfoPane
+                                      ? () => _toggleContextPane(
+                                          selectedChatId,
+                                          shown: showInfoPane,
+                                        )
+                                      : null,
+                                  messageTrailingPane: contextPane,
+                                  messageTrailingPaneWidth:
+                                      desktopInfoPaneWidth,
+                                ),
                               ),
                             ),
                           ),

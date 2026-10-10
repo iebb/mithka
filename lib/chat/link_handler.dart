@@ -39,6 +39,7 @@ import '../settings/notification_settings_view.dart';
 import '../settings/privacy_detail_views.dart';
 import '../settings/privacy_security_view.dart';
 import '../settings/proxy_config.dart';
+import '../settings/proxy_status.dart';
 import '../settings/proxy_view.dart';
 import '../settings/settings_view.dart';
 import '../settings/storage_usage_view.dart';
@@ -600,6 +601,7 @@ Future<void> _addProxyFromLink(BuildContext context, ProxyConfig config) async {
   try {
     await TdClient.shared.applyProxyConfig(config);
     await ProxyConfig.save(config);
+    ProxyStatusController.shared.proxiesChanged();
   } catch (_) {
     if (context.mounted) {
       showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));

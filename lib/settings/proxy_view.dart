@@ -25,6 +25,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'proxy_config.dart';
+import 'proxy_status.dart';
 
 class ProxyView extends StatefulWidget {
   const ProxyView({super.key});
@@ -45,6 +46,10 @@ class _ProxyViewState extends State<ProxyView> {
   }
 
   Future<void> _load() async {
+    // Every mutation on this page lands here, and the sidebar shortcut reads
+    // the same list: tell it the ground moved instead of leaving it to notice
+    // on the next reconnect.
+    ProxyStatusController.shared.proxiesChanged();
     try {
       final res = await _client.query({'@type': 'getProxies'});
       final list = res.objects('proxies') ?? const <Map<String, dynamic>>[];
@@ -352,6 +357,9 @@ class _ProxyEditViewState extends State<ProxyEditView> {
         await TdClient.shared.applyProxyConfig(config);
         await ProxyConfig.save(config);
       }
+      // Opened straight from a settings link this page has no ProxyView above
+      // it to report the change, so the sidebar shortcut hears it here.
+      ProxyStatusController.shared.proxiesChanged();
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       debugPrint('🌐 [Mithka] add proxy failed: $error');

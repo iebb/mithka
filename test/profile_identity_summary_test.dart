@@ -11,10 +11,26 @@ void main() {
           userId: 12345,
         ),
         [
-          (kind: ProfileIdentityKind.phoneNumber, text: '+372 8198 1998'),
-          (kind: ProfileIdentityKind.telegramId, text: 'TG: 12345'),
-          (kind: ProfileIdentityKind.username, text: '@nekoko14'),
-          (kind: ProfileIdentityKind.username, text: '@collectible'),
+          (
+            kind: ProfileIdentityKind.phoneNumber,
+            text: '+372 8198 1998',
+            copyText: '+372 8198 1998',
+          ),
+          (
+            kind: ProfileIdentityKind.telegramId,
+            text: 'TG: 12345',
+            copyText: '12345',
+          ),
+          (
+            kind: ProfileIdentityKind.username,
+            text: '@nekoko14',
+            copyText: '@nekoko14',
+          ),
+          (
+            kind: ProfileIdentityKind.username,
+            text: '@collectible',
+            copyText: '@collectible',
+          ),
         ],
       );
     });
@@ -26,7 +42,13 @@ void main() {
           usernames: const [],
           userId: 12345,
         ),
-        [(kind: ProfileIdentityKind.telegramId, text: 'TG: 12345')],
+        [
+          (
+            kind: ProfileIdentityKind.telegramId,
+            text: 'TG: 12345',
+            copyText: '12345',
+          ),
+        ],
       );
     });
 
@@ -39,10 +61,42 @@ void main() {
           hidePhone: true,
         ),
         [
-          (kind: ProfileIdentityKind.telegramId, text: 'TG: 12345'),
-          (kind: ProfileIdentityKind.username, text: '@nekoko14'),
+          (
+            kind: ProfileIdentityKind.telegramId,
+            text: 'TG: 12345',
+            copyText: '12345',
+          ),
+          (
+            kind: ProfileIdentityKind.username,
+            text: '@nekoko14',
+            copyText: '@nekoko14',
+          ),
         ],
       );
+    });
+
+    test('copies the phone as a pastable number, not the grouped label', () {
+      final lines = fullProfileIdentityLines(
+        formattedPhone: '+372 8198 1998',
+        rawPhone: '37281981998',
+        usernames: const [],
+        userId: 12345,
+      );
+      expect(lines.first.text, '+372 8198 1998');
+      expect(lines.first.copyText, '+37281981998');
+    });
+  });
+
+  group('e164PhoneNumber', () {
+    test('keeps the digits and drops the grouping', () {
+      expect(e164PhoneNumber('372 8198-1998'), '+37281981998');
+      expect(e164PhoneNumber('+37281981998'), '+37281981998');
+    });
+
+    test('is null when there is nothing to paste', () {
+      expect(e164PhoneNumber(''), isNull);
+      expect(e164PhoneNumber('   '), isNull);
+      expect(e164PhoneNumber('no number'), isNull);
     });
   });
 }

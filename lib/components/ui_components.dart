@@ -549,27 +549,32 @@ class _UnreadBadgeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(
-        minWidth: AppMetric.unreadBadgeMin,
-        minHeight: AppMetric.unreadBadgeMin,
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: label.length > 1 ? AppSpacing.xs + 1 : 0,
-      ),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppMetric.unreadBadgeMin / 2),
-      ),
-      child: Text(
-        label,
-        style: AppTextStyle.caption(
-          // Telegram stores the counter's label colour alongside its fill
-          // (chats_unreadCounterText), so a theme can darken it for a pale
-          // badge instead of being stuck with white.
-          context.colors.badgeText,
-          weight: AppTextWeight.semibold,
+    // A fixed-height row (the topic rail) hands children a bounded cross
+    // extent, and the centering Align inside Container would stretch the
+    // pill into a vertical strip there. Unbounded input keeps it a dot.
+    return UnconstrainedBox(
+      child: Container(
+        constraints: const BoxConstraints(
+          minWidth: AppMetric.unreadBadgeMin,
+          minHeight: AppMetric.unreadBadgeMin,
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: label.length > 1 ? AppSpacing.xs + 1 : 0,
+        ),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(AppMetric.unreadBadgeMin / 2),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyle.caption(
+            // Telegram stores the counter's label colour alongside its fill
+            // (chats_unreadCounterText), so a theme can darken it for a pale
+            // badge instead of being stuck with white.
+            context.colors.badgeText,
+            weight: AppTextWeight.semibold,
+          ),
         ),
       ),
     );
@@ -632,7 +637,7 @@ class _UnreadBadgeMorphPainter extends CustomPainter {
       oldDelegate.broken != broken;
 }
 
-/// Group role tag: owner = yellow, admin = teal, member = purple, channel = pink.
+/// Group role tag: owner = yellow, admin = teal, member = slate, channel = pink.
 class RoleTag extends StatelessWidget {
   const RoleTag({
     super.key,
@@ -649,7 +654,7 @@ class RoleTag extends StatelessWidget {
   Color get _color => switch (role) {
     MemberRole.owner => const Color(0xFFFFB300),
     MemberRole.admin => const Color(0xFF16B0A0),
-    MemberRole.member => const Color(0xFF9B7BE8),
+    MemberRole.member => const Color(0xFF69727E),
     MemberRole.channel => const Color(0xFFE85D9E),
   };
 

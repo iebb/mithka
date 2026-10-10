@@ -319,6 +319,12 @@ abstract final class AppMetric {
   static const double badgeOutlinePadding = 1.5;
   static const double unreadBadgeMin = 18;
   static const double unreadDot = 11;
+
+  // The community marker sits on the avatar corner opposite the unread badge,
+  // but it carries a glyph instead of a count, so it needs a little more room
+  // to stay readable.
+  static double communityBadgeSize([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? 18 : 20;
   static const double settingsLeadingInset = AppSpacing.xxl;
   static const double settingsTrailingInset = AppSpacing.xl;
   static const double settingsIconDividerInset = 56;

@@ -98,6 +98,11 @@ class ChatListViewModel extends ChangeNotifier {
   Timer? _resortTimer;
   int _pendingResortSignals = 0;
 
+  /// Debounces the badge refresh that in-place summary updates need. Kept apart
+  /// from [_resortTimer] so a burst of them can never cancel a resort that
+  /// something else already owed the list.
+  Timer? _badgeTimer;
+
   List<ChatSummary> get chats => _chats;
   List<ChatSummary> get archived => _archived;
   List<ChatSummary> get filtered => _filtered;
@@ -105,7 +110,9 @@ class ChatListViewModel extends ChangeNotifier {
   /// The projection walks every chat in the account while the rest of a build
   /// is O(visible rows), and it is asked for from inside a LayoutBuilder. It can
   /// only change when the sort or the community grouping does, and both of those
-  /// run through `_scheduleResort`/`_resort`, which drop the cache.
+  /// run through `_scheduleResort`/`_resort`, which drop the cache. An update
+  /// that only repaints a row changes neither, so it keeps the cache and mutates
+  /// the summaries the cached entries already point at.
   List<CommunityChatListEntry>? _entriesCache;
   bool _entriesCacheCommunitiesEnabled = true;
 
@@ -283,6 +290,18 @@ class ChatListViewModel extends ChangeNotifier {
 
   int? communityForChat(int chatId) => _communityByChat[chatId];
 
+  /// The community a chat row links to from its avatar corner, or null when the
+  /// row stands on its own.
+  CommunitySummary? communityBadgeFor(
+    int chatId, {
+    required bool communitiesEnabled,
+  }) => CommunityRowBadge.communityFor(
+    chatId: chatId,
+    communityByChat: _communityByChat,
+    communities: _communities,
+    communitiesEnabled: communitiesEnabled,
+  );
+
   void setCommunityCollapsed(int communityId, bool collapsed) {
     final community = _communities[communityId];
     if (community == null || community.collapsed == collapsed) return;
@@ -313,6 +332,8 @@ class ChatListViewModel extends ChangeNotifier {
     _sub = null;
     _resortTimer?.cancel();
     _resortTimer = null;
+    _badgeTimer?.cancel();
+    _badgeTimer = null;
     super.dispose();
   }
 
@@ -680,7 +701,7 @@ class ChatListViewModel extends ChangeNotifier {
     final newValue = !chat.isMuted;
     final id = chat.id;
     _mutate(id, (summary) => summary.isMuted = newValue);
-    _resort();
+    _refreshBadges();
 
     _client
         .query({
@@ -697,12 +718,18 @@ class ChatListViewModel extends ChangeNotifier {
               newValue ? AppStringKeys.callMute : AppStringKeys.chatUnmute,
             ),
           });
-          _resort();
+          _refreshBadges();
           return <String, dynamic>{};
         });
   }
 
-  void markRead(ChatSummary chat) {
+  void markRead(ChatSummary chat) => _markRead(chat, refresh: true);
+
+  /// Clears one chat's read state. Read state is not a sort key, so this owes
+  /// the list [_refreshBadges] and nothing else. [refresh] lets
+  /// [markChatsRead] pay for one refresh over the whole batch instead of one per
+  /// chat.
+  void _markRead(ChatSummary chat, {required bool refresh}) {
     if (chat.unreadCount <= 0 && !chat.isMarkedUnread) return;
     final previousUnread = chat.unreadCount;
     final previousMarked = chat.isMarkedUnread;
@@ -714,7 +741,7 @@ class ChatListViewModel extends ChangeNotifier {
         s.lastReadInboxMessageId = s.lastMessageId;
       }
     });
-    _resort();
+    if (refresh) _refreshBadges();
 
     if (previousMarked) {
       _client.send({
@@ -730,7 +757,7 @@ class ChatListViewModel extends ChangeNotifier {
         s.isMarkedUnread = previousMarked;
         s.lastReadInboxMessageId = previousLastReadInboxMessageId;
       });
-      _resort();
+      _refreshBadges();
     });
   }
 
@@ -744,9 +771,11 @@ class ChatListViewModel extends ChangeNotifier {
     final targets = chats
         .where((chat) => chat.unreadCount > 0 || chat.isMarkedUnread)
         .toList();
+    if (targets.isEmpty) return;
     for (final chat in targets) {
-      markRead(chat);
+      _markRead(chat, refresh: false);
     }
+    _refreshBadges();
   }
 
   Future<void> _forceReadChat(ChatSummary chat) async {
@@ -983,7 +1012,7 @@ class ChatListViewModel extends ChangeNotifier {
           }
           s.unreadCount = update.integer('unread_count') ?? s.unreadCount;
         });
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatUnreadMentionCount':
       case 'updateMessageMentionRead':
@@ -994,7 +1023,7 @@ class ChatListViewModel extends ChangeNotifier {
           (s) => s.unreadMentionCount =
               update.integer('unread_mention_count') ?? s.unreadMentionCount,
         );
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatUnreadReactionCount':
       case 'updateMessageUnreadReactions':
@@ -1005,7 +1034,7 @@ class ChatListViewModel extends ChangeNotifier {
           (s) => s.unreadReactionCount =
               update.integer('unread_reaction_count') ?? s.unreadReactionCount,
         );
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatIsMarkedAsUnread':
         final id = update.int64('chat_id');
@@ -1015,13 +1044,13 @@ class ChatListViewModel extends ChangeNotifier {
           (s) =>
               s.isMarkedUnread = update.boolean('is_marked_as_unread') ?? false,
         );
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatTitle':
         final id = update.int64('chat_id');
         if (id == null) return;
         _mutate(id, (s) => s.title = update.str('title') ?? s.title);
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatNotificationSettings':
         final id = update.int64('chat_id');
@@ -1037,13 +1066,13 @@ class ChatListViewModel extends ChangeNotifier {
               : (notificationSettings?.integer('mute_for') ?? 0);
           s.isMuted = muteFor > 0;
         });
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateChatPhoto':
         final id = update.int64('chat_id');
         if (id == null) return;
         _mutate(id, (s) => s.photo = TDParse.smallPhoto(update.obj('photo')));
-        _scheduleResort();
+        _scheduleBadgeRefresh();
 
       case 'updateCommunity':
         final community = update.obj('community');
@@ -1304,7 +1333,7 @@ class ChatListViewModel extends ChangeNotifier {
     final existing = _communities[id];
     final community = CommunitySummary.fromTd(
       object,
-      collapsed: existing?.collapsed ?? true,
+      collapsed: existing?.collapsed ?? false,
     );
     if (existing == null) {
       _communities[id] = community;
@@ -1643,10 +1672,51 @@ class ChatListViewModel extends ChangeNotifier {
     // callers that then schedule a resort, so drop the projection here too.
     _invalidateEntriesCaches();
     _pendingResortSignals++;
+    // A resort recomputes the folder badges as well, so a badge refresh still
+    // waiting on its debounce is redundant.
+    _badgeTimer?.cancel();
+    _badgeTimer = null;
     if (_resortTimer != null) return;
     // TDLib can deliver many dependent updates in one burst. A 50 ms window
     // keeps the list responsive while avoiding a full sort/rebuild per frame.
     _resortTimer = Timer(const Duration(milliseconds: 50), _resort);
+  }
+
+  /// Debounces the refresh owed by an update that mutates summaries in place
+  /// without changing the sort.
+  ///
+  /// Read state, mute state, titles and photos are not sort keys — [_compare]
+  /// orders by pin, TDLib position and last-message date — and none of them can
+  /// change folder membership or community grouping, which is what
+  /// [_projectChats] and the cached projection are built from. The summaries are
+  /// mutated in place and both the projection and [_entriesCache] hold
+  /// references to them, so the sorted window and its caches stay valid. Of
+  /// everything [_resort] rebuilds, only the folder badges derive from any of
+  /// it, and [_refreshFolderUnreadCounts] is a no-op when nothing unread moved.
+  ///
+  /// Routing these updates through [_scheduleResort] instead dropped every cache
+  /// and re-sorted the whole account to repaint a row. Closing a conversation
+  /// that still had unread messages emits `updateChatReadInbox` while the pop
+  /// transition is running, so that resort landed mid-animation and changed no
+  /// position at all.
+  void _scheduleBadgeRefresh() {
+    if (_disposed) return;
+    // A resort already pending rebuilds the badges too, and it still has to run
+    // because something else moved the list.
+    if (_resortTimer != null) return;
+    if (_badgeTimer != null) return;
+    _badgeTimer = Timer(const Duration(milliseconds: 50), _refreshBadges);
+  }
+
+  /// Recomputes the folder badges and republishes the list, leaving the sort and
+  /// the entry caches alone. Also the synchronous half of
+  /// [_scheduleBadgeRefresh], for the paths a user is watching.
+  void _refreshBadges() {
+    _badgeTimer?.cancel();
+    _badgeTimer = null;
+    if (_disposed) return;
+    _refreshFolderUnreadCounts();
+    _notifyIfAlive();
   }
 
   @visibleForTesting

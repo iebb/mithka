@@ -32,14 +32,18 @@ import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/proxy_status.dart';
+import '../settings/proxy_view.dart';
 import '../settings/settings_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'emoji_status_picker.dart';
 import 'profile_detail_view.dart';
+import 'profile_proxy_button.dart';
 import 'profile_theme_backdrop.dart';
 import 'profile_username_pill.dart';
 import 'profile_username_summary.dart';
@@ -757,6 +761,8 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
               ),
               const SizedBox(width: 24),
+              ProfileProxyButton(onTap: _openProxySettings),
+              const SizedBox(width: 24),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => theme.toggleDayNight(Theme.of(context).brightness),
@@ -773,6 +779,17 @@ class _ProfileViewState extends State<ProfileView> {
         ),
       ),
     );
+  }
+
+  /// 代理 straight from the sidebar instead of through 设置. The page reports its
+  /// own mutations to [ProxyStatusController]; the reading is refreshed on the
+  /// way back too, since a visit that changed nothing still spans time TDLib
+  /// may have reconnected in.
+  Future<void> _openProxySettings() async {
+    await _root.push(
+      AppPageRoute<void>(pageBuilder: (_, _, _) => const ProxyView()),
+    );
+    unawaited(ProxyStatusController.shared.refresh());
   }
 
   Widget _barItem(AppIconData icon, String tooltip) {

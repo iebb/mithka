@@ -822,6 +822,7 @@ class ChatViewModel extends ChangeNotifier {
 
   int _composerRevision = 0;
   int _fullViewRevision = 0;
+  int _composerFocusTick = 0;
 
   /// Bumped by every notification except the handful proven not to touch
   /// anything the composer renders, so the input bar can skip those rebuilds.
@@ -834,6 +835,17 @@ class ChatViewModel extends ChangeNotifier {
   int get fullViewRevision => _fullViewRevision;
 
   ValueListenable<int> get headerRevisionListenable => _headerRevisionNotifier;
+
+  /// Bumped when a gesture outside the composer asks for the caret. The reply
+  /// target itself travels with [setReply]; this only says "and start typing".
+  int get composerFocusTick => _composerFocusTick;
+
+  /// Hands the composer the caret without touching its draft or revision.
+  void requestComposerFocus() {
+    if (_isDisposed) return;
+    _composerFocusTick++;
+    super.notifyListeners();
+  }
 
   ValueListenable<int> messageRevisionListenable(int messageId) =>
       _messageRevisionNotifiers.putIfAbsent(

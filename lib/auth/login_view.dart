@@ -25,7 +25,6 @@ import '../bot_api/bot_api_endpoint_config.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/country_flag.dart';
-import '../components/desktop_content_constraint.dart';
 import '../components/ui_components.dart';
 import '../settings/account_backup_view.dart';
 import '../settings/api_credentials_view.dart';
@@ -61,6 +60,13 @@ bool loginHasBackAction({
       configuredAccountCount > 1;
 }
 
+/// Width of the login composition on roomy surfaces.
+///
+/// The flow is one centred column: letting it stretch to a tablet or desktop
+/// window edge turns every control into an unusable full-width bar, so the
+/// lane keeps the form at a comfortable reading width on every target.
+const double kLoginLaneMaxWidth = 420;
+
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
@@ -82,6 +88,8 @@ class _LoginViewState extends State<LoginView> {
   Timer? _resendTimer;
   DateTime? _resendAvailableAt;
   int _resendRemainingSeconds = 0;
+  final FocusNode _phoneFocus = FocusNode();
+  final FocusNode _emailFocus = FocusNode();
   ProxyConfig? _proxy;
   int _restorableBackupCount = 0;
   bool _backupConsent = false;
@@ -111,6 +119,8 @@ class _LoginViewState extends State<LoginView> {
   @override
   void dispose() {
     _resendTimer?.cancel();
+    _phoneFocus.dispose();
+    _emailFocus.dispose();
     for (final c in [
       _phone,
       _email,
@@ -247,41 +257,96 @@ class _LoginViewState extends State<LoginView> {
         backgroundColor: c.background,
         body: Stack(
           children: [
+            const Positioned.fill(child: _LoginBackdrop()),
             Column(
               children: [
-                _header(),
                 Expanded(
-                  child: DesktopContentConstraint(
-                    maxWidth: 520,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _stepFor(auth, accounts),
-                          if (_backupSupported &&
-                              !_showBotLogin &&
-                              auth.step is! AuthMissingCredentials &&
-                              !accounts.isActiveSessionReplacementPending) ...[
-                            const SizedBox(height: 18),
-                            _backupConsentRow(),
-                          ],
-                          if (auth.errorMessage != null) ...[
-                            const SizedBox(height: 18),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                auth.errorMessage!,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppTheme.unreadBadge,
-                                ),
+                  child: LayoutBuilder(
+                    builder: (context, viewport) {
+                      final topInset =
+                          MediaQuery.of(context).padding.top +
+                          iPadWindowChromeInsetOf(context) +
+                          56;
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(24, topInset, 24, 24),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: math.max(
+                              0,
+                              viewport.maxHeight - topInset - 24,
+                            ),
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: kLoginLaneMaxWidth,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _header(),
+                                  const SizedBox(height: 30),
+                                  AnimatedSwitcher(
+                                    duration: AppMotion.responsive,
+                                    switchInCurve: AppMotion.standard,
+                                    switchOutCurve: AppMotion.standard,
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                          opacity: animation,
+                                          child: SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: const Offset(0, 0.03),
+                                              end: Offset.zero,
+                                            ).animate(animation),
+                                            child: AnimatedBuilder(
+                                              animation: animation,
+                                              child: child,
+                                              builder: (context, step) {
+                                                final inactive =
+                                                    animation.status ==
+                                                        AnimationStatus
+                                                            .reverse ||
+                                                    animation.status ==
+                                                        AnimationStatus
+                                                            .dismissed;
+                                                return IgnorePointer(
+                                                  ignoring: inactive,
+                                                  child: ExcludeFocus(
+                                                    excluding: inactive,
+                                                    child: step!,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                    child: KeyedSubtree(
+                                      key: ValueKey<String>(
+                                        _stepIdentity(auth),
+                                      ),
+                                      child: _stepFor(auth, accounts),
+                                    ),
+                                  ),
+                                  if (_backupSupported &&
+                                      !_showBotLogin &&
+                                      auth.step is! AuthMissingCredentials &&
+                                      !accounts
+                                          .isActiveSessionReplacementPending) ...[
+                                    const SizedBox(height: 18),
+                                    _backupConsentRow(),
+                                  ],
+                                  if (auth.errorMessage != null) ...[
+                                    const SizedBox(height: 18),
+                                    _errorBanner(auth.errorMessage!),
+                                  ],
+                                ],
                               ),
                             ),
-                          ],
-                        ],
-                      ),
-                    ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 _termsFooter(),
@@ -338,13 +403,13 @@ class _LoginViewState extends State<LoginView> {
     return AppInteractiveSurface(
       checked: _backupConsent,
       onTap: () => unawaited(_setBackupConsent(!_backupConsent)),
-      borderRadius: BorderRadius.circular(AppRadius.card),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(color: c.divider, width: 0.7),
+          color: c.groupedBackground,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: c.divider, width: 0.8),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,22 +456,64 @@ class _LoginViewState extends State<LoginView> {
     final c = context.colors;
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+      minimum: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: AppInteractiveSurface(
         onTap: () => showTelegramTermsSheet(context),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Text(
             AppStrings.t(AppStringKeys.loginTermsButton),
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: c.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: c.textTertiary,
               decoration: TextDecoration.none,
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Inline failure notice. Auth errors are actionable sentences, so they get
+  /// a tinted card instead of a bare red line floating in the layout.
+  Widget _errorBanner(String message) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.unreadBadge.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(
+          color: AppTheme.unreadBadge.withValues(alpha: 0.28),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: AppIcon(
+              HeroAppIcons.triangleExclamation,
+              size: 15,
+              color: AppTheme.unreadBadge,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: c.textPrimary.withValues(alpha: 0.85),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -530,49 +637,56 @@ class _LoginViewState extends State<LoginView> {
 
   Widget _header() {
     final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.only(top: 96, bottom: 28),
-      child: Column(
-        children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              gradient: AppTheme.brandGradient,
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Padding(
-              padding: EdgeInsets.all(10),
-              child: Image(
-                image: AssetImage('assets/penguin.png'),
-                fit: BoxFit.contain,
+    return Column(
+      children: [
+        Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            gradient: AppTheme.brandGradient,
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.brand.withValues(alpha: 0.26),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
               ),
+            ],
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(12),
+            child: Image(
+              image: AssetImage('assets/penguin.png'),
+              fit: BoxFit.contain,
             ),
           ),
-          const SizedBox(height: 14),
-          Text(
-            'Mithka',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w600,
-              color: c.textPrimary,
-            ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'Mithka',
+          style: TextStyle(
+            fontSize: 25,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+            color: c.textPrimary,
           ),
-          const SizedBox(height: 4),
-          Text(
-            AppStrings.t(AppStringKeys.loginTelegramAccountTitle),
-            style: TextStyle(fontSize: 15, color: c.textSecondary),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          AppStrings.t(AppStringKeys.loginTelegramAccountTitle),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: c.textSecondary),
+        ),
+      ],
     );
+  }
+
+  /// Stable identity of the visible step, so [AnimatedSwitcher] cross-fades
+  /// only when the flow actually moves between steps.
+  String _stepIdentity(AuthManager auth) {
+    if (_showBotLogin) return 'bot';
+    if (_forcePhone) return 'phone';
+    return auth.step.runtimeType.toString();
   }
 
   // MARK: Steps
@@ -582,13 +696,8 @@ class _LoginViewState extends State<LoginView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
+        _FieldShell(
+          focusNode: _phoneFocus,
           child: Row(
             children: [
               AppInteractiveSurface(
@@ -600,32 +709,34 @@ class _LoginViewState extends State<LoginView> {
                       context,
                     ),
                 onTap: _showCountrySheet,
-                borderRadius: BorderRadius.circular(AppRadius.card),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 child: SizedBox(
-                  width: 42,
-                  height: 42,
+                  width: 40,
+                  height: 40,
                   child: Center(
                     child: _detectedCountry != null
-                        ? CountryFlag(iso: _detectedCountry!.iso, size: 30)
+                        ? CountryFlag(iso: _detectedCountry!.iso, size: 28)
                         : AppIcon(
                             HeroAppIcons.globe,
-                            size: 26,
+                            size: 24,
                             color: c.textTertiary,
                           ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _phone,
+                  focusNode: _phoneFocus,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
-                  style: TextStyle(fontSize: 22, color: c.textPrimary),
+                  style: TextStyle(fontSize: 20, color: c.textPrimary),
                   decoration: InputDecoration(
                     hintText: AppStrings.t(
                       AppStringKeys.loginPhoneNumberWithCountryCode,
                     ),
+                    hintStyle: TextStyle(fontSize: 16, color: c.textTertiary),
                     border: InputBorder.none,
                   ),
                   onChanged: (v) {
@@ -661,18 +772,18 @@ class _LoginViewState extends State<LoginView> {
           const SizedBox(height: 12),
           _loginPasskeyButton(auth),
         ],
-        const SizedBox(height: 12),
-        _secondaryLoginButton(
+        const SizedBox(height: 6),
+        _textLink(
           label: AppStrings.t(AppStringKeys.loginWithBotToken),
           icon: HeroAppIcons.code,
           enabled: !auth.isWorking,
           onTap: _openBotLogin,
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
         Text(
           AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: c.textTertiary),
+          style: TextStyle(fontSize: 12, height: 1.45, color: c.textTertiary),
         ),
       ],
     );
@@ -733,14 +844,12 @@ class _LoginViewState extends State<LoginView> {
         const SizedBox(height: 8),
         Text(
           AppStrings.t(AppStringKeys.loginBotApiEndpointHint),
+          textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: c.textTertiary),
         ),
         if (_botError case final error?) ...[
           const SizedBox(height: 14),
-          Text(
-            error,
-            style: TextStyle(fontSize: 13, color: AppTheme.unreadBadge),
-          ),
+          _errorBanner(error),
         ],
         const SizedBox(height: 20),
         _primaryButton(
@@ -750,8 +859,8 @@ class _LoginViewState extends State<LoginView> {
           () => unawaited(_submitBotAccount(auth, accounts)),
           working: _botWorking,
         ),
-        const SizedBox(height: 12),
-        _secondaryLoginButton(
+        const SizedBox(height: 6),
+        _textLink(
           label: AppStrings.t(AppStringKeys.loginWithPhoneNumber),
           icon: HeroAppIcons.phone,
           enabled: !_botWorking,
@@ -831,24 +940,20 @@ class _LoginViewState extends State<LoginView> {
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
         const SizedBox(height: 22),
-        Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
+        _FieldShell(
+          focusNode: _emailFocus,
           child: Row(
             children: [
-              AppIcon(HeroAppIcons.at, size: 22, color: c.textTertiary),
-              const SizedBox(width: 12),
+              AppIcon(HeroAppIcons.at, size: 20, color: c.textTertiary),
+              const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _email,
+                  focusNode: _emailFocus,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.done,
                   autocorrect: false,
-                  style: TextStyle(fontSize: 17, color: c.textPrimary),
+                  style: TextStyle(fontSize: 16, color: c.textPrimary),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     hintText: AppStrings.t(AppStringKeys.loginEmailAddress),
@@ -900,27 +1005,23 @@ class _LoginViewState extends State<LoginView> {
           style: TextStyle(fontSize: 14, color: c.textSecondary),
         ),
         const SizedBox(height: 22),
-        Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
+        _FieldShell(
+          focusNode: _emailFocus,
           child: Row(
             children: [
               AppIcon(
                 HeroAppIcons.checkDouble,
-                size: 22,
+                size: 20,
                 color: c.textTertiary,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _code,
+                  focusNode: _emailFocus,
                   keyboardType: TextInputType.text,
                   autocorrect: false,
-                  style: TextStyle(fontSize: 20, color: c.textPrimary),
+                  style: TextStyle(fontSize: 18, color: c.textPrimary),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     hintText: AppStrings.t(
@@ -1082,38 +1183,31 @@ class _LoginViewState extends State<LoginView> {
       semanticLabel: AppStrings.t(AppStringKeys.loginWithPasskey),
       onTap: enabled ? () => unawaited(auth.loginWithPasskey()) : null,
       enabled: enabled,
-      borderRadius: BorderRadius.circular(25),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
-        opacity: enabled ? 1 : 0.46,
+        duration: AppMotion.quick,
+        opacity: enabled ? 1 : 0.5,
         child: Container(
           key: const ValueKey('android-login-passkey'),
-          height: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(25),
+            color: c.groupedBackground,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: c.divider, width: 0.8),
           ),
-          child: Stack(
-            alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppIcon(
-                  HeroAppIcons.key,
-                  size: 21,
-                  color: AppTheme.brand,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
+              AppIcon(HeroAppIcons.key, size: 17, color: AppTheme.brand),
+              const SizedBox(width: 8),
+              Flexible(
                 child: Text(
                   AppStrings.t(AppStringKeys.loginWithPasskey),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: c.textPrimary,
                   ),
@@ -1297,57 +1391,48 @@ class _LoginViewState extends State<LoginView> {
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: c.textSecondary),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 20),
         Center(
           child: Container(
-            width: 244,
-            height: 244,
+            width: 236,
+            height: 236,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(AppRadius.xl),
+              border: Border.all(color: c.divider, width: 0.8),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.brand.withValues(alpha: 0.12),
+                  blurRadius: 26,
+                  offset: const Offset(0, 12),
+                ),
+              ],
             ),
             child: link.isEmpty
                 ? const Center(
                     child: SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                      child: AppActivityIndicator(size: 22),
                     ),
                   )
                 : QrImageView(data: link, backgroundColor: Colors.white),
           ),
         ),
-        const SizedBox(height: 18),
-        OutlinedButton(
-          onPressed: auth.isWorking ? null : auth.requestQrLogin,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(44),
-            side: BorderSide(color: AppTheme.brand.withValues(alpha: 0.45)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.card),
-            ),
-          ),
-          child: Text(
-            AppStrings.t(AppStringKeys.loginRefreshQrCode),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: auth.isWorking ? c.textTertiary : AppTheme.brand,
-            ),
-          ),
+        const SizedBox(height: 20),
+        _secondaryButton(
+          label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
+          icon: HeroAppIcons.arrowsRotate,
+          enabled: !auth.isWorking,
+          onTap: auth.requestQrLogin,
         ),
-        const SizedBox(height: 10),
-        TextButton(
-          onPressed: _showPhoneEntry,
-          child: Text(
-            AppStrings.t(AppStringKeys.loginReenterPhoneNumber),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppTheme.brand,
-            ),
-          ),
+        const SizedBox(height: 2),
+        _textLink(
+          label: AppStrings.t(AppStringKeys.loginReenterPhoneNumber),
+          icon: HeroAppIcons.phone,
+          enabled: true,
+          onTap: _showPhoneEntry,
         ),
       ],
     );
@@ -1368,16 +1453,7 @@ class _LoginViewState extends State<LoginView> {
           ),
         ),
         const SizedBox(height: 24),
-        Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator.adaptive(
-              strokeWidth: 2.4,
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.brand),
-            ),
-          ),
-        ),
+        const AppActivityIndicator(),
       ],
     );
   }
@@ -1388,14 +1464,12 @@ class _LoginViewState extends State<LoginView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            prompt,
-            style: TextStyle(fontSize: 13, color: c.textSecondary),
-          ),
+        Text(
+          prompt,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         _VerificationCodeInput(
           controller: _code,
           length: info.effectiveLength,
@@ -1538,11 +1612,13 @@ class _LoginViewState extends State<LoginView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (hint.isNotEmpty)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              AppStrings.t(AppStringKeys.loginPasswordHint, {'value1': hint}),
-              style: TextStyle(fontSize: 13, color: c.textSecondary),
+          Text(
+            AppStrings.t(AppStringKeys.loginPasswordHint, {'value1': hint}),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.45,
+              color: c.textSecondary,
             ),
           ),
         const SizedBox(height: 16),
@@ -1575,12 +1651,10 @@ class _LoginViewState extends State<LoginView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            AppStrings.t(AppStringKeys.loginNewAccountNicknamePrompt),
-            style: TextStyle(fontSize: 13, color: c.textSecondary),
-          ),
+        Text(
+          AppStrings.t(AppStringKeys.loginNewAccountNicknamePrompt),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary),
         ),
         const SizedBox(height: 16),
         InputField(
@@ -1647,8 +1721,8 @@ class _LoginViewState extends State<LoginView> {
             true,
             () => _openApiSetup(auth),
           ),
-          const SizedBox(height: 12),
-          _secondaryLoginButton(
+          const SizedBox(height: 6),
+          _textLink(
             label: AppStrings.t(AppStringKeys.loginWithBotToken),
             icon: HeroAppIcons.code,
             enabled: !auth.isWorking,
@@ -1679,79 +1753,125 @@ class _LoginViewState extends State<LoginView> {
   }) {
     final busy = working ?? auth.isWorking;
     final on = enabled && !busy;
+    final c = context.colors;
     return AppInteractiveSurface(
       semanticLabel: title,
       onTap: on ? action : null,
       enabled: on,
-      borderRadius: BorderRadius.circular(25),
-      child: Container(
-        height: 50,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: enabled ? AppTheme.brand : context.colors.textTertiary,
-          borderRadius: BorderRadius.circular(25),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: AnimatedOpacity(
+        duration: AppMotion.quick,
+        opacity: enabled ? 1 : 0.4,
+        child: AnimatedContainer(
+          duration: AppMotion.quick,
+          curve: AppMotion.standard,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: AppTheme.brandGradient,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppTheme.brand.withValues(alpha: 0.26),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: busy
+              ? AppActivityIndicator(size: 20, color: c.onAccent)
+              : Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: c.onAccent,
+                  ),
+                ),
         ),
-        child: busy
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation(Color(0xFFFFFFFF)),
-                ),
-              )
-            : Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFFFFFFF),
-                ),
-              ),
       ),
     );
   }
 
-  Widget _secondaryLoginButton({
+  /// Outlined companion action (refresh QR, and friends).
+  Widget _secondaryButton({
+    required String label,
+    required AppIconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      enabled: enabled,
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: AnimatedOpacity(
+        duration: AppMotion.quick,
+        opacity: enabled ? 1 : 0.5,
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppTheme.brand.withValues(alpha: 0.38)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AppIcon(icon, size: 17, color: AppTheme.brand),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.brand,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Quiet icon+label link for the flow's alternate entrances.
+  Widget _textLink({
     required String label,
     required AppIconData icon,
     required bool enabled,
     required VoidCallback onTap,
   }) {
     final c = context.colors;
-    return AppInteractiveSurface(
-      semanticLabel: label,
-      enabled: enabled,
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(25),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
-        opacity: enabled ? 1 : 0.46,
-        child: Container(
-          height: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(25),
-            border: Border.all(color: c.divider, width: 0.8),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
+    final tint = enabled ? AppTheme.brand : c.textTertiary;
+    return Align(
+      child: AppInteractiveSurface(
+        semanticLabel: label,
+        enabled: enabled,
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppIcon(icon, size: 21, color: AppTheme.brand),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
+              AppIcon(icon, size: 16, color: tint),
+              const SizedBox(width: 6),
+              Flexible(
                 child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: c.textPrimary,
+                    color: tint,
                   ),
                 ),
               ),
@@ -2023,6 +2143,13 @@ class InputField extends StatefulWidget {
 
 class _InputFieldState extends State<InputField> {
   late bool _obscure = widget.secure;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2033,22 +2160,18 @@ class _InputFieldState extends State<InputField> {
         ? widget.controller as ObscuringController
         : null;
     maskCtrl?.reveal = !_obscure;
-    return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(25),
-      ),
+    return _FieldShell(
+      focusNode: _focusNode,
       child: Row(
         children: [
           SizedBox(
             width: 22,
-            child: Icon(widget.systemImage, size: 20, color: AppTheme.brand),
+            child: Icon(widget.systemImage, size: 20, color: c.textTertiary),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: TextField(
+              focusNode: _focusNode,
               key: ValueKey<Object?>((
                 widget.placeholder,
                 widget.secure,
@@ -2098,6 +2221,106 @@ class _InputFieldState extends State<InputField> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Recessed input card that lifts with a brand ring while its field is
+/// focused, so the login fields read as fields instead of floating pills.
+class _FieldShell extends StatefulWidget {
+  const _FieldShell({required this.child, this.focusNode});
+
+  final Widget child;
+  final FocusNode? focusNode;
+
+  @override
+  State<_FieldShell> createState() => _FieldShellState();
+}
+
+class _FieldShellState extends State<_FieldShell> {
+  FocusNode? _attached;
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach(widget.focusNode);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FieldShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) _attach(widget.focusNode);
+  }
+
+  @override
+  void dispose() {
+    _attached?.removeListener(_sync);
+    super.dispose();
+  }
+
+  void _attach(FocusNode? node) {
+    _attached?.removeListener(_sync);
+    _attached = node;
+    if (node == null) return;
+    node.addListener(_sync);
+    _focused = node.hasFocus;
+  }
+
+  void _sync() {
+    final node = _attached;
+    if (!mounted || node == null || node.hasFocus == _focused) return;
+    setState(() => _focused = node.hasFocus);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return AnimatedContainer(
+      duration: AppMotion.quick,
+      curve: AppMotion.standard,
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: _focused ? c.card : c.groupedBackground,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: _focused ? AppTheme.brand : c.divider,
+          width: _focused ? 1.4 : 0.8,
+        ),
+        boxShadow: _focused
+            ? [
+                BoxShadow(
+                  color: AppTheme.brand.withValues(alpha: 0.14),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: widget.child,
+    );
+  }
+}
+
+/// Soft brand wash over the top of the login canvas. Kept deliberately faint:
+/// depth without the saturated blobs that read as generated decoration.
+class _LoginBackdrop extends StatelessWidget {
+  const _LoginBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = AppTheme.brand;
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: const Alignment(0, 0.4),
+            colors: [brand.withValues(alpha: 0.09), brand.withValues(alpha: 0)],
+          ),
+        ),
       ),
     );
   }
