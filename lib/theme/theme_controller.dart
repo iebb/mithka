@@ -1086,8 +1086,6 @@ class ThemeController extends ChangeNotifier {
     _hideSidebarPhone = _prefs.getBool(_hideSidebarPhoneKey) ?? false;
     _showMemberTags = _prefs.getBool(_memberTagsKey) ?? false;
     _showPlainMemberRoleTags = _prefs.getBool(_plainMemberRoleTagsKey) ?? false;
-    _forumTopicsAsGroupChat =
-        _prefs.getBool(_forumTopicsAsGroupChatKey) ?? false;
     _chatListNameColorAudience = _storedNameColorAudience(
       _chatListNameColorAudienceKey,
       fallback: _prefs.getBool(_nameColorsKey) == false
@@ -1246,7 +1244,6 @@ class ThemeController extends ChangeNotifier {
   static const _hideSidebarPhoneKey = 'hideSidebarPhone';
   static const _memberTagsKey = 'showMemberTags';
   static const _plainMemberRoleTagsKey = 'showPlainMemberRoleTags';
-  static const _forumTopicsAsGroupChatKey = 'forumTopicsAsGroupChat';
   // Storage names are retained so existing appearance preferences survive the
   // user-facing rename from Premium name colors to name colors.
   static const _nameColorsKey = 'showPremiumNameColors';
@@ -1341,7 +1338,6 @@ class ThemeController extends ChangeNotifier {
   bool _hideSidebarPhone = false;
   bool _showMemberTags = false;
   bool _showPlainMemberRoleTags = false;
-  bool _forumTopicsAsGroupChat = false;
   NameColorAudience _chatListNameColorAudience = NameColorAudience.premium;
   NameColorAudience _chatNameColorAudience = NameColorAudience.allUsers;
   StatusEmojiDisplayMode _chatListStatusEmojiMode =
@@ -1794,9 +1790,6 @@ class ThemeController extends ChangeNotifier {
   bool get showMemberTags => _showMemberTags;
   bool get showPlainMemberRoleTags => _showPlainMemberRoleTags;
 
-  /// Opens a forum topic in the regular chat transcript, scoped to that topic,
-  /// instead of the topic post feed.
-  bool get forumTopicsAsGroupChat => _forumTopicsAsGroupChat;
   NameColorAudience get chatListNameColorAudience => _chatListNameColorAudience;
   NameColorAudience get chatNameColorAudience => _chatNameColorAudience;
   StatusEmojiDisplayMode get chatListStatusEmojiMode =>
@@ -2578,13 +2571,6 @@ class ThemeController extends ChangeNotifier {
     if (_showPlainMemberRoleTags == value) return;
     _showPlainMemberRoleTags = value;
     _prefs.setBool(_plainMemberRoleTagsKey, value);
-    notifyListeners();
-  }
-
-  set forumTopicsAsGroupChat(bool value) {
-    if (_forumTopicsAsGroupChat == value) return;
-    _forumTopicsAsGroupChat = value;
-    _prefs.setBool(_forumTopicsAsGroupChatKey, value);
     notifyListeners();
   }
 

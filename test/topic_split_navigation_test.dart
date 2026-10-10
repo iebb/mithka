@@ -7,9 +7,7 @@ import 'package:mithka/app/chat_deep_link_controller.dart';
 import 'package:mithka/app/main_tab_view.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
-import 'package:mithka/channels/topic_channels_view.dart';
 import 'package:mithka/channels/topic_chat_view.dart';
-import 'package:mithka/chat/chat_members_view.dart';
 import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/chat/desktop_chat_context_pane.dart';
 import 'package:mithka/chats/chat_list_view.dart';
@@ -69,13 +67,9 @@ void main() {
               .widget<ChatListView>(find.byType(ChatListView))
               .onChatSelected!(ChatListSelection.fromChat(_chat()));
           await _settle(tester);
-          await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
-          await _settle(tester);
-          final topicState = tester.state(find.byType(TopicChatView));
-          await tester.tap(find.byKey(const ValueKey('topic-header-settings')));
-          await _settle(tester);
-          final settings = find.byKey(const ValueKey('topic-settings'));
-          final settingsElement = tester.element(settings);
+          // A forum chat opens as an ordinary transcript, in every shell.
+          expect(find.byType(ChatView), findsOneWidget);
+          expect(find.byType(TopicChatView), findsNothing);
 
           for (final size in const [
             Size(390, 844),
@@ -84,21 +78,16 @@ void main() {
           ]) {
             tester.view.physicalSize = size;
             await _settle(tester);
-            expect(tester.element(settings), same(settingsElement));
+            expect(find.byType(ChatView), findsOneWidget);
+            expect(find.byType(TopicChatView), findsNothing);
             expect(tester.takeException(), isNull);
           }
-          await tester.tap(find.byKey(const ValueKey('topic-settings-back')));
-          await _settle(tester);
-          expect(tester.state(find.byType(TopicChatView)), same(topicState));
           tester.view.physicalSize = const Size(390, 844);
           await _settle(tester);
-          final topic = tester.widget<TopicChatView>(
-            find.byType(TopicChatView),
-          );
+          final topic = tester.widget<ChatView>(find.byType(ChatView));
           expect(topic.showBackButton, isTrue);
           topic.onBack!();
           await _settle(tester);
-          expect(find.byType(TopicChatView), findsNothing);
           expect(find.byType(ChatView), findsNothing);
           expect(find.byType(ChatListView), findsOneWidget);
           expect(tester.takeException(), isNull);
@@ -151,7 +140,7 @@ void main() {
 
   for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
     testWidgets(
-      '$platform topic settings, members and search stay in the detail pane',
+      '$platform topic picker opens a topic transcript in the detail pane',
       (tester) async {
         debugDefaultTargetPlatformOverride = platform;
         try {
@@ -161,53 +150,26 @@ void main() {
               .widget<ChatListView>(find.byType(ChatListView))
               .onChatSelected!(ChatListSelection.fromChat(_chat()));
           await _settle(tester);
-          expect(
-            tester.widget<ChatView>(find.byType(ChatView)).headerBottom,
-            isNull,
-          );
+          expect(find.byType(ChatView), findsOneWidget);
           final sidebar = tester.getRect(find.byType(ChatListView));
-          await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
-          await _settle(tester);
-          final topicState = tester.state(find.byType(TopicChatView));
           final navigator = Navigator.of(
-            tester.element(find.byType(TopicChatView)),
+            tester.element(find.byType(ChatView)),
             rootNavigator: true,
           );
-          await tester.tap(find.byKey(const ValueKey('topic-header-settings')));
+
+          // The header picker stays inside the detail pane and opens the
+          // tapped topic as an ordinary transcript.
+          await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
           await _settle(tester);
-          final settings = find.byKey(const ValueKey('topic-settings'));
+          await tester.tap(find.text('Topic 1').last);
+          await _settle(tester);
           expect(
-            tester.getRect(settings).left,
-            greaterThanOrEqualTo(sidebar.right),
+            tester.widget<ChatView>(find.byType(ChatView)).forumTopicId,
+            78,
           );
+          expect(find.byType(TopicChatView), findsNothing);
           expect(tester.getRect(find.byType(ChatListView)), sidebar);
           expect(navigator.canPop(), isFalse);
-
-          await tester.tap(
-            find.byKey(const ValueKey('topic-settings-members')),
-          );
-          await _settle(tester);
-          expect(
-            tester.getRect(find.byType(ChatMembersView)).left,
-            greaterThanOrEqualTo(sidebar.right),
-          );
-          await navigator.maybePop();
-          await _settle(tester);
-          expect(settings, findsOneWidget);
-          await tester.tap(find.byKey(const ValueKey('topic-settings-back')));
-          await _settle(tester);
-          expect(tester.state(find.byType(TopicChatView)), same(topicState));
-
-          await tester.tap(find.byKey(const ValueKey('topic-header-search')));
-          await _settle(tester);
-          expect(
-            tester.getRect(find.byType(TextField).first).left,
-            greaterThanOrEqualTo(sidebar.right),
-          );
-          expect(tester.getRect(find.byType(ChatListView)), sidebar);
-          await navigator.maybePop();
-          await _settle(tester);
-          expect(tester.state(find.byType(TopicChatView)), same(topicState));
           expect(tester.takeException(), isNull);
           await _disposeShell(tester);
         } finally {
@@ -241,47 +203,34 @@ void main() {
             findsOneWidget,
           );
 
-          await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
-          await _settle(tester);
-          expect(find.byType(TopicChatView), findsOneWidget);
-          expect(find.byType(ChatListView), findsOneWidget);
-          expect(tester.getRect(find.byType(ChatListView)), sidebar);
-          expect(
-            tester.getTopLeft(find.byType(TopicChatView)).dx,
-            greaterThanOrEqualTo(sidebar.right),
-          );
-          expect(navigator.canPop(), isFalse);
-          expect(tester.takeException(), isNull);
-
+          // The rail switches topic transcripts in place; the route below
+          // is never replaced, so the split shell keeps its outer display.
           await tester.tap(
             find.byKey(const ValueKey('topic-navigation-item-88')),
           );
           await _settle(tester);
+          expect(
+            tester.widget<ChatView>(find.byType(ChatView)).forumTopicId,
+            88,
+          );
           expect(
             requests.lastWhere(
               (request) => request['@type'] == 'getForumTopicHistory',
             )['forum_topic_id'],
             88,
           );
-
-          await tester.tap(find.byKey(const ValueKey('topic-header-back')));
-          await _settle(tester);
-          expect(find.byType(ChatView), findsOneWidget);
           expect(tester.getRect(find.byType(ChatListView)), sidebar);
-          // Repeat using a topic tab and the system back action.
+          expect(navigator.canPop(), isFalse);
+          expect(find.byType(TopicChatView), findsNothing);
+
           await tester.tap(
             find.byKey(const ValueKey('topic-navigation-item-77')),
           );
           await _settle(tester);
           expect(
-            tester
-                .widget<TopicChatView>(find.byType(TopicChatView))
-                .initialThreadId,
+            tester.widget<ChatView>(find.byType(ChatView)).forumTopicId,
             77,
           );
-          await navigator.maybePop();
-          await _settle(tester);
-          expect(find.byType(ChatView), findsOneWidget);
           expect(tester.takeException(), isNull);
           await _disposeShell(tester);
         } finally {
@@ -334,11 +283,9 @@ void main() {
           find.byKey(const ValueKey('topic-navigation-item-77')),
         );
         await _settle(tester);
-        expect(find.byType(TopicChatView), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('topic-navigation-left')),
-          findsOneWidget,
-        );
+        // Tapping a rail row switches to that topic's ordinary transcript.
+        expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 77);
+        expect(find.byType(TopicChatView), findsNothing);
         hasForumTabs = true;
         updates.add({
           '@type': 'updateSupergroup',
@@ -358,19 +305,23 @@ void main() {
           const Offset(-1200, 0),
         );
         await _settle(tester);
+        // The strip scrolls horizontally; make sure the row is on screen
+        // before tapping it.
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('topic-navigation-item-88')),
+        );
+        await _settle(tester);
         await tester.tap(
           find.byKey(const ValueKey('topic-navigation-item-88')),
         );
         await _settle(tester);
+        expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 88);
         expect(
           requests.lastWhere(
             (request) => request['@type'] == 'getForumTopicHistory',
           )['forum_topic_id'],
           88,
         );
-        await tester.tap(find.byKey(const ValueKey('topic-header-chat-mode')));
-        await _settle(tester);
-        expect(find.byType(ChatView), findsOneWidget);
         expect(
           find.byKey(const ValueKey('topic-navigation-top')),
           findsOneWidget,
@@ -383,71 +334,14 @@ void main() {
     },
   );
 
-  testWidgets(
-    'channel-feed topic can switch modes and return without replacing the app route',
-    (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-      try {
-        await _setSurfaceSize(tester, const Size(1180, 820));
-        await _pumpMainShell(
-          tester,
-          reducedMotion: true,
-          showChannelsTab: true,
-        );
-        await tester.tap(
-          find.byKey(const ValueKey('desktop-navigation-item-1')),
-        );
-        await _settle(tester);
-        tester
-            .widget<TopicChannelsView>(find.byType(TopicChannelsView))
-            .onOpenDetail!(
-          TopicChatView(
-            chat: _chat(),
-            initialThreadId: 77,
-            initialMessageId: 70,
-            showBackButton: false,
-          ),
-        );
-        await _settle(tester);
-        final sidebar = tester.getRect(find.byType(TopicChannelsView));
-        final navigator = Navigator.of(
-          tester.element(find.byType(TopicChatView)),
-          rootNavigator: true,
-        );
-        await tester.tap(find.byKey(const ValueKey('topic-header-chat-mode')));
-        await _settle(tester);
-        expect(find.byType(ChatView), findsOneWidget);
-        expect(navigator.canPop(), isFalse);
-        expect(tester.getRect(find.byType(TopicChannelsView)), sidebar);
-        await tester.tap(find.byKey(const ValueKey('chatHeaderSearch')));
-        await tester.pump();
-        await navigator.maybePop();
-        await _settle(tester);
-        expect(find.byType(ChatView), findsOneWidget);
-        tester.widget<ChatView>(find.byType(ChatView)).onBack!();
-        await _settle(tester);
-        expect(find.byType(TopicChatView), findsOneWidget);
-        expect(tester.getRect(find.byType(TopicChannelsView)), sidebar);
-        expect(tester.takeException(), isNull);
-        await _disposeShell(tester);
-      } finally {
-        debugDefaultTargetPlatformOverride = null;
-      }
-    },
-  );
-
   for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
-    testWidgets('$platform topics-as-group rail opens the tapped topic', (
+    testWidgets('$platform forum rail opens the tapped topic transcript', (
       tester,
     ) async {
       debugDefaultTargetPlatformOverride = platform;
       try {
         await _setSurfaceSize(tester, const Size(1180, 820));
-        await _pumpMainShell(
-          tester,
-          reducedMotion: true,
-          forumTopicsAsGroupChat: true,
-        );
+        await _pumpMainShell(tester, reducedMotion: true);
         tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
           ChatListSelection.fromChat(_chat()),
         );
@@ -490,17 +384,13 @@ void main() {
     });
   }
 
-  testWidgets('topics-as-group topic transcript keeps the shell info pane', (
+  testWidgets('forum topic transcript keeps the shell info pane', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     try {
       await _setSurfaceSize(tester, const Size(1400, 820));
-      await _pumpMainShell(
-        tester,
-        reducedMotion: true,
-        forumTopicsAsGroupChat: true,
-      );
+      await _pumpMainShell(tester, reducedMotion: true);
       tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
         ChatListSelection.fromChat(_chat()),
       );
@@ -548,7 +438,6 @@ void main() {
         await _pumpMainShell(
           tester,
           reducedMotion: true,
-          forumTopicsAsGroupChat: true,
           hideChatContextPane: true,
         );
         tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
@@ -594,17 +483,11 @@ void main() {
     });
   }
 
-  testWidgets('topics-as-group picker opens the tapped topic on a phone', (
-    tester,
-  ) async {
+  testWidgets('forum picker opens the tapped topic on a phone', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     try {
       await _setSurfaceSize(tester, const Size(390, 844));
-      await _pumpMainShell(
-        tester,
-        reducedMotion: true,
-        forumTopicsAsGroupChat: true,
-      );
+      await _pumpMainShell(tester, reducedMotion: true);
       ChatDeepLinkController.shared.openChat(chatId: -42, title: 'Forum');
       await _settle(tester);
       expect(find.byType(ChatView), findsOneWidget);
@@ -629,13 +512,13 @@ void main() {
       await _pumpMainShell(tester, reducedMotion: true);
       ChatDeepLinkController.shared.openChat(chatId: -42, title: 'Forum');
       await _settle(tester);
+      expect(find.byType(ChatView), findsOneWidget);
+      // A failed topic load keeps the transcript usable and just reports
+      // that there are no topics to pick from.
       await tester.tap(find.byKey(const ValueKey('chatHeaderTopics')));
       await _settle(tester);
-      expect(find.byType(TopicChatView), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.tap(find.byKey(const ValueKey('topic-header-back')));
-      await _settle(tester);
       expect(find.byType(ChatView), findsOneWidget);
+      expect(find.byType(TopicChatView), findsNothing);
       expect(tester.takeException(), isNull);
       await _disposeShell(tester);
     } finally {
@@ -737,13 +620,11 @@ Future<_MainShellHarness> _pumpMainShell(
   WidgetTester tester, {
   bool reducedMotion = false,
   bool showChannelsTab = false,
-  bool forumTopicsAsGroupChat = false,
   bool hideChatContextPane = false,
   List<NavigatorObserver> navigatorObservers = const [],
 }) async {
   SharedPreferences.setMockInitialValues({
     'showChannelsTab': showChannelsTab,
-    'forumTopicsAsGroupChat': forumTopicsAsGroupChat,
     'hideChatContextPane': hideChatContextPane,
     'showMomentsTab': false,
     'communitiesEnabled': false,

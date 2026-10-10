@@ -30,7 +30,6 @@ import '../app/video_split_controller.dart';
 import '../auth/account_store.dart';
 import '../auth/telegram_country_names.dart';
 import '../call/call_manager.dart';
-import '../channels/topic_chat_view.dart';
 import '../channels/topic_navigation.dart';
 import '../chats/search_token_views.dart';
 import '../communities/community_models.dart';
@@ -56,7 +55,6 @@ import '../settings/business_tools_views.dart';
 import '../settings/hidden_sender_store.dart';
 import '../settings/quick_reaction_settings_view.dart';
 import '../settings/sensitive_content_controller.dart';
-import '../settings/topic_group_display_mode.dart';
 import '../settings/translation_api.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/forum_topic_index.dart';
@@ -968,7 +966,6 @@ class ChatView extends StatefulWidget {
     this.trailingPane,
     this.trailingPaneWidth = 0,
     this.requestComposerFocusOnReady = false,
-    this.onOpenTopicMode,
     this.onOpenTopicTranscript,
     this.onChatKindResolved,
     this.onInfoPressed,
@@ -981,7 +978,7 @@ class ChatView extends StatefulWidget {
   final String title;
 
   /// When set, the transcript renders this single forum topic as an ordinary
-  /// chat (see ThemeController.forumTopicsAsGroupChat).
+  /// chat (topics always fold into the chat transcript now).
   final int? forumTopicId;
   final int? initialMessageId;
   final ChatMessage? seedMessage;
@@ -994,11 +991,10 @@ class ChatView extends StatefulWidget {
   final Widget? trailingPane;
   final double trailingPaneWidth;
   final bool requestComposerFocusOnReady;
-  final ValueChanged<int?>? onOpenTopicMode;
 
   /// Lets an owning shell switch this chat to a topic transcript (or the
-  /// whole chat for null) when topics show as a regular group, so the new
-  /// transcript is built with the shell's current wiring.
+  /// whole chat for null), so the new transcript is built with the shell's
+  /// current wiring.
   final ValueChanged<int?>? onOpenTopicTranscript;
   final ValueChanged<ChatKind>? onChatKindResolved;
   final VoidCallback? onInfoPressed;
@@ -6498,13 +6494,7 @@ class _ChatViewState extends State<ChatView> {
       ],
       selectedTopicId: widget.forumTopicId,
       hasForumTabs: _vm.hasForumTabs,
-      onSelected: (id) {
-        if (_topicsFoldedIntoChat) {
-          _openTopicTranscript(id);
-          return;
-        }
-        if (id != null) unawaited(_openTopicMode(id));
-      },
+      onSelected: _openTopicTranscript,
       child: child,
     );
   }
@@ -7479,7 +7469,7 @@ class _ChatViewState extends State<ChatView> {
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
       onMediaSendTapped: _onComposerMediaSendTapped,
-      onBotTopicCreated: _openTopicMode,
+      onBotTopicCreated: _openTopicTranscript,
     );
   }
 
@@ -7859,9 +7849,7 @@ class _ChatViewState extends State<ChatView> {
                       key: const ValueKey('chatHeaderTopics'),
                       label: AppStringKeys.topicChatAllTopics.l10n(context),
                       icon: HeroAppIcons.hashtag,
-                      onTap: () => _topicsFoldedIntoChat
-                          ? unawaited(_showTopicSelector())
-                          : unawaited(_openTopicMode()),
+                      onTap: () => unawaited(_showTopicSelector()),
                     ),
                   ],
                 ],
@@ -7885,13 +7873,9 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  /// Whether topics have a dedicated surface (topic feed mode).
-  bool get _topicsFoldedIntoChat =>
-      _topicsKnown && context.read<ThemeController>().forumTopicsAsGroupChat;
-
   /// Topics keep their dedicated surface — header chevron, topic picker, and
-  /// the # header action — whenever the chat is a topic chat. In flattened
-  /// mode the picker switches between topic transcripts instead of modes.
+  /// the # header action — whenever the chat is a topic chat. The picker
+  /// switches between topic transcripts.
   bool get _showsTopicSurfaces => _topicsKnown;
 
   /// The join screen and a restricted peer both render the chat header over a
@@ -7989,25 +7973,6 @@ class _ChatViewState extends State<ChatView> {
     return content;
   }
 
-  ChatSummary _topicChatSummary() => ChatSummary(
-    id: widget.chatId,
-    title: _vm.peerTitle,
-    lastMessage: '',
-    lastMessageId: 0,
-    date: 0,
-    unreadCount: _vm.unreadCount,
-    order: 0,
-    isMuted: _vm.isMuted,
-    kind: _vm.peerIsBot
-        ? ChatKind.bot
-        : _vm.isChannel
-        ? ChatKind.channel
-        : ChatKind.group,
-    photo: _vm.peerPhoto,
-    isForum: _vm.isForum,
-    supportsBotTopics: _vm.supportsBotTopics,
-  );
-
   /// Opens a topic, or the whole chat for null, as the ordinary chat
   /// transcript (topics-as-group setting). Replaces this transcript in place
   /// so the navigation stack stays flat. An owning shell rebuilds the
@@ -8052,49 +8017,6 @@ class _ChatViewState extends State<ChatView> {
             chatId: widget.chatId,
             title: widget.title,
             forumTopicId: topicId,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openTopicMode([int? threadId]) async {
-    // With topics shown as a regular group there is no topic feed: open the
-    // requested topic as an ordinary transcript instead.
-    if (_topicsFoldedIntoChat) {
-      if (threadId != null) _openTopicTranscript(threadId);
-      return;
-    }
-    await TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel);
-    if (!mounted) return;
-    final onOpenTopicMode = widget.onOpenTopicMode;
-    if (onOpenTopicMode != null) {
-      onOpenTopicMode(threadId);
-      return;
-    }
-    final chat = _topicChatSummary();
-    _prepareExitState();
-    if (ChatPane.replace(
-      context,
-      (onBack) => TopicChatView(
-        chat: chat,
-        initialThreadId: threadId,
-        hasForumTabs: _vm.hasForumTabs,
-        headerHeight: widget.headerHeight,
-        headerColor: widget.headerColor,
-        onBack: onBack,
-      ),
-    )) {
-      return;
-    }
-    unawaited(
-      replaceWithAppChatRoute<void, void>(
-        context,
-        AppChatPageRoute<void>(
-          builder: (_) => TopicChatView(
-            chat: chat,
-            initialThreadId: threadId,
-            hasForumTabs: _vm.hasForumTabs,
           ),
         ),
       ),
@@ -8162,11 +8084,7 @@ class _ChatViewState extends State<ChatView> {
                     ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                if (context.read<ThemeController>().forumTopicsAsGroupChat) {
-                  _openTopicTranscript(topic?.id);
-                  return;
-                }
-                _openTopicMode(topic?.id);
+                _openTopicTranscript(topic?.id);
               },
             );
           },

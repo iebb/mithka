@@ -148,19 +148,10 @@ void main() {
     ),
   );
 
-  test('forum topics as group chat defaults to off', () async {
-    expect(theme.forumTopicsAsGroupChat, isFalse);
-    theme.forumTopicsAsGroupChat = true;
-    expect(theme.forumTopicsAsGroupChat, isTrue);
-    theme.forumTopicsAsGroupChat = false;
-    expect(theme.forumTopicsAsGroupChat, isFalse);
-  });
-
-  testWidgets('a single topic renders as a regular chat transcript', (
+  testWidgets('a single topic renders as a regular chat transcript (default)', (
     tester,
   ) async {
     clearChatMemoryCaches();
-    theme.forumTopicsAsGroupChat = true;
     await tester.pumpWidget(app(forumTopicId: 7));
     await tester.pumpAndSettle();
     // The topic's own transcript, in the ordinary chat surface, with the
@@ -176,7 +167,6 @@ void main() {
     'topics and the whole chat never restore each other\'s transcript',
     (tester) async {
       clearChatMemoryCaches();
-      theme.forumTopicsAsGroupChat = true;
 
       Future<void> open(int? forumTopicId) async {
         await tester.pumpWidget(

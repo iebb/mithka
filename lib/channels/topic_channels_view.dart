@@ -21,7 +21,6 @@ import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../settings/topic_group_display_mode.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -29,7 +28,6 @@ import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
-import 'topic_chat_view.dart';
 import 'topic_post_content.dart';
 
 class TopicChannelsView extends StatefulWidget {
@@ -76,7 +74,6 @@ class _TopicChannelsViewState extends State<TopicChannelsView> {
   void initState() {
     super.initState();
     unawaited(_loadCachedPosts());
-    unawaited(TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel));
     _model.addListener(_onModel);
     _model.onAppear();
   }
@@ -494,33 +491,22 @@ class _TopicPostRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        if (context.read<ThemeController>().forumTopicsAsGroupChat) {
-          pushAppChatRoute(
-            context,
-            AppChatPageRoute<void>(
-              builder: (_) => ChatView(
-                chatId: post.chat.id,
-                title: post.chat.title,
-                forumTopicId: post.threadId,
-              ),
-            ),
-          );
-          return;
-        }
-        unawaited(
-          TopicGroupDisplayPreference.set(TopicGroupDisplayMode.channel),
-        );
-        final detail = TopicChatView(
-          chat: post.chat,
-          initialThreadId: post.threadId,
-          initialMessageId: post.message.id,
-          showBackButton: onOpenDetail == null,
+        // Topics always open as ordinary chat transcripts; the topic feed
+        // (channel) form is gone. The split shell renders the detail in its
+        // pane; other hosts push the route.
+        final detail = ChatView(
+          chatId: post.chat.id,
+          title: post.chat.title,
+          forumTopicId: post.threadId,
         );
         if (onOpenDetail != null) {
           onOpenDetail!(detail);
           return;
         }
-        pushAppChatRoute(context, MaterialPageRoute(builder: (_) => detail));
+        pushAppChatRoute(
+          context,
+          AppChatPageRoute<void>(builder: (_) => detail),
+        );
       },
       child: Container(
         color: c.background,

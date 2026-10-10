@@ -406,7 +406,6 @@
     <string name="appearanceFontLoadFailed">加载失败</string>
     <string name="appearanceFontSize">字体大小</string>
     <string name="appearanceFontUnused">未使用</string>
-    <string name="appearanceForumTopicsAsGroupChat">论坛话题显示为正常群组</string>
     <string name="appearanceGestures">手势</string>
     <string name="appearanceGoogleDownloaded">Google 已下载</string>
     <string name="appearanceGroupAssistantPosition">归档的聊天位置</string>
@@ -3357,6 +3356,8 @@
     <string name="topicChatChannelNumber">频道号：{value1}</string>
     <string name="topicChatChannelSettings">频道设置</string>
     <string name="topicChatCommentCount">评论 {value1}</string>
+    <string name="topicChatCloseTopic">关闭话题</string>
+    <string name="topicChatReopenTopic">重新打开话题</string>
     <string name="topicChatComposerPlaceholder">分享想法、图片说明或链接</string>
     <string name="topicChatExpand">展开</string>
     <string name="topicChatGroupChatTitle">话题群聊</string>

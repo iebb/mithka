@@ -27,7 +27,6 @@ import '../app/horizontal_safe_viewport.dart';
 import '../app/ipad_window_chrome.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
-import '../channels/forum_topic_browser_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
@@ -49,7 +48,6 @@ import '../security/local_app_lock_controller.dart';
 import '../settings/chat_folder_management_view.dart';
 import '../settings/chat_folder_service.dart';
 import '../settings/edit_field_view.dart';
-import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -1278,38 +1276,17 @@ class _ChatListViewState extends State<ChatListView>
       return;
     }
     if (chat.supportsTopics) {
-      final mode = await TopicGroupDisplayPreference.load();
-      if (!mounted) return;
-      final topicsAsChat = context
-          .read<ThemeController>()
-          .forumTopicsAsGroupChat;
-      if (mode.isChat || topicsAsChat) {
-        unawaited(
-          pushAppChatRoute(
-            context,
-            _chatEntryRoute(
-              ChatView(
-                chatId: chat.id,
-                title: chat.title,
-                seedMessage: chat.lastChatMessage,
-                requestComposerFocusOnReady: focusComposer,
-              ),
-            ),
-          ),
-        );
-        return;
-      }
-      final railChats = <int, ChatSummary>{};
-      for (final summary in [..._model.chats, ..._model.archived]) {
-        railChats[summary.id] = summary;
-      }
+      // Forum/topic chats always open in the regular chat transcript; the
+      // topic feed surface is gone.
       unawaited(
         pushAppChatRoute(
           context,
-          _standardEntryRoute(
-            ForumTopicBrowserView(
-              chats: railChats.values.toList(),
-              initialChat: chat,
+          _chatEntryRoute(
+            ChatView(
+              chatId: chat.id,
+              title: chat.title,
+              seedMessage: chat.lastChatMessage,
+              requestComposerFocusOnReady: focusComposer,
             ),
           ),
         ),
@@ -3237,10 +3214,6 @@ class _ChatListViewState extends State<ChatListView>
 
   PageRoute<T> _chatEntryRoute<T>(ChatView child) {
     return AppChatPageRoute<T>(builder: (_) => child);
-  }
-
-  PageRoute<T> _standardEntryRoute<T>(Widget child) {
-    return AppPageRoute<T>(pageBuilder: (_, _, _) => child);
   }
 
   Widget _assistantRow() {

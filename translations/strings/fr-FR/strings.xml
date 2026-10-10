@@ -406,7 +406,6 @@
     <string name="appearanceFontLoadFailed">Chargement échoué</string>
     <string name="appearanceFontSize">Taille de police</string>
     <string name="appearanceFontUnused">Inutilisée</string>
-    <string name="appearanceForumTopicsAsGroupChat">Afficher les sujets du forum comme un groupe normal</string>
     <string name="appearanceGestures">Gestes</string>
     <string name="appearanceGoogleDownloaded">Google téléchargé</string>
     <string name="appearanceGroupAssistantPosition">Position des discussions archivées</string>
@@ -3368,6 +3367,8 @@
     <string name="topicChatChannelNumber">Canal n° {value1}</string>
     <string name="topicChatChannelSettings">Paramètres du canal</string>
     <string name="topicChatCommentCount">{value1} commentaires</string>
+    <string name="topicChatCloseTopic">Fermer le sujet</string>
+    <string name="topicChatReopenTopic">Rouvrir le sujet</string>
     <string name="topicChatComposerPlaceholder">Partagez une idée, une légende ou un lien</string>
     <string name="topicChatExpand">Développer</string>
     <string name="topicChatGroupChatTitle">Discussion de sujet</string>
