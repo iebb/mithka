@@ -297,6 +297,12 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                 leadingClearance: defaultTargetPlatform == TargetPlatform.macOS
                     ? 78
                     : 8,
+                // Before sign-in the bar continues the login canvas instead
+                // of sitting on it as a separate strip.
+                backgroundColor: widget.accountReady
+                    ? null
+                    : context.colors.background,
+                showDivider: widget.accountReady,
                 trailingControls: flutterWindowControls
                     ? const DesktopWindowControls()
                     : null,
@@ -311,110 +317,126 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                 onDragAreaDoubleTap: flutterWindowControls
                     ? () => unawaited(togglePrimaryDesktopWindowMaximized())
                     : null,
-                appIdentity: LayoutBuilder(
-                  builder: (context, constraints) => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: TapRegion(
-                          groupId: _profileTapGroup,
-                          onTapOutside: (_) => _hideProfile(),
-                          child: CompositedTransformTarget(
-                            link: _profileLink,
-                            child: MouseRegion(
-                              onEnter: widget.accountReady
-                                  ? (_) => _showProfile()
-                                  : null,
-                              onExit: widget.accountReady
-                                  ? (_) => _scheduleProfileDismiss()
-                                  : null,
-                              child: AppInteractiveSurface(
-                                key: const ValueKey('macos-title-bar-account'),
-                                semanticLabel: label,
-                                enabled: widget.accountReady,
-                                onTap: widget.accountReady
-                                    ? _showProfile
-                                    : null,
-                                borderRadius: BorderRadius.circular(
-                                  AppRadius.md,
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ClipOval(
-                                        key: const ValueKey(
-                                          'macos-title-bar-account-avatar',
-                                        ),
-                                        child: _MacosTitleBarAvatar(
-                                          path: avatarPath,
-                                          name: label,
-                                        ),
+                // Signed out, the bar carries only the window controls: the
+                // login screen names the app itself, and an account identity
+                // has nothing to show yet.
+                appIdentity: !widget.accountReady
+                    ? const SizedBox.shrink()
+                    : LayoutBuilder(
+                        builder: (context, constraints) => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: TapRegion(
+                                groupId: _profileTapGroup,
+                                onTapOutside: (_) => _hideProfile(),
+                                child: CompositedTransformTarget(
+                                  link: _profileLink,
+                                  child: MouseRegion(
+                                    onEnter: widget.accountReady
+                                        ? (_) => _showProfile()
+                                        : null,
+                                    onExit: widget.accountReady
+                                        ? (_) => _scheduleProfileDismiss()
+                                        : null,
+                                    child: AppInteractiveSurface(
+                                      key: const ValueKey(
+                                        'macos-title-bar-account',
                                       ),
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 220,
-                                          ),
-                                          child: Text(
-                                            label,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: context.colors.textPrimary,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              decoration: TextDecoration.none,
+                                      semanticLabel: label,
+                                      enabled: widget.accountReady,
+                                      onTap: widget.accountReady
+                                          ? _showProfile
+                                          : null,
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.md,
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ClipOval(
+                                              key: const ValueKey(
+                                                'macos-title-bar-account-avatar',
+                                              ),
+                                              child: _MacosTitleBarAvatar(
+                                                path: avatarPath,
+                                                name: label,
+                                              ),
                                             ),
-                                          ),
+                                            const SizedBox(width: 8),
+                                            Flexible(
+                                              child: ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      maxWidth: 220,
+                                                    ),
+                                                child: Text(
+                                                  label,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: context
+                                                        .colors
+                                                        .textPrimary,
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                    decoration:
+                                                        TextDecoration.none,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
+                            if (canSetStatus && constraints.maxWidth >= 80) ...[
+                              const SizedBox(width: 2),
+                              AppInteractiveSurface(
+                                key: const ValueKey('desktop-title-bar-status'),
+                                semanticLabel: AppStringKeys.emojiStatusSetTitle
+                                    .l10n(context),
+                                enabled: !_statusPickerVisible,
+                                onTap: () =>
+                                    unawaited(_showStatusPicker(statusId)),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: Center(
+                                    child:
+                                        statusId != 0 &&
+                                            statusMode?.visible != false
+                                        ? StatusEmojiView(
+                                            id: statusId,
+                                            size: 18,
+                                            color: context.colors.textPrimary,
+                                            animate:
+                                                statusMode?.animate ?? true,
+                                          )
+                                        : AppIcon(
+                                            HeroAppIcons.faceSmile,
+                                            size: 18,
+                                            color: context.colors.textSecondary,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      if (canSetStatus && constraints.maxWidth >= 80) ...[
-                        const SizedBox(width: 2),
-                        AppInteractiveSurface(
-                          key: const ValueKey('desktop-title-bar-status'),
-                          semanticLabel: AppStringKeys.emojiStatusSetTitle.l10n(
-                            context,
-                          ),
-                          enabled: !_statusPickerVisible,
-                          onTap: () => unawaited(_showStatusPicker(statusId)),
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          child: SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: Center(
-                              child:
-                                  statusId != 0 && statusMode?.visible != false
-                                  ? StatusEmojiView(
-                                      id: statusId,
-                                      size: 18,
-                                      color: context.colors.textPrimary,
-                                      animate: statusMode?.animate ?? true,
-                                    )
-                                  : AppIcon(
-                                      HeroAppIcons.faceSmile,
-                                      size: 18,
-                                      color: context.colors.textSecondary,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
               ),
               Expanded(
                 child: MediaQuery.removePadding(

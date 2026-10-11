@@ -1913,6 +1913,8 @@
     <string name="loginGetVerificationCode">Obtenir le code</string>
     <string name="loginHidePassword">Masquer le mot de passe</string>
     <string name="loginLastNameOptional">Nom de famille (facultatif)</string>
+    <string name="loginMethodPhoneNumber">Numéro de téléphone</string>
+    <string name="loginMethodQrCode">QR code</string>
     <string name="loginNewAccountNicknamePrompt">Ceci est un nouveau compte. Indiquez un surnom</string>
     <string name="loginPasswordHint">Indice de mot de passe : {value1}</string>
     <string name="loginPhoneNumberWithCountryCode">Numéro de téléphone (avec indicatif pays)</string>

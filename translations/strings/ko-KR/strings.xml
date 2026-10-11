@@ -1906,6 +1906,8 @@
     <string name="loginGetVerificationCode">인증 코드 받기</string>
     <string name="loginHidePassword">비밀번호 숨기기</string>
     <string name="loginLastNameOptional">성(선택 사항)</string>
+    <string name="loginMethodPhoneNumber">전화번호</string>
+    <string name="loginMethodQrCode">QR 코드</string>
     <string name="loginNewAccountNicknamePrompt">새 계정입니다. 닉네임을 입력하세요</string>
     <string name="loginPasswordHint">비밀번호 힌트: {value1}</string>
     <string name="loginPhoneNumberWithCountryCode">휴대폰 번호(국가 번호 포함)</string>

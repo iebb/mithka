@@ -1913,6 +1913,8 @@
     <string name="loginGetVerificationCode">Get code</string>
     <string name="loginHidePassword">Hide password</string>
     <string name="loginLastNameOptional">Last name (optional)</string>
+    <string name="loginMethodPhoneNumber">Phone number</string>
+    <string name="loginMethodQrCode">QR code</string>
     <string name="loginNewAccountNicknamePrompt">This is a new account. Please enter a nickname</string>
     <string name="loginPasswordHint">Password hint: {value1}</string>
     <string name="loginPhoneNumberWithCountryCode">Phone number with country code</string>

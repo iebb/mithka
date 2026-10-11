@@ -341,9 +341,10 @@ void main() {
     'signed out title bar has no profile editing controls',
     (tester) async {
       await pumpFrame(tester, accountReady: false);
+      // Signed out, the bar shows no account identity at all, so there is
+      // nothing that could open the profile or its editing controls.
+      expect(find.byKey(_accountKey), findsNothing);
       expect(find.byKey(_statusKey), findsNothing);
-      await tester.tap(find.byKey(_accountKey));
-      await tester.pump();
       expect(find.byKey(_popupKey), findsNothing);
       expect(find.byKey(_editKey), findsNothing);
     },

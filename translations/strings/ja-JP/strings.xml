@@ -1906,6 +1906,8 @@
     <string name="loginGetVerificationCode">認証コードを取得</string>
     <string name="loginHidePassword">パスワードを隠す</string>
     <string name="loginLastNameOptional">姓（任意）</string>
+    <string name="loginMethodPhoneNumber">電話番号</string>
+    <string name="loginMethodQrCode">QR コード</string>
     <string name="loginNewAccountNicknamePrompt">これは新しいアカウントです。ニックネームを入力してください</string>
     <string name="loginPasswordHint">パスワードのヒント：{value1}</string>
     <string name="loginPhoneNumberWithCountryCode">電話番号（国番号を含む）</string>
