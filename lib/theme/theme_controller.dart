@@ -781,6 +781,51 @@ enum AppFontChoice {
   }
 }
 
+/// Fits a theme text style to the platform's own text geometry.
+///
+/// Material 3's type scale is Roboto's: every style carries added tracking
+/// (+0.1 to +0.5 pt) and a fixed line height (1.33 to 1.5 times the size), and
+/// `Scaffold` and `TextField` hand those to any text that does not override
+/// them. That is native on Android only. On Apple platforms and desktop the
+/// system's own controls draw SF, Segoe UI and PingFang with no added
+/// tracking and the font's natural line height, so the inherited Material
+/// values made the same faces read wider and airier than the rest of the
+/// system. Outside Android this drops both and keeps everything else.
+TextStyle platformTextGeometry(TextStyle style, [TargetPlatform? platform]) {
+  final target = platform ?? defaultTargetPlatform;
+  if (target == TargetPlatform.android || target == TargetPlatform.fuchsia) {
+    return style;
+  }
+  if (style.letterSpacing == 0 && style.height == null) return style;
+  // copyWith cannot clear a height back to null, so the style is rebuilt.
+  return TextStyle(
+    inherit: style.inherit,
+    color: style.color,
+    backgroundColor: style.backgroundColor,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    fontStyle: style.fontStyle,
+    letterSpacing: 0,
+    wordSpacing: style.wordSpacing,
+    textBaseline: style.textBaseline,
+    leadingDistribution: style.leadingDistribution,
+    locale: style.locale,
+    foreground: style.foreground,
+    background: style.background,
+    shadows: style.shadows,
+    fontFeatures: style.fontFeatures,
+    fontVariations: style.fontVariations,
+    decoration: style.decoration,
+    decorationColor: style.decorationColor,
+    decorationStyle: style.decorationStyle,
+    decorationThickness: style.decorationThickness,
+    debugLabel: style.debugLabel,
+    fontFamily: style.fontFamily,
+    fontFamilyFallback: style.fontFamilyFallback,
+    overflow: style.overflow,
+  );
+}
+
 List<String> dedupeFontFamilies(Iterable<String> values) {
   final seen = <String>{};
   return [
@@ -2005,8 +2050,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   TextTheme applyAppTextTheme(TextTheme textTheme, {bool boldText = false}) {
-    TextStyle? apply(TextStyle? style) =>
-        style == null ? null : applyAppTextStyle(style, boldText: boldText);
+    TextStyle? apply(TextStyle? style) => style == null
+        ? null
+        : applyAppTextStyle(platformTextGeometry(style), boldText: boldText);
     return textTheme.copyWith(
       displayLarge: apply(textTheme.displayLarge),
       displayMedium: apply(textTheme.displayMedium),
