@@ -651,6 +651,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   Timer? _inlineBotTimer;
   int _inlineBotGeneration = 0;
   bool _inlineBotLoading = false;
+  bool _inlineBotLoadingMore = false;
   BotPlatformCapabilities? _inlineBot;
   BotInlineResultsPage? _inlineBotResults;
   bool _quickRepliesLoaded = false;
@@ -688,7 +689,13 @@ class _ChatInputBarState extends State<ChatInputBar>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _syncedVmState = _renderedVmState;
-    _botPlatform = widget.botPlatformForTesting ?? BotPlatformService();
+    _botPlatform =
+        widget.botPlatformForTesting ??
+        // The composer belongs to one transcript, and every inline query it
+        // sends is scoped to that chat's account: a foreground switch while a
+        // result page or an inline send is in flight must not retarget the
+        // request at the replacement account's chat id.
+        BotPlatformService(queryForSlot: vm.accountSlot);
     DesktopChatComposerActions._register(
       _desktopActionOwner,
       captureScreenshot: _captureDesktopScreenshot,
@@ -751,6 +758,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestInitialFocusIfReady();
+      if (mounted &&
+          !_controller.startsWithIdBackedMention &&
+          BotInlineInvocation.fromText(_controller.text) != null) {
+        _focus.requestFocus();
+        _queueInlineBotResults();
+      }
       unawaited(_restoreDesktopComposerHeight());
       if (mounted && _canUseQuickReplies) {
         unawaited(_loadQuickReplies(userInitiated: false));
@@ -873,6 +886,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       _botCommandQuery = null;
       _botCommandCandidates = const [];
       _inlineBotLoading = false;
+      _inlineBotLoadingMore = false;
       _inlineBotResults = null;
       if (hadSuggestions && mounted) setState(() {});
       return;
@@ -890,7 +904,11 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   void _updateMentionSuggestions() {
     final query = activeMentionQuery(_controller.text, _controller.selection);
-    if (!_focus.hasFocus || query == null || !vm.isGroup) {
+    final includeInlineBots =
+        query != null && query.start == 0 && !vm.isSecretChat;
+    if (!_focus.hasFocus ||
+        query == null ||
+        (!vm.isGroup && !includeInlineBots)) {
       _mentionSearchTimer?.cancel();
       _mentionSearchGeneration++;
       if (_mentionQuery != null || _mentionCandidates.isNotEmpty) {
@@ -911,7 +929,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     _mentionSearchTimer?.cancel();
     final generation = ++_mentionSearchGeneration;
     _mentionSearchTimer = Timer(const Duration(milliseconds: 120), () async {
-      final candidates = await vm.searchMentionCandidates(query.query);
+      final candidates = includeInlineBots
+          ? await vm.searchMentionCandidates(
+              query.query,
+              includeInlineBots: true,
+            )
+          : await vm.searchMentionCandidates(query.query);
       if (!mounted || generation != _mentionSearchGeneration) return;
       final active = activeMentionQuery(
         _controller.text,
@@ -942,6 +965,33 @@ class _ChatInputBarState extends State<ChatInputBar>
     _mentionSearchGeneration++;
     _mentionQuery = null;
     _mentionCandidates = const [];
+    if (candidate.isInlineBot &&
+        query.start == 0 &&
+        candidate.username.trim().isNotEmpty) {
+      final cleanUsername = candidate.username.trim().replaceFirst(
+        RegExp(r'^@+'),
+        '',
+      );
+      final replacement = '@$cleanUsername ';
+      final replaceEnd =
+          query.end < _controller.text.length &&
+              _controller.text[query.end].trim().isEmpty
+          ? query.end + 1
+          : query.end;
+      final newText = _controller.text.replaceRange(
+        query.start,
+        replaceEnd,
+        replacement,
+      );
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: query.start + replacement.length,
+        ),
+      );
+      _focus.requestFocus();
+      return;
+    }
     _controller.insertTextMention(
       start: query.start,
       end: query.end,
@@ -1024,17 +1074,22 @@ class _ChatInputBarState extends State<ChatInputBar>
     final generation = ++_inlineBotGeneration;
     if (invocation == null) {
       if (_inlineBotLoading ||
+          _inlineBotLoadingMore ||
           _inlineBotResults != null ||
           _inlineBot != null) {
         _inlineBotLoading = false;
+        _inlineBotLoadingMore = false;
         _inlineBotResults = null;
         _inlineBot = null;
         if (mounted) setState(() {});
       }
       return;
     }
-    if (!_inlineBotLoading || _inlineBotResults != null) {
+    if (!_inlineBotLoading ||
+        _inlineBotLoadingMore ||
+        _inlineBotResults != null) {
       _inlineBotLoading = true;
+      _inlineBotLoadingMore = false;
       _inlineBotResults = null;
       if (mounted) setState(() {});
     }
@@ -1071,13 +1126,85 @@ class _ChatInputBarState extends State<ChatInputBar>
         _inlineBot = bot;
         _inlineBotResults = page;
         _inlineBotLoading = false;
+        _inlineBotLoadingMore = false;
       });
     } catch (_) {
       if (!mounted || generation != _inlineBotGeneration) return;
       setState(() {
         _inlineBotResults = null;
         _inlineBotLoading = false;
+        _inlineBotLoadingMore = false;
       });
+    }
+  }
+
+  Future<void> _loadMoreInlineBotResults() async {
+    final page = _inlineBotResults;
+    final bot = _inlineBot;
+    if (page == null ||
+        bot == null ||
+        !page.hasMore ||
+        _inlineBotLoading ||
+        _inlineBotLoadingMore) {
+      return;
+    }
+    final invocation = _controller.startsWithIdBackedMention
+        ? null
+        : BotInlineInvocation.fromText(_controller.text);
+    if (invocation == null ||
+        invocation.username.toLowerCase() != bot.username.toLowerCase()) {
+      return;
+    }
+    final generation = _inlineBotGeneration;
+    setState(() => _inlineBotLoadingMore = true);
+    try {
+      final location = bot.needsLocation ? await _inlineBotLocation() : null;
+      final response = await _botPlatform.inlineResults(
+        botUserId: bot.userId,
+        chatId: vm.chatId,
+        query: invocation.query,
+        offset: page.nextOffset,
+        location: location,
+      );
+      final nextPage = BotInlineResultsPage.fromJson(response);
+      if (!mounted || generation != _inlineBotGeneration) return;
+      final current = _inlineBotResults;
+      if (current == null) return;
+      setState(() {
+        _inlineBotResults = current.mergeNextPage(nextPage);
+        _inlineBotLoadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _inlineBotGeneration) return;
+      setState(() => _inlineBotLoadingMore = false);
+    }
+  }
+
+  Future<void> _activateInlineResultsButton(
+    BotInlineResultsButton button,
+  ) async {
+    final bot = _inlineBot;
+    if (bot == null) return;
+    if (button.isWebApp && button.webAppUrl.isNotEmpty) {
+      final opened = await openTelegramMiniApp(
+        context,
+        chatId: vm.chatId,
+        botUserId: bot.userId,
+        url: button.webAppUrl,
+        title: button.text,
+      );
+      if (!mounted) return;
+      if (!opened) {
+        showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
+      }
+      return;
+    }
+    final parameter = button.startParameter;
+    if (parameter.isNotEmpty) {
+      final link = 'https://t.me/${bot.username}?start=$parameter';
+      await openLink(context, link);
+    } else {
+      await openLink(context, 'https://t.me/${bot.username}');
     }
   }
 
@@ -1123,7 +1250,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     final revisionChanged = revision != _syncedComposerRevision;
     _syncedComposerRevision = revision;
     final focusTick = vm.composerFocusTick;
-    if (focusTick != _syncedComposerFocusTick) {
+    final focusRequested = focusTick != _syncedComposerFocusTick;
+    if (focusRequested) {
       _syncedComposerFocusTick = focusTick;
       _focusComposerForTranscriptReply();
     }
@@ -1189,7 +1317,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     } else {
       final composing = _controller.value.composing;
       final composingLocally = _focus.hasFocus || composing.isValid;
-      if (!composingLocally && vm.draft != _controller.text) {
+      if ((!composingLocally || focusRequested) &&
+          vm.draft != _controller.text) {
         _controller.value = TextEditingValue(
           text: vm.draft,
           selection: TextSelection.collapsed(offset: vm.draft.length),
@@ -3351,10 +3480,19 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Widget _inlineBotResultMenu() {
     final c = context.colors;
-    final results = _inlineBotResults?.results ?? const <BotInlineResult>[];
-    Widget child;
-    if (results.isEmpty) {
-      child = SizedBox(
+    final page = _inlineBotResults;
+    final results = page?.results ?? const <BotInlineResult>[];
+    final headerButton = page?.button;
+    final headerText = _inlineBot?.inlinePlaceholder.trim() ?? '';
+    Widget body;
+    if (_inlineBotLoading && page == null) {
+      body = const SizedBox(
+        key: ValueKey('inlineBotLoadingIndicator'),
+        height: 58,
+        child: Center(child: AppActivityIndicator(size: 20)),
+      );
+    } else if (results.isEmpty) {
+      body = SizedBox(
         height: 54,
         child: Center(
           child: Text(
@@ -3363,84 +3501,232 @@ class _ChatInputBarState extends State<ChatInputBar>
           ),
         ),
       );
+    } else if (page != null && page.rendersAsGallery) {
+      body = GridView.builder(
+        key: const ValueKey('inlineBotGalleryGrid'),
+        shrinkWrap: true,
+        padding: const EdgeInsets.all(6),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+        ),
+        itemCount: results.length,
+        itemBuilder: (_, index) => _inlineGalleryTile(results[index]),
+      );
     } else {
-      child = ListView.separated(
+      body = ListView.separated(
         shrinkWrap: true,
         padding: EdgeInsets.zero,
         itemCount: results.length,
-        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 54),
-        itemBuilder: (_, index) {
-          final result = results[index];
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => unawaited(_sendInlineBotResult(result)),
-            child: SizedBox(
-              height: 58,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    AppIcon(
-                      _inlineResultIcon(result.type),
-                      size: 23,
-                      color: AppTheme.brand,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            result.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: c.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          if (result.description.isNotEmpty)
-                            Text(
-                              result.description,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: c.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+        separatorBuilder: (_, _) => const InsetDivider(leadingInset: 60),
+        itemBuilder: (_, index) => _inlineListRow(results[index]),
       );
     }
 
-    return Container(
-      key: const ValueKey('inlineBotResultMenu'),
-      constraints: const BoxConstraints(maxHeight: 260),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(color: c.divider, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, -4),
-          ),
-        ],
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter < 120) {
+          unawaited(_loadMoreInlineBotResults());
+        }
+        return false;
+      },
+      child: Container(
+        key: const ValueKey('inlineBotResultMenu'),
+        constraints: const BoxConstraints(maxHeight: 280),
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: c.divider, width: 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 14,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (headerButton != null)
+              GestureDetector(
+                key: const ValueKey('inlineBotResultsHeaderButton'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () =>
+                    unawaited(_activateInlineResultsButton(headerButton)),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: c.divider, width: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          headerButton.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppTheme.brand,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      AppIcon(
+                        headerButton.isWebApp
+                            ? HeroAppIcons.globe
+                            : HeroAppIcons.arrowTopRight,
+                        size: 13,
+                        color: AppTheme.brand,
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (headerText.isNotEmpty && results.isNotEmpty)
+              Container(
+                key: const ValueKey('inlineBotPlaceholderHeader'),
+                padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: c.divider, width: 0.5),
+                  ),
+                ),
+                child: Text(
+                  '@${_inlineBot!.username} · $headerText',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                ),
+              ),
+            Flexible(child: body),
+            if (_inlineBotLoadingMore)
+              const SizedBox(
+                key: ValueKey('inlineBotLoadingMoreIndicator'),
+                height: 36,
+                child: Center(child: AppActivityIndicator(size: 16)),
+              ),
+          ],
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: child,
+    );
+  }
+
+  Widget _inlineListRow(BotInlineResult result) {
+    final c = context.colors;
+    return GestureDetector(
+      key: ValueKey('inlineBotResult-${result.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(_sendInlineBotResult(result)),
+      onLongPress: () => unawaited(_sendInlineBotResultWithOptions(result)),
+      child: SizedBox(
+        height: 58,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _inlineResultLeading(result),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      result.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: c.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (result.description.isNotEmpty)
+                      Text(
+                        result.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: c.textSecondary, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _inlineGalleryTile(BotInlineResult result) {
+    final c = context.colors;
+    final thumb = result.thumbnail;
+    return GestureDetector(
+      key: ValueKey('inlineBotResult-${result.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(_sendInlineBotResult(result)),
+      onLongPress: () => unawaited(_sendInlineBotResultWithOptions(result)),
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.searchFill,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: thumb != null
+            ? TDImage(
+                photo: thumb,
+                fit: result.type == 'inlineQueryResultSticker'
+                    ? BoxFit.contain
+                    : BoxFit.cover,
+              )
+            : Center(
+                child: result.emoji.isNotEmpty
+                    ? Text(result.emoji, style: const TextStyle(fontSize: 28))
+                    : AppIcon(
+                        _inlineResultIcon(result.type),
+                        size: 26,
+                        color: AppTheme.brand,
+                      ),
+              ),
+      ),
+    );
+  }
+
+  Widget _inlineResultLeading(BotInlineResult result) {
+    final c = context.colors;
+    final thumb = result.thumbnail;
+    if (thumb != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        child: SizedBox(width: 40, height: 40, child: TDImage(photo: thumb)),
+      );
+    }
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: c.searchFill,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: result.emoji.isNotEmpty
+          ? Text(result.emoji, style: const TextStyle(fontSize: 20))
+          : AppIcon(
+              _inlineResultIcon(result.type),
+              size: 21,
+              color: AppTheme.brand,
+            ),
     );
   }
 
@@ -3459,16 +3745,27 @@ class _ChatInputBarState extends State<ChatInputBar>
     _ => HeroAppIcons.font,
   };
 
-  Future<void> _sendInlineBotResult(BotInlineResult result) async {
-    final page = _inlineBotResults;
-    if (page == null || page.queryId == 0 || result.id.isEmpty) return;
+  Future<void> _sendInlineBotResult(
+    BotInlineResult result, {
+    int? queryId,
+    MessageSendConfiguration? configuration,
+  }) async {
+    final resolvedQueryId =
+        queryId ??
+        (result.queryId != 0
+            ? result.queryId
+            : (_inlineBotResults?.queryId ?? 0));
+    if (resolvedQueryId == 0 || result.id.isEmpty) return;
     try {
       await _botPlatform.sendInlineResult(
         chatId: vm.chatId,
-        queryId: page.queryId,
+        queryId: resolvedQueryId,
         resultId: result.id,
         topicId: vm.forumTopicSendRef,
         replyTo: vm.replyToInput,
+        options: configuration?.messageSendOptions(
+          paidStarCount: vm.paidMessageStarCount,
+        ),
       );
       if (!mounted) return;
       vm.setReply(null);
@@ -3478,6 +3775,25 @@ class _ChatInputBarState extends State<ChatInputBar>
     } catch (error) {
       _showBotPlatformFailure(error);
     }
+  }
+
+  Future<void> _sendInlineBotResultWithOptions(BotInlineResult result) async {
+    final capturedQueryId = result.queryId != 0
+        ? result.queryId
+        : (_inlineBotResults?.queryId ?? 0);
+    if (capturedQueryId == 0 || result.id.isEmpty) return;
+    final configuration = await showMessageSendOptionsSheet(
+      context,
+      allowWhenOnline: vm.canSendWhenOnline,
+      effects: vm.availableMessageEffects,
+      onOpenScheduledMessages: _openScheduledMessages,
+    );
+    if (!mounted || configuration == null) return;
+    await _sendInlineBotResult(
+      result,
+      queryId: capturedQueryId,
+      configuration: configuration,
+    );
   }
 
   Widget _botCommandMenu() {

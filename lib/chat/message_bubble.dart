@@ -97,6 +97,7 @@ class MessageBubble extends StatefulWidget {
     this.onAvatarLongPress,
     this.onOpenReply,
     this.onOpenForwarded,
+    this.onTapViaBot,
     this.onOpenImage,
     this.onOpenImageGallery,
     this.onApplyMessageBubble,
@@ -169,6 +170,7 @@ class MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<int>? onOpenReply;
   final ValueChanged<ChatMessage>? onOpenForwarded;
+  final ValueChanged<ChatMessage>? onTapViaBot;
   final ValueChanged<ChatMessage>? onOpenImage;
   final ImageGalleryOpenCallback? onOpenImageGallery;
   final ValueChanged<ChatMessage>? onApplyMessageBubble;
@@ -1911,17 +1913,36 @@ class _MessageBubbleState extends State<MessageBubble>
         onTap: () => widget.onButtonTap?.call(message, button),
         child: Container(
           height: 36,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: colors.border, width: 0.5),
           ),
-          child: BotButtonLabel(
-            button: button,
-            color: colors.foreground,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: botButtonBadgeIcon(button) != null ? 18 : 8,
+                ),
+                child: BotButtonLabel(
+                  button: button,
+                  color: colors.foreground,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (botButtonBadgeIcon(button) case final badgeIcon?)
+                Positioned(
+                  top: 4,
+                  right: 5,
+                  child: AppIcon(
+                    badgeIcon,
+                    key: ValueKey('message-button-badge-${button.text}'),
+                    size: 11,
+                    color: colors.foreground.withValues(alpha: 0.72),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -2099,6 +2120,10 @@ class _MessageBubbleState extends State<MessageBubble>
     final parts = <Widget>[
       if (includeForwardHeader && message.hasForwardAttribution) ...[
         _forwardHeader(outgoing),
+        const SizedBox(height: 3),
+      ],
+      if (includeForwardHeader && message.hasViaBotAttribution) ...[
+        _viaBotHeader(outgoing),
         const SizedBox(height: 3),
       ],
       if (includeReplyQuote && message.replyPreviewText != null) ...[
@@ -4031,6 +4056,37 @@ class _MessageBubbleState extends State<MessageBubble>
     );
   }
 
+  /// Inline-bot attribution shown above inline-sent content: `via @bot`.
+  Widget _viaBotHeader(bool outgoing) {
+    final textColor = _messageForwardedNameColor(outgoing);
+    return GestureDetector(
+      key: ValueKey('messageViaBotHeader-${message.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTapViaBot != null
+          ? () => widget.onTapViaBot!.call(message)
+          : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.messageBubbleViaBot, {
+                'value1': message.viaBotDisplayName,
+              }),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 引用 quote block shown above a reply's text.
   Widget _replyQuote(bool outgoing) {
     final labelColor = _messageReplyNameColor(outgoing);
@@ -5083,12 +5139,14 @@ class _MessageBubbleState extends State<MessageBubble>
     required bool outgoing,
   }) {
     final hasForwardHeader = message.hasForwardAttribution;
+    final hasViaBotHeader = message.hasViaBotAttribution;
+    final hasAttributionHeader = hasForwardHeader || hasViaBotHeader;
     final hasReplyQuote = message.replyPreviewText != null;
     if (!_groupsMediaCaption(caption)) {
-      final attributedMedia = hasForwardHeader || hasReplyQuote
+      final attributedMedia = hasAttributionHeader || hasReplyQuote
           ? _bubbleBackground(
               key: ValueKey(
-                hasForwardHeader
+                hasAttributionHeader
                     ? 'messageForwardedMedia-${message.id}'
                     : 'messageRepliedMedia-${message.id}',
               ),
@@ -5102,14 +5160,29 @@ class _MessageBubbleState extends State<MessageBubble>
                 children: [
                   if (hasForwardHeader)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
+                      padding: EdgeInsets.fromLTRB(
+                        10,
+                        7,
+                        10,
+                        hasViaBotHeader ? 2 : 6,
+                      ),
                       child: _forwardHeader(outgoing),
+                    ),
+                  if (hasViaBotHeader)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        10,
+                        hasForwardHeader ? 0 : 7,
+                        10,
+                        6,
+                      ),
+                      child: _viaBotHeader(outgoing),
                     ),
                   if (hasReplyQuote)
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         6,
-                        hasForwardHeader ? 0 : 6,
+                        hasAttributionHeader ? 0 : 6,
                         6,
                         6,
                       ),
@@ -5132,7 +5205,7 @@ class _MessageBubbleState extends State<MessageBubble>
             _textBubble(
               caption,
               outgoing,
-              includeForwardHeader: !hasForwardHeader,
+              includeForwardHeader: !hasAttributionHeader,
               includeReplyQuote: false,
             ),
           ],
@@ -5177,12 +5250,22 @@ class _MessageBubbleState extends State<MessageBubble>
         children: [
           if (hasForwardHeader)
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
+              padding: EdgeInsets.fromLTRB(10, 7, 10, hasViaBotHeader ? 2 : 6),
               child: _forwardHeader(outgoing),
+            ),
+          if (hasViaBotHeader)
+            Padding(
+              padding: EdgeInsets.fromLTRB(10, hasForwardHeader ? 0 : 7, 10, 6),
+              child: _viaBotHeader(outgoing),
             ),
           if (hasReplyQuote)
             Padding(
-              padding: EdgeInsets.fromLTRB(6, hasForwardHeader ? 0 : 6, 6, 6),
+              padding: EdgeInsets.fromLTRB(
+                6,
+                hasAttributionHeader ? 0 : 6,
+                6,
+                6,
+              ),
               child: _replyQuote(outgoing),
             ),
           media,

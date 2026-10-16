@@ -219,12 +219,14 @@ class MentionCandidate {
     required this.name,
     this.username = '',
     this.photo,
+    this.isInlineBot = false,
   });
 
   final int userId;
   final String name;
   final String username;
   final TdFileRef? photo;
+  final bool isInlineBot;
 }
 
 class MessageReactionUser {
@@ -1747,8 +1749,15 @@ class ChatViewModel extends ChangeNotifier {
     _insertMention(name, userId);
   }
 
-  Future<List<MentionCandidate>> searchMentionCandidates(String query) async {
-    if (!isGroup) return const [];
+  Future<List<MentionCandidate>> searchMentionCandidates(
+    String query, {
+    bool includeInlineBots = false,
+  }) async {
+    final inlineBots = includeInlineBots
+        ? await _recentInlineBotCandidates(query)
+        : const <MentionCandidate>[];
+    if (!isGroup) return inlineBots;
+    List<MentionCandidate> memberCandidates;
     try {
       final result = await _client.query({
         '@type': 'searchChatMembers',
@@ -1761,9 +1770,86 @@ class ChatViewModel extends ChangeNotifier {
       final resolved = await Future.wait(
         members.map(_mentionCandidateFromMember),
       );
+      memberCandidates = resolved.whereType<MentionCandidate>().toList(
+        growable: false,
+      );
+    } catch (_) {
+      memberCandidates = _recentMentionCandidates(query);
+    }
+    if (inlineBots.isEmpty) return memberCandidates;
+    final seen = <int>{for (final bot in inlineBots) bot.userId};
+    return [
+      ...inlineBots,
+      for (final member in memberCandidates)
+        if (seen.add(member.userId)) member,
+    ];
+  }
+
+  Future<List<MentionCandidate>> _recentInlineBotCandidates(
+    String query,
+  ) async {
+    if (isSecretChat) return const [];
+    try {
+      final response = await _client.query({'@type': 'getRecentInlineBots'});
+      // The await can outlive the view model (disposed while the response was
+      // held): no follow-up getUser may be issued and no candidate returned.
+      if (_isDisposed) return const [];
+      final rawIds = response['user_ids'];
+      if (rawIds is! List || rawIds.isEmpty) return const [];
+      final ids = rawIds
+          .map(
+            (v) => switch (v) {
+              final int n => n,
+              final String s => int.tryParse(s),
+              _ => null,
+            },
+          )
+          .whereType<int>()
+          .where((id) => id > 0)
+          .take(20)
+          .toList(growable: false);
+      if (ids.isEmpty) return const [];
+      final normalized = query.trim().toLowerCase();
+      final resolved = await Future.wait(
+        ids.map((userId) async {
+          try {
+            final user = await _client.query({
+              '@type': 'getUser',
+              'user_id': userId,
+            });
+            if (_isDisposed) return null;
+            final type = user.obj('type');
+            if (type?.type != 'userTypeBot' ||
+                (type?.boolean('is_inline') ?? false) == false) {
+              return null;
+            }
+            final username = _primaryUsername(user);
+            if (username.isEmpty) return null;
+            final rawName = TDParse.userName(user).trim();
+            final name = rawName.isEmpty
+                ? username
+                : (rawName.startsWith('@') ? rawName.substring(1) : rawName);
+            if (normalized.isNotEmpty &&
+                !username.toLowerCase().startsWith(normalized) &&
+                !name.toLowerCase().contains(normalized)) {
+              return null;
+            }
+            return MentionCandidate(
+              userId: userId,
+              name: name,
+              username: username,
+              photo: TDParse.smallPhoto(user.obj('profile_photo')),
+              isInlineBot: true,
+            );
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      if (_isDisposed) return const [];
       return resolved.whereType<MentionCandidate>().toList(growable: false);
     } catch (_) {
-      return _recentMentionCandidates(query);
+      return const [];
     }
   }
 
@@ -1833,6 +1919,24 @@ class ChatViewModel extends ChangeNotifier {
     _draftFormattedEntities = const [];
     _draftMentions.add(_DraftMention(text: mention, userId: userId));
     if (editingMessage == null) _scheduleDraftSave();
+    notifyListeners();
+  }
+
+  /// Replaces the composer draft with `@botUsername query` and asks the
+  /// composer to focus and run an inline-bot lookup immediately.
+  void activateInlineQuery(String botUsername, [String query = '']) {
+    final cleanUsername = botUsername.trim().replaceFirst(RegExp(r'^@+'), '');
+    if (cleanUsername.isEmpty) return;
+    if (editingMessage != null) {
+      _restoreComposerAfterMessageEdit(notify: false, scheduleDraftSave: false);
+    }
+    final text = '@$cleanUsername $query';
+    draft = text;
+    _draftFormattedText = text;
+    _draftFormattedEntities = const [];
+    _draftMentions.clear();
+    _scheduleDraftSave();
+    _composerFocusTick++;
     notifyListeners();
   }
 
@@ -4869,6 +4973,8 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<int?> webAppBotUserId(ChatMessage? message) async {
+    final viaBotId = message?.viaBotUserId;
+    if (viaBotId != null && viaBotId > 0) return viaBotId;
     if (peerIsBot && peerUserId != null) return peerUserId;
     final senderId = message?.senderId;
     if (senderId == null || senderId <= 0) return null;
@@ -4881,6 +4987,59 @@ class ChatViewModel extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Resolves the `@username` of the bot that owns [message] (either its
+  /// `via_bot_user_id`, the message's bot sender, or the current bot peer).
+  Future<String?> resolveInlineBotUsername(ChatMessage? message) async {
+    final cachedHandle = message?.viaBotUsername?.trim();
+    if (cachedHandle != null && cachedHandle.startsWith('@')) {
+      final clean = cachedHandle.substring(1).trim();
+      if (clean.isNotEmpty) return clean;
+    }
+    final candidates = <int>[
+      if (message?.viaBotUserId case final id? when id > 0) id,
+      if (message?.senderId case final id? when id > 0) id,
+      if (peerIsBot && peerUserId != null && peerUserId! > 0) peerUserId!,
+      if (message?.forwardFromUserId case final id? when id > 0) id,
+    ];
+    final seen = <int>{};
+    for (final userId in candidates) {
+      if (!seen.add(userId)) continue;
+      final cached = _viaBotUsernames[userId];
+      if (cached != null && cached.startsWith('@')) {
+        final clean = cached.substring(1).trim();
+        if (clean.isNotEmpty) return clean;
+      }
+      try {
+        final user = await _client.query({
+          '@type': 'getUser',
+          'user_id': userId,
+        });
+        if (!_isBotUser(user)) continue;
+        final username = _primaryUsername(user);
+        if (username.isNotEmpty) {
+          _viaBotUsernames[userId] = '@$username';
+          return username;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  static String _primaryUsername(Map<String, dynamic> user) {
+    final usernames = user.obj('usernames');
+    final active = usernames?['active_usernames'];
+    if (active is List) {
+      for (final value in active) {
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
+      }
+    }
+    final editable = usernames?.str('editable_username')?.trim();
+    if (editable != null && editable.isNotEmpty) return editable;
+    return (user.str('username') ?? '').trim();
   }
 
   Future<void> _loadBotInfo(int userId) async {
@@ -7757,6 +7916,7 @@ class ChatViewModel extends ChangeNotifier {
   /// Fills `forwardOrigin` for forwarded messages whose origin is a user or
   /// chat we can name (hidden-user names already arrive inline).
   void _resolveForwardsIfNeeded(List<ChatMessage> batch) {
+    _resolveViaBotsIfNeeded(batch);
     for (final m in batch) {
       if (m.forwardOrigin != null && m.forwardOrigin!.isNotEmpty) continue;
       final uid = m.forwardFromUserId;
@@ -7837,6 +7997,66 @@ class ChatViewModel extends ChangeNotifier {
     for (final message in waiting) {
       message.forwardOrigin = name;
     }
+    _bumpMaterializedMessageRevisions(waiting.map((m) => m.id));
+    _scheduleCoalescedNotify();
+  }
+
+  final Map<int, String> _viaBotUsernames = {};
+  final Map<int, List<ChatMessage>> _pendingViaBotUsers = {};
+
+  void _resolveViaBotsIfNeeded(List<ChatMessage> batch) {
+    for (final m in batch) {
+      if (m.isContentRestricted) continue;
+      if (m.viaBotUsername != null && m.viaBotUsername!.isNotEmpty) continue;
+      final botUserId = m.viaBotUserId;
+      if (botUserId == null || botUserId <= 0) continue;
+      final cached = _viaBotUsernames[botUserId];
+      if (cached != null) {
+        m.viaBotUsername = cached;
+        continue;
+      }
+      final waiting = _pendingViaBotUsers[botUserId];
+      if (waiting != null) {
+        waiting.add(m);
+        continue;
+      }
+      _pendingViaBotUsers[botUserId] = <ChatMessage>[m];
+      unawaited(_resolveViaBotUsername(botUserId));
+    }
+  }
+
+  Future<void> _resolveViaBotUsername(int botUserId) async {
+    String? label;
+    try {
+      final user = await _client.query({
+        '@type': 'getUser',
+        'user_id': botUserId,
+      });
+      final username = _primaryUsername(user);
+      if (username.isNotEmpty) {
+        label = '@$username';
+      } else {
+        final name = TDParse.userName(user).trim();
+        if (name.isNotEmpty) label = name;
+      }
+    } catch (_) {}
+    final waiting = _pendingViaBotUsers.remove(botUserId);
+    if (label == null || label.isEmpty || waiting == null) return;
+    _viaBotUsernames[botUserId] = label;
+    final updatedIds = <int>{};
+    for (final m in waiting) {
+      final refs = _messageRefs(m.id);
+      final targets = refs.isEmpty ? <ChatMessage>[m] : refs;
+      for (final message in targets) {
+        if (message.isContentRestricted || message.viaBotUserId != botUserId) {
+          continue;
+        }
+        message.viaBotUsername = label;
+        updatedIds.add(message.id);
+      }
+    }
+    if (updatedIds.isEmpty) return;
+    _bumpMaterializedMessageRevisions(updatedIds);
     _scheduleCoalescedNotify();
   }
 

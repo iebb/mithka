@@ -20,8 +20,9 @@ import 'telegram_webview_security.dart';
 Future<TelegramInvoiceOutcome> openTelegramInvoiceCheckout(
   BuildContext context, {
   required Map<String, dynamic> inputInvoice,
+  TelegramPaymentQuery? query,
 }) async {
-  final service = TelegramPaymentService();
+  final service = TelegramPaymentService(query: query);
   try {
     final form = await service.paymentForm(inputInvoice);
     if (!context.mounted) {

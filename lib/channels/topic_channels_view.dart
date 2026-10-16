@@ -551,6 +551,21 @@ class _TopicPostRow extends StatelessWidget {
                   height: 1.35,
                   color: c.textPrimary,
                 ),
+                onOpenCurrentChat: () {
+                  final detail = ChatView(
+                    chatId: post.chat.id,
+                    title: post.chat.title,
+                    forumTopicId: post.threadId,
+                  );
+                  if (onOpenDetail != null) {
+                    onOpenDetail!(detail);
+                    return;
+                  }
+                  pushAppChatRoute(
+                    context,
+                    AppChatPageRoute<void>(builder: (_) => detail),
+                  );
+                },
               ),
             ],
             const SizedBox(height: 12),

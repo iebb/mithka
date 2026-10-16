@@ -87,6 +87,13 @@ List<ChatMessage> mergeChatMessages(
       message.senderPhoto ??= existing.senderPhoto;
       message.senderRole ??= existing.senderRole;
       message.senderTitle ??= existing.senderTitle;
+      message.forwardOrigin ??= existing.forwardOrigin;
+      if (!message.isContentRestricted &&
+          message.viaBotUserId != null &&
+          message.viaBotUserId! > 0 &&
+          message.viaBotUserId == existing.viaBotUserId) {
+        message.viaBotUsername ??= existing.viaBotUsername;
+      }
       if (!message.commentThreadMetadataKnown &&
           existing.commentThreadMetadataKnown) {
         message.hasCommentThread = existing.hasCommentThread;

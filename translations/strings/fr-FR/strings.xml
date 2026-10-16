@@ -2092,6 +2092,7 @@
     <string name="messageBubbleExperimentalNotice">Les styles de bulles sont expérimentaux et peuvent changer à tout moment.</string>
     <string name="messageBubbleForestFamiliar">Familier de la forêt</string>
     <string name="messageBubbleForwardedFrom">Transféré de {value1}</string>
+    <string name="messageBubbleViaBot">via {value1}</string>
     <string name="messageBubbleGenreAbstract">Abstrait</string>
     <string name="messageBubbleGenreCelestial">Céleste</string>
     <string name="messageBubbleGenreClassic">Classique</string>

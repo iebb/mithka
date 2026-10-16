@@ -1,9 +1,27 @@
 import 'package:flutter/material.dart';
 
+import '../components/app_icons.dart';
 import '../tdlib/td_models.dart';
 import 'custom_emoji.dart';
 
 typedef BotButtonPalette = ({Color background, Color foreground, Color border});
+
+AppIconData? botButtonBadgeIcon(MessageButton button) {
+  if (button.isReplyKeyboard) return null;
+  if (button.isWebApp) return HeroAppIcons.globe;
+  if (button.url != null && button.url!.isNotEmpty) {
+    return HeroAppIcons.arrowTopRight;
+  }
+  if (button.isSwitchInline) {
+    return button.isSwitchInlineCurrentChat
+        ? HeroAppIcons.at
+        : HeroAppIcons.share;
+  }
+  if (button.copyText != null && button.copyText!.isNotEmpty) {
+    return HeroAppIcons.clipboard;
+  }
+  return null;
+}
 
 BotButtonPalette botButtonPalette(
   MessageButtonStyle style, {

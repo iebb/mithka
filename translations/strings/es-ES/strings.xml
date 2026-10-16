@@ -2092,6 +2092,7 @@
     <string name="messageBubbleExperimentalNotice">Los estilos de burbuja son experimentales y pueden cambiar en cualquier momento.</string>
     <string name="messageBubbleForestFamiliar">Familiar del bosque</string>
     <string name="messageBubbleForwardedFrom">Reenviado de {value1}</string>
+    <string name="messageBubbleViaBot">vía {value1}</string>
     <string name="messageBubbleGenreAbstract">Abstracto</string>
     <string name="messageBubbleGenreCelestial">Celestial</string>
     <string name="messageBubbleGenreClassic">Clásico</string>

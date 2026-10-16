@@ -2085,6 +2085,7 @@
     <string name="messageBubbleExperimentalNotice">메시지 말풍선 스타일은 실험 기능이며 언제든지 변경될 수 있습니다.</string>
     <string name="messageBubbleForestFamiliar">숲의 정령</string>
     <string name="messageBubbleForwardedFrom">{value1}에서 전달됨</string>
+    <string name="messageBubbleViaBot">{value1} 경유</string>
     <string name="messageBubbleGenreAbstract">추상</string>
     <string name="messageBubbleGenreCelestial">천체</string>
     <string name="messageBubbleGenreClassic">클래식</string>

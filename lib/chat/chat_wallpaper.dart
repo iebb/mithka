@@ -1360,12 +1360,14 @@ class ChatWallpaperController extends ChangeNotifier {
   Future<void> applyDefaultWallpaper(
     ChatWallpaper? wallpaper, {
     required bool dark,
+    TdWallpaperQuery? query,
   }) async {
-    if (!_hasActiveClient()) {
+    final queryAccount = query ?? _query;
+    if (query == null && !_hasActiveClient()) {
       throw UnsupportedError('Telegram is not connected');
     }
     if (wallpaper == null) {
-      await _query({
+      await queryAccount({
         '@type': 'deleteDefaultBackground',
         'for_dark_theme': dark,
       });
@@ -1375,7 +1377,7 @@ class ChatWallpaperController extends ChangeNotifier {
         throw UnsupportedError('Chat themes cannot be global wallpapers');
       }
       final payload = await _wallpaperRequestPayload(wallpaper);
-      final response = await _query({
+      final response = await queryAccount({
         '@type': 'setDefaultBackground',
         'background': payload.background,
         'type': payload.type,

@@ -2092,6 +2092,7 @@
     <string name="messageBubbleExperimentalNotice">Nachrichtenblasen-Stile sind experimentell und können sich jederzeit ändern.</string>
     <string name="messageBubbleForestFamiliar">Waldgeist</string>
     <string name="messageBubbleForwardedFrom">Weitergeleitet von {value1}</string>
+    <string name="messageBubbleViaBot">über {value1}</string>
     <string name="messageBubbleGenreAbstract">Abstrakt</string>
     <string name="messageBubbleGenreCelestial">Himmlisch</string>
     <string name="messageBubbleGenreClassic">Klassisch</string>

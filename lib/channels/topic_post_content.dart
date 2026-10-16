@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
+import '../app/primary_chat_launcher.dart';
+import '../chat/bot_button_presentation.dart';
+import '../chat/chat_picker_view.dart';
 import '../chat/file_detail_view.dart';
 import '../chat/link_handler.dart';
 import '../chat/telegram_rich_text.dart';
+import '../components/app_icons.dart';
 import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -15,6 +19,7 @@ import '../tdlib/display_text.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../tdlib/td_requests.dart';
 import '../theme/app_theme.dart';
 
 class TopicPostContent extends StatelessWidget {
@@ -27,6 +32,7 @@ class TopicPostContent extends StatelessWidget {
     this.maxTextLines,
     this.textOverflow = TextOverflow.clip,
     this.imageReactions,
+    this.onOpenCurrentChat,
   });
 
   final int chatId;
@@ -36,6 +42,7 @@ class TopicPostContent extends StatelessWidget {
   final int? maxTextLines;
   final TextOverflow textOverflow;
   final Widget? imageReactions;
+  final VoidCallback? onOpenCurrentChat;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +88,13 @@ class TopicPostContent extends StatelessWidget {
       );
     }
     if (message.buttonRows.isNotEmpty) {
-      children.add(_TopicButtonRows(chatId: chatId, message: message));
+      children.add(
+        _TopicButtonRows(
+          chatId: chatId,
+          message: message,
+          onOpenCurrentChat: onOpenCurrentChat,
+        ),
+      );
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -243,10 +256,15 @@ class _TopicFileCard extends StatelessWidget {
 }
 
 class _TopicButtonRows extends StatelessWidget {
-  const _TopicButtonRows({required this.chatId, required this.message});
+  const _TopicButtonRows({
+    required this.chatId,
+    required this.message,
+    this.onOpenCurrentChat,
+  });
 
   final int chatId;
   final ChatMessage message;
+  final VoidCallback? onOpenCurrentChat;
 
   @override
   Widget build(BuildContext context) {
@@ -264,26 +282,39 @@ class _TopicButtonRows extends StatelessWidget {
                     onTap: () => _pressButton(context, row[i]),
                     child: Container(
                       constraints: const BoxConstraints(minHeight: 38),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
                       decoration: BoxDecoration(
                         color: c.searchFill,
                         borderRadius: BorderRadius.circular(AppRadius.control),
                         border: Border.all(color: c.divider, width: 0.5),
                       ),
-                      child: Text(
-                        row[i].text,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: c.linkBlue,
-                        ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: botButtonBadgeIcon(row[i]) != null
+                                  ? 18
+                                  : 10,
+                              vertical: 8,
+                            ),
+                            child: BotButtonLabel(
+                              button: row[i],
+                              color: c.linkBlue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (botButtonBadgeIcon(row[i]) case final badgeIcon?)
+                            Positioned(
+                              top: 4,
+                              right: 5,
+                              child: AppIcon(
+                                badgeIcon,
+                                size: 11,
+                                color: c.linkBlue.withValues(alpha: 0.72),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -345,8 +376,173 @@ class _TopicButtonRows extends StatelessWidget {
       }
       return;
     }
-    final query = button.switchInlineQuery;
-    if (query != null && query.isNotEmpty) {
+    if (button.isSwitchInline) {
+      await _activateSwitchInline(context, button);
+      return;
+    }
+  }
+
+  Future<void> _activateSwitchInline(
+    BuildContext context,
+    MessageButton button,
+  ) async {
+    final query = button.switchInlineQuery ?? '';
+    final target =
+        button.switchInlineTarget ?? const SwitchInlineTarget.chooseChat();
+    // Chat ids and draft writes are account-scoped, and this transcript can
+    // outlive the tap: capture the owning account and treat a disposed element
+    // or a switched active account as the end of the flow, checked after every
+    // await so a late response can never write into a topic view the user
+    // already left (or into the replacement account's ids).
+    final accountSlot = TdClient.shared.activeSlot;
+    final accountClientId = TdClient.shared.activeClientId;
+    // Account-only half of the staleness guard: the mounted half stays inline
+    // at each call site so the analyzer can see it guard every context use.
+    bool accountChanged() =>
+        TdClient.shared.activeSlot != accountSlot ||
+        TdClient.shared.activeClientId != accountClientId;
+    Future<Map<String, dynamic>> queryOwned(Map<String, dynamic> request) =>
+        TdClient.shared.queryForSlot(request, accountSlot);
+    final username = await _resolveBotUsername(accountSlot);
+    if (!context.mounted || accountChanged()) return;
+    if (target.kind == SwitchInlineTargetKind.internalLink &&
+        target.internalLink != null) {
+      final link = Map<String, dynamic>.from(target.internalLink!);
+      if (username != null &&
+          username.isNotEmpty &&
+          link.type == 'internalLinkTypePublicChat' &&
+          (link.str('draft_text') ?? '').trim().isEmpty) {
+        link['draft_text'] = '@$username $query';
+      }
+      await openInternalLinkType(context, link);
+      return;
+    }
+    if (username != null && username.isNotEmpty) {
+      if (target.isCurrentChat) {
+        var currentTitle = '';
+        var canSend = true;
+        try {
+          final chat = await queryOwned({
+            '@type': 'getChat',
+            'chat_id': chatId,
+          });
+          if (!context.mounted || accountChanged()) return;
+          currentTitle = chat.str('title') ?? '';
+          canSend =
+              chat.obj('permissions')?.boolean('can_send_basic_messages') ??
+              true;
+          final type = chat.obj('type');
+          if (type?.type == 'chatTypeSupergroup' &&
+              (type?.boolean('is_channel') ?? false)) {
+            final sgId = type?.int64('supergroup_id');
+            if (sgId != null && sgId != 0) {
+              final sg = await queryOwned({
+                '@type': 'getSupergroup',
+                'supergroup_id': sgId,
+              });
+              if (!context.mounted || accountChanged()) return;
+              final status = sg.obj('status');
+              final statusType = status?.type;
+              if (statusType != 'chatMemberStatusCreator' &&
+                  statusType != 'chatMemberStatusAdministrator') {
+                canSend = false;
+              } else if (statusType == 'chatMemberStatusAdministrator') {
+                final rights = status?.obj('rights');
+                canSend = rights?.boolean('can_post_messages') ?? false;
+              }
+            }
+          }
+        } catch (_) {
+          if (!context.mounted || accountChanged()) return;
+        }
+        if (canSend) {
+          // Re-check immediately before the write: permission lookups can
+          // resolve long after the tap, and the mounted check below used to be
+          // the first guard after the draft had already been sent.
+          if (!context.mounted || accountChanged()) return;
+          final forumTopicId = message.forumTopicId;
+          try {
+            await queryOwned(
+              setTextChatDraftRequest(
+                chatId: chatId,
+                topicId: forumTopicId != null && forumTopicId > 0
+                    ? {
+                        '@type': 'messageTopicForum',
+                        'forum_topic_id': forumTopicId,
+                      }
+                    : null,
+                date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                formattedText: {
+                  '@type': 'formattedText',
+                  'text': '@$username $query',
+                  'entities': const <Map<String, dynamic>>[],
+                },
+              ),
+            );
+          } catch (_) {}
+          if (!context.mounted || accountChanged()) return;
+          if (onOpenCurrentChat != null) {
+            onOpenCurrentChat!();
+            return;
+          }
+          await openChatFromCurrentWindow(
+            context,
+            chatId: chatId,
+            title: currentTitle,
+          );
+          return;
+        }
+        // The current chat cannot receive the draft (a channel the viewer
+        // cannot post in): current-chat targets must never fall through to
+        // the picker — copy the query so it can still be pasted somewhere.
+        if (context.mounted && !accountChanged()) {
+          if (query.isNotEmpty) {
+            await Clipboard.setData(ClipboardData(text: query));
+            if (context.mounted && !accountChanged()) {
+              showToast(
+                context,
+                AppStrings.t(AppStringKeys.topicPostContentCopiedQuery),
+              );
+            }
+          }
+        }
+        return;
+      }
+      final allowedKinds = target.allowedChatKinds;
+      final picked = await Navigator.of(context).push<ChatSummary>(
+        MaterialPageRoute(
+          builder: (_) => ChatPickerView(
+            allowedKinds: allowedKinds,
+            allowChannels: allowedKinds.contains(ChatKind.channel),
+            // The route is a sibling of this transcript's link scope, so the
+            // owning account has to travel with the picker explicitly.
+            accountSlot: accountSlot,
+          ),
+        ),
+      );
+      if (picked == null || !context.mounted || accountChanged()) return;
+      try {
+        await queryOwned(
+          setTextChatDraftRequest(
+            chatId: picked.id,
+            date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            formattedText: {
+              '@type': 'formattedText',
+              'text': '@$username $query',
+              'entities': const <Map<String, dynamic>>[],
+            },
+          ),
+        );
+      } catch (_) {}
+      if (!context.mounted || accountChanged()) return;
+      await openChatFromCurrentWindow(
+        context,
+        chatId: picked.id,
+        title: picked.title,
+      );
+      return;
+    }
+    if (query.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: query));
       if (context.mounted) {
         showToast(
@@ -354,7 +550,42 @@ class _TopicButtonRows extends StatelessWidget {
           AppStrings.t(AppStringKeys.topicPostContentCopiedQuery),
         );
       }
-      return;
     }
+  }
+
+  Future<String?> _resolveBotUsername(int accountSlot) async {
+    final cachedHandle = message.viaBotUsername?.trim();
+    if (cachedHandle != null && cachedHandle.startsWith('@')) {
+      final clean = cachedHandle.substring(1).trim();
+      if (clean.isNotEmpty) return clean;
+    }
+    final candidates = <int>[
+      if (message.viaBotUserId case final id? when id > 0) id,
+      if (message.senderId case final id? when id > 0) id,
+      if (message.forwardFromUserId case final id? when id > 0) id,
+    ];
+    for (final userId in candidates) {
+      try {
+        // User ids come from this account's message, so the lookup has to stay
+        // on it even if the active account changed meanwhile.
+        final user = await TdClient.shared.queryForSlot({
+          '@type': 'getUser',
+          'user_id': userId,
+        }, accountSlot);
+        if (!TDParse.isBotUser(user)) continue;
+        final usernames = user.obj('usernames');
+        final active = usernames?['active_usernames'];
+        if (active is List) {
+          for (final value in active) {
+            if (value is String && value.trim().isNotEmpty) {
+              return value.trim();
+            }
+          }
+        }
+        final editable = usernames?.str('editable_username')?.trim();
+        if (editable != null && editable.isNotEmpty) return editable;
+      } catch (_) {}
+    }
+    return null;
   }
 }

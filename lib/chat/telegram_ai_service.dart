@@ -377,7 +377,6 @@ class TelegramAiService extends ChangeNotifier {
 
   final TdClient _client;
   final AiStdoutLogger _aiLogger;
-  @visibleForTesting
   final TelegramAiQuery? queryOverride;
   StreamSubscription<Map<String, dynamic>>? _subscription;
   List<TelegramAiStyle> _styles = const [];

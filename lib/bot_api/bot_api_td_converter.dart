@@ -141,9 +141,11 @@ class BotApiTdConverter {
   }) {
     final sourceChat = _map(source['chat']) ?? const <String, dynamic>{};
     final from = _map(source['from']);
+    final viaBot = _map(source['via_bot']);
     final senderChat = _map(source['sender_chat']);
     final users = <Map<String, dynamic>>[];
     if (from != null) users.add(user(from));
+    if (viaBot != null) users.add(user({...viaBot, 'is_bot': true}));
     for (final serviceUser in _serviceUsers(source)) {
       users.add(user(serviceUser));
     }
@@ -1043,6 +1045,16 @@ class BotApiTdConverter {
         '@type': 'inlineKeyboardButtonTypeSwitchInline',
         'query': _string(button['switch_inline_query']),
         'in_current_chat': false,
+        'target_chat': const {
+          '@type': 'targetChatChosen',
+          'types': {
+            '@type': 'targetChatTypes',
+            'allow_user_chats': true,
+            'allow_bot_chats': true,
+            'allow_group_chats': true,
+            'allow_channel_chats': true,
+          },
+        },
       };
     }
     if (_string(button['switch_inline_query_current_chat']).isNotEmpty ||
@@ -1051,6 +1063,29 @@ class BotApiTdConverter {
         '@type': 'inlineKeyboardButtonTypeSwitchInline',
         'query': _string(button['switch_inline_query_current_chat']),
         'in_current_chat': true,
+        'target_chat': const {'@type': 'targetChatCurrent'},
+      };
+    }
+    final switchChosenChat = _map(button['switch_inline_query_chosen_chat']);
+    if (switchChosenChat != null) {
+      return {
+        '@type': 'inlineKeyboardButtonTypeSwitchInline',
+        'query': _string(switchChosenChat['query']),
+        'in_current_chat': false,
+        'target_chat': {
+          '@type': 'targetChatChosen',
+          'types': {
+            '@type': 'targetChatTypes',
+            'allow_user_chats':
+                switchChosenChat['allow_user_chats'] as bool? ?? false,
+            'allow_bot_chats':
+                switchChosenChat['allow_bot_chats'] as bool? ?? false,
+            'allow_group_chats':
+                switchChosenChat['allow_group_chats'] as bool? ?? false,
+            'allow_channel_chats':
+                switchChosenChat['allow_channel_chats'] as bool? ?? false,
+          },
+        },
       };
     }
     if (_string(button['copy_text']).isNotEmpty) {

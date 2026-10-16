@@ -2022,6 +2022,7 @@ class _TopicChatViewState extends State<TopicChatView> {
               sender: _senderCache[post.message.senderId],
               showTopicChip: _selectedThreadId == null,
               onOpenTopic: () => _selectTopic(post.topic.id),
+              onOpenCurrentChat: () => unawaited(_openChatView()),
               onLike: () => _addReaction(post, '❤️'),
               onPickReaction: () => _showReactionPicker(post),
               onComments: () => _openComments(post),
@@ -2101,6 +2102,7 @@ class _TopicPostRow extends StatelessWidget {
     required this.onShare,
     this.showTopicChip = false,
     this.onOpenTopic,
+    this.onOpenCurrentChat,
     this.sender,
   });
 
@@ -2117,6 +2119,7 @@ class _TopicPostRow extends StatelessWidget {
   /// redundant there.
   final bool showTopicChip;
   final VoidCallback? onOpenTopic;
+  final VoidCallback? onOpenCurrentChat;
 
   @override
   Widget build(BuildContext context) {
@@ -2177,6 +2180,7 @@ class _TopicPostRow extends StatelessWidget {
                 color: c.textPrimary,
               ),
               imageReactions: _ExtraReactions(message: post.message),
+              onOpenCurrentChat: onOpenCurrentChat,
             ),
           ],
           const SizedBox(height: 13),

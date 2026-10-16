@@ -2085,6 +2085,7 @@
     <string name="messageBubbleExperimentalNotice">訊息氣泡樣式屬於實驗性功能，可能隨時發生變化。</string>
     <string name="messageBubbleForestFamiliar">森林小精靈</string>
     <string name="messageBubbleForwardedFrom">轉寄自 {value1}</string>
+    <string name="messageBubbleViaBot">透過 {value1}</string>
     <string name="messageBubbleGenreAbstract">抽象</string>
     <string name="messageBubbleGenreCelestial">星空</string>
     <string name="messageBubbleGenreClassic">經典</string>
