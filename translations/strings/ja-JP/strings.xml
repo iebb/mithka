@@ -823,6 +823,7 @@
     <string name="chatDeleteSelectedMessagesConfirmation">選択した{value1}件のメッセージを削除しますか？</string>
     <string name="chatDeleteSingleMessageQuestion">このメッセージを削除しますか？</string>
     <string name="chatDeleteUnavailable">このチャットは削除できません。</string>
+    <string name="chatDeletedAccountName">削除されたアカウント</string>
     <string name="chatEditMessageTitle">メッセージを編集</string>
     <string name="chatEditPlainText">通常テキスト</string>
     <string name="chatFirstContactNotContact">連絡先ではありません</string>

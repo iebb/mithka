@@ -96,6 +96,7 @@ class _SenderInfo {
     this.role,
     this.title, {
     this.isPremium = false,
+    this.isDeleted = false,
     this.accentColorId = -1,
     this.emojiStatusId = 0,
   });
@@ -104,6 +105,7 @@ class _SenderInfo {
   final MemberRole role;
   final String? title;
   final bool isPremium;
+  final bool isDeleted;
   final int accentColorId;
   final int emojiStatusId;
 }
@@ -219,12 +221,14 @@ class MentionCandidate {
     required this.name,
     this.username = '',
     this.photo,
+    this.isDeleted = false,
   });
 
   final int userId;
   final String name;
   final String username;
   final TdFileRef? photo;
+  final bool isDeleted;
 }
 
 class MessageReactionUser {
@@ -1791,6 +1795,7 @@ class ChatViewModel extends ChangeNotifier {
         name: name.startsWith('@') ? name.substring(1) : name,
         username: username,
         photo: TDParse.smallPhoto(user.obj('profile_photo')),
+        isDeleted: TDParse.isDeletedUser(user),
       );
     } catch (_) {
       return null;
@@ -1815,6 +1820,7 @@ class ChatViewModel extends ChangeNotifier {
           userId: userId,
           name: name,
           photo: message.senderPhoto,
+          isDeleted: message.senderIsDeleted,
         ),
       );
       if (result.length == 30) break;
@@ -6727,6 +6733,7 @@ class ChatViewModel extends ChangeNotifier {
           TDParse.smallPhoto(user.obj('profile_photo')),
           MemberRole.member,
           null,
+          isDeleted: TDParse.isDeletedUser(user),
         );
       } catch (_) {
         return _SenderInfo(
@@ -7625,6 +7632,7 @@ class ChatViewModel extends ChangeNotifier {
             m.senderRole == info.role &&
             m.senderTitle == (info.title ?? m.senderTitle) &&
             m.senderIsPremium == info.isPremium &&
+            m.senderIsDeleted == info.isDeleted &&
             m.senderAccentColorId == info.accentColorId &&
             m.senderEmojiStatusId == info.emojiStatusId) {
           continue;
@@ -7634,6 +7642,7 @@ class ChatViewModel extends ChangeNotifier {
         m.senderRole = info.role;
         m.senderTitle = info.title ?? m.senderTitle;
         m.senderIsPremium = info.isPremium;
+        m.senderIsDeleted = info.isDeleted;
         m.senderAccentColorId = info.accentColorId;
         m.senderEmojiStatusId = info.emojiStatusId;
         changed = true;
@@ -7799,6 +7808,7 @@ class ChatViewModel extends ChangeNotifier {
       role,
       title,
       isPremium: user.boolean('is_premium') ?? false,
+      isDeleted: TDParse.isDeletedUser(user),
       accentColorId: user.integer('accent_color_id') ?? -1,
       emojiStatusId: TDParse.emojiStatusCustomEmojiId(user.obj('emoji_status')),
     );

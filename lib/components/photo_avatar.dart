@@ -273,6 +273,9 @@ final class _AvatarPlayerLease {
   }
 }
 
+/// The ghost surface a deleted account's avatar paints instead of a photo.
+const ghostAvatarKey = ValueKey('photoAvatarGhost');
+
 /// Profile/group avatar with a real TDLib photo, placeholder, and monogram.
 class PhotoAvatar extends StatefulWidget {
   const PhotoAvatar({
@@ -283,6 +286,7 @@ class PhotoAvatar extends StatefulWidget {
     this.square = false,
     this.showOnlineDot = false,
     this.allowAnimation = true,
+    this.isDeleted = false,
   });
 
   final String title;
@@ -294,6 +298,10 @@ class PhotoAvatar extends StatefulWidget {
   /// Whether this surface may create a video decoder for an animated avatar.
   /// Dense scrolling lists should leave this off and use the static photo.
   final bool allowAnimation;
+
+  /// A deleted account has no avatar to load: the surface draws the ghost
+  /// silhouette in the monogram's own fill and foreground instead.
+  final bool isDeleted;
 
   @override
   State<PhotoAvatar> createState() => _PhotoAvatarState();
@@ -358,12 +366,14 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
   }
 
   void _updateAnimationEligibility({bool forceReload = false}) {
-    final enabled = avatarAnimationIsEligible(
-      surfaceAllowsAnimation: widget.allowAnimation,
-      themeAllowsAnimation: _themeAllowsAnimation,
-      tickerEnabled: _tickerEnabled,
-      appIsActive: _appIsActive,
-    );
+    final enabled =
+        !widget.isDeleted &&
+        avatarAnimationIsEligible(
+          surfaceAllowsAnimation: widget.allowAnimation,
+          themeAllowsAnimation: _themeAllowsAnimation,
+          tickerEnabled: _tickerEnabled,
+          appIsActive: _appIsActive,
+        );
     final photo = widget.photo;
     // With nothing to play and nothing to tear down the async pass only
     // re-reads the account slot, and every avatar in a list pays for it.
@@ -478,6 +488,14 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
   }
 
   void _load() {
+    if (widget.isDeleted) {
+      // There is no photo to resolve and nothing to keep warm for one.
+      if (_file != null) setState(() => _file = null);
+      _loadedId = null;
+      _loadedPhotoId = null;
+      _loadedSlot = null;
+      return;
+    }
     final ref = widget.photo;
     final slot = TdClient.shared.activeSlot;
     if (ref == null) {
@@ -526,7 +544,8 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
-    Widget avatar = _showsMonogramOnly
+    if (widget.isDeleted) return _withOnlineDot(_ghost(size));
+    final avatar = _showsMonogramOnly
         ? AvatarSurface(
             size: size,
             square: widget.square,
@@ -535,30 +554,43 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
             child: _monogram(),
           )
         : AvatarSurface(size: size, square: widget.square, child: _content());
+    return _withOnlineDot(avatar);
+  }
 
-    if (widget.showOnlineDot) {
-      final dot = size * 0.26;
-      avatar = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          avatar,
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              width: dot,
-              height: dot,
-              decoration: BoxDecoration(
-                color: AppTheme.onlineDot,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: size * 0.05),
-              ),
+  /// A deleted account has no photo, initial or identity left to draw, so the
+  /// surface paints a generic person silhouette on the monogram fill.
+  Widget _ghost(double size) => AvatarSurface(
+    key: ghostAvatarKey,
+    size: size,
+    square: widget.square,
+    background: AppTheme.avatarColor(widget.title),
+    centerChild: true,
+    child: AppIcon(HeroAppIcons.user, size: size * 0.56, color: Colors.white),
+  );
+
+  Widget _withOnlineDot(Widget avatar) {
+    if (!widget.showOnlineDot) return avatar;
+    final size = widget.size;
+    final dot = size * 0.26;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            width: dot,
+            height: dot,
+            decoration: BoxDecoration(
+              color: AppTheme.onlineDot,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: size * 0.05),
             ),
           ),
-        ],
-      );
-    }
-    return avatar;
+        ),
+      ],
+    );
   }
 
   Widget _content() {
@@ -638,12 +670,14 @@ class MonogramAvatar extends StatelessWidget {
     this.size = 50,
     this.showOnlineDot = false,
     this.square = false,
+    this.isDeleted = false,
   });
 
   final String title;
   final double size;
   final bool showOnlineDot;
   final bool square;
+  final bool isDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -652,6 +686,7 @@ class MonogramAvatar extends StatelessWidget {
       size: size,
       square: square,
       showOnlineDot: showOnlineDot,
+      isDeleted: isDeleted,
     );
   }
 }

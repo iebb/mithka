@@ -145,7 +145,12 @@ class ImageMediaAlbumBubble extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => onAvatarTap?.call(first),
       onLongPress: outgoing ? null : () => onAvatarLongPress?.call(first),
-      child: PhotoAvatar(title: avatarTitle, photo: avatarPhoto, size: 38),
+      child: PhotoAvatar(
+        title: avatarTitle,
+        photo: avatarPhoto,
+        size: 38,
+        isDeleted: !outgoing && isGroup && first.senderIsDeleted,
+      ),
     );
 
     return LayoutBuilder(

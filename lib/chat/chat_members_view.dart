@@ -40,6 +40,7 @@ class GroupMember {
     this.title,
     this.status = '',
     this.isOnline = false,
+    this.isDeleted = false,
     this.rawStatus,
   });
   final int id;
@@ -49,6 +50,7 @@ class GroupMember {
   final String? title;
   final String status;
   final bool isOnline;
+  final bool isDeleted;
   final Map<String, dynamic>? rawStatus;
 
   GroupMember copyWith({
@@ -64,6 +66,7 @@ class GroupMember {
     title: clearTitle ? null : title ?? this.title,
     status: status,
     isOnline: isOnline,
+    isDeleted: isDeleted,
     rawStatus: rawStatus ?? this.rawStatus,
   );
 }
@@ -398,6 +401,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
               title: title,
               status: TDParse.userStatus(user),
               isOnline: TDParse.isUserOnline(user),
+              isDeleted: TDParse.isDeletedUser(user),
               rawStatus: status,
             ),
           );
@@ -480,6 +484,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
             title: title,
             status: TDParse.userStatus(user),
             isOnline: TDParse.isUserOnline(user),
+            isDeleted: TDParse.isDeletedUser(user),
             rawStatus: status,
           ),
         );
@@ -971,6 +976,7 @@ class _ChatMembersViewState extends State<ChatMembersView> {
               photo: m.photo,
               size: 44,
               showOnlineDot: m.isOnline,
+              isDeleted: m.isDeleted,
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -823,6 +823,7 @@
     <string name="chatDeleteSelectedMessagesConfirmation">Supprimer les {value1} messages sélectionnés ?</string>
     <string name="chatDeleteSingleMessageQuestion">Supprimer ce message ?</string>
     <string name="chatDeleteUnavailable">Ce chat ne peut pas être supprimé.</string>
+    <string name="chatDeletedAccountName">Compte supprimé</string>
     <string name="chatEditMessageTitle">Modifier le message</string>
     <string name="chatEditPlainText">Texte simple</string>
     <string name="chatFirstContactNotContact">Pas dans vos contacts</string>

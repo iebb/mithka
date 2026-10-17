@@ -87,6 +87,9 @@ List<ChatMessage> mergeChatMessages(
       message.senderPhoto ??= existing.senderPhoto;
       message.senderRole ??= existing.senderRole;
       message.senderTitle ??= existing.senderTitle;
+      if (message.senderId == existing.senderId && existing.senderIsDeleted) {
+        message.senderIsDeleted = true;
+      }
       if (message.replyToMessageId == existing.replyToMessageId &&
           message.replyToChatId == existing.replyToChatId) {
         message.replyToSender ??= existing.replyToSender;

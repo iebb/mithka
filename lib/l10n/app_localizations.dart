@@ -882,6 +882,7 @@ abstract final class AppStringKeys {
   static const chatDeleteSingleMessageQuestion =
       'chatDeleteSingleMessageQuestion';
   static const chatDeleteUnavailable = 'chatDeleteUnavailable';
+  static const chatDeletedAccountName = 'chatDeletedAccountName';
   static const chatEditMessageTitle = 'chatEditMessageTitle';
   static const chatEditPlainText = 'chatEditPlainText';
   static const chatForwardedToName = 'chatForwardedToName';

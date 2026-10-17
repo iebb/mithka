@@ -719,6 +719,7 @@ class ChatMessage {
     this.senderRole,
     this.senderTitle,
     this.senderIsPremium = false,
+    this.senderIsDeleted = false,
     this.senderAccentColorId = -1,
     this.senderEmojiStatusId = 0,
     this.mediaAlbumId = 0,
@@ -827,6 +828,7 @@ class ChatMessage {
   MemberRole? senderRole;
   String? senderTitle;
   bool senderIsPremium;
+  bool senderIsDeleted;
   int senderAccentColorId;
   int senderEmojiStatusId;
   int mediaAlbumId;
@@ -4313,7 +4315,15 @@ abstract final class TDParse {
 
   // MARK: Users
 
+  /// A TDLib account whose owner deleted it. It keeps its id and history, but
+  /// has no name of its own and can receive nothing.
+  static bool isDeletedUser(Map<String, dynamic> user) =>
+      user.obj('type')?.type == 'userTypeDeleted';
+
   static String userName(Map<String, dynamic> user) {
+    if (isDeletedUser(user)) {
+      return AppStrings.t(AppStringKeys.chatDeletedAccountName);
+    }
     final first = user.str('first_name') ?? '';
     final last = user.str('last_name') ?? '';
     final full = [first, last].where((s) => s.isNotEmpty).join(' ');

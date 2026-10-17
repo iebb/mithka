@@ -3614,6 +3614,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                           title: candidate.name,
                           photo: candidate.photo,
                           size: 34,
+                          isDeleted: candidate.isDeleted,
                         ),
                         const SizedBox(width: 10),
                         Expanded(

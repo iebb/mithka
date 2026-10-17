@@ -823,6 +823,7 @@
     <string name="chatDeleteSelectedMessagesConfirmation">确定要删除选中的 {value1} 条消息吗？</string>
     <string name="chatDeleteSingleMessageQuestion">确定要删除这条消息吗？</string>
     <string name="chatDeleteUnavailable">无法删除此聊天。</string>
+    <string name="chatDeletedAccountName">已注销账号</string>
     <string name="chatEditMessageTitle">编辑消息</string>
     <string name="chatEditPlainText">普通文本</string>
     <string name="chatFirstContactNotContact">非联系人</string>
