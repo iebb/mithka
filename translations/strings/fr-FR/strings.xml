@@ -3487,6 +3487,8 @@
     <string name="topicChatLeaveChannelFailed">Impossible de quitter le canal</string>
     <string name="topicChatLikeCommentSummary">{value1} j’aime · {value2} commentaires</string>
     <string name="topicChatLoading">Chargement</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1} membres</string>
     <string name="topicChatMostRelevant">Les plus pertinents</string>
     <string name="topicChatMuteFailed">Échec de l’activation du mode silencieux</string>

@@ -3062,6 +3062,8 @@ abstract final class AppStringKeys {
   static const topicChatLeaveChannelFailed = 'topicChatLeaveChannelFailed';
   static const topicChatLikeCommentSummary = 'topicChatLikeCommentSummary';
   static const topicChatLoading = 'topicChatLoading';
+  static const topicChatMarkAllRead = 'topicChatMarkAllRead';
+  static const topicChatMarkAllReadFailed = 'topicChatMarkAllReadFailed';
   static const topicChatMemberCount = 'topicChatMemberCount';
   static const topicChatMostRelevant = 'topicChatMostRelevant';
   static const topicChatMuteFailed = 'topicChatMuteFailed';

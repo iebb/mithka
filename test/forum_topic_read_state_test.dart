@@ -79,4 +79,50 @@ void main() {
       },
     );
   });
+
+  test('mark-all-read scopes one read per topic with a real message', () {
+    final requests = forumTopicMarkAllReadRequests(
+      chatId: -10042,
+      topics: const [
+        ForumTopicReadTarget(topicId: 1, lastMessageId: 80, unreadCount: 2),
+        ForumTopicReadTarget(topicId: 77, lastMessageId: 90, unreadCount: 3),
+        // Locally already read: still read, so a stale zero cannot linger on
+        // the server.
+        ForumTopicReadTarget(topicId: 78, lastMessageId: 85),
+        // No real last message to advance the watermark to: no request.
+        ForumTopicReadTarget(topicId: 79, lastMessageId: 0, unreadCount: 4),
+        ForumTopicReadTarget(topicId: 80, lastMessageId: 70, unreadCount: 1),
+      ],
+    );
+    expect(requests, [
+      {
+        '@type': 'viewMessages',
+        'chat_id': -10042,
+        'message_ids': [80],
+        'source': {'@type': 'messageSourceForumTopicHistory'},
+        'force_read': true,
+      },
+      {
+        '@type': 'viewMessages',
+        'chat_id': -10042,
+        'message_ids': [90],
+        'source': {'@type': 'messageSourceForumTopicHistory'},
+        'force_read': true,
+      },
+      {
+        '@type': 'viewMessages',
+        'chat_id': -10042,
+        'message_ids': [85],
+        'source': {'@type': 'messageSourceForumTopicHistory'},
+        'force_read': true,
+      },
+      {
+        '@type': 'viewMessages',
+        'chat_id': -10042,
+        'message_ids': [70],
+        'source': {'@type': 'messageSourceForumTopicHistory'},
+        'force_read': true,
+      },
+    ]);
+  });
 }

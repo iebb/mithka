@@ -3476,6 +3476,8 @@
     <string name="topicChatLeaveChannelFailed">退出頻道失敗</string>
     <string name="topicChatLikeCommentSummary">{value1} 讚 · {value2} 則留言</string>
     <string name="topicChatLoading">載入中</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1} 人</string>
     <string name="topicChatMostRelevant">最相關</string>
     <string name="topicChatMuteFailed">設定靜音失敗</string>

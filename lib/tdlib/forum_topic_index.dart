@@ -334,6 +334,25 @@ class ForumTopicIndex extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Rewrites the unread counter of the named topics in place. The index is
+  /// what every topic surface paints from, so a bulk read must not wait for a
+  /// page refresh to show its effect. Returns whether anything changed.
+  bool setUnreadCounts(int slot, int chatId, Map<int, int> counts) {
+    final topics = _topics[(slot, chatId)];
+    if (topics == null || counts.isEmpty) return false;
+    var changed = false;
+    for (final entry in counts.entries) {
+      final previous = topics[entry.key];
+      if (previous == null || previous.unreadCount == entry.value) continue;
+      topics[entry.key] = previous.copyWith(
+        unreadCount: _nonNegative(entry.value),
+      );
+      changed = true;
+    }
+    if (changed) notifyListeners();
+    return changed;
+  }
+
   void clearSlot(int slot) {
     final hadAny =
         _topicChats.containsKey(slot) ||

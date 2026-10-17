@@ -28,6 +28,10 @@ const _generalTopicId = 1;
 const _topicId = 77;
 const _otherTopicId = 78;
 
+/// A topic's row-unread badge key, as its list paints it.
+ValueKey<String> _unreadKey(int topicId) =>
+    ValueKey<String>('topic-navigation-unread-$topicId');
+
 /// Rights the fake getChat/getChatMember answers grant. Default: a plain
 /// member with no moderation rights and no create right.
 class _Rights {
@@ -44,16 +48,45 @@ void main() {
   late StreamController<Map<String, dynamic>> updates;
   late List<Map<String, dynamic>> requests;
   final rights = _Rights();
+  // The server's view of the pinned topics: a toggle rewrites it, so the
+  // getForumTopics that follows every action answers with the new state the
+  // way TDLib does. Every other fixture keyed on a pin honours it too.
+  late Set<int> pinnedTopicIds;
+  // Topics the fake server has seen read: a forum-history viewMessages
+  // clears that topic's unread counter on the next getForumTopics, exactly
+  // like TDLib advancing the topic's inbox watermark.
+  late Set<int> readTopicIds;
 
   setUpAll(() {
     updates = StreamController<Map<String, dynamic>>.broadcast();
     requests = <Map<String, dynamic>>[];
+    pinnedTopicIds = <int>{};
+    readTopicIds = <int>{};
     TdClient.shared.configureProxy(
       TdClientProxyTransport(
         accountSlot: 0,
         query: (request) async {
           requests.add(Map<String, dynamic>.from(request));
-          return _response(request, rights);
+          if (request['@type'] == 'toggleForumTopicIsPinned') {
+            final topicId = request['forum_topic_id'] as int?;
+            if (topicId != null) {
+              if (request['is_pinned'] == true) {
+                pinnedTopicIds.add(topicId);
+              } else {
+                pinnedTopicIds.remove(topicId);
+              }
+            }
+          }
+          if (request['@type'] == 'viewMessages' &&
+              (request['source'] as Map?)?['@type'] ==
+                  'messageSourceForumTopicHistory') {
+            // Topic 77 ends at message 90, topic 78 at message 85.
+            for (final id in request['message_ids'] as List) {
+              if (id == 90) readTopicIds.add(_topicId);
+              if (id == 85) readTopicIds.add(_otherTopicId);
+            }
+          }
+          return _response(request, rights, pinnedTopicIds, readTopicIds);
         },
         send: (_) async {},
         updates: updates.stream,
@@ -64,6 +97,8 @@ void main() {
     requests.clear();
     clearChatMemoryCaches();
     ForumTopicIndex.shared.clear();
+    pinnedTopicIds = <int>{_topicId};
+    readTopicIds = <int>{};
     rights
       ..canCreateTopics = false
       ..adminStatus = false
@@ -432,6 +467,101 @@ void main() {
       });
     });
 
+    testWidgets('unpinning clears the row pin marker and repins it', (
+      tester,
+    ) async {
+      rights.adminStatus = true;
+      rights.canManageTopics = true;
+      await withDesktopSurface(tester, () async {
+        expect(
+          find.byKey(const ValueKey('topic-row-pinned-$_topicId')),
+          findsOneWidget,
+        );
+
+        // Unpin: the request must carry the TOGGLED value, and the refreshed
+        // page must reach the row — a list that keeps the old pin is the bug.
+        await _openRowMenu(tester, _topicId);
+        await tester.tap(find.byKey(const ValueKey('topic-menu-pin')));
+        await tester.pump();
+        await _settle(tester);
+        final unpin = requests.lastWhere(
+          (request) => request['@type'] == 'toggleForumTopicIsPinned',
+        );
+        expect(unpin['chat_id'], _chatId);
+        expect(unpin['forum_topic_id'], _topicId);
+        expect(
+          unpin['is_pinned'],
+          isFalse,
+          reason: 'the row was pinned, so the toggle must send unpin',
+        );
+        expect(
+          find.byKey(const ValueKey('topic-row-pinned-$_topicId')),
+          findsNothing,
+          reason: 'a topic the list reports unpinned must lose its pin marker',
+        );
+
+        // Pin again from the same row: the next toggle sends true.
+        await _openRowMenu(tester, _topicId);
+        expect(find.byKey(const ValueKey('topic-menu-pin')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('topic-menu-pin')));
+        await tester.pump();
+        await _settle(tester);
+        final repin = requests.lastWhere(
+          (request) => request['@type'] == 'toggleForumTopicIsPinned',
+        );
+        expect(repin['is_pinned'], isTrue);
+        expect(
+          find.byKey(const ValueKey('topic-row-pinned-$_topicId')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    testWidgets('mark all read views every topic in the list', (tester) async {
+      await withDesktopSurface(tester, () async {
+        expect(find.byKey(_unreadKey(_topicId)), findsOneWidget);
+        expect(find.byKey(_unreadKey(_otherTopicId)), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const ValueKey('topic-list-mark-all-read')),
+        );
+        await tester.pump();
+        await _settle(tester);
+
+        // One per-topic read for EVERY topic in the list, scoped to the
+        // topic's own newest message through the forum-topic history source:
+        // General (80), Announcements (90), Off topic (85). A thread read
+        // cannot be expressed as a chat-wide read, so a missing request is a
+        // topic that would stay unread.
+        final reads = [
+          for (final request in requests)
+            if (request['@type'] == 'viewMessages') request,
+        ];
+        expect(
+          [for (final request in reads) request['message_ids']],
+          [
+            [80],
+            [90],
+            [85],
+          ],
+        );
+        expect(
+          reads.every(
+            (request) =>
+                request['chat_id'] == _chatId &&
+                request['force_read'] == true &&
+                (request['source'] as Map)['@type'] ==
+                    'messageSourceForumTopicHistory',
+          ),
+          isTrue,
+        );
+        expect(find.byKey(_unreadKey(_topicId)), findsNothing);
+        expect(find.byKey(_unreadKey(_otherTopicId)), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
     testWidgets('topic creator may delete without admin rights', (
       tester,
     ) async {
@@ -530,7 +660,10 @@ Map<String, dynamic> _message(
   },
 };
 
-Map<String, dynamic> _forumTopics() => {
+Map<String, dynamic> _forumTopics(
+  Set<int> pinnedTopicIds,
+  Set<int> readTopicIds,
+) => {
   '@type': 'forumTopics',
   'topics': [
     {
@@ -563,8 +696,8 @@ Map<String, dynamic> _forumTopics() => {
         'icon': {'@type': 'forumTopicIcon', 'color': 0x6FB9F0},
       },
       'last_message': _message(90, text: 'Hello topic', senderUserId: 2),
-      'is_pinned': true,
-      'unread_count': 3,
+      'is_pinned': pinnedTopicIds.contains(_topicId),
+      'unread_count': readTopicIds.contains(_topicId) ? 0 : 3,
       'notification_settings': {
         '@type': 'chatNotificationSettings',
         'mute_for': 0,
@@ -581,7 +714,8 @@ Map<String, dynamic> _forumTopics() => {
         'creator_id': {'@type': 'messageSenderUser', 'user_id': 2},
       },
       'last_message': _message(85, text: 'Other chatter', senderUserId: 2),
-      'unread_count': 2,
+      'is_pinned': pinnedTopicIds.contains(_otherTopicId),
+      'unread_count': readTopicIds.contains(_otherTopicId) ? 0 : 2,
       'notification_settings': {
         '@type': 'chatNotificationSettings',
         'mute_for': 0,
@@ -590,63 +724,67 @@ Map<String, dynamic> _forumTopics() => {
   ],
 };
 
-Map<String, dynamic> _response(Map<String, dynamic> request, _Rights rights) =>
-    switch (request['@type']) {
-      'getForumTopics' => _forumTopics(),
-      // Empty history: the topic-list previews under test come from
-      // getForumTopics.last_message, not the post feed. Pumping TopicChatView
-      // standalone with a real rendered post row trips a pre-existing
-      // semantics-layout assertion unrelated to the topic list, so the feed
-      // stays empty here (the shell-driven topic tests cover real posts).
-      'getForumTopicHistory' ||
-      'getMessageThreadHistory' => {'@type': 'messages', 'messages': []},
-      'getChat' => {
-        '@type': 'chat',
-        'id': request['chat_id'],
-        'title': 'Forum',
-        'permissions': {
-          '@type': 'chatPermissions',
-          'can_send_basic_messages': true,
-          'can_create_topics': rights.canCreateTopics,
-        },
-        'type': {
-          '@type': 'chatTypeSupergroup',
-          'supergroup_id': 42,
-          'is_channel': false,
-        },
-      },
-      'getSupergroup' => {
-        '@type': 'supergroup',
-        'id': 42,
-        'is_forum': true,
-        'has_forum_tabs': false,
-      },
-      'getMe' => {'@type': 'user', 'id': _meId, 'first_name': 'Test'},
-      'getChatMember' => {
-        '@type': 'chatMember',
-        'status': rights.isCreator
-            ? {'@type': 'chatMemberStatusCreator'}
-            : rights.adminStatus
-            ? {
-                '@type': 'chatMemberStatusAdministrator',
-                'rights': {
-                  '@type': 'chatAdministratorRights',
-                  'can_manage_topics': rights.canManageTopics,
-                  'can_delete_messages': rights.canDeleteMessages,
-                },
-              }
-            : {'@type': 'chatMemberStatusMember'},
-      },
-      'getUser' => {
-        '@type': 'user',
-        'id': request['user_id'],
-        'first_name': 'Alice',
-      },
-      'createForumTopic' => {
-        '@type': 'forumTopicInfo',
-        'chat_id': _chatId,
-        'forum_topic_id': 99,
-        'name': request['name'],
-      },
-      _ => {'@type': 'ok'},
-    };
+Map<String, dynamic> _response(
+  Map<String, dynamic> request,
+  _Rights rights,
+  Set<int> pinnedTopicIds,
+  Set<int> readTopicIds,
+) => switch (request['@type']) {
+  'getForumTopics' => _forumTopics(pinnedTopicIds, readTopicIds),
+  // Empty history: the topic-list previews under test come from
+  // getForumTopics.last_message, not the post feed. Pumping TopicChatView
+  // standalone with a real rendered post row trips a pre-existing
+  // semantics-layout assertion unrelated to the topic list, so the feed
+  // stays empty here (the shell-driven topic tests cover real posts).
+  'getForumTopicHistory' ||
+  'getMessageThreadHistory' => {'@type': 'messages', 'messages': []},
+  'getChat' => {
+    '@type': 'chat',
+    'id': request['chat_id'],
+    'title': 'Forum',
+    'permissions': {
+      '@type': 'chatPermissions',
+      'can_send_basic_messages': true,
+      'can_create_topics': rights.canCreateTopics,
+    },
+    'type': {
+      '@type': 'chatTypeSupergroup',
+      'supergroup_id': 42,
+      'is_channel': false,
+    },
+  },
+  'getSupergroup' => {
+    '@type': 'supergroup',
+    'id': 42,
+    'is_forum': true,
+    'has_forum_tabs': false,
+  },
+  'getMe' => {'@type': 'user', 'id': _meId, 'first_name': 'Test'},
+  'getChatMember' => {
+    '@type': 'chatMember',
+    'status': rights.isCreator
+        ? {'@type': 'chatMemberStatusCreator'}
+        : rights.adminStatus
+        ? {
+            '@type': 'chatMemberStatusAdministrator',
+            'rights': {
+              '@type': 'chatAdministratorRights',
+              'can_manage_topics': rights.canManageTopics,
+              'can_delete_messages': rights.canDeleteMessages,
+            },
+          }
+        : {'@type': 'chatMemberStatusMember'},
+  },
+  'getUser' => {
+    '@type': 'user',
+    'id': request['user_id'],
+    'first_name': 'Alice',
+  },
+  'createForumTopic' => {
+    '@type': 'forumTopicInfo',
+    'chat_id': _chatId,
+    'forum_topic_id': 99,
+    'name': request['name'],
+  },
+  _ => {'@type': 'ok'},
+};

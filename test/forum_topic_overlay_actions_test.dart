@@ -43,6 +43,9 @@ void main() {
   // Per-topic flag: does the fake history contain another user's message?
   final topicHasOtherSender = <int, bool>{};
   final pinnedTopics = <int>{};
+  // Topics a viewMessages read has cleared, so the fake page stops reporting
+  // them as unread.
+  final readTopics = <int>{};
   setUpAll(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -63,6 +66,17 @@ void main() {
               pinnedTopics.remove(id);
             }
           }
+          if (request['@type'] == 'viewMessages' &&
+              (request['source'] as Map?)?['@type'] ==
+                  'messageSourceForumTopicHistory') {
+            // The scoped read names the thread only by its messages, so the
+            // fake maps each read id back to the topic whose page carries it
+            // (topic 77+index pins message 70-index).
+            for (final id in (request['message_ids'] as List).cast<int>()) {
+              final index = 70 - id;
+              if (index >= 0 && index < 12) readTopics.add(77 + index);
+            }
+          }
           return _response(
             request,
             adminRights,
@@ -71,6 +85,7 @@ void main() {
             topicMessageCounts,
             topicHasOtherSender,
             pinnedTopics,
+            readTopics,
           );
         },
         send: (_) async {},
@@ -88,6 +103,7 @@ void main() {
     topicMessageCounts.clear();
     topicHasOtherSender.clear();
     pinnedTopics.clear();
+    readTopics.clear();
   });
   tearDownAll(() async {
     await TdClient.shared.closeProxy();
@@ -369,6 +385,55 @@ void main() {
     }
   });
 
+  testWidgets('admin: the overlay header clears every unread topic', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await _setSurfaceSize(tester, const Size(1180, 820));
+      await _pumpMainShell(tester);
+      tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
+        ChatListSelection.fromChat(_chat()),
+      );
+      await _settle(tester);
+
+      // Topic 79 is the only unread one; its badge shows on the overlay row.
+      expect(
+        find.byKey(const ValueKey('topic-navigation-unread-79')),
+        findsOneWidget,
+      );
+
+      // The header's bulk action appears while anything is unread and sends
+      // one forum-history read per topic in the list — General (topic 77)
+      // included, because a chat-wide read cannot address a thread.
+      expect(
+        find.byKey(const ValueKey('topic-list-mark-all-read')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('topic-list-mark-all-read')));
+      await tester.pump();
+      await _settle(tester);
+
+      final reads = [
+        for (final request in requests)
+          if (request['@type'] == 'viewMessages' &&
+              (request['source'] as Map?)?['@type'] ==
+                  'messageSourceForumTopicHistory')
+            (request['message_ids'] as List).single,
+      ];
+      expect(reads, [70, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60, 59]);
+      expect(
+        find.byKey(const ValueKey('topic-navigation-unread-79')),
+        findsNothing,
+        reason: 'the read cleared the only unread topic',
+      );
+      expect(tester.takeException(), isNull);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('admin: pin and create fire their TDLib requests', (
     tester,
   ) async {
@@ -483,6 +548,7 @@ Map<String, dynamic> _response(
   Map<int, int> topicMessageCounts,
   Map<int, bool> topicHasOtherSender,
   Set<int> pinnedTopics,
+  Set<int> readTopics,
 ) => switch (request['@type']) {
   'getChat' => {
     '@type': 'chat',
@@ -540,7 +606,9 @@ Map<String, dynamic> _response(
           },
           'last_message': _message(70 - index),
           'is_pinned': pinnedTopics.contains(77 + index),
-          'unread_count': index == 2 ? 4 : 0, // topic 79 is unread
+          'unread_count': index == 2 && !readTopics.contains(79)
+              ? 4
+              : 0, // topic 79 is unread until it is read
         },
     ],
   },

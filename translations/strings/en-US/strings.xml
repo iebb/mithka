@@ -3487,6 +3487,8 @@
     <string name="topicChatLeaveChannelFailed">Failed to leave channel</string>
     <string name="topicChatLikeCommentSummary">{value1} likes · {value2} comments</string>
     <string name="topicChatLoading">Loading</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1} members</string>
     <string name="topicChatMostRelevant">Most Relevant</string>
     <string name="topicChatMuteFailed">Failed to mute notifications</string>

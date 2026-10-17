@@ -3476,6 +3476,8 @@
     <string name="topicChatLeaveChannelFailed">チャンネルの退出に失敗しました</string>
     <string name="topicChatLikeCommentSummary">{value1} 件のいいね · {value2} 件のコメント</string>
     <string name="topicChatLoading">読み込み中</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1}人</string>
     <string name="topicChatMostRelevant">関連度順</string>
     <string name="topicChatMuteFailed">通知オフの設定に失敗しました</string>

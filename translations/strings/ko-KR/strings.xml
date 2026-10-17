@@ -3476,6 +3476,8 @@
     <string name="topicChatLeaveChannelFailed">채널 나가기에 실패했습니다</string>
     <string name="topicChatLikeCommentSummary">좋아요 {value1} · 댓글 {value2}</string>
     <string name="topicChatLoading">불러오는 중</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1}명</string>
     <string name="topicChatMostRelevant">관련도순</string>
     <string name="topicChatMuteFailed">방해 금지 설정에 실패했습니다</string>
