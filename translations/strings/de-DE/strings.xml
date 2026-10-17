@@ -3487,6 +3487,8 @@
     <string name="topicChatLeaveChannelFailed">Kanal konnte nicht verlassen werden</string>
     <string name="topicChatLikeCommentSummary">{value1} Likes · {value2} Kommentare</string>
     <string name="topicChatLoading">Wird geladen</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1} Personen</string>
     <string name="topicChatMostRelevant">Relevanteste</string>
     <string name="topicChatMuteFailed">Stummschaltung konnte nicht aktiviert werden</string>

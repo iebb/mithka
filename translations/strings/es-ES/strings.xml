@@ -3487,6 +3487,8 @@
     <string name="topicChatLeaveChannelFailed">No se pudo salir del canal</string>
     <string name="topicChatLikeCommentSummary">{value1} me gusta · {value2} comentarios</string>
     <string name="topicChatLoading">Cargando</string>
+    <string name="topicChatMarkAllRead">Mark all as read</string>
+    <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
     <string name="topicChatMemberCount">{value1} personas</string>
     <string name="topicChatMostRelevant">Más relevantes</string>
     <string name="topicChatMuteFailed">No se pudo activar No molestar</string>

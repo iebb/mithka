@@ -106,6 +106,7 @@ class TopicNavigationLayout extends StatelessWidget {
     required this.onSelected,
     required this.child,
     this.onCreateTopic,
+    this.onMarkAllRead,
     this.onTopicMenu,
     this.generalAvatarTitle = '',
     this.generalAvatarPhoto,
@@ -120,6 +121,9 @@ class TopicNavigationLayout extends StatelessWidget {
   /// Telegram iOS offers topic creation from the topic list itself; null
   /// hides the affordance (no can_create_topics / can_manage_topics right).
   final VoidCallback? onCreateTopic;
+
+  /// Clears every unread topic at once; null while no topic is unread.
+  final VoidCallback? onMarkAllRead;
   final TopicRowMenuRequest? onTopicMenu;
   final String generalAvatarTitle;
   final TdFileRef? generalAvatarPhoto;
@@ -136,6 +140,7 @@ class TopicNavigationLayout extends StatelessWidget {
       detailed: vertical && detailed,
       onSelected: onSelected,
       onCreateTopic: vertical ? onCreateTopic : null,
+      onMarkAllRead: onMarkAllRead,
       onTopicMenu: onTopicMenu,
       generalAvatarTitle: generalAvatarTitle,
       generalAvatarPhoto: generalAvatarPhoto,
@@ -172,6 +177,7 @@ class _TopicNavigation extends StatelessWidget {
     required this.detailed,
     required this.onSelected,
     this.onCreateTopic,
+    this.onMarkAllRead,
     this.onTopicMenu,
     this.generalAvatarTitle = '',
     this.generalAvatarPhoto,
@@ -185,6 +191,7 @@ class _TopicNavigation extends StatelessWidget {
   final bool detailed;
   final ValueChanged<int?> onSelected;
   final VoidCallback? onCreateTopic;
+  final VoidCallback? onMarkAllRead;
   final TopicRowMenuRequest? onTopicMenu;
   final String generalAvatarTitle;
   final TdFileRef? generalAvatarPhoto;
@@ -204,8 +211,11 @@ class _TopicNavigation extends StatelessWidget {
       ),
       child: Column(
         children: [
-          if (detailed && onCreateTopic != null)
-            _RailCreateHeader(onCreateTopic: onCreateTopic!),
+          if (detailed && (onCreateTopic != null || onMarkAllRead != null))
+            _RailHeader(
+              onCreateTopic: onCreateTopic,
+              onMarkAllRead: onMarkAllRead,
+            ),
           Expanded(
             child: detailed ? _detailedList(context) : _compactList(context),
           ),
@@ -318,12 +328,14 @@ class _TopicNavigation extends StatelessWidget {
   }
 }
 
-/// The vertical rail's create affordance: Telegram iOS puts topic creation
-/// in the topic list's own header, so the '+' lives above the rows here.
-class _RailCreateHeader extends StatelessWidget {
-  const _RailCreateHeader({required this.onCreateTopic});
+/// The vertical rail's header: Telegram iOS puts topic creation in the topic
+/// list's own header, so the '+' lives above the rows here. The same header
+/// carries the bulk "mark all topics read" action while anything is unread.
+class _RailHeader extends StatelessWidget {
+  const _RailHeader({this.onCreateTopic, this.onMarkAllRead});
 
-  final VoidCallback onCreateTopic;
+  final VoidCallback? onCreateTopic;
+  final VoidCallback? onMarkAllRead;
 
   @override
   Widget build(BuildContext context) {
@@ -350,22 +362,46 @@ class _RailCreateHeader extends StatelessWidget {
               ),
             ),
           ),
-          GestureDetector(
-            key: const ValueKey('topic-list-create'),
-            behavior: HitTestBehavior.opaque,
-            onTap: onCreateTopic,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.sm,
-              ),
-              child: AppIcon(
-                HeroAppIcons.plus,
-                size: 20,
-                color: AppTheme.brand,
+          if (onMarkAllRead != null)
+            Semantics(
+              button: true,
+              label: AppStringKeys.topicChatMarkAllRead.l10n(context),
+              child: GestureDetector(
+                key: const ValueKey('topic-list-mark-all-read'),
+                behavior: HitTestBehavior.opaque,
+                onTap: onMarkAllRead,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.sm,
+                  ),
+                  child: AppIcon(
+                    HeroAppIcons.circleCheck,
+                    size: 20,
+                    color: c.textSecondary,
+                  ),
+                ),
               ),
             ),
-          ),
+          if (onCreateTopic != null)
+            GestureDetector(
+              key: const ValueKey('topic-list-create'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onCreateTopic,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.md,
+                  right: AppSpacing.lg,
+                  top: AppSpacing.sm,
+                  bottom: AppSpacing.sm,
+                ),
+                child: AppIcon(
+                  HeroAppIcons.plus,
+                  size: 20,
+                  color: AppTheme.brand,
+                ),
+              ),
+            ),
         ],
       ),
     );

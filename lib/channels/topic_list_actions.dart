@@ -215,6 +215,38 @@ Map<String, dynamic> forumTopicViewMessagesRequest({
   'force_read': true,
 };
 
+/// One topic to clear, reduced to what a read needs: its id, its newest
+/// message, and whether it still reports unread traffic.
+class ForumTopicReadTarget {
+  const ForumTopicReadTarget({
+    required this.topicId,
+    required this.lastMessageId,
+    this.unreadCount = 0,
+  });
+
+  final int topicId;
+  final int lastMessageId;
+  final int unreadCount;
+}
+
+/// The per-topic read requests that clear [topics]: one `viewMessages` per
+/// topic, scoped through [forumTopicViewMessagesRequest] so TDLib advances
+/// that topic's own inbox watermark (a chat-wide read cannot address a
+/// thread). Every topic with a real last message is read, whatever counter it
+/// reports locally — a stale zero must not leave a topic unread on the
+/// server. A topic with no message to advance to has nothing to send.
+List<Map<String, dynamic>> forumTopicMarkAllReadRequests({
+  required int chatId,
+  required Iterable<ForumTopicReadTarget> topics,
+}) => [
+  for (final topic in topics)
+    if (topic.lastMessageId > 0)
+      forumTopicViewMessagesRequest(
+        chatId: chatId,
+        messageIds: [topic.lastMessageId],
+      ),
+];
+
 Map<String, dynamic> createForumTopicRequest({
   required int chatId,
   required String name,

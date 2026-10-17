@@ -49,7 +49,11 @@ import 'topic_list_row.dart';
 import 'topic_navigation.dart';
 import 'topic_post_content.dart';
 
-export 'topic_list_actions.dart' show forumTopicViewMessagesRequest;
+export 'topic_list_actions.dart'
+    show
+        ForumTopicReadTarget,
+        forumTopicMarkAllReadRequests,
+        forumTopicViewMessagesRequest;
 
 /// Keeps a forum browser suspended while its topic route is replaced by other
 /// views in the same conversation. Only the newest route can reveal it.
@@ -568,6 +572,9 @@ class _TopicChatViewState extends State<TopicChatView> {
         _syncTopicListHost();
 
       case 'updateForumTopicInfo':
+        // forumTopicInfo carries the topic's name and icon — never its pin:
+        // `is_pinned` lives on the forumTopic/updateForumTopic side only, so
+        // folding a pin from here would read null and lose the state.
         final info = update.obj('info');
         if (info?.int64('chat_id') != chatId) return;
         final topicId = info?.integer('forum_topic_id');
@@ -650,8 +657,11 @@ class _TopicChatViewState extends State<TopicChatView> {
     selectedTopicId: _selectedThreadId,
     onSelect: _selectTopic,
     onCreateTopic: _canCreateTopics ? _openCreateTopicDialog : null,
+    onMarkAllRead: _hasUnreadTopics ? _markAllTopicsRead : null,
     onTopicMenu: _showTopicRowMenu,
   );
+
+  bool get _hasUnreadTopics => _topics.any((topic) => topic.unreadCount > 0);
 
   Future<Map<String, dynamic>> _query(Map<String, dynamic> request) =>
       widget.query?.call(request) ??
@@ -1165,6 +1175,66 @@ class _TopicChatViewState extends State<TopicChatView> {
 
   String _topicActionError(String fallback, Object error) =>
       topicActionErrorText(fallback, error);
+
+  /// Clears every topic in the list at once: one scoped read per topic, with
+  /// the rows' unread counters cleared optimistically and restored if a read
+  /// fails. Topics with no real last message have no watermark to advance.
+  Future<void> _markAllTopicsRead() async {
+    final targets = [
+      for (final topic in _topics)
+        if (topic.hasRealLastMessage)
+          ForumTopicReadTarget(
+            topicId: topic.id,
+            lastMessageId: topic.lastMessage.id,
+            unreadCount: topic.unreadCount,
+          ),
+    ];
+    final requests = forumTopicMarkAllReadRequests(
+      chatId: widget.chat.id,
+      topics: targets,
+    );
+    if (requests.isEmpty) return;
+    final previous = {
+      for (final topic in targets)
+        if (topic.unreadCount > 0) topic.topicId: topic.unreadCount,
+    };
+    setState(() {
+      for (final topic in targets) {
+        if (topic.unreadCount <= 0) continue;
+        final index = _topics.indexWhere((item) => item.id == topic.topicId);
+        if (index >= 0) {
+          _topics[index] = _topics[index].copyWith(unreadCount: 0);
+        }
+      }
+    });
+    _syncTopicListHost();
+    var failures = 0;
+    for (final request in requests) {
+      try {
+        await _query(request);
+      } catch (_) {
+        failures++;
+      }
+    }
+    if (!mounted) return;
+    if (failures > 0) {
+      // Restore only what is still there; a topic deleted meanwhile stays gone.
+      setState(() {
+        for (final entry in previous.entries) {
+          final index = _topics.indexWhere((item) => item.id == entry.key);
+          if (index >= 0) {
+            _topics[index] = _topics[index].copyWith(unreadCount: entry.value);
+          }
+        }
+      });
+      _syncTopicListHost();
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.topicChatMarkAllReadFailed),
+      );
+    }
+    await _loadTopics();
+  }
 
   /// The topic row's context menu (iOS swipe action / long press). Destructive
   /// and management items only appear while the account holds the right;
@@ -1770,6 +1840,7 @@ class _TopicChatViewState extends State<TopicChatView> {
                     onCreateTopic: _canCreateTopics
                         ? _openCreateTopicDialog
                         : null,
+                    onMarkAllRead: _hasUnreadTopics ? _markAllTopicsRead : null,
                     onTopicMenu: _showTopicRowMenu,
                     generalAvatarTitle: widget.chat.title,
                     generalAvatarPhoto: widget.chat.photo,

@@ -435,6 +435,24 @@ class ForumTopicOption {
     lastMessageDate: lastMessageDate,
     lastMessageId: lastMessageId,
   );
+
+  /// The same row with a new unread counter, every other field untouched.
+  ForumTopicOption _withUnreadCount(int unread) => ForumTopicOption(
+    id: id,
+    name: name,
+    iconCustomEmojiId: iconCustomEmojiId,
+    iconColor: iconColor,
+    unreadCount: unread,
+    isMuted: isMuted,
+    isPinned: isPinned,
+    isGeneral: isGeneral,
+    isClosed: isClosed,
+    creatorId: creatorId,
+    lastPreview: lastPreview,
+    lastSender: lastSender,
+    lastMessageDate: lastMessageDate,
+    lastMessageId: lastMessageId,
+  );
 }
 
 class _DraftMention {
@@ -4699,6 +4717,91 @@ class ChatViewModel extends ChangeNotifier {
     } catch (_) {
       // A failed mark-read is silent: nothing destructive happened.
     }
+  }
+
+  /// Clears every one of [topicIds] at once: the rows drop their unread
+  /// counters before the first request leaves, each topic's read is sent
+  /// scoped to its own newest message, and a failed topic gets its counter
+  /// back. Reads run even for topics that already report zero locally, so a
+  /// stale counter cannot survive on the server.
+  ///
+  /// Throws only when no topic could be read at all. With [failureFeedback]
+  /// false a partial failure is silent (the counters still roll back); the
+  /// caller decides what to say.
+  Future<void> markForumTopicsRead(
+    Iterable<int> topicIds, {
+    bool failureFeedback = true,
+  }) async {
+    final wanted = topicIds.toSet();
+    final targets = [
+      for (final topic in forumTopics)
+        if (wanted.contains(topic.id) && topic.lastMessageId > 0) topic,
+    ];
+    if (targets.isEmpty) return;
+    final previous = {
+      for (final topic in targets)
+        if (topic.unreadCount > 0) topic.id: topic.unreadCount,
+    };
+    if (previous.isNotEmpty) {
+      _applyTopicUnreadCounts({
+        for (final topicId in previous.keys) topicId: 0,
+      });
+    }
+    var failures = 0;
+    Object? firstError;
+    for (final topic in targets) {
+      try {
+        await _topicAccountQuery(
+          forumTopicViewMessagesRequest(
+            chatId: chatId,
+            messageIds: [topic.lastMessageId],
+          ),
+        );
+      } catch (error) {
+        failures++;
+        firstError ??= error;
+      }
+    }
+    if (failures > 0) {
+      _applyTopicUnreadCounts(previous);
+      if (failures == targets.length) throw firstError!;
+      if (failureFeedback) {
+        // Some topics could not be read: say so once, after the rollback.
+        _bulkReadFailed = true;
+        notifyListeners();
+      }
+    }
+    await loadForumTopics();
+  }
+
+  /// True when the last bulk read lost some topics; the surface reads and
+  /// clears it to raise one toast.
+  bool _bulkReadFailed = false;
+  bool takeBulkReadFailure() {
+    final failed = _bulkReadFailed;
+    _bulkReadFailed = false;
+    return failed;
+  }
+
+  /// Rewrites the unread counter of the named rows in place (the index owns
+  /// every other displayed field), notifying only on a real change.
+  void _applyTopicUnreadCounts(Map<int, int> counts) {
+    if (counts.isEmpty) return;
+    var changed = false;
+    final next = <ForumTopicOption>[];
+    for (final topic in forumTopics) {
+      final count = counts[topic.id];
+      if (count == null || count == topic.unreadCount) {
+        next.add(topic);
+        continue;
+      }
+      changed = true;
+      next.add(topic._withUnreadCount(count));
+    }
+    ForumTopicIndex.shared.setUnreadCounts(_accountSlot, chatId, counts);
+    if (!changed) return;
+    forumTopics = next;
+    notifyListeners();
   }
 
   /// Folds live updates into the topic rows so previews, pins, closes and

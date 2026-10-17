@@ -1644,8 +1644,12 @@ class _ChatViewState extends State<ChatView> {
     selectedTopicId: widget.forumTopicId,
     onSelect: _openTopicTranscript,
     onCreateTopic: _vm.canCreateForumTopics ? _openCreateTopicDialog : null,
+    onMarkAllRead: _hasUnreadTopics ? _markAllTopicsRead : null,
     onTopicMenu: _showTopicRowMenu,
   );
+
+  bool get _hasUnreadTopics =>
+      _vm.forumTopics.any((topic) => topic.unreadCount > 0);
 
   /// The rows handed to the shell. A pane rebuilt for another topic seeds
   /// from the shared index first, which knows identities and counters but
@@ -6816,6 +6820,7 @@ class _ChatViewState extends State<ChatView> {
       hasForumTabs: _vm.hasForumTabs,
       onSelected: _openTopicTranscript,
       onCreateTopic: _vm.canCreateForumTopics ? _openCreateTopicDialog : null,
+      onMarkAllRead: _hasUnreadTopics ? _markAllTopicsRead : null,
       onTopicMenu: _showTopicRowMenu,
       generalAvatarTitle: _vm.peerTitle.isEmpty ? widget.title : _vm.peerTitle,
       generalAvatarPhoto: _vm.peerPhoto,
@@ -8512,6 +8517,29 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _markTopicRead(ForumTopicOption topic) =>
       _vm.markForumTopicRead(topic);
+
+  /// Clears every topic in the list at once: one scoped read per topic, with
+  /// the unread counters cleared optimistically and restored if a read fails.
+  Future<void> _markAllTopicsRead() async {
+    try {
+      await _vm.markForumTopicsRead(_vm.forumTopics.map((topic) => topic.id));
+    } catch (_) {
+      // Every read failed: the rows were rolled back; say so once.
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.topicChatMarkAllReadFailed),
+      );
+      return;
+    }
+    if (!mounted) return;
+    if (_vm.takeBulkReadFailure()) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.topicChatMarkAllReadFailed),
+      );
+    }
+  }
 
   /// The topic row's context menu (iOS swipe action / long press). Destructive
   /// and management items only appear while the account holds the right;

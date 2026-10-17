@@ -57,6 +57,7 @@ class TopicListAttachment {
     required this.selectedTopicId,
     required this.onSelect,
     this.onCreateTopic,
+    this.onMarkAllRead,
     this.onTopicMenu,
   });
 
@@ -71,6 +72,9 @@ class TopicListAttachment {
   /// Null when the user lacks the right to create topics: the overlay then
   /// hides its '+' exactly like the inline rail does.
   final VoidCallback? onCreateTopic;
+
+  /// Clears every unread topic at once; null while no topic is unread.
+  final VoidCallback? onMarkAllRead;
   final TopicRowMenuRequest? onTopicMenu;
 
   /// Publishing an equal list must not re-notify the shell: the topic
@@ -82,6 +86,7 @@ class TopicListAttachment {
         photo != other.photo ||
         selectedTopicId != other.selectedTopicId ||
         (onCreateTopic == null) != (other.onCreateTopic == null) ||
+        (onMarkAllRead == null) != (other.onMarkAllRead == null) ||
         topics.length != other.topics.length) {
       return false;
     }
@@ -280,6 +285,27 @@ class _ForumTopicListPaneState extends State<ForumTopicListPane> {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
+                  if (attachment.onMarkAllRead != null)
+                    Semantics(
+                      button: true,
+                      label: AppStringKeys.topicChatMarkAllRead.l10n(context),
+                      child: GestureDetector(
+                        key: const ValueKey('topic-list-mark-all-read'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: attachment.onMarkAllRead,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                            vertical: AppSpacing.sm,
+                          ),
+                          child: AppIcon(
+                            HeroAppIcons.circleCheck,
+                            size: 22,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
                   if (attachment.onCreateTopic != null)
                     GestureDetector(
                       key: const ValueKey('topic-list-create'),
