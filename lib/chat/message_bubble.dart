@@ -12,9 +12,10 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show precisionErrorTolerance;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show SelectedContent;
+import 'package:flutter/rendering.dart' show RenderProxyBox, SelectedContent;
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -230,6 +231,15 @@ class _MessageBubbleState extends State<MessageBubble>
   final ValueNotifier<bool> _hoveringTimestamp = ValueNotifier(false);
   double? _layoutWidth;
   final Set<String> _expandedQuotes = {};
+  // Rich block quotes that measured taller than the fold cap. The measurement
+  // is exact — the body is laid out at the incoming width — because a block
+  // quote carries no expandable flag on the wire.
+  final Set<String> _foldableRichQuotes = {};
+  // A block quote folds at three lines of its body text. The quote frame's
+  // padding sits outside that cap, so a folded rich quote shows the same three
+  // lines plus frame as an entity quote does.
+  static const int _richQuoteFoldLines = 3;
+  static const EdgeInsets _richQuotePadding = EdgeInsets.fromLTRB(10, 7, 8, 7);
   final Set<String> _revealedSpoilers = {};
   // 盘古之白 results for this bubble's texts. A rebuild reuses the spaced text
   // and the very same entity list, so the paragraphs below keep their spans.
@@ -2249,6 +2259,7 @@ class _MessageBubbleState extends State<MessageBubble>
     List<RichMessageBlock> blocks,
     bool outgoing, {
     Color? textLinkColor,
+    String blockPath = '',
   }) {
     final widgets = <Widget>[];
     for (var index = 0; index < blocks.length; index++) {
@@ -2258,6 +2269,9 @@ class _MessageBubbleState extends State<MessageBubble>
         block,
         outgoing,
         textLinkColor: textLinkColor,
+        // Nested quotes fold independently, so every block carries the index
+        // path that reaches it inside this message's rich tree.
+        blockPath: blockPath.isEmpty ? '$index' : '$blockPath.$index',
       );
       if (widget != null) {
         widgets.add(
@@ -2275,6 +2289,7 @@ class _MessageBubbleState extends State<MessageBubble>
     RichMessageBlock block,
     bool outgoing, {
     Color? textLinkColor,
+    String blockPath = '',
   }) {
     return switch (block.kind) {
       RichMessageBlockKind.paragraph ||
@@ -2299,8 +2314,8 @@ class _MessageBubbleState extends State<MessageBubble>
         child: _richButtonRowBlock(block, outgoing),
       ),
       RichMessageBlockKind.list => _richListBlock(block, outgoing),
-      RichMessageBlockKind.blockQuote ||
-      RichMessageBlockKind.pullQuote => _richQuoteContainer(block, outgoing),
+      RichMessageBlockKind.blockQuote || RichMessageBlockKind.pullQuote =>
+        _richQuoteContainer(block, outgoing, blockKey: blockPath),
       RichMessageBlockKind.animation ||
       RichMessageBlockKind.audio ||
       RichMessageBlockKind.photo ||
@@ -2464,12 +2479,51 @@ class _MessageBubbleState extends State<MessageBubble>
     return '•';
   }
 
-  Widget _richQuoteContainer(RichMessageBlock block, bool outgoing) {
+  /// One line of rich-block body text, measured with the same style, font size
+  /// and text scaler the block's paragraphs are laid out with.
+  double _richQuoteLineHeight() {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: 'M',
+        style: DefaultTextStyle.of(
+          context,
+        ).style.merge(TextStyle(fontSize: _chatFontSize(AppTextSize.body))),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  /// A rich quote reports its measured height after layout, so a short quote
+  /// never builds the affordance and a long one gains it on the next frame.
+  void _handleRichQuoteOverflow(String key, bool overflows) {
+    if (!mounted) return;
+    final changed = overflows
+        ? _foldableRichQuotes.add(key)
+        : _foldableRichQuotes.remove(key);
+    if (changed) setState(() {});
+  }
+
+  void _toggleRichQuoteExpanded(String key) {
+    setState(() {
+      if (!_expandedQuotes.remove(key)) _expandedQuotes.add(key);
+    });
+  }
+
+  Widget _richQuoteContainer(
+    RichMessageBlock block,
+    bool outgoing, {
+    String blockKey = '',
+  }) {
     final base = outgoing ? _outgoingTextColor : _incomingTextColor;
     final link = _messageLinkColor(outgoing);
     final quote = _messageColors == null ? base : _messageQuoteColor(outgoing);
     final quoteLink = !outgoing && _messageColors != null ? quote : link;
-    final body = block.kind == RichMessageBlockKind.pullQuote
+    final isPullQuote = block.kind == RichMessageBlockKind.pullQuote;
+    final body = isPullQuote
         ? _richTextWidgets(block.text, base, quoteLink, outgoing, false, [
             ...block.textEntities,
             if (block.text.isNotEmpty)
@@ -2479,10 +2533,37 @@ class _MessageBubbleState extends State<MessageBubble>
                 type: 'textEntityTypeItalic',
               ),
           ])
-        : _richBlockWidgets(block.children, outgoing, textLinkColor: quoteLink);
-    return Container(
+        : _richBlockWidgets(
+            block.children,
+            outgoing,
+            textLinkColor: quoteLink,
+            blockPath: blockKey,
+          );
+    final key = 'rich:${message.chatId}:${message.id}:$blockKey';
+    // A quote that carries media, a table or a map has no meaningful "three
+    // lines": the cap would slice a photo into a sliver. Only a body made of
+    // text blocks folds, which is also the only case where the entity quote's
+    // behaviour applies.
+    const textKinds = {
+      RichMessageBlockKind.paragraph,
+      RichMessageBlockKind.heading,
+      RichMessageBlockKind.preformatted,
+      RichMessageBlockKind.footer,
+      RichMessageBlockKind.thinking,
+      RichMessageBlockKind.math,
+      RichMessageBlockKind.divider,
+      RichMessageBlockKind.anchor,
+      RichMessageBlockKind.list,
+    };
+    final foldable =
+        !isPullQuote &&
+        block.children.every((child) => textKinds.contains(child.kind));
+    final overflows = foldable && _foldableRichQuotes.contains(key);
+    final expanded = !foldable || _expandedQuotes.contains(key);
+    final lineHeight = foldable ? _richQuoteLineHeight() : 0.0;
+    final content = Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
+      padding: _richQuotePadding,
       decoration: BoxDecoration(
         color: _messageColors == null
             ? base.withValues(alpha: 0.07)
@@ -2490,12 +2571,43 @@ class _MessageBubbleState extends State<MessageBubble>
         border: Border(left: BorderSide(color: quote, width: 3)),
       ),
       child: Column(
-        crossAxisAlignment: block.kind == RichMessageBlockKind.pullQuote
+        crossAxisAlignment: isPullQuote
             ? CrossAxisAlignment.center
             : CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          ...body,
+          if (foldable)
+            _QuoteFold(
+              maxHeight: _richQuoteFoldLines * lineHeight,
+              collapsed: !expanded,
+              fadeExtent: lineHeight,
+              onOverflowChanged: (overflows) =>
+                  _handleRichQuoteOverflow(key, overflows),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: body,
+              ),
+            )
+          else
+            ...body,
+          if (overflows) ...[
+            const SizedBox(height: 4),
+            SelectionContainer.disabled(
+              child: Text(
+                AppStrings.t(
+                  expanded
+                      ? AppStringKeys.messageBubbleCollapse
+                      : AppStringKeys.messageBubbleExpandQuote,
+                ),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: quote,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
           if (block.caption.isNotEmpty) ...[
             const SizedBox(height: 5),
             ..._richTextWidgets(
@@ -2510,6 +2622,12 @@ class _MessageBubbleState extends State<MessageBubble>
           ],
         ],
       ),
+    );
+    if (!foldable) return content;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: overflows ? () => _toggleRichQuoteExpanded(key) : null,
+      child: content,
     );
   }
 
@@ -6304,4 +6422,154 @@ class _MessageDeliveryPainter extends CustomPainter {
   @override
   bool shouldRepaint(_MessageDeliveryPainter oldDelegate) =>
       oldDelegate.isSending != isSending || oldDelegate.color != color;
+}
+
+/// Folds a rich quote body to [maxHeight]. The child is laid out with an
+/// unbounded height at the incoming width, so the fold follows the real layout
+/// instead of a character count or an intrinsic pass, and while [collapsed] it
+/// paints clipped to the cap with a short bottom fade. The measurement is
+/// reported after the frame — through [onOverflowChanged] — so the caller only
+/// builds an affordance when there is something to fold.
+class _QuoteFold extends SingleChildRenderObjectWidget {
+  const _QuoteFold({
+    required this.maxHeight,
+    required this.collapsed,
+    required this.fadeExtent,
+    required this.onOverflowChanged,
+    super.child,
+  });
+
+  final double maxHeight;
+  final bool collapsed;
+  final double fadeExtent;
+  final ValueChanged<bool> onOverflowChanged;
+
+  @override
+  _RenderQuoteFold createRenderObject(BuildContext context) => _RenderQuoteFold(
+    maxHeight: maxHeight,
+    collapsed: collapsed,
+    fadeExtent: fadeExtent,
+    onOverflowChanged: onOverflowChanged,
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderQuoteFold renderObject) {
+    renderObject
+      ..maxHeight = maxHeight
+      ..collapsed = collapsed
+      ..fadeExtent = fadeExtent
+      ..onOverflowChanged = onOverflowChanged;
+  }
+}
+
+class _RenderQuoteFold extends RenderProxyBox {
+  _RenderQuoteFold({
+    required this._maxHeight,
+    required this._collapsed,
+    required this._fadeExtent,
+    required this._onOverflowChanged,
+  });
+
+  double get maxHeight => _maxHeight;
+  double _maxHeight;
+  set maxHeight(double value) {
+    if (value == _maxHeight) return;
+    _maxHeight = value;
+    markNeedsLayout();
+  }
+
+  bool get collapsed => _collapsed;
+  bool _collapsed;
+  set collapsed(bool value) {
+    if (value == _collapsed) return;
+    _collapsed = value;
+    markNeedsLayout();
+  }
+
+  double get fadeExtent => _fadeExtent;
+  double _fadeExtent;
+  set fadeExtent(double value) {
+    if (value == _fadeExtent) return;
+    _fadeExtent = value;
+    markNeedsPaint();
+  }
+
+  set onOverflowChanged(ValueChanged<bool> value) {
+    if (value == _onOverflowChanged) return;
+    _onOverflowChanged = value;
+  }
+
+  ValueChanged<bool> _onOverflowChanged;
+  bool _overflows = false;
+  bool _reportedOverflow = false;
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    child.layout(
+      BoxConstraints(
+        minWidth: constraints.minWidth,
+        maxWidth: constraints.maxWidth,
+      ),
+      parentUsesSize: true,
+    );
+    final bodyHeight = child.size.height;
+    _overflows = bodyHeight > _maxHeight + precisionErrorTolerance;
+    size = constraints.constrain(
+      Size(
+        child.size.width,
+        _overflows && _collapsed ? _maxHeight : bodyHeight,
+      ),
+    );
+    if (_overflows != _reportedOverflow) {
+      _reportedOverflow = _overflows;
+      final report = _onOverflowChanged;
+      // The caller rebuilds to add or drop the affordance, and a layout-time
+      // setState is illegal: the report lands right after this frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (attached) report(_overflows);
+      });
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null) return;
+    if (!_overflows || !_collapsed) {
+      context.paintChild(child, offset);
+      return;
+    }
+    context.pushClipRect(needsCompositing, offset, Offset.zero & size, (
+      PaintingContext context,
+      Offset clippedOffset,
+    ) {
+      final fadeTop = math.max(0.0, size.height - _fadeExtent);
+      if (fadeTop <= 0) {
+        context.paintChild(child, clippedOffset);
+        return;
+      }
+      final bounds = clippedOffset & size;
+      final canvas = context.canvas;
+      canvas.saveLayer(bounds, Paint());
+      context.paintChild(child, clippedOffset);
+      // Alpha-only fade: the body thins out towards the cut without assuming
+      // which fill sits behind the quote.
+      canvas.drawRect(
+        bounds,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = ui.Gradient.linear(
+            Offset(bounds.left, bounds.top + fadeTop),
+            Offset(bounds.left, bounds.bottom),
+            const [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+          ),
+      );
+      canvas.restore();
+    });
+  }
 }
