@@ -44,6 +44,67 @@ enum ProxyIndicator {
   unreachable,
 }
 
+/// What one availability probe of a saved proxy reads as.
+///
+/// [unknown] and [testing] are the two "no verdict yet" cases a row has to
+/// paint without lying: nothing has been probed, or a probe is still running.
+/// They are deliberately distinct from [unavailable], which is only ever a
+/// probe that failed or a link TDLib itself reported dead.
+enum ProxyCheckStatus {
+  /// Nothing has been probed, and no live state describes this row.
+  unknown,
+
+  /// A probe is in flight, or an enabled proxy's link is still being reached.
+  testing,
+
+  /// The probe answered `ok` — the proxy reached a Telegram datacenter.
+  available,
+
+  /// The probe failed, or the enabled proxy has no network to be reached with.
+  unavailable,
+}
+
+/// One proxy row's availability reading.
+///
+/// The verdict is the `testProxy` answer, reduced to what a row paints: the
+/// elapsed round trip as [latency] when the probe succeeded, and the failure
+/// [error] when it did not. A row that reads [ProxyCheckStatus.unknown] claims
+/// nothing — it is not evidence that the proxy is dead.
+@immutable
+class ProxyCheckResult {
+  const ProxyCheckResult(this.status, {this.latency, this.error});
+
+  final ProxyCheckStatus status;
+
+  /// Round trip of a successful probe; null when it was not measured.
+  final Duration? latency;
+
+  /// Why a probe failed, already localized for display; null on success.
+  final String? error;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProxyCheckResult &&
+      other.status == status &&
+      other.latency == latency &&
+      other.error == error;
+
+  @override
+  int get hashCode => Object.hash(status, latency, error);
+
+  @override
+  String toString() =>
+      'ProxyCheckResult($status${latency == null ? '' : ' ${latency!.inMilliseconds}ms'}'
+      '${error == null ? '' : ' $error'})';
+}
+
+/// The datacenter `testProxy` dials through the proxy.
+///
+/// DC2 is reached from anywhere and answers as a plain `ok` once the
+/// socks/HTTP/MTProto handshake succeeded, whatever datacenter this account
+/// itself lives on — so one probe says what a connection would do.
+const int kProxyTestDcId = 2;
+
 /// Reduces a `getProxies` reading plus the last pushed TDLib connection state
 /// to an indicator. Pure, so the whole matrix is testable without a client.
 ProxyIndicator proxyIndicatorFor({

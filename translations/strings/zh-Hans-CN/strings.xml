@@ -2611,7 +2611,16 @@
     <string name="proxyAddFromLinkHint">粘贴 t.me 或 tg:// 代理链接</string>
     <string name="proxyAddFromLinkTitle">通过链接添加代理</string>
     <string name="proxyAddProxy">添加代理</string>
+    <string name="proxyCheckAvailable">可用</string>
+    <string name="proxyCheckFailed">检测失败</string>
+    <string name="proxyCheckLatency">{value1} 毫秒</string>
+    <string name="proxyCheckTesting">检测中</string>
+    <string name="proxyCheckTimeout">超时</string>
+    <string name="proxyCheckUnavailable">不可用</string>
+    <string name="proxyCheckUnknown">未检测</string>
     <string name="proxyDeleteProxy">删除代理</string>
+    <string name="proxyDeleteUnavailable">删除不可用的代理</string>
+    <string name="proxyDeleteUnavailableMessage">删除所有最近检测失败的代理？此操作无法撤销。</string>
     <string name="proxyDescription">代理仅用于连接 Telegram，可能会降低连接速度。</string>
     <string name="proxyDisabled">不使用代理</string>
     <string name="proxyHostOrIp">主机或 IP</string>
@@ -2624,6 +2633,7 @@
     <string name="proxyStatusConnecting">连接中</string>
     <string name="proxyStatusOff">未启用</string>
     <string name="proxyStatusUnreachable">无网络</string>
+    <string name="proxyTestAll">测试全部</string>
     <string name="proxyTitle">代理</string>
     <string name="publicDiscoveryBotsSection">机器人</string>
     <string name="publicDiscoveryDiscover">发现</string>
