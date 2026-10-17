@@ -21,6 +21,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'forward_markdown.dart';
 import 'forward_options.dart';
+import 'internal_chat_link_router.dart';
 import 'telegram_link.dart';
 
 class ChatPickerResult {
@@ -41,6 +42,7 @@ class ChatPickerView extends StatefulWidget {
     this.allowedChatIds,
     this.allowContacts = true,
     this.emptyText,
+    this.accountSlot,
   });
   final String title;
   final bool showForwardOptions;
@@ -54,12 +56,27 @@ class ChatPickerView extends StatefulWidget {
   final bool allowContacts;
   final String? emptyText;
 
+  /// The account this picker lists chats for.
+  ///
+  /// Chat ids are only meaningful inside the account that produced them, and a
+  /// picker launched from a transcript keeps running on that transcript's
+  /// account even if the foreground account switches while its list loads.
+  /// Contact rows — and the private chats they create — follow the same owner.
+  /// Null falls back to the enclosing [InternalChatLinkScope]'s account, and
+  /// only then to the active account.
+  final int? accountSlot;
+
   @override
   State<ChatPickerView> createState() => _ChatPickerViewState();
 }
 
 class _ChatPickerViewState extends State<ChatPickerView> {
-  final ChatListViewModel _vm = ChatListViewModel();
+  late final ChatListViewModel _vm;
+
+  /// The account every id on this screen belongs to, resolved once so the
+  /// chat list, the contact rows, and the private-chat creation they trigger
+  /// all stay on the same owner even if the foreground account switches.
+  late final int? _accountSlot;
   final TdClient _client = TdClient.shared;
   final _controller = TextEditingController();
   final List<Contact> _contacts = [];
@@ -72,6 +89,10 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   @override
   void initState() {
     super.initState();
+    _accountSlot =
+        widget.accountSlot ??
+        InternalChatLinkScope.targetOf(context)?.accountSlot;
+    _vm = ChatListViewModel(accountSlot: _accountSlot);
     _vm.addListener(_onModel);
     _vm.onAppear();
     _loadContacts();
@@ -114,12 +135,24 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         .toList();
   }
 
+  /// Routes a picker request to the account this screen was opened for.
+  Future<Map<String, dynamic>> _queryAccount(Map<String, dynamic> request) {
+    final slot = _accountSlot;
+    return slot == null
+        ? _client.query(request)
+        : _client.queryForSlot(request, slot);
+  }
+
   Future<void> _loadContacts() async {
     if (!widget.allowContacts || !_allowsKind(ChatKind.privateChat)) return;
     if (_contactsLoading) return;
     setState(() => _contactsLoading = true);
     try {
-      final loaded = await fetchSortedContacts(_client, limit: 500);
+      final loaded = await fetchSortedContacts(
+        _client,
+        limit: 500,
+        accountSlot: _accountSlot,
+      );
       if (!mounted) return;
       setState(() {
         _contacts
@@ -147,7 +180,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
     final contact = entry.contact;
     if (contact == null) return;
     try {
-      final raw = await _client.query({
+      final raw = await _queryAccount({
         '@type': 'createPrivateChat',
         'user_id': contact.id,
         'force': false,

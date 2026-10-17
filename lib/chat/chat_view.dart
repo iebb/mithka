@@ -66,6 +66,7 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
+import '../tdlib/td_requests.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
@@ -4532,6 +4533,7 @@ class _ChatViewState extends State<ChatView> {
       },
       onOpenReply: _openReplyMessage,
       onOpenForwarded: _openForwardedMessage,
+      onTapViaBot: (m) => unawaited(_activateMessageViaBot(m)),
       onOpenComments: _openMessageComments,
       showCommentAttachment: chatTranscriptAllowsCommentAttachment(
         isChannel: _vm.isChannel,
@@ -5283,11 +5285,95 @@ class _ChatViewState extends State<ChatView> {
       _sendKeyboardButtonText(button.text);
       return;
     }
-    if (button.switchInlineQuery != null) {
-      showToast(context, AppStringKeys.chatInlineSwitchButtonUnsupported);
+    if (button.isSwitchInline) {
+      await _activateSwitchInlineButton(message, button);
       return;
     }
     showToast(context, AppStringKeys.chatButtonUnsupported);
+  }
+
+  Future<void> _activateMessageViaBot(ChatMessage message) async {
+    final username = await _vm.resolveInlineBotUsername(message);
+    if (!mounted) return;
+    if (username == null || username.isEmpty) return;
+    if (_vm.canSendMessages) {
+      _vm.activateInlineQuery(username);
+      return;
+    }
+    await openLink(context, 'https://t.me/$username');
+  }
+
+  Future<void> _activateSwitchInlineButton(
+    ChatMessage message,
+    MessageButton button,
+  ) async {
+    final query = button.switchInlineQuery ?? '';
+    final target =
+        button.switchInlineTarget ?? const SwitchInlineTarget.chooseChat();
+    if (target.kind == SwitchInlineTargetKind.internalLink &&
+        target.internalLink != null) {
+      final resolvedUsername = await _vm.resolveInlineBotUsername(message);
+      if (!mounted) return;
+      final link = Map<String, dynamic>.from(target.internalLink!);
+      if (resolvedUsername != null &&
+          resolvedUsername.isNotEmpty &&
+          link.type == 'internalLinkTypePublicChat' &&
+          (link.str('draft_text') ?? '').trim().isEmpty) {
+        link['draft_text'] = '@$resolvedUsername $query';
+      }
+      await openInternalLinkType(context, link);
+      return;
+    }
+    final username = await _vm.resolveInlineBotUsername(message);
+    if (!mounted) return;
+    if (username == null || username.isEmpty) {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+      return;
+    }
+    if (target.isCurrentChat && _vm.canSendMessages) {
+      _vm.activateInlineQuery(username, query);
+      return;
+    }
+    final allowedKinds = target.isCurrentChat
+        ? const {
+            ChatKind.privateChat,
+            ChatKind.bot,
+            ChatKind.group,
+            ChatKind.channel,
+          }
+        : target.allowedChatKinds;
+    final picked = await Navigator.of(context).push<ChatSummary>(
+      MaterialPageRoute(
+        builder: (_) => ChatPickerView(
+          allowedKinds: allowedKinds,
+          allowChannels: allowedKinds.contains(ChatKind.channel),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    if (picked.id == _vm.chatId && _vm.canSendMessages) {
+      _vm.activateInlineQuery(username, query);
+      return;
+    }
+    try {
+      await TdClient.shared.query(
+        setTextChatDraftRequest(
+          chatId: picked.id,
+          date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          formattedText: {
+            '@type': 'formattedText',
+            'text': '@$username $query',
+            'entities': const <Map<String, dynamic>>[],
+          },
+        ),
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    await openChatFromCurrentWindow(
+      context,
+      chatId: picked.id,
+      title: picked.title,
+    );
   }
 
   Future<void> _perform(MessageAction action, ChatMessage message) async {
@@ -10413,6 +10499,7 @@ class _ChatViewState extends State<ChatView> {
           }
         },
         onOpenForwarded: _openForwardedMessage,
+        onTapViaBot: (message) => unawaited(_activateMessageViaBot(message)),
         onOpenImage: _openImage,
         onPlayVideo: _playVideo,
         onEditCaption: (message) => unawaited(_editMessageText(message)),

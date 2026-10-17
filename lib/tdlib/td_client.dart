@@ -98,6 +98,7 @@ class TdClientProxyTransport {
     required this.send,
     required this.updates,
     this.accountUserId,
+    this.queryForSlot,
   });
 
   final int accountSlot;
@@ -105,6 +106,16 @@ class TdClientProxyTransport {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>) query;
   final Future<void> Function(Map<String, dynamic>) send;
   final Stream<Map<String, dynamic>> updates;
+
+  /// Slot-aware view of [query] for callers that need to know which account a
+  /// proxied request targeted. Secondary engines proxy every slot to the same
+  /// transport, so a request routed for another account is only distinguishable
+  /// from an active-account one here. Falls back to [query] when absent.
+  final Future<Map<String, dynamic>> Function(
+    Map<String, dynamic> request,
+    int accountSlot,
+  )?
+  queryForSlot;
 }
 
 /// `close`, pre-encoded: it is sent verbatim to every client being retired.
@@ -2259,11 +2270,36 @@ class TdClient {
     int accountSlot, {
     Duration timeout = defaultQueryTimeout,
   }) {
+    final proxy = _proxyTransport;
+    final proxySlotQuery = proxy?.queryForSlot;
+    if (proxySlotQuery != null) {
+      // A slot-aware transport routes per-account requests itself: a secondary
+      // engine proxies every slot through one channel, so the slot id is the
+      // only way a pinned request stays distinguishable from an active-account
+      // one. Transports that do not declare slot routing keep the registry
+      // check below, so a request for an unknown account can never be answered
+      // by whichever account happens to be active.
+      return proxySlotQuery(
+        Map<String, dynamic>.from(request),
+        accountSlot,
+      ).timeout(timeout);
+    }
     final clientId = _clientForSlot[accountSlot];
     if (clientId == null) {
       throw StateError('No TDLib client for account slot $accountSlot');
     }
     return queryTo(request, clientId, timeout: timeout);
+  }
+
+  /// Test/model seam: re-points the active account without an account-registry
+  /// round trip, mirroring what [replaceActiveWithFreshLoginSlot] does to the
+  /// active slot/client pair. [activeSlot] and [activeClientId] must be
+  /// updated together and stay cancelable by the pinned-work staleness checks.
+  @visibleForTesting
+  void debugSetActiveAccountForTesting(int slot, int clientId) {
+    _activeSlot = slot;
+    _activeClientId = clientId;
+    _activeSlotChanges.add(slot);
   }
 
   /// Retains the concrete client currently registered for [accountSlot].

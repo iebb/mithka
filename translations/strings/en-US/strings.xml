@@ -2092,6 +2092,7 @@
     <string name="messageBubbleExperimentalNotice">Message bubble styles are experimental and may change at any time.</string>
     <string name="messageBubbleForestFamiliar">Forest Familiar</string>
     <string name="messageBubbleForwardedFrom">Forwarded from {value1}</string>
+    <string name="messageBubbleViaBot">via {value1}</string>
     <string name="messageBubbleGenreAbstract">Abstract</string>
     <string name="messageBubbleGenreCelestial">Celestial</string>
     <string name="messageBubbleGenreClassic">Classic</string>

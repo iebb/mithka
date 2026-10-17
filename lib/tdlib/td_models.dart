@@ -778,6 +778,8 @@ class ChatMessage {
     this.lastCommentMessageId,
     bool? commentThreadMetadataKnown,
     this.blockedByUser = false,
+    this.viaBotUserId,
+    this.viaBotUsername,
   }) : commentThreadMetadataKnown =
            commentThreadMetadataKnown ??
            (hasCommentThread ||
@@ -933,6 +935,21 @@ class ChatMessage {
   int? forwardFromUserId; // origin user, resolved lazily to forwardOrigin
   int? forwardFromChatId; // origin chat/channel, resolved lazily
   int? forwardFromMessageId; // original channel message when TDLib exposes it
+  int? viaBotUserId; // inline bot through which this message was sent
+  String? viaBotUsername; // resolved lazily to @username or bot display name
+
+  /// Whether TDLib supplied an inline-bot attribution (`via_bot_user_id > 0`).
+  bool get hasViaBotAttribution =>
+      (viaBotUserId != null && viaBotUserId! > 0) ||
+      (viaBotUsername?.trim().isNotEmpty ?? false);
+
+  /// Stable label for the `via @bot` header while the bot's username is being
+  /// resolved or when the bot only exposes a display name.
+  String get viaBotDisplayName {
+    final raw = viaBotUsername?.trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    return '@bot';
+  }
 
   /// Whether TDLib supplied enough forwarding metadata to render an
   /// attribution header, even while the display name is still being resolved.
@@ -1082,6 +1099,60 @@ class ChatMessage {
 
 enum MessageButtonStyle { standard, primary, danger, success }
 
+enum SwitchInlineTargetKind { currentChat, chooseChat, internalLink }
+
+class SwitchInlineTarget {
+  const SwitchInlineTarget.currentChat()
+    : kind = SwitchInlineTargetKind.currentChat,
+      allowUserChats = false,
+      allowBotChats = false,
+      allowGroupChats = false,
+      allowChannelChats = false,
+      internalLink = null;
+
+  const SwitchInlineTarget.chooseChat({
+    this.allowUserChats = true,
+    this.allowBotChats = true,
+    this.allowGroupChats = true,
+    this.allowChannelChats = true,
+  }) : kind = SwitchInlineTargetKind.chooseChat,
+       internalLink = null;
+
+  const SwitchInlineTarget.internalLink(Map<String, dynamic> this.internalLink)
+    : kind = SwitchInlineTargetKind.internalLink,
+      allowUserChats = false,
+      allowBotChats = false,
+      allowGroupChats = false,
+      allowChannelChats = false;
+
+  final SwitchInlineTargetKind kind;
+  final bool allowUserChats;
+  final bool allowBotChats;
+  final bool allowGroupChats;
+  final bool allowChannelChats;
+  final Map<String, dynamic>? internalLink;
+
+  bool get isCurrentChat => kind == SwitchInlineTargetKind.currentChat;
+
+  Set<ChatKind> get allowedChatKinds {
+    final kinds = <ChatKind>{
+      if (allowUserChats) ChatKind.privateChat,
+      if (allowBotChats) ChatKind.bot,
+      if (allowGroupChats) ChatKind.group,
+      if (allowChannelChats) ChatKind.channel,
+    };
+    if (kinds.isEmpty) {
+      return const {
+        ChatKind.privateChat,
+        ChatKind.bot,
+        ChatKind.group,
+        ChatKind.channel,
+      };
+    }
+    return kinds;
+  }
+}
+
 class MessageButton {
   const MessageButton({
     required this.text,
@@ -1091,6 +1162,7 @@ class MessageButton {
     this.userId,
     this.copyText,
     this.switchInlineQuery,
+    this.switchInlineTarget,
     this.requestId,
     this.suggestedName,
     this.suggestedUsername,
@@ -1106,6 +1178,7 @@ class MessageButton {
   final int? userId;
   final String? copyText;
   final String? switchInlineQuery;
+  final SwitchInlineTarget? switchInlineTarget;
   final int? requestId;
   final String? suggestedName;
   final String? suggestedUsername;
@@ -1122,6 +1195,13 @@ class MessageButton {
   bool get isWebApp =>
       type == 'inlineKeyboardButtonTypeWebApp' ||
       type == 'keyboardButtonTypeWebApp';
+
+  bool get isSwitchInline =>
+      type == 'inlineKeyboardButtonTypeSwitchInline' ||
+      switchInlineQuery != null;
+
+  bool get isSwitchInlineCurrentChat =>
+      isSwitchInline && (switchInlineTarget?.isCurrentChat ?? false);
 }
 
 class MessageLinkPreview {
@@ -1637,6 +1717,11 @@ abstract final class TDParse {
     fwdMessageId ??= forwardSource?.int64('message_id');
     if (fwdMessageId != null && fwdMessageId <= 0) fwdMessageId = null;
 
+    final rawViaBotUserId = message.int64('via_bot_user_id');
+    final viaBotUserId = rawViaBotUserId != null && rawViaBotUserId > 0
+        ? rawViaBotUserId
+        : null;
+
     // 引用: reply_to is messageReplyToMessage { chat_id, message_id, … }.
     final replyTo = message.obj('reply_to');
     final replyToMessageId = replyTo?.type == 'messageReplyToMessage'
@@ -1789,7 +1874,8 @@ abstract final class TDParse {
       ..forwardAuthorSignature = isContentRestricted ? null : fwdAuthorSignature
       ..forwardFromUserId = isContentRestricted ? null : fwdUserId
       ..forwardFromChatId = isContentRestricted ? null : fwdChatId
-      ..forwardFromMessageId = isContentRestricted ? null : fwdMessageId;
+      ..forwardFromMessageId = isContentRestricted ? null : fwdMessageId
+      ..viaBotUserId = isContentRestricted ? null : viaBotUserId;
   }
 
   /// Returns the server-provided reason that makes a chat or message
@@ -2066,6 +2152,10 @@ abstract final class TDParse {
     final loginUrl = type?.obj('url');
     final webApp = type?.obj('web_app');
     final copyText = type?.obj('copy_text')?.str('text');
+    final switchInlineTarget =
+        typeName == 'inlineKeyboardButtonTypeSwitchInline'
+        ? _switchInlineTarget(type)
+        : null;
     return MessageButton(
       text: text,
       type: typeName,
@@ -2074,6 +2164,7 @@ abstract final class TDParse {
       userId: type?.int64('user_id'),
       copyText: type?.str('text') ?? copyText,
       switchInlineQuery: type?.str('query'),
+      switchInlineTarget: switchInlineTarget,
       requestId: type?.integer('id'),
       suggestedName: type?.str('suggested_name'),
       suggestedUsername: type?.str('suggested_username'),
@@ -2081,6 +2172,32 @@ abstract final class TDParse {
       iconCustomEmojiId: button.int64('icon_custom_emoji_id') ?? 0,
       isReplyKeyboard: isReplyKeyboard,
     );
+  }
+
+  static SwitchInlineTarget _switchInlineTarget(Map<String, dynamic>? type) {
+    final targetChat = type?.obj('target_chat');
+    if (targetChat != null) {
+      switch (targetChat.type) {
+        case 'targetChatCurrent':
+          return const SwitchInlineTarget.currentChat();
+        case 'targetChatChosen':
+          final types = targetChat.obj('types');
+          if (types == null) return const SwitchInlineTarget.chooseChat();
+          return SwitchInlineTarget.chooseChat(
+            allowUserChats: types.boolean('allow_user_chats') ?? false,
+            allowBotChats: types.boolean('allow_bot_chats') ?? false,
+            allowGroupChats: types.boolean('allow_group_chats') ?? false,
+            allowChannelChats: types.boolean('allow_channel_chats') ?? false,
+          );
+        case 'targetChatInternalLink':
+          final link = targetChat.obj('link');
+          if (link != null) return SwitchInlineTarget.internalLink(link);
+      }
+    }
+    if (type?.boolean('in_current_chat') == true) {
+      return const SwitchInlineTarget.currentChat();
+    }
+    return const SwitchInlineTarget.chooseChat();
   }
 
   /// Extracts textEntityTypeCustomEmoji spans from a formattedText object.
@@ -2256,8 +2373,33 @@ abstract final class TDParse {
             'inlineKeyboardButtonTypeSwitchInline',
           {'switch_inline_query': final Object? query} when query != null =>
             'inlineKeyboardButtonTypeSwitchInline',
+          {'switch_inline_query_chosen_chat': final Object? chosen}
+              when chosen != null =>
+            'inlineKeyboardButtonTypeSwitchInline',
           _ => '',
         };
+    final chosenChat =
+        button.obj('switch_inline_query_chosen_chat') ??
+        action.obj('switch_inline_query_chosen_chat');
+    final switchInlineTarget =
+        actionType == 'inlineKeyboardButtonTypeSwitchInline'
+        ? action.obj('target_chat') != null ||
+                  action.containsKey('in_current_chat')
+              ? _switchInlineTarget(action)
+              : button.containsKey('switch_inline_query_current_chat')
+              ? const SwitchInlineTarget.currentChat()
+              : chosenChat != null
+              ? SwitchInlineTarget.chooseChat(
+                  allowUserChats:
+                      chosenChat.boolean('allow_user_chats') ?? false,
+                  allowBotChats: chosenChat.boolean('allow_bot_chats') ?? false,
+                  allowGroupChats:
+                      chosenChat.boolean('allow_group_chats') ?? false,
+                  allowChannelChats:
+                      chosenChat.boolean('allow_channel_chats') ?? false,
+                )
+              : const SwitchInlineTarget.chooseChat()
+        : null;
     return MessageButton(
       text: label,
       type: actionType,
@@ -2271,7 +2413,9 @@ abstract final class TDParse {
       switchInlineQuery:
           action.str('query') ??
           button.str('switch_inline_query_current_chat') ??
-          button.str('switch_inline_query'),
+          button.str('switch_inline_query') ??
+          chosenChat?.str('query'),
+      switchInlineTarget: switchInlineTarget,
       style: _richButtonStyle(button['style']),
       iconCustomEmojiId: button.int64('icon_custom_emoji_id') ?? 0,
     );

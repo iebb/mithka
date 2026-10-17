@@ -62,6 +62,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onAvatarTap,
     this.onAvatarLongPress,
     this.onOpenForwarded,
+    this.onTapViaBot,
     this.onOpenImage,
     this.onPlayVideo,
     this.onEditCaption,
@@ -101,6 +102,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final ValueChanged<ChatMessage>? onAvatarTap;
   final ValueChanged<ChatMessage>? onAvatarLongPress;
   final ValueChanged<ChatMessage>? onOpenForwarded;
+  final ValueChanged<ChatMessage>? onTapViaBot;
   final ValueChanged<ChatMessage>? onOpenImage;
   final ValueChanged<ChatMessage>? onPlayVideo;
   final ValueChanged<ChatMessage>? onEditCaption;
@@ -387,6 +389,16 @@ class ImageMediaAlbumBubble extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
               child: _forwardHeader(context, _first),
             ),
+          if (_first.hasViaBotAttribution)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                10,
+                _first.hasForwardAttribution ? 0 : 7,
+                10,
+                2,
+              ),
+              child: _viaBotHeader(context, _first),
+            ),
           Padding(
             padding: const EdgeInsets.all(padding),
             child: Column(
@@ -598,6 +610,34 @@ class ImageMediaAlbumBubble extends StatelessWidget {
             child: Text(
               AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
                 'value1': message.forwardDisplayName,
+              }),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: colors.linkBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _viaBotHeader(BuildContext context, ChatMessage message) {
+    final colors = context.colors;
+    return GestureDetector(
+      key: ValueKey('messageViaBotHeader-${message.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTapViaBot != null ? () => onTapViaBot!.call(message) : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              AppStrings.t(AppStringKeys.messageBubbleViaBot, {
+                'value1': message.viaBotDisplayName,
               }),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

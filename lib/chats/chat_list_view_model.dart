@@ -83,6 +83,7 @@ class ChatListViewModel extends ChangeNotifier {
   ChatListViewModel({
     @visibleForTesting this._queryForTesting,
     @visibleForTesting this._membershipForTesting,
+    this.accountSlot,
   });
 
   List<ChatSummary> _chats = [];
@@ -230,6 +231,13 @@ class ChatListViewModel extends ChangeNotifier {
   final Set<String> _exhaustedChatLists = {};
   final ChatListQuery? _queryForTesting;
   final ChatMembershipResolver? _membershipForTesting;
+
+  /// The account this list belongs to, when the caller already knows it.
+  ///
+  /// Chat ids are account-scoped, so follow-up row hydration must stay pinned
+  /// to the slot that produced the list instead of re-resolving the foreground
+  /// account after a switch. Null keeps the foreground resolution.
+  final int? accountSlot;
   static const _pageSize = 100;
   static const _initialPageSize = 36;
   static const _backgroundHydrateLimit = 60;
@@ -642,8 +650,14 @@ class ChatListViewModel extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> _chatListQuery(Map<String, dynamic> request) =>
-      _queryForTesting?.call(request) ?? _client.query(request);
+  Future<Map<String, dynamic>> _chatListQuery(Map<String, dynamic> request) {
+    final queryForTesting = _queryForTesting;
+    if (queryForTesting != null) return queryForTesting(request);
+    final slot = accountSlot;
+    return slot == null
+        ? _client.query(request)
+        : _client.queryForSlot(request, slot);
+  }
 
   // MARK: - Row actions (swipe)
 
@@ -1802,14 +1816,17 @@ class ChatListViewModel extends ChangeNotifier {
     // TDLib emits updateUser before it exposes a user id, and TdUserIndex has
     // been observing since process start — so the peer is normally already
     // cached and the getUser is one round trip per private chat for nothing.
-    final cached = TdUserIndex.shared.userFor(_client.activeSlot, userId);
+    // Both the cache key and the lookup follow this model's account: a picker
+    // kept open for its launching account must not describe slot-7 peers with
+    // slot-0 data.
+    final slot = accountSlot ?? _client.activeSlot;
+    final cached = TdUserIndex.shared.userFor(slot, userId);
     if (cached != null) {
       _applyPeerUser(cached);
       return;
     }
     _resolvingPeers.add(userId);
-    _client
-        .query({'@type': 'getUser', 'user_id': userId})
+    _chatListQuery({'@type': 'getUser', 'user_id': userId})
         .then((user) {
           _resolvingPeers.remove(userId);
           _applyPeerUser(user);

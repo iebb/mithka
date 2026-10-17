@@ -2085,6 +2085,7 @@
     <string name="messageBubbleExperimentalNotice">メッセージ吹き出しのスタイルは試験的な機能で、いつでも変更される可能性があります。</string>
     <string name="messageBubbleForestFamiliar">森の使い魔</string>
     <string name="messageBubbleForwardedFrom">{value1} から転送</string>
+    <string name="messageBubbleViaBot">{value1} 経由</string>
     <string name="messageBubbleGenreAbstract">抽象</string>
     <string name="messageBubbleGenreCelestial">星空</string>
     <string name="messageBubbleGenreClassic">クラシック</string>

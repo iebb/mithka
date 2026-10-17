@@ -28,7 +28,10 @@ class _MentionTestChatViewModel extends ChatViewModel {
   }
 
   @override
-  Future<List<MentionCandidate>> searchMentionCandidates(String query) async {
+  Future<List<MentionCandidate>> searchMentionCandidates(
+    String query, {
+    bool includeInlineBots = false,
+  }) async {
     return const [
       MentionCandidate(userId: 123456, name: 'Natu Profile', username: 'natu'),
     ];

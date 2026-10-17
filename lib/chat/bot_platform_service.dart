@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../tdlib/td_models.dart';
 
 typedef BotPlatformQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
@@ -119,12 +120,18 @@ class BotInlineInvocation {
 class BotInlineResult {
   const BotInlineResult({
     required this.id,
+    this.queryId = 0,
     required this.type,
     required this.title,
     required this.description,
+    this.thumbnail,
+    this.emoji = '',
   });
 
-  factory BotInlineResult.fromJson(Map<String, dynamic> value) {
+  factory BotInlineResult.fromJson(
+    Map<String, dynamic> value, {
+    int queryId = 0,
+  }) {
     final type = value.type ?? '';
     final contact = value.obj('contact');
     final venue = value.obj('venue');
@@ -132,6 +139,7 @@ class BotInlineResult {
     final animation = value.obj('animation');
     final audio = value.obj('audio');
     final document = value.obj('document');
+    final photo = value.obj('photo');
     final sticker = value.obj('sticker');
     final video = value.obj('video');
     final firstName = contact?.str('first_name') ?? '';
@@ -141,11 +149,17 @@ class BotInlineResult {
       'inlineQueryResultContact' => contactName,
       'inlineQueryResultVenue' => venue?.str('title') ?? '',
       'inlineQueryResultGame' => game?.str('title') ?? '',
-      'inlineQueryResultAnimation' =>
-        value.str('title') ?? animation?.str('file_name') ?? '',
       'inlineQueryResultAudio' => audio?.str('title') ?? '',
-      'inlineQueryResultSticker' => sticker?.str('emoji') ?? '',
-      'inlineQueryResultVoiceNote' => value.str('title') ?? '',
+      'inlineQueryResultDocument' =>
+        value.str('title') ?? document?.str('file_name') ?? '',
+      'inlineQueryResultSticker' => sticker?.str('emoji') ?? 'Sticker',
+      'inlineQueryResultAnimation' =>
+        value.str('title') ?? animation?.str('file_name') ?? 'GIF',
+      'inlineQueryResultPhoto' => value.str('title') ?? 'Photo',
+      'inlineQueryResultVideo' =>
+        value.str('title') ?? video?.str('file_name') ?? 'Video',
+      'inlineQueryResultVoiceNote' => value.str('title') ?? 'Voice',
+      'inlineQueryResultLocation' => value.str('title') ?? 'Location',
       _ => value.str('title') ?? '',
     };
     final description = switch (type) {
@@ -153,41 +167,164 @@ class BotInlineResult {
       'inlineQueryResultVenue' => venue?.str('address') ?? '',
       'inlineQueryResultGame' => game?.str('description') ?? '',
       'inlineQueryResultAudio' => audio?.str('performer') ?? '',
-      'inlineQueryResultDocument' =>
-        value.str('description') ?? document?.str('file_name') ?? '',
-      'inlineQueryResultPhoto' => value.str('description') ?? '',
-      'inlineQueryResultVideo' =>
-        value.str('description') ?? video?.str('file_name') ?? '',
-      _ => value.str('description') ?? '',
+      _ => value.str('description') ?? value.str('url') ?? '',
     };
     return BotInlineResult(
       id: value.str('id') ?? '',
+      queryId: queryId,
       type: type,
       title: title.trim().isEmpty ? _fallbackTitle(type) : title.trim(),
       description: description.trim(),
+      thumbnail: _parseThumbnail(
+        value: value,
+        photo: photo,
+        video: video,
+        animation: animation,
+        document: document,
+        audio: audio,
+        sticker: sticker,
+        game: game,
+        venue: venue,
+      ),
+      emoji: (sticker?.str('emoji') ?? '').trim(),
     );
   }
 
   final String id;
+  final int queryId;
   final String type;
   final String title;
   final String description;
+  final TdFileRef? thumbnail;
+  final String emoji;
+
+  BotInlineResult withQueryId(int queryId) => BotInlineResult(
+    id: id,
+    queryId: queryId,
+    type: type,
+    title: title,
+    description: description,
+    thumbnail: thumbnail,
+    emoji: emoji,
+  );
+
+  bool get isGalleryItem => switch (type) {
+    'inlineQueryResultPhoto' ||
+    'inlineQueryResultAnimation' ||
+    'inlineQueryResultSticker' => true,
+    _ => false,
+  };
+
+  static TdFileRef? _parseThumbnail({
+    required Map<String, dynamic> value,
+    required Map<String, dynamic>? photo,
+    required Map<String, dynamic>? video,
+    required Map<String, dynamic>? animation,
+    required Map<String, dynamic>? document,
+    required Map<String, dynamic>? audio,
+    required Map<String, dynamic>? sticker,
+    required Map<String, dynamic>? game,
+    required Map<String, dynamic>? venue,
+  }) {
+    final directThumb = TDParse.fileRef(value.obj('thumbnail')?.obj('file'));
+    if (directThumb != null) return directThumb;
+    if (photo != null) {
+      final attachment = TDParse.photoAttachment(photo);
+      if (attachment.image != null) {
+        return attachment.image!.thumbnail ?? attachment.image;
+      }
+    }
+    if (sticker != null) {
+      final thumb = TDParse.fileRef(sticker.obj('thumbnail')?.obj('file'));
+      if (thumb != null) return thumb;
+      final fmt = sticker.obj('format')?.type;
+      if (fmt == null || fmt == 'stickerFormatWebp') {
+        return TDParse.fileRef(sticker.obj('sticker'));
+      }
+    }
+    if (animation != null) {
+      final thumb = TDParse.fileRef(animation.obj('thumbnail')?.obj('file'));
+      if (thumb != null) return thumb;
+    }
+    if (video != null) {
+      final thumb = TDParse.fileRef(video.obj('thumbnail')?.obj('file'));
+      if (thumb != null) return thumb;
+    }
+    if (document != null) {
+      final thumb = TDParse.fileRef(document.obj('thumbnail')?.obj('file'));
+      if (thumb != null) return thumb;
+    }
+    if (audio != null) {
+      final thumb = TDParse.fileRef(
+        audio.obj('album_cover_thumbnail')?.obj('file'),
+      );
+      if (thumb != null) return thumb;
+    }
+    if (game != null) {
+      final attachment = TDParse.photoAttachment(game.obj('photo'));
+      if (attachment.image != null) {
+        return attachment.image!.thumbnail ?? attachment.image;
+      }
+    }
+    if (venue != null) {
+      final thumb = TDParse.fileRef(venue.obj('thumbnail')?.obj('file'));
+      if (thumb != null) return thumb;
+    }
+    return null;
+  }
 
   static String _fallbackTitle(String type) => switch (type) {
-    'inlineQueryResultArticle' => 'Article',
-    'inlineQueryResultAnimation' => 'Animation',
+    'inlineQueryResultAnimation' => 'GIF',
     'inlineQueryResultAudio' => 'Audio',
     'inlineQueryResultContact' => 'Contact',
-    'inlineQueryResultDocument' => 'Document',
+    'inlineQueryResultDocument' => 'File',
     'inlineQueryResultGame' => 'Game',
     'inlineQueryResultLocation' => 'Location',
     'inlineQueryResultPhoto' => 'Photo',
     'inlineQueryResultSticker' => 'Sticker',
-    'inlineQueryResultVenue' => 'Venue',
+    'inlineQueryResultVenue' => 'Place',
     'inlineQueryResultVideo' => 'Video',
-    'inlineQueryResultVoiceNote' => 'Voice message',
+    'inlineQueryResultVoiceNote' => 'Voice',
     _ => 'Result',
   };
+}
+
+enum BotInlineResultsButtonKind { startBot, webApp }
+
+class BotInlineResultsButton {
+  const BotInlineResultsButton({
+    required this.text,
+    required this.kind,
+    this.startParameter = '',
+    this.webAppUrl = '',
+  });
+
+  static BotInlineResultsButton? fromJson(Map<String, dynamic>? value) {
+    if (value == null) return null;
+    final text = (value.str('text') ?? '').trim();
+    if (text.isEmpty) return null;
+    final type = value.obj('type');
+    return switch (type?.type) {
+      'inlineQueryResultsButtonTypeStartBot' => BotInlineResultsButton(
+        text: text,
+        kind: BotInlineResultsButtonKind.startBot,
+        startParameter: type?.str('parameter') ?? '',
+      ),
+      'inlineQueryResultsButtonTypeWebApp' => BotInlineResultsButton(
+        text: text,
+        kind: BotInlineResultsButtonKind.webApp,
+        webAppUrl: type?.str('url') ?? '',
+      ),
+      _ => null,
+    };
+  }
+
+  final String text;
+  final BotInlineResultsButtonKind kind;
+  final String startParameter;
+  final String webAppUrl;
+
+  bool get isWebApp => kind == BotInlineResultsButtonKind.webApp;
 }
 
 class BotInlineResultsPage {
@@ -195,26 +332,78 @@ class BotInlineResultsPage {
     required this.queryId,
     required this.results,
     required this.nextOffset,
+    this.gallery = false,
+    this.button,
   });
 
-  factory BotInlineResultsPage.fromJson(Map<String, dynamic> value) =>
-      BotInlineResultsPage(
-        queryId: value.int64('inline_query_id') ?? 0,
-        results: (value.objects('results') ?? const [])
-            .map(BotInlineResult.fromJson)
-            .where((result) => result.id.isNotEmpty)
-            .toList(),
-        nextOffset: value.str('next_offset') ?? '',
-      );
+  factory BotInlineResultsPage.fromJson(Map<String, dynamic> value) {
+    final queryId = value.int64('inline_query_id') ?? 0;
+    return BotInlineResultsPage(
+      queryId: queryId,
+      results: (value.objects('results') ?? const [])
+          .map((raw) => BotInlineResult.fromJson(raw, queryId: queryId))
+          .where((result) => result.id.isNotEmpty)
+          .toList(),
+      nextOffset: value.str('next_offset') ?? '',
+      gallery: value.boolean('is_gallery') ?? false,
+      button: BotInlineResultsButton.fromJson(value.obj('button')),
+    );
+  }
 
   final int queryId;
   final List<BotInlineResult> results;
   final String nextOffset;
+  final bool gallery;
+  final BotInlineResultsButton? button;
+
+  bool get hasMore => nextOffset.trim().isNotEmpty;
+
+  bool get rendersAsGallery =>
+      gallery &&
+      results.isNotEmpty &&
+      results.every((result) => result.isGalleryItem);
+
+  BotInlineResultsPage mergeNextPage(BotInlineResultsPage next) {
+    final existing = <BotInlineResult>[
+      for (final item in results)
+        item.queryId != 0 ? item : item.withQueryId(queryId),
+    ];
+    final incoming = <BotInlineResult>[
+      for (final item in next.results)
+        item.queryId != 0 ? item : item.withQueryId(next.queryId),
+    ];
+    // Deduplicate by result id: TDLib may re-serve an earlier result under
+    // the new page's query id, and the first occurrence — with the query id
+    // it was actually returned under — is the one that can be sent.
+    final seen = <String>{for (final item in existing) item.id};
+    final merged = <BotInlineResult>[
+      ...existing,
+      for (final item in incoming)
+        if (seen.add(item.id)) item,
+    ];
+    return BotInlineResultsPage(
+      queryId: next.queryId != 0 ? next.queryId : queryId,
+      results: merged,
+      nextOffset: next.nextOffset,
+      gallery: gallery,
+      button: button ?? next.button,
+    );
+  }
 }
 
 class BotPlatformService {
-  BotPlatformService({BotPlatformQuery? query})
-    : _query = query ?? TdClient.shared.query;
+  BotPlatformService({BotPlatformQuery? query, int? queryForSlot})
+    : _query = query ?? _pinnedQuery(queryForSlot);
+
+  /// Routes every request to the account slot that owns the caller's chat.
+  ///
+  /// Bot, inline-query and chat ids are account-scoped: resolving them on the
+  /// foreground account after a switch would target a different conversation
+  /// with the same numeric id. Null keeps the foreground resolution.
+  static BotPlatformQuery _pinnedQuery(int? accountSlot) => accountSlot == null
+      ? TdClient.shared.query
+      : (Map<String, dynamic> request) =>
+            TdClient.shared.queryForSlot(request, accountSlot);
 
   final BotPlatformQuery _query;
 
@@ -298,12 +487,13 @@ class BotPlatformService {
     bool hideViaBot = false,
     Map<String, dynamic>? topicId,
     Map<String, dynamic>? replyTo,
+    Map<String, dynamic>? options,
   }) => _query({
     '@type': 'sendInlineQueryResultMessage',
     'chat_id': chatId,
     'topic_id': topicId,
     'reply_to': replyTo,
-    'options': {'@type': 'messageSendOptions'},
+    'options': options ?? const {'@type': 'messageSendOptions'},
     'query_id': queryId,
     'result_id': resultId,
     'hide_via_bot': hideViaBot,

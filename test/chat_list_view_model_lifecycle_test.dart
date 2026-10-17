@@ -112,6 +112,12 @@ void main() {
             'chat_ids': const <int>[42],
           }),
           'getChat' => Future.value(currentChat),
+          'getUser' => Future.value({
+            '@type': 'user',
+            'id': 7,
+            'first_name': 'Peer',
+            'last_name': '',
+          }),
           _ => Future.value({'@type': 'ok'}),
         };
       },
@@ -132,7 +138,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(
-      requestTypes,
+      // Peer hydration runs through the model's own query so it stays pinned
+      // to the list's account; it is irrelevant to the ordering under test.
+      requestTypes.where((type) => type != 'getUser'),
       ['loadChats', 'getChats', 'getChat'],
       reason: 'the local page should render without waiting on loadChats',
     );
@@ -145,7 +153,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(requestTypes, [
+    expect(requestTypes.where((type) => type != 'getUser'), [
       'loadChats',
       'getChats',
       'getChat',

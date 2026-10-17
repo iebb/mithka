@@ -2135,6 +2135,7 @@ abstract final class AppStringKeys {
   static const messageBubbleCollapse = 'messageBubbleCollapse';
   static const messageBubbleExpandQuote = 'messageBubbleExpandQuote';
   static const messageBubbleForwardedFrom = 'messageBubbleForwardedFrom';
+  static const messageBubbleViaBot = 'messageBubbleViaBot';
   static const messageBubbleTranslating = 'messageBubbleTranslating';
   static const messageRepliesEmpty = 'messageRepliesEmpty';
   static const messageLeaveAComment = 'messageLeaveAComment';
