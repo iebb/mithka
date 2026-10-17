@@ -1,11 +1,11 @@
 //
 //  media_panel_unified_test.dart
 //
-//  Covers the Telegram-iOS-style unified composer media panel: a single
-//  toolbar entry opens one panel whose top segmented selector switches
-//  between the emoji, sticker and GIF regions (each keeping its own
-//  secondary strip, search tab and content). Send closes the panel, and
-//  desktop renders the same panel inside a single anchored popover.
+//  Covers the unified composer media panel: a single toolbar entry opens one
+//  panel whose top segmented selector switches between the emoji, sticker and
+//  GIF regions (each keeping its own secondary strip, search tab and content).
+//  Send closes the panel, and desktop renders the same panel inside a single
+//  anchored popover.
 //
 
 import 'package:flutter/material.dart';
@@ -32,10 +32,14 @@ Future<ChatViewModel> _pumpMobileComposer(
   Widget Function(GifItem item)? gifPreviewBuilder,
   TextScaler? textScaler,
   TextDirection? textDirection,
+  AppColors? colors,
+  Brightness? brightness,
+  Key? composerKey,
 }) async {
   final vm = _UnifiedPanelTestViewModel();
   addTearDown(vm.dispose);
   Widget bar = ChatInputBar(
+    key: composerKey,
     vm: vm,
     quickRepliesEnabled: false,
     gifPreviewBuilder: gifPreviewBuilder,
@@ -67,7 +71,10 @@ Future<ChatViewModel> _pumpMobileComposer(
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(extensions: [AppColors.light]),
+      theme: ThemeData(
+        brightness: brightness ?? Brightness.light,
+        extensions: [colors ?? AppColors.light],
+      ),
       home: Scaffold(
         body: Align(alignment: Alignment.bottomCenter, child: bar),
       ),
@@ -235,6 +242,173 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('sticker strip has no GIF tab and GIF keeps its own strip', (
+    tester,
+  ) async {
+    StickerStore.shared.replacePacksForTest([
+      StickerPack(
+        id: StickerStore.recentPackId,
+        title: 'Recent',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 910, width: 128, height: 128, emoji: '🙂'),
+        ],
+      ),
+      StickerPack(
+        id: 501,
+        title: 'Cats',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 911, width: 128, height: 128, emoji: '🐱'),
+        ],
+      ),
+      StickerPack(
+        id: 502,
+        title: 'Dogs',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 912, width: 128, height: 128, emoji: '🐶'),
+        ],
+      ),
+    ]);
+    GifStore.shared.replaceItemsForTest([
+      GifItem(
+        id: 901,
+        duration: 2,
+        width: 320,
+        height: 180,
+        mimeType: 'video/mp4',
+        file: TdFileRef(id: 901),
+      ),
+    ]);
+
+    await _pumpMobileComposer(
+      tester,
+      gifPreviewBuilder: (_) => const SizedBox.expand(),
+    );
+    await tester.tap(_mediaButton);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+    await tester.pump();
+
+    expect(_stickerTabs, findsOneWidget);
+    expect(find.byKey(const ValueKey('stickerSearchTab')), findsOneWidget);
+    expect(find.byKey(const ValueKey('stickerRecentsTab')), findsOneWidget);
+    expect(find.byKey(const ValueKey('stickerPackTab-501')), findsOneWidget);
+    expect(find.byKey(const ValueKey('stickerPackTab-502')), findsOneWidget);
+    // The saved-GIFs entry belongs to the GIF segment only.
+    expect(
+      find.descendant(
+        of: _stickerTabs,
+        matching: find.byIcon(HeroAppIcons.gif.data),
+      ),
+      findsNothing,
+    );
+
+    // The GIF segment still reaches its own saved content.
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
+    await tester.pump();
+    expect(_gifTabs, findsOneWidget);
+    expect(find.byKey(const ValueKey('gifSavedTab')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gif-901')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sticker panel opens on the first installed pack', (
+    tester,
+  ) async {
+    StickerStore.shared.replacePacksForTest([
+      StickerPack(
+        id: StickerStore.recentPackId,
+        title: 'Recent',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 910, width: 128, height: 128, emoji: '🙂'),
+        ],
+      ),
+      StickerPack(
+        id: 601,
+        title: 'First',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 911, width: 128, height: 128, emoji: '🐱'),
+        ],
+      ),
+      StickerPack(
+        id: 602,
+        title: 'Second',
+        loaded: true,
+        stickers: const [
+          StickerItem(id: 912, width: 128, height: 128, emoji: '🐶'),
+        ],
+      ),
+    ]);
+
+    await _pumpMobileComposer(tester);
+    await tester.tap(_mediaButton);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+    await tester.pump();
+
+    // TDLib's order wins: the first installed set, not recents.
+    expect(find.byKey(const ValueKey('sticker-911')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sticker-910')), findsNothing);
+    expect(find.byKey(const ValueKey('sticker-912')), findsNothing);
+
+    // An explicit pack pick still wins.
+    await tester.tap(find.byKey(const ValueKey('stickerPackTab-602')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('sticker-912')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sticker-911')), findsNothing);
+
+    // The clock tab still opens recents.
+    await tester.tap(find.byKey(const ValueKey('stickerRecentsTab')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('sticker-910')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sticker-912')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('panel body and strips paint the composer surface', (
+    tester,
+  ) async {
+    for (final (colors, brightness) in [
+      (AppColors.light, Brightness.light),
+      (AppColors.dark, Brightness.dark),
+    ]) {
+      await _pumpMobileComposer(
+        tester,
+        colors: colors,
+        brightness: brightness,
+        composerKey: ValueKey(brightness),
+      );
+      // MaterialApp animates between the previous iteration's theme and this
+      // one; let that finish before reading the resolved colours.
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(_mediaButton);
+      await tester.pump();
+
+      final panel = tester.widget<Container>(
+        find.byKey(const ValueKey('composerMediaPanel')),
+      );
+      expect(panel.color, colors.inputBarBackground);
+      expect(panel.color, isNot(colors.chatBackground));
+
+      BoxDecoration stripDecoration(String key) =>
+          tester.widget<Container>(find.byKey(ValueKey(key))).decoration
+              as BoxDecoration;
+
+      expect(stripDecoration('emojiPanelTabs').color, panel.color);
+      await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+      await tester.pump();
+      expect(stripDecoration('stickerPanelTabs').color, panel.color);
+      await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
+      await tester.pump();
+      expect(stripDecoration('gifPanelTabs').color, panel.color);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('sending a sticker from the unified panel closes it', (
     tester,
   ) async {
@@ -320,10 +494,7 @@ void main() {
     await tester.tap(action);
     await tester.pump();
     expect(find.byKey(const ValueKey('desktopMediaPopover')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('desktopMediaPopoverContent')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('composerMediaPanel')), findsOneWidget);
     expect(_segments, findsOneWidget);
 
     // Segments work inside the desktop popover too.

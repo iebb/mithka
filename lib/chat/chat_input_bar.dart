@@ -1565,6 +1565,20 @@ class _ChatInputBarState extends State<ChatInputBar>
     };
   }
 
+  /// The sticker tab to show: an explicit pick while it still names a tab in
+  /// the loaded list, otherwise the first installed set, and recents when no
+  /// set is installed at all.
+  int get _activeStickerTab {
+    final selected = _stickerPack;
+    if (selected == _stickerSearchTabId) return _stickerSearchTabId;
+    if (selected != null) {
+      for (final pack in StickerStore.shared.packs) {
+        if (pack.id == selected) return selected;
+      }
+    }
+    return StickerStore.shared.defaultPackId;
+  }
+
   void _setPanel(_Panel next) {
     if (_panel == next && !_quickReplyContextVisible) return;
     if (_panel == _Panel.voice && next != _Panel.voice) {
@@ -1604,12 +1618,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (_mediaKind == kind) return;
     var stickerPack = _stickerPack;
     if (kind == _MediaKind.sticker && _stickerPack == _gifTabId) {
-      // The saved-GIFs tab belongs to the GIF segment; hand the sticker
-      // segment a real sticker tab when it resumes.
-      final packs = StickerStore.shared.packs;
-      stickerPack = packs.isNotEmpty
-          ? packs.first.id
-          : StickerStore.recentPackId;
+      // The saved-GIFs tab belongs to the GIF segment; dropping it lets the
+      // sticker segment resolve its own default tab.
+      stickerPack = null;
     }
     setState(() {
       _mediaKind = kind;
@@ -1620,11 +1631,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         EmojiStore.shared.loadIfNeeded();
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
-        final activeId =
-            _stickerPack ??
-            (StickerStore.shared.packs.isNotEmpty
-                ? StickerStore.shared.packs.first.id
-                : StickerStore.recentPackId);
+        final activeId = _activeStickerTab;
         if (activeId == StickerStore.recentPackId ||
             activeId == _stickerSearchTabId) {
           StickerStore.shared.loadIfNeeded();
@@ -3243,10 +3250,13 @@ class _ChatInputBarState extends State<ChatInputBar>
         _replyKeyboardVisible &&
         !_hasText &&
         _pendingClipboardAttachments.isEmpty;
+    final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
+    final mediaPanelVisible =
+        _panel == _Panel.emoji || _panel == _Panel.sticker;
     final panelSurfaceVisible =
         editingMessage == null &&
+        !mediaPanelVisible &&
         (_panel != _Panel.none || replyKeyboardPanelVisible);
-    final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
     final bar = ColoredBox(
       key: const ValueKey('chat-input-safe-area-background'),
       color: c.inputBarBackground,
@@ -3317,10 +3327,10 @@ class _ChatInputBarState extends State<ChatInputBar>
               child: _desktopResizeHandle(),
             ),
           // The base input surface is painted exactly once across the complete
-          // composer. When a media/reply panel is open, extend that panel's
-          // surface through the system inset with the same single overlay used
-          // by the visible panel. This keeps translucent cloud-theme colors
-          // identical above and below the home indicator.
+          // composer. The media panel uses that same surface, so it needs no
+          // inset layer; the panels that paint their own surface extend it
+          // through the system inset with one overlay. This keeps translucent
+          // cloud-theme colors identical above and below the home indicator.
           if (panelSurfaceVisible && bottomSafeArea > 0)
             Positioned(
               left: 0,
@@ -4059,7 +4069,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       surfaceKey: const ValueKey('desktopMediaPopover'),
       width: width,
       onDismiss: _hideDesktopPopovers,
-      child: _mediaPanel(height: height, popover: true),
+      child: _mediaPanel(height: height),
     );
   }
 
@@ -7402,15 +7412,16 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   // MARK: - Unified media panel (emoji / stickers / GIF)
 
-  /// Telegram-iOS style unified picker: one panel with a top segmented
-  /// selector (Emoji | Stickers | GIF) above each kind's own tab strip and
-  /// content. Rendered for both `_Panel.emoji` and `_Panel.sticker`.
-  Widget _mediaPanel({double height = 376, bool popover = false}) {
+  /// One picker with a segmented selector (Emoji | Stickers | GIF) above each
+  /// kind's own tab strip and content, painted on the composer's own surface
+  /// so it continues the input bar instead of reading as a separate block.
+  /// Rendered for both `_Panel.emoji` and `_Panel.sticker`.
+  Widget _mediaPanel({double height = 376}) {
     final c = context.colors;
     return Container(
-      key: popover ? const ValueKey('desktopMediaPopoverContent') : null,
+      key: const ValueKey('composerMediaPanel'),
       height: height,
-      color: c.panelBackground,
+      color: c.inputBarBackground,
       child: Column(
         children: [
           _mediaKindSegmentControl(),
@@ -8342,11 +8353,8 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget _stickerContent() {
     final store = StickerStore.shared;
     final packs = store.packs;
-    final activeId =
-        _stickerPack ??
-        (packs.isNotEmpty ? packs.first.id : StickerStore.recentPackId);
+    final activeId = _activeStickerTab;
     if (activeId == _stickerSearchTabId) return _stickerSearchContent();
-    if (activeId == _gifTabId) return _gifContent();
     if (packs.isEmpty) {
       return Center(
         child: Text(
@@ -8506,9 +8514,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget _stickerTabStrip() {
     final c = context.colors;
     final packs = StickerStore.shared.packs;
-    final activeId =
-        _stickerPack ??
-        (packs.isNotEmpty ? packs.first.id : StickerStore.recentPackId);
+    final activeId = _activeStickerTab;
     final installed = packs.where((p) => p.id != StickerStore.recentPackId);
     return Container(
       key: const ValueKey('stickerPanelTabs'),
@@ -8535,6 +8541,7 @@ class _ChatInputBarState extends State<ChatInputBar>
               ),
             ),
             _emojiTabButton(
+              key: const ValueKey('stickerRecentsTab'),
               selected: activeId == StickerStore.recentPackId,
               onTap: () => _selectStickerTab(StickerStore.recentPackId),
               child: AppIcon(
@@ -8545,17 +8552,9 @@ class _ChatInputBarState extends State<ChatInputBar>
                     : c.textSecondary,
               ),
             ),
-            _emojiTabButton(
-              selected: activeId == _gifTabId,
-              onTap: () => _selectStickerTab(_gifTabId),
-              child: AppIcon(
-                HeroAppIcons.gif,
-                size: 22,
-                color: activeId == _gifTabId ? AppTheme.brand : c.textSecondary,
-              ),
-            ),
             for (final pack in installed)
               _emojiTabButton(
+                key: ValueKey('stickerPackTab-${pack.id}'),
                 selected: pack.id == activeId,
                 onTap: () => _selectStickerTab(pack.id),
                 child: pack.cover != null

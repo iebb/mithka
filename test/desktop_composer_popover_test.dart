@@ -149,10 +149,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('desktopMediaPopover')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('desktopMediaPopoverContent')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('composerMediaPanel')), findsOneWidget);
     expect(find.byKey(const ValueKey('mediaKindSegments')), findsOneWidget);
     expect(tester.getRect(composer), initialRect);
 
