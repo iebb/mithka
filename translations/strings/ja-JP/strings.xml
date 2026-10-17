@@ -2611,7 +2611,16 @@
     <string name="proxyAddFromLinkHint">t.me または tg:// プロキシリンクを貼り付け</string>
     <string name="proxyAddFromLinkTitle">リンクからプロキシを追加</string>
     <string name="proxyAddProxy">プロキシを追加</string>
+    <string name="proxyCheckAvailable">利用可能</string>
+    <string name="proxyCheckFailed">テストに失敗</string>
+    <string name="proxyCheckLatency">{value1} ms</string>
+    <string name="proxyCheckTesting">テスト中</string>
+    <string name="proxyCheckTimeout">タイムアウト</string>
+    <string name="proxyCheckUnavailable">利用不可</string>
+    <string name="proxyCheckUnknown">未テスト</string>
     <string name="proxyDeleteProxy">プロキシを削除</string>
+    <string name="proxyDeleteUnavailable">利用できないプロキシを削除</string>
+    <string name="proxyDeleteUnavailableMessage">最後のテストに失敗したプロキシをすべて削除しますか？この操作は元に戻せません。</string>
     <string name="proxyDescription">プロキシは Telegram への接続にのみ使用され、接続速度が低下する場合があります。</string>
     <string name="proxyDisabled">プロキシを使用しない</string>
     <string name="proxyHostOrIp">ホストまたは IP</string>
@@ -2624,6 +2633,7 @@
     <string name="proxyStatusConnecting">接続中</string>
     <string name="proxyStatusOff">オフ</string>
     <string name="proxyStatusUnreachable">ネットワークなし</string>
+    <string name="proxyTestAll">すべてテスト</string>
     <string name="proxyTitle">プロキシ</string>
     <string name="publicDiscoveryBotsSection">ボット</string>
     <string name="publicDiscoveryDiscover">発見する</string>

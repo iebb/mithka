@@ -2621,7 +2621,16 @@
     <string name="proxyAddFromLinkHint">Paste t.me or tg:// proxy link</string>
     <string name="proxyAddFromLinkTitle">Add Proxy from Link</string>
     <string name="proxyAddProxy">Add proxy</string>
+    <string name="proxyCheckAvailable">Available</string>
+    <string name="proxyCheckFailed">Check failed</string>
+    <string name="proxyCheckLatency">{value1} ms</string>
+    <string name="proxyCheckTesting">Testing</string>
+    <string name="proxyCheckTimeout">Timed out</string>
+    <string name="proxyCheckUnavailable">Unavailable</string>
+    <string name="proxyCheckUnknown">Not tested</string>
     <string name="proxyDeleteProxy">Delete proxy</string>
+    <string name="proxyDeleteUnavailable">Delete unavailable proxies</string>
+    <string name="proxyDeleteUnavailableMessage">Remove every proxy whose last test failed? This cannot be undone.</string>
     <string name="proxyDescription">The proxy is only used to connect to Telegram and may slow down your connection.</string>
     <string name="proxyDisabled">No proxy</string>
     <string name="proxyHostOrIp">Host or IP</string>
@@ -2634,6 +2643,7 @@
     <string name="proxyStatusConnecting">Connecting</string>
     <string name="proxyStatusOff">Off</string>
     <string name="proxyStatusUnreachable">No network</string>
+    <string name="proxyTestAll">Test all</string>
     <string name="proxyTitle">Proxy</string>
     <string name="publicDiscoveryBotsSection">Bots</string>
     <string name="publicDiscoveryDiscover">Discover</string>

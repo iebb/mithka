@@ -2,16 +2,25 @@
 //  proxy_view.dart
 //
 //  代理 — connection proxy settings backed by TDLib (getProxies / addProxy /
-//  enableProxy / disableProxy / removeProxy). A "不使用代理" row plus the list of
-//  configured proxies (tap to enable; the active one carries a brand checkmark),
-//  and an 添加代理 row that opens a full-page custom editor. SOCKS5 / HTTP /
-//  MTProto. No Material dialogs.
+//  enableProxy / disableProxy / removeProxy / testProxy). A "不使用代理" row plus
+//  the list of configured proxies (tap to enable; the active one carries a
+//  brand checkmark; every row carries its own availability chip), a 测试全部
+//  action that probes each saved proxy, a 删除不可用的代理 action once a probe
+//  has failed, and an 添加代理 row that opens a full-page custom editor.
+//  SOCKS5 / HTTP / MTProto. No Material dialogs.
 //
 //  Reached from the sidebar AND from the login screen's own 代理 shortcut, so
 //  the client behind it may still be opening its database (a fresh add-account
 //  slot): until the first getProxies answers, the page keeps its waiting state
 //  and re-reads on the client's first pushed update instead of rendering an
 //  empty list that would read as "nothing saved".
+//
+//  A saved proxy list lives in the TDLib client — for a slot that has not
+//  signed in yet, that client answers getProxies from its own database as soon
+//  as setTdlibParameters ran, so the login screen's page reads exactly what the
+//  sidebar page reads. Only the 连接状态 half of the chip needs a link; a
+//  not-yet-connected client reports no state, which is why the status
+//  controller reports an unknown connection state rather than a failure.
 //
 
 import 'dart:async';
@@ -54,9 +63,35 @@ class _ProxyViewState extends State<ProxyView> {
   bool _clientReady = false;
   int _loadGeneration = 0;
 
+  /// The last probe verdict per proxy id, keyed by the TDLib proxy id. Only a
+  /// probe or a live link state ever writes here; removing a proxy drops its
+  /// entry with it.
+  final Map<int, ProxyCheckResult> _checks = {};
+
+  /// One counter per proxy id, bumped every time a fresh probe starts, so an
+  /// answer that belongs to a probe the user has since re-run is discarded.
+  final Map<int, int> _checkGeneration = {};
+
+  /// The reduced verdict of the testProxy currently in flight per proxy id.
+  /// Two taps, or a tap racing 测试全部, share this one request instead of
+  /// issuing a second testProxy for the same proxy.
+  final Map<int, Future<ProxyCheckResult>> _pendingChecks = {};
+
+  /// What the probe itself is told to wait, and how long the page waits past
+  /// that before it gives up on a client that stopped answering.
+  static const Duration _probeTimeout = Duration(seconds: 5);
+  static const Duration _probeAnswerGrace = Duration(seconds: 2);
+
+  int _nextCheckGeneration(int id) =>
+      _checkGeneration[id] = (_checkGeneration[id] ?? 0) + 1;
+
   @override
   void initState() {
     super.initState();
+    // The chips read the shared status for an enabled proxy that has not been
+    // probed yet, so this surface keeps that meter tracking too — the same
+    // call the sidebar shortcut makes, and idempotent.
+    ProxyStatusController.shared.ensureTracking();
     _load();
     _listenForClientWake();
   }
@@ -98,10 +133,15 @@ class _ProxyViewState extends State<ProxyView> {
       }
       final list = res.objects('proxies') ?? const <Map<String, dynamic>>[];
       if (mounted) {
+        final liveIds = {for (final proxy in list) proxy.integer('id') ?? 0};
         setState(() {
           _proxies = list;
           _clientReady = true;
           _loading = false;
+          // A proxy that is gone must not leave a verdict behind for an id
+          // TDLib may hand to a different proxy later.
+          _checks.removeWhere((id, _) => !liveIds.contains(id));
+          _checkGeneration.removeWhere((id, _) => !liveIds.contains(id));
         });
       }
       // The client answers: nothing can still be pending behind the wake
@@ -117,6 +157,18 @@ class _ProxyViewState extends State<ProxyView> {
   }
 
   bool get _anyEnabled => _proxies.any((p) => p.boolean('is_enabled') ?? false);
+
+  /// Only a probe's own verdict counts as unavailable here. A live link that
+  /// merely cannot be reached right now is not evidence a proxy is dead, and
+  /// this is what gates the destructive bulk delete.
+  bool _probeFailed(Map<String, dynamic> proxy) =>
+      _checks[proxy.integer('id') ?? 0]?.status == ProxyCheckStatus.unavailable;
+
+  int get _unavailableCount => _proxies.where(_probeFailed).length;
+
+  int get _probingCount => _checks.values
+      .where((check) => check.status == ProxyCheckStatus.testing)
+      .length;
 
   Future<void> _enable(Map<String, dynamic> proxy) async {
     final id = proxy.integer('id') ?? 0;
@@ -150,6 +202,7 @@ class _ProxyViewState extends State<ProxyView> {
       orElse: () => const <String, dynamic>{},
     );
     final wasEnabled = removed.boolean('is_enabled') ?? false;
+    setState(() => _checks.remove(id));
     try {
       await _client.query({'@type': 'removeProxy', 'proxy_id': id});
       if (wasEnabled) {
@@ -158,6 +211,170 @@ class _ProxyViewState extends State<ProxyView> {
       }
     } catch (_) {}
     unawaited(_load());
+  }
+
+  /// Removes every proxy whose last probe failed. The button only exists while
+  /// at least one row reads as unavailable, so this never runs empty.
+  Future<void> _removeUnavailable() async {
+    final doomed = [
+      for (final proxy in _proxies)
+        if (_probeFailed(proxy)) proxy,
+    ];
+    if (doomed.isEmpty) return;
+    final ok = await confirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.proxyDeleteUnavailable),
+      message: AppStrings.t(AppStringKeys.proxyDeleteUnavailableMessage),
+      confirmText: AppStrings.t(AppStringKeys.chatDelete),
+      destructive: true,
+    );
+    if (!ok) return;
+    final enabledIds = {
+      for (final proxy in doomed)
+        if (proxy.boolean('is_enabled') ?? false) proxy.integer('id') ?? 0,
+    };
+    final doomedIds = {for (final proxy in doomed) proxy.integer('id') ?? 0};
+    setState(() {
+      for (final id in doomedIds) {
+        _checks.remove(id);
+      }
+    });
+    var removedEnabled = false;
+    for (final id in doomedIds) {
+      try {
+        await _client.query({'@type': 'removeProxy', 'proxy_id': id});
+        if (enabledIds.contains(id)) removedEnabled = true;
+      } catch (_) {
+        // One failed removal must not abandon the rest of the batch.
+      }
+    }
+    if (removedEnabled) {
+      await ProxyConfig.disable();
+      unawaited(_client.applySavedProxyToActive());
+    }
+    unawaited(_load());
+  }
+
+  /// Probes one saved proxy. The answer to `testProxy` is the probe's own
+  /// verdict — TDLib completes it only after the socks/HTTP/MTProto handshake
+  /// with the datacenter behind the proxy finished, or the request's own
+  /// timeout expired — so the elapsed round trip is the latency reported.
+  Future<void> _testProxy(Map<String, dynamic> proxy) async {
+    final id = proxy.integer('id') ?? 0;
+    // A row that is already being probed keeps the attempt it started with:
+    // one testProxy per proxy id, however often the row is tapped.
+    final inFlight = _checks[id]?.status == ProxyCheckStatus.testing;
+    if (!inFlight) {
+      final generation = _nextCheckGeneration(id);
+      final clientId = _client.activeClientId;
+      setState(
+        () => _checks[id] = const ProxyCheckResult(ProxyCheckStatus.testing),
+      );
+      final outcome = await _probe(proxy, clientId);
+      if (!_isCurrentCheck(id, generation, clientId)) return;
+      setState(() => _checks[id] = outcome);
+      return;
+    }
+    // A test-all pressed while a row's own tap is still waiting joins it
+    // rather than issuing a second testProxy for the same proxy.
+    final pending = _pendingChecks[id];
+    if (pending == null) return;
+    final outcome = await pending;
+    if (!mounted || _checks[id]?.status != ProxyCheckStatus.testing) return;
+    setState(() => _checks[id] = outcome);
+  }
+
+  /// One `testProxy` round trip, reduced to a verdict. The request carries the
+  /// saved proxy's own type (SOCKS5 / HTTP credentials, MTProto secret) and the
+  /// probe's own timeout; TDLib answers `ok` once the handshake with the
+  /// datacenter behind the proxy finished, or a 400 whose message names the
+  /// failure ('Timeout expired', 'Connection refused', ...).
+  Future<ProxyCheckResult> _probe(Map<String, dynamic> proxy, int clientId) {
+    final id = proxy.integer('id') ?? 0;
+    final proxyDetails = ProxyConfig.tdProxyDetails(proxy);
+    final stopwatch = Stopwatch()..start();
+    final reduced = _client
+        .queryTo({
+          '@type': 'testProxy',
+          'proxy': proxyDetails,
+          'dc_id': kProxyTestDcId,
+          'timeout': _probeTimeout.inSeconds.toDouble(),
+        }, clientId)
+        // The answer normally arrives on its own: the request is asynchronous
+        // and this only bounds a client that stops reading altogether.
+        .timeout(_probeTimeout + _probeAnswerGrace)
+        .then<ProxyCheckResult>(
+          (_) => ProxyCheckResult(
+            ProxyCheckStatus.available,
+            latency: stopwatch.elapsed,
+          ),
+          onError: (Object error) => ProxyCheckResult(
+            ProxyCheckStatus.unavailable,
+            error: _probeErrorMessage(error),
+          ),
+        );
+    _pendingChecks[id] = reduced;
+    return reduced.whenComplete(() => _pendingChecks.remove(id));
+  }
+
+  /// The message TDLib gave for a failed probe, so the chip says why. A 400 is
+  /// TDLib's own failure; anything else is the client losing the request.
+  static String _probeErrorMessage(Object error) {
+    if (error is TdError) {
+      final message = error.message.trim();
+      if (message.isNotEmpty) return message;
+    }
+    if (error is TimeoutException) {
+      return AppStrings.t(AppStringKeys.proxyCheckTimeout);
+    }
+    return AppStrings.t(AppStringKeys.proxyCheckFailed);
+  }
+
+  /// Probes every saved proxy; each row keeps its own request and its own
+  /// verdict, and the page stays interactive while they land.
+  void _testAll() {
+    for (final proxy in List<Map<String, dynamic>>.of(_proxies)) {
+      unawaited(_testProxy(proxy));
+    }
+  }
+
+  /// Whether an answer still describes the row it was asked for: the same id,
+  /// the same probe attempt, and the same still-active client. A reconnect
+  /// that replaced the client mid-probe must not paint its answer.
+  bool _isCurrentCheck(int id, int generation, int clientId) =>
+      mounted &&
+      generation == _checkGeneration[id] &&
+      _proxies.any((proxy) => proxy.integer('id') == id) &&
+      !_client.isShuttingDown &&
+      clientId == _client.activeClientId;
+
+  ProxyCheckResult _stateFor(Map<String, dynamic> proxy) {
+    final id = proxy.integer('id') ?? 0;
+    final check = _checks[id];
+    if (check != null) return check;
+    // TDLib routes at most one proxy at a time. An enabled proxy starts out
+    // showing what the live link says — the pushed connection state is the
+    // only place TDLib reports traffic really flowing through it — and probing
+    // it replaces that with the measured verdict.
+    //
+    // A client with no link at all (the login screen's not-yet-signed-in slot)
+    // reads as unknown, never as a failure: no state was read, so nothing is
+    // claimed about the proxy.
+    if (proxy.boolean('is_enabled') ?? false) {
+      return switch (ProxyStatusController.shared.snapshot.indicator) {
+        ProxyIndicator.connected => const ProxyCheckResult(
+          ProxyCheckStatus.available,
+        ),
+        ProxyIndicator.unreachable => const ProxyCheckResult(
+          ProxyCheckStatus.unavailable,
+        ),
+        ProxyIndicator.connecting => const ProxyCheckResult(
+          ProxyCheckStatus.testing,
+        ),
+        _ => const ProxyCheckResult(ProxyCheckStatus.unknown),
+      };
+    }
+    return const ProxyCheckResult(ProxyCheckStatus.unknown);
   }
 
   Future<void> _add() async {
@@ -188,6 +405,16 @@ class _ProxyViewState extends State<ProxyView> {
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.proxyTitle),
       onBack: () => Navigator.of(context).pop(),
+      trailing: _proxies.isEmpty
+          ? null
+          : SettingsHeaderAction(
+              key: const ValueKey('proxy-test-all'),
+              label: AppStringKeys.proxyTestAll,
+              // The label becomes the spinner while any probe is in flight, so
+              // a second 测试全部 cannot stack on the first.
+              working: _probingCount > 0,
+              onTap: _testAll,
+            ),
       child: _loading
           ? const Center(child: AppActivityIndicator(size: 24))
           : SettingsListView(
@@ -201,6 +428,7 @@ class _ProxyViewState extends State<ProxyView> {
                   const SizedBox(height: AppSpacing.lg),
                 ],
                 _card([
+                  if (_unavailableCount > 0) _removeUnavailableRow(),
                   _addRow(),
                   _addFromLinkRow(),
                 ], key: const ValueKey('proxy-actions-card')),
@@ -231,15 +459,27 @@ class _ProxyViewState extends State<ProxyView> {
     );
   }
 
+  /// The row's second line: its type, plus the failure behind an unavailable
+  /// verdict so the chip can stay short without hiding the reason.
+  String _rowSubtitle(Map<String, dynamic> proxy, ProxyCheckResult check) {
+    final type = _typeLabel(proxy);
+    final error = check.error;
+    if (check.status != ProxyCheckStatus.unavailable || error == null) {
+      return type;
+    }
+    return '$type · $error';
+  }
+
   Widget _proxyRow(Map<String, dynamic> proxy) {
     final details = ProxyConfig.tdProxyDetails(proxy);
     final id = proxy.integer('id') ?? 0;
     final enabled = proxy.boolean('is_enabled') ?? false;
     final server = details.str('server') ?? '';
     final port = details.integer('port') ?? 0;
+    final check = _stateFor(proxy);
     return SettingsRow(
       title: '$server:$port',
-      subtitle: _typeLabel(proxy),
+      subtitle: _rowSubtitle(proxy, check),
       showChevron: false,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -248,6 +488,8 @@ class _ProxyViewState extends State<ProxyView> {
             AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
             const SizedBox(width: AppSpacing.lg),
           ],
+          _ProxyCheckChip(result: check),
+          const SizedBox(width: AppSpacing.lg),
           AppInteractiveSurface(
             semanticLabel: AppStringKeys.chatInfoRemove.l10n(context),
             onTap: () => _remove(id),
@@ -264,6 +506,22 @@ class _ProxyViewState extends State<ProxyView> {
         ],
       ),
       onTap: enabled ? null : () => _enable(proxy),
+    );
+  }
+
+  /// Destructive bulk action, present only while a probe verdict marks at
+  /// least one row unavailable — so it can never be pressed with nothing to do.
+  Widget _removeUnavailableRow() {
+    return SettingsRow(
+      key: const ValueKey('proxy-delete-unavailable'),
+      title: AppStrings.t(AppStringKeys.proxyDeleteUnavailable),
+      leading: SettingsLeadingIcon(
+        icon: HeroAppIcons.trash,
+        color: AppTheme.tagRed,
+      ),
+      titleColor: AppTheme.tagRed,
+      showChevron: false,
+      onTap: _removeUnavailable,
     );
   }
 
@@ -343,6 +601,80 @@ class _ProxyViewState extends State<ProxyView> {
       titleColor: AppTheme.brand,
       showChevron: false,
       onTap: _addFromLink,
+    );
+  }
+}
+
+/// One proxy row's availability pill: a colored dot or spinner plus the
+/// verdict, painting the values [ProxyCheckStatus] describes. Every state has
+/// its own key so a test can pin which one a row renders.
+class _ProxyCheckChip extends StatelessWidget {
+  const _ProxyCheckChip({required this.result});
+
+  final ProxyCheckResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final (Color color, Widget marker, String label) = switch (result.status) {
+      ProxyCheckStatus.unknown => (
+        c.textTertiary,
+        AppIcon(
+          HeroAppIcons.circleInfo,
+          size: AppIconSize.sm,
+          color: c.textTertiary,
+        ),
+        AppStrings.t(AppStringKeys.proxyCheckUnknown),
+      ),
+      ProxyCheckStatus.testing => (
+        AppTheme.brand,
+        AppActivityIndicator(size: 12, color: AppTheme.brand),
+        AppStrings.t(AppStringKeys.proxyCheckTesting),
+      ),
+      ProxyCheckStatus.available => (
+        AppTheme.onlineDot,
+        AppIcon(
+          HeroAppIcons.check,
+          size: AppIconSize.sm,
+          color: AppTheme.onlineDot,
+        ),
+        result.latency == null
+            ? AppStrings.t(AppStringKeys.proxyCheckAvailable)
+            : AppStrings.t(AppStringKeys.proxyCheckLatency, {
+                'value1': result.latency!.inMilliseconds,
+              }),
+      ),
+      ProxyCheckStatus.unavailable => (
+        AppTheme.tagRed,
+        AppIcon(
+          HeroAppIcons.triangleExclamation,
+          size: AppIconSize.sm,
+          color: AppTheme.tagRed,
+        ),
+        AppStrings.t(AppStringKeys.proxyCheckUnavailable),
+      ),
+    };
+    return Container(
+      key: ValueKey('proxy-check-${result.status.name}'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          marker,
+          const SizedBox(width: AppSpacing.xs + 1),
+          Text(
+            label,
+            style: AppTextStyle.caption(color, weight: AppTextWeight.medium),
+          ),
+        ],
+      ),
     );
   }
 }

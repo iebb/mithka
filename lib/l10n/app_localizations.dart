@@ -2507,8 +2507,17 @@ abstract final class AppStringKeys {
   static const proxyAddFromLink = 'proxyAddFromLink';
   static const proxyAddFromLinkHint = 'proxyAddFromLinkHint';
   static const proxyAddFromLinkTitle = 'proxyAddFromLinkTitle';
+  static const proxyCheckAvailable = 'proxyCheckAvailable';
+  static const proxyCheckFailed = 'proxyCheckFailed';
+  static const proxyCheckLatency = 'proxyCheckLatency';
+  static const proxyCheckTesting = 'proxyCheckTesting';
+  static const proxyCheckTimeout = 'proxyCheckTimeout';
+  static const proxyCheckUnavailable = 'proxyCheckUnavailable';
+  static const proxyCheckUnknown = 'proxyCheckUnknown';
   static const proxyAddProxy = 'proxyAddProxy';
   static const proxyDeleteProxy = 'proxyDeleteProxy';
+  static const proxyDeleteUnavailable = 'proxyDeleteUnavailable';
+  static const proxyDeleteUnavailableMessage = 'proxyDeleteUnavailableMessage';
   static const proxyDescription = 'proxyDescription';
   static const proxyDisabled = 'proxyDisabled';
   static const proxyHostOrIp = 'proxyHostOrIp';
@@ -2521,6 +2530,7 @@ abstract final class AppStringKeys {
   static const proxyStatusConnecting = 'proxyStatusConnecting';
   static const proxyStatusOff = 'proxyStatusOff';
   static const proxyStatusUnreachable = 'proxyStatusUnreachable';
+  static const proxyTestAll = 'proxyTestAll';
   static const proxyTitle = 'proxyTitle';
   static const qrCodeGroupTitle = 'qrCodeGroupTitle';
   static const qrCodeMineTitle = 'qrCodeMineTitle';

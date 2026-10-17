@@ -2611,7 +2611,16 @@
     <string name="proxyAddFromLinkHint">t.me 또는 tg:// 프록시 링크 붙여넣기</string>
     <string name="proxyAddFromLinkTitle">링크로 프록시 추가</string>
     <string name="proxyAddProxy">프록시 추가</string>
+    <string name="proxyCheckAvailable">사용 가능</string>
+    <string name="proxyCheckFailed">테스트 실패</string>
+    <string name="proxyCheckLatency">{value1} ms</string>
+    <string name="proxyCheckTesting">테스트 중</string>
+    <string name="proxyCheckTimeout">시간 초과</string>
+    <string name="proxyCheckUnavailable">사용 불가</string>
+    <string name="proxyCheckUnknown">테스트 안 함</string>
     <string name="proxyDeleteProxy">프록시 삭제</string>
+    <string name="proxyDeleteUnavailable">사용할 수 없는 프록시 삭제</string>
+    <string name="proxyDeleteUnavailableMessage">마지막 테스트에 실패한 프록시를 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.</string>
     <string name="proxyDescription">프록시는 Telegram 연결에만 사용되며 연결 속도가 느려질 수 있습니다.</string>
     <string name="proxyDisabled">프록시 사용 안 함</string>
     <string name="proxyHostOrIp">호스트 또는 IP</string>
@@ -2624,6 +2633,7 @@
     <string name="proxyStatusConnecting">연결 중</string>
     <string name="proxyStatusOff">사용 안 함</string>
     <string name="proxyStatusUnreachable">네트워크 없음</string>
+    <string name="proxyTestAll">모두 테스트</string>
     <string name="proxyTitle">프록시</string>
     <string name="publicDiscoveryBotsSection">봇</string>
     <string name="publicDiscoveryDiscover">발견하다</string>
