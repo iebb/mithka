@@ -1137,6 +1137,23 @@ class _TranscriptEntry {
   );
 }
 
+/// Where the reader was standing when an in-transcript jump (a reply quote tap
+/// or View in Chat) took them to another message. While this is live the
+/// floating arrow returns here instead of the newest message.
+class _ChatJumpOrigin {
+  const _ChatJumpOrigin({
+    required this.messageId,
+    required this.viewportOffset,
+  });
+
+  /// Topmost fully visible row (or the closest partially visible one above it)
+  /// at the moment the jump was requested.
+  final int messageId;
+
+  /// That row's top in viewport-local pixels, restored as-is on return.
+  final double viewportOffset;
+}
+
 class _ChatScrollSnapshot {
   const _ChatScrollSnapshot({
     required this.pixels,
@@ -1242,6 +1259,15 @@ class _ChatViewState extends State<ChatView> {
   Timer? _linkedMessageHighlightClearTimer;
   int? _scrollTargetId;
   int _scrollTargetGeneration = 0;
+
+  /// See [_ChatJumpOrigin]. Live from the moment a reply/View in Chat jump
+  /// starts until the arrow consumes it, the user drags the transcript away
+  /// from the jump target, or the session ends.
+  _ChatJumpOrigin? _jumpOrigin;
+
+  /// Scroll offset when the drag that may abandon [_jumpOrigin] began. Null
+  /// outside such a drag, so programmatic scrolls cannot measure against it.
+  double? _jumpOriginDragBaseline;
   int _transcriptGestureGeneration = 0;
   int? _lastNewestMessageId;
   int? _lastOldestMessageId;
@@ -1558,6 +1584,12 @@ class _ChatViewState extends State<ChatView> {
   @override
   void didUpdateWidget(covariant ChatView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.chatId != widget.chatId ||
+        oldWidget.forumTopicId != widget.forumTopicId) {
+      // A switch to another conversation or topic invalidates every recorded
+      // reading position, this one included.
+      _forgetJumpOrigin();
+    }
     if (identical(oldWidget.exitController, widget.exitController)) return;
     _detachExitController?.call();
     _detachExitController = widget.exitController?.register(_prepareExitState);
@@ -1847,6 +1879,7 @@ class _ChatViewState extends State<ChatView> {
       _lastTranscriptUserScrollDirection = ScrollDirection.idle;
       final protectedRestoredPosition = _restoredPositionGuard
           .finishUserScroll();
+      _releaseJumpOriginAfterDrag();
       _returnToLatestCoordinator.userDragEnded();
       if (endedTowardLatest && !protectedRestoredPosition) {
         unawaited(_continueHistoryIfNearLatest());
@@ -1863,6 +1896,9 @@ class _ChatViewState extends State<ChatView> {
       _lastTranscriptUserScrollDirection = notification.direction;
       _restoredPositionGuard.noteUserScroll();
       _claimTranscriptViewport();
+      // A real drag is the only thing that can carry the reader away from the
+      // jump target; measure how far it went when it ends.
+      _noteJumpOriginDragStart();
     }
     return false;
   }
@@ -2080,6 +2116,7 @@ class _ChatViewState extends State<ChatView> {
   void _prepareExitState() {
     if (_exitStatePrepared) return;
     _exitStatePrepared = true;
+    _forgetJumpOrigin();
     final sessionReopenPending = _sessionReopenPending;
     _cancelSessionReopenNavigation();
     if (!sessionReopenPending && !_maintainSessionScrollAnchor) {
@@ -2489,7 +2526,66 @@ class _ChatViewState extends State<ChatView> {
   bool get _showReturnToLatestProgress =>
       _returnToLatestCoordinator.showProgress;
 
+  /// Records where the reader is standing before an in-transcript jump. A
+  /// chain of jumps keeps the FIRST origin: that is the place the reader
+  /// actually left, and every later jump is only a detour away from it.
+  void _captureJumpOrigin() {
+    if (_jumpOrigin != null || _scrollTargetId != null) return;
+    if (!mounted || !_initialTranscriptReady || !_scroll.hasClients) return;
+    // Already at the newest edge: the arrow's existing meaning is still the
+    // right one, so there is nothing to remember.
+    if (_isAtLoadedBottom(80)) return;
+    final anchor = _captureSessionScrollAnchor();
+    if (anchor == null) return;
+    _jumpOrigin = _ChatJumpOrigin(
+      messageId: anchor.messageId,
+      viewportOffset: anchor.viewportOffset,
+    );
+  }
+
+  void _forgetJumpOrigin() {
+    _jumpOrigin = null;
+    _jumpOriginDragBaseline = null;
+  }
+
+  /// Remembers where the viewport stood when a real drag began. A tap (reply
+  /// quote, timestamp) produces no scroll notification, so it can never be
+  /// mistaken for the drag that abandons the origin.
+  void _noteJumpOriginDragStart() {
+    if (_jumpOrigin == null || !_hasTranscriptPointerDown) return;
+    _jumpOriginDragBaseline ??= _scroll.hasClients
+        ? _scroll.position.pixels
+        : null;
+  }
+
+  /// Drops the origin once a drag has carried the viewport a meaningful
+  /// distance away from the jump target. A small nudge to read the quoted
+  /// neighbourhood keeps the arrow pointing back at where the reader left.
+  void _releaseJumpOriginAfterDrag() {
+    final baseline = _jumpOriginDragBaseline;
+    _jumpOriginDragBaseline = null;
+    if (baseline == null || _jumpOrigin == null || !_scroll.hasClients) return;
+    final viewport = _transcriptViewportKey.currentContext?.findRenderObject();
+    final viewportHeight = viewport is RenderBox && viewport.attached
+        ? viewport.size.height
+        : 0.0;
+    final threshold = math.max(120.0, viewportHeight * 0.35);
+    if ((_scroll.position.pixels - baseline).abs() >= threshold) {
+      _forgetJumpOrigin();
+    }
+  }
+
+  /// The floating arrow: returns to the message the reader left while a jump
+  /// origin is live, and to the newest message otherwise.
   void _onReturnToLatestTapped() {
+    final origin = _jumpOrigin;
+    if (origin != null) {
+      // A tap always consumes the origin, even when its row can no longer be
+      // reached: a stale origin must never outlive the tap that asked for it.
+      _jumpOrigin = null;
+      unawaited(_returnToJumpOrigin(origin));
+      return;
+    }
     _requestReturnToLatest(userInitiated: true);
   }
 
@@ -2526,9 +2622,52 @@ class _ChatViewState extends State<ChatView> {
     _markReadAtBottomIfNeeded();
   }
 
+  Future<void> _returnToJumpOrigin(_ChatJumpOrigin origin) async {
+    final restored = await _restoreJumpOrigin(origin);
+    // The origin's row can vanish between the tap and the layout (a paged
+    // window replaced under it); keep the arrow's old contract as the fallback
+    // rather than swallowing the tap.
+    if (!restored && mounted) _requestReturnToLatest(userInitiated: true);
+  }
+
+  Future<bool> _restoreJumpOrigin(_ChatJumpOrigin origin) async {
+    if (!mounted || !_scroll.hasClients) return false;
+    if (!_vm.messages.any((message) => message.id == origin.messageId)) {
+      return false;
+    }
+    _cancelSessionScrollAnchorMaintenance();
+    _maintainRestoredBottom = false;
+    _restoredPositionGuard.cancel();
+    _cancelBottomFollow();
+    _stopActiveTranscriptScroll();
+    // A re-pivot makes raw pixels meaningless, so approach the origin with the
+    // alignment fraction it had and then correct by measurement.
+    final viewport = _transcriptViewportKey.currentContext?.findRenderObject();
+    final viewportHeight = viewport is RenderBox && viewport.attached
+        ? viewport.size.height
+        : null;
+    final alignment = viewportHeight == null || viewportHeight <= 0
+        ? 0.0
+        : (origin.viewportOffset / viewportHeight).clamp(0.0, 1.0);
+    final reached = await _scrollToMessageAndReport(
+      origin.messageId,
+      alignment: alignment,
+      forceAlignment: true,
+    );
+    if (!reached || !mounted) return false;
+    _restoreMessageViewportOffset(origin.messageId, origin.viewportOffset);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return false;
+    _restoreMessageViewportOffset(origin.messageId, origin.viewportOffset);
+    _saveSessionScrollSnapshot();
+    return true;
+  }
+
   void _requestReturnToLatest({bool userInitiated = false}) {
     if (!userInitiated && _hasTranscriptPointerDown) return;
     if (userInitiated) {
+      // Returning to the newest message abandons the jump origin by design.
+      _forgetJumpOrigin();
       _transcriptViewportClaimedByUser = false;
       _cancelSessionReopenNavigation(userClaimedViewport: true);
       _restoredPositionGuard.cancel();
@@ -2673,6 +2812,8 @@ class _ChatViewState extends State<ChatView> {
   /// boundary may already point at the newest message after the chat is marked
   /// read, so it cannot be used to resolve this button later.
   Future<void> _jumpToFirstUnread() async {
+    // Choosing a different destination drops the recorded jump origin.
+    _forgetJumpOrigin();
     _claimTranscriptViewport();
     await _jumpToFirstUnreadImpl();
   }
@@ -3332,6 +3473,9 @@ class _ChatViewState extends State<ChatView> {
   /// deterministic estimate immediately and then do one zero-duration correction
   /// after layout, without waiting to reveal the UI.
   Future<void> _completeInitialScroll() async {
+    // Opening (or reopening) the session establishes a fresh reading position;
+    // an origin from a previous visit of this state must not survive it.
+    _forgetJumpOrigin();
     if (_shouldRestoreSessionScroll) {
       await _restoreSessionScrollPosition();
     } else {
@@ -3474,9 +3618,15 @@ class _ChatViewState extends State<ChatView> {
   bool _restoreSessionScrollAnchor(_ChatScrollSnapshot snapshot) {
     final messageId = snapshot.anchorMessageId;
     final desiredOffset = snapshot.anchorViewportOffset;
-    if (messageId == null || desiredOffset == null || !_scroll.hasClients) {
-      return false;
-    }
+    if (messageId == null || desiredOffset == null) return false;
+    return _restoreMessageViewportOffset(messageId, desiredOffset);
+  }
+
+  /// Puts [messageId] back at [desiredOffset] pixels below the transcript
+  /// viewport top, measured rather than replayed as raw pixels: the row may sit
+  /// in a different sliver window than it did when the offset was recorded.
+  bool _restoreMessageViewportOffset(int messageId, double desiredOffset) {
+    if (!_scroll.hasClients) return false;
     final viewportContext = _transcriptViewportKey.currentContext;
     final itemContext = _entryVisibilityKeys[messageId]?.currentContext;
     final viewportRenderObject = viewportContext?.findRenderObject();
@@ -5079,6 +5229,7 @@ class _ChatViewState extends State<ChatView> {
 
   Future<void> _jumpToMessage(int messageId, {bool reply = false}) async {
     if (!mounted) return;
+    _captureJumpOrigin();
     setState(() => _setScrollTarget(messageId, forceNavigation: true));
     if (!reply) return;
     final target = _vm.messages.where((m) => m.id == messageId).firstOrNull;
@@ -5187,6 +5338,7 @@ class _ChatViewState extends State<ChatView> {
     MessageRepliesViewTarget target,
   ) async {
     if (target.chatId == widget.chatId) {
+      _captureJumpOrigin();
       await _scrollToMessage(target.messageId);
       return;
     }
@@ -7236,7 +7388,9 @@ class _ChatViewState extends State<ChatView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: pointsDown
-          ? _onReturnToLatestTapped
+          // The unread pill always means "go to the newest message", even
+          // while the arrow would return to a jump origin.
+          ? () => _requestReturnToLatest(userInitiated: true)
           : () => unawaited(_jumpToFirstUnread()),
       child: Container(
         padding: EdgeInsetsDirectional.fromSTEB(
@@ -8940,6 +9094,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _openReplyMessage(int messageId) async {
+    // Capture before the viewport is claimed: the claim marks a navigation in
+    // progress and the recorded origin is the frame the reader just left.
+    _captureJumpOrigin();
     _claimTranscriptViewport();
     final didReachTarget = await _scrollToMessageAndReport(messageId);
     if (!didReachTarget || !mounted) return;
