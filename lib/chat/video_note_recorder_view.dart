@@ -10,6 +10,7 @@ import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../media/media_metadata.dart';
 import '../theme/app_theme.dart';
+import 'video_note_crop_service.dart';
 
 class VideoNoteCaptureResult {
   const VideoNoteCaptureResult({required this.path, required this.duration});
@@ -203,6 +204,42 @@ class VideoNotePreviewBox extends StatelessWidget {
       },
     );
   }
+/// Resolves the file a finished video note is sent from: the centred square
+/// crop when the native editor produced one, otherwise the recording itself.
+///
+/// The crop is best-effort. A missing platform editor, a failed export, a
+/// malformed reply or a timeout all fall back to [recordedPath], because a
+/// slightly wide note is far better than a lost one. When the crop did produce
+/// a new file, the recording it replaces is deleted so the cache does not hold
+/// two copies of the same note.
+///
+/// [crop] exists so tests can drive the decision without a platform channel;
+/// production passes nothing and reaches [VideoNoteCropService.crop].
+Future<String> videoNoteUploadPath(
+  String recordedPath, {
+  Future<String?> Function(String path)? crop,
+}) async {
+  String? cropped;
+  try {
+    cropped = await (crop ?? VideoNoteCropService.crop)(recordedPath);
+  } catch (_) {
+    cropped = null;
+  }
+  if (cropped == null || cropped.isEmpty || cropped == recordedPath) {
+    return recordedPath;
+  }
+  try {
+    if (!await File(cropped).exists()) return recordedPath;
+  } catch (_) {
+    return recordedPath;
+  }
+  try {
+    final original = File(recordedPath);
+    if (await original.exists()) await original.delete();
+  } catch (_) {
+    // Best-effort: the platform cache reclaims the recording anyway.
+  }
+  return cropped;
 }
 
 /// An owned video-message camera with Telegram-style hold, cancel, lock and
@@ -392,10 +429,19 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
                   ? 1
                   : (_elapsed.inMilliseconds / 1000).ceil().clamp(1, 60))
               .toInt();
-      if (!mounted) return;
+      // The camera records 16:9 while both the preview and the received bubble
+      // show a centred square; crop the file so the note is what was recorded.
+      final path = await videoNoteUploadPath(video.path);
+      if (!mounted) {
+        // The recorder was left while the crop was still running: nobody will
+        // send the file it produced, so drop it instead of leaving an unowned
+        // temporary next to the recording.
+        await VideoNoteCropService.abandonInFlight();
+        return;
+      }
       Navigator.of(
         context,
-      ).pop(VideoNoteCaptureResult(path: video.path, duration: seconds));
+      ).pop(VideoNoteCaptureResult(path: path, duration: seconds));
     } on CameraException catch (error) {
       if (mounted) {
         setState(() {
@@ -677,6 +723,9 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // A route closed mid-export owns no result: the exporter's file is
+    // reclaimed when it finishes.
+    unawaited(VideoNoteCropService.abandonInFlight());
     _timer?.cancel();
     unawaited(_controller?.dispose());
     _controller = null;
