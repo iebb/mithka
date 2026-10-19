@@ -996,6 +996,8 @@
     <string name="chatListCreateGroup">グループチャットを作成</string>
     <string name="chatListDeleteChatQuestion">チャットを削除しますか？</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">「{value1}」から退出し、Telegramアカウントの履歴をすべての端末から削除しますか？</string>
+    <string name="chatListLocalPinEnabled">ピン留めの上限なし</string>
+    <string name="chatListLocalPinLimitReached">ピン留めの上限に達しました。詳細設定でローカルピン留めを無制限にすると、{value1} 件を超えるチャットをピン留めできます。</string>
     <string name="chatListMarkUnread">未読にする</string>
     <string name="chatListNoChats">チャットはまだありません</string>
     <string name="chatListScanQrCode">QRコードをスキャン</string>

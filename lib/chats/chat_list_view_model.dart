@@ -27,6 +27,7 @@ import '../tdlib/td_user_index.dart';
 import 'chat_delete_policy.dart';
 import 'chat_list_preview.dart';
 import 'chat_removal_actions.dart';
+import 'local_pin_store.dart';
 
 class ChatFilterOption {
   const ChatFilterOption({
@@ -308,6 +309,13 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed || _listening) return;
     _listening = true;
     _subscribe();
+    // The device-only pin switch is live: turning it on re-derives the rows,
+    // turning it off releases every row it was holding at the top.
+    LocalPinStore.shared.addListener(_handleLocalPinStoreChange);
+    if (LocalPinStore.shared.unlimitedEnabled) {
+      unawaited(_refreshPinCap());
+      _scheduleLocalPinSync();
+    }
     final slot = accountSlot;
     final cachedCommunities = slot == null
         ? _client.latestCommunityUpdates
@@ -390,9 +398,19 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed) return;
     if (_meId == value) return;
     _meId = value;
+    // A different account means different chats, a different pin cap and a
+    // different set of device-only pins; drop this list's bookkeeping first.
+    _invalidateLocalPinState();
+    // Device-only pins are account-scoped, so the store follows the account
+    // exactly like the list's other per-account state.
+    LocalPinStore.shared.setActiveAccountUserId(value);
     if (value == null) return;
     for (final s in _map.values) {
       s.isSavedMessages = s.peerUserId == value;
+    }
+    if (LocalPinStore.shared.unlimitedEnabled) {
+      unawaited(_refreshPinCap());
+      _scheduleLocalPinSync();
     }
     _resort();
   }
@@ -404,12 +422,17 @@ class ChatListViewModel extends ChangeNotifier {
     _listening = false;
     // Also strands any bulk read whose requests are still in flight.
     _bulkReadGeneration++;
+    LocalPinStore.shared.removeListener(_handleLocalPinStoreChange);
     _sub?.cancel();
     _sub = null;
     _resortTimer?.cancel();
     _resortTimer = null;
     _badgeTimer?.cancel();
     _badgeTimer = null;
+    _localPinSyncTimer?.cancel();
+    _localPinSyncTimer = null;
+    _localPinPruneTimer?.cancel();
+    _localPinPruneTimer = null;
     super.dispose();
   }
 
@@ -771,10 +794,115 @@ class ChatListViewModel extends ChangeNotifier {
   // MARK: - Row actions (swipe)
 
   void togglePin(ChatSummary chat) {
-    // Capture the list the user is acting on before anything async runs: a
-    // folder switch mid-flight must not redirect the request or the rollback.
-    final target = _pinTargetForCurrentList();
-    final newValue = !target.isPinned(chat);
+    if (LocalPinStore.shared.unlimitedEnabled) {
+      unawaited(_togglePinUnlimited(chat));
+      return;
+    }
+    _togglePinOnServer(chat);
+  }
+
+  /// Pins [chat] on the device when the server cannot take the pin.
+  ///
+  /// The server pin cap counts the whole account's pinned chats, not the
+  /// visible list, and a chat with no position at all would be refused with a
+  /// cannot-pin error — a device-only pin is the only way those gestures can
+  /// work. Everything else, including unpinning a server pin, stays on the
+  /// server so the list keeps matching Telegram.
+  Future<void> _togglePinUnlimited(ChatSummary chat) async {
+    final store = LocalPinStore.shared;
+    if (store.isLocallyPinned(chat.id)) {
+      await store.unpin(chat.id);
+      if (_disposed) return;
+      // The store no longer owns the id, so the row has to be released here.
+      // A server position for the chat (if any) is what put it where it was:
+      // the order it carried while device-pinned was this store's band order,
+      // so putting the row back on its own position is the same fallback the
+      // prune pass uses — and the next position update confirms the state.
+      _mutate(chat.id, (s) {
+        s.isPinned = false;
+        s.order = _unpinnedOrderOf(chat.id) ?? s.order;
+      });
+      _resort();
+      return;
+    }
+    final atCap = _pinCap > 0 && _serverPinnedCount() >= _pinCap;
+    final placeOnDevice = !chat.isPinned && (atCap || chat.order <= 0);
+    if (!placeOnDevice) {
+      _togglePinOnServer(chat);
+      return;
+    }
+    await store.pin(
+      chat.id,
+      serverPinOrder: _localPinSnapshot(chat),
+      pinnedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
+    if (_disposed) return;
+    _scheduleLocalPinSync();
+    _resort();
+  }
+
+  /// The band base this pin is recorded with.
+  ///
+  /// The band has to sit above every order the list is currently sorting
+  /// above — a pinned chat carries its pin time as its order, which the tapped
+  /// chat's own last-message order can be far below — and it never walks back
+  /// down: the store's largest recorded snapshot keeps today's bands below the
+  /// blocks of pins added later.
+  int _localPinSnapshot(ChatSummary chat) {
+    final store = LocalPinStore.shared;
+    var snapshot = chat.order;
+    for (final s in _map.values) {
+      if (!s.isPinned) continue;
+      if (store.isLocallyPinned(s.id)) continue;
+      if (s.order > snapshot) snapshot = s.order;
+    }
+    if (store.maxServerPinOrder > snapshot) {
+      snapshot = store.maxServerPinOrder;
+    }
+    return snapshot;
+  }
+
+  /// The order a chat carries as its own, with any device-only band order
+  /// taken back off.
+  ///
+  /// While a local pin is active the summary's order is the band order the
+  /// store assigned — the live position only arrives after that. Releasing the
+  /// pin has to put the row back on its own position, and the largest server
+  /// order recorded for it is the best value at hand; `_applyPosition` refines
+  /// it on the next position update. Null when nothing about the chat is
+  /// known, so the caller keeps the current order.
+  int? _unpinnedOrderOf(int id) {
+    // The chat's own last main-list position is the most precise value; it is
+    // also what a device-pinned row's order is restored to.
+    var order = 0;
+    for (final p in _lastPositions[id] ?? const <Map<String, dynamic>>[]) {
+      final candidate = _positiveOrderOfPosition(p);
+      if (candidate != null && candidate > order) order = candidate;
+    }
+    if (order <= 0 && _serverPinnedIds.contains(id)) {
+      order = _highestServerPinOrder();
+    }
+    if (order <= 0) {
+      final entry = LocalPinStore.shared.entryFor(id);
+      order = entry == null || entry.serverPinOrder <= 0
+          ? 0
+          : entry.serverPinOrder;
+    }
+    return order > 0 ? order : null;
+  }
+
+  /// The highest order among the chats the server itself has pinned.
+  int _highestServerPinOrder() {
+    var max = 0;
+    for (final s in _map.values) {
+      if (!_serverPinnedIds.contains(s.id)) continue;
+      if (s.order > max) max = s.order;
+    }
+    return max;
+  }
+
+  void _togglePinOnServer(ChatSummary chat) {
+    final newValue = !chat.isPinned;
     final id = chat.id;
     target.apply(target.chatList, id, newValue);
     _resort();
@@ -803,6 +931,254 @@ class ChatListViewModel extends ChangeNotifier {
           _resort();
           return <String, dynamic>{};
         });
+    // A server pin is pinned on every device; in a build with device-only
+    // pins it also has to release a local entry for this chat, which the next
+    // sync does from the position TDLib is about to send.
+    _scheduleLocalPinSync();
+  }
+
+  /// How many chats the account has pinned on the server.
+  ///
+  /// The server cap counts every pinned chat in the account, not only the ones
+  /// the current list shows, so this walks the chat store rather than the
+  /// sorted projection. A stored device-only pin never counts: if the server
+  /// had pinned that chat the sync would have dropped the entry.
+  int _serverPinnedCount() {
+    var count = 0;
+    for (final summary in _map.values) {
+      if (summary.isPinned &&
+          !LocalPinStore.shared.isLocallyPinned(summary.id)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // MARK: - Device-only pins
+
+  /// The server's pin cap, read once per account from the
+  /// `pinned_chat_count_max` option.
+  ///
+  /// Before the option update arrives (or when nothing has answered yet) this
+  /// is the server's default cap. A value <= 0 means the server does not cap
+  /// pins at all, and then every pin is a normal server pin.
+  int _pinCap = 5;
+  Timer? _localPinSyncTimer;
+  Timer? _localPinPruneTimer;
+  bool _pinCapRequested = false;
+
+  Future<void> _refreshPinCap() async {
+    if (_pinCapRequested) return;
+    _pinCapRequested = true;
+    try {
+      final option = await _chatListQuery({
+        '@type': 'getOption',
+        'name': 'pinned_chat_count_max',
+      });
+      if (_disposed) return;
+      final value = option.integer('value');
+      if (value != null) _pinCap = value;
+    } catch (_) {
+      // Keep the default cap; pins beyond it simply take the local path if
+      // the server refuses them, and the toggle's failure path still applies
+      // when the switch is off.
+    }
+  }
+
+  void _invalidateLocalPinState() {
+    _pinEpoch++;
+    _pinCapRequested = false;
+    _localPinSyncTimer?.cancel();
+    _localPinSyncTimer = null;
+    _localPinPruneTimer?.cancel();
+    _localPinPruneTimer = null;
+    _localPinsToDrop.clear();
+    _serverPinnedIds.clear();
+    _lastPositions.clear();
+    _pinCap = 5;
+  }
+
+  /// Bumped whenever the pin bookkeeping is reset (a new account, a fresh
+  /// list). Async passes capture it and stop if it moved under them: their
+  /// chat ids and preference keys belonged to the account they started with.
+  int _pinEpoch = 0;
+
+  /// Drops device-only pins for chats that have authoritatively left the list
+  /// or no longer exist.
+  ///
+  /// The only source is [_localPinsToDrop] — the list-membership updates the
+  /// session received: a chat removed from the main list (archived or deleted)
+  /// or reported gone (`mithkaChatLeft`). There is deliberately no catch-all
+  /// sweep over the store's entries: an entry whose chat this session never
+  /// loaded is indistinguishable from a chat deleted while the device was
+  /// offline, and dropping it would delete a live pin on a partially loaded
+  /// list. Such a dormant entry is invisible (the chat has no summary, so it
+  /// draws no row) and is cleaned up the moment a membership update names the
+  /// id.
+  Future<void> _pruneLocalPins() async {
+    _localPinPruneTimer = null;
+    if (_disposed) return;
+    final store = LocalPinStore.shared;
+    if (!store.unlimitedEnabled) {
+      _localPinsToDrop.clear();
+      return;
+    }
+
+    final dropped = _localPinsToDrop.toList();
+    _localPinsToDrop.clear();
+    final epoch = _pinEpoch;
+    for (final id in dropped) {
+      await store.unpin(id);
+      if (_pinEpoch != epoch) return;
+    }
+
+    // No catch-all sweep; see the doc comment. Dormant entries for chats the
+    // session never learned stay until an authoritative membership update
+    // names them.
+    if (dropped.isEmpty) return;
+    if (_disposed) return;
+    // A row kept at the top by a pin that no longer exists has to fall back
+    // to the position its own list gave it.
+    for (final id in dropped) {
+      if (_serverPinnedIds.contains(id)) continue;
+      _mutate(id, (s) {
+        s.isPinned = false;
+        s.order = _unpinnedOrderOf(id) ?? s.order;
+      });
+    }
+    _resort();
+  }
+
+  /// Applies a change of the device-only pin store.
+  ///
+  /// Turning the switch on makes the stored pins hold their rows; turning it
+  /// off releases every row of the band they were on.
+  void _handleLocalPinStoreChange() {
+    if (_disposed) return;
+    final store = LocalPinStore.shared;
+    if (store.unlimitedEnabled) {
+      _scheduleLocalPinSync();
+      return;
+    }
+    for (final id in store.pinnedChatIds) {
+      if (_serverPinnedIds.contains(id)) continue;
+      _mutate(id, (s) {
+        s.isPinned = false;
+        s.order = _unpinnedOrderOf(id) ?? s.order;
+      });
+    }
+    _resort();
+  }
+
+  /// Chats whose local pin is already known to be obsolete, applied by
+  /// [_pruneLocalPins] on its debounce.
+  final Set<int> _localPinsToDrop = {};
+
+  void _scheduleLocalPinPrune({int? dropped}) {
+    if (_disposed) return;
+    if (!LocalPinStore.shared.unlimitedEnabled) return;
+    if (dropped != null) _localPinsToDrop.add(dropped);
+    if (_localPinPruneTimer != null) return;
+    _localPinPruneTimer = Timer(
+      const Duration(milliseconds: 50),
+      _pruneLocalPins,
+    );
+  }
+
+  /// Recomputes the effective pin state of the visible chats from the store.
+  ///
+  /// A stored local gets `isPinned` with its band order, which puts it above
+  /// every server pin because the band is built from the largest recorded
+  /// server order. A chat the server itself now pins owns its row again, so
+  /// the local entry is dropped — the server pin outlived it. Every step is
+  /// derived from the stored entries, so running this twice for the same state
+  /// changes nothing, and only a changed summary notifies.
+  Future<void> _syncLocalPinState() async {
+    if (_disposed) return;
+    final store = LocalPinStore.shared;
+    if (!store.unlimitedEnabled) return;
+    // One pass, one account: the store is re-scoped by `set meId`, so the
+    // epoch and the load generation captured here decide whether any later
+    // write belongs to this account.
+    final epoch = _pinEpoch;
+    final generation = store.loadGeneration;
+    var changed = false;
+
+    bool ownsPass() => !_disposed && _pinEpoch == epoch;
+
+    // The server re-pinned a chat that still has a local entry: the server's
+    // pin is the better one, so the entry goes.
+    final adopted = store.pinnedChatIds
+        .where(_serverPinnedIds.contains)
+        .toList();
+    for (final id in adopted) {
+      if (!ownsPass()) return;
+      await store.unpin(id, expectedGeneration: generation);
+      if (!ownsPass()) return;
+      // The server owns the row now: it keeps sorting on its own position,
+      // which is what the position update that adopted it carried.
+      _mutate(id, (s) => s.order = _unpinnedOrderOf(id) ?? s.order);
+      changed = true;
+    }
+
+    // Every stored pin holds its row at the top of the list. The band is the
+    // order to restore to; a live position that moved past it (a server pin
+    // elsewhere in the list) is never pulled back down — the comparator still
+    // sorts every device-only pin above every server pin.
+    final pinned = store.pinnedChatIds.toList();
+    for (final id in pinned) {
+      if (!ownsPass()) return;
+      final s = _map[id];
+      if (s == null) continue;
+      final band = store.effectiveOrder(id, s.order);
+      final order = band > s.order ? band : s.order;
+      if (!s.isPinned || s.order != order) {
+        s.isPinned = true;
+        s.order = order;
+        changed = true;
+      }
+    }
+
+    if (changed && ownsPass()) _scheduleResort();
+  }
+
+  /// Chats whose `chatListMain` position says the server pinned them.
+  ///
+  /// This is what separates the server's own pins from the rows this device
+  /// pins: a position that reports `is_pinned` true means Telegram owns the
+  /// pin, so any local entry for that chat is obsolete.
+  final Set<int> _serverPinnedIds = {};
+
+  /// The last main-list position seen for each chat, in the raw shape TDLib
+  /// sent it, so releasing a device-only pin can put the row back on its own
+  /// order without a refetch.
+  final Map<int, List<Map<String, dynamic>>> _lastPositions = {};
+
+  /// The positive main-list order a raw position carries, if any.
+  static int? _positiveOrderOfPosition(Map<String, dynamic> position) {
+    final list = position.obj('list');
+    if (list?.type != 'chatListMain') return null;
+    final order = position.int64('order');
+    return order != null && order > 0 ? order : null;
+  }
+
+  void _scheduleLocalPinSync() {
+    if (_disposed) return;
+    if (!LocalPinStore.shared.unlimitedEnabled) return;
+    if (_localPinSyncTimer != null) return;
+    // TDLib resolves the pin a moment after our own toggle, and both orderings
+    // land on the same state: the position says pinned and the store drops its
+    // entry, or the two arrive apart and the sync follows the position.
+    _localPinSyncTimer = Timer(
+      const Duration(milliseconds: 50),
+      _runLocalPinSync,
+    );
+  }
+
+  void _runLocalPinSync() {
+    _localPinSyncTimer = null;
+    if (_disposed) return;
+    unawaited(_syncLocalPinState());
   }
 
   void markUnread(ChatSummary chat) {
@@ -1418,6 +1794,7 @@ class ChatListViewModel extends ChangeNotifier {
         if (id == null || position == null) return;
         _applyPosition(id, position);
         unawaited(_ensureChatLoaded(id));
+        if (LocalPinStore.shared.unlimitedEnabled) _scheduleLocalPinSync();
         _scheduleResort();
 
       case 'updateChatAddedToList':
@@ -1442,8 +1819,10 @@ class ChatListViewModel extends ChangeNotifier {
         switch (list.type) {
           case 'chatListMain':
             _mutate(id, (s) => s.order = 0);
+            _scheduleLocalPinPrune(dropped: id);
           case 'chatListArchive':
             _mutate(id, (s) => s.archiveOrder = 0);
+            _scheduleLocalPinPrune(dropped: id);
           case 'chatListFolder':
             final folderId = list.integer('chat_folder_id');
             if (folderId != null) {
@@ -1458,6 +1837,7 @@ class ChatListViewModel extends ChangeNotifier {
         final id = update.int64('chat_id');
         if (id == null) return;
         _map.remove(id);
+        _scheduleLocalPinPrune(dropped: id);
         _communityDirectoryChats.remove(id);
         _viewableCommunityChatIds.remove(id);
         _checkingCommunityChatAccess.remove(id);
@@ -1635,15 +2015,44 @@ class ChatListViewModel extends ChangeNotifier {
     for (final position in positions) {
       _applyPosition(id, position);
     }
+    // Positions arrive from the raw chat snapshots and the last-message and
+    // draft updates as well as from `updateChatPosition`. A later pass may
+    // re-ingest the raw snapshot of a device-pinned chat, which carries the
+    // position the chat had before the pin; the sync puts the stored pin back
+    // on its band order and is a no-op when nothing moved.
+    if (LocalPinStore.shared.unlimitedEnabled) _scheduleLocalPinSync();
   }
 
   void _applyPosition(int id, Map<String, dynamic> position) {
     final list = position.obj('list');
     switch (list?.type) {
       case 'chatListMain':
+        final pinned = position.boolean('is_pinned');
+        if (pinned == true) {
+          _serverPinnedIds.add(id);
+        } else if (pinned == false) {
+          _serverPinnedIds.remove(id);
+        }
+        // Only builds where device-only pins can exist need the raw position.
+        if (LocalPinStore.shared.unlimitedEnabled) {
+          _lastPositions[id] = [position];
+        }
         _mutate(id, (s) {
-          s.order = position.int64('order') ?? s.order;
-          s.isPinned = position.boolean('is_pinned') ?? s.isPinned;
+          // A chat this device pins carries its band order until the store
+          // releases it; the live position may only raise it (never pull a
+          // locally pinned row back down between syncs), while rows the store
+          // does not own take the live position verbatim.
+          final store = LocalPinStore.shared;
+          final liveOrder = position.int64('order');
+          final isLocal = store.unlimitedEnabled && store.isLocallyPinned(id);
+          if (isLocal) {
+            final band = store.effectiveOrder(id, liveOrder ?? s.order);
+            s.order = liveOrder != null && liveOrder > band ? liveOrder : band;
+            s.isPinned = true;
+          } else {
+            s.order = liveOrder ?? s.order;
+            s.isPinned = position.boolean('is_pinned') ?? s.isPinned;
+          }
         });
       case 'chatListArchive':
         _mutate(
@@ -2279,6 +2688,20 @@ class ChatListViewModel extends ChangeNotifier {
 
   static int _compare(ChatSummary a, ChatSummary b) {
     if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+    // Within the pinned group the band of device-only pins — orders the local
+    // store assigned — sorts above every server pin. The band is built from
+    // the highest recorded server order, so it already outranks them, and the
+    // clamp is the belt-and-braces for a band that was restored against a list
+    // whose server pins have since moved past it: the stored pin is the newest
+    // gesture on this device and must stay on top. The store never assigns a
+    // band while its switch is off, so an inert build compares exactly as
+    // before.
+    if (a.isPinned && b.isPinned) {
+      final store = LocalPinStore.shared;
+      final aLocal = store.isLocallyPinned(a.id);
+      final bLocal = store.isLocallyPinned(b.id);
+      if (aLocal != bLocal) return aLocal ? -1 : 1;
+    }
     if (a.order != b.order) return b.order.compareTo(a.order);
     if (a.date != b.date) return b.date.compareTo(a.date);
     return b.id.compareTo(a.id);
@@ -2481,7 +2904,10 @@ class ChatListViewModel extends ChangeNotifier {
         normalized.contains('much') ||
         normalized.contains(AppStringKeys.chatInfoPinLimit);
     if (hitPinned && hitLimit) {
-      return AppStringKeys.chatInfoPinLimitReachedError;
+      // Pinning everything the server allows is the ordinary outcome; the
+      // notice that explains the limit is also where the device-only pin
+      // switch is made discoverable.
+      return AppStringKeys.chatListLocalPinLimitReached;
     }
     return text.isEmpty
         ? AppStringKeys.chatInfoPinFailed
