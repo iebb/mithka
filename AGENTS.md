@@ -6,6 +6,7 @@
 
 ## Contributions and agentic PR review
 
+- Incoming PR automation runs in GitHub Actions, not a scheduled review on the maintainer's computer. Automated merges require an `APPROVED` review by the actual `iebb` account on the exact current PR head and passing Quality on that head merged with current `master`; an LLM recommendation is never an approval.
 - These review rules govern agentic source-code and PR reviews. All store versions must remain compliant with the applicable Telegram API Terms; accepting guarded source code is never an exception for App Store, Google Play, or other store distribution or review.
 - Every PR must complete `.github/pull_request_template.md`, including a Telegram API Terms classification and evidence for the basic checks. This applies to features, fixes, refactors, documentation, and build/automation changes.
 - Review the actual behavior and all affected entry points before deciding whether a feature is allowed. Classify the PR as compliant/unchanged, a section 1.4 exception, or disallowed/unresolved. An unresolved classification blocks approval and merge.

@@ -87,6 +87,38 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   /// Telegram and the system players do.
   static const previousRestartThreshold = Duration(seconds: 3);
   static const _modePrefsKey = 'mithka.musicPlaybackMode.v1';
+
+  /// How many times one load request tries a track before its failure is
+  /// reported. A first failure is usually recoverable: TDLib deletes cached
+  /// files on its own, so the path the player remembered can name a file that
+  /// no longer exists, and a native start can lose its session. The retry
+  /// forgets the remembered path (the file is downloaded again) and loads on a
+  /// fresh native instance; only a track that fails twice is reported.
+  static const maxPlaybackLoadAttempts = 2;
+
+  /// Failures reported to the user so far. Backs the "could not play this
+  /// track" toast, which needs a shell overlay a test does not have.
+  @visibleForTesting
+  int playbackFailureReports = 0;
+
+  int? _failedFileId;
+  int _failedLoadAttempts = 0;
+
+  /// Account that supplied the current load's file id.
+  ///
+  /// File ids are per-account, so recovery must evict the remembered path on
+  /// this account — never on whichever one is foreground when a failure
+  /// arrives.
+  int _loadSlot = 0;
+
+  /// Token of the pending failure-recovery transaction.
+  ///
+  /// Bumped by every action that supersedes it — pause, stop, close, dispose,
+  /// a newer load and an account change — so a recovery scheduled before that
+  /// action cannot start playback afterwards.
+  int _recoveryGeneration = 0;
+
+  bool _disposed = false;
   bool hidden = true;
   bool collapsed = false;
 
@@ -143,6 +175,9 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   /// source of playlist, chat, and file identifiers.
   void setActiveAccountSlot(int accountSlot) {
     if (_accountSlot == accountSlot) return;
+    // A recovery scheduled from the previous account's failure must not
+    // start playback here.
+    _recoveryGeneration++;
     _accountSlot = accountSlot;
     _loadedSlot = null;
     _playedChatsSlot = null;
@@ -383,6 +418,7 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
     );
     current = _playlistCopyOf(message);
     queue = nextQueue.isEmpty ? [current!] : nextQueue;
+    _beginLoad(file.id);
     // A track picked by hand starts a new shuffle pass from that track.
     if (!keepShuffleOrder) _shuffleOrder = const [];
     if (reveal) {
@@ -415,12 +451,16 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   }
 
   Future<void> _startAndPrefetch(TdFileRef file) async {
+    final slot = _loadSlot;
     await _player.toggleAudio(file);
     if (!_player.isActive(file) || !_player.isPlaying) return;
+    // Prefetching is cache work for the account that owns the file; a switch
+    // during the start must not warm the replacement account's cache.
+    if (slot != _accountSlot) return;
     final next = upcomingTrack()?.music?.file;
     if (next == null || next.id == file.id) return;
-    if (TdFileCenter.shared.cachedPath(next) != null) return;
-    unawaited(TdFileCenter.shared.pathFor(next));
+    if (TdFileCenter.shared.cachedPath(next, accountSlot: slot) != null) return;
+    unawaited(TdFileCenter.shared.pathFor(next, accountSlot: slot));
   }
 
   /// The track automatic advance would play next, or null for repeat one and
@@ -457,6 +497,7 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   void toggleCurrent() {
     final file = current?.music?.file;
     if (file == null || isLoading) return;
+    _beginLoad(file.id);
     hidden = false;
     notifyListeners();
     unawaited(_player.toggleAudio(file));
@@ -467,6 +508,7 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   void resume() {
     final file = current?.music?.file;
     if (file == null || isPlaying || isLoading) return;
+    _beginLoad(file.id);
     // A track that finished (or whose native start failed) stays retained
     // but stopped, not paused: the native resume is a no-op there, so start
     // the current file again instead of ignoring the Play command.
@@ -479,7 +521,12 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
 
   /// Pauses the current track; used by lock-screen / control-center pause.
   @override
-  void pause() => unawaited(_player.pause());
+  void pause() {
+    // An explicit pause cancels the recovery a failure scheduled: the user
+    // asked for silence, not for the track to start again on its own.
+    _recoveryGeneration++;
+    unawaited(_player.pause());
+  }
 
   @override
   void next() => _playAdjacent(1, manual: true);
@@ -608,22 +655,75 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
     _playAdjacent(1, manual: false);
   }
 
-  /// A track that failed to start (download stall, native start timeout,
-  /// unsupported container). Stay on the track so the user can retry, but
-  /// stop auto-advance: skipping past the failure silently would look like
-  /// playback never started.
+  /// Starts a fresh attempt budget for [fileId].
+  ///
+  /// A deliberate load — a tap, a skip, a system play command — may try the
+  /// track [maxPlaybackLoadAttempts] times. The automatic retry a failure
+  /// triggers deliberately does not call this, so a track that fails again is
+  /// reported instead of retried forever.
+  void _beginLoad(int fileId) {
+    _failedFileId = fileId;
+    _failedLoadAttempts = 0;
+    _loadSlot = TdClient.shared.activeSlot;
+    // A deliberate load supersedes any recovery an earlier failure scheduled.
+    _recoveryGeneration++;
+  }
+
+  /// A track that failed to start.
+  ///
+  /// The first failure of a load request is recovered silently: the path the
+  /// player remembered can name a file TDLib has deleted from its cache (the
+  /// cache optimizer and "clear cache" both remove files behind the app's
+  /// back), and a timed-out native start or open has already retired its
+  /// instance. Dropping the remembered path makes the retry download the file
+  /// again, so a track whose file was evicted plays instead of being reported
+  /// unplayable.
+  ///
+  /// A track that fails again is reported and stays current, so a later tap
+  /// can retry it. Auto-advance stays off: silently skipping would look like
+  /// playback never started here.
   void _onPlaybackFailed(int fileId, Object error) {
     debugPrint('MusicPlayerController: track $fileId failed to start: $error');
-    final overlay = appNavigatorKey.currentState?.overlay;
-    if (overlay == null) {
-      // No shell yet (tests, early startup): the state change still notifies.
+    if (current?.music?.file?.id != fileId) {
+      // A track the user already moved away from; nothing to recover.
       notifyListeners();
       return;
     }
-    showToastOverlay(
-      overlay,
-      AppStrings.t(AppStringKeys.musicPlayerStartFailed),
-    );
+    if (_failedFileId != fileId) {
+      _failedFileId = fileId;
+      _failedLoadAttempts = 0;
+    }
+    _failedLoadAttempts++;
+    if (_failedLoadAttempts < maxPlaybackLoadAttempts) {
+      // The player only dropped what failed; the path it used may also be
+      // stale, so forget it — on the account that owns the file, never on
+      // whichever account is foreground by now — and let the retry resolve
+      // (and download) again.
+      final slot = _loadSlot;
+      TdFileCenter.shared.forget(fileId, accountSlot: slot);
+      // A cancellable transaction: pause, stop, close, dispose, a newer load
+      // or an account change bumps the token, and the retry then never runs.
+      final recovery = ++_recoveryGeneration;
+      notifyListeners();
+      scheduleMicrotask(() {
+        if (_disposed || recovery != _recoveryGeneration) return;
+        // An account change supersedes the recovery even when the controller
+        // was not told about it: the track's ids belong to the old account.
+        if (_loadSlot != TdClient.shared.activeSlot) return;
+        final retry = current?.music?.file;
+        if (retry == null || retry.id != fileId) return;
+        unawaited(_startAndPrefetch(retry));
+      });
+      return;
+    }
+    playbackFailureReports++;
+    final overlay = appNavigatorKey.currentState?.overlay;
+    if (overlay != null) {
+      showToastOverlay(
+        overlay,
+        AppStrings.t(AppStringKeys.musicPlayerStartFailed),
+      );
+    }
     notifyListeners();
   }
 
@@ -691,6 +791,9 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
   }
 
   void _stopPlayback({required bool clearCurrent}) {
+    // A recovery a failure scheduled must not start the track the user just
+    // stopped.
+    _recoveryGeneration++;
     unawaited(_player.stop());
     hidden = true;
     collapsed = false;
@@ -702,6 +805,18 @@ class MusicPlayerController extends ChangeNotifier implements NowPlayingTarget {
       _playbackSourceTitle = '';
       _playbackSourceIsPlaylist = false;
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    // A recovery scheduled from a failure must not start playback on a
+    // disposed controller, and the player must not notify disposed listeners.
+    _recoveryGeneration++;
+    _player.removeListener(notifyListeners);
+    _player.onFinished = null;
+    _player.onFailed = null;
+    super.dispose();
   }
 
   int _setPlaybackSource({

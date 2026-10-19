@@ -29,6 +29,7 @@ class TelegramRichText extends StatefulWidget {
     this.onBotCommandTap,
     this.onHashtagTap,
     this.onMentionTap,
+    this.onUsernameTap,
     this.quoteBackgroundColor,
   });
 
@@ -42,6 +43,10 @@ class TelegramRichText extends StatefulWidget {
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
   final void Function(int userId, String name)? onMentionTap;
+
+  /// Handles a typed `@username` mention, which carries no user id. When null,
+  /// the mention keeps its default behavior of opening the public link.
+  final ValueChanged<String>? onUsernameTap;
   final Color? quoteBackgroundColor;
 
   @override
@@ -72,6 +77,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   bool _spanCacheUnderlineLinks = false;
   bool _spanCacheHashtagTap = false;
   bool _spanCacheMentionTap = false;
+  bool _spanCacheUsernameTap = false;
 
   @override
   void dispose() {
@@ -141,6 +147,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   ) {
     final hashtagTap = widget.onHashtagTap != null;
     final mentionTap = widget.onMentionTap != null;
+    final usernameTap = widget.onUsernameTap != null;
     final textScaler = MediaQuery.textScalerOf(context);
     // A code span resolves the monospace family and the inline-code fill from
     // the ambient theme, which no key below can see — leave those uncached.
@@ -154,7 +161,8 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         _spanCacheLinkColor == linkColor &&
         _spanCacheUnderlineLinks == widget.underlineLinks &&
         _spanCacheHashtagTap == hashtagTap &&
-        _spanCacheMentionTap == mentionTap) {
+        _spanCacheMentionTap == mentionTap &&
+        _spanCacheUsernameTap == usernameTap) {
       return _spanCache!;
     }
     _disposeRecognizers();
@@ -169,6 +177,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     _spanCacheUnderlineLinks = widget.underlineLinks;
     _spanCacheHashtagTap = hashtagTap;
     _spanCacheMentionTap = mentionTap;
+    _spanCacheUsernameTap = usernameTap;
     return spans;
   }
 
@@ -285,6 +294,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       onBotCommandTap: widget.onBotCommandTap,
       onHashtagTap: widget.onHashtagTap,
       onMentionTap: widget.onMentionTap,
+      onUsernameTap: widget.onUsernameTap,
     );
   }
 
@@ -446,6 +456,13 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       _recognizers.add(recognizer);
       return [TextSpan(text: segment, style: style, recognizer: recognizer)];
     }
+    if (target == '__username__') {
+      final username = segment.startsWith('@') ? segment.substring(1) : segment;
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => widget.onUsernameTap?.call(username);
+      _recognizers.add(recognizer);
+      return [TextSpan(text: segment, style: style, recognizer: recognizer)];
+    }
     if (target != null) {
       final recognizer = TapGestureRecognizer()
         ..onTap = () => openLink(context, target);
@@ -592,9 +609,12 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         case 'textEntityTypeUrl':
           return segment;
         case 'textEntityTypeMention':
-          return segment.startsWith('@')
-              ? 'https://t.me/${segment.substring(1)}'
-              : null;
+          if (!segment.startsWith('@')) return null;
+          // A typed mention has no user id; the host may resolve the username
+          // itself instead of falling through to the public-link handler.
+          return widget.onUsernameTap != null
+              ? '__username__'
+              : 'https://t.me/${segment.substring(1)}';
         case 'textEntityTypeHashtag':
           return '__hashtag__';
         case 'textEntityTypeBotCommand':

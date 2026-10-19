@@ -240,7 +240,12 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   @override
   void initState() {
     super.initState();
-    StickerStore.shared.loadIfNeeded();
+    // A writable chat can keep another composer listening behind this sheet.
+    // Loading a cold shared store notifies synchronously, so wait until the
+    // sheet's first build finishes before waking those existing listeners.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) StickerStore.shared.loadIfNeeded();
+    });
     _load();
   }
 

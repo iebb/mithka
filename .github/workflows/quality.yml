@@ -18,12 +18,44 @@ permissions:
   contents: read
 
 jobs:
+  merge-identity:
+    # The workflow engine, not PR code or an uploaded artifact, supplies this
+    # immutable job name. PR Review verifies it through the Actions jobs API.
+    name: Merge snapshot ${{ github.sha }} base ${{ github.event.pull_request.base.sha }} head ${{ github.event.pull_request.head.sha }}
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - run: 'true'
+
   flutter:
     name: Analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify the event's exact merge snapshot before executing PR code
+        if: github.event_name == 'pull_request'
+        env:
+          EXPECTED_MERGE: ${{ github.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          [[ "$EXPECTED_MERGE" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EXPECTED_HEAD" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EXPECTED_BASE" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MERGE"
+          test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+
+      - name: Test the trusted PR review controller
+        # This ordinary read-only workflow is the only PR-code execution path.
+        run: node --test .github/scripts/pr-review.test.mjs
 
       - uses: subosito/flutter-action@v2
         with:

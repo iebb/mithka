@@ -320,13 +320,13 @@ jobs:
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-            "dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk"
+            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-android-${{ matrix.abi }}.apk"
 
       - name: Upload standard APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: apk-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}
-          path: dist/mithka-${{ needs.prepare.outputs.app_version }}-${{ matrix.abi }}.apk
+          name: apk-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.abi }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-android-${{ matrix.abi }}.apk
           if-no-files-found: error
 
   build-desktop:
@@ -659,7 +659,7 @@ jobs:
 
       - name: Verify and list artifacts
         env:
-          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          ARTIFACT_LABEL: ${{ needs.prepare.outputs.artifact_label }}
         run: |
           ls -lhR release-assets
           apk_count="$(
@@ -672,7 +672,7 @@ jobs:
             exit 1
           fi
           for abi in arm64-v8a armeabi-v7a; do
-            apk="release-assets/mithka-${APP_VERSION}-${abi}.apk"
+            apk="release-assets/mithka-${ARTIFACT_LABEL}-android-${abi}.apk"
             if [ ! -f "$apk" ]; then
               echo "Missing expected $abi APK: $apk" >&2
               exit 1

@@ -1,0 +1,118 @@
+name: PR Review
+
+# Privileged jobs check out master ONLY. PR code is fetched as data, never
+# executed here or given the OpenRouter key. Testing stays in the separate
+# ordinary pull_request Quality workflow, including its fork/cache isolation.
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_run:
+    workflows: [Quality, PR Review Signal]
+    types: [completed]
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number, or empty to check all open PRs'
+        required: false
+        type: string
+
+concurrency:
+  group: mithka-pr-review
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  review:
+    name: LLM recommendation and owner approval gate
+    if: >-
+      github.repository == 'iebb/mithka' &&
+      (github.event_name != 'issue_comment' ||
+       (github.event.issue.pull_request && github.event.comment.user.type != 'Bot'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+    outputs:
+      eligible: ${{ steps.review.outputs.eligible }}
+      pr_number: ${{ steps.review.outputs.pr_number }}
+      head_sha: ${{ steps.review.outputs.head_sha }}
+      base_sha: ${{ steps.review.outputs.base_sha }}
+      merge_sha: ${{ steps.review.outputs.merge_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts
+            AGENTS.md
+          sparse-checkout-cone-mode: false
+      - name: Review live PR evidence with free models
+        id: review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          REVIEW_PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number || github.event.issue.number || '' }}
+        run: node .github/scripts/pr-review.mjs review
+
+  validate:
+    name: Verify the exact merged-result Quality attestation
+    needs: review
+    if: needs.review.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      merge_sha: ${{ steps.verify.outputs.merge_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+          persist-credentials: false
+      - name: Verify live engine-supplied CI identity, owner approval and checks
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_PR_NUMBER: ${{ needs.review.outputs.pr_number }}
+          EXPECTED_HEAD: ${{ needs.review.outputs.head_sha }}
+          EXPECTED_BASE: ${{ needs.review.outputs.base_sha }}
+          VALIDATED_MERGE: ${{ needs.review.outputs.merge_sha }}
+        run: node .github/scripts/pr-review.mjs verify
+
+  merge:
+    name: Recheck approval and publish the tested merge
+    needs: [review, validate]
+    if: needs.review.outputs.eligible == 'true' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Publish only with current iebb approval and unchanged parents
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_PR_NUMBER: ${{ needs.review.outputs.pr_number }}
+          EXPECTED_HEAD: ${{ needs.review.outputs.head_sha }}
+          EXPECTED_BASE: ${{ needs.review.outputs.base_sha }}
+          VALIDATED_MERGE: ${{ needs.validate.outputs.merge_sha }}
+        run: node .github/scripts/pr-review.mjs merge

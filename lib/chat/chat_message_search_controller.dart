@@ -262,10 +262,20 @@ class ChatMessageSearchController extends ChangeNotifier {
   bool get isLoading => _loading || _debounce?.isActive == true;
   bool get hasQuery => _query.trim().isNotEmpty;
 
-  /// Whether anything is being searched for. A narrowed filter or a `from:`
-  /// sender counts on its own — "every photo Bob sent" is a useful result set
-  /// with no words typed.
+  /// Whether anything is being searched for. A narrowed filter, a typed
+  /// `from:` token, or a sender committed from the suggestion list counts on
+  /// its own — "every photo Bob sent" is a useful result set with no words
+  /// typed.
   bool get hasSearch =>
+      _tokens.text.trim().isNotEmpty ||
+      filter != ChatSearchFilter.all ||
+      _tokens.fromQuery != null ||
+      _committedSender != null;
+
+  /// Whether the field itself states a search, leaving out a sender committed
+  /// as a badge: the hint card stays available beside the badge so `has:` can
+  /// still be combined with it.
+  bool get _hasFieldSearch =>
       _tokens.text.trim().isNotEmpty ||
       filter != ChatSearchFilter.all ||
       _tokens.fromQuery != null;
@@ -402,13 +412,14 @@ class ChatMessageSearchController extends ChangeNotifier {
     }());
   }
 
-  /// Whether the field is asking to be taught its syntax: focused and empty.
+  /// Whether the field is asking to be taught its syntax: focused, with no
+  /// search of its own stated.
   ///
   /// A committed sender does not close the lesson — `has:` still combines with
-  /// it — but results on the pane outrank the lesson; the hints return when
-  /// the query is emptied.
+  /// it — but results on the pane outrank the lesson, and any typed word,
+  /// filter, or `from:` token closes it outright.
   bool get showsTokenHints =>
-      focusNode.hasFocus && !hasSearch && _results.isEmpty;
+      focusNode.hasFocus && !_hasFieldSearch && _results.isEmpty;
 
   /// Starts a token in the field from the hint list.
   void startToken(String token) {

@@ -122,6 +122,11 @@ void main() {
             '@type': 'optionValueInteger',
             'value': '$quoteLimit',
           },
+          'getMessageProperties' => {
+            '@type': 'messageProperties',
+            'can_get_link': false,
+            'can_be_replied': true,
+          },
           _ => {'@type': 'ok'},
         },
         send: (_) async {},

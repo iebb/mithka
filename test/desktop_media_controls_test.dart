@@ -33,6 +33,22 @@ void main() {
       ),
       isFalse,
     );
+    // A gallery carrying a motion variant opens in the in-app viewer, because
+    // the preview window renders still files only.
+    expect(
+      profileFeaturedPhotosUseDesktopWindow(
+        TargetPlatform.macOS,
+        hasAnimation: true,
+      ),
+      isFalse,
+    );
+    expect(
+      profileFeaturedPhotosUseDesktopWindow(
+        TargetPlatform.iOS,
+        hasAnimation: true,
+      ),
+      isFalse,
+    );
 
     final source = File(
       'lib/profile/profile_detail_view.dart',

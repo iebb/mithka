@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart' show PlayerState;
@@ -92,6 +93,18 @@ class _MappedNative extends MethodChannelFlutterSoundPlayer {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  /// Seeds a resolved path that still names a file: the player only accepts a
+  /// remembered path it can open, and otherwise falls back to a download this
+  /// fixture's transport does not serve.
+  void seedPath(int id) {
+    final file = File('/tmp/mithka-slot-$id')..writeAsStringSync('audio');
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    TdFileCenter.shared.rememberForTest(42, id, file.path);
+  }
+
   setUpAll(() {
     TdClient.shared.configureProxy(
       TdClientProxyTransport(
@@ -111,7 +124,7 @@ void main() {
       FlutterSoundPlayerPlatform.instance = platform;
       VoicePlayer.nativeCallTimeout = const Duration(milliseconds: 150);
       for (final id in [910001, 910002]) {
-        TdFileCenter.shared.rememberForTest(42, id, '/tmp/mithka-slot-$id');
+        seedPath(id);
       }
       final voice = VoicePlayer()
         ..audioSessionActivationOverride = (() async => null);
@@ -157,7 +170,7 @@ void main() {
       FlutterSoundPlayerPlatform.instance = platform;
       VoicePlayer.nativeCallTimeout = const Duration(milliseconds: 150);
       for (final id in [910011, 910012]) {
-        TdFileCenter.shared.rememberForTest(42, id, '/tmp/mithka-slot-$id');
+        seedPath(id);
       }
       final voice = VoicePlayer()
         ..audioSessionActivationOverride = (() async => null);

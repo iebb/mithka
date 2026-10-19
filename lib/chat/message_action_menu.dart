@@ -318,6 +318,7 @@ class MessageActionMenu extends StatelessWidget {
     required this.onSelect,
     this.allowForwarding = true,
     this.allowTranslation = true,
+    this.allowReply = true,
     this.allowQuote = false,
     this.hasSelectedQuote = false,
     this.allowSuggestedPostOffer = false,
@@ -332,6 +333,10 @@ class MessageActionMenu extends StatelessWidget {
   final ValueChanged<MessageAction> onSelect;
   final bool allowForwarding;
   final bool allowTranslation;
+
+  /// Offer reply, and quote along with it: a quote is a reply carrying a
+  /// quoted range, so it disappears wherever Telegram refuses the reply.
+  final bool allowReply;
   final bool allowQuote;
   final bool hasSelectedQuote;
   final bool allowSuggestedPostOffer;
@@ -511,14 +516,16 @@ class MessageActionMenu extends StatelessWidget {
     if (allowSuggestedPostOffer && !message.isService && _isEditableMessage) {
       result.add(MessageAction.suggestOffer);
     }
-    final canQuote = allowQuote && canQuoteMessageText(message);
-    result.add(
-      isDesktop && canQuote && hasSelectedQuote
-          ? MessageAction.quote
-          : MessageAction.reply,
-    );
-    if (!isDesktop && canQuote) {
-      result.add(MessageAction.quote);
+    if (allowReply) {
+      final canQuote = allowQuote && canQuoteMessageText(message);
+      result.add(
+        isDesktop && canQuote && hasSelectedQuote
+            ? MessageAction.quote
+            : MessageAction.reply,
+      );
+      if (!isDesktop && canQuote) {
+        result.add(MessageAction.quote);
+      }
     }
     if (message.hasActualReplies) {
       result.add(MessageAction.replies);

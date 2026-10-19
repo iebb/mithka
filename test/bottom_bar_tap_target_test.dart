@@ -27,6 +27,35 @@ const _dividerWidth = 0.5;
 const _rowHeight = 62.0;
 
 void main() {
+  testWidgets('Android compact labels clear the whole system navigation bar', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final probe = await _pumpBar(
+        tester,
+        const Size(390, 844),
+        48,
+        platform: TargetPlatform.android,
+      );
+      expect(
+        probe.bar.height,
+        moreOrLessEquals(_rowHeight + 48 + _dividerWidth),
+      );
+      for (final tab in probe.tabs) {
+        expect(tab.rect.bottom, probe.window.bottom);
+        expect(
+          tab.labelRect.bottom,
+          lessThanOrEqualTo(probe.window.bottom - 48),
+        );
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 6));
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   for (final cell in const [
     (name: 'iPad landscape 1366x1024', size: Size(1366, 1024), inset: 20.0),
     (name: 'iPad landscape 1194x834', size: Size(1194, 834), inset: 20.0),
@@ -38,7 +67,8 @@ void main() {
         final probe = await _pumpBar(tester, cell.size, cell.inset);
         expect(probe.bar.bottom, probe.window.bottom);
         // 62pt of controls + the 0.5pt divider, and NOT the 20pt inset: the
-        // split shell reserves no band, the space goes to the content above.
+        // split shell docks the bar in its sidebar column, where the system
+        // home indicator never reaches, so no clearance is reserved.
         expect(probe.bar.height, moreOrLessEquals(_rowHeight + _dividerWidth));
         for (final tab in probe.tabs) {
           expect(tab.rect.bottom, probe.bar.bottom);
@@ -51,13 +81,9 @@ void main() {
           moreOrLessEquals(probe.bar.width, epsilon: 0.05),
         );
         expect(probe.tabs.last.rect.right, moreOrLessEquals(probe.bar.right));
-        // Measured 10.5pt of clearance on both cells; the label must stay
-        // clear of the home indicator even though the band is gone.
+        // Measured 10.5pt of clearance on both cells: the centred content keeps
+        // its margin even though no clearance is reserved.
         final lastTab = probe.tabs.last;
-        expect(
-          probe.window.bottom - lastTab.labelRect.bottom,
-          greaterThanOrEqualTo(8),
-        );
         expect(
           probe.window.bottom - lastTab.labelRect.bottom,
           moreOrLessEquals(10.5),
@@ -67,15 +93,35 @@ void main() {
   }
 
   testWidgets(
-    '390x844 phone: the compact shell keeps its reservation and every tab '
-    'fills it',
+    'iPad landscape 1366x1024: a reported bottom inset changes nothing in the '
+    'split shell',
+    (tester) => _onIOS(tester, () async {
+      final probe = await _pumpBar(tester, const Size(1366, 1024), 0);
+      // Same bar height and same content positions as the 20pt cell above: the
+      // split bar reads no bottom inset at all.
+      expect(probe.bar.height, moreOrLessEquals(_rowHeight + _dividerWidth));
+      final tab = probe.tabs.first;
+      expect(tab.iconRect.center.dy, moreOrLessEquals(986.5));
+      expect(tab.labelRect.center.dy, moreOrLessEquals(1008.0));
+      expect(
+        probe.window.bottom - tab.labelRect.bottom,
+        moreOrLessEquals(10.5),
+      );
+    }),
+  );
+
+  testWidgets(
+    '390x844 phone (34pt inset): the compact shell reserves only the home '
+    'indicator and every tab fills the bar',
     (tester) => _onIOS(tester, () async {
       final probe = await _pumpBar(tester, const Size(390, 844), 34);
       expect(probe.bar.bottom, probe.window.bottom);
-      // Reservation kept: 62pt of controls + 34pt of home-indicator band.
+      // 62pt of controls + the 14pt the home indicator occupies + the 0.5pt
+      // divider. The rest of the platform's 34pt safe area is gesture band the
+      // bar does not use, so it stays with the content above.
       expect(
         probe.bar.height,
-        moreOrLessEquals(_rowHeight + 34 + _dividerWidth),
+        moreOrLessEquals(_rowHeight + kHomeIndicatorClearance + _dividerWidth),
       );
       for (final tab in probe.tabs) {
         expect(tab.rect.bottom, probe.bar.bottom);
@@ -85,27 +131,92 @@ void main() {
   );
 
   testWidgets(
-    '390x844 phone: the icon and label keep the centres they had before the '
-    'band moved into the tabs',
+    '390x844 phone (34pt inset): the centred label clears the home indicator '
+    'pill',
     (tester) => _onIOS(tester, () async {
       final probe = await _pumpBar(tester, const Size(390, 844), 34);
       final tab = probe.tabs.first;
-      // Both values are the pre-change measurements at this cell: the band is
-      // padding inside the tab, so the content does not move by a pixel.
-      expect(tab.iconRect.center.dy, moreOrLessEquals(772.5));
-      expect(tab.labelRect.center.dy, moreOrLessEquals(794.0));
       expect(tab.iconRect.size, const Size(36, 28));
-      expect(tab.iconRect.center.dx, moreOrLessEquals(tab.rect.center.dx));
+      // The content block is centred in the 76.5pt bar: icon centre 799.5,
+      // label centre 821.0, label bottom 826.5, i.e. 17.5pt above the window
+      // edge. The pill's top edge is 13pt up, so the label clears it and keeps
+      // its own margin without any band nobody owns.
+      expect(tab.iconRect.center.dy, moreOrLessEquals(799.5));
+      expect(tab.labelRect.center.dy, moreOrLessEquals(821.0));
       expect(
         probe.window.bottom - tab.labelRect.bottom,
-        moreOrLessEquals(44.5),
+        moreOrLessEquals(17.5),
+      );
+      expect(
+        probe.window.bottom - tab.labelRect.bottom,
+        greaterThanOrEqualTo(13),
+      );
+      expect(tab.iconRect.center.dx, moreOrLessEquals(tab.rect.center.dx));
+      expect(tab.labelRect.center.dx, moreOrLessEquals(tab.rect.center.dx));
+    }),
+  );
+
+  testWidgets(
+    '390x844 phone (no inset): a device without a home indicator reserves '
+    'nothing',
+    (tester) => _onIOS(tester, () async {
+      final probe = await _pumpBar(tester, const Size(390, 844), 0);
+      expect(probe.bar.bottom, probe.window.bottom);
+      // Exactly the control row and the divider: no clearance at all.
+      expect(probe.bar.height, moreOrLessEquals(_rowHeight + _dividerWidth));
+      for (final tab in probe.tabs) {
+        expect(tab.rect.bottom, probe.bar.bottom);
+        expect(tab.rect.top, probe.bar.top + _dividerWidth);
+      }
+      final tab = probe.tabs.first;
+      // The centred content still leaves the label 10.5pt above the edge.
+      expect(
+        probe.window.bottom - tab.labelRect.bottom,
+        moreOrLessEquals(10.5),
+      );
+      expect(
+        probe.window.bottom - tab.labelRect.bottom,
+        greaterThanOrEqualTo(8),
       );
     }),
   );
 
   for (final cell in const [
+    (
+      name: 'narrow window 700x900 (34pt inset)',
+      size: Size(700, 900),
+      inset: 34.0,
+      band: kHomeIndicatorClearance,
+    ),
+    (
+      name: 'narrow window 700x900 (no inset)',
+      size: Size(700, 900),
+      inset: 0.0,
+      band: 0.0,
+    ),
+  ]) {
+    testWidgets(
+      '${cell.name}: the compact bar reserves the indicator only when one is '
+      'reported',
+      (tester) => _onIOS(tester, () async {
+        final probe = await _pumpBar(tester, cell.size, cell.inset);
+        expect(probe.bar.bottom, probe.window.bottom);
+        expect(
+          probe.bar.height,
+          moreOrLessEquals(_rowHeight + cell.band + _dividerWidth),
+        );
+        for (final tab in probe.tabs) {
+          expect(tab.rect.bottom, probe.bar.bottom);
+          expect(tab.rect.top, probe.bar.top + _dividerWidth);
+        }
+      }),
+    );
+  }
+
+  for (final cell in const [
     (name: 'iPad landscape 1366x1024', size: Size(1366, 1024), inset: 20.0),
-    (name: '390x844 phone', size: Size(390, 844), inset: 34.0),
+    (name: '390x844 phone (34pt inset)', size: Size(390, 844), inset: 34.0),
+    (name: '390x844 phone (no inset)', size: Size(390, 844), inset: 0.0),
   ]) {
     testWidgets(
       '${cell.name}: tapping 4pt above the window edge selects that tab',
@@ -113,7 +224,7 @@ void main() {
         final probe = await _pumpBar(tester, cell.size, cell.inset);
         final target = probe.tabs[1];
         final tapPoint = Offset(target.rect.center.dx, probe.window.bottom - 4);
-        // The point is inside the bar, in the band the container used to own.
+        // The point is inside the bar, at the very bottom of the window.
         expect(tapPoint.dy, lessThan(probe.bar.bottom));
         expect(_selected(tester, probe.tabs), [true, false]);
 
@@ -199,9 +310,10 @@ List<bool?> _selected(WidgetTester tester, List<_TabProbe> tabs) => [
 Future<_BarProbe> _pumpBar(
   WidgetTester tester,
   Size size,
-  double bottomInset,
-) async {
-  debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  double bottomInset, {
+  TargetPlatform platform = TargetPlatform.iOS,
+}) async {
+  debugDefaultTargetPlatformOverride = platform;
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
   tester.view.padding = FakeViewPadding(bottom: bottomInset);

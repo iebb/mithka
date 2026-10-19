@@ -1,0 +1,20 @@
+name: PR Review Signal
+
+# Review events on forks do not receive secrets/write tokens. This unprivileged
+# signal wakes PR Review via workflow_run, which re-reads live GitHub evidence.
+# No artifacts, PR scripts, caches, or outputs cross the privilege boundary.
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions: {}
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Notify the trusted review controller
+        run: 'true'

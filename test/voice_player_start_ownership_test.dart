@@ -68,6 +68,7 @@ class _FakePlatform extends MethodChannelFlutterSoundPlayer {
   /// them. `callbacks.first` is therefore the oldest (possibly retired)
   /// native session.
   final callbacks = <FlutterSoundPlayerCallback>{};
+  final _states = <FlutterSoundPlayerCallback, int>{};
 
   @override
   void setCallback() {}
@@ -104,8 +105,10 @@ class _FakePlatform extends MethodChannelFlutterSoundPlayer {
         switch (method) {
           case 'openPlayer':
             callback.openPlayerCompleted(PlayerState.isStopped.index, true);
+            _states[callback] = PlayerState.isStopped.index;
             return PlayerState.isStopped.index;
           case 'startPlayer':
+            _states[callback] = PlayerState.isPlaying.index;
             callback.startPlayerCompleted(
               PlayerState.isPlaying.index,
               true,
@@ -114,9 +117,19 @@ class _FakePlatform extends MethodChannelFlutterSoundPlayer {
             return PlayerState.isPlaying.index;
           case 'stopPlayer':
             callback.stopPlayerCompleted(PlayerState.isStopped.index, true);
+            _states[callback] = PlayerState.isStopped.index;
             return PlayerState.isStopped.index;
+          case 'pausePlayer':
+            callback.pausePlayerCompleted(PlayerState.isPaused.index, true);
+            _states[callback] = PlayerState.isPaused.index;
+            return PlayerState.isPaused.index;
+          case 'resumePlayer':
+            callback.resumePlayerCompleted(PlayerState.isPlaying.index, true);
+            _states[callback] = PlayerState.isPlaying.index;
+            return PlayerState.isPlaying.index;
           default:
-            return PlayerState.isStopped.index;
+            // Configuration verbs such as setSpeed preserve the native state.
+            return _states[callback] ?? PlayerState.isStopped.index;
         }
     }
   }
@@ -196,6 +209,46 @@ void main() {
   int count(String method) => native.calls.where((c) => c == method).length;
 
   group('ownership after output preparation', () {
+    test('a playing track still finishes after pause and resume', () async {
+      final voice = VoicePlayer()
+        ..audioSessionActivationOverride = (() async => null);
+      addTearDown(voice.dispose);
+      final finished = <int>[];
+      voice.onFinished = finished.add;
+      await voice.toggleAudio(file(910001));
+      await voice.pause();
+      expect(voice.isPlaying, isFalse);
+      expect(voice.isPaused, isTrue);
+      await voice.resume();
+      expect(voice.isPlaying, isTrue);
+
+      (FlutterSoundPlayerPlatform.instance as _FakePlatform).callbacks.single
+          .audioPlayerFinished(PlayerState.isStopped.index);
+      expect(finished, [910001]);
+      expect(voice.isPlaying, isFalse);
+    });
+
+    test(
+      'a pause during session activation cancels the native start',
+      () async {
+        VoicePlayer.nativeCallTimeout = const Duration(seconds: 2);
+        final voice = VoicePlayer();
+        addTearDown(voice.dispose);
+        final holdActivation = Completer<AudioSession?>();
+        voice.audioSessionActivationOverride = () => holdActivation.future;
+
+        final load = voice.toggleAudio(file(910001));
+        await until(() => voice.isPlaying && count('openPlayer') == 1);
+        await voice.pause();
+        holdActivation.complete(null);
+        await load;
+
+        expect(count('startPlayer'), 0);
+        expect(voice.isPlaying, isFalse);
+        expect(voice.isLoading, isFalse);
+      },
+    );
+
     test(
       'a stop during the session await cancels the start before the native player',
       () async {

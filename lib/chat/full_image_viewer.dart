@@ -28,6 +28,7 @@ import '../platform/desktop_clipboard_images.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'looping_video_view.dart';
 import 'media_download_service.dart';
 import 'media_library_saver.dart';
 
@@ -61,9 +62,15 @@ class FullImageViewer extends StatefulWidget {
     this.onMore,
     this.messageActions,
     this.metadata = const [],
+    this.animations = const [],
   });
 
   final List<TdFileRef> items;
+
+  /// Motion variant per item, aligned with [items]. A null entry (or a shorter
+  /// list) keeps that page still; an animated page plays [animations] over its
+  /// still, which remains the fallback and the file the `…` menu saves.
+  final List<TdFileRef?> animations;
   final int startIndex;
   final String? primaryActionLabel;
   final Future<void> Function(int index)? onPrimaryAction;
@@ -249,6 +256,9 @@ class _FullImageViewerState extends State<FullImageViewer> {
                       GlobalKey<_ViewerPageState>.new,
                     ),
                     ref: widget.items[i],
+                    animation: i < widget.animations.length
+                        ? widget.animations[i]
+                        : null,
                     onPinchStart: () {
                       setState(() {
                         _dragY = 0;
@@ -512,8 +522,10 @@ class _ViewerPage extends StatefulWidget {
     required this.ref,
     required this.onZoomChanged,
     required this.onPinchStart,
+    this.animation,
   });
   final TdFileRef ref;
+  final TdFileRef? animation;
   final ValueChanged<bool> onZoomChanged;
   final VoidCallback onPinchStart;
 
@@ -690,6 +702,18 @@ class _ViewerPageState extends State<_ViewerPage> {
         child: child,
       ),
     );
+    if (widget.animation case final animation?) {
+      // The player sits inside the same InteractiveViewer as a still, so
+      // pinch, double-tap and pan stay on one gesture arena. The still stays
+      // underneath as the poster while the file downloads or if it fails.
+      return interactive(
+        SizedBox(
+          width: size.width,
+          height: size.height,
+          child: LoopingVideoView(file: animation, fallback: widget.ref),
+        ),
+      );
+    }
     if (_file == null) {
       if (_thumbnailFile != null) {
         return interactive(

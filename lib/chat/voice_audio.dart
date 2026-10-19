@@ -8,6 +8,7 @@
 //
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,7 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_sound_platform_interface/flutter_sound_player_platform_interface.dart';
 import 'package:logger/logger.dart' show Level;
 
+import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
@@ -101,6 +103,52 @@ class PlaybackProgressPoller {
   }
 }
 
+/// Outcome of resolving a load's cached path.
+///
+/// [cancelled] means the load became moot while it waited on the filesystem
+/// (stop, pause, dispose, newer load, account switch) and must vanish without
+/// a user-facing failure and without any cache work.
+typedef _PathResolution = ({String? path, bool cancelled});
+
+/// The account a load's file id belongs to.
+///
+/// TDLib file ids are per-account and [TdFileCenter] keys its cache by
+/// `slot:fileId`, so a load may only read, evict and download on the account
+/// that supplied the id. Reading `TdClient.shared.activeSlot` again after an
+/// await would silently move the load to whichever account is foreground by
+/// then: a different client, and a cache entry for an unrelated file that
+/// happens to share the numeric id.
+final class _LoadOwner {
+  const _LoadOwner({required this.accountSlot, required this.clientId});
+
+  /// Pins the foreground account as it is right now.
+  factory _LoadOwner.capture() {
+    final client = TdClient.shared;
+    final slot = client.activeSlot;
+    return _LoadOwner(
+      accountSlot: slot,
+      clientId: client.clientId(slot) ?? client.activeClientId,
+    );
+  }
+
+  final int accountSlot;
+  final int clientId;
+
+  bool get isCurrent {
+    final client = TdClient.shared;
+    // Shutdown refuses queries before the slot and active-client mappings
+    // necessarily disappear, so the latch belongs to "still this account".
+    if (client.isShuttingDown) return false;
+    if (clientId == 0) {
+      // No client registry in this build/isolate (simulator, unit harness):
+      // there is no second account to cross into, so the slot is still ours.
+      return client.clientId(accountSlot) == null;
+    }
+    return client.clientId(accountSlot) == clientId &&
+        client.activeClientId == clientId;
+  }
+}
+
 class VoicePlayer extends ChangeNotifier {
   /// How long a native startPlayer/stopPlayer call may hang before the load
   /// is treated as failed. flutter_sound can leave its start completer
@@ -136,6 +184,12 @@ class VoicePlayer extends ChangeNotifier {
   @visibleForTesting
   Future<AudioSession?> Function()? audioSessionActivationOverride;
 
+  /// Test seam: replaces the filesystem stat that validates a remembered
+  /// path. A test can hold the stat across a stop, a pause or an account
+  /// switch, proving the load does no download or cache work afterwards.
+  @visibleForTesting
+  Future<bool> Function(String path)? fileExistsOverride;
+
   FlutterSoundPlayer? _player;
   bool isPlaying = false;
   bool isLoading = false;
@@ -160,6 +214,12 @@ class VoicePlayer extends ChangeNotifier {
   /// callback can tell whether the playback it was issued for is still the
   /// one bound to the player.
   int _playbackGeneration = 0;
+
+  /// Monotonic token of the current load. Bumped when a load starts and by
+  /// every action that supersedes it (stop, pause, dispose), so a load
+  /// suspended on the filesystem or on TDLib can tell that it must not issue
+  /// its download, write the cache or report a failure any more.
+  int _loadGeneration = 0;
   StreamSubscription<PlaybackDisposition>? _progress;
   StreamSubscription<AudioInterruptionEvent>? _interruption;
   StreamSubscription<void>? _becomingNoisy;
@@ -367,8 +427,11 @@ class VoicePlayer extends ChangeNotifier {
   Future<void> stop() async {
     _interruptionPolicy.clear();
     // Cancels any start still awaiting its audio session: it must not
-    // reach the native player for a track the user just stopped.
+    // reach the native player for a track the user just stopped. The load
+    // token also makes a path resolution that is still in flight void, so it
+    // never issues a download for playback that no longer exists.
     _playbackGeneration++;
+    _loadGeneration++;
     final player = _player;
     if (player != null && (player.isPlaying || player.isPaused)) {
       try {
@@ -404,6 +467,74 @@ class VoicePlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Resolves a local path the native player can open, scoped to the account
+  /// that owns [file].
+  ///
+  /// TDLib deletes cached files on its own (storage optimizer, "clear cache"),
+  /// and a path remembered before that names a file that no longer exists. The
+  /// native player then rejects the start, and every later attempt replays the
+  /// same dead path — the reported "cannot play this track" that no retry
+  /// could clear. Validating the remembered path and forgetting it makes the
+  /// resolver download the file again instead, which is what
+  /// [TdFileCenter.forget] exists for.
+  ///
+  /// Every cache read and eviction names [owner]'s slot explicitly, and the
+  /// download is only issued while that owner is still the load's account: the
+  /// stat below straddles user actions, and an unscoped resolver would evict
+  /// and download on whichever account is foreground when it resumes.
+  Future<_PathResolution> _resolvePath(
+    TdFileRef file, {
+    required _LoadOwner owner,
+    required int generation,
+  }) async {
+    final remembered = TdFileCenter.shared.cachedPath(
+      file,
+      accountSlot: owner.accountSlot,
+    );
+    if (remembered != null) {
+      if (await _isReadableFile(remembered)) {
+        return (path: remembered, cancelled: false);
+      }
+      if (!_loadIsCurrent(file.id, owner, generation)) {
+        return (path: null, cancelled: true);
+      }
+      TdFileCenter.shared.forget(file.id, accountSlot: owner.accountSlot);
+    }
+    if (!_loadIsCurrent(file.id, owner, generation)) {
+      return (path: null, cancelled: true);
+    }
+    return (
+      path: await TdFileCenter.shared.pathFor(
+        file,
+        accountSlot: owner.accountSlot,
+        priority: 32,
+      ),
+      cancelled: false,
+    );
+  }
+
+  /// Whether the load [generation] for [fileId] may still touch playback.
+  ///
+  /// Re-read after every await in a load: a stop, a pause, a dispose, a newer
+  /// load or an account switch that unbinds the captured client makes the
+  /// load moot, and it must then leave no download, cache write or failure
+  /// report behind.
+  bool _loadIsCurrent(int fileId, _LoadOwner owner, int generation) =>
+      !_disposed &&
+      generation == _loadGeneration &&
+      _fileId == fileId &&
+      owner.isCurrent;
+
+  Future<bool> _isReadableFile(String path) async {
+    final override = fileExistsOverride;
+    try {
+      if (override != null) return await override(path);
+      return await File(path).exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _toggle(TdFileRef? file, {required Codec codec}) async {
     if (file == null) return;
 
@@ -417,6 +548,12 @@ class VoicePlayer extends ChangeNotifier {
       );
       return;
     }
+
+    // Pin the account that owns this file id before any await: every cache
+    // read, eviction and download below stays on it. This tap also supersedes
+    // any load still resolving for a previous intent.
+    final owner = _LoadOwner.capture();
+    final loadGeneration = ++_loadGeneration;
 
     // Same note already loaded → pause / resume.
     final player = _player;
@@ -470,20 +607,25 @@ class VoicePlayer extends ChangeNotifier {
     // depend on the file. Run them while the path resolves instead of after
     // it, so a cached track starts as soon as its path is known.
     final audioReady = _prepareOutput();
-    String? path;
+    _PathResolution? resolution;
     Object? pathError;
     try {
-      path =
-          TdFileCenter.shared.cachedPath(file) ??
-          await TdFileCenter.shared.pathFor(file, priority: 32);
+      resolution = await _resolvePath(
+        file,
+        owner: owner,
+        generation: loadGeneration,
+      );
     } catch (error) {
       pathError = error;
     }
-    if (_disposed) return;
-    // The user may have tapped another note while this file resolved —
-    // don't clobber the newer load's state or start the stale file.
-    if (_fileId != file.id) return;
+    // The user may have stopped, paused or switched accounts, or another load
+    // may have replaced this one, while the path resolved. A void load leaves
+    // no state behind and reports nothing: the track it named is not the one
+    // the user is waiting for any more.
+    if (resolution != null && resolution.cancelled) return;
+    if (!_loadIsCurrent(file.id, owner, loadGeneration)) return;
     isLoading = false;
+    final path = resolution?.path;
     // A session that will not activate is logged but not fatal: iOS can
     // refuse or stall activation while another audio app holds the session,
     // yet the player can still start and the interruption listener recovers
@@ -517,6 +659,7 @@ class VoicePlayer extends ChangeNotifier {
       audioReady: audioReady,
       generation: _playbackGeneration,
       path: path,
+      isLoadCurrent: () => _loadIsCurrent(file.id, owner, loadGeneration),
     );
   }
 
@@ -561,6 +704,7 @@ class VoicePlayer extends ChangeNotifier {
     required Codec codec,
     required int generation,
     required String path,
+    required bool Function() isLoadCurrent,
     Future<AudioSession?>? audioReady,
   }) async {
     isPlaying = true;
@@ -573,11 +717,16 @@ class VoicePlayer extends ChangeNotifier {
     _starting = true;
     _startAttempts++;
     FlutterSoundPlayer? startOn;
+    Object? failure;
     try {
       final ready = await audioReady?.timeout(nativeCallTimeout);
       if (ready == null) {
         debugPrint('VoicePlayer: audio session inactive, starting anyway');
       }
+      // Pause and account changes can land after the path resolves but before
+      // audio-session preparation finishes. They cancel the pending start,
+      // without invalidating the finish callback of an already-playing track.
+      if (!isLoadCurrent()) return;
       // The await above straddles user actions and native recovery. A stop,
       // a dispose, another load or a retirement during it must cancel this
       // start before it touches the native player: the captured path may
@@ -595,8 +744,7 @@ class VoicePlayer extends ChangeNotifier {
           isPlaying = false;
           isLoading = false;
           _syncPolling();
-          notifyListeners();
-          onFailed?.call(fileId!, TimeoutException('openPlayer'));
+          failure = TimeoutException('openPlayer');
         }
         return;
       }
@@ -653,10 +801,17 @@ class VoicePlayer extends ChangeNotifier {
       isPlaying = false;
       isLoading = false;
       _syncPolling();
-      notifyListeners();
-      if (fileId != null) onFailed?.call(fileId, error);
+      failure = error;
     } finally {
       _starting = false;
+      // Report only once no start is in flight. A listener that reacts to the
+      // failure by loading the track again (the music player does) would
+      // otherwise be dropped by the in-flight tap guard above and never
+      // retried.
+      if (failure != null && fileId != null) {
+        notifyListeners();
+        onFailed?.call(fileId, failure);
+      }
     }
   }
 
@@ -686,8 +841,19 @@ class VoicePlayer extends ChangeNotifier {
 
   /// Pauses the playing track. No-op when nothing is playing.
   Future<void> pause() async {
+    // A path resolution still in flight must not start playback after an
+    // explicit pause; the bumped token also clears the spinner it set.
+    _loadGeneration++;
     final player = _player;
-    if (player == null || !player.isPlaying) return;
+    if (player == null || !player.isPlaying) {
+      if (isLoading || isPlaying) {
+        isLoading = false;
+        isPlaying = false;
+        _syncPolling();
+        notifyListeners();
+      }
+      return;
+    }
     _interruptionPolicy.clear();
     try {
       await player.pausePlayer();
@@ -795,8 +961,9 @@ class VoicePlayer extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     // Any start still awaiting its audio session must not reach the native
-    // player afterwards.
+    // player afterwards, and any path still resolving must not download.
     _playbackGeneration++;
+    _loadGeneration++;
     _poller.stop();
     _interruptionPolicy.clear();
     _progress?.cancel();

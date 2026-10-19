@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../chat/custom_emoji.dart';
+import '../chat/emoji_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -36,7 +37,26 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
   @override
   void initState() {
     super.initState();
+    if (widget.source == ProfileIconSource.status) {
+      // The topic icon and chat status/reaction surfaces accept any custom
+      // emoji the account owns, so the user's installed custom-emoji packs are
+      // part of their options. `EmojiStore` already enumerates those sets.
+      EmojiStore.shared.addListener(_onEmojiStore);
+      EmojiStore.shared.loadIfNeeded();
+    }
     _load();
+  }
+
+  void _onEmojiStore() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    if (widget.source == ProfileIconSource.status) {
+      EmojiStore.shared.removeListener(_onEmojiStore);
+    }
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -95,6 +115,11 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // Profile background emoji come from Telegram's fixed catalogue; only the
+    // status/topic surface accepts the user's own installed custom emoji.
+    final packs = widget.source == ProfileIconSource.status
+        ? EmojiStore.shared.customPacks
+        : const <CustomEmojiPack>[];
     return ColoredBox(
       color: c.groupedBackground,
       child: Column(
@@ -106,26 +131,23 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
           Expanded(
             child: _loading
                 ? const Center(child: _ProfileIconSpinner())
-                : _ids.isEmpty
+                : _ids.isEmpty && packs.isEmpty
                 ? Center(
                     child: Text(
                       AppStringKeys.editProfileProfileIconEmpty.l10n(context),
                       style: TextStyle(fontSize: 15, color: c.textSecondary),
                     ),
                   )
-                : GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                        ),
-                    itemCount: _ids.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) return _clearChoice();
-                      return _emojiChoice(_ids[index - 1]);
-                    },
+                : CustomScrollView(
+                    slivers: [
+                      const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                      _sectionHeader(
+                        AppStringKeys.editProfileDefault.l10n(context),
+                      ),
+                      _iconGrid(_ids, includeNone: true),
+                      for (final pack in packs) ..._packSlivers(pack),
+                      const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                    ],
                   ),
           ),
         ],
@@ -133,9 +155,58 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
     );
   }
 
+  /// One section per installed pack, in the order Telegram returns the sets.
+  List<Widget> _packSlivers(CustomEmojiPack pack) {
+    final ids = [
+      for (final item in pack.emoji)
+        if (item.customEmojiId != 0) item.customEmojiId,
+    ];
+    if (ids.isEmpty) return const [];
+    return [
+      _sectionHeader(pack.title, key: ValueKey('profile-icon-pack-${pack.id}')),
+      _iconGrid(ids),
+    ];
+  }
+
+  Widget _sectionHeader(String label, {Key? key}) => SliverToBoxAdapter(
+    child: Padding(
+      key: key,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: context.colors.textSecondary,
+        ),
+      ),
+    ),
+  );
+
+  Widget _iconGrid(List<int> ids, {bool includeNone = false}) {
+    final leading = includeNone ? 1 : 0;
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 6,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (includeNone && index == 0) return _clearChoice();
+          return _emojiChoice(ids[index - leading]);
+        }, childCount: ids.length + leading),
+      ),
+    );
+  }
+
   Widget _clearChoice() {
     final c = context.colors;
     return GestureDetector(
+      key: const ValueKey('profile-icon-none'),
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).pop(0),
       child: Container(
@@ -147,10 +218,18 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
               : null,
         ),
         alignment: Alignment.center,
-        child: AppIcon(
-          HeroAppIcons.circleXmark,
-          size: 25,
-          color: c.textTertiary,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIcon(HeroAppIcons.circleXmark, size: 22, color: c.textTertiary),
+            const SizedBox(height: 2),
+            Text(
+              AppStringKeys.groupAppearanceNone.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: c.textTertiary),
+            ),
+          ],
         ),
       ),
     );
@@ -159,6 +238,7 @@ class _ProfileIconPickerViewState extends State<ProfileIconPickerView> {
   Widget _emojiChoice(int id) {
     final c = context.colors;
     return GestureDetector(
+      key: ValueKey('profile-icon-emoji-$id'),
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).pop(id),
       child: Container(

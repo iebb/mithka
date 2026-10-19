@@ -6955,21 +6955,23 @@ class ChatViewModel extends ChangeNotifier {
       _client.activeClientId == _accountClientId &&
       _client.activeSlot == _accountSlot;
 
-  /// Whether Telegram offers a shareable HTTPS link for [messageId]
-  /// (`messageProperties.can_get_link`). Offline per the pinned schema, but
-  /// still fail-closed: a property error hides the action, mirroring how the
-  /// official clients gate menu entries on per-message permissions.
-  Future<bool> canCopyMessageLink(int messageId) async {
-    try {
-      final properties = await _client.queryTo({
-        '@type': 'getMessageProperties',
-        'chat_id': chatId,
-        'message_id': messageId,
-      }, _accountClientId);
-      return properties.boolean('can_get_link') ?? false;
-    } catch (_) {
-      return false;
-    }
+  /// Per-message action availability from `messageProperties`: whether a
+  /// shareable link exists (`can_get_link`) and whether Telegram accepts a
+  /// reply in this chat (`can_be_replied`). Both live only on the server
+  /// object, so one query answers the menu; a property error propagates and
+  /// the caller keeps both entries hidden.
+  Future<({bool canGetLink, bool canBeReplied})> messageActionAvailability(
+    int messageId,
+  ) async {
+    final properties = await _client.queryTo({
+      '@type': 'getMessageProperties',
+      'chat_id': chatId,
+      'message_id': messageId,
+    }, _accountClientId);
+    return (
+      canGetLink: properties.boolean('can_get_link') ?? false,
+      canBeReplied: properties.boolean('can_be_replied') ?? false,
+    );
   }
 
   /// The HTTPS link TDLib generated for the message. Returns the raw

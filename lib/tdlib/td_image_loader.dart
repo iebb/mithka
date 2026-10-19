@@ -79,6 +79,14 @@ class TdFileCenter {
   static const _playbackInitialPrefix = 2 * 1024 * 1024;
   static const _pathPriority = 16;
 
+  /// How long [path] waits for TDLib to report a completed download before
+  /// returning null. A request TDLib never picked up leaves the whole window
+  /// idle, so callers that must not lose a playable file resolve again.
+  ///
+  /// Non-const so tests can shrink it instead of waiting real seconds.
+  @visibleForTesting
+  static Duration pathWaitTimeout = const Duration(seconds: 180);
+
   String _key(int slot, int fileId) => '$slot:$fileId';
 
   /// Records a resolved path, dropping the oldest entries past [_cacheCapacity].
@@ -534,7 +542,7 @@ class TdFileCenter {
       final completer = Completer<String?>();
       pending.add(completer);
       return completer.future.timeout(
-        const Duration(seconds: 180),
+        pathWaitTimeout,
         onTimeout: () {
           _removePathWaiter(k, completer, pending);
           return null;
@@ -558,7 +566,7 @@ class TdFileCenter {
     // Don't wait forever if the download stalls/fails — callers (e.g. the file
     // opener) then surface "下载失败" instead of a stuck spinner.
     return completer.future.timeout(
-      const Duration(seconds: 180),
+      pathWaitTimeout,
       onTimeout: () {
         _removePathWaiter(k, completer, waiters);
         return null;

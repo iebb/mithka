@@ -2177,6 +2177,26 @@ class _TabNavigatorState extends State<_TabNavigator> {
   }
 }
 
+/// Height above the window's bottom edge that the system home indicator
+/// occupies: the pill is ~5pt tall and sits ~8pt up, so its top edge is
+/// ~13pt above the edge, plus 1pt of breathing room.
+const double kHomeIndicatorClearance = 14;
+
+/// The bottom clearance the bar must keep for system UI.
+///
+/// On iOS, use the reported bottom inset to detect a home indicator. The
+/// indicator itself is a ~5pt pill sitting ~8pt above the edge, so its top
+/// edge is ~13pt up; that — not the platform's whole safe area, which also
+/// covers the gesture band the bar does not use — is what the bar's content
+/// must clear, plus 1pt of breathing room. Other platforms retain the full
+/// reported safe area: Android's navigation buttons can occupy that space.
+double homeIndicatorBarClearance(BuildContext context) {
+  final reported = MediaQuery.paddingOf(context).bottom;
+  if (reported <= 0) return 0;
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return reported;
+  return math.min(reported, kHomeIndicatorClearance);
+}
+
 /// Shared tab controls with an optional glass surface.
 class _MainBottomBar extends StatelessWidget {
   const _MainBottomBar({
@@ -2195,12 +2215,13 @@ class _MainBottomBar extends StatelessWidget {
   final int unread;
   final ChatListController? chatListController;
 
-  /// Whether the bar owns the home-indicator band at the window's bottom edge.
+  /// Whether the bar keeps clearance for the system home indicator.
   ///
-  /// The compact shell docks the bar against the window edge, so the band has
-  /// to stay part of the bar and every tab has to fill it. Docked in the split
-  /// shell's column the bar keeps no band at all: the row spends the full
-  /// height and the space goes back to the content above.
+  /// True only in the compact shell, which docks the bar against the window
+  /// edge under the indicator; the clearance is then [homeIndicatorBarClearance]
+  /// and the tabs fill the whole bar. Docked in the split shell's column the
+  /// bar keeps none of it: the bar does not span the window and the indicator
+  /// sits over the detail pane, not over this column.
   final bool reserveBottomInset;
 
   /// Label size the bar is laid out around. The icon block above it keeps its
@@ -2303,17 +2324,20 @@ class _MainBottomBar extends StatelessWidget {
       (MediaQuery.textScalerOf(context).scale(_labelSize) - _labelSize) *
           _labelLineHeight,
     );
-    // Only the compact shell reserves the home-indicator band; the split shell
-    // leaves it to the content instead, so the row keeps the bar's whole box.
+    // Only the compact shell reserves the home indicator's own height; the
+    // split shell leaves the window edge to its column, so the row keeps the
+    // bar's whole box.
     final bottomInset = reserveBottomInset
-        ? MediaQuery.paddingOf(context).bottom
+        ? homeIndicatorBarClearance(context)
         : 0.0;
 
-    // The reserved band belongs to every tab, not to the container: the tab's
-    // press surface, ripple, and hover tint then reach the window edge and no
-    // strip under the buttons is left painted-but-unowned. The band is applied
-    // as padding inside each tab so the icon and label keep their centre. The
-    // glass hosts pass 0 — their capsules carry the inset themselves.
+    // The reserved clearance belongs to every tab, not to the container: each
+    // tab fills the bar's whole box, so its press surface, ripple, and hover
+    // tint run from the divider to the window edge and no strip under the
+    // buttons is left painted-but-unowned. The content is centred in that box,
+    // which leaves the label a deliberate margin above the window edge instead
+    // of a band that belongs to nobody. The glass hosts pass 0 — their capsules
+    // carry the inset themselves.
     Widget controlsWithBottomInset(double inset) => SizedBox(
       height: 62 + labelGrowth + inset,
       child: Row(
@@ -2333,7 +2357,15 @@ class _MainBottomBar extends StatelessWidget {
                 selected: selection == i,
                 onTap: () => onSelect(i),
                 child: Padding(
-                  padding: EdgeInsets.only(bottom: inset),
+                  // iOS centres content above its compact indicator clearance.
+                  // Android system buttons occupy the whole reported inset;
+                  // retain the prior content padding while tabs still fill it.
+                  padding: EdgeInsets.only(
+                    bottom:
+                        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+                        ? 0
+                        : inset,
+                  ),
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
