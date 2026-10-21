@@ -16,6 +16,12 @@ import 'package:flutter/services.dart';
 /// Every failure is swallowed and reported as `null`: a video note must remain
 /// sendable when the platform editor is missing, refuses the file, or runs out
 /// of time, and the caller then keeps the uncropped recording.
+///
+/// Ownership is per request, not per "last export": [crop] starts an export and
+/// the service keeps the file it produces, [accept] hands that file to the
+/// caller for sending, and [abandonInFlight] reclaims every file nobody
+/// accepted. Cleanup is attached to the platform future itself, so an export
+/// that lands after the caller gave up is still deleted.
 abstract final class VideoNoteCropService {
   static const _channel = MethodChannel('mithka/media_editor');
 
@@ -24,75 +30,158 @@ abstract final class VideoNoteCropService {
   /// the original file rather than keep its screen busy.
   static const defaultTimeout = Duration(seconds: 15);
 
+  /// Exports that have started and whose output no caller has accepted yet.
+  static final Set<_CropRequest> _requests = <_CropRequest>{};
+
   /// Returns the path of the cropped file, or `null` when no crop was produced.
   ///
   /// A non-null result is always a file other than [path], so the caller may
-  /// delete the recording it passed in once the crop has been accepted.
+  /// delete the recording it passed in once it has accepted the crop. The
+  /// service still owns the returned file until [accept] is called: a caller
+  /// that walks away without accepting leaves it to [abandonInFlight].
   static Future<String?> crop(
     String path, {
     Duration timeout = defaultTimeout,
   }) async {
     if (path.trim().isEmpty) return null;
-    final raw = _channel.invokeMethod<String>('cropVideoNote', {'path': path});
-    _inFlight = raw;
+    final request = _CropRequest(
+      input: path,
+      raw: _channel.invokeMethod<String>('cropVideoNote', {'path': path}),
+    );
+    _requests.add(request);
+    // Cleanup rides the platform future, not a timer: whenever the export
+    // eventually lands, an abandoned request's file is deleted then.
     unawaited(
-      raw.then((_) {}, onError: (_) {}).whenComplete(() {
-        if (identical(_inFlight, raw)) _inFlight = null;
-      }),
+      request.raw
+          .then<void>(
+            (output) {
+              request.output = output;
+            },
+            onError: (Object _) {
+              // A failed export produced nothing to reclaim.
+            },
+          )
+          .whenComplete(() {
+            request.settled = true;
+            request.done.complete();
+            if (request.abandoned && !request.accepted) {
+              unawaited(_reclaim(request));
+            }
+          }),
     );
     try {
-      final output = await raw.timeout(timeout);
-      if (output == null || output.isEmpty || output == path) return null;
-      // Whoever took delivery owns the file from here, so cleanup has nothing
-      // left to reclaim.
-      _inFlight = null;
+      final output = await request.raw.timeout(timeout);
+      if (output == null || output.isEmpty || output == path) {
+        _abandon(request);
+        return null;
+      }
+      request.output = output;
       return output;
     } catch (_) {
       // MissingPluginException, PlatformException, TimeoutException and a
       // malformed reply all mean the same thing here: send the recording.
+      // The request stays registered so a late output is still reclaimed.
+      _abandon(request);
       return null;
     }
   }
 
-  /// The export the last [crop] call started, tracked by the platform request
-  /// itself.
+  /// Hands the file [crop] produced at [path] to the caller, which now owns it
+  /// and is responsible for deleting it once the note has been sent.
   ///
-  /// A route that is left while the native exporter is still running has no
-  /// caller left to hand the path to; [abandonInFlight] lets the request
-  /// finish and deletes the file it produced, so a timed-out export cannot
-  /// leave an unowned temporary next to the recording.
-  static Future<String?>? _inFlight;
+  /// Called only after the caller has verified the file it is about to send.
+  /// An unknown path is a no-op, so a caller may accept unconditionally.
+  static void accept(String path) {
+    if (path.trim().isEmpty) return;
+    for (final request in _requests.toList()) {
+      if (request.output == path) {
+        request.accepted = true;
+        _requests.remove(request);
+      }
+    }
+  }
 
-  /// Waits for the in-flight export (bounded by [timeout]) and deletes the
-  /// file it produced, which by then has no owner.
+  /// Abandons every export no caller accepted and deletes the file it produced.
   ///
-  /// Returns immediately when nothing is in flight, and never deletes a path a
-  /// caller already received.
+  /// A request whose platform call already settled is reclaimed immediately; a
+  /// request still running has its deletion attached to the platform future's
+  /// own completion, so [timeout] only bounds how long this call waits before
+  /// returning. It never drops the cleanup: an export that lands after the wait
+  /// gives up is still deleted then.
+  ///
+  /// Never deletes the recording a request was started from, and never deletes
+  /// a file [accept] took ownership of.
   static Future<void> abandonInFlight({
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    final raw = _inFlight;
-    if (raw == null) return;
-    _inFlight = null;
-    String? output;
-    try {
-      output = await raw.timeout(timeout);
-    } catch (_) {
-      // A failed or still-pending export produced nothing to clean up.
-      return;
+    final pending = _requests.where((request) => !request.accepted).toList();
+    if (pending.isEmpty) return;
+    for (final request in pending) {
+      _abandon(request);
     }
-    if (output == null || output.isEmpty) return;
-    await _deleteQuietly(output);
+    for (final request in pending) {
+      if (request.settled) await _reclaim(request);
+    }
+    final unsettled = pending.where((request) => !request.settled);
+    if (unsettled.isEmpty) return;
+    await Future.wait(
+      unsettled.map((request) => request.done.future),
+    ).timeout(timeout, onTimeout: () => const <void>[]);
   }
 
-  static Future<void> _deleteQuietly(String path) async {
+  /// Marks [request] unowned; its file is deleted now when the export already
+  /// finished, or by the platform continuation when it finishes later.
+  static void _abandon(_CropRequest request) {
+    request.abandoned = true;
+    if (request.settled && !request.accepted) unawaited(_reclaim(request));
+  }
+
+  /// Deletes the file [request] produced, unless a caller accepted it first.
+  static Future<void> _reclaim(_CropRequest request) async {
+    _requests.remove(request);
+    if (request.accepted) return;
+    final output = request.output;
+    if (output == null || output.isEmpty || output == request.input) return;
+    await _deleteQuietly(output, request);
+  }
+
+  static Future<void> _deleteQuietly(String path, _CropRequest request) async {
     try {
       final file = File(path);
-      if (await file.exists()) await file.delete();
+      if (!await file.exists()) return;
+      // The caller may have accepted the file while the existence check ran.
+      if (request.accepted) return;
+      await file.delete();
     } catch (_) {
       // The platform cache reclaims it anyway.
     }
   }
+}
+
+/// One platform export and the file it produced, owned by the service until a
+/// caller accepts it or the recorder abandons it.
+final class _CropRequest {
+  _CropRequest({required this.input, required this.raw});
+
+  /// The recording the export was started from; never deleted by the service.
+  final String input;
+
+  /// The platform call itself, so cleanup can attach to its completion.
+  final Future<String?> raw;
+
+  /// The path the platform answered with, once it has answered.
+  String? output;
+
+  /// Whether the platform call has completed, successfully or not.
+  bool settled = false;
+
+  /// Whether a caller took ownership through [VideoNoteCropService.accept].
+  bool accepted = false;
+
+  /// Whether the recorder gave up on this export.
+  bool abandoned = false;
+
+  final Completer<void> done = Completer<void>();
 }
 
 /// True when a [width] x [height] frame is already square within one pixel, so

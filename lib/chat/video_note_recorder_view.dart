@@ -204,6 +204,8 @@ class VideoNotePreviewBox extends StatelessWidget {
       },
     );
   }
+}
+
 /// Resolves the file a finished video note is sent from: the centred square
 /// crop when the native editor produced one, otherwise the recording itself.
 ///
@@ -211,13 +213,17 @@ class VideoNotePreviewBox extends StatelessWidget {
 /// malformed reply or a timeout all fall back to [recordedPath], because a
 /// slightly wide note is far better than a lost one. When the crop did produce
 /// a new file, the recording it replaces is deleted so the cache does not hold
-/// two copies of the same note.
+/// two copies of the same note. The produced file stays owned by
+/// [VideoNoteCropService] until that deletion step has succeeded; only then is
+/// it accepted, so an abandoned crop is still reclaimed while a file this
+/// function returns is never deleted by the service.
 ///
-/// [crop] exists so tests can drive the decision without a platform channel;
-/// production passes nothing and reaches [VideoNoteCropService.crop].
+/// [crop] and [accept] exist so tests can drive the decision without a platform
+/// channel; production passes neither and reaches [VideoNoteCropService].
 Future<String> videoNoteUploadPath(
   String recordedPath, {
   Future<String?> Function(String path)? crop,
+  void Function(String path)? accept,
 }) async {
   String? cropped;
   try {
@@ -239,6 +245,9 @@ Future<String> videoNoteUploadPath(
   } catch (_) {
     // Best-effort: the platform cache reclaims the recording anyway.
   }
+  // The cropped file is verified and the recording it replaces is gone: from
+  // here the caller owns the crop and will hand it to the send path.
+  (accept ?? VideoNoteCropService.accept)(cropped);
   return cropped;
 }
 
@@ -435,8 +444,19 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
       if (!mounted) {
         // The recorder was left while the crop was still running: nobody will
         // send the file it produced, so drop it instead of leaving an unowned
-        // temporary next to the recording.
-        await VideoNoteCropService.abandonInFlight();
+        // temporary next to the recording. A crop accepted a microsecond
+        // before dispose is no longer the service's to reclaim, so the file
+        // this call resolved to is deleted here too; the recording itself is
+        // only kept when it is the resolved path.
+        unawaited(VideoNoteCropService.abandonInFlight());
+        if (path != video.path) {
+          try {
+            final cropped = File(path);
+            if (await cropped.exists()) await cropped.delete();
+          } catch (_) {
+            // The platform cache reclaims it anyway.
+          }
+        }
         return;
       }
       Navigator.of(
