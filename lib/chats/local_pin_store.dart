@@ -17,6 +17,13 @@
 //  view model resolves it from its account) as well as the chat id, and
 //  switching accounts cannot expose one account's pins to another.
 //
+//  The store is a singleton that several live lists can share, so every
+//  mutator is generation-guarded: a caller that spans an await captures
+//  [loadGeneration] and hands it back, and each effect re-checks it before it
+//  touches the in-memory map, writes a preference or notifies. A re-scope
+//  therefore cannot have an earlier call's late write land on the account
+//  that replaced it.
+//
 //  Ordering contract, in full: every local pin sorts above every server pin,
 //  the most recently pinned local sorts first, and recomputing the orders for
 //  the same state produces exactly the same numbers. The band is rebuilt from
@@ -82,6 +89,14 @@ class LocalPinStore extends ChangeNotifier {
   Map<int, int> _bandOrders = const {};
   int _bandBase = 0;
 
+  /// The generation of the account scope the store is loaded for.
+  ///
+  /// Bumped by every (re)scope and every load. A caller that spans an await
+  /// captures it and hands it back as `expectedGeneration`; every effect
+  /// re-checks it first, so a write issued for one account can never mutate
+  /// the state or the preference keys of the account that replaced it.
+  int _loadGeneration = 0;
+
   bool get unlimitedEnabled => _unlimited;
 
   int? get activeAccountUserId => _activeUserId;
@@ -143,10 +158,14 @@ class LocalPinStore extends ChangeNotifier {
   void setActiveAccountUserId(int? userId) {
     if (_activeUserId == userId) return;
     _activeUserId = userId;
-    // A new scope retires every write that was issued under the old one.
-    _loadGeneration++;
     _loadAccountEntries();
   }
+
+  /// Whether an effect that captured [generation] still belongs to the active
+  /// account scope. A null [generation] is an unscoped caller and belongs to
+  /// whatever scope is current when it reaches its effect.
+  bool _ownsGeneration(int? generation) =>
+      generation == null || generation == _loadGeneration;
 
   bool isLocallyPinned(int chatId) =>
       unlimitedEnabled && _entries.containsKey(chatId);
@@ -165,21 +184,29 @@ class LocalPinStore extends ChangeNotifier {
   /// No-op when the switch is off, when no account is active, or when
   /// [serverPinOrder] is not eligible — the caller passes the largest server
   /// order the list was sorting above, so the band lands above it.
-  Future<void> pin(
+  ///
+  /// [expectedGeneration] pins the write to the scope it was issued under: an
+  /// already-stale value is refused at entry, and a re-scope during the
+  /// preference write abandons the rest of the call. Returns whether the pin
+  /// was applied.
+  Future<bool> pin(
     int chatId, {
     required int serverPinOrder,
     required int pinnedAt,
+    int? expectedGeneration,
   }) async {
-    if (!unlimitedEnabled) return;
+    if (!unlimitedEnabled) return false;
+    if (!_ownsGeneration(expectedGeneration)) return false;
+    final generation = _loadGeneration;
     final userId = _activeUserId;
-    if (userId == null) return;
-    if (!isEligible(order: serverPinOrder)) return;
+    if (userId == null) return false;
+    if (!isEligible(order: serverPinOrder)) return false;
 
     final existing = _entries[chatId];
     if (existing != null &&
         existing.serverPinOrder == serverPinOrder &&
         existing.pinnedAt == pinnedAt) {
-      return;
+      return true;
     }
 
     final entry = LocalPinEntry(
@@ -189,16 +216,17 @@ class LocalPinStore extends ChangeNotifier {
     _entries[chatId] = entry;
     if (serverPinOrder > _bandBase) _bandBase = serverPinOrder;
     _invalidateBand();
-    await _prefs?.setString(_key(userId, chatId), _encode(entry));
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setString(_key(userId, chatId), _encode(entry));
+      // The account changed under the write: the entry was written for the
+      // scope this call started in, and the replacement scope is authoritative
+      // from here, so this call must not project onto it.
+      if (!_ownsGeneration(generation)) return false;
+    }
     notifyListeners();
+    return true;
   }
-
-  /// The generation of the account scope the store was last loaded under.
-  ///
-  /// Every write re-checks it against the captured one, so a write issued for
-  /// one account can never land on the keys of the account that replaced it
-  /// while the request was in flight.
-  int _loadGeneration = 0;
 
   /// Parks the preference write of [unpin] until completed; tests only.
   @visibleForTesting
@@ -206,36 +234,42 @@ class LocalPinStore extends ChangeNotifier {
 
   /// The current load generation.
   ///
-  /// A caller that spans an await captures it and hands it back to [unpin], so
-  /// a preference write can never land on the keys of the account that
-  /// replaced the one it started with.
+  /// A caller that spans an await captures it and hands it back to a mutator,
+  /// so its effects can never land on the state or the keys of the account
+  /// that replaced the one it started with.
   int get loadGeneration => _loadGeneration;
 
   /// Drops the device-only pin for [chatId]. No-op when it is not pinned.
   ///
   /// [expectedGeneration] pins the pass that issued this write: when the
-  /// store was re-scoped meanwhile the write is abandoned, because the
-  /// preference key it computed addresses the replacement account.
-  Future<void> unpin(int chatId, {int? expectedGeneration}) async {
-    if (!unlimitedEnabled) return;
+  /// store was re-scoped meanwhile, the call is refused before it removes
+  /// anything, and a re-scope during the write abandons the rest of it.
+  /// Returns whether the entry was dropped.
+  Future<bool> unpin(int chatId, {int? expectedGeneration}) async {
+    if (!unlimitedEnabled) return false;
+    // An already-stale caller must not touch the replacement account's
+    // entry — chat ids collide across accounts, so the map removal alone
+    // would be a data loss before any preference write is reached.
+    if (!_ownsGeneration(expectedGeneration)) return false;
+    final generation = _loadGeneration;
     final userId = _activeUserId;
-    if (userId == null) return;
-    if (_entries.remove(chatId) == null) return;
+    if (userId == null) return false;
+    if (_entries.remove(chatId) == null) return false;
     _invalidateBand();
     final prefs = _prefs;
     // Host tests park this write to reproduce a native preference round trip
     // that is still in flight when the account changes underneath it.
     final barrier = debugUnpinBarrier;
     if (barrier != null) await barrier.future;
+    // Parked long enough for another live list to re-scope the shared store:
+    // the key computed above addresses the account this call started with.
+    if (!_ownsGeneration(generation)) return false;
     if (prefs != null) {
       await prefs.remove(_key(userId, chatId));
-    }
-    if (expectedGeneration != null && _loadGeneration != expectedGeneration) {
-      // The account changed under this write: the row is already gone from the
-      // old scope, and the new scope is authoritative from here.
-      return;
+      if (!_ownsGeneration(generation)) return false;
     }
     notifyListeners();
+    return true;
   }
 
   /// Drops every entry whose chat is not in [liveMainListChatIds].
@@ -246,14 +280,22 @@ class LocalPinStore extends ChangeNotifier {
   /// pin would silently disappear on a partially loaded list.
   Future<void> pruneTo(Iterable<int> liveMainListChatIds) async {
     if (!unlimitedEnabled) return;
+    final generation = _loadGeneration;
     final userId = _activeUserId;
     if (userId == null) return;
     final live = liveMainListChatIds.toSet();
     final stale = _entries.keys.where((id) => !live.contains(id)).toList();
     if (stale.isEmpty) return;
     for (final id in stale) {
+      // A re-scope during an earlier iteration retired this pass: it must not
+      // drop the replacement account's colliding id or write its keys.
+      if (!_ownsGeneration(generation)) return;
       _entries.remove(id);
-      await _prefs?.remove(_key(userId, id));
+      final prefs = _prefs;
+      if (prefs != null) {
+        await prefs.remove(_key(userId, id));
+        if (!_ownsGeneration(generation)) return;
+      }
     }
     _invalidateBand();
     notifyListeners();
@@ -315,6 +357,7 @@ class LocalPinStore extends ChangeNotifier {
 
   /// Reads this account's pins out of the preference store.
   void _loadAccountEntries() {
+    // A new scope retires every write that was issued under the old one.
     _loadGeneration++;
     _entries.clear();
     _bandBase = 0;

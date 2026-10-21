@@ -661,6 +661,212 @@ void main() {
     await store.setUnlimitedEnabled(false);
     store.setActiveAccountUserId(null);
   });
+
+  test('a re-scoped store survives a parked unpin from a list that still '
+      'believes it owns the account', () async {
+    // The reviewer's boundary: the shared store is re-scoped by ANOTHER live
+    // list — this model's meId is never touched, so its _pinEpoch cannot
+    // move and the pass's own epoch check stays green. Only the generation
+    // captured at pass start can tell it the work is stale.
+    final prefs = await _openStorePrefs();
+    final store = LocalPinStore.shared;
+    store.initialize(prefs);
+    await store.setUnlimitedEnabled(true);
+    store.setActiveAccountUserId(_accountUserId);
+    await store.pin(301, serverPinOrder: 700, pinnedAt: 1);
+    await store.pin(302, serverPinOrder: 800, pinnedAt: 2);
+    final generationBefore = store.loadGeneration;
+
+    const replacementAccount = 4343;
+    await prefs.setString(
+      'mithka.localPins.v1.user$replacementAccount.301',
+      '900:9',
+    );
+    await prefs.setString(
+      'mithka.localPins.v1.user$replacementAccount.302',
+      '901:10',
+    );
+
+    final modelRequests = <Map<String, dynamic>>[];
+    final model = ChatListViewModel(
+      queryForTesting: (request) => _respond(modelRequests, request),
+    );
+    addTearDown(model.dispose);
+    model.meId = _accountUserId;
+    model.onAppear();
+    for (final id in const [301, 302]) {
+      await model.ingestRawChatForTesting(_chat(id));
+    }
+    // Both chats are then reported server-pinned: the adoption branch of
+    // _syncLocalPinState runs and unpins the local entry.
+    for (final id in const [301, 302]) {
+      model.applyUpdateForTesting({
+        '@type': 'updateChatPosition',
+        'chat_id': id,
+        'position': {
+          '@type': 'chatPosition',
+          'list': {'@type': 'chatListMain'},
+          'order': 1200,
+          'is_pinned': true,
+        },
+      });
+    }
+
+    // Hold the first unpin's preference write open.
+    final barrier = Completer<void>();
+    store.debugUnpinBarrier = barrier;
+    for (var i = 0; i < 40 && store.isLocallyPinned(301); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(
+      store.isLocallyPinned(301),
+      isFalse,
+      reason: 'the first entry was adopted and its write is in flight',
+    );
+
+    // Another live list re-scopes the shared store. The original model's
+    // meId is deliberately left as it was.
+    store.setActiveAccountUserId(replacementAccount);
+    final ownedByReplacement = store.loadGeneration;
+    store.debugUnpinBarrier = null;
+    barrier.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    // The replacement account's colliding ids keep both their in-memory
+    // entries and their preference keys.
+    for (final id in const [301, 302]) {
+      expect(
+        store.isLocallyPinned(id),
+        isTrue,
+        reason: 'the stale pass must not remove the replacement entry $id',
+      );
+      expect(
+        prefs.getString('mithka.localPins.v1.user$replacementAccount.$id'),
+        isNotNull,
+        reason: 'the stale pass must not remove the replacement key $id',
+      );
+    }
+    expect(
+      store.entryFor(301)!.serverPinOrder,
+      900,
+      reason: 'the replacement entry is the one that must be left standing',
+    );
+    expect(ownedByReplacement, isNot(generationBefore));
+
+    await store.setUnlimitedEnabled(false);
+    store.setActiveAccountUserId(null);
+  });
+
+  test(
+    'a directly stale generation is refused before the store mutates',
+    () async {
+      final prefs = await _openStorePrefs();
+      final store = LocalPinStore.shared;
+      store.initialize(prefs);
+      await store.setUnlimitedEnabled(true);
+      store.setActiveAccountUserId(_accountUserId);
+      await store.pin(401, serverPinOrder: 700, pinnedAt: 1);
+      final stale = store.loadGeneration;
+
+      const replacementAccount = 5151;
+      await prefs.setString(
+        'mithka.localPins.v1.user$replacementAccount.401',
+        '950:5',
+      );
+      store.setActiveAccountUserId(replacementAccount);
+      expect(store.isLocallyPinned(401), isTrue);
+
+      // The old scope's generation is stale at entry: the colliding id must
+      // survive both in memory and in the preference store.
+      final staleApplied = await store.unpin(401, expectedGeneration: stale);
+      expect(
+        store.isLocallyPinned(401),
+        isTrue,
+        reason: 'a stale generation must not remove the replacement entry',
+      );
+      expect(
+        prefs.getString('mithka.localPins.v1.user$replacementAccount.401'),
+        '950:5',
+        reason: 'a stale generation must not remove the replacement key',
+      );
+      expect(store.entryFor(401)!.serverPinOrder, 950);
+      expect(
+        staleApplied,
+        isFalse,
+        reason: 'a stale generation must be refused, not applied',
+      );
+
+      // The current generation still works, and drops both copies.
+      final freshApplied = await store.unpin(
+        401,
+        expectedGeneration: store.loadGeneration,
+      );
+      expect(freshApplied, isTrue);
+      expect(store.isLocallyPinned(401), isFalse);
+      expect(
+        prefs.getString('mithka.localPins.v1.user$replacementAccount.401'),
+        isNull,
+      );
+
+      await store.setUnlimitedEnabled(false);
+      store.setActiveAccountUserId(null);
+    },
+  );
+
+  test('a delayed pin cap does not land on the replacement account', () async {
+    final prefs = await _openStorePrefs();
+    final store = LocalPinStore.shared;
+    store.initialize(prefs);
+    await store.setUnlimitedEnabled(true);
+    store.setActiveAccountUserId(_accountUserId);
+
+    // The first account's option answer is held; the replacement account's
+    // answer arrives immediately.
+    final oldCapResponse = Completer<Map<String, dynamic>>();
+    var capRequested = 0;
+    final modelRequests = <Map<String, dynamic>>[];
+    final model = ChatListViewModel(
+      queryForTesting: (request) {
+        if (request['@type'] == 'getOption') {
+          capRequested++;
+          if (capRequested == 1) return oldCapResponse.future;
+          return Future.value({'@type': 'optionValueInteger', 'value': 9});
+        }
+        return _respond(modelRequests, request);
+      },
+    );
+    addTearDown(model.dispose);
+    model.meId = _accountUserId;
+    model.onAppear();
+    // The first read is parked in flight.
+    for (var i = 0; i < 40 && capRequested == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(capRequested, 1);
+
+    // The account is replaced while the old answer is still in flight.
+    const replacementAccount = 6161;
+    store.setActiveAccountUserId(replacementAccount);
+    model.meId = replacementAccount;
+    // The replacement's own read answers 9.
+    for (var i = 0; i < 40 && model.pinCapForTesting != 9; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(model.pinCapForTesting, 9);
+
+    // The stale answer would price the replacement account's pins with the
+    // old account's cap: it must be dropped.
+    oldCapResponse.complete({'@type': 'optionValueInteger', 'value': 3});
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(
+      model.pinCapForTesting,
+      9,
+      reason: 'a delayed answer from the old account must not replace the cap',
+    );
+
+    await store.setUnlimitedEnabled(false);
+    store.setActiveAccountUserId(null);
+  });
 }
 
 /// The id of the chat the tests pin: the one that is not pinned on the server.

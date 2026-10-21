@@ -398,12 +398,16 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed) return;
     if (_meId == value) return;
     _meId = value;
-    // A different account means different chats, a different pin cap and a
-    // different set of device-only pins; drop this list's bookkeeping first.
-    _invalidateLocalPinState();
+    final store = LocalPinStore.shared;
     // Device-only pins are account-scoped, so the store follows the account
-    // exactly like the list's other per-account state.
-    LocalPinStore.shared.setActiveAccountUserId(value);
+    // exactly like the list's other per-account state. Another live list may
+    // own the scope already (it re-scoped the shared store to this same
+    // account), in which case its entries are this list's and the store must
+    // not reload or retire its scope.
+    if (store.activeAccountUserId != value) store.setActiveAccountUserId(value);
+    // A different account means different chats, a different pin cap and a
+    // different set of device-only pins; drop this list's bookkeeping.
+    _invalidateLocalPinState();
     if (value == null) return;
     for (final s in _map.values) {
       s.isSavedMessages = s.peerUserId == value;
@@ -810,9 +814,23 @@ class ChatListViewModel extends ChangeNotifier {
   /// server so the list keeps matching Telegram.
   Future<void> _togglePinUnlimited(ChatSummary chat) async {
     final store = LocalPinStore.shared;
+    // The gesture is issued for the account the list shows now; both awaited
+    // writes below can span a re-scope of the shared store. A store scoped to
+    // another account (this list's own account not known yet, or replaced)
+    // says nothing about this row, so the gesture stays a plain server pin.
+    if (!_storeIsOwnAccount) {
+      _togglePinOnServer(chat);
+      return;
+    }
+    final epoch = _pinEpoch;
+    final generation = store.loadGeneration;
     if (store.isLocallyPinned(chat.id)) {
-      await store.unpin(chat.id);
-      if (_disposed) return;
+      final dropped = await store.unpin(
+        chat.id,
+        expectedGeneration: generation,
+      );
+      if (!_ownsPinPass(epoch, generation)) return;
+      if (!dropped) return;
       // The store no longer owns the id, so the row has to be released here.
       // A server position for the chat (if any) is what put it where it was:
       // the order it carried while device-pinned was this store's band order,
@@ -831,12 +849,14 @@ class ChatListViewModel extends ChangeNotifier {
       _togglePinOnServer(chat);
       return;
     }
-    await store.pin(
+    final placed = await store.pin(
       chat.id,
       serverPinOrder: _localPinSnapshot(chat),
       pinnedAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      expectedGeneration: generation,
     );
-    if (_disposed) return;
+    if (!_ownsPinPass(epoch, generation)) return;
+    if (!placed) return;
     _scheduleLocalPinSync();
     _resort();
   }
@@ -968,14 +988,20 @@ class ChatListViewModel extends ChangeNotifier {
   bool _pinCapRequested = false;
 
   Future<void> _refreshPinCap() async {
-    if (_pinCapRequested) return;
+    if (_disposed || _pinCapRequested) return;
     _pinCapRequested = true;
+    // The answer belongs to the account this request was issued for. A
+    // delayed reply lands after a re-scope often enough — every list shares
+    // the one store — that writing it straight into `_pinCap` would price the
+    // replacement account's pins with the old account's cap.
+    final epoch = _pinEpoch;
+    final generation = LocalPinStore.shared.loadGeneration;
     try {
       final option = await _chatListQuery({
         '@type': 'getOption',
         'name': 'pinned_chat_count_max',
       });
-      if (_disposed) return;
+      if (!_ownsPinPass(epoch, generation)) return;
       final value = option.integer('value');
       if (value != null) _pinCap = value;
     } catch (_) {
@@ -984,6 +1010,34 @@ class ChatListViewModel extends ChangeNotifier {
       // when the switch is off.
     }
   }
+
+  /// Whether an effect that started under [epoch] (this list's pin
+  /// bookkeeping) and [generation] (the shared store's account scope) still
+  /// belongs to the account it was issued for.
+  ///
+  /// The store is a singleton: another live list can re-scope it without
+  /// touching this model's [meId], so an unchanged [_pinEpoch] alone is not an
+  /// ownership proof. Every asynchronous local-pin path re-checks this before
+  /// it mutates a row, writes a preference or projects state.
+  bool _ownsPinPass(int epoch, int generation) =>
+      !_disposed &&
+      _pinEpoch == epoch &&
+      LocalPinStore.shared.loadGeneration == generation &&
+      _storeIsOwnAccount;
+
+  /// Whether the shared store is scoped to this list's account.
+  ///
+  /// Chat ids are account-scoped by Telegram, so a store holding another
+  /// account's entries says nothing about this list's rows even when the ids
+  /// collide. A list that does not know its own account yet owns nothing.
+  bool get _storeIsOwnAccount {
+    final meId = _meId;
+    return meId != null && LocalPinStore.shared.activeAccountUserId == meId;
+  }
+
+  /// The cap the toggle prices server pins against; tests only.
+  @visibleForTesting
+  int get pinCapForTesting => _pinCap;
 
   void _invalidateLocalPinState() {
     _pinEpoch++;
@@ -1026,26 +1080,32 @@ class ChatListViewModel extends ChangeNotifier {
 
     final dropped = _localPinsToDrop.toList();
     _localPinsToDrop.clear();
+    // The prune writes to the shared store, so it owns the scope it started
+    // in just like the sync pass does.
     final epoch = _pinEpoch;
+    final generation = store.loadGeneration;
     for (final id in dropped) {
-      await store.unpin(id);
-      if (_pinEpoch != epoch) return;
+      if (!_ownsPinPass(epoch, generation)) return;
+      await store.unpin(id, expectedGeneration: generation);
+      if (!_ownsPinPass(epoch, generation)) return;
     }
 
     // No catch-all sweep; see the doc comment. Dormant entries for chats the
     // session never learned stay until an authoritative membership update
     // names them.
     if (dropped.isEmpty) return;
-    if (_disposed) return;
+    if (!_ownsPinPass(epoch, generation)) return;
     // A row kept at the top by a pin that no longer exists has to fall back
     // to the position its own list gave it.
     for (final id in dropped) {
+      if (!_ownsPinPass(epoch, generation)) return;
       if (_serverPinnedIds.contains(id)) continue;
       _mutate(id, (s) {
         s.isPinned = false;
         s.order = _unpinnedOrderOf(id) ?? s.order;
       });
     }
+    if (!_ownsPinPass(epoch, generation)) return;
     _resort();
   }
 
@@ -1097,14 +1157,15 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed) return;
     final store = LocalPinStore.shared;
     if (!store.unlimitedEnabled) return;
-    // One pass, one account: the store is re-scoped by `set meId`, so the
-    // epoch and the load generation captured here decide whether any later
-    // write belongs to this account.
+    // One pass, one scope: the store is a singleton shared by every live list,
+    // and another list can re-scope it without `set meId` on this one — so the
+    // store's load generation, not just this model's epoch, decides whether a
+    // later effect belongs to the account this pass started in.
     final epoch = _pinEpoch;
     final generation = store.loadGeneration;
     var changed = false;
 
-    bool ownsPass() => !_disposed && _pinEpoch == epoch;
+    bool ownsPass() => _ownsPinPass(epoch, generation);
 
     // The server re-pinned a chat that still has a local entry: the server's
     // pin is the better one, so the entry goes.
@@ -1113,8 +1174,11 @@ class ChatListViewModel extends ChangeNotifier {
         .toList();
     for (final id in adopted) {
       if (!ownsPass()) return;
-      await store.unpin(id, expectedGeneration: generation);
+      final dropped = await store.unpin(id, expectedGeneration: generation);
       if (!ownsPass()) return;
+      // A refused unpin (the entry vanished between the snapshot and the
+      // write) leaves the row alone: nothing about this chat changed.
+      if (!dropped) continue;
       // The server owns the row now: it keeps sorting on its own position,
       // which is what the position update that adopted it carried.
       _mutate(id, (s) => s.order = _unpinnedOrderOf(id) ?? s.order);
@@ -1139,6 +1203,8 @@ class ChatListViewModel extends ChangeNotifier {
       }
     }
 
+    // The last gate before the projection: a pass whose scope was retired
+    // while it computed must not resort the replacement account's rows.
     if (changed && ownsPass()) _scheduleResort();
   }
 
