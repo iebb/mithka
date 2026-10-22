@@ -11,6 +11,7 @@ import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/desktop_voice_waveform.dart';
 import 'package:mithka/chat/message_send_options.dart';
+import 'package:mithka/chat/voice_recording_session.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -489,6 +490,308 @@ void main() {
     await _dispose(tester, vm);
   });
 
+  testWidgets('a recording claims the capture session before the encoder', (
+    tester,
+  ) async {
+    final order = <String>[];
+    final session = _CaptureSession(order: order);
+    final recorder = _MobileRecorder(order: order);
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+    );
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(session.prepared, 1);
+    expect(recorder.codecs, [Codec.opusOGG]);
+    expect(
+      order,
+      ['recorder.open', 'session.prepare'],
+      reason:
+          'The recorder opens once per panel; each recording claims the '
+          'capture category before its encoder starts',
+    );
+    await pointer.cancel();
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('each mobile recording claims and releases the session once', (
+    tester,
+  ) async {
+    final session = _CaptureSession();
+    final recorder = _MobileRecorder();
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+    );
+    var pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(session.prepared, 1);
+    await pointer.cancel();
+    await _flushIo(tester);
+    await _flushIo(tester);
+    expect(session.released, 1);
+    pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(
+      session.prepared,
+      2,
+      reason: 'The session goes back to playback between recordings',
+    );
+    expect(recorder.opens, 1, reason: 'The recorder is reused');
+    await pointer.cancel();
+    await _flushIo(tester);
+    expect(session.released, 2);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a start that opens no container releases the capture session', (
+    tester,
+  ) async {
+    final session = _CaptureSession();
+    final recorder = _MobileRecorder()..failEveryCodec = true;
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(
+      find.text('Could not record audio. Check your microphone and try again.'),
+      findsOneWidget,
+    );
+    expect(
+      session.released,
+      1,
+      reason:
+          'A failed start must not hold playAndRecord on the shared session',
+    );
+    expect(issues, ['start'], reason: 'One tap reports one failure');
+    await pointer.up();
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a capture session that cannot be claimed reports once', (
+    tester,
+  ) async {
+    final session = _CaptureSession(failPrepare: true);
+    final recorder = _MobileRecorder();
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(
+      find.text('Could not record audio. Check your microphone and try again.'),
+      findsOneWidget,
+    );
+    expect(issues, ['begin']);
+    expect(recorder.codecs, isEmpty, reason: 'No encoder may start without it');
+    await pointer.up();
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('each press reports its own failed capture attempt', (
+    tester,
+  ) async {
+    final session = _CaptureSession(failPrepare: true);
+    final recorder = _MobileRecorder();
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    for (var press = 0; press < 2; press++) {
+      final pointer = await tester.startGesture(
+        tester.getCenter(find.byKey(_mobileButton)),
+      );
+      await _flushIo(tester);
+      await pointer.up();
+      await _flushIo(tester);
+    }
+    expect(
+      issues,
+      ['begin', 'begin'],
+      reason: 'Every press is a new attempt, so each one reports its outcome',
+    );
+    expect(session.prepared, 2, reason: 'A press retries the session');
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a recorder that cannot open is reported once per opening', (
+    tester,
+  ) async {
+    final session = _CaptureSession();
+    final recorder = _MobileRecorder()..failOpen = true;
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      session: session,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    expect(issues, ['open'], reason: 'The panel opening reports the cause');
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    await pointer.up();
+    await _flushIo(tester);
+    expect(
+      issues,
+      ['open'],
+      reason:
+          'A press in the same opening repeats neither the cause nor the '
+          'attempt: the recorder already refused to open',
+    );
+    expect(recorder.opens, 1);
+    // Reopening the panel is the retry: close it, then open it again.
+    recorder.failOpen = false;
+    await tester.tap(find.byIcon(HeroAppIcons.microphone.data).first);
+    await tester.pump();
+    await tester.tap(find.byIcon(HeroAppIcons.microphone.data).first);
+    await tester.pump();
+    await tester.pump();
+    await _flushIo(tester);
+    expect(recorder.opens, 2);
+    expect(issues, ['open'], reason: 'A successful reopen reports nothing');
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a system-wide microphone restriction points at settings', (
+    tester,
+  ) async {
+    var openedSettings = false;
+    final recorder = _MobileRecorder();
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      permission: () async => PermissionStatus.restricted,
+      openSettings: () async {
+        openedSettings = true;
+        return true;
+      },
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(
+      find.text(
+        'The microphone is blocked system-wide — open settings to allow it',
+      ),
+      findsOneWidget,
+      reason: 'restricted is a system lock, not the app-level "required" toast',
+    );
+    expect(openedSettings, isTrue);
+    expect(recorder.opens, 0);
+    await pointer.up();
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a denied prompt stays in the app and is reported once', (
+    tester,
+  ) async {
+    var openedSettings = false;
+    final recorder = _MobileRecorder();
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      platform: TargetPlatform.iOS,
+      mobile: recorder,
+      permission: () async => PermissionStatus.denied,
+      openSettings: () async {
+        openedSettings = true;
+        return true;
+      },
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    for (var press = 0; press < 2; press++) {
+      final pointer = await tester.startGesture(
+        tester.getCenter(find.byKey(_mobileButton)),
+      );
+      await _flushIo(tester);
+      await pointer.up();
+      await _flushIo(tester);
+    }
+    expect(
+      openedSettings,
+      isFalse,
+      reason: 'Only a refusal the app cannot re-prompt for sends the user out',
+    );
+    expect(recorder.opens, 0);
+    expect(
+      issues,
+      ['permission'],
+      reason:
+          'Re-requesting an already refused permission shows no sheet, so '
+          'a second press would only repeat the same toast',
+    );
+    // Coming back from another app is the retry that can see a new grant.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    final pointer = await tester.startGesture(
+      tester.getCenter(find.byKey(_mobileButton)),
+    );
+    await _flushIo(tester);
+    expect(issues, ['permission', 'permission'], reason: 'The retry re-asks');
+    await pointer.up();
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('the desktop composer never claims the mobile capture session', (
+    tester,
+  ) async {
+    final session = _CaptureSession();
+    final recorder = _DesktopRecorder();
+    final vm = await _openComposer(tester, desktop: recorder, session: session);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    expect(recorder.starts, 1);
+    expect(session.prepared, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    await _dispose(tester, vm);
+  });
+
   testWidgets(
     'waveform safely renders silence, invalid samples, and narrow widths',
     (tester) async {
@@ -521,6 +824,9 @@ Future<_VoiceViewModel> _openComposer(
   _DesktopRecorder? desktop,
   _MobileRecorder? mobile,
   Future<PermissionStatus> Function()? permission,
+  VoiceRecordingAudioSession? session,
+  Future<bool> Function()? openSettings,
+  void Function(String stage, Object? error)? onIssue,
 }) async {
   final vm = _VoiceViewModel();
   await tester.pumpWidget(
@@ -550,6 +856,9 @@ Future<_VoiceViewModel> _openComposer(
               mobileVoiceRecorderFactory: mobile == null ? null : () => mobile,
               microphonePermissionForTesting:
                   permission ?? () async => PermissionStatus.granted,
+              voiceRecordingSession: session,
+              openAppSettingsForTesting: openSettings,
+              onRecordingIssueForTesting: onIssue,
             ),
           ),
         ),
@@ -610,6 +919,26 @@ Future<void> _dispose(WidgetTester tester, ChatViewModel vm) async {
   await _flushIo(tester);
   await tester.pump(const Duration(seconds: 2));
   vm.dispose();
+}
+
+class _CaptureSession implements VoiceRecordingAudioSession {
+  _CaptureSession({this.failPrepare = false, this.order});
+  final bool failPrepare;
+  final List<String>? order;
+  int prepared = 0, released = 0;
+
+  @override
+  Future<void> prepareForCapture() async {
+    prepared++;
+    order?.add('session.prepare');
+    if (failPrepare) throw StateError('AVAudioSession is unavailable');
+  }
+
+  @override
+  Future<void> releaseAfterCapture() async {
+    released++;
+    order?.add('session.release');
+  }
 }
 
 class _VoiceViewModel extends ChatViewModel {
@@ -693,18 +1022,23 @@ class _DesktopRecorder implements recording.AudioRecorder {
 }
 
 class _MobileRecorder implements FlutterSoundRecorder {
-  _MobileRecorder({this.starting});
+  _MobileRecorder({this.starting, this.order});
   final Future<void>? starting;
+  final List<String>? order;
   final progress = StreamController<RecordingDisposition>.broadcast(sync: true);
   final List<Codec> codecs = [];
   int opens = 0, stops = 0, pauses = 0, resumes = 0;
   bool failOpus = false;
+  bool failEveryCodec = false;
+  bool failOpen = false;
   String? path;
   @override
   Future<FlutterSoundRecorder?> openRecorder({
     dynamic isBGService = false,
   }) async {
     opens++;
+    order?.add('recorder.open');
+    if (failOpen) throw StateError('Recorder refused to open');
     return this;
   }
 
@@ -730,6 +1064,9 @@ class _MobileRecorder implements FlutterSoundRecorder {
     codecs.add(codec);
     path = toFile;
     File(toFile!).writeAsBytesSync(List.filled(128, 1));
+    if (failEveryCodec) {
+      throw StateError('No capture route for ${codec.name}');
+    }
     if (failOpus && codec == Codec.opusOGG) {
       throw StateError('Opus encoder failed');
     }
