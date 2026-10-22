@@ -156,6 +156,37 @@ String folderTitle(Map<String, dynamic> raw) =>
     raw.str('title') ??
     '';
 
+/// Rows for a folder order editor: the folders in their current order with a
+/// null entry standing in for the main chat list at [mainListPosition].
+///
+/// `reorderChatFolders` carries the main list's position separately from the
+/// folder ids, so both the settings page and the tab menu's reorder sheet build
+/// their rows through this one insertion rule.
+List<ChatFolderRecord?> folderOrderEntries(
+  List<ChatFolderRecord> folders,
+  int mainListPosition,
+) {
+  final entries = <ChatFolderRecord?>[...folders];
+  entries.insert(mainListPosition.clamp(0, entries.length), null);
+  return entries;
+}
+
+/// Applies a reorder-list move to [entries] and reports the folder order and
+/// main-list position to send to `reorderChatFolders`.
+({List<ChatFolderRecord> folders, int mainChatListPosition})
+reorderFolderEntries(
+  List<ChatFolderRecord?> entries,
+  int oldIndex,
+  int newIndex,
+) {
+  final ordered = [...entries];
+  ordered.insert(newIndex, ordered.removeAt(oldIndex));
+  return (
+    folders: ordered.whereType<ChatFolderRecord>().toList(),
+    mainChatListPosition: ordered.indexWhere((folder) => folder == null),
+  );
+}
+
 class ChatFolderService {
   ChatFolderService({ChatFolderQuery? query})
     : _query = query ?? TdClient.shared.query;

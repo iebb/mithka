@@ -83,8 +83,9 @@ class ChatListViewModel extends ChangeNotifier {
   ChatListViewModel({
     @visibleForTesting this._queryForTesting,
     @visibleForTesting this._membershipForTesting,
+    @visibleForTesting TdClient? clientForTesting,
     this.accountSlot,
-  });
+  }) : _client = clientForTesting ?? TdClient.shared;
 
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
@@ -219,7 +220,7 @@ class ChatListViewModel extends ChangeNotifier {
   final List<_CommunityLookup> _communityLookupQueue = [];
   int _communityLookupsInFlight = 0;
 
-  final TdClient _client = TdClient.shared;
+  final TdClient _client;
   StreamSubscription? _sub;
   bool _listening = false;
   bool _disposed = false;
@@ -242,6 +243,34 @@ class ChatListViewModel extends ChangeNotifier {
   static const _initialPageSize = 36;
   static const _backgroundHydrateLimit = 60;
   static const _backgroundPrefetchPasses = 1;
+
+  /// A folder read action has no pagination cursor, so it asks for one large
+  /// page rather than the list's scroll-sized one.
+  static const _folderReadLimit = 1000;
+
+  /// Ceiling for the page a bulk read grows to. `getChats` answers from the
+  /// beginning of the list only, so covering the tail means asking for the
+  /// whole list; a list longer than this would stall the drain between two
+  /// requests, which is worse than the read stopping short. Every realistic
+  /// list fits well inside it.
+  static const _folderReadMaxLimit = 100000;
+
+  /// How many folder chats are read back at once. A folder can hold a
+  /// thousand chats and this runs against a live queue, so the reads go out in
+  /// bounded batches instead of one thousand requests at the same instant.
+  static const _folderReadBatch = 16;
+
+  /// Absolute bound on `loadChats` passes in a bulk folder read. The drain
+  /// normally ends earlier: at TDLib's 404, once the reported total is in
+  /// hand, or as soon as a load adds nothing. `loadChats` may load less than
+  /// the requested limit without being done, so only its 404 proves the list
+  /// is exhausted; this cap just keeps a pathological backend bounded.
+  static const _folderLoadMaxPasses = 256;
+
+  /// Bumped by every bulk read and by [dispose]. A run whose generation no
+  /// longer matches stops before its next request, so a newer action (or a
+  /// disposed list) can never be overtaken by an older one still in flight.
+  int _bulkReadGeneration = 0;
 
   void onAppear() {
     if (_disposed || _listening) return;
@@ -341,6 +370,8 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _listening = false;
+    // Also strands any bulk read whose requests are still in flight.
+    _bulkReadGeneration++;
     _sub?.cancel();
     _sub = null;
     _resortTimer?.cancel();
@@ -815,6 +846,327 @@ class ChatListViewModel extends ChangeNotifier {
       _markRead(chat, refresh: false);
     }
     _refreshBadges();
+  }
+
+  /// Marks every unread chat inside [folderId] read.
+  ///
+  /// A folder that is not the selected one has no summaries in memory, so the
+  /// folder is enumerated through TDLib and each chat's read state and newest
+  /// message id are read back with `getChat`. Read state is not a sort key, so
+  /// the list owes the badges a refresh and nothing else.
+  Future<void> markFolderRead(int folderId) => _markChatListsRead([
+    {'@type': 'chatListFolder', 'chat_folder_id': folderId},
+  ]);
+
+  /// Marks every unread chat of the account read, independent of the folder
+  /// that happens to be selected.
+  ///
+  /// The currently selected list is only a projection: a chat outside it (or
+  /// one this list never loaded) is invisible to [chats] and [archived], so the
+  /// main list and the archive are enumerated through TDLib instead of walked
+  /// in memory.
+  Future<void> markAllChatsRead() => _markChatListsRead(const [
+    {'@type': 'chatListMain'},
+    {'@type': 'chatListArchive'},
+  ]);
+
+  /// A bulk read spans dozens of round trips, so it is pinned to the client it
+  /// started on.
+  ///
+  /// Chat and message ids are account-scoped and `_chatListQuery` resolves the
+  /// foreground client on every call, so an account switch or a disposal
+  /// between two requests used to send the old account's ids as read receipts
+  /// through the replacement account.
+  ({int? clientId, int? slot, ChatListQuery query}) _pinWriteOwner() {
+    final queryForTesting = _queryForTesting;
+    final slot = accountSlot;
+    if (queryForTesting != null) {
+      return (clientId: null, slot: slot, query: queryForTesting);
+    }
+    final client = _client;
+    if (slot == null) {
+      final clientId = client.activeClientId;
+      return (
+        clientId: clientId,
+        slot: null,
+        query: (request) => client.queryTo(request, clientId),
+      );
+    }
+    return (
+      clientId: client.clientId(slot),
+      slot: slot,
+      query: (request) => client.queryForSlot(request, slot),
+    );
+  }
+
+  /// Whether [owner] is still the account (and the client) this run may write
+  /// to: a foreground-pinned run dies with the active client, and a
+  /// slot-pinned one with that slot's client.
+  bool _writeOwnerIsLive(
+    ({int? clientId, int? slot, ChatListQuery query}) owner,
+  ) {
+    if (_disposed) return false;
+    if (_queryForTesting != null) return true;
+    final clientId = owner.clientId;
+    if (clientId == null) return false;
+    final slot = owner.slot;
+    // A foreground-pinned run follows the active client; a slot-pinned one
+    // follows its own slot, because a picker's writes are meant for the source
+    // account even while another slot is in front.
+    return slot == null
+        ? _client.activeClientId == clientId
+        : _client.clientId(slot) == clientId;
+  }
+
+  Future<void> _markChatListsRead(List<Map<String, dynamic>> lists) async {
+    if (_disposed) return;
+    final owner = _pinWriteOwner();
+    final generation = ++_bulkReadGeneration;
+    bool live() =>
+        generation == _bulkReadGeneration && _writeOwnerIsLive(owner);
+    if (!live()) return;
+
+    final ids = <int>[];
+    final seen = <int>{};
+    // `getChats` answers only chats whose position TDLib already loaded, so
+    // the coverage question is "how many of the list's positions are loaded".
+    // `loadChats` may load less than the requested limit without being done —
+    // its 404 is the only proof of exhaustion — so loading and reading
+    // alternate: load, read the whole loaded prefix, and go back for more
+    // until the prefix reaches the reported total, a load adds nothing, or
+    // TDLib says 404. A short read of a still-growing list means "not loaded
+    // yet", never "end of list".
+    for (final list in lists) {
+      final before = ids.length;
+      var limit = _folderReadLimit;
+      var firstPage = true;
+      // This list's coverage, when the backend reports it: how many chats it
+      // holds and how many of them are loaded. TDLib's own `loadChats` and
+      // `getChats` do report `total_count`, so the read page can be sized
+      // exactly; unknown counts fall back to growing the page.
+      var loadedTotal = 0;
+      var loadedPrefix = 0;
+      // Loading is over: TDLib answered 404 (nothing left to load), reported
+      // nothing unloaded, or the request failed. Only the first two prove the
+      // list ended; after a failure the read still covers whatever is loaded,
+      // and the badges that stay behind show what did not get read.
+      var exhausted = false;
+      var noProgressRounds = 0;
+      while (true) {
+        // ---- Load positions until the loaded prefix should cover the page
+        // we are about to read. `loadChats` may load fewer than it was asked
+        // for without reaching the end, so this keeps going until TDLib's 404
+        // or its own "nothing left" report; [_folderLoadMaxPasses] bounds one
+        // round of that, and another round comes around if the read shows
+        // more is still unloaded.
+        if (!exhausted) {
+          var budget = _folderLoadMaxPasses;
+          while (budget-- > 0) {
+            if (!live()) return;
+            final Map<String, dynamic> loaded;
+            try {
+              loaded = await owner.query({
+                '@type': 'loadChats',
+                'chat_list': list,
+                'limit': _folderReadLimit,
+              });
+            } catch (_) {
+              exhausted = true;
+              break;
+            }
+            if (!live()) return;
+            // Counts, when the backend reports them: the list's goal and how
+            // much of it is loaded now. TDLib's own `loadChats` answers a
+            // plain `ok`, so in production these stay unknown and only the
+            // 404 below ends the drain.
+            final total = loaded.integer('total_count');
+            if (total != null && total > loadedTotal) loadedTotal = total;
+            final prefix =
+                loaded.integer('loaded_count') ??
+                loaded.integer('covered_count');
+            if (prefix != null) loadedPrefix = prefix;
+            if (loaded.integer('unloaded_count') == 0) {
+              exhausted = true;
+              break;
+            }
+            // Enough is loaded for the page about to be read, or the whole
+            // list is: no reason to pay another load.
+            if (loadedPrefix > 0 && loadedPrefix - before >= limit) break;
+            if (loadedTotal > 0 && loadedPrefix >= loadedTotal) break;
+          }
+        }
+
+        // ---- Read the loaded prefix whole. `getChats` answers from the
+        // beginning of the list and caps at the requested limit, so the page
+        // grows to the reported total once that is known.
+        if (loadedTotal > limit && loadedTotal <= _folderReadMaxLimit) {
+          limit = loadedTotal;
+        }
+        final page = await _readChatListPage(
+          list,
+          owner.query,
+          limit,
+          live,
+          rethrowFirstFailure: firstPage,
+        );
+        // Null means the read did not produce a page: either the run lost its
+        // account mid-request (stop silently) or a failure struck after the
+        // first page (keep the chats already found).
+        if (page == null) {
+          if (!live()) return;
+          break;
+        }
+        firstPage = false;
+        final pageCovered = page.integer('total_count') ?? 0;
+        if (pageCovered > loadedTotal) loadedTotal = pageCovered;
+        final pageIds = page.int64Array('chat_ids') ?? const <int>[];
+        var added = 0;
+        for (final id in pageIds) {
+          if (seen.add(id)) {
+            ids.add(id);
+            added++;
+          }
+        }
+        final collected = ids.length - before;
+
+        if (loadedTotal > 0) {
+          if (collected >= loadedTotal || collected >= _folderReadMaxLimit) {
+            break;
+          }
+          // The page that first reported the total may have been capped
+          // below it; a bigger read is cheaper than another load round.
+          if (loadedTotal > limit && loadedTotal <= _folderReadMaxLimit) {
+            noProgressRounds = added == 0 ? noProgressRounds + 1 : 0;
+            if (noProgressRounds >= 2) break;
+            continue;
+          }
+          // Loading is over: read what is in hand instead of spinning.
+          // Otherwise another drain round goes looking for the rest.
+          if (exhausted) break;
+          noProgressRounds = added == 0 ? noProgressRounds + 1 : 0;
+          if (noProgressRounds >= 2) break;
+          continue;
+        }
+
+        // No total was ever reported: a short page read after the list was
+        // proven exhausted (TDLib's 404) is the list's own end; a short page
+        // while loading is still in flight may simply have outrun positions
+        // that are still arriving, so it gets another round. One that filled
+        // its limit may have more behind it.
+        if (pageIds.length < limit) {
+          if (exhausted) break;
+          noProgressRounds = added == 0 ? noProgressRounds + 1 : 0;
+          if (noProgressRounds >= 2) break;
+          continue;
+        }
+        if (limit >= _folderReadMaxLimit) break;
+        limit = limit * 2 > _folderReadMaxLimit
+            ? _folderReadMaxLimit
+            : limit * 2;
+      }
+    }
+
+    final raws = <Map<String, dynamic>?>[];
+    for (var start = 0; start < ids.length; start += _folderReadBatch) {
+      final end = start + _folderReadBatch < ids.length
+          ? start + _folderReadBatch
+          : ids.length;
+      final batch = await Future.wait([
+        for (var index = start; index < end; index++)
+          _getChatOrNull(ids[index], owner.query),
+      ]);
+      if (!live()) return;
+      raws.addAll(batch);
+    }
+    final reads = <int, int>{};
+    final marked = <int>[];
+    for (var index = 0; index < ids.length; index++) {
+      final raw = raws[index];
+      if (raw == null) continue;
+      final unread = raw.integer('unread_count') ?? 0;
+      final isMarkedUnread = raw.boolean('is_marked_as_unread') ?? false;
+      if (unread <= 0 && !isMarkedUnread) continue;
+      final id = ids[index];
+      final messageId = raw.obj('last_message')?.int64('id') ?? 0;
+      if (unread > 0 && messageId > 0) reads[id] = messageId;
+      if (isMarkedUnread) marked.add(id);
+      _mutate(id, (chat) {
+        chat.unreadCount = 0;
+        chat.isMarkedUnread = false;
+        if (messageId > chat.lastReadInboxMessageId) {
+          chat.lastReadInboxMessageId = messageId;
+        }
+      });
+    }
+    for (final entry in reads.entries) {
+      // Re-checked before EVERY write: a run that lost its account must not
+      // send this chat's id anywhere, not even once.
+      if (!live()) return;
+      try {
+        await owner.query({
+          '@type': 'viewMessages',
+          'chat_id': entry.key,
+          'message_ids': [entry.value],
+          'force_read': true,
+        });
+      } catch (_) {
+        // One failed chat must not leave the rest of the folder unread.
+      }
+    }
+    for (final id in marked) {
+      if (!live()) return;
+      try {
+        await owner.query({
+          '@type': 'toggleChatIsMarkedAsUnread',
+          'chat_id': id,
+          'is_marked_as_unread': false,
+        });
+      } catch (_) {
+        // The unread messages above were still read.
+      }
+    }
+    if (!live()) return;
+    _refreshBadges();
+  }
+
+  /// Reads one page of a chat list from its beginning.
+  ///
+  /// Null means the run stopped: either its generation or account is gone
+  /// (the caller is already returning), or a failure struck after the first
+  /// page, which keeps the chats already found instead of aborting the whole
+  /// action. [rethrowFirstFailure] makes the very first failure the caller's
+  /// to report, exactly as before.
+  Future<Map<String, dynamic>?> _readChatListPage(
+    Map<String, dynamic> list,
+    ChatListQuery query,
+    int limit,
+    bool Function() live, {
+    required bool rethrowFirstFailure,
+  }) async {
+    if (!live()) return null;
+    final Map<String, dynamic> response;
+    try {
+      response = await query({
+        '@type': 'getChats',
+        'chat_list': list,
+        'limit': limit,
+      });
+    } catch (_) {
+      if (rethrowFirstFailure) rethrow;
+      return null;
+    }
+    return live() ? response : null;
+  }
+
+  Future<Map<String, dynamic>?> _getChatOrNull(
+    int chatId,
+    ChatListQuery query,
+  ) async {
+    try {
+      return await query({'@type': 'getChat', 'chat_id': chatId});
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _forceReadChat(ChatSummary chat) async {

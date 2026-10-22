@@ -43,7 +43,6 @@ void main() {
     for (final key in const [
       'chat-behavior-enter-to-send',
       'chat-behavior-open-at-latest',
-      'chat-behavior-context-pane',
       'chat-behavior-saved-messages-identity',
       'chat-behavior-preserve-sender',
       'chat-behavior-forward-rich-markdown',
@@ -71,9 +70,15 @@ void main() {
       find.text(AppStrings.tForLocale('en', AppStringKeys.generalStorage)),
       findsNothing,
     );
+    // The group context pane is a per-session toggle in the chat header now,
+    // so the behavior page no longer carries a row for it.
+    expect(
+      find.byKey(const ValueKey('chat-behavior-context-pane')),
+      findsNothing,
+    );
     expect(
       find.byType(SettingsLeadingIcon),
-      findsNWidgets(12),
+      findsNWidgets(11),
       reason: 'detail rows use the shared accent line-icon treatment',
     );
     expect(
@@ -97,21 +102,19 @@ void main() {
     await tester.pump();
     expect(theme.openChatsAtLatest, isTrue);
 
+    // The controller still carries the preference saved by older versions;
+    // it is simply no longer surfaced as a settings row or applied to the
+    // shell. Reading and writing it must not throw or write anything new.
     expect(
       theme.hideChatContextPane,
       isFalse,
-      reason:
-          'the group context pane stays opt-out so nothing changes for '
-          'the layouts that already rely on it',
+      reason: 'an older install default reads back as false',
     );
-    await tester.tap(find.byKey(const ValueKey('chat-behavior-context-pane')));
-    await tester.pump();
+    theme.hideChatContextPane = true;
     expect(theme.hideChatContextPane, isTrue);
     expect(prefs.getBool('hideChatContextPane'), isTrue);
-
-    final restoredPaneTheme = ThemeController(prefs);
-    addTearDown(restoredPaneTheme.dispose);
-    expect(restoredPaneTheme.hideChatContextPane, isTrue);
+    theme.hideChatContextPane = false;
+    expect(prefs.getBool('hideChatContextPane'), isFalse);
 
     await tester.tap(
       find.byKey(const ValueKey('chat-behavior-saved-messages-identity')),

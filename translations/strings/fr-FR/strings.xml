@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">Impossible de supprimer le lien d'invitation : {value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">Impossible de charger les dossiers de discussion : {value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">Impossible de charger les discussions partageables : {value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">Impossible de marquer toutes les discussions comme lues : {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Impossible de réorganiser les dossiers : {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Impossible de mettre à jour le dossier : {value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">Supprimer ce lien d'invitation ?</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">Les noms des liens d'invitation peuvent contenir jusqu'à 32 caractères</string>
     <string name="chatFolderManagementInviteLinksRow">Liens d'invitation</string>
     <string name="chatFolderManagementKeepChats">Gardez les discussions</string>
+    <string name="chatFolderManagementMarkAllRead">Tout marquer comme lu</string>
     <string name="chatFolderManagementNewFolder">Nouveau dossier</string>
     <string name="chatFolderManagementNewInviteLink">Nouveau lien d'invitation</string>
     <string name="chatFolderManagementNoInviteLinksYet">Aucun lien d'invitation pour l'instant</string>
     <string name="chatFolderManagementOptionalLinkName">Nom du lien facultatif</string>
     <string name="chatFolderManagementRecommended">Recommandés</string>
+    <string name="chatFolderManagementReorderFolders">Réorganiser les dossiers</string>
+    <string name="chatFolderManagementReorderHint">Faites glisser les lignes pour modifier l’ordre des dossiers.</string>
     <string name="chatFolderManagementSectionExclude">Exclure</string>
     <string name="chatFolderManagementSectionIcon">Icône</string>
     <string name="chatFolderManagementSectionInclude">Inclure</string>

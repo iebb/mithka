@@ -178,6 +178,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('desktopComposerMediaAction')));
     await tester.pump();
 
+    // The popover shares the panel body with a docked panel, but it is an
+    // overlay card anchored above the bar: it keeps the recessed surface with
+    // its own outline and shadow instead of continuing the bar.
+    expect(
+      _popoverSurfaceColor(tester, const ValueKey('desktopMediaPopover')),
+      AppColors.light.panelBackground,
+    );
+
     final popover = find.byKey(const ValueKey('desktopMediaPopover'));
     expect(popover, findsOneWidget);
 
@@ -529,6 +537,19 @@ void main() {
     );
     await _disposeDesktopComposer(tester, vm);
   });
+}
+
+/// The colour a keyed [Container] paints, walking decoration or `color`.
+Color? _popoverSurfaceColor(WidgetTester tester, Key key) {
+  final found = find.byKey(key);
+  if (found.evaluate().isEmpty) return null;
+  final widget = found.evaluate().first.widget;
+  if (widget is Container) {
+    final decoration = widget.decoration;
+    if (decoration is BoxDecoration) return decoration.color;
+    return widget.color;
+  }
+  return null;
 }
 
 Future<void> _disposeDesktopComposer(

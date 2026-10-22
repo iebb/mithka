@@ -196,6 +196,43 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  // The pinned-message bar floats over the transcript; it is painted on the
+  // composer's own surface colour so it reads as one family with the docked
+  // panels, without a translucent card fill or a drop shadow.
+  testWidgets('group pinned bar uses the solid composer surface', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 820);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await _pumpMainShell(tester);
+      tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
+        ChatListSelection.fromChat(_chat()),
+      );
+      await _settle(tester);
+
+      expect(find.text('Pinned General'), findsOneWidget);
+      final container = tester.widget<Container>(
+        find.byKey(const ValueKey('chatPinnedBar')),
+      );
+      final decoration = container.decoration! as BoxDecoration;
+      expect(decoration.color, AppColors.light.inputBarBackground);
+      expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
+      expect(decoration.borderRadius, BorderRadius.circular(AppRadius.card));
+      expect(
+        tester.getSize(find.byKey(const ValueKey('chatPinnedBar'))).height,
+        48,
+      );
+      expect(tester.takeException(), isNull);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }
 
 ChatSummary _chat() => ChatSummary(

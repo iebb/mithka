@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">초대 링크를 삭제할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">채팅 폴더를 로드할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">공유 가능한 채팅을 로드할 수 없습니다: {value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">모든 채팅을 읽음으로 표시할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">폴더를 재정렬할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">폴더를 업데이트할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">이 초대 링크를 삭제하시겠습니까?</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">초대 링크 이름은 최대 32자까지 가능합니다.</string>
     <string name="chatFolderManagementInviteLinksRow">초대 링크</string>
     <string name="chatFolderManagementKeepChats">채팅을 계속하세요</string>
+    <string name="chatFolderManagementMarkAllRead">모두 읽음으로 표시</string>
     <string name="chatFolderManagementNewFolder">새 폴더</string>
     <string name="chatFolderManagementNewInviteLink">새 초대 링크</string>
     <string name="chatFolderManagementNoInviteLinksYet">아직 초대 링크가 없습니다.</string>
     <string name="chatFolderManagementOptionalLinkName">선택적 링크 이름</string>
     <string name="chatFolderManagementRecommended">추천</string>
+    <string name="chatFolderManagementReorderFolders">폴더 순서 변경</string>
+    <string name="chatFolderManagementReorderHint">행을 드래그하여 폴더 순서를 변경하세요.</string>
     <string name="chatFolderManagementSectionExclude">제외</string>
     <string name="chatFolderManagementSectionIcon">아이콘</string>
     <string name="chatFolderManagementSectionInclude">포함</string>

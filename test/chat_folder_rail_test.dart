@@ -215,11 +215,11 @@ void main() {
     await mouse.removePointer();
   });
 
-  testWidgets('right click edits only custom folders without selecting them', (
+  testWidgets('right click opens the menu only on custom folders', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-    int? edited;
+    int? menuFolder;
     var selections = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -235,7 +235,7 @@ void main() {
               ],
               selectedFolderId: null,
               onSelect: (_) => selections++,
-              onEdit: (folder) => edited = folder.folderId,
+              onMenu: (folder) => menuFolder = folder.folderId,
             ),
           ),
         ),
@@ -246,7 +246,7 @@ void main() {
       buttons: kSecondaryMouseButton,
     );
     await tester.pump();
-    expect(find.text('Edit folder'), findsNothing);
+    expect(menuFolder, isNull);
     final mouse = await tester.createGesture(
       kind: PointerDeviceKind.mouse,
       buttons: kSecondaryMouseButton,
@@ -265,13 +265,7 @@ void main() {
     await mouse.down(target);
     await mouse.up();
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('side-folder-name-tooltip-7')),
-      findsNothing,
-    );
-    await tester.tap(find.text('Edit folder'));
-    await tester.pumpAndSettle();
-    expect(edited, 7);
+    expect(menuFolder, 7);
     expect(selections, 0);
     await mouse.removePointer();
     await tester.pumpWidget(const SizedBox.shrink());

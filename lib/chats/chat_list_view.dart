@@ -27,6 +27,7 @@ import '../app/horizontal_safe_viewport.dart';
 import '../app/ipad_window_chrome.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
+import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
@@ -36,7 +37,6 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/app_press_ripple.dart';
 import '../components/chat_folder_icons.dart';
-import '../components/desktop_row_actions.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -57,6 +57,7 @@ import '../theme/theme_controller.dart';
 import 'archived_chats_view.dart';
 import 'chat_delete_dialog.dart';
 import 'chat_delete_policy.dart';
+import 'chat_folder_tab_menu.dart';
 import 'chat_folder_tag_controller.dart';
 import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
@@ -139,7 +140,7 @@ class ChatFolderRail extends StatelessWidget {
     required this.selectedFolderId,
     this.onSelect,
     this.keyForFolder,
-    this.onEdit,
+    this.onMenu,
     this.highlights = const {},
     this.showUnreadBadges = false,
     this.badgeOverflowMode = UnreadBadgeOverflowMode.capped,
@@ -148,7 +149,10 @@ class ChatFolderRail extends StatelessWidget {
   final int? selectedFolderId;
   final ValueChanged<ChatFilterOption>? onSelect;
   final Key? Function(int? folderId)? keyForFolder;
-  final ValueChanged<ChatFilterOption>? onEdit;
+
+  /// Opens the folder's command sheet. A secondary click on the row reaches it
+  /// on desktop; a primary click still selects the folder.
+  final ValueChanged<ChatFilterOption>? onMenu;
 
   /// Live page-transition highlights; omitted for a settled folder rail.
   final Map<int?, double> highlights;
@@ -172,17 +176,11 @@ class ChatFolderRail extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       children: [
         for (final filter in filters)
-          DesktopRowActionRegion(
-            actions: filter.isAll || onEdit == null
-                ? const []
-                : [
-                    DesktopRowAction(
-                      id: 'edit-folder',
-                      label: AppStringKeys.chatFolderManagementEditFolder,
-                      icon: HeroAppIcons.pen,
-                      onInvoke: () => onEdit!(filter),
-                    ),
-                  ],
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapDown: onMenu == null || !isDesktopTargetPlatform()
+                ? null
+                : (_) => onMenu!(filter),
             child: _FolderNameHint(
               key: ValueKey((filter.folderId, filter.title.l10n(context))),
               message: filter.title.l10n(context),
@@ -1659,7 +1657,48 @@ class _ChatListViewState extends State<ChatListView>
     await openLink(context, value);
   }
 
-  Future<void> _editFolderAppearance(ChatFilterOption filter) async {
+  /// Opens the folder's command sheet.
+  ///
+  /// The "All chats" tab has no folder to edit or extend, so it offers only the
+  /// list-wide read and order commands.
+  Future<void> _showFolderMenu(ChatFilterOption filter) async {
+    final folderId = filter.folderId;
+    await showChatFolderActionSheet(
+      context: context,
+      title: filter.title.l10n(context),
+      actions: [
+        if (folderId != null)
+          ChatFolderMenuAction(
+            key: 'edit',
+            label: AppStrings.t(AppStringKeys.chatFolderManagementEditFolder),
+            icon: HeroAppIcons.pen,
+            onSelected: () => unawaited(_editFolder(filter)),
+          ),
+        if (folderId != null)
+          ChatFolderMenuAction(
+            key: 'add-chat',
+            label: AppStrings.t(AppStringKeys.chatFolderManagementAddChat),
+            icon: HeroAppIcons.plus,
+            onSelected: () => unawaited(_addChatToFolder(filter)),
+          ),
+        ChatFolderMenuAction(
+          key: 'mark-read',
+          label: AppStrings.t(AppStringKeys.chatFolderManagementMarkAllRead),
+          icon: HeroAppIcons.check,
+          onSelected: () => unawaited(_markFolderRead(filter)),
+        ),
+        ChatFolderMenuAction(
+          key: 'reorder',
+          label: AppStrings.t(AppStringKeys.chatFolderManagementReorderFolders),
+          icon: HeroAppIcons.bars,
+          onSelected: () => unawaited(_reorderFolders()),
+        ),
+      ],
+    );
+  }
+
+  /// Opens the full folder editor and writes the returned draft back.
+  Future<void> _editFolder(ChatFilterOption filter) async {
     final id = filter.folderId;
     if (id == null) return;
     final client = TdClient.shared;
@@ -1671,6 +1710,8 @@ class _ChatListViewState extends State<ChatListView>
       final raw = await service.getFolder(id);
       if (!mounted || client.activeClientId != clientId) return;
       final original = ChatFolderDraft.fromRaw(raw);
+      final tagsEnabled =
+          context.read<ChatFolderTagController?>()?.enabled ?? false;
       final edited = await Navigator.of(context, rootNavigator: true)
           .push<ChatFolderDraft>(
             AppPageRoute(
@@ -1678,18 +1719,63 @@ class _ChatListViewState extends State<ChatListView>
                 initial: original,
                 folderId: id,
                 service: service,
-                tagsEnabled: false,
-                appearanceOnly: true,
+                tagsEnabled: tagsEnabled,
               ),
             ),
           );
       if (edited == null || !mounted || client.activeClientId != clientId) {
         return;
       }
-      await service.editAppearance(
+      await service.edit(id, edited);
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTUpdateFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
+    }
+  }
+
+  /// Adds one picked chat to the folder's included rules.
+  ///
+  /// The folder is re-read after the picker closes so the merge keeps rules
+  /// that changed while the picker was open, and a chat that was explicitly
+  /// excluded stops being excluded once it is included.
+  Future<void> _addChatToFolder(ChatFilterOption filter) async {
+    final id = filter.folderId;
+    if (id == null) return;
+    final client = TdClient.shared;
+    final clientId = client.activeClientId;
+    final accountSlot = client.activeSlot;
+    final service = ChatFolderService(
+      query: (request) => client.queryTo(request, clientId),
+    );
+    try {
+      final picked = await Navigator.of(context).push<ChatSummary>(
+        AppPageRoute(
+          pageBuilder: (_, _, _) => ChatPickerView(
+            title: AppStrings.t(AppStringKeys.chatFolderManagementAddChat),
+            accountSlot: accountSlot,
+          ),
+        ),
+      );
+      if (picked == null || !mounted || client.activeClientId != clientId) {
+        return;
+      }
+      final raw = await service.getFolder(id);
+      if (!mounted || client.activeClientId != clientId) return;
+      final draft = ChatFolderDraft.fromRaw(raw);
+      final excluded = {...draft.excludedChatIds}..remove(picked.id);
+      await service.edit(
         id,
-        title: edited.title == original.title ? null : edited.title,
-        iconName: edited.iconName == original.iconName ? null : edited.iconName,
+        draft.copyWith(
+          includedChatIds: {...draft.includedChatIds, picked.id},
+          excludedChatIds: excluded,
+        ),
       );
     } catch (error) {
       if (mounted) {
@@ -1697,6 +1783,78 @@ class _ChatListViewState extends State<ChatListView>
           context,
           AppStrings.t(
             AppStringKeys.chatFolderManagementCouldnTUpdateFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _markFolderRead(ChatFilterOption filter) async {
+    final id = filter.folderId;
+    try {
+      if (id == null) {
+        // "All chats" is the whole account, not whichever folder happens to be
+        // selected: the main list is enumerated through TDLib so chats this
+        // view never loaded are cleared too.
+        await _model.markAllChatsRead();
+      } else {
+        await _model.markFolderRead(id);
+      }
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTMarkAllReadValue1,
+            {'value1': error},
+          ),
+        );
+      }
+    }
+  }
+
+  /// Opens the order sheet with every folder the account currently has.
+  Future<void> _reorderFolders() async {
+    final client = TdClient.shared;
+    final clientId = client.activeClientId;
+    final service = ChatFolderService(
+      query: (request) => client.queryTo(request, clientId),
+    );
+    final update = client.latestChatFoldersUpdate;
+    try {
+      var folders = await service.load(update);
+      if (!mounted || client.activeClientId != clientId) return;
+      if (folders.isEmpty) {
+        // The bootstrap update may not be in the client cache yet; the tab
+        // strip already knows the ids and names, and reorder only needs those.
+        folders = [
+          for (final option in _model.filters)
+            if (option.folderId case final int folderId)
+              ChatFolderRecord(
+                id: folderId,
+                title: option.title,
+                raw: const <String, dynamic>{},
+                hasInviteLinks: false,
+              ),
+        ];
+      }
+      if (folders.isEmpty) return;
+      await showChatFolderReorderSheet(
+        context: context,
+        folders: folders,
+        mainListPosition: update?.integer('main_chat_list_position') ?? 0,
+        service: service,
+        // The sheet outlives this surface; a save after the account changed
+        // would write the old folder order into the replacement account.
+        canSave: () => mounted && client.activeClientId == clientId,
+      );
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTLoadChatFoldersValue1,
             {'value1': error},
           ),
         );
@@ -2471,7 +2629,7 @@ class _ChatListViewState extends State<ChatListView>
           ),
       },
       onSelect: _selectFilter,
-      onEdit: _editFolderAppearance,
+      onMenu: _showFolderMenu,
       keyForFolder: (id) => _sideFolderKeys.putIfAbsent(id, GlobalKey.new),
     ),
   );
@@ -2513,6 +2671,7 @@ class _ChatListViewState extends State<ChatListView>
             key: key,
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectFilter(filter),
+            onLongPress: () => _showFolderMenu(filter),
             child: SizedBox(
               height: tabHeight,
               child: AnimatedBuilder(

@@ -12,7 +12,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -100,7 +100,7 @@ import 'video_note_recorder_view.dart';
 import 'voice_note_preview_view.dart';
 import 'voice_recording_clock.dart';
 
-enum _Panel { none, function, emoji, sticker, voice }
+enum _Panel { none, function, emoji, sticker, voice, format }
 
 /// The kind of media the unified composer panel is showing. Both
 /// `_Panel.emoji` and `_Panel.sticker` render the same unified media panel;
@@ -464,6 +464,18 @@ bool shouldRebuildComposerForVmUpdate({
   required bool hasFocus,
 }) => localChanged || (revisionChanged && !hasFocus);
 
+/// Whether the attachment strip offers the camera entry beside the image one.
+///
+/// The camera entry (which opens the in-app camera, and whose capture is sent
+/// as a photo) is rendered on Android and iOS only; a desktop or web composer
+/// shows the screenshot entry instead. Exposed as a pure predicate so a widget
+/// test can pin the strip order on any host without overriding the target
+/// platform.
+bool composerShowsCameraIcon([TargetPlatform? platform]) {
+  final target = platform ?? defaultTargetPlatform;
+  return target == TargetPlatform.android || target == TargetPlatform.iOS;
+}
+
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({
     super.key,
@@ -494,6 +506,7 @@ class ChatInputBar extends StatefulWidget {
     this.desktopComposerHeightLoader,
     this.desktopComposerHeightSaver,
     this.botPlatformForTesting,
+    this.phoneStripForTesting = false,
   });
   final ChatViewModel vm;
   final FutureOr<void> Function(bool isVideo) onStartCall;
@@ -540,6 +553,12 @@ class ChatInputBar extends StatefulWidget {
   @visibleForTesting
   final BotPlatformService? botPlatformForTesting;
 
+  /// Renders the phone attachment strip (which includes the camera entry)
+  /// even when the widget test runs on a desktop host. Defaults to the
+  /// [defaultTargetPlatform] behaviour.
+  @visibleForTesting
+  final bool phoneStripForTesting;
+
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
 }
@@ -581,6 +600,21 @@ class _ChatInputBarState extends State<ChatInputBar>
   int _syncedComposerRevision = -1;
   int _syncedComposerFocusTick = 0;
   _Panel _panel = _Panel.none;
+
+  /// Selection the docked format panel formats, captured when the panel opens.
+  ///
+  /// Opening a panel unfocuses the field, which can collapse the live
+  /// selection; the panel keeps this range together with the draft content and
+  /// account it belonged to, and drops it as soon as any of those move.
+  _ComposerFormatCapture? _formatRange;
+
+  /// Monotonic stamp identifying the field's current text.
+  ///
+  /// Bumped on every change notification the field emits, so two drafts with
+  /// the same length still compare as different text.
+  int _composerTextRevision = 0;
+  String _lastComposerText = '';
+
   _MediaKind _mediaKind = _MediaKind.emoji;
   String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
   int? _stickerPack; // active sticker pack id
@@ -684,6 +718,13 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   bool get _canSendVoiceNotes => vm.canSendMessages && vm.canSendVoiceNotes;
 
+  /// The one surface colour every panel docked to the composer bar paints, so
+  /// a panel reads as a continuation of the bar instead of a recessed block.
+  /// The bar itself paints `AppColors.inputBarBackground`; the darker
+  /// `AppColors.panelBackground` is for surfaces that sit on an opaque pane
+  /// (settings lists, desk panes), not for anything attached to the composer.
+  Color get _composerDockedSurfaceColor => context.colors.inputBarBackground;
+
   @override
   void initState() {
     super.initState();
@@ -726,6 +767,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (_focus.hasFocus && _panel != _Panel.none) {
         if (_panel == _Panel.voice) _cancelVoiceRecording();
         _panel = _Panel.none;
+        _formatRange = null;
         needsRebuild = true;
         panelChanged = true;
       }
@@ -846,6 +888,13 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   DateTime? _lastTyping;
   void _onTextChanged() {
+    // A selection or entity notification leaves the draft intact and keeps the
+    // captured range valid; only a real text change advances the revision.
+    if (_controller.text != _lastComposerText) {
+      _lastComposerText = _controller.text;
+      _composerTextRevision++;
+      _dropStaleFormatRange();
+    }
     if (_syncingControllerFromVm) return;
     final applyingAiReplyDraft = _applyingAiReplyDraft;
     if (!applyingAiReplyDraft) {
@@ -1256,6 +1305,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       _focusComposerForTranscriptReply();
     }
     final hadText = _hasText;
+    final controllerTextBeforeSync = _controller.text;
     final previousVmState = _syncedVmState;
     _syncedVmState = _renderedVmState;
     final wasAiDraftEligible = _aiDraftEligible;
@@ -1325,6 +1375,11 @@ class _ChatInputBarState extends State<ChatInputBar>
         );
       }
     }
+    if (_controller.text != _lastComposerText) {
+      _lastComposerText = _controller.text;
+      _composerTextRevision++;
+    }
+    _dropStaleFormatRange();
     _hasText = _controller.text.trim().isNotEmpty;
     _aiDraftEligible = isTelegramAiDraftEligible(_controller.text);
     if (_hasText) _quickReplyContextVisible = false;
@@ -1339,6 +1394,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         editingStateChanged ||
         voicePanelWasClosed ||
         hadText != _hasText ||
+        controllerTextBeforeSync != _controller.text ||
         wasAiDraftEligible != _aiDraftEligible ||
         hadQuickReplyContext != _quickReplyContextVisible ||
         previousVmState != _syncedVmState ||
@@ -1710,6 +1766,9 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   void _setPanel(_Panel next) {
     if (_panel == next && !_quickReplyContextVisible) return;
+    if (_panel == _Panel.format && next != _Panel.format) {
+      _formatRange = null;
+    }
     if (_panel == _Panel.voice && next != _Panel.voice) {
       _cancelVoiceRecording();
     }
@@ -3353,6 +3412,138 @@ class _ChatInputBarState extends State<ChatInputBar>
     return 'https://$trimmed';
   }
 
+  /// Opens or closes the docked format panel from the composer's icon strip.
+  ///
+  /// The selection has to be captured before [_toggle] unfocuses the field:
+  /// a focus loss can collapse it, and both the selected-state query and
+  /// `toggleFormat` read the live selection.
+  void _toggleFormatPanel() {
+    if (_panel == _Panel.format) {
+      _formatRange = null;
+      _toggle(_Panel.format);
+      return;
+    }
+    final selection = _controller.selection;
+    final range = composerFormatRangeFor(selection, _controller.text.length);
+    _formatRange = range == null
+        ? null
+        : _captureComposerFormat(range.$1, range.$2);
+    _toggle(_Panel.format);
+    final captured = _formatRange;
+    if (captured != null) {
+      _controller.selection = TextSelection(
+        baseOffset: captured.start,
+        extentOffset: captured.end,
+      );
+    }
+    // The platform can collapse the field's selection once the keyboard
+    // connection closes, which happens right after this unfocus. Restore the
+    // captured range so the cells keep reporting the selection they format.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _panel != _Panel.format) return;
+      final range = _formatRange;
+      if (range == null || _formatRangeIsStale) return;
+      final selection = _controller.selection;
+      if (selection.start == range.start && selection.end == range.end) return;
+      _controller.selection = TextSelection(
+        baseOffset: range.start,
+        extentOffset: range.end,
+      );
+    });
+  }
+
+  /// The account whose draft this composer edits.
+  ///
+  /// A draft replaced from the view model is re-checked against this owner, so
+  /// a range captured before an account switch cannot format the replacement
+  /// account's text.
+  int get _composerOwnerClientId => TdClient.shared.activeClientId;
+
+  _ComposerFormatCapture _captureComposerFormat(int start, int end) {
+    final text = _controller.text;
+    return (
+      start: start,
+      end: end,
+      textLength: text.length,
+      text: text,
+      textRevision: _composerTextRevision,
+      ownerClientId: _composerOwnerClientId,
+    );
+  }
+
+  bool get _formatRangeIsStale {
+    final range = _formatRange;
+    if (range == null) return true;
+    return composerFormatRangeIsStale(
+      capturedStart: range.start,
+      capturedEnd: range.end,
+      capturedTextLength: range.textLength,
+      currentTextLength: _controller.text.length,
+      capturedText: range.text,
+      currentText: _controller.text,
+      capturedTextRevision: range.textRevision,
+      currentTextRevision: _composerTextRevision,
+      capturedOwnerClientId: range.ownerClientId,
+      currentOwnerClientId: _composerOwnerClientId,
+    );
+  }
+
+  /// Drops a captured range the field's text no longer matches.
+  ///
+  /// The field can be replaced from the view model while it is unfocused (a
+  /// draft swap, or another account's draft), which moves the text under a
+  /// range the panel or its pending link dialog still addresses.
+  void _dropStaleFormatRange() {
+    if (_panel != _Panel.format || _formatRange == null) return;
+    if (!_formatRangeIsStale) return;
+    _formatRange = null;
+    if (mounted) setState(() {});
+  }
+
+  bool _composerFormatIsSelected(_ComposerFormatAction action) {
+    if (_formatRangeIsStale) return false;
+    return _controller.selectionHasFormat(
+      action == _ComposerFormatAction.link
+          ? 'textEntityTypeTextUrl'
+          : action.entityType,
+    );
+  }
+
+  /// Applies one format cell over the captured range and keeps the panel open
+  /// so several formats can be stacked on the same selection.
+  void _applyComposerFormat(_ComposerFormatAction action) {
+    final range = _formatRange;
+    if (range == null || _formatRangeIsStale) return;
+    _controller.selection = TextSelection(
+      baseOffset: range.start,
+      extentOffset: range.end,
+    );
+    if (action == _ComposerFormatAction.link) {
+      unawaited(_promptComposerFormatLink(range));
+      return;
+    }
+    _controller.toggleFormat(action.entityType);
+    setState(() {});
+  }
+
+  Future<void> _promptComposerFormatLink(_ComposerFormatCapture range) async {
+    final url = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+      barrierColor: Colors.black.withValues(alpha: 0.36),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (dialogContext, _, _) => const _ComposerLinkDialog(),
+    );
+    if (!mounted || url == null || url.trim().isEmpty) return;
+    if (_formatRange != range || _formatRangeIsStale) return;
+    _controller.applyEntityFormat(range.start, range.end, {
+      '@type': 'textEntityTypeTextUrl',
+      'url': _normalizeComposerUrl(url),
+    });
+    setState(() {});
+  }
+
   void _restoreKeyboardFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -3457,6 +3648,10 @@ class _ChatInputBarState extends State<ChatInputBar>
                   _functionPanel(),
                 if (editingMessage == null &&
                     !desktopComposer &&
+                    _panel == _Panel.format)
+                  _formatPanel(),
+                if (editingMessage == null &&
+                    !desktopComposer &&
                     (_panel == _Panel.emoji || _panel == _Panel.sticker))
                   _mediaPanel(),
                 if (editingMessage == null && _panel == _Panel.voice)
@@ -3476,6 +3671,8 @@ class _ChatInputBarState extends State<ChatInputBar>
           // inset layer; the panels that paint their own surface extend it
           // through the system inset with one overlay. This keeps translucent
           // cloud-theme colors identical above and below the home indicator.
+          // The overlay extends a docked panel through the home indicator, so
+          // it paints that panel's surface, not a second, recessed colour.
           if (panelSurfaceVisible && bottomSafeArea > 0)
             Positioned(
               left: 0,
@@ -3485,7 +3682,7 @@ class _ChatInputBarState extends State<ChatInputBar>
               child: IgnorePointer(
                 child: ColoredBox(
                   key: const ValueKey('chat-input-panel-safe-area-background'),
-                  color: c.panelBackground,
+                  color: _composerDockedSurfaceColor,
                 ),
               ),
             ),
@@ -4338,6 +4535,10 @@ class _ChatInputBarState extends State<ChatInputBar>
                   width: width,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
+                    // A floating popover anchored above the composer, not a
+                    // docked panel: it carries its own 0.7pt outline and 24pt
+                    // drop shadow, so it keeps the recessed surface to read as
+                    // a separate card over the composer bar it hangs from.
                     color: c.panelBackground,
                     borderRadius: BorderRadius.circular(cornerRadius),
                     border: Border.all(color: c.divider, width: 0.7),
@@ -6318,11 +6519,12 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget _replyKeyboardPanel(_ReplyKeyboard keyboard) {
     final c = context.colors;
     return Container(
+      key: const ValueKey('composerReplyKeyboardPanel'),
       constraints: const BoxConstraints(maxHeight: 330),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: BoxDecoration(
-        color: c.panelBackground,
+        color: _composerDockedSurfaceColor,
         border: Border(top: BorderSide(color: c.divider, width: 0.5)),
       ),
       child: SingleChildScrollView(
@@ -6702,13 +6904,7 @@ class _ChatInputBarState extends State<ChatInputBar>
               _panel == _Panel.voice,
               _toggleVoice,
             ),
-          _icon(
-            HeroAppIcons.image,
-            AppStrings.t(AppStringKeys.composerImage),
-            false,
-            _pickPhotos,
-          ),
-          if (Platform.isAndroid || Platform.isIOS)
+          if (widget.phoneStripForTesting || composerShowsCameraIcon())
             _icon(
               HeroAppIcons.camera,
               AppStrings.t(AppStringKeys.composerCamera),
@@ -6716,10 +6912,22 @@ class _ChatInputBarState extends State<ChatInputBar>
               _takePhoto,
             ),
           _icon(
+            HeroAppIcons.image,
+            AppStrings.t(AppStringKeys.composerImage),
+            false,
+            _pickPhotos,
+          ),
+          _icon(
             HeroAppIcons.solidFaceSmile,
             AppStrings.t(AppStringKeys.composerMediaPicker),
             _panel == _Panel.emoji || _panel == _Panel.sticker,
             _toggleMediaPanel,
+          ),
+          _icon(
+            HeroAppIcons.font,
+            AppStrings.t(AppStringKeys.composerFormat),
+            _panel == _Panel.format,
+            _toggleFormatPanel,
           ),
           _icon(
             _panel != _Panel.none
@@ -7755,7 +7963,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     return Container(
       key: const ValueKey('composerFunctionPanel'),
       width: double.infinity,
-      color: c.panelBackground,
+      color: _composerDockedSurfaceColor,
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
       child: IconGrid(
         perRow: 5,
@@ -7794,6 +8002,185 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  // MARK: - Text format panel
+
+  static const double _composerFormatPanelHeight = 268;
+
+  /// Docked text-format editor: the nine composer entities as a grid of cells.
+  ///
+  /// Every cell applies to the range captured when the panel opened, so the
+  /// panel keeps working after the field loses focus. Cells dim when that
+  /// range no longer addresses the field's text.
+  Widget _formatPanel() {
+    final c = context.colors;
+    final canApply = !_formatRangeIsStale;
+    final columns = MediaQuery.sizeOf(context).width >= 390 ? 5 : 4;
+    return Container(
+      key: const ValueKey('composerFormatPanel'),
+      width: double.infinity,
+      height: _composerFormatPanelHeight,
+      color: c.inputBarBackground,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Text(
+              AppStringKeys.composerFormat.l10n(context),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textSecondary,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 8.0;
+                  final cellWidth =
+                      (constraints.maxWidth - spacing * (columns - 1)) /
+                      columns;
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: 10,
+                    children: [
+                      for (final action in _ComposerFormatAction.values)
+                        SizedBox(
+                          width: cellWidth,
+                          child: _formatPanelCell(
+                            action,
+                            enabled: canApply,
+                            selected:
+                                canApply && _composerFormatIsSelected(action),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _formatPanelCell(
+    _ComposerFormatAction action, {
+    required bool enabled,
+    required bool selected,
+  }) {
+    final c = context.colors;
+    final foreground = !enabled
+        ? c.textTertiary.withValues(alpha: 0.48)
+        : selected
+        ? AppTheme.brand
+        : c.textSecondary;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      selected: selected,
+      label: action.labelKey.l10n(context),
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: ValueKey('composerFormatAction-${action.name}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => _applyComposerFormat(action) : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 46,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppTheme.brand.withValues(alpha: 0.14)
+                    : c.searchFill,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: selected
+                      ? AppTheme.brand.withValues(alpha: 0.54)
+                      : c.divider,
+                ),
+              ),
+              child: _formatActionGlyph(action, foreground),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              action.labelKey.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: enabled
+                    ? c.textSecondary
+                    : c.textTertiary.withValues(alpha: 0.48),
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _formatActionGlyph(_ComposerFormatAction action, Color foreground) {
+    return switch (action) {
+      _ComposerFormatAction.quote => AppIcon(
+        HeroAppIcons.quoteLeft,
+        size: 18,
+        color: foreground,
+      ),
+      _ComposerFormatAction.spoiler => AppIcon(
+        HeroAppIcons.eyeSlash,
+        size: 18,
+        color: foreground,
+      ),
+      _ComposerFormatAction.link => AppIcon(
+        HeroAppIcons.link,
+        size: 18,
+        color: foreground,
+      ),
+      _ComposerFormatAction.codeBlock => AppIcon(
+        HeroAppIcons.code,
+        size: 18,
+        color: foreground,
+      ),
+      _ => Text(
+        switch (action) {
+          _ComposerFormatAction.bold =>
+            AppStringKeys.richTextComposerFormatBoldMark.l10n(context),
+          _ComposerFormatAction.italic =>
+            AppStringKeys.richTextComposerFormatItalicMark.l10n(context),
+          _ComposerFormatAction.underline =>
+            AppStringKeys.richTextComposerFormatUnderlineMark.l10n(context),
+          _ComposerFormatAction.strikethrough =>
+            AppStringKeys.richTextComposerFormatStrikethroughMark.l10n(context),
+          _ => '</>',
+        },
+        style: AppTextStyle.caption(foreground).copyWith(
+          fontWeight: action == _ComposerFormatAction.bold
+              ? FontWeight.w600
+              : FontWeight.w500,
+          fontStyle: action == _ComposerFormatAction.italic
+              ? FontStyle.italic
+              : null,
+          decoration: switch (action) {
+            _ComposerFormatAction.underline => TextDecoration.underline,
+            _ComposerFormatAction.strikethrough => TextDecoration.lineThrough,
+            _ => null,
+          },
+        ),
+      ),
+    };
+  }
+
   // MARK: - Unified media panel (emoji / stickers / GIF)
 
   /// One picker with a segmented selector (Emoji | Stickers | GIF) above each
@@ -7801,11 +8188,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   /// so it continues the input bar instead of reading as a separate block.
   /// Rendered for both `_Panel.emoji` and `_Panel.sticker`.
   Widget _mediaPanel({double height = 376}) {
-    final c = context.colors;
     return Container(
       key: const ValueKey('composerMediaPanel'),
       height: height,
-      color: c.inputBarBackground,
+      color: _composerDockedSurfaceColor,
       child: Column(
         children: [
           _mediaKindSegmentControl(),
@@ -8279,7 +8665,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       child: Container(
         key: const ValueKey('desktopVoiceMessagePanel'),
         width: double.infinity,
-        color: c.panelBackground,
+        color: _composerDockedSurfaceColor,
         padding: const EdgeInsets.fromLTRB(20, 8, 16, 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -8469,9 +8855,10 @@ class _ChatInputBarState extends State<ChatInputBar>
               ? AppStrings.t(AppStringKeys.composerReleaseFingerToCancel)
               : AppStrings.t(AppStringKeys.composerRecordingReleasePreview));
     return Container(
+      key: const ValueKey('composerMobileVoicePanel'),
       height: 318,
       width: double.infinity,
-      color: c.panelBackground,
+      color: _composerDockedSurfaceColor,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -9534,4 +9921,56 @@ class _ComposerLinkDialogState extends State<_ComposerLinkDialog> {
     if (url.isEmpty) return;
     Navigator.of(context).pop(url);
   }
+}
+
+/// Resolves the composer selection the format panel may act on.
+///
+/// Returns `(start, end)` in text offsets with `start < end`, or null when the
+/// selection is collapsed, invalid, or reaches outside the field's text.
+(int, int)? composerFormatRangeFor(TextSelection selection, int textLength) {
+  if (!selection.isValid || selection.isCollapsed) return null;
+  final start = math.min(selection.start, selection.end);
+  final end = math.max(selection.start, selection.end);
+  if (start < 0 || end > textLength || start >= end) return null;
+  return (start, end);
+}
+
+/// What the docked format panel captured when it opened: the selection offsets
+/// inside [text], the field revision that text belonged to, and the account
+/// whose draft the composer was editing.
+typedef _ComposerFormatCapture = ({
+  int start,
+  int end,
+  int textLength,
+  String text,
+  int textRevision,
+  int ownerClientId,
+});
+
+/// Whether a captured format range no longer addresses the field's text.
+///
+/// Any edit that changes the field's length shifts the captured offsets, so
+/// the panel drops the range instead of formatting the wrong characters. A
+/// replacement that keeps the length (the view model replacing the draft while
+/// the field is unfocused) is caught by the text, its revision and the account
+/// owner instead: offsets alone cannot tell two same-length drafts apart.
+bool composerFormatRangeIsStale({
+  required int capturedStart,
+  required int capturedEnd,
+  required int capturedTextLength,
+  required int currentTextLength,
+  required String capturedText,
+  required String currentText,
+  required int capturedTextRevision,
+  required int currentTextRevision,
+  required int capturedOwnerClientId,
+  required int currentOwnerClientId,
+}) {
+  if (capturedStart < 0 || capturedEnd <= capturedStart) return true;
+  if (capturedTextLength != currentTextLength) return true;
+  if (capturedEnd > currentTextLength) return true;
+  if (capturedText != currentText) return true;
+  if (capturedTextRevision != currentTextRevision) return true;
+  if (capturedOwnerClientId != currentOwnerClientId) return true;
+  return false;
 }

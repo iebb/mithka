@@ -434,8 +434,11 @@ void main() {
     }
   });
 
+  // Closing the pane in one conversation closes it in every other one, and
+  // opening it brings it back for all of them: the toggle is one session-wide
+  // value rather than a per-chat choice.
   for (final shell in const [TargetPlatform.macOS, TargetPlatform.iOS]) {
-    testWidgets('$shell keeps the group pane closed when the setting asks', (
+    testWidgets('$shell shares one group pane toggle across chats', (
       tester,
     ) async {
       debugDefaultTargetPlatformOverride = shell;
@@ -443,46 +446,45 @@ void main() {
         // Both shells have room for the trailing pane at this width; the
         // desktop one takes the rail path, iOS the tablet split path.
         await _setSurfaceSize(tester, const Size(1400, 820));
-        await _pumpMainShell(
-          tester,
-          reducedMotion: true,
-          hideChatContextPane: true,
-        );
-        tester.widget<ChatListView>(find.byType(ChatListView)).onChatSelected!(
-          ChatListSelection.fromChat(_chat()),
-        );
+        await _pumpMainShell(tester, reducedMotion: true);
+        final chatList = tester.widget<ChatListView>(find.byType(ChatListView));
+        chatList.onChatSelected!(ChatListSelection.fromChat(_chat()));
         await _settle(tester);
-        expect(find.byType(DesktopChatContextPane), findsNothing);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
 
         final toggle = find.byKey(
           const ValueKey('chatHeaderGroupContextToggle'),
         );
         await tester.tap(toggle);
         await _settle(tester);
-        expect(find.byType(DesktopChatContextPane), findsOneWidget);
-
-        await tester.tap(toggle);
-        await _settle(tester);
         expect(find.byType(DesktopChatContextPane), findsNothing);
 
+        // A second group opens with the choice made in the first one.
+        chatList.onChatSelected!(ChatListSelection.fromChat(_secondChat()));
+        await _settle(tester);
+        expect(tester.widget<ChatView>(find.byType(ChatView)).chatId, -43);
+        expect(find.byType(DesktopChatContextPane), findsNothing);
+
+        // Re-opening the pane there also re-opens it for the first chat.
+        await tester.tap(toggle);
+        await _settle(tester);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
+        chatList.onChatSelected!(ChatListSelection.fromChat(_chat()));
+        await _settle(tester);
+        expect(tester.widget<ChatView>(find.byType(ChatView)).chatId, -42);
+        expect(find.byType(DesktopChatContextPane), findsOneWidget);
+
+        // The settings preference no longer drives the shell: even an old
+        // stored value leaves the shared session state alone.
         final theme = tester
             .element(find.byType(ChatListView))
             .read<ThemeController>();
-        theme.hideChatContextPane = false;
+        theme.hideChatContextPane = true;
         await _settle(tester);
         expect(find.byType(DesktopChatContextPane), findsOneWidget);
         await tester.tap(toggle);
         await _settle(tester);
         expect(find.byType(DesktopChatContextPane), findsNothing);
-
-        // A changed default invalidates the previous manual choice. Turning
-        // automatic opening back on must not keep that earlier dismissal.
-        theme.hideChatContextPane = true;
-        await _settle(tester);
-        expect(find.byType(DesktopChatContextPane), findsNothing);
-        theme.hideChatContextPane = false;
-        await _settle(tester);
-        expect(find.byType(DesktopChatContextPane), findsOneWidget);
         expect(tester.takeException(), isNull);
         await _disposeShell(tester);
       } finally {
@@ -546,6 +548,17 @@ ChatSummary _chat() => ChatSummary(
   isMuted: false,
   kind: ChatKind.group,
   isForum: true,
+);
+ChatSummary _secondChat() => ChatSummary(
+  id: -43,
+  title: 'Second group',
+  lastMessage: '',
+  lastMessageId: 0,
+  date: 0,
+  unreadCount: 0,
+  order: 2,
+  isMuted: false,
+  kind: ChatKind.group,
 );
 Map<String, dynamic> _supergroup(bool tabs) => {
   '@type': 'supergroup',
@@ -627,12 +640,10 @@ Future<_MainShellHarness> _pumpMainShell(
   WidgetTester tester, {
   bool reducedMotion = false,
   bool showChannelsTab = false,
-  bool hideChatContextPane = false,
   List<NavigatorObserver> navigatorObservers = const [],
 }) async {
   SharedPreferences.setMockInitialValues({
     'showChannelsTab': showChannelsTab,
-    'hideChatContextPane': hideChatContextPane,
     'showMomentsTab': false,
     'communitiesEnabled': false,
   });

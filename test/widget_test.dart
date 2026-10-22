@@ -2875,9 +2875,16 @@ void main() {
         tester.widget<ColoredBox>(safeAreaBackground).color,
         colors.inputBarBackground,
       );
+      // The panel extends the bar's surface through the home indicator; the
+      // recessed panelBackground (still distinct in this palette) must not
+      // reappear below the panel.
       expect(
         tester.widget<ColoredBox>(panelSafeAreaBackground).color,
-        colors.panelBackground,
+        colors.inputBarBackground,
+      );
+      expect(
+        tester.widget<ColoredBox>(panelSafeAreaBackground).color,
+        isNot(colors.panelBackground),
       );
     });
 

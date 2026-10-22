@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">Couldn’t delete invite link: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">Couldn’t load chat folders: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">Couldn’t load shareable chats: {value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">Couldn’t mark all chats as read: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Couldn’t reorder folders: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Couldn’t update folder: {value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">Delete this invite link?</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">Invite link names can contain up to 32 characters</string>
     <string name="chatFolderManagementInviteLinksRow">Invite links</string>
     <string name="chatFolderManagementKeepChats">Keep chats</string>
+    <string name="chatFolderManagementMarkAllRead">Mark all as read</string>
     <string name="chatFolderManagementNewFolder">New folder</string>
     <string name="chatFolderManagementNewInviteLink">New invite link</string>
     <string name="chatFolderManagementNoInviteLinksYet">No invite links yet</string>
     <string name="chatFolderManagementOptionalLinkName">Optional link name</string>
     <string name="chatFolderManagementRecommended">Recommended</string>
+    <string name="chatFolderManagementReorderFolders">Reorder folders</string>
+    <string name="chatFolderManagementReorderHint">Drag rows to change the folder order.</string>
     <string name="chatFolderManagementSectionExclude">Exclude</string>
     <string name="chatFolderManagementSectionIcon">Icon</string>
     <string name="chatFolderManagementSectionInclude">Include</string>

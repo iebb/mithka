@@ -363,6 +363,199 @@ void main() {
     },
   );
 
+  test(
+    'reply sheet asks a discussion thread through its resolved coordinates',
+    () {
+      // A post whose thread lives in the linked group: TDLib cannot replay the
+      // reply search for that thread in the group unless it is told which group
+      // and which root to read, so the post's own coordinates must not be used.
+      final bridged = buildReplySheetHistoryRequest(
+        chatId: -1001,
+        messageId: 42,
+        threadChatId: -2002,
+        threadRootMessageId: 99,
+      );
+      expect(bridged['chat_id'], -2002);
+      expect(bridged['message_id'], 99);
+      expect(bridged['limit'], 100);
+      expect(bridged['offset'], 0);
+      expect(bridged['from_message_id'], 0);
+
+      // A thread the source message already addresses (same chat) stays on the
+      // source coordinates: no cross-chat resolution happens there.
+      final sameChat = buildReplySheetHistoryRequest(
+        chatId: -1001,
+        messageId: 42,
+        threadChatId: -1001,
+        threadRootMessageId: 42,
+      );
+      expect(sameChat['chat_id'], -1001);
+      expect(sameChat['message_id'], 42);
+
+      // Without a resolved root the source coordinates are the only ones known.
+      final unresolved = buildReplySheetHistoryRequest(
+        chatId: -1001,
+        messageId: 42,
+      );
+      expect(unresolved['chat_id'], -1001);
+      expect(unresolved['message_id'], 42);
+    },
+  );
+
+  testWidgets(
+    'a channel post with no comments yet still opens its thread and composer',
+    (tester) async {
+      final prefs = await SharedPreferences.getInstance();
+      final theme = ThemeController(prefs);
+      addTearDown(theme.dispose);
+
+      final historyRequests = <Map<String, dynamic>>[];
+      queryHandler = (request) async {
+        switch (request['@type']) {
+          case 'getMessageProperties':
+            // A post nobody has commented on yet reports a thread whenever the
+            // channel has a linked group, even before that root is resolved.
+            return <String, dynamic>{
+              '@type': 'messageProperties',
+              'can_get_message_thread': true,
+              'can_be_replied': false,
+            };
+          case 'getMessageThread':
+            return <String, dynamic>{
+              '@type': 'messageThreadInfo',
+              'chat_id': -2002,
+              'message_thread_id': 99,
+              'messages': <Map<String, dynamic>>[],
+            };
+          case 'getChat':
+            final id = request['chat_id'] as int;
+            return <String, dynamic>{
+              '@type': 'chat',
+              'id': id,
+              'title': id == -2002 ? 'Discussion Group' : 'News Channel',
+              'permissions': {'can_send_basic_messages': true},
+            };
+          case 'getMessageThreadHistory':
+            historyRequests.add(Map<String, dynamic>.from(request));
+            // The post's own coordinates are the ones TDLib answers a fresh
+            // post's thread with a 500 for; only the resolved thread
+            // coordinates address the empty thread.
+            if (request['chat_id'] != -2002 || request['message_id'] != 99) {
+              return <String, dynamic>{
+                '@type': 'error',
+                'code': 500,
+                'message': 'Receive messages in an unexpected chat',
+              };
+            }
+            return <String, dynamic>{
+              '@type': 'messages',
+              'total_count': 0,
+              'messages': <Map<String, dynamic>>[],
+            };
+          default:
+            return <String, dynamic>{'@type': 'ok'};
+        }
+      };
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ThemeController>.value(
+          value: theme,
+          child: MaterialApp(
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            theme: ThemeData(extensions: [AppColors.light]),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () {
+                    showMessageRepliesSheet(
+                      context: context,
+                      chatId: -1001,
+                      message: ChatMessage(
+                        id: 42,
+                        isOutgoing: false,
+                        text: 'Channel post',
+                        date: 10,
+                        chatId: -1001,
+                      ),
+                      peerTitle: 'News Channel',
+                    );
+                  },
+                  child: const Text('Open comments'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open comments'));
+      await tester.pumpAndSettle();
+
+      expect(historyRequests, hasLength(1));
+      expect(historyRequests.single['chat_id'], -2002);
+      expect(historyRequests.single['message_id'], 99);
+      // The unavailable state is for a message TDLib refuses to thread at all;
+      // an empty thread must read as "no comments yet" and keep the composer.
+      expect(
+        find.text(AppStrings.t(AppStringKeys.messageRepliesUnavailable)),
+        findsNothing,
+      );
+      expect(
+        find.text(AppStrings.t(AppStringKeys.messageRepliesEmpty)),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messageRepliesComposer')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test('channel post comments are read through the resolved thread', () {
+    final channel = ChatSummary(
+      id: -1001,
+      title: 'News Channel',
+      lastMessage: '',
+      lastMessageId: 0,
+      date: 0,
+      unreadCount: 0,
+      order: 0,
+      isMuted: false,
+      kind: ChatKind.channel,
+    );
+    final post = ChannelPost(
+      channel: channel,
+      message: ChatMessage(
+        id: 42,
+        isOutgoing: false,
+        text: 'Channel post',
+        date: 10,
+      ),
+      accountSlot: 4,
+    );
+
+    final resolved = channelPostCommentsRequest(
+      post: post,
+      target: const ChannelPostThreadTarget(chatId: -2002, messageThreadId: 99),
+      limit: 5,
+    );
+    expect(resolved['@type'], 'getMessageThreadHistory');
+    expect(resolved['chat_id'], -2002);
+    expect(resolved['message_id'], 99);
+    expect(resolved['limit'], 5);
+
+    final unresolved = channelPostCommentsRequest(post: post);
+    expect(unresolved['chat_id'], -1001);
+    expect(unresolved['message_id'], 42);
+  });
+
   testWidgets(
     'reply sheet resolves uncached comment reply anchors and jumps to discussion targets',
     (tester) async {

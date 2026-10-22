@@ -129,6 +129,33 @@ class ChannelPostThreadTarget {
   final int messageThreadId;
 }
 
+/// The `getMessageThreadHistory` request for a channel post's comments.
+///
+/// A post's own coordinates (`chat_id` = the channel, `message_id` = the post)
+/// make TDLib resolve the thread itself, and for a post nobody has commented on
+/// yet that resolution ends in a 500 "Receive messages in an unexpected chat":
+/// the reply search returns nothing, so the linked discussion chat the result
+/// has to be replayed in stays unknown, while the thread it already resolved
+/// points exactly there. The thread coordinates `getMessageThread` returns
+/// address the same thread without that resolution and answer an empty list for
+/// a fresh post. Only a post whose thread is not resolved yet falls back to its
+/// own coordinates.
+@visibleForTesting
+Map<String, dynamic> channelPostCommentsRequest({
+  required ChannelPost post,
+  ChannelPostThreadTarget? target,
+  int fromMessageId = 0,
+  int offset = 0,
+  int limit = 100,
+}) => {
+  '@type': 'getMessageThreadHistory',
+  'chat_id': target?.chatId ?? post.channel.id,
+  'message_id': target?.messageThreadId ?? post.message.id,
+  'from_message_id': fromMessageId,
+  'offset': offset,
+  'limit': limit,
+};
+
 class _MomentsFeedScrollAnchor {
   const _MomentsFeedScrollAnchor({required this.key, required this.leading});
 
@@ -1604,14 +1631,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   Future<void> _loadCommentsForPost(ChannelPost post, String key) async {
     try {
       final target = await _resolveThreadTarget(post);
-      final response = await TdClient.shared.queryForSlot({
-        '@type': 'getMessageThreadHistory',
-        'chat_id': post.channel.id,
-        'message_id': post.message.id,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': 5,
-      }, post.accountSlot);
+      final response = await TdClient.shared.queryForSlot(
+        channelPostCommentsRequest(post: post, target: target, limit: 5),
+        post.accountSlot,
+      );
       final rawMessages =
           response.objects('messages') ?? const <Map<String, dynamic>>[];
       final entries = <_LoadedPostComment>[];
@@ -3018,14 +3041,10 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final response = await TdClient.shared.queryForSlot({
-        '@type': 'getMessageThreadHistory',
-        'chat_id': post.channel.id,
-        'message_id': post.message.id,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': 120,
-      }, post.accountSlot);
+      final response = await TdClient.shared.queryForSlot(
+        _commentsRequest(fromMessageId: 0, offset: 0, limit: 120),
+        post.accountSlot,
+      );
       final rawMessages =
           response.objects('messages') ?? const <Map<String, dynamic>>[];
       final kept = <_LoadedPostComment>[];
@@ -3149,6 +3168,21 @@ class _ChannelPostDetailViewState extends State<ChannelPostDetailView> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  /// The `getMessageThreadHistory` request for this post's comments.
+  ///
+  /// Delegates to [channelPostCommentsRequest] so the feed and this view agree.
+  Map<String, dynamic> _commentsRequest({
+    required int fromMessageId,
+    required int offset,
+    required int limit,
+  }) => channelPostCommentsRequest(
+    post: post,
+    target: _target,
+    fromMessageId: fromMessageId,
+    offset: offset,
+    limit: limit,
+  );
 
   String _commentText(ChatMessage message) {
     return message.text.trim();

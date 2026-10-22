@@ -9,6 +9,7 @@ import {
   hasOwnerApproval, manualPath, deterministicGates, validateDecision,
   combinedReady, openRouterRequest, collectSnapshot, fingerprint, patchHeadLines, groundFindings,
   buildContext, askModel, report, reviewAll, publishMerge, verifyTestedResult,
+  reviewOrchestrationCheckIds, selectOwnerReviewedMerge,
 } from './pr-review.mjs';
 
 const BASE = 'a'.repeat(40);
@@ -102,6 +103,139 @@ function fakeGit(state = snapshot(), { onFetch = () => {}, badParent = false, ba
   };
   return { run, calls };
 }
+
+function ownCheck(id = 9, conclusion = 'skipped') {
+  return { id, name: 'Recheck approval and publish the tested merge',
+    app: { id: 15368, slug: 'github-actions' }, check_suite: { id: 80 },
+    details_url: `https://github.com/iebb/mithka/actions/runs/90/job/${id}`,
+    status: conclusion === null ? 'in_progress' : 'completed', conclusion };
+}
+function orchestrationApi(check = ownCheck()) {
+  return {
+    workflow: { id: 70, path: '.github/workflows/pr-review.yml' },
+    run: { id: 90, workflow_id: 70, path: '.github/workflows/pr-review.yml',
+      repository: { full_name: REPOSITORY }, check_suite_id: 80,
+      event: 'pull_request_target', head_branch: 'contributor-fix' },
+    jobs: [{ id: check.id, name: check.name }],
+    async request(path) {
+      if (path.endsWith('/workflows/pr-review.yml')) return this.workflow;
+      if (path.endsWith('/runs/90')) return this.run;
+      assert.fail(`Unexpected orchestration request: ${path}`);
+    },
+    async pages(path) {
+      assert.match(path, /\/runs\/90\/jobs\?filter=latest$/);
+      return this.jobs;
+    },
+  };
+}
+
+test('trusted orchestration skips and in-progress self-checks do not circularly block readiness', async () => {
+  for (const conclusion of ['skipped', null]) {
+    const check = ownCheck(9, conclusion);
+    const s = snapshot(); s.checks.push(check);
+    assert.ok(deterministicGates(s).some(reason => reason.includes('checks')));
+    s.orchestrationCheckIds = await reviewOrchestrationCheckIds(orchestrationApi(check), s.checks);
+    assert.deepEqual(s.orchestrationCheckIds, [9]);
+    assert.deepEqual(deterministicGates(s), []);
+    const before = fingerprint(s, 'policy');
+    check.status = 'completed'; check.conclusion = 'success';
+    assert.equal(fingerprint(s, 'policy'), before);
+  }
+});
+
+test('matching names cannot exempt foreign, spoofed, wrong-suite or wrong-job checks', async () => {
+  for (const mutate of [
+    (c, a) => { c.app.id = 999; },
+    (c, a) => { c.app.slug = 'another-app'; },
+    (c, a) => { c.details_url = 'https://example.invalid/actions/runs/90/job/9'; },
+    (c, a) => { c.details_url = 'https://github.com/iebb/mithka/actions/runs/90/job/10'; },
+    (c, a) => { c.check_suite.id = 81; },
+    (c, a) => { a.jobs[0].id = 10; },
+    (c, a) => { a.jobs[0].name = 'Other job'; },
+    (c, a) => { a.run.workflow_id = 71; },
+    (c, a) => { a.run.path = '.github/workflows/quality.yml'; },
+    (c, a) => { a.run.repository.full_name = 'attacker/mithka'; },
+    (c, a) => { a.run.event = 'pull_request'; },
+    (c, a) => { a.run.event = 'workflow_dispatch'; a.run.head_branch = 'untrusted-branch'; },
+  ]) {
+    const check = ownCheck(); const api = orchestrationApi(check); mutate(check, api);
+    const s = snapshot(); s.checks.push(check);
+    s.orchestrationCheckIds = await reviewOrchestrationCheckIds(api, s.checks);
+    assert.deepEqual(s.orchestrationCheckIds, []);
+    assert.ok(deterministicGates(s).some(reason => reason.includes('checks')));
+  }
+});
+
+test('external skipped, neutral, failed and running checks remain blockers; Quality cannot be exempted', async () => {
+  for (const conclusion of ['skipped', 'neutral', 'failure', null]) {
+    const s = snapshot(); const check = ownCheck(9, conclusion);
+    check.name = 'Analyze and test'; s.checks = [check];
+    s.orchestrationCheckIds = await reviewOrchestrationCheckIds(orchestrationApi(check), s.checks);
+    assert.deepEqual(s.orchestrationCheckIds, []);
+    assert.ok(deterministicGates(s).some(reason => reason.includes('checks')));
+  }
+  const s = snapshot(); s.quality.conclusion = 'skipped';
+  s.checks.push(ownCheck()); s.orchestrationCheckIds = [9];
+  assert.ok(deterministicGates(s).some(reason => reason.includes('Quality PR run')));
+});
+
+test('GitHub mergeability changes invalidate a cached evidence fingerprint', () => {
+  const s = snapshot(); const before = fingerprint(s, 'policy');
+  s.pr.mergeable = null;
+  assert.notEqual(fingerprint(s, 'policy'), before);
+});
+
+test('live snapshots authenticate self-check provenance before passing it to every gate', async () => {
+  const check = ownCheck(); const api = fixtureApi(); const own = orchestrationApi(check);
+  api.state.checks.push(check);
+  const request = api.request.bind(api); const pages = api.pages.bind(api);
+  api.request = path => path.endsWith('/workflows/pr-review.yml') || path.endsWith('/runs/90')
+    ? own.request(path) : request(path);
+  api.pages = path => path.includes('/runs/90/jobs?') ? own.pages(path) : pages(path);
+  const actual = await collectSnapshot(api, 7);
+  assert.deepEqual(actual.orchestrationCheckIds, [9]);
+  assert.deepEqual(deterministicGates(actual), []);
+  own.run.workflow_id = 71;
+  assert.ok(deterministicGates(await collectSnapshot(api, 7)).some(reason => reason.includes('checks')));
+});
+
+const ownerDispatch = { eventName: 'workflow_dispatch', actorId: String(OWNER.id), triggeringActor: OWNER.login, ref: 'refs/heads/master' };
+
+test('an explicit owner dispatch selects the independently approved exact head without claiming model consensus', async () => {
+  const api = fixtureApi();
+  assert.deepEqual(await selectOwnerReviewedMerge(api, { number: 7, head: HEAD }, ownerDispatch),
+    { eligible: true, pr_number: 7, head_sha: HEAD, base_sha: BASE, merge_sha: MERGE });
+  assert.ok(api.calls.every(call => !call.method || call.path === '/graphql'));
+});
+
+test('owner-reviewed selection rejects non-owner, non-master, automatic and rerun impersonations', async () => {
+  for (const overrides of [
+    { actorId: '999' }, { triggeringActor: 'attacker' },
+    { ref: 'refs/heads/other' }, { eventName: 'pull_request_target' },
+  ]) {
+    const api = fixtureApi();
+    await assert.rejects(selectOwnerReviewedMerge(api, { number: 7, head: HEAD }, { ...ownerDispatch, ...overrides }), /iebb dispatch from master/);
+    assert.equal(api.calls.length, 0);
+  }
+});
+
+test('owner-reviewed selection cannot bypass real exact-head approval, feedback, Terms, protected paths or current CI', async () => {
+  for (const mutate of [
+    s => { s.reviews = []; },
+    s => { s.reviews = [review('APPROVED', OTHER)]; },
+    s => { s.reviews.push(review('DISMISSED', HEAD, 2)); },
+    s => { s.reviews.push(review('CHANGES_REQUESTED', HEAD, 2, { login: 'reviewer', id: 999 })); },
+    s => { s.threads = [{ isResolved: false }]; },
+    s => { s.pr.body = template; },
+    s => { s.files[0].filename = '.github/workflows/quality.yml'; },
+    s => { s.quality.conclusion = 'failure'; },
+    s => { s.quality.merge_identity.base = OTHER; },
+    s => { s.pr.head.sha = OTHER; },
+  ]) {
+    const api = fixtureApi(); mutate(api.state);
+    await assert.rejects(selectOwnerReviewedMerge(api, { number: 7, head: HEAD }, ownerDispatch), /publication blocked/);
+  }
+});
 
 test('the repository template requires one allowed classification and all basic checks', () => {
   assert.deepEqual(templateGate(body()), { classification: 'compliant_unchanged', reasons: [] });
@@ -433,6 +567,10 @@ test('publication verifies exact parents and current approval, uses only a norma
   assert.ok(g.calls.every(args => !args.some(arg => arg.includes('--force'))));
   assert.deepEqual(api.calls.filter(call => call.path.endsWith('/dispatches')).map(call => [call.path, call.body]),
     [[`/repos/${REPOSITORY}/actions/workflows/quality.yml/dispatches`, { ref: 'master' }]]);
+  const notice = api.calls.find(call => call.method === 'POST' && call.path.endsWith('/issues/7/comments')).body.body;
+  assert.match(notice, /Quality run 11.*actions\/runs\/11/);
+  assert.ok(!notice.includes('Quality passed in this Actions run'));
+  assert.match(notice, /did not execute PR code/);
 });
 
 test('publication never starts Git writes without current exact-head owner approval', async () => {
@@ -531,6 +669,20 @@ test('privileged workflow uses master only, hosted runners, no schedule and no i
   assert.match(quality, /test "\$\(git rev-parse HEAD\^1\)" = "\$EXPECTED_BASE"/);
   assert.match(quality, /test "\$\(git rev-parse HEAD\^2\)" = "\$EXPECTED_HEAD"/);
   assert.match(quality, /cp lib\/config\/secrets_example.dart lib\/config\/secrets.dart/);
+  assert.match(workflow, /if: inputs.reviewed_head == ''/);
+  const ownerStep = workflow.split('      - name: Select the exact head explicitly source-reviewed by iebb')[1].split('\n  validate:')[0];
+  assert.match(ownerStep, /if: inputs.reviewed_head != ''/);
+  assert.match(ownerStep, /EXPECTED_HEAD: \$\{\{ inputs.reviewed_head \}\}/);
+  assert.match(ownerStep, /pr-review.mjs owner-review/);
+  assert.ok(!ownerStep.includes('OPENROUTER_API_KEY'));
+});
+
+test('automatic signals cannot replace the owner queue and both lanes serialize publication', () => {
+  const workflow = readFileSync(new URL('../workflows/pr-review.yml', import.meta.url), 'utf8');
+  assert.ok(workflow.includes("group: mithka-pr-review-${{ github.event_name == 'workflow_dispatch' && inputs.reviewed_head != '' && github.actor_id == '2127498' && github.triggering_actor == 'iebb' && github.ref == 'refs/heads/master' && 'owner' || 'automatic' }}"));
+  const mergeJob = workflow.split('\n  merge:\n')[1];
+  assert.match(mergeJob, /concurrency:\n      group: mithka-pr-publication\n      cancel-in-progress: false/);
+  assert.equal([...workflow.matchAll(/group: mithka-pr-publication/g)].length, 1);
 });
 
 test('missing or forged/non-unique Actions job identities never attest Quality', async () => {

@@ -14,6 +14,7 @@ import 'dart:ui' as ui;
 import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fvp/fvp.dart';
@@ -145,6 +146,68 @@ enum _PlayerGestureSide { left, right }
 // height to the full range made small phone swipes change volume and brightness
 // too abruptly, especially while holding the device in one hand.
 const _verticalGestureSensitivity = 0.5;
+
+// A pan only becomes a real gesture once it clears a deliberate-drag threshold.
+// The pan recognizer joins the arena at the platform's `kTouchSlop`, which on a
+// high-density phone is a few millimetres — the same distance a thumb rolls
+// during a tap meant to toggle the chrome. Engaging a seek at that point stole
+// the tap: the package's tap recognizer never won, so the chrome never toggled,
+// and the roll committed a seek instead. Below this threshold the pan is
+// treated as a tap.
+const _playbackGestureEngageDistance = kTouchSlop * 1.75;
+
+// Holding a finger down seeks; a tap must never turn into a seek just because
+// the press outlasted the long-press threshold. The indicator appears as soon
+// as the hold is recognized, but the position only moves once the hold proves
+// deliberate.
+const _heldSeekDwell = Duration(milliseconds: 250);
+
+/// How long a finger must stay down before holding in a side band moves the
+/// position: the long-press timeout plus [_heldSeekDwell].
+final videoHeldSeekFirstStepAt = kLongPressTimeout + _heldSeekDwell;
+
+/// How often a deliberate hold steps the position once it has started.
+const videoHeldSeekStepInterval = Duration(milliseconds: 450);
+
+/// Whether a pan has travelled far enough to be a playback gesture rather than
+/// a tap.
+///
+/// The pan recognizer wins the arena at [kTouchSlop], which is also the
+/// distance a thumb rolls during an ordinary tap, so winning the arena is not
+/// evidence of intent. Nothing engages below this distance: no seek, no
+/// brightness or volume change, and the release is finished as a tap.
+bool videoPlaybackPanEngages(Offset delta) =>
+    math.max(delta.dx.abs(), delta.dy.abs()) >= _playbackGestureEngageDistance;
+
+// A drag has to lean this much toward one axis before it counts as that axis,
+// so a diagonal roll stays a tap instead of becoming a volume or queue swipe.
+const _playbackGestureAxisLockRatio = 1.20;
+
+/// Whether a surface pan was the deliberate horizontal drag that moves through
+/// the playback queue, rather than the tap it shares a pointer with.
+///
+/// The playback surface is a [GestureDetector] that owns both a pan and a tap.
+/// Once the pan wins the arena the tap can no longer fire, so the pan has to
+/// decide on release: travel under [_playbackGestureEngageDistance] was a tap
+/// that rolled, and a drag across any other axis is not the queue swipe either.
+/// Both are finished as the tap they displaced.
+bool videoSurfacePanReplacesTap(Offset delta) {
+  if (videoPlaybackPanEngages(delta)) {
+    return delta.dx.abs() >= delta.dy.abs() * _playbackGestureAxisLockRatio;
+  }
+  return false;
+}
+
+/// How many position steps a hold of [pressDuration] has produced.
+///
+/// A press that ends before [videoHeldSeekFirstStepAt] returns zero, which is
+/// the guarantee that a tap cannot rewind or fast-forward playback just because
+/// the platform reported it as a long press.
+int videoHeldSeekSteps(Duration pressDuration) {
+  if (pressDuration < videoHeldSeekFirstStepAt) return 0;
+  final beyond = pressDuration - videoHeldSeekFirstStepAt;
+  return 1 + beyond.inMilliseconds ~/ videoHeldSeekStepInterval.inMilliseconds;
+}
 
 class VideoPlayerView extends StatefulWidget {
   const VideoPlayerView({
@@ -3189,6 +3252,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       surface = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanDown: (details) {
+          // DragDownDetails carries where the press landed; the pan only
+          // reports its own origin once the press has already rolled past the
+          // slop, so the press point has to be kept here.
+          _surfacePressOrigin = details.localPosition;
+          _surfacePanTravel = Offset.zero;
           if (!_videoZoomSuppressPlaybackGestures) {
             _gestureOrigin = details.localPosition;
           }
@@ -3494,6 +3562,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     return (first, second);
   }
 
+  // Travel the surface pan has accumulated for the current press, and where
+  // that press went down. The pan shares its pointer with the package's tap,
+  // so the travel decides whether the release is that tap or a drag; it is
+  // measured from the press point because the pan only reports its own origin
+  // after the press has already rolled past the slop.
+  Offset _surfacePanTravel = Offset.zero;
+  Offset? _surfacePressOrigin;
+
   void _startSurfacePanGesture(
     DragStartDetails details,
     VideoPlayerController controller,
@@ -3506,7 +3582,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       actions.hideControls();
       return;
     }
-    actions.showControls();
     _startPlaybackGesture(details.localPosition, controller);
   }
 
@@ -3521,6 +3596,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       actions.hideControls();
       return;
     }
+    final press = _surfacePressOrigin;
+    if (press != null) _surfacePanTravel = details.localPosition - press;
     _updatePlaybackGesture(details.localPosition, controller);
   }
 
@@ -3533,10 +3610,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       _finishVideoZoomGesture();
       return;
     }
+    if (!videoSurfacePanReplacesTap(_surfacePanTravel)) {
+      // The pan took the tap on this pointer but never became the deliberate
+      // drag a gesture has to be, so the release is that tap. Finish it here:
+      // no other recognizer can, and a position step must not be committed.
+      _cancelPlaybackGesture();
+      _reusablePlayerActions?.toggleControls();
+      return;
+    }
     _finishPlaybackGesture(controller);
   }
 
   void _cancelSurfacePanGesture() {
+    _surfacePanTravel = Offset.zero;
+    _surfacePressOrigin = null;
     if (!_videoZoomSuppressPlaybackGestures && _videoZoomGestureActive) {
       _finishVideoZoomGesture();
       return;
@@ -3555,11 +3642,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _stopHeldSeek();
     if (!mounted) return;
     setState(() => _heldSeekDirection = direction);
-    unawaited(_runHeldSeek(actions));
-    _heldSeekTimer = Timer.periodic(
-      const Duration(milliseconds: 450),
-      (_) => unawaited(_runHeldSeek(actions)),
-    );
+    // Hold long enough to prove the press was intentional, then keep stepping.
+    _heldSeekTimer = Timer(_heldSeekDwell, () {
+      if (!mounted || _heldSeekDirection != direction) return;
+      unawaited(_runHeldSeek(actions));
+      _heldSeekTimer = Timer.periodic(
+        videoHeldSeekStepInterval,
+        (_) => unawaited(_runHeldSeek(actions)),
+      );
+    });
     actions.hideControls();
   }
 
@@ -3699,7 +3790,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     Offset localPosition,
     VideoPlayerController controller,
   ) {
-    _reusablePlayerActions?.showControls();
     _gestureOrigin ??= localPosition;
     _gestureStartValue = _volume;
     _gestureValue = _volume;
@@ -3721,10 +3811,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final size = MediaQuery.sizeOf(context);
     var gesture = _activeGesture;
     if (gesture == null) {
-      if (math.max(delta.dx.abs(), delta.dy.abs()) < 12) return;
-      const axisLockRatio = 1.20;
-      final horizontal = delta.dx.abs() >= delta.dy.abs() * axisLockRatio;
-      final vertical = delta.dy.abs() >= delta.dx.abs() * axisLockRatio;
+      if (!videoPlaybackPanEngages(delta)) return;
+      // A gesture has engaged, so the chrome should be up while it runs. A pan
+      // that never reaches this point stays a tap and leaves the chrome alone.
+      _reusablePlayerActions?.showControls();
+      final horizontal =
+          delta.dx.abs() >= delta.dy.abs() * _playbackGestureAxisLockRatio;
+      final vertical =
+          delta.dy.abs() >= delta.dx.abs() * _playbackGestureAxisLockRatio;
       if (!horizontal && !vertical) return;
       if (horizontal) {
         _activeGestureSide = null;
@@ -3876,6 +3970,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _finishPlaybackGesture(VideoPlayerController controller) {
     final gesture = _activeGesture;
+    if (gesture == null) {
+      // Nothing engaged: the pan was a press that never became a gesture.
+      _cancelPlaybackGesture();
+      _reusablePlayerActions?.showControls();
+      return;
+    }
     if (gesture == _PlayerGesture.seek) {
       unawaited(controller.seekTo(_gestureSeekPosition));
     } else if (gesture == _PlayerGesture.skipTenSeconds &&

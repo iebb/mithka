@@ -217,10 +217,9 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   Future<void> _reorder(int oldIndex, int newIndex) async {
     final previous = _folders;
     final previousMainPosition = _mainListPosition;
-    final ordered = _orderedEntries();
-    ordered.insert(newIndex, ordered.removeAt(oldIndex));
-    final updated = ordered.whereType<ChatFolderRecord>().toList();
-    final mainListPosition = ordered.indexWhere((folder) => folder == null);
+    final result = reorderFolderEntries(_orderedEntries(), oldIndex, newIndex);
+    final updated = result.folders;
+    final mainListPosition = result.mainChatListPosition;
     setState(() {
       _folders = updated;
       _mainListPosition = mainListPosition;
@@ -246,11 +245,8 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     }
   }
 
-  List<ChatFolderRecord?> _orderedEntries() {
-    final entries = <ChatFolderRecord?>[..._folders];
-    entries.insert(_mainListPosition.clamp(0, entries.length), null);
-    return entries;
-  }
+  List<ChatFolderRecord?> _orderedEntries() =>
+      folderOrderEntries(_folders, _mainListPosition);
 
   /// 文件夹标签 is a Premium setting on the server, so the controller writes it
   /// there only for a Premium account and keeps everyone else's choice on this

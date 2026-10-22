@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">招待リンクを削除できませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">チャット フォルダーを読み込めませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">共有可能なチャットを読み込めませんでした: {value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">すべてのチャットを既読にできませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">フォルダーを並べ替えられませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">フォルダーを更新できませんでした: {value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">この招待リンクを削除しますか?</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">招待リンク名には最大 32 文字を含めることができます</string>
     <string name="chatFolderManagementInviteLinksRow">招待リンク</string>
     <string name="chatFolderManagementKeepChats">チャットを続ける</string>
+    <string name="chatFolderManagementMarkAllRead">すべて既読にする</string>
     <string name="chatFolderManagementNewFolder">新しいフォルダー</string>
     <string name="chatFolderManagementNewInviteLink">新しい招待リンク</string>
     <string name="chatFolderManagementNoInviteLinksYet">招待リンクはまだありません</string>
     <string name="chatFolderManagementOptionalLinkName">オプションのリンク名</string>
     <string name="chatFolderManagementRecommended">おすすめ</string>
+    <string name="chatFolderManagementReorderFolders">フォルダーを並べ替え</string>
+    <string name="chatFolderManagementReorderHint">行をドラッグしてフォルダーの順序を変更します。</string>
     <string name="chatFolderManagementSectionExclude">除外</string>
     <string name="chatFolderManagementSectionIcon">アイコン</string>
     <string name="chatFolderManagementSectionInclude">含める</string>

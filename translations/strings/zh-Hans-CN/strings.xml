@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">无法删除邀请链接：{value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">无法加载聊天文件夹：{value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">无法加载可共享的聊天：{value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">无法将所有聊天标为已读：{value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">无法重新排序文件夹：{value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">无法更新文件夹：{value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">删除此邀请链接吗？</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">邀请链接名称最多可包含 32 个字符</string>
     <string name="chatFolderManagementInviteLinksRow">邀请链接</string>
     <string name="chatFolderManagementKeepChats">保持聊天</string>
+    <string name="chatFolderManagementMarkAllRead">全部标为已读</string>
     <string name="chatFolderManagementNewFolder">新建文件夹</string>
     <string name="chatFolderManagementNewInviteLink">新建邀请链接</string>
     <string name="chatFolderManagementNoInviteLinksYet">还没有邀请链接</string>
     <string name="chatFolderManagementOptionalLinkName">可选链接名称</string>
     <string name="chatFolderManagementRecommended">推荐</string>
+    <string name="chatFolderManagementReorderFolders">重新排序文件夹</string>
+    <string name="chatFolderManagementReorderHint">拖动行以调整文件夹顺序。</string>
     <string name="chatFolderManagementSectionExclude">排除</string>
     <string name="chatFolderManagementSectionIcon">图标</string>
     <string name="chatFolderManagementSectionInclude">包含</string>

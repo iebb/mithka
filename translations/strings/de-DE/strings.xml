@@ -844,6 +844,7 @@
     <string name="chatFolderManagementCouldnTDeleteInviteLinkValue1">Der Einladungslink konnte nicht gelöscht werden: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadChatFoldersValue1">Chat-Ordner konnten nicht geladen werden: {value1}</string>
     <string name="chatFolderManagementCouldnTLoadShareableChatsValue1">Die gemeinsam nutzbaren Chats konnten nicht geladen werden: {value1}</string>
+    <string name="chatFolderManagementCouldnTMarkAllReadValue1">Chats konnten nicht als gelesen markiert werden: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Ordner konnten nicht neu angeordnet werden: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Ordner konnte nicht aktualisiert werden: {value1}</string>
     <string name="chatFolderManagementDeleteThisInviteLink">Diesen Einladungslink löschen?</string>
@@ -865,11 +866,14 @@
     <string name="chatFolderManagementInviteLinkNamesCanContainUpTo32">Namen von Einladungslinks können bis zu 32 Zeichen enthalten</string>
     <string name="chatFolderManagementInviteLinksRow">Einladungslinks</string>
     <string name="chatFolderManagementKeepChats">Chatten Sie weiter</string>
+    <string name="chatFolderManagementMarkAllRead">Alle als gelesen markieren</string>
     <string name="chatFolderManagementNewFolder">Neuer Ordner</string>
     <string name="chatFolderManagementNewInviteLink">Neuer Einladungslink</string>
     <string name="chatFolderManagementNoInviteLinksYet">Noch keine Einladungslinks</string>
     <string name="chatFolderManagementOptionalLinkName">Optionaler Linkname</string>
     <string name="chatFolderManagementRecommended">Empfohlen</string>
+    <string name="chatFolderManagementReorderFolders">Ordner neu anordnen</string>
+    <string name="chatFolderManagementReorderHint">Zeilen ziehen, um die Reihenfolge der Ordner zu ändern.</string>
     <string name="chatFolderManagementSectionExclude">Ausschließen</string>
     <string name="chatFolderManagementSectionIcon">Symbol</string>
     <string name="chatFolderManagementSectionInclude">Einschließen</string>

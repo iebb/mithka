@@ -9218,22 +9218,18 @@ class _ChatViewState extends State<ChatView> {
       behavior: HitTestBehavior.opaque,
       onTap: () => _openPinnedFromBar(pinned),
       child: Container(
+        key: const ValueKey('chatPinnedBar'),
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: c.card.withValues(alpha: 0.86),
+          // Solid composer surface, like the docked panels below the
+          // transcript: no translucent card fill and no drop shadow.
+          color: c.inputBarBackground,
           borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: c.divider.withValues(alpha: 0.55),
             width: 0.5,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Row(
           children: [

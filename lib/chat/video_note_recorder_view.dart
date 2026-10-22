@@ -31,6 +31,16 @@ VideoNoteRecordGesture videoNoteRecordGestureForDelta({
 /// An owned video-message camera with Telegram-style hold, cancel, lock and
 /// pause controls. Keeping capture inside the app also lets users switch the
 /// active lens before recording instead of being sent to the system camera.
+///
+/// Camera-route chrome over the black preview (concrete values, no shortcuts):
+///  * the round control surfaces are white at 16% (`0x29FFFFFF`) with a 25%
+///    white outline (`0x40FFFFFF`) — a translucent light film over the live
+///    preview, not an opaque mid-gray pill;
+///  * a disabled control drops to white at 8% (`0x14FFFFFF`) with a 12%
+///    outline (`0x1FFFFFFF`) and 40% icon opacity;
+///  * the shutter disc keeps the full-strength red `0xFFE53935` while it is
+///    the record affordance, and turns into the brand-accent square while a
+///    locked recording is waiting to be stopped.
 class VideoNoteRecorderView extends StatefulWidget {
   const VideoNoteRecorderView({super.key});
 
@@ -397,6 +407,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
           ? 'Stop video message'
           : 'Hold to record, slide up to lock, left to cancel',
       child: Container(
+        key: const ValueKey('videoNoteRecordButton'),
         width: 76,
         height: 76,
         padding: const EdgeInsets.all(6),
@@ -405,8 +416,12 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
           border: Border.all(color: Colors.white, width: 3),
         ),
         child: AnimatedContainer(
+          key: const ValueKey('videoNoteRecordButtonDisc'),
           duration: const Duration(milliseconds: 160),
           decoration: BoxDecoration(
+            // Full-strength red while the disc is the record affordance; the
+            // accent square replaces it once the recording is locked and the
+            // press becomes "stop".
             color: locked ? AppTheme.brand : const Color(0xFFE53935),
             shape: locked ? BoxShape.rectangle : BoxShape.circle,
             borderRadius: locked
@@ -438,12 +453,24 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
+          key: ValueKey('videoNoteRecorderRoundButton-$label'),
           width: 48,
           height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: onTap == null ? 0.25 : 0.55),
+            // A uniform light film over the black preview rather than an
+            // opaque mid-gray slab; disabled controls fade out instead of
+            // keeping a solid plate.
+            color: onTap == null
+                ? const Color(0x14FFFFFF)
+                : const Color(0x29FFFFFF),
             shape: BoxShape.circle,
+            border: Border.all(
+              color: onTap == null
+                  ? const Color(0x1FFFFFFF)
+                  : const Color(0x40FFFFFF),
+              width: 0.5,
+            ),
           ),
           child: AppIcon(
             icon,

@@ -16,6 +16,11 @@ const MAX_TEXT = 24_000;
 const DECISIONS = ['ready', 'request_changes', 'needs_human'];
 const TERMS = ['compliant_unchanged', 'guarded_exception', 'unresolved'];
 const CHECKS = ['correctness', 'privacy_security', 'terms_and_guards', 'tests'];
+const ORCHESTRATION_JOBS = new Set([
+  'LLM recommendation and owner approval gate',
+  'Verify the exact merged-result Quality attestation',
+  'Recheck approval and publish the tested merge',
+]);
 const CLASSIFICATIONS = [
   ['Compliant/unchanged:', 'compliant_unchanged'],
   ['Section 1.4 exception:', 'guarded_exception'],
@@ -86,8 +91,43 @@ export function manualPath(path) {
   return path === 'AGENTS.md' || path.startsWith('.github/') || sensitivePath(path);
 }
 
+function validationChecks(snapshot) {
+  const own = new Set(snapshot.orchestrationCheckIds ?? []);
+  return snapshot.checks.filter(check => !own.has(check.id));
+}
+
+export async function reviewOrchestrationCheckIds(api, checks) {
+  // Names alone are untrusted. Verify the GitHub Actions app, run, workflow,
+  // check suite and immutable job id before excluding our own orchestration.
+  // These jobs cannot be readiness checks: review is running while it checks
+  // readiness, and validate/merge are intentionally skipped until it is ready.
+  const candidates = checks.flatMap(check => {
+    const match = /^https:\/\/github\.com\/iebb\/mithka\/actions\/runs\/(\d+)\/job\/(\d+)$/.exec(check.details_url ?? '');
+    return check.app?.id === 15368 && check.app?.slug === 'github-actions' &&
+      ORCHESTRATION_JOBS.has(check.name) && match && Number(match[2]) === check.id
+      ? [{ check, runId: Number(match[1]) }] : [];
+  });
+  if (!candidates.length) return [];
+  const root = `/repos/${REPOSITORY}/actions`;
+  const workflow = await api.request(`${root}/workflows/pr-review.yml`);
+  if (workflow.path !== '.github/workflows/pr-review.yml') return [];
+  const ids = [];
+  for (const runId of new Set(candidates.map(item => item.runId))) {
+    const run = await api.request(`${root}/runs/${runId}`);
+    if (run.repository?.full_name !== REPOSITORY || run.workflow_id !== workflow.id ||
+        run.path !== workflow.path || !['pull_request_target', 'workflow_run', 'workflow_dispatch', 'issue_comment', 'push'].includes(run.event) ||
+        (run.event !== 'pull_request_target' && run.head_branch !== 'master')) continue;
+    const jobs = await api.pages(`${root}/runs/${runId}/jobs?filter=latest`, 'jobs');
+    for (const { check } of candidates.filter(item => item.runId === runId)) {
+      if (check.check_suite?.id === run.check_suite_id &&
+          jobs.some(job => job.id === check.id && job.name === check.name)) ids.push(check.id);
+    }
+  }
+  return ids;
+}
+
 export function deterministicGates(snapshot, { requireApproval = true } = {}) {
-  const { pr, reviews, files, checks, statuses, quality, threads, base } = snapshot;
+  const { pr, reviews, files, statuses, quality, threads, base } = snapshot;
   const reasons = [];
   if (pr.state !== 'open' || pr.draft) reasons.push('PR must be open and ready for review.');
   if (pr.base?.repo?.full_name !== REPOSITORY || pr.base?.ref !== 'master') reasons.push('Only iebb/mithka master is eligible.');
@@ -117,7 +157,7 @@ export function deterministicGates(snapshot, { requireApproval = true } = {}) {
     reasons.push('Quality must attest the exact live master/head merge. Update the PR branch/commit for a fresh pull_request Quality run, then approve that head.');
   }
   const latestChecks = new Map();
-  for (const check of [...checks].sort((a, b) => a.id - b.id)) latestChecks.set(`${check.app?.id}:${check.name}`, check);
+  for (const check of validationChecks(snapshot).sort((a, b) => a.id - b.id)) latestChecks.set(`${check.app?.id}:${check.name}`, check);
   if ([...latestChecks.values()].some(check => check.status !== 'completed' || check.conclusion !== 'success')) {
     reasons.push('All current head checks must complete successfully (no skipped/neutral substitutes).');
   }
@@ -275,7 +315,8 @@ export async function collectSnapshot(api, number) {
       .map(job => /^Merge snapshot ([a-f0-9]{40}) base ([a-f0-9]{40}) head ([a-f0-9]{40})$/.exec(job.name)).filter(Boolean);
     quality.merge_identity = identities.length === 1 ? { merge: identities[0][1], base: identities[0][2], head: identities[0][3] } : null;
   }
-  return { pr, base: ref.object.sha, reviews, files, comments, inline, checks, statuses, quality, threads,
+  const orchestrationCheckIds = await reviewOrchestrationCheckIds(api, checks);
+  return { pr, base: ref.object.sha, reviews, files, comments, inline, checks, statuses, quality, threads, orchestrationCheckIds,
     filesComplete: files.length === pr.changed_files && files.length <= MAX_FILES };
 }
 
@@ -288,12 +329,12 @@ function humanFeedback(items) {
 }
 
 export function fingerprint(snapshot, policy) {
-  const { pr, base, quality, checks, statuses, threads } = snapshot;
+  const { pr, base, quality, statuses, threads } = snapshot;
   return createHash('sha256').update(JSON.stringify({
-    version: 1, policy, head: pr.head.sha, base, body: pr.body, title: pr.title, draft: pr.draft,
+    version: 2, policy, head: pr.head.sha, base, body: pr.body, title: pr.title, draft: pr.draft, mergeable: pr.mergeable,
     reviews: humanFeedback(snapshot.reviews), comments: humanFeedback(snapshot.comments), inline: humanFeedback(snapshot.inline),
     quality: quality && [quality.id, quality.run_attempt, quality.status, quality.conclusion, quality.merge_identity],
-    checks: checks.map(check => [check.id, check.status, check.conclusion]),
+    checks: validationChecks(snapshot).map(check => [check.id, check.status, check.conclusion]),
     statuses: statuses.map(status => [status.id, status.context, status.state]), threads,
   })).digest('hex');
 }
@@ -528,7 +569,7 @@ export async function publishMerge(api, { number, head, base, merge }, runGit = 
   await api.request(`/repos/${REPOSITORY}/actions/workflows/quality.yml/dispatches`, { method: 'POST', body: { ref: 'master' } });
   if (!merged) throw new Error('Remote master is published and post-merge Quality requested, but GitHub MERGED state is not yet confirmed. Do not retry the push.');
   await api.request(`/repos/${REPOSITORY}/issues/${number}/comments`, { method: 'POST', body: {
-    body: `Merged the exact validated result \`${merge}\` into master after rechecking iebb's current-head approval. Head \`${head}\`, prior master \`${base}\`. Local-PC review was not used. Full merged-result Quality passed in this Actions run. Post-merge Quality has been requested separately; this comment does not claim it has passed.`,
+    body: `Merged the exact validated result \`${merge}\` into master after rechecking iebb's current-head approval. Head \`${head}\`, prior master \`${base}\`. Full merged-result [Quality run ${final.quality.id}](https://github.com/${REPOSITORY}/actions/runs/${final.quality.id}) passed before publication; this job verified its attestation and did not execute PR code. Post-merge Quality has been requested separately; this comment does not claim it has passed.`,
   } });
   return merge;
 }
@@ -543,6 +584,30 @@ export async function verifyTestedResult(api, { number, head, base, merge }) {
   return merge;
 }
 
+export async function selectOwnerReviewedMerge(api, { number, head }, {
+  eventName = process.env.GITHUB_EVENT_NAME,
+  actorId = process.env.GITHUB_ACTOR_ID,
+  triggeringActor = process.env.GITHUB_TRIGGERING_ACTOR,
+  ref = process.env.GITHUB_REF,
+} = {}) {
+  // An explicit maintainer dispatch is a manual source-review decision, not
+  // an LLM verdict or an authority inferred from a PR comment/label. The real
+  // exact-head APPROVED review and every deterministic gate still apply.
+  if (eventName !== 'workflow_dispatch' || String(actorId) !== String(OWNER.id) ||
+      triggeringActor !== OWNER.login || ref !== 'refs/heads/master') {
+    throw new Error('Owner-reviewed publication requires an iebb dispatch from master.');
+  }
+  if (!Number.isSafeInteger(number) || number <= 0 || !SHA.test(head ?? '')) throw new Error('Invalid owner-reviewed PR/head.');
+  const snapshot = await collectSnapshot(api, number);
+  const reasons = deterministicGates(snapshot);
+  if (snapshot.pr.head.sha !== head) reasons.push('The manually reviewed head changed.');
+  if (reasons.length) throw new Error(`Owner-reviewed publication blocked: ${reasons.join(' ')}`);
+  const candidate = { eligible: true, pr_number: number, head_sha: head,
+    base_sha: snapshot.base, merge_sha: snapshot.quality.merge_identity.merge };
+  output(candidate);
+  return candidate;
+}
+
 async function main() {
   if (process.env.GITHUB_REPOSITORY !== REPOSITORY) throw new Error('Controller is restricted to iebb/mithka.');
   const api = new GitHub(process.env.GH_TOKEN);
@@ -551,13 +616,16 @@ async function main() {
     // documents are provided separately as explicitly untrusted evidence.
     const policy = readFileSync('AGENTS.md', 'utf8') + '\nController digest: ' + createHash('sha256').update(readFileSync(import.meta.filename)).digest('hex');
     await reviewAll(api, { number: process.env.REVIEW_PR_NUMBER ?? '', force: process.env.GITHUB_EVENT_NAME === 'workflow_dispatch', key: process.env.OPENROUTER_API_KEY, policy });
+  } else if (process.argv[2] === 'owner-review') {
+    const candidate = await selectOwnerReviewedMerge(api, { number: Number(process.env.REVIEW_PR_NUMBER), head: process.env.EXPECTED_HEAD });
+    console.log(`Owner-reviewed PR #${candidate.pr_number}: exact-head approval and current merged-result Quality verified. Free-model consensus was not claimed.`);
   } else if (process.argv[2] === 'merge') {
     const number = Number(process.env.REVIEW_PR_NUMBER);
     const merged = await publishMerge(api, { number, head: process.env.EXPECTED_HEAD, base: process.env.EXPECTED_BASE, merge: process.env.VALIDATED_MERGE });
     console.log(`Verified remote master and GitHub MERGED state: PR #${number}, ${merged}. Post-merge Quality requested separately.`);
   } else if (process.argv[2] === 'verify') {
     await verifyTestedResult(api, { number: Number(process.env.REVIEW_PR_NUMBER), head: process.env.EXPECTED_HEAD, base: process.env.EXPECTED_BASE, merge: process.env.VALIDATED_MERGE });
-  } else throw new Error('Expected review, verify or merge mode.');
+  } else throw new Error('Expected review, owner-review, verify or merge mode.');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -112,6 +112,47 @@ MessageRepliesViewTarget resolveMessageRepliesViewTarget({
   );
 }
 
+/// The `getMessageThreadHistory` request that reads one thread's comments.
+///
+/// TDLib accepts either coordinate pair for the same thread, but not both with
+/// equal success: asking with the SOURCE message (`chat_id` = the channel,
+/// `message_id` = the post) makes TDLib resolve the thread itself, and for a
+/// channel post that no one has commented on yet that resolution ends in a 500
+/// "Receive messages in an unexpected chat" — the reply search returns nothing,
+/// so the linked discussion chat the result should have been replayed in stays
+/// unknown, while the thread it already resolved points at that chat. The
+/// thread coordinates `getMessageThread` returns (its `chat_id` and
+/// `message_thread_id`) address the same thread without that resolution, and
+/// answer an empty list for a fresh post.
+///
+/// Those coordinates are used only for a thread that lives in ANOTHER chat
+/// (the channel post's linked discussion): that is the pair TDLib cannot
+/// derive from the source message. A thread in the source chat itself needs no
+/// cross-chat resolution, so its own coordinates already address it.
+@visibleForTesting
+Map<String, dynamic> buildReplySheetHistoryRequest({
+  required int chatId,
+  required int messageId,
+  int? threadChatId,
+  int? threadRootMessageId,
+  int fromMessageId = 0,
+  int offset = 0,
+  int limit = 100,
+}) {
+  final usesThread =
+      threadChatId != null &&
+      threadRootMessageId != null &&
+      threadChatId != chatId;
+  return {
+    '@type': 'getMessageThreadHistory',
+    'chat_id': usesThread ? threadChatId : chatId,
+    'message_id': usesThread ? threadRootMessageId : messageId,
+    'from_message_id': fromMessageId,
+    'offset': offset,
+    'limit': limit,
+  };
+}
+
 Future<void> showMessageRepliesSheet({
   required BuildContext context,
   required int chatId,
@@ -289,14 +330,14 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
           chatCanSend != false &&
           (linkedDiscussion || properties.boolean('can_be_replied') != false);
 
-      final response = await TdClient.shared.query({
-        '@type': 'getMessageThreadHistory',
-        'chat_id': widget.chatId,
-        'message_id': widget.message.id,
-        'from_message_id': 0,
-        'offset': 0,
-        'limit': 100,
-      });
+      final response = await TdClient.shared.query(
+        buildReplySheetHistoryRequest(
+          chatId: widget.chatId,
+          messageId: widget.message.id,
+          threadChatId: replyTarget?.chatId,
+          threadRootMessageId: replyTarget?.historyRootMessageId,
+        ),
+      );
       final loaded =
           (response.objects('messages') ?? const <Map<String, dynamic>>[])
               .map(TDParse.message)

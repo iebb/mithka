@@ -20,9 +20,15 @@ on:
         description: 'PR number, or empty to check all open PRs'
         required: false
         type: string
+      reviewed_head:
+        description: 'Optional exact head already source-reviewed and APPROVED by iebb; enables explicit owner-reviewed publication'
+        required: false
+        type: string
 
 concurrency:
-  group: mithka-pr-review
+  # Automatic feedback must not replace a queued explicit owner publication.
+  # Only a real owner dispatch on master enters the separate owner lane.
+  group: mithka-pr-review-${{ github.event_name == 'workflow_dispatch' && inputs.reviewed_head != '' && github.actor_id == '2127498' && github.triggering_actor == 'iebb' && github.ref == 'refs/heads/master' && 'owner' || 'automatic' }}
   cancel-in-progress: false
 
 permissions: {}
@@ -42,11 +48,11 @@ jobs:
       issues: write
       actions: read
     outputs:
-      eligible: ${{ steps.review.outputs.eligible }}
-      pr_number: ${{ steps.review.outputs.pr_number }}
-      head_sha: ${{ steps.review.outputs.head_sha }}
-      base_sha: ${{ steps.review.outputs.base_sha }}
-      merge_sha: ${{ steps.review.outputs.merge_sha }}
+      eligible: ${{ steps.review.outputs.eligible || steps.owner.outputs.eligible }}
+      pr_number: ${{ steps.review.outputs.pr_number || steps.owner.outputs.pr_number }}
+      head_sha: ${{ steps.review.outputs.head_sha || steps.owner.outputs.head_sha }}
+      base_sha: ${{ steps.review.outputs.base_sha || steps.owner.outputs.base_sha }}
+      merge_sha: ${{ steps.review.outputs.merge_sha || steps.owner.outputs.merge_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -58,11 +64,20 @@ jobs:
           sparse-checkout-cone-mode: false
       - name: Review live PR evidence with free models
         id: review
+        if: inputs.reviewed_head == ''
         env:
           GH_TOKEN: ${{ github.token }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           REVIEW_PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number || github.event.issue.number || '' }}
         run: node .github/scripts/pr-review.mjs review
+      - name: Select the exact head explicitly source-reviewed by iebb
+        id: owner
+        if: inputs.reviewed_head != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_PR_NUMBER: ${{ inputs.pr_number }}
+          EXPECTED_HEAD: ${{ inputs.reviewed_head }}
+        run: node .github/scripts/pr-review.mjs owner-review
 
   validate:
     name: Verify the exact merged-result Quality attestation
@@ -95,6 +110,10 @@ jobs:
     name: Recheck approval and publish the tested merge
     needs: [review, validate]
     if: needs.review.outputs.eligible == 'true' && needs.validate.result == 'success'
+    # Both lanes can review concurrently, but publication is still serialized.
+    concurrency:
+      group: mithka-pr-publication
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

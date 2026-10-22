@@ -4321,6 +4321,8 @@ abstract final class AppStringKeys {
       'chatFolderManagementCouldnTLoadChatFoldersValue1';
   static const chatFolderManagementCouldnTLoadShareableChatsValue1 =
       'chatFolderManagementCouldnTLoadShareableChatsValue1';
+  static const chatFolderManagementCouldnTMarkAllReadValue1 =
+      'chatFolderManagementCouldnTMarkAllReadValue1';
   static const chatFolderManagementCouldnTReorderFoldersValue1 =
       'chatFolderManagementCouldnTReorderFoldersValue1';
   static const chatFolderManagementCouldnTUpdateFolderValue1 =
@@ -4560,6 +4562,12 @@ abstract final class AppStringKeys {
   static const chatFolderManagementExcludeArchivedChats =
       'chatFolderManagementExcludeArchivedChats';
   static const chatFolderManagementAddChat = 'chatFolderManagementAddChat';
+  static const chatFolderManagementMarkAllRead =
+      'chatFolderManagementMarkAllRead';
+  static const chatFolderManagementReorderFolders =
+      'chatFolderManagementReorderFolders';
+  static const chatFolderManagementReorderHint =
+      'chatFolderManagementReorderHint';
   static const chatFolderManagementInviteLinksRow =
       'chatFolderManagementInviteLinksRow';
   static const chatFolderManagementNewInviteLink =
