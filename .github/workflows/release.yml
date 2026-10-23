@@ -1,7 +1,8 @@
 name: 🚀 Multi-platform Releases
 
-# Builds per-ABI Android APKs, Windows installers, and portable Windows, macOS,
-# and Linux desktop archives plus Linux AppImages from nightly/release. Each Android ABI
+# Builds per-ABI Android APKs, Windows installers, portable Windows, macOS,
+# and Linux desktop archives, Linux AppImages, and the HarmonyOS hap from
+# nightly/release. Each Android ABI
 # (arm64-v8a, armeabi-v7a) builds in its OWN parallel matrix job and downloads
 # the pinned prebuilt native TDLib (tdjson) asset from iebb/mithka-tdjson. Each
 # desktop job downloads the matching pinned prebuilt asset for its host OS.
@@ -650,10 +651,327 @@ jobs:
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-linux-${{ matrix.architecture }}.AppImage
           if-no-files-found: error
 
+  build-ohos:
+    name: Build HarmonyOS hap
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      # Ships Ubuntu 20.04 with the HarmonyOS SDK (API 22), hvigor, ohpm, and
+      # node 18. Its bundled /opt/flutter is an older 3.35.8-ohos fork that
+      # must not be used; the job installs the 3.44.9+ohos canary below.
+      image: ghcr.io/niuhuan/harmony-next-flutter-pipeline-docker/image:latest
+      options: --user root
+    timeout-minutes: 90
+    env:
+      FLUTTER_OHOS_REF: '3.44.9+ohos-0.0.1-canary1'
+      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
+    steps:
+      - name: Put the ohos toolchain on PATH
+        run: |
+          {
+            echo "/opt/flutter-ohos/bin"
+            echo "/opt/harmonyos-tools/command-line-tools/tool/node/bin"
+            echo "/opt/harmonyos-tools/command-line-tools/bin"
+          } >> "$GITHUB_PATH"
+          # hvigor resolves its node modules through these registries.
+          cat > "$HOME/.npmrc" <<'EOF'
+          registry=https://repo.huaweicloud.com/repository/npm/
+          @ohos:registry=https://repo.harmonyos.com/npm/
+          EOF
+          node --version
+
+      - uses: actions/checkout@v7
+
+      - name: Install python3
+        run: |
+          # The image has no python3; the tdjson installer and the HAR patch
+          # below need it.
+          apt-get update -qq
+          apt-get install -y -qq python3-minimal >/dev/null
+          python3 --version
+
+      - name: Cache the ohos Flutter SDK
+        uses: actions/cache@v6
+        with:
+          path: /opt/flutter-ohos
+          key: flutter-ohos-sdk-${{ env.FLUTTER_OHOS_REF }}-v1
+
+      - name: Install the ohos Flutter fork
+        run: |
+          set -euo pipefail
+          if [ ! -x /opt/flutter-ohos/bin/flutter ]; then
+            git clone --depth 1 --branch "$FLUTTER_OHOS_REF" \
+              https://gitcode.com/openharmony-sig/flutter_flutter.git /opt/flutter-ohos
+          fi
+          # Bootstrap plus the ohos engine artifacts (several hundred MB from
+          # the Huawei cloud mirrors on the first run; cached afterwards).
+          flutter precache --ohos
+          flutter --version
+
+      - name: Patch the engine embedding HAR for API 22
+        run: |
+          set -euo pipefail
+          engine_dir=/opt/flutter-ohos/bin/cache/artifacts/engine/ohos-arm64-release
+          har="$engine_dir/flutter_embedding_release.har"
+          marker="$engine_dir/flutter_embedding_release.har.api22-patched"
+          test -s "$har"
+          if [ -f "$marker" ]; then
+            echo "Engine embedding HAR already patched for API 22"
+            exit 0
+          fi
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          # The HAR is a tar.gz whose members are prefixed with package/.
+          tar xzf "$har" -C "$work"
+
+          # 1) OhosAutoFillHelper.ets references @ohos.app.ability.autoFillManager
+          #    types that only exist from API 26; public SDKs top out at API 24.
+          #    Local type aliases with the same shapes compile against API 22.
+          #    Runtime behaviour is unchanged: the helper already early-returns
+          #    below sdkApiVersion 26, and the stubbed calls fail their
+          #    callbacks exactly as the guarded path would.
+          python3 - "$work/package/src/main/ets/plugin/editing/OhosAutoFillHelper.ets" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          if not path.exists():
+              print("OhosAutoFillHelper.ets absent; nothing to patch")
+              raise SystemExit(0)
+          text = path.read_text(encoding="utf-8")
+
+          text, n_import = re.subn(
+              r"^[ \t]*import\s+autoFillManager\s+from\s+['\"][^'\"]*['\"];?[ \t]*\n",
+              "",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if n_import == 0 and re.search(
+              r"^\s*import\s+autoFillManager\b", text, flags=re.MULTILINE
+          ):
+              raise SystemExit("autoFillManager import was not removed")
+
+          anchor = "const TAG = 'OhosAutoFillHelper';"
+          if anchor not in text:
+              raise SystemExit("TAG anchor not found in OhosAutoFillHelper.ets")
+          aliases = (
+              "\n"
+              "// CI compatibility shim: these API 26 autoFillManager types are\n"
+              "// aliased locally so the embedding compiles against the API 22 SDK.\n"
+              "type AutoFillType = number;\n"
+              "type ViewData = Object;\n"
+              "type AutoFillTriggerType = number;\n"
+              "type FillRequest = Object;\n"
+              "type FillFailureResult = { errCode: number };\n"
+              "type AutoFillCallback = { onSuccess: (v: ViewData) => void; onFailure: (r: FillFailureResult) => void };\n"
+              "type SaveRequest = Object;\n"
+              "type AutoSaveCallback = { onFailure: () => void };\n"
+          )
+          text = text.replace(anchor, anchor + aliases, 1)
+
+          # With the real module gone these two calls can no longer be made.
+          # The sdkApiVersion guard above already skips autofill below 26.
+          text, n_fill = re.subn(
+              r"autoFillManager\.requestAutoFill\(uiContext, fillRequest, callback\);",
+              "// API 26 autoFillManager unavailable on API 22 SDKs; guarded above.\n"
+              "        callback.onFailure({ errCode: -1 });",
+              text,
+          )
+          text, n_save = re.subn(
+              r"autoFillManager\.requestAutoSave\(uiContext, saveRequest, napiCallback\);",
+              "// API 26 autoFillManager unavailable on API 22 SDKs; guarded above.\n"
+              "        napiCallback.onFailure();",
+              text,
+          )
+
+          for name in (
+              "AutoFillType",
+              "ViewData",
+              "AutoFillTriggerType",
+              "FillRequest",
+              "FillFailureResult",
+              "AutoFillCallback",
+              "SaveRequest",
+              "AutoSaveCallback",
+          ):
+              text = text.replace(f"autoFillManager.{name}", name)
+
+          leftovers = sorted(set(re.findall(r"autoFillManager\.\w+", text)))
+          if leftovers:
+              raise SystemExit(f"unhandled autoFillManager references: {leftovers}")
+          path.write_text(text, encoding="utf-8")
+          print(
+              f"OhosAutoFillHelper: import removed={n_import}, "
+              f"requestAutoFill stubbed={n_fill}, requestAutoSave stubbed={n_save}"
+          )
+          PY
+
+          # 2) FlutterPage.ets registers the same resource id in four if/else
+          #    branches; the ArkTS compiler rejects duplicate ids.
+          python3 - "$work/package/src/main/ets/embedding/ohos/FlutterPage.ets" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          if not path.exists():
+              print("FlutterPage.ets absent; nothing to patch")
+              raise SystemExit(0)
+          text = path.read_text(encoding="utf-8")
+          pattern = re.compile(r"id\((['\"])unfocus-xcomponent-node\1\)")
+          occurrences = len(pattern.findall(text))
+          if occurrences != 4:
+              raise SystemExit(f"expected 4 unfocus ids, found {occurrences}")
+          counter = [0]
+
+          def unique_id(match: re.Match) -> str:
+              replacement = f"id({match.group(1)}unfocus-xcomponent-node-{counter[0]}{match.group(1)})"
+              counter[0] += 1
+              return replacement
+
+          text = pattern.sub(unique_id, text)
+          path.write_text(text, encoding="utf-8")
+          print(f"FlutterPage: made {counter[0]} unfocus ids unique")
+          PY
+
+          # 3) EmbeddingNodeController.ets uses CompetitionStrategy.DEFAULT, an
+          #    API 24+ enum; the call site already guards on runtime
+          #    capability, so the raw default value is equivalent.
+          python3 - "$work/package/src/main/ets/embedding/ohos/EmbeddingNodeController.ets" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          if not path.exists():
+              print("EmbeddingNodeController.ets absent; nothing to patch")
+              raise SystemExit(0)
+          text = path.read_text(encoding="utf-8")
+          if "CompetitionStrategy.DEFAULT" not in text:
+              raise SystemExit("CompetitionStrategy.DEFAULT not found")
+          text = text.replace(
+              "CompetitionStrategy.DEFAULT",
+              "0 /* CompetitionStrategy.DEFAULT: API 24+ enum, raw value for API 22 SDKs */",
+          )
+          path.write_text(text, encoding="utf-8")
+          print("EmbeddingNodeController: replaced CompetitionStrategy.DEFAULT")
+          PY
+
+          # Repack from the directory that contains package/ so members keep
+          # their package/ prefix; a ./ prefix breaks ohpm ("Not Found PkgJson").
+          (cd "$work" && tar czf har.new package)
+          mv "$work/har.new" "$har"
+          touch "$marker"
+          echo "Engine embedding HAR patched for API 22"
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      # feat/ohos-pubspec merges the ohos overlay packages into the pubspec.
+      # Until that branch merges this script is absent; skip gracefully.
+      - name: Enable the ohos plugin overlay
+        run: |
+          if [ -f scripts/enable-ohos-plugins.sh ]; then
+            bash scripts/enable-ohos-plugins.sh
+            flutter pub get
+          else
+            echo "scripts/enable-ohos-plugins.sh not present; skipping overlay"
+          fi
+
+      - name: Write secrets.dart
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<EOF
+          class Secrets {
+            static const int apiId = ${TELEGRAM_API_ID:-0};
+            static const String apiHash = '${TELEGRAM_API_HASH}';
+            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
+          }
+          EOF
+
+      - name: Ensure the ohos host project
+        run: |
+          if [ -f ohos/build-profile.json5 ]; then
+            echo "Using the tracked ohos/ host project"
+          else
+            flutter create --platforms ohos --org ad.neko --project-name mithka .
+          fi
+
+      - name: Install the pinned ohos tdjson
+        run: |
+          # The tdjson-ohos-arm64.zip asset lands with the ohos tdjson PR;
+          # until then the hap ships without the native library.
+          if python3 -c "import json,sys; sys.exit(0 if 'tdjson-ohos-arm64.zip' in json.load(open('scripts/tdjson-manifest.json'))['assets'] else 1)"; then
+            python3 scripts/install-tdjson-artifact.py tdjson-ohos-arm64.zip \
+              ohos/entry/libs/arm64-v8a/libtdjson.so \
+              --member arm64-v8a/libtdjson.so \
+              --mode 0755
+          else
+            echo "::warning::tdjson-ohos-arm64.zip is not pinned yet; building without libtdjson.so"
+          fi
+
+      # feat/ohos-host adds the tracked ohos/ host project (bundleName
+      # ad.neko.mithka). Until it merges, generate the host with the fork's
+      # own template — it keeps lib/ and only adds ohos/.
+      - name: Build the ohos release hap
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          set +e
+          flutter build hap --target-platform ohos-arm64 --release \
+            --build-name="${{ needs.prepare.outputs.app_version }}" \
+            --build-number="${{ needs.prepare.outputs.version_code }}" \
+            --dart-define="I_DONT_FUCKING_CARE_ABOUT_TOS=false" \
+            --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
+            --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
+            --dart-define="SENTRY_DSN=$SENTRY_DSN"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # Without signing configs flutter exits non-zero AFTER hvigor has
+            # produced the unsigned hap; the artifact check below is the gate.
+            echo "::warning::flutter build hap exited $status (expected without signing configs); verifying the unsigned hap"
+          fi
+
+      - name: Verify and rename the hap
+        env:
+          ARTIFACT_LABEL: ${{ needs.prepare.outputs.artifact_label }}
+        run: |
+          set -euo pipefail
+          hap="ohos/entry/build/default/outputs/default/entry-default-unsigned.hap"
+          test -s "$hap"
+          python3 - "$hap" <<'PY'
+          import sys
+          import zipfile
+
+          with zipfile.ZipFile(sys.argv[1]) as bundle:
+              names = bundle.namelist()
+          if "pack.info" not in names or "ets/modules.abc" not in names:
+              raise SystemExit(f"hap payload looks wrong: {sorted(names)[:20]}")
+          print(f"hap payload verified ({len(names)} entries)")
+          PY
+          mkdir -p dist
+          cp "$hap" "dist/mithka-${ARTIFACT_LABEL}-ohos-arm64.hap"
+          ls -lh dist
+
+      - name: Upload the ohos hap artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: hap-ohos-arm64-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-ohos-arm64.hap
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
-    needs: [prepare, build, build-desktop]
+    needs: [prepare, build, build-desktop, build-ohos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -707,6 +1025,15 @@ jobs:
               exit 1
             fi
           done
+          hap_count="$(
+            find release-assets -maxdepth 1 -type f -name 'mithka-*-ohos-arm64.hap' \
+              | wc -l \
+              | tr -d ' '
+          )"
+          if [ "$hap_count" -ne 1 ]; then
+            echo "Expected exactly one ohos hap package, found $hap_count" >&2
+            exit 1
+          fi
           echo "APKs: $apk_count"
 
       - name: Create release tag
@@ -842,7 +1169,7 @@ jobs:
             exit 0
           fi
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
-            | grep -E '^mithka-.*\.(apk|exe|zip|tar\.gz|AppImage)$' \
+            | grep -E '^mithka-.*\.(apk|exe|zip|tar\.gz|AppImage|hap)$' \
             | while read -r asset; do
                 gh release delete-asset "$RELEASE_TAG" "$asset" --yes
               done
