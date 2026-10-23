@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">이 기기</string>
     <string name="accountBackupTitle">계정 백업</string>
     <string name="accountBackupUnavailable">이 기기 또는 배포판에서는 계정 백업을 사용할 수 없습니다.</string>
-    <string name="accountBackupUserId">사용자 ID: {value1}</string>
+        <string name="accountPickerTitle">계정 선택</string>
+    <string name="accountPickerMessage">이 링크는 계정 중 하나에 속합니다. 열 계정을 선택하세요.</string>
+<string name="accountBackupUserId">사용자 ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">새로운 코드가 전송되었습니다.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Telegram 계정과 연락처가 새 번호로 옮겨집니다.</string>
     <string name="accountSecurityAccountInactivity">계정 비활성</string>
