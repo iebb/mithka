@@ -153,6 +153,75 @@ void main() {
     },
   );
 
+  testWidgets('a refused desktop microphone reports once, not per press', (
+    tester,
+  ) async {
+    final recorder = _DesktopRecorder(permission: Future<bool>.value(false));
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      desktop: recorder,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    for (var press = 0; press < 3; press++) {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+      await _flushIo(tester);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      await _flushIo(tester);
+    }
+    expect(
+      recorder.permissions,
+      1,
+      reason: 'A refusal answers this opening; the system only prompts once',
+    );
+    expect(issues, ['permission'], reason: 'One report for the opening');
+    expect(recorder.starts, 0);
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a refused desktop microphone offers a way to allow it', (
+    tester,
+  ) async {
+    var opened = 0;
+    final recorder = _DesktopRecorder(permission: Future<bool>.value(false));
+    final vm = await _openComposer(
+      tester,
+      desktop: recorder,
+      openSettings: () async {
+        opened++;
+        return true;
+      },
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    expect(
+      opened,
+      1,
+      reason: 'A refused desktop microphone is only fixable in system settings',
+    );
+    await _dispose(tester, vm);
+  });
+
+  testWidgets('a desktop start failure names its stage', (tester) async {
+    final recorder = _DesktopRecorder()..failStart = true;
+    final issues = <String>[];
+    final vm = await _openComposer(
+      tester,
+      desktop: recorder,
+      onIssue: (stage, _) => issues.add(stage),
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await _flushIo(tester);
+    expect(issues, [
+      'start',
+    ], reason: 'A desktop failure used to report no stage and no exception');
+    await _dispose(tester, vm);
+  });
+
   testWidgets('Esc during a pending stop cannot send a cancelled recording', (
     tester,
   ) async {

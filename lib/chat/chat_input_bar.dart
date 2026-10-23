@@ -109,6 +109,17 @@ import 'voice_recording_session.dart';
 
 enum _Panel { none, function, emoji, sticker, voice, format }
 
+/// A desktop microphone the system refused to hand to this app.
+///
+/// Not a recorder exception: `record` reports it as `hasPermission() == false`,
+/// and on macOS the system prompt never appears again once it was refused.
+class DesktopMicrophoneRefused implements Exception {
+  const DesktopMicrophoneRefused();
+
+  @override
+  String toString() => 'desktop microphone refused';
+}
+
 /// A preparation failure whose cause was already reported to the user.
 ///
 /// Opening the voice panel prepares the recorder in the background, and every
@@ -2164,6 +2175,12 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Future<void> _prepareDesktopRecorder() async {
     if (_desktopRecorder != null) return;
+    // The panel opening prepares once and every press waits on that same
+    // preparation, so a refusal must answer the whole opening.
+    final failed = _recorderPreparationFailure;
+    if (failed != null) {
+      throw _ReportedCaptureFailure(failed);
+    }
     final pending = _desktopRecorderPreparation;
     if (pending != null) {
       await pending;
@@ -2197,10 +2214,16 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (!allowed) {
       await recorder.dispose();
       if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired),
+      // `record` only shows the macOS prompt while the grant is undetermined.
+      // Once refused, nothing in the app can ask again, so the settings page is
+      // the user's only route - and the same refusal must not be re-reported on
+      // every later press in this opening.
+      _recorderPreparationFailure = const DesktopMicrophoneRefused();
+      _showRecordingError(
+        error: const DesktopMicrophoneRefused(),
+        stage: 'permission',
       );
+      unawaited(_openMicrophoneSettings());
       return;
     }
     if (_voiceDisposed || !mounted) {
@@ -2426,13 +2449,13 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
         path: path,
       );
-    } catch (_) {
+    } catch (error) {
       try {
         await recorder.cancel();
       } catch (_) {}
       await _deleteTempFile(path);
       _recPath = null;
-      _showRecordingError();
+      _showRecordingError(error: error, stage: 'start');
       return;
     }
     if (_voiceDisposed || !mounted) return;
