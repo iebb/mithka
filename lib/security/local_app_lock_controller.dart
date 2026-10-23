@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../platform/ohos_support.dart';
 import 'app_lock_privacy.dart';
 
 enum AppLockCredentialType { pin, gesture }
@@ -577,10 +578,7 @@ class LocalAppLockController extends ChangeNotifier {
         persistAcrossBackgrounding: true,
       );
 
-  static bool get _defaultPlatformSupportsBiometrics =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+  static bool get _defaultPlatformSupportsBiometrics => isMobilePlatform;
 
   @override
   void dispose() {

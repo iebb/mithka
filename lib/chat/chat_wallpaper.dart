@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vector_graphics/vector_graphics_compat.dart'
     show RenderingStrategy;
 
+import '../platform/ohos_support.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
@@ -2641,10 +2642,7 @@ class _WallpaperMotionState extends State<_WallpaperMotion>
   }
 }
 
-bool get _supportsWallpaperTilt =>
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS);
+bool get _supportsWallpaperTilt => isMobilePlatform;
 
 /// Maps the gravity-vector change since a wallpaper was opened to a bounded
 /// parallax translation. The baseline keeps an upright phone centered just as

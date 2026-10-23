@@ -22,6 +22,8 @@ import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 
+import '../platform/ohos_support.dart';
+
 // C signatures
 typedef _CreateClientIdC = Int32 Function();
 typedef _CreateClientIdDart = int Function();
@@ -177,6 +179,11 @@ class TdBindings {
       );
     }
     if (Platform.isWindows) return DynamicLibrary.open('tdjson.dll');
+    // HarmonyOS: the ohos toolchain packages libtdjson.so into the hap under
+    // libs/arm64-v8a, where the loader resolves it by soname like Android's
+    // jniLibs. Checked before the desktop fallthrough, which expects a
+    // bundle-relative lib directory that a hap does not have.
+    if (isOhos) return DynamicLibrary.open('libtdjson.so');
     return DynamicLibrary.open('libtdjson.so');
   }
 

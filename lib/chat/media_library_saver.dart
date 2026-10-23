@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../platform/ohos_support.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
@@ -52,7 +53,7 @@ class MediaLibrarySaver {
 
   static Future<MediaLibrarySaveResult> save(ChatMessage message) async {
     final target = MediaLibrarySaveTarget.fromMessage(message);
-    if (target == null || (!Platform.isIOS && !Platform.isAndroid)) {
+    if (target == null || !isMobilePlatform) {
       return MediaLibrarySaveResult.unsupported;
     }
 
@@ -85,7 +86,7 @@ class MediaLibrarySaver {
     required bool isVideo,
     DateTime? creationDate,
   }) async {
-    if (!Platform.isIOS && !Platform.isAndroid) {
+    if (!isMobilePlatform) {
       return MediaLibrarySaveResult.unsupported;
     }
     try {

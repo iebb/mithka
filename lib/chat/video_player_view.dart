@@ -36,6 +36,7 @@ import '../media/video_playback_reporting.dart';
 import '../media/video_view_compatibility.dart';
 import '../platform/fullscreen_system_ui.dart';
 import '../platform/keyboard_modifiers.dart';
+import '../platform/ohos_support.dart';
 import '../platform/player_brightness.dart';
 import '../platform/player_system_volume.dart';
 import '../platform/screen_wakelock.dart';
@@ -4987,9 +4988,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   bool get _showsOrientationButton =>
       widget.presentation == VideoPlayerPresentation.fullscreen &&
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+      isMobilePlatform;
 
   Future<void> _toggleVideoOrientation() async {
     if (_orientationChangeInFlight) return;

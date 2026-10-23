@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../platform/ohos_support.dart';
 import '../tdlib/gram_js_session.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -38,8 +39,7 @@ class AccountSessionBackup {
 class AccountBackupService {
   AccountBackupService({MethodChannel? channel, bool? platformEligible})
     : _channel = channel ?? const MethodChannel('mithka/account_backup'),
-      _platformEligible =
-          platformEligible ?? (Platform.isIOS || Platform.isAndroid);
+      _platformEligible = platformEligible ?? isMobilePlatform;
 
   static final AccountBackupService shared = AccountBackupService();
 

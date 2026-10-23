@@ -24,7 +24,9 @@ String apiCredentialsDeviceModelHint(TargetPlatform platform) =>
       TargetPlatform.macOS => 'Mac',
       TargetPlatform.windows => 'Windows PC',
       TargetPlatform.linux => 'Linux PC',
-      TargetPlatform.fuchsia => 'Device',
+      // fuchsia and the ohos fork's extra enum value are unnamed in stock
+      // code; a generic hint keeps the TDLib device-model field usable.
+      _ => 'Device',
     };
 
 class ApiCredentialsView extends StatefulWidget {
