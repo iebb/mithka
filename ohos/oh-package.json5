@@ -1,0 +1,13 @@
+{
+  "modelVersion": "5.1.0",
+  "name": "mithka",
+  "version": "1.0.0",
+  "description": "Mithka HarmonyOS host project",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.6"
+  }
+}
