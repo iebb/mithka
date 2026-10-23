@@ -58,6 +58,17 @@ EXPECTED_MEMBERS = {
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
 
+# Assets that pinned manifests may not carry yet (published by a newer
+# mithka-tdjson release than the manifest pins). Validation skips them when
+# absent; installing them still requires the manifest entry.
+OPTIONAL_MEMBERS = {
+    "tdjson-ohos-arm64.zip": {
+        "arm64-v8a/libtdjson.so",
+    },
+}
+
+ALL_MEMBERS = {**EXPECTED_MEMBERS, **OPTIONAL_MEMBERS}
+
 MANIFEST_KEYS = {
     "schema_version",
     "release_tag",
@@ -79,7 +90,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Download, verify, and install a pinned tdjson release asset."
     )
-    parser.add_argument("asset", choices=sorted(EXPECTED_MEMBERS))
+    parser.add_argument("asset", choices=sorted(ALL_MEMBERS))
     parser.add_argument(
         "destination",
         type=Path,
@@ -207,8 +218,16 @@ def load_manifest(path):
     )
 
     assets = manifest["assets"]
-    require_exact_keys(assets, set(EXPECTED_MEMBERS), "manifest assets")
-    for asset_name, expected_members in EXPECTED_MEMBERS.items():
+    required = set(EXPECTED_MEMBERS)
+    if not required.issubset(assets):
+        missing = sorted(required - set(assets))
+        raise InstallError(f"manifest assets missing required entries: {missing}")
+    unexpected = set(assets) - set(ALL_MEMBERS)
+    if unexpected:
+        raise InstallError(f"manifest assets contain unexpected entries: {sorted(unexpected)}")
+    for asset_name, expected_members in ALL_MEMBERS.items():
+        if asset_name not in assets:
+            continue
         asset = assets[asset_name]
         # Per-asset pinned releases may override the global release_tag (used
         # for the HarmonyOS secondary release so the single manifest can pin
@@ -611,7 +630,7 @@ def run(args):
     asset = manifest["assets"][args.asset]
 
     if args.member is not None:
-        if args.member not in EXPECTED_MEMBERS[args.asset]:
+        if args.member not in ALL_MEMBERS[args.asset]:
             raise InstallError(
                 f"{args.member} is not a declared member of {args.asset}"
             )
