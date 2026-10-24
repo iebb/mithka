@@ -730,9 +730,12 @@ jobs:
           # 1) OhosAutoFillHelper.ets references @ohos.app.ability.autoFillManager
           #    types that only exist from API 26; public SDKs top out at API 24.
           #    Local type aliases with the same shapes compile against API 22.
-          #    Runtime behaviour is unchanged: the helper already early-returns
-          #    below sdkApiVersion 26, and the stubbed calls fail their
-          #    callbacks exactly as the guarded path would.
+          #    This is an explicitly reviewed capability fallback, not a silent
+          #    rewrite: the patch refuses to apply unless the runtime guard
+          #    (early return below sdkApiVersion 26) is present in the source,
+          #    so requestAutoFill/requestAutoSave can never run on a runtime
+          #    that would have reached the real API 26 module. The stubbed
+          #    calls fail their callbacks exactly as the guarded path would.
           python3 - "$work/package/src/main/ets/plugin/editing/OhosAutoFillHelper.ets" <<'PY'
           import pathlib
           import re
@@ -743,6 +746,18 @@ jobs:
               print("OhosAutoFillHelper.ets absent; nothing to patch")
               raise SystemExit(0)
           text = path.read_text(encoding="utf-8")
+
+          # The fallback is only sound when the engine already refuses to call
+          # the API 26 module below sdkApiVersion 26; fail loudly otherwise so
+          # an engine update that drops the guard cannot ship a silent
+          # behaviour change.
+          guard = re.search(r"sdkApiVersion\s*<\s*26", text)
+          if guard is None:
+              raise SystemExit(
+                  "OhosAutoFillHelper.ets no longer guards autofill below "
+                  "sdkApiVersion 26; the API 22 capability fallback is no "
+                  "longer sound and must be re-reviewed"
+              )
 
           text, n_import = re.subn(
               r"^[ \t]*import\s+autoFillManager\s+from\s+['\"][^'\"]*['\"];?[ \t]*\n",
@@ -872,11 +887,12 @@ jobs:
         run: flutter pub get
 
       # feat/ohos-pubspec merges the ohos overlay packages into the pubspec.
-      # Until that branch merges this script is absent; skip gracefully.
+      # The overlay helper requires an explicit apply|revert argument and exits 2
+      # without one, so always pass apply here.
       - name: Enable the ohos plugin overlay
         run: |
           if [ -f scripts/enable-ohos-plugins.sh ]; then
-            bash scripts/enable-ohos-plugins.sh
+            bash scripts/enable-ohos-plugins.sh apply
             flutter pub get
           else
             echo "scripts/enable-ohos-plugins.sh not present; skipping overlay"
@@ -906,16 +922,41 @@ jobs:
 
       - name: Install the pinned ohos tdjson
         run: |
-          # The tdjson-ohos-arm64.zip asset lands with the ohos tdjson PR;
-          # until then the hap ships without the native library.
-          if python3 -c "import json,sys; sys.exit(0 if 'tdjson-ohos-arm64.zip' in json.load(open('scripts/tdjson-manifest.json'))['assets'] else 1)"; then
-            python3 scripts/install-tdjson-artifact.py tdjson-ohos-arm64.zip \
-              ohos/entry/libs/arm64-v8a/libtdjson.so \
-              --member arm64-v8a/libtdjson.so \
-              --mode 0755
-          else
-            echo "::warning::tdjson-ohos-arm64.zip is not pinned yet; building without libtdjson.so"
-          fi
+          set -euo pipefail
+          # The pinned schema-v2 manifest is the trust anchor: the OHOS asset
+          # entry (with its per-asset release_tag) must exist, and the archive
+          # downloaded from that release must match the pinned archive and
+          # member SHA-256/size exactly. A missing pin or a digest mismatch
+          # fails the job; the hap never ships without the verified native
+          # TDLib library.
+          python3 scripts/install-tdjson-artifact.py tdjson-ohos-arm64.zip \
+            ohos/entry/libs/arm64-v8a/libtdjson.so \
+            --member arm64-v8a/libtdjson.so \
+            --mode 0755
+          test -s ohos/entry/libs/arm64-v8a/libtdjson.so
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path("scripts/tdjson-manifest.json").read_text(encoding="utf-8")
+          )
+          asset = manifest["assets"]["tdjson-ohos-arm64.zip"]
+          member = asset["members"]["arm64-v8a/libtdjson.so"]
+          installed = Path("ohos/entry/libs/arm64-v8a/libtdjson.so")
+          digest = hashlib.sha256(installed.read_bytes()).hexdigest()
+          if installed.stat().st_size != member["size"] or digest != member["sha256"]:
+              raise SystemExit(
+                  "installed libtdjson.so does not match the pinned manifest entry"
+              )
+          print(
+              "installed libtdjson.so verified against the pinned manifest "
+              f"({digest[:12]}, {member['size']} bytes) from release "
+              f"{asset.get('release_tag', manifest['release_tag'])}"
+          )
+          PY
 
       # feat/ohos-host adds the tracked ohos/ host project (bundleName
       # ad.neko.mithka). Until it merges, generate the host with the fork's
@@ -924,21 +965,36 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-          set +e
+          set -euo pipefail
+          unsigned="ohos/entry/build/default/outputs/default/entry-default-unsigned.hap"
+          log="$(mktemp)"
+          status=0
           flutter build hap --target-platform ohos-arm64 --release \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
             --build-number="${{ needs.prepare.outputs.version_code }}" \
             --dart-define="I_DONT_FUCKING_CARE_ABOUT_TOS=false" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
-            --dart-define="SENTRY_DSN=$SENTRY_DSN"
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # Without signing configs flutter exits non-zero AFTER hvigor has
-            # produced the unsigned hap; the artifact check below is the gate.
-            echo "::warning::flutter build hap exited $status (expected without signing configs); verifying the unsigned hap"
+            --dart-define="SENTRY_DSN=$SENTRY_DSN" 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -eq 0 ]; then
+            exit 0
           fi
+          # Tolerate only a specifically verified signing failure: the build
+          # must have produced the unsigned hap and the log must name the
+          # signing step as the failing part. Compiler, resource, dependency
+          # or packaging failures fail the job instead of shipping an
+          # unverified artifact.
+          signing_failure=0
+          if [ -s "$unsigned" ] && grep -Eqi \
+            'signing|signature|keystore|p12|cer|profile' "$log"; then
+            signing_failure=1
+          fi
+          if [ "$signing_failure" -ne 1 ]; then
+            echo "::error::flutter build hap exited $status without a verified signing-only failure" >&2
+            exit "$status"
+          fi
+          echo "::warning::flutter build hap exited $status (signing-only, unsigned hap produced); verifying the unsigned hap"
 
       - name: Verify and rename the hap
         env:
@@ -948,14 +1004,73 @@ jobs:
           hap="ohos/entry/build/default/outputs/default/entry-default-unsigned.hap"
           test -s "$hap"
           python3 - "$hap" <<'PY'
+          import hashlib
+          import json
           import sys
           import zipfile
+          from pathlib import Path
 
-          with zipfile.ZipFile(sys.argv[1]) as bundle:
+          hap = Path(sys.argv[1])
+          manifest = json.loads(
+              Path("scripts/tdjson-manifest.json").read_text(encoding="utf-8")
+          )
+          asset = manifest["assets"]["tdjson-ohos-arm64.zip"]
+          member = asset["members"]["arm64-v8a/libtdjson.so"]
+          hap_member = "libs/arm64-v8a/libtdjson.so"
+
+          with zipfile.ZipFile(hap) as bundle:
               names = bundle.namelist()
-          if "pack.info" not in names or "ets/modules.abc" not in names:
-              raise SystemExit(f"hap payload looks wrong: {sorted(names)[:20]}")
-          print(f"hap payload verified ({len(names)} entries)")
+              for required in ("pack.info", "ets/modules.abc", hap_member):
+                  if required not in names:
+                      raise SystemExit(
+                          "hap payload is missing a required entry: "
+                          f"{required} (have {sorted(names)[:20]})"
+                      )
+              info = bundle.getinfo(hap_member)
+              if info.file_size != member["size"]:
+                  raise SystemExit(
+                      f"{hap_member} size {info.file_size} does not match the "
+                      f"pinned {member['size']} bytes"
+                  )
+              with bundle.open(hap_member) as stream:
+                  digest = hashlib.sha256()
+                  while chunk := stream.read(1024 * 1024):
+                      digest.update(chunk)
+              if digest.hexdigest() != member["sha256"]:
+                  raise SystemExit(
+                      f"{hap_member} does not match the pinned manifest digest"
+                  )
+
+          installed = Path("ohos/entry/libs/arm64-v8a/libtdjson.so").read_bytes()
+          with zipfile.ZipFile(hap) as bundle:
+              packaged = bundle.read(hap_member)
+          if installed != packaged:
+              raise SystemExit(
+                  "packaged libtdjson.so differs from the installed pinned bytes"
+              )
+
+          # Loader/exports boundary: the packaged ELF must be an arm64 shared
+          # object whose dynamic symbol table exposes the td_json_client entry
+          # points the Dart adapter resolves.
+          elf = packaged[:20]
+          if elf[:4] != b"\x7fELF" or elf[4] != 2 or elf[5] != 1 or elf[18] != 0xB7:
+              raise SystemExit("packaged libtdjson.so is not an arm64 ELF")
+          for symbol in (
+              "td_json_client_create",
+              "td_json_client_send",
+              "td_json_client_receive",
+              "td_json_client_execute",
+              "td_json_client_destroy",
+          ):
+              if symbol.encode() not in packaged:
+                  raise SystemExit(
+                      f"packaged libtdjson.so lacks the {symbol} entry point"
+                  )
+          print(
+              f"hap payload verified ({len(names)} entries); "
+              f"{hap_member} matches the pinned manifest entry from release "
+              f"{asset.get('release_tag', manifest['release_tag'])}"
+          )
           PY
           mkdir -p dist
           cp "$hap" "dist/mithka-${ARTIFACT_LABEL}-ohos-arm64.hap"

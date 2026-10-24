@@ -102,6 +102,17 @@
       "sha256": "2b386ea26ddbc847efc4a9577cf8b552ab02e376c34e7ca0dad0823f9373880d",
       "size": 21792143
     },
+    "tdjson-ohos-arm64.zip": {
+      "members": {
+        "arm64-v8a/libtdjson.so": {
+          "sha256": "e8996f897b2e7307a3f0f6c31219d9cb45a6065b214edccf08217af3c9a7438c",
+          "size": 5242880
+        }
+      },
+      "release_tag": "tdjson-ohos-1.8.68-c15d3f5a5de6-mithka-2e7f8ff14657-build-f6b13ce5aa13-v2",
+      "sha256": "02b825c75363fae3ff1e4456b3e78238e9462cac3e5dd4aec2aec3e014b16fcf",
+      "size": 15479
+    },
     "tdjson-windows-arm64.zip": {
       "members": {
         "tdjson.dll": {

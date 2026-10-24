@@ -53,20 +53,12 @@ EXPECTED_MEMBERS = {
     "tdjson-linux-arm64.zip": {"libtdjson.so"},
     "tdjson-linux-x64.zip": {"libtdjson.so"},
     "tdjson-macos-universal.zip": {"libtdjson.dylib"},
+    "tdjson-ohos-arm64.zip": {"arm64-v8a/libtdjson.so"},
     "tdjson-windows-arm64.zip": {"tdjson.dll"},
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
 
-# Assets that pinned manifests may not carry yet (published by a newer
-# mithka-tdjson release than the manifest pins). Validation skips them when
-# absent; installing them still requires the manifest entry.
-OPTIONAL_MEMBERS = {
-    "tdjson-ohos-arm64.zip": {
-        "arm64-v8a/libtdjson.so",
-    },
-}
-
-ALL_MEMBERS = {**EXPECTED_MEMBERS, **OPTIONAL_MEMBERS}
+ALL_MEMBERS = EXPECTED_MEMBERS
 
 MANIFEST_KEYS = {
     "schema_version",
@@ -217,18 +209,30 @@ def load_manifest(path):
     )
 
     assets = manifest["assets"]
-    required = set(EXPECTED_MEMBERS)
-    if not required.issubset(assets):
-        missing = sorted(required - set(assets))
-        raise InstallError(f"manifest assets missing required entries: {missing}")
-    unexpected = set(assets) - set(ALL_MEMBERS)
-    if unexpected:
-        raise InstallError(f"manifest assets contain unexpected entries: {sorted(unexpected)}")
+    require_exact_keys(assets, set(ALL_MEMBERS), "manifest assets")
     for asset_name, expected_members in ALL_MEMBERS.items():
-        if asset_name not in assets:
-            continue
         asset = assets[asset_name]
-        require_exact_keys(asset, {"sha256", "size", "members"}, asset_name)
+        # Per-asset pinned releases may override the global release_tag (the
+        # HarmonyOS asset is published on its own immutable secondary tag).
+        allowed_keys = {"sha256", "size", "members"}
+        extra = set(asset) - allowed_keys
+        if extra - {"release_tag"}:
+            raise InstallError(
+                f"{asset_name} has unexpected keys: "
+                f"expected {sorted(allowed_keys)} or "
+                f"{sorted(allowed_keys | {'release_tag'})}, got {sorted(asset)}"
+            )
+        if "release_tag" in asset:
+            require_string(
+                asset["release_tag"],
+                f"{asset_name}.release_tag",
+                RELEASE_TAG_PATTERN,
+            )
+        require_exact_keys(
+            asset,
+            allowed_keys | ({"release_tag"} if "release_tag" in asset else set()),
+            asset_name,
+        )
         require_string(asset["sha256"], f"{asset_name}.sha256", SHA256_PATTERN)
         require_positive_int(asset["size"], f"{asset_name}.size")
         members = asset["members"]
@@ -443,6 +447,11 @@ def release_url(release_tag, asset_name):
     )
 
 
+def args_release_tag(manifest, asset_name):
+    asset = manifest["assets"][asset_name]
+    return asset.get("release_tag", manifest["release_tag"])
+
+
 def download(url, destination, expected_size):
     request = urllib.request.Request(
         url, headers={"User-Agent": "Mithka-tdjson-installer/2"}
@@ -631,8 +640,9 @@ def run(args):
     with tempfile.TemporaryDirectory(prefix="mithka-tdjson-") as temporary:
         if args.archive is None:
             archive_path = Path(temporary) / args.asset
-            url = release_url(manifest["release_tag"], args.asset)
-            print(f"Downloading {args.asset} from {manifest['release_tag']}")
+            release_tag = args_release_tag(manifest, args.asset)
+            url = release_url(release_tag, args.asset)
+            print(f"Downloading {args.asset} from {release_tag}")
             download(url, archive_path, asset["size"])
         else:
             archive_path = args.archive
