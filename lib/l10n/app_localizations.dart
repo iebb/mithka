@@ -252,6 +252,8 @@ abstract final class AppStringKeys {
   static const accountBackupTitle = 'accountBackupTitle';
   static const accountBackupUnavailable = 'accountBackupUnavailable';
   static const accountBackupUserId = 'accountBackupUserId';
+  static const accountPickerMessage = 'accountPickerMessage';
+  static const accountPickerTitle = 'accountPickerTitle';
   static const mithkaProActive = 'mithkaProActive';
   static const mithkaProActiveUntil = 'mithkaProActiveUntil';
   static const mithkaProBestValue = 'mithkaProBestValue';

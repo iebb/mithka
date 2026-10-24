@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">Auf diesem Gerät</string>
     <string name="accountBackupTitle">Kontosicherung</string>
     <string name="accountBackupUnavailable">Die Kontosicherung ist auf diesem Gerät oder in dieser Distribution nicht verfügbar.</string>
-    <string name="accountBackupUserId">Benutzer-ID: {value1}</string>
+        <string name="accountPickerTitle">Konto wählen</string>
+    <string name="accountPickerMessage">Diese Verknüpfung gehört zu einem deiner Konten. Wähle, in welchem sie geöffnet werden soll.</string>
+<string name="accountBackupUserId">Benutzer-ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">Ein neuer Code wurde gesendet.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Dein Telegram-Konto und deine Kontakte werden zur neuen Nummer übertragen.</string>
     <string name="accountSecurityAccountInactivity">Kontoinaktivität</string>
