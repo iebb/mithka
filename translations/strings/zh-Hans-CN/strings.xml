@@ -3669,6 +3669,7 @@
     <string name="videoPlayerPlaying">正在播放</string>
     <string name="videoPlayerSeekBackwardTenSeconds">后退 10 秒</string>
     <string name="videoPlayerSeekForwardTenSeconds">前进 10 秒</string>
+    <string name="videoPlayerHoldPlaybackSpeed">长按加速播放</string>
     <string name="videoPlayerStreamInspector">流检查器</string>
     <string name="videoPlayerVideoNumber">视频 {value1}</string>
     <string name="videoPlayerVideoZoom">视频缩放</string>

@@ -3669,6 +3669,7 @@
     <string name="videoPlayerPlaying">再生中</string>
     <string name="videoPlayerSeekBackwardTenSeconds">10 秒戻る</string>
     <string name="videoPlayerSeekForwardTenSeconds">10 秒進む</string>
+    <string name="videoPlayerHoldPlaybackSpeed">長押しで高速再生</string>
     <string name="videoPlayerStreamInspector">ストリームインスペクター</string>
     <string name="videoPlayerVideoNumber">動画 {value1}</string>
     <string name="videoPlayerVideoZoom">動画ズーム</string>
