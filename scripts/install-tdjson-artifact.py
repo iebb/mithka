@@ -53,6 +53,7 @@ EXPECTED_MEMBERS = {
     "tdjson-linux-arm64.zip": {"libtdjson.so"},
     "tdjson-linux-x64.zip": {"libtdjson.so"},
     "tdjson-macos-universal.zip": {"libtdjson.dylib"},
+    "tdjson-ohos-arm64.zip": {"arm64-v8a/libtdjson.so"},
     "tdjson-windows-arm64.zip": {"tdjson.dll"},
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
@@ -209,7 +210,21 @@ def load_manifest(path):
     require_exact_keys(assets, set(EXPECTED_MEMBERS), "manifest assets")
     for asset_name, expected_members in EXPECTED_MEMBERS.items():
         asset = assets[asset_name]
-        require_exact_keys(asset, {"sha256", "size", "members"}, asset_name)
+        # Per-asset pinned releases may override the global release_tag (used
+        # for the HarmonyOS secondary release so the single manifest can pin
+        # assets from two immutable tags). Only sha256/size/members are the
+        # validated shape; an optional release_tag is accepted but not required.
+        allowed_keys = {"sha256", "size", "members"}
+        extra = set(asset) - allowed_keys
+        if extra == {"release_tag"}:
+            require_string(asset["release_tag"], f"{asset_name}.release_tag", RELEASE_TAG_PATTERN)
+        elif extra:
+            raise InstallError(
+                f"{asset_name} has unexpected keys: "
+                f"expected {sorted(allowed_keys)} or {sorted(allowed_keys | {'release_tag'})}, "
+                f"got {sorted(asset)}"
+            )
+        # Validate the canonical fields even when release_tag is present.
         require_string(asset["sha256"], f"{asset_name}.sha256", SHA256_PATTERN)
         require_positive_int(asset["size"], f"{asset_name}.size")
         members = asset["members"]
@@ -424,6 +439,11 @@ def release_url(release_tag, asset_name):
     )
 
 
+def release_tag_for_asset(manifest, asset_name):
+    asset = manifest["assets"][asset_name]
+    return asset.get("release_tag", manifest["release_tag"])
+
+
 def download(url, destination, expected_size):
     request = urllib.request.Request(
         url, headers={"User-Agent": "Mithka-tdjson-installer/2"}
@@ -612,8 +632,9 @@ def run(args):
     with tempfile.TemporaryDirectory(prefix="mithka-tdjson-") as temporary:
         if args.archive is None:
             archive_path = Path(temporary) / args.asset
-            url = release_url(manifest["release_tag"], args.asset)
-            print(f"Downloading {args.asset} from {manifest['release_tag']}")
+            release_tag = release_tag_for_asset(manifest, args.asset)
+            url = release_url(release_tag, args.asset)
+            print(f"Downloading {args.asset} from {release_tag}")
             download(url, archive_path, asset["size"])
         else:
             archive_path = args.archive

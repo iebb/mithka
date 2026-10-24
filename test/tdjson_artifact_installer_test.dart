@@ -25,6 +25,7 @@ const _expectedMembers = <String, Set<String>>{
   'tdjson-macos-universal.zip': {'libtdjson.dylib'},
   'tdjson-windows-arm64.zip': {'tdjson.dll'},
   'tdjson-windows-x64.zip': {'tdjson.dll'},
+  'tdjson-ohos-arm64.zip': {'arm64-v8a/libtdjson.so'},
 };
 
 const _linuxAsset = 'tdjson-linux-x64.zip';
