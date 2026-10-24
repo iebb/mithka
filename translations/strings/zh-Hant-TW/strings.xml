@@ -1293,6 +1293,7 @@
     <string name="composerMediaSelectionLimit">最多選取 {value1} 張照片或影片。</string>
     <string name="composerMessageExceedsRichTextLimit">此訊息超過富文字訊息的 32768 字元限制。</string>
     <string name="composerMicrophonePermissionRequired">需要麥克風權限</string>
+    <string name="composerMicrophonePermissionRestricted">麥克風被系統限制，請在系統設定中允許</string>
     <string name="composerMicrophonePermissionSettings">請在系統設定中允許麥克風權限</string>
     <string name="composerNoEmoji">暫無 emoji</string>
     <string name="composerNoGifs">暫無已儲存的 GIF</string>

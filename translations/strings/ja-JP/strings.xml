@@ -1293,6 +1293,7 @@
     <string name="composerMediaSelectionLimit">写真または動画は最大{value1}件まで選択できます。</string>
     <string name="composerMessageExceedsRichTextLimit">このメッセージはリッチメッセージの 32768 文字制限を超えています。</string>
     <string name="composerMicrophonePermissionRequired">マイクの権限が必要です</string>
+    <string name="composerMicrophonePermissionRestricted">マイクがシステム全体で制限されています。システム設定で許可してください</string>
     <string name="composerMicrophonePermissionSettings">システム設定でマイクの使用を許可してください</string>
     <string name="composerNoEmoji">絵文字はありません</string>
     <string name="composerNoGifs">保存済みの GIF はありません</string>
