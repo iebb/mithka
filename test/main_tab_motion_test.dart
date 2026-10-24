@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/adaptive_split_layout.dart';
@@ -517,6 +518,83 @@ void main() {
       await tester.tapAt(const Offset(200, 200));
       await tester.pump();
       expect(menu, findsNothing);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Android root back requests application exit', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await _setSurfaceSize(tester, const Size(390, 844));
+      await _pumpMainShell(tester, reducedMotion: true);
+      final exitCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'SystemNavigator.pop') exitCalls.add(call);
+            return null;
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(exitCalls.map((call) => call.method), ['SystemNavigator.pop']);
+      await _disposeShell(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Android back pops nested routes before exiting at the root', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await _setSurfaceSize(tester, const Size(390, 844));
+      await _pumpMainShell(tester, reducedMotion: true);
+      final exitCalls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'SystemNavigator.pop') exitCalls.add(call);
+            return null;
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      unawaited(
+        debugTabNavigatorKeys[0].currentState!.push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                const SizedBox(key: ValueKey('android-back-nested-route')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(debugTabNavigatorKeys[0].currentState!.canPop(), isTrue);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(debugTabNavigatorKeys[0].currentState!.canPop(), isFalse);
+      expect(find.byType(ChatListView), findsOneWidget);
+      expect(exitCalls, isEmpty);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(exitCalls.map((call) => call.method), ['SystemNavigator.pop']);
       await _disposeShell(tester);
     } finally {
       debugDefaultTargetPlatformOverride = null;
