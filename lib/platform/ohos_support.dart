@@ -33,7 +33,17 @@ bool isMobileOperatingSystemFor(String operatingSystem) =>
 ///
 /// The mobile-vs-desktop boundary in one place, so HarmonyOS joins the mobile
 /// branch without every call site learning about it. Reads `dart:io` (not
-/// `defaultTargetPlatform`) for the same stock-SDK reason as [isOhos]; on the
+/// `TargetPlatform.ohos`) for the same stock-SDK reason as [isOhos]; on the
 /// ohos fork `defaultTargetPlatform` is an enum value stock code cannot name.
-bool get isMobilePlatform =>
-    !kIsWeb && isMobileOperatingSystemFor(Platform.operatingSystem);
+///
+/// An explicit `debugDefaultTargetPlatformOverride` of Android or iOS also
+/// counts: widget tests simulate those platforms through that override while
+/// `dart:io` keeps reporting the desktop host, and the mobile branch must
+/// follow the simulation. The override is null outside tests, so real devices
+/// and profiles are decided by the operating system alone.
+bool get isMobilePlatform {
+  if (kIsWeb) return false;
+  if (isMobileOperatingSystemFor(Platform.operatingSystem)) return true;
+  final override = debugDefaultTargetPlatformOverride;
+  return override == TargetPlatform.android || override == TargetPlatform.iOS;
+}
