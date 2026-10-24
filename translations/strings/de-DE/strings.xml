@@ -997,6 +997,8 @@
     <string name="chatListCreateGroup">Gruppe erstellen</string>
     <string name="chatListDeleteChatQuestion">Chat löschen?</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">„{value1}“ verlassen und den Verlauf aus deinem Telegram-Konto auf allen Geräten löschen?</string>
+    <string name="chatListLocalPinEnabled">Unbegrenzt angeheftete Chats</string>
+    <string name="chatListLocalPinLimitReached">Pin-Limit erreicht. Aktiviere unbegrenztes lokales Anheften in den erweiterten Einstellungen, um mehr als {value1} angeheftete Chats zu behalten.</string>
     <string name="chatListMarkUnread">Als ungelesen markieren</string>
     <string name="chatListNoChats">Noch keine Chats</string>
     <string name="chatListScanQrCode">QR-Code scannen</string>
