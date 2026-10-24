@@ -11,6 +11,18 @@ import Translation
 import UIKit
 import UserNotifications
 
+/// Why a video note re-encode produced no usable file. Every case maps to the
+/// same `video_crop_failed` FlutterError code the Dart side already treats as
+/// "send the recording instead".
+enum VideoNoteExportError: Error, Sendable {
+  case recordingUnavailable
+  case unusableVideoTrack
+  case exporterUnavailable
+  case exportFailed(String)
+  case noOutputVideoTrack
+  case verificationFailed(String)
+}
+
 @main
 @MainActor
 @objc class AppDelegate: FlutterAppDelegate, @preconcurrency FlutterImplicitEngineDelegate {
@@ -303,34 +315,47 @@ import UserNotifications
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     mediaEditorChannel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "trimVideo" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      guard
-        let arguments = call.arguments as? [String: Any],
-        let path = arguments["path"] as? String,
-        let startMs = arguments["startMs"] as? NSNumber,
-        let endMs = arguments["endMs"] as? NSNumber,
-        !path.isEmpty,
-        startMs.int64Value >= 0,
-        endMs.int64Value > startMs.int64Value
-      else {
-        result(
-          FlutterError(
-            code: "invalid_arguments",
-            message: "A valid video trim range is required",
-            details: nil
+      let arguments = call.arguments as? [String: Any]
+      switch call.method {
+      case "trimVideo":
+        guard
+          let path = arguments?["path"] as? String,
+          let startMs = arguments?["startMs"] as? NSNumber,
+          let endMs = arguments?["endMs"] as? NSNumber,
+          !path.isEmpty,
+          startMs.int64Value >= 0,
+          endMs.int64Value > startMs.int64Value
+        else {
+          result(
+            FlutterError(
+              code: "invalid_arguments",
+              message: "A valid video trim range is required",
+              details: nil
+            )
           )
+          return
+        }
+        self?.trimVideo(
+          path: path,
+          startMs: startMs.int64Value,
+          endMs: endMs.int64Value,
+          result: result
         )
-        return
+      case "cropVideoNote":
+        guard let path = arguments?["path"] as? String, !path.isEmpty else {
+          result(
+            FlutterError(
+              code: "invalid_arguments",
+              message: "A recorded video note path is required",
+              details: nil
+            )
+          )
+          return
+        }
+        self?.cropVideoNote(path: path, result: result)
+      default:
+        result(FlutterMethodNotImplemented)
       }
-      self?.trimVideo(
-        path: path,
-        startMs: startMs.int64Value,
-        endMs: endMs.int64Value,
-        result: result
-      )
     }
     let animatedAvatarChannel = FlutterMethodChannel(
       name: "mithka/animated_avatar",
@@ -758,6 +783,269 @@ import UserNotifications
             )
           )
         }
+      }
+    }
+  }
+
+  /// The centred square a video note is cropped to, in display space (the
+  /// natural frame with the recording's rotation applied).
+  struct VideoNoteCropRegion: Sendable {
+    let rect: CGRect
+    let side: CGFloat
+  }
+
+  /// The verified result of a video note re-encode: the square's side in pixels
+  /// and the exported duration in seconds.
+  struct VideoNoteExport: Sendable {
+    let side: CGFloat
+    let duration: Double
+  }
+
+  /// Crop maths for a video note, kept pure so the orientation handling is
+  /// readable on its own.
+  ///
+  /// A camera recording carries its rotation in `preferredTransform`, so the
+  /// displayed frame can be the natural frame turned 90 degrees: a portrait
+  /// note is encoded 1280x720 and shown 720x1280. The square is centred in the
+  /// displayed frame, and because a rotation about the centre keeps the
+  /// centred square centred and square, this is also the natural-space square
+  /// the recording would be cropped to without any rotation handling.
+  ///
+  /// `nonisolated` because it touches nothing but geometry: an actor-isolated
+  /// declaration here would force every caller, including the synchronous
+  /// XCTest cases, through the main-actor dispatcher.
+  nonisolated static func centredSquareCrop(
+    naturalSize: CGSize,
+    transform: CGAffineTransform
+  ) -> VideoNoteCropRegion {
+    let naturalRect = CGRect(origin: .zero, size: naturalSize).standardized
+    let displayRect = naturalRect.applying(transform).standardized
+    let displayWidth = abs(displayRect.width)
+    let displayHeight = abs(displayRect.height)
+    // H.264 requires even dimensions. Rounding down by one pixel keeps the
+    // output inside the one-pixel squareness tolerance the output check and
+    // the Dart side use.
+    var side = min(displayWidth, displayHeight).rounded(.down)
+    if side.truncatingRemainder(dividingBy: 2) != 0 { side -= 1 }
+    side = max(side, 2)
+    let square = CGRect(
+      x: displayRect.minX + (displayWidth - side) / 2,
+      y: displayRect.minY + (displayHeight - side) / 2,
+      width: side,
+      height: side
+    )
+    return VideoNoteCropRegion(rect: square, side: side)
+  }
+
+  /// Re-encodes a video note to its centred square and verifies the result.
+  ///
+  /// The export is awaited directly instead of through
+  /// `exportAsynchronously` so the same code path a hosted XCTest exercises is
+  /// the one the app runs. The output is verified (square within one pixel,
+  /// duration within 0.25s of the recording, a video track present); a
+  /// mismatch or a failed export deletes it and throws.
+  ///
+  /// `nonisolated` so it can run off the main actor: the encoder is told where
+  /// to write and nothing here reads or writes app state.
+  nonisolated static func exportCentredSquareVideoNote(
+    input: URL,
+    output: URL
+  ) async throws -> VideoNoteExport {
+    guard FileManager.default.fileExists(atPath: input.path) else {
+      throw VideoNoteExportError.recordingUnavailable
+    }
+    let asset = AVURLAsset(url: input)
+    guard
+      let track = asset.tracks(withMediaType: .video).first,
+      track.naturalSize.width >= 2,
+      track.naturalSize.height >= 2
+    else {
+      throw VideoNoteExportError.unusableVideoTrack
+    }
+    let crop = centredSquareCrop(
+      naturalSize: track.naturalSize,
+      transform: track.preferredTransform
+    )
+    let composition = AVMutableVideoComposition()
+    composition.renderSize = CGSize(width: crop.side, height: crop.side)
+    let frameRate = track.nominalFrameRate >= 1 ? track.nominalFrameRate : 30
+    composition.frameDuration = CMTime(
+      value: 1,
+      timescale: CMTimeScale(frameRate.rounded())
+    )
+    let instruction = AVMutableVideoCompositionInstruction()
+    instruction.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
+    let layerInstruction = AVMutableVideoCompositionLayerInstruction(
+      assetTrack: track
+    )
+    // The layer transform carries both the recording's orientation and the
+    // crop offset: preferredTransform maps the natural frame into display
+    // space, then the translation moves the chosen square's corner onto the
+    // origin of the square renderSize, which clips everything outside it.
+    // setCropRectangle is deliberately not used here: it applies in the
+    // track's natural space, which leaves preferredTransform's translation
+    // pointing at the uncropped frame and shifts the result of a 180-degree
+    // recording out of the render.
+    let squareOrigin = crop.rect.origin
+    layerInstruction.setTransform(
+      track.preferredTransform.concatenating(
+        CGAffineTransform(
+          translationX: -squareOrigin.x,
+          y: -squareOrigin.y
+        )
+      ),
+      at: .zero
+    )
+    instruction.layerInstructions = [layerInstruction]
+    composition.instructions = [instruction]
+
+    try? FileManager.default.removeItem(at: output)
+    guard
+      let exporter = AVAssetExportSession(
+        asset: asset,
+        presetName: AVAssetExportPresetHighestQuality
+      )
+    else {
+      throw VideoNoteExportError.exporterUnavailable
+    }
+    exporter.outputURL = output
+    exporter.outputFileType = exporter.supportedFileTypes.contains(.mp4)
+      ? .mp4
+      : .mov
+    exporter.videoComposition = composition
+    exporter.shouldOptimizeForNetworkUse = true
+    let sourceDuration = CMTimeGetSeconds(asset.duration)
+    // Bridged rather than `await exporter.export()`: that async API only exists
+    // in the iOS 18 SDK, and this file has to build on older toolchains too.
+    await withCheckedContinuation {
+      (continuation: CheckedContinuation<Void, Never>) in
+      exporter.exportAsynchronously {
+        continuation.resume()
+      }
+    }
+    guard exporter.status == .completed else {
+      try? FileManager.default.removeItem(at: output)
+      throw VideoNoteExportError.exportFailed(
+        exporter.error?.localizedDescription
+          ?? "The video note export failed"
+      )
+    }
+    let outputAsset = AVURLAsset(url: output)
+    guard
+      let outputTrack = outputAsset.tracks(withMediaType: .video).first
+    else {
+      try? FileManager.default.removeItem(at: output)
+      throw VideoNoteExportError.noOutputVideoTrack
+    }
+    let size = outputTrack.naturalSize
+    let outputDuration = CMTimeGetSeconds(outputAsset.duration)
+    let isSquare = abs(size.width - size.height) <= 1
+    let durationMatches = abs(outputDuration - sourceDuration) <= 0.25
+    guard isSquare, durationMatches, size.width > 1 else {
+      try? FileManager.default.removeItem(at: output)
+      throw VideoNoteExportError.verificationFailed(
+        "\(Int(size.width))x\(Int(size.height)) duration=\(outputDuration)s source=\(sourceDuration)s"
+      )
+    }
+    return VideoNoteExport(side: crop.side, duration: outputDuration)
+  }
+
+  /// Re-encodes a recorded video note to its centred square so the uploaded
+  /// file matches what the recorder preview and the message bubble show.
+  ///
+  /// A failure deletes whatever the export wrote and reports a FlutterError,
+  /// and the Dart caller then sends the original recording.
+  private func cropVideoNote(path: String, result: @escaping FlutterResult) {
+    let inputURL = URL(fileURLWithPath: path)
+    let outputURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mithka-video-note-\(UUID().uuidString)")
+      .appendingPathExtension("mp4")
+    // Main actor because the Flutter reply belongs to the platform thread; the
+    // export itself hops off through the nonisolated static function.
+    Task { @MainActor in
+      let outcome: Result<VideoNoteExport, Error>
+      do {
+        outcome = .success(
+          try await Self.exportCentredSquareVideoNote(
+            input: inputURL,
+            output: outputURL
+          )
+        )
+      } catch {
+        outcome = .failure(error)
+      }
+      Self.finishVideoNoteCrop(outcome, output: outputURL, result: result)
+    }
+  }
+
+  private nonisolated static func finishVideoNoteCrop(
+    _ outcome: Result<VideoNoteExport, Error>,
+    output: URL,
+    result: @escaping FlutterResult
+  ) {
+    switch outcome {
+    case .success:
+      result(output.path)
+    case .failure(let error):
+      guard let failure = error as? VideoNoteExportError else {
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: error.localizedDescription,
+            details: nil
+          )
+        )
+        return
+      }
+      switch failure {
+      case .recordingUnavailable:
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: "The recorded video note is unavailable",
+            details: nil
+          )
+        )
+      case .unusableVideoTrack:
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: "The recording has no usable video track",
+            details: nil
+          )
+        )
+      case .exporterUnavailable:
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: "This video note cannot be exported",
+            details: nil
+          )
+        )
+      case .exportFailed(let description):
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: description,
+            details: nil
+          )
+        )
+      case .noOutputVideoTrack:
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: "The cropped video note has no video track",
+            details: nil
+          )
+        )
+      case .verificationFailed(let details):
+        result(
+          FlutterError(
+            code: "video_crop_failed",
+            message: "The cropped video note failed verification",
+            details: details
+          )
+        )
       }
     }
   }
