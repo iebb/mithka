@@ -69,6 +69,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Test Apple MDK helper failure paths
+        run: bash scripts/tests/refresh_apple_mdk_test.sh
+
+      - name: Verify Apple MDK preparation through the resolved dependency
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git diff --exit-code -- pubspec.lock
+          sh scripts/refresh-apple-mdk.sh refresh
+          MDK_FRESHNESS_MARGIN_DAYS=7 sh scripts/refresh-apple-mdk.sh check
+
       - name: Verify generated localization catalogues
         run: |
           python3 translations/tools/check.py

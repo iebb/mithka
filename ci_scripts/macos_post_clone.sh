@@ -117,6 +117,13 @@ echo "Preparing manifest-pinned universal macOS TDLib"
 flutter config --enable-swift-package-manager
 flutter precache --macos
 flutter pub get
+
+# libmdk refuses to play video without a key once its own build stamp is 44
+# days old, so the Apple SDK is refreshed (and verified) per build rather than
+# pinned to one archive. See scripts/refresh-apple-mdk.sh.
+echo "Refreshing the MDK Apple SDK"
+sh scripts/refresh-apple-mdk.sh
+
 flutter build macos --release --config-only \
   --dart-define="I_DONT_FUCKING_CARE_ABOUT_TOS=false" \
   --build-name="$APP_VERSION" \

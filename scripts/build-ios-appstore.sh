@@ -20,6 +20,12 @@ echo "== Flutter setup =="
 flutter config --enable-swift-package-manager
 flutter pub get
 
+# A pinned Apple MDK archive stops playing video 44 days after its own build
+# stamp (MDK draws an "MDK SDK is outdated" QR frame); install a verified,
+# still-fresh SDK before the Swift package links its binary target.
+echo "== MDK Apple SDK freshness =="
+sh scripts/refresh-apple-mdk.sh
+
 echo "== CocoaPods =="
 (cd ios && pod install)
 

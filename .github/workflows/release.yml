@@ -436,6 +436,15 @@ jobs:
       - name: Resolve Flutter dependencies
         run: flutter pub get
 
+      - name: Refresh the MDK Apple SDK
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          # libmdk draws an "MDK SDK is outdated" QR frame over the video and
+          # stops 44 days after its own build stamp when no key is set, so the
+          # Apple SDK is resolved and verified per build instead of pinned.
+          scripts/refresh-apple-mdk.sh
+
       - name: Write secrets.dart
         shell: bash
         env:

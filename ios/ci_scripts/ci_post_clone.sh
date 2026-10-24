@@ -308,6 +308,15 @@ echo "▸ generating Flutter iOS build inputs"
 flutter config --enable-swift-package-manager
 flutter precache --ios
 flutter pub get
+
+# libmdk stops playing video 44 days after its own build stamp without a key
+# (it draws an "MDK SDK is outdated" QR frame), so the Apple SDK cannot be a
+# pinned archive: install a verified, still-fresh one before CocoaPods and the
+# Swift package resolve it. scripts/refresh-apple-mdk.sh refuses an fvp that
+# predates build-time resolution instead of linking an expiring SDK.
+echo "▸ refreshing the MDK Apple SDK"
+sh scripts/refresh-apple-mdk.sh
+
 prefetch_sqlite3_ios_arm64
 flutter_build_ios_config_with_retry
 python3 - <<PY >> ios/Flutter/Generated.xcconfig

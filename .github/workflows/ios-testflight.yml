@@ -120,6 +120,11 @@ jobs:
       - name: Prepare deterministic iOS build inputs
         run: sh ci_scripts/ci_post_clone.sh
 
+      - name: Verify the MDK Apple SDK is still fresh
+        # ci_post_clone.sh refreshed it; re-read the installed copy so an
+        # archive is never cut from an SDK whose 44-day key-free window ran out.
+        run: sh scripts/refresh-apple-mdk.sh check
+
       - name: Archive iOS app
         run: |
           set -euo pipefail
