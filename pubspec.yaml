@@ -163,7 +163,10 @@ flutter_launcher_icons:
 flutter:
   config:
     enable-swift-package-manager: true
-  uses-material-design: false
+  # Required for the framework's Material glyph usage (e.g. the selection
+  # toolbar overflow Icons.more_vert / Icons.arrow_back) to render instead of
+  # falling back to tofu characters when no MaterialIcons font is bundled.
+  uses-material-design: true
   assets:
     # Locale catalogues, generated from translations/ by
     # translations/tools/gen_assets.py.
