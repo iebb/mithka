@@ -66,15 +66,26 @@ class AccountBackupService {
     required bool isSupported,
   }) => isIOS && isSupported;
 
-  Future<bool> get isSupported async {
-    if (!_platformEligible) return false;
-    return await _channel.invokeMethod<bool>('isSupported') ?? false;
-  }
+  Future<bool> get isSupported => _probeSupport('isSupported');
 
-  Future<bool> get isLocalStorageSupported async {
+  Future<bool> get isLocalStorageSupported =>
+      _probeSupport('isLocalStorageSupported');
+
+  /// A mobile OS says nothing about whether this host implements the
+  /// `mithka/account_backup` channel — the HarmonyOS host registers only
+  /// generated federated plugins and has no handler for it, so the raw probe
+  /// throws [MissingPluginException] at call time. Report the capability as
+  /// absent instead: every surface already owns a not-supported branch
+  /// (empty backup list, disabled buttons, login consent row hidden).
+  Future<bool> _probeSupport(String method) async {
     if (!_platformEligible) return false;
-    return await _channel.invokeMethod<bool>('isLocalStorageSupported') ??
-        false;
+    try {
+      return await _channel.invokeMethod<bool>(method) ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
   }
 
   Future<Set<String>> consentedAccountIds() async {

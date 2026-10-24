@@ -149,6 +149,13 @@ class _LoginViewState extends State<LoginView> {
   String get _phoneDigits => _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
   Country? get _detectedCountry => Country.match(_phoneDigits);
 
+  /// Whether the restore entry may appear: a mobile form factor AND a native
+  /// account-backup implementation behind it. The icon is only advertised
+  /// once the channel answered, so a mobile host without the channel
+  /// (HarmonyOS today) hides it instead of opening an empty restore sheet.
+  bool get _canRestoreAccountBackup =>
+      isMobilePlatform && (_backupSupported || _restorableBackupCount > 0);
+
   @override
   void initState() {
     super.initState();
@@ -1698,7 +1705,7 @@ class _LoginViewState extends State<LoginView> {
             enabled: !auth.isWorking,
             onTap: () => _requestQrLogin(auth),
           ),
-        if (showingPhone && isMobilePlatform)
+        if (showingPhone && _canRestoreAccountBackup)
           _loginIconButton(
             icon: HeroAppIcons.key,
             tooltip: AppStrings.t(AppStringKeys.accountBackupRestoreAccount),

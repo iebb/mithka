@@ -20,7 +20,6 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart'; // PhotoAvatar + TDImage
-import '../platform/ohos_support.dart';
 import '../theme/app_theme.dart';
 import 'call_elapsed_text.dart';
 import 'call_manager.dart';
@@ -132,7 +131,7 @@ class _CallScreenState extends State<CallScreen> {
                     children: [
                       _overlayScrim(isVideoActive),
                       if (showLocalPreview) _localPreview(isLandscape),
-                      if (showLocalPreview && isMobilePlatform)
+                      if (showLocalPreview && widget.manager.supportsMediaCalls)
                         Positioned(
                           top: isLandscape ? 16 : 54,
                           left: isLandscape ? 24 : 16,
@@ -238,7 +237,8 @@ class _CallScreenState extends State<CallScreen> {
           ),
         // Remote camera feed — fills the screen over the
         // blurred-avatar fallback once decoded frames arrive (black until then).
-        if (isVideoActive && isMobilePlatform) _nativeVideoView('remote'),
+        if (isVideoActive && widget.manager.supportsMediaCalls)
+          _nativeVideoView('remote'),
       ],
     );
   }
@@ -260,7 +260,12 @@ class _CallScreenState extends State<CallScreen> {
 
   Widget _localPreview(bool isLandscape) {
     // Show our own camera feed when it's on; otherwise a placeholder glyph.
-    final showVideo = isMobilePlatform && widget.manager.isVideoEnabled;
+    // The engine capability (a native tgcalls implementation owns the
+    // `mithka/video_view` platform views) decides, not the form factor: a
+    // mobile host without the engine keeps the placeholder instead of
+    // mounting a view type nothing renders into.
+    final showVideo =
+        widget.manager.supportsMediaCalls && widget.manager.isVideoEnabled;
     return Positioned(
       top: 56,
       right: isLandscape ? 24 : 16,

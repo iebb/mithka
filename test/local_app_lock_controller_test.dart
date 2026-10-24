@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_auth/local_auth.dart';
@@ -239,6 +240,82 @@ void main() {
       await restored.initialize();
       expect(restored.autoLockOption, AppLockAutoLockOption.disabled);
       expect(jsonDecode(storage.values.single)['version'], 2);
+    },
+  );
+
+  test(
+    'a mobile host without secure storage stays unlocked instead of failing closed',
+    () async {
+      // flutter_secure_storage has no HarmonyOS port: the platform-interface
+      // default throws MissingPluginException on the first read. Nothing was
+      // ever persisted, so there is no lock to enforce and no gate a
+      // credential could open — the controller must read "not configured",
+      // not brick the app behind the storage-unavailable screen.
+      final controller = LocalAppLockController(
+        secureRead: (key) => throw MissingPluginException(),
+        secureWrite: (key, value) => throw MissingPluginException(),
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: true,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+
+      expect(controller.initialized, isTrue);
+      expect(controller.enabled, isFalse);
+      expect(controller.locked, isFalse);
+      expect(controller.storageUnavailable, isFalse);
+
+      // A later reload (desktop engine sync) must reach the same answer.
+      await controller.reloadFromStorage();
+      expect(controller.enabled, isFalse);
+      expect(controller.locked, isFalse);
+      expect(controller.storageUnavailable, isFalse);
+    },
+  );
+
+  test('a real secure-storage failure still fails closed', () async {
+    // A present implementation that errors is a different situation: a lock
+    // may exist behind the error, so the fail-closed behaviour is kept.
+    final controller = LocalAppLockController(
+      secureRead: (key) => throw PlatformException(code: 'keychain_gone'),
+      secureWrite: (key, value) =>
+          throw PlatformException(code: 'keychain_gone'),
+      privacyShieldApply: (visible) async {},
+      hashRounds: 4,
+      platformSupportsBiometrics: false,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+
+    expect(controller.storageUnavailable, isTrue);
+    expect(controller.locked, isTrue);
+  });
+
+  test(
+    'biometrics on a host without the local_auth port report unavailable',
+    () async {
+      // local_auth without a native implementation throws
+      // MissingPluginException from the enrolled-biometrics probe; the
+      // availability refresh already degrades to "no biometrics" instead of
+      // surfacing the error.
+      final controller = LocalAppLockController(
+        secureRead: (key) async => null,
+        secureWrite: (key, value) async {},
+        biometricProbe: () => throw MissingPluginException(),
+        biometricAuthenticate: (_) async => true,
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: true,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+
+      expect(controller.biometricAvailable, isFalse);
+      expect(controller.locked, isFalse);
     },
   );
 }
