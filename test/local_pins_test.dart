@@ -867,6 +867,155 @@ void main() {
     await store.setUnlimitedEnabled(false);
     store.setActiveAccountUserId(null);
   });
+
+  test('a position that lands while the store is re-scoped must not project a '
+      'foreign band onto this list', () async {
+    // The class the review names beyond the sync pass itself: projections.
+    // The shared store can be re-scoped to another account while this list
+    // still believes it owns its account (the model's meId never moves),
+    // and the replacement account can hold a pin for the very same chat id.
+    // A live position that arrives then would read that foreign entry and
+    // pin this list's row on the replacement account's band order.
+    final prefs = await _openStorePrefs();
+    final store = LocalPinStore.shared;
+    store.initialize(prefs);
+    await store.setUnlimitedEnabled(true);
+    store.setActiveAccountUserId(_accountUserId);
+    final generationBefore = store.loadGeneration;
+
+    // The replacement account will pin the same chat id this list is about to
+    // receive a position for. Seed its preference before the list is built.
+    const replacementAccount = 7272;
+    const collidingChatId = 501;
+    await prefs.setString(
+      'mithka.localPins.v1.user$replacementAccount.$collidingChatId',
+      '900:9',
+    );
+
+    // This list still thinks it is account 42: its meId is never touched.
+    final modelRequests = <Map<String, dynamic>>[];
+    final model = ChatListViewModel(
+      queryForTesting: (request) => _respond(modelRequests, request),
+    );
+    addTearDown(model.dispose);
+    model.meId = _accountUserId;
+    model.onAppear();
+    await model.ingestRawChatForTesting(_chat(collidingChatId));
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    final row = model.chats.firstWhere((c) => c.id == collidingChatId);
+    final liveOrder = row.order;
+    expect(row.isPinned, isFalse);
+
+    // Another live list re-scopes the shared store while this model's meId
+    // is deliberately left untouched: this model's epoch cannot move, so
+    // only the ownership check can keep the foreign band off its rows.
+    store.setActiveAccountUserId(replacementAccount);
+    expect(store.isLocallyPinned(collidingChatId), isTrue);
+    expect(generationBefore, isNot(store.loadGeneration));
+
+    // A main-list position for the colliding id arrives while the store is
+    // scoped to the replacement account. It must not lift this list's row
+    // onto the foreign band.
+    model.applyUpdateForTesting({
+      '@type': 'updateChatPosition',
+      'chat_id': collidingChatId,
+      'position': {
+        '@type': 'chatPosition',
+        'list': {'@type': 'chatListMain'},
+        'order': liveOrder,
+        'is_pinned': false,
+      },
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    final after = model.chats.firstWhere((c) => c.id == collidingChatId);
+    expect(
+      after.isPinned,
+      isFalse,
+      reason: 'a re-scoped store must not pin this list\'s row',
+    );
+    expect(
+      after.order,
+      liveOrder,
+      reason: 'a re-scoped store must not put this row on a foreign band',
+    );
+
+    // The replacement account's entry and preference survive untouched.
+    expect(store.isLocallyPinned(collidingChatId), isTrue);
+    expect(
+      prefs.getString(
+        'mithka.localPins.v1.user$replacementAccount.$collidingChatId',
+      ),
+      '900:9',
+      reason: 'the stale pass must not remove the replacement key',
+    );
+
+    await store.setUnlimitedEnabled(false);
+    store.setActiveAccountUserId(null);
+  });
+
+  test(
+    'turning the switch off while the store is re-scoped releases nothing on '
+    'this list',
+    () async {
+      // The switch-off listener walks `pinnedChatIds` and releases every row
+      // it names. A store scoped to another account names that account's
+      // chats — ids that collide with this list's — so the walk must own the
+      // scope before it mutates a single row.
+      final prefs = await _openStorePrefs();
+      final store = LocalPinStore.shared;
+      store.initialize(prefs);
+      await store.setUnlimitedEnabled(true);
+      store.setActiveAccountUserId(_accountUserId);
+
+      // The replacement account pins a chat id this list also shows.
+      const replacementAccount = 8383;
+      const collidingChatId = 601;
+      await prefs.setString(
+        'mithka.localPins.v1.user$replacementAccount.$collidingChatId',
+        '910:11',
+      );
+      store.setActiveAccountUserId(replacementAccount);
+      expect(store.isLocallyPinned(collidingChatId), isTrue);
+
+      final modelRequests = <Map<String, dynamic>>[];
+      final model = ChatListViewModel(
+        queryForTesting: (request) => _respond(modelRequests, request),
+      );
+      addTearDown(model.dispose);
+      model.meId = _accountUserId;
+      model.onAppear();
+      await model.ingestRawChatForTesting(_chat(collidingChatId));
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      final row = model.chats.firstWhere((c) => c.id == collidingChatId);
+      final liveOrder = row.order;
+      expect(row.isPinned, isFalse);
+
+      // The switch is turned off while the store stays scoped to the other
+      // account: the release walk must not touch this list's row.
+      await store.setUnlimitedEnabled(false);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final after = model.chats.firstWhere((c) => c.id == collidingChatId);
+      expect(
+        after.order,
+        liveOrder,
+        reason: 'a re-scoped store must not release this list\'s row',
+      );
+
+      // The replacement account's entry survives in the preference store
+      // (dormant until its own list turns the switch back on).
+      expect(
+        prefs.getString(
+          'mithka.localPins.v1.user$replacementAccount.$collidingChatId',
+        ),
+        '910:11',
+        reason: 'the stale walk must not remove the replacement key',
+      );
+
+      store.setActiveAccountUserId(null);
+    },
+  );
 }
 
 /// The id of the chat the tests pin: the one that is not pinned on the server.

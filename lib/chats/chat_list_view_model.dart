@@ -922,6 +922,7 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   void _togglePinOnServer(ChatSummary chat) {
+    final target = _pinTargetForCurrentList();
     final newValue = !chat.isPinned;
     final id = chat.id;
     target.apply(target.chatList, id, newValue);
@@ -1120,6 +1121,12 @@ class ChatListViewModel extends ChangeNotifier {
       _scheduleLocalPinSync();
       return;
     }
+    // Every projection must own the account scope it reads: the shared store
+    // belongs to whichever account took it last, so its `pinnedChatIds` while
+    // scoped to another account cannot release this list's rows (ids collide
+    // across accounts). Without this, a re-scoped store's colliding entries
+    // would project a foreign band release onto this list's rows.
+    if (!_storeIsOwnAccount) return;
     for (final id in store.pinnedChatIds) {
       if (_serverPinnedIds.contains(id)) continue;
       _mutate(id, (s) {
@@ -2107,10 +2114,17 @@ class ChatListViewModel extends ChangeNotifier {
           // A chat this device pins carries its band order until the store
           // releases it; the live position may only raise it (never pull a
           // locally pinned row back down between syncs), while rows the store
-          // does not own take the live position verbatim.
+          // does not own take the live position verbatim. The shared store
+          // belongs to whichever account scoped it last, so a position that
+          // lands while the store is scoped to another account must not
+          // project that account's band onto this list's rows (ids collide
+          // across accounts).
           final store = LocalPinStore.shared;
           final liveOrder = position.int64('order');
-          final isLocal = store.unlimitedEnabled && store.isLocallyPinned(id);
+          final isLocal =
+              _storeIsOwnAccount &&
+              store.unlimitedEnabled &&
+              store.isLocallyPinned(id);
           if (isLocal) {
             final band = store.effectiveOrder(id, liveOrder ?? s.order);
             s.order = liveOrder != null && liveOrder > band ? liveOrder : band;
