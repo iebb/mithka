@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
+import 'ohos_support.dart';
 
 /// The cold-start background, per brightness.
 ///
@@ -82,6 +83,10 @@ SystemUiOverlayStyle systemUiOverlayStyleForTheme(ThemeData theme) {
 
 /// Whether the current platform should treat system bars as edge-to-edge.
 bool get supportsImmersiveSystemUI {
+  // HarmonyOS reports a TargetPlatform the stock SDK's switch below cannot
+  // name, and it shares the Android windowing model (transparent, edge-to-edge
+  // system bars), so it is decided by operating system here.
+  if (isOhos) return true;
   switch (defaultTargetPlatform) {
     case TargetPlatform.android:
     case TargetPlatform.iOS:

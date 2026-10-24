@@ -4,10 +4,12 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../platform/ohos_support.dart';
 import 'app_lock_privacy.dart';
 
 enum AppLockCredentialType { pin, gesture }
@@ -151,6 +153,13 @@ class LocalAppLockController extends ChangeNotifier {
           await _persist(_stored!);
         }
       }
+    } on MissingPluginException catch (error) {
+      // A mobile OS does not guarantee a secure-storage implementation — a
+      // host without one (HarmonyOS today) never stored a lock, so there is
+      // nothing to protect: stay unlocked instead of failing closed behind a
+      // gate no credential could ever open.
+      debugPrint('Local app lock secure storage is not implemented: $error');
+      _resetForMissingSecureStorage();
     } catch (error) {
       debugPrint('Local app lock could not read secure storage: $error');
       _failClosedForStorageError();
@@ -194,6 +203,9 @@ class LocalAppLockController extends ChangeNotifier {
         _locked = true;
         _lockEpoch += 1;
       }
+    } on MissingPluginException catch (error) {
+      debugPrint('Local app lock secure storage is not implemented: $error');
+      _resetForMissingSecureStorage();
     } catch (error) {
       debugPrint('Local app lock could not reload secure storage: $error');
       _failClosedForStorageError();
@@ -203,6 +215,17 @@ class LocalAppLockController extends ChangeNotifier {
     await refreshBiometricAvailability();
     unawaited(_applyPrivacyShield(false));
     notifyListeners();
+  }
+
+  /// Treats an absent secure-storage implementation as "no lock configured"
+  /// rather than as a storage failure: nothing was ever persisted, so no gate
+  /// can be unlocked and none should be shown.
+  void _resetForMissingSecureStorage() {
+    _stored = null;
+    _failedAttempts = const _StoredFailedAttempts();
+    _locked = false;
+    _storageUnavailable = false;
+    _authenticatingBiometrics = false;
   }
 
   void _failClosedForStorageError() {
@@ -577,10 +600,7 @@ class LocalAppLockController extends ChangeNotifier {
         persistAcrossBackgrounding: true,
       );
 
-  static bool get _defaultPlatformSupportsBiometrics =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+  static bool get _defaultPlatformSupportsBiometrics => isMobilePlatform;
 
   @override
   void dispose() {

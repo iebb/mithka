@@ -296,6 +296,69 @@ void main() {
     expect(backups.single.id, '5005');
     expect(backups.single.storage, AccountSessionBackupStorage.local);
   });
+
+  test(
+    'a mobile host without the native channel reports unsupported, not a throw',
+    () async {
+      // The submitted HarmonyOS host registers only generated plugins and has
+      // no `mithka/account_backup` handler: every call throws
+      // MissingPluginException. Eligibility is the mobile branch, so this is
+      // the exact production state on ohos.
+      SharedPreferences.setMockInitialValues({
+        'mithka.accountBackup.explicitConsentMigration.v1': true,
+      });
+      const channel = MethodChannel('mithka/account_backup.missing_test');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            throw MissingPluginException();
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      final service = AccountBackupService(
+        channel: channel,
+        platformEligible: true,
+      );
+
+      expect(await service.isSupported, isFalse);
+      expect(await service.isLocalStorageSupported, isFalse);
+      // Every dependent surface reads the same clean answer.
+      expect(await service.listBackups(), isEmpty);
+      await service.backupActiveAccountIfEnabled();
+      await expectLater(service.backupActiveAccount(), throwsUnsupportedError);
+      await service.deleteAccountId('1234');
+    },
+  );
+
+  test(
+    'a channel error answering the probe also reports unsupported',
+    () async {
+      // A handler that exists but cannot serve the capability (e.g. the
+      // system keychain unavailable) must not surface as a crash either.
+      SharedPreferences.setMockInitialValues({
+        'mithka.accountBackup.explicitConsentMigration.v1': true,
+      });
+      const channel = MethodChannel('mithka/account_backup.error_test');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            throw PlatformException(code: 'keychain_unavailable');
+          });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      final service = AccountBackupService(
+        channel: channel,
+        platformEligible: true,
+      );
+
+      expect(await service.isSupported, isFalse);
+      expect(await service.listBackups(), isEmpty);
+    },
+  );
 }
 
 Uint8List _backupRecord({

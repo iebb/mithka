@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -358,6 +359,52 @@ void main() {
     expect(engine.videoChanges, [true]);
     expect(find.byKey(const Key('callLocalPreview')), findsOneWidget);
   });
+
+  testWidgets(
+    'a mobile host without the call engine keeps the placeholder view',
+    (tester) async {
+      // The native video surface is a tgcalls capability, not a property of
+      // the form factor: on a mobile host whose engine is unavailable
+      // (HarmonyOS today) mounting `mithka/video_view` would create a view
+      // type nothing renders into. The placeholder glyph must stay.
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final manager = CallManager(engine: NoopCallMediaEngine());
+      addTearDown(manager.dispose);
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        manager.call = ActiveCall(
+          callId: 50,
+          peerUserId: 13,
+          peerName: 'Capability contact',
+          isOutgoing: true,
+          isVideo: true,
+          phase: CallPhase.active,
+          startedAt: DateTime.now(),
+        );
+        manager.isVideoEnabled = true;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AnimatedBuilder(
+              animation: manager,
+              builder: (context, child) => CallScreen(manager: manager),
+            ),
+          ),
+        );
+
+        expect(manager.supportsMediaCalls, isFalse);
+        // Local preview falls back to the glyph instead of a platform view.
+        expect(find.byKey(const Key('callLocalPreview')), findsOneWidget);
+        expect(find.byType(AndroidView), findsNothing);
+        expect(find.byType(UiKitView), findsNothing);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 }
 
 class _RecordingCallMediaEngine implements CallMediaEngine {

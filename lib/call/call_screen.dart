@@ -131,8 +131,7 @@ class _CallScreenState extends State<CallScreen> {
                     children: [
                       _overlayScrim(isVideoActive),
                       if (showLocalPreview) _localPreview(isLandscape),
-                      if (showLocalPreview &&
-                          (Platform.isAndroid || Platform.isIOS))
+                      if (showLocalPreview && widget.manager.supportsMediaCalls)
                         Positioned(
                           top: isLandscape ? 16 : 54,
                           left: isLandscape ? 24 : 16,
@@ -238,7 +237,7 @@ class _CallScreenState extends State<CallScreen> {
           ),
         // Remote camera feed — fills the screen over the
         // blurred-avatar fallback once decoded frames arrive (black until then).
-        if (isVideoActive && (Platform.isAndroid || Platform.isIOS))
+        if (isVideoActive && widget.manager.supportsMediaCalls)
           _nativeVideoView('remote'),
       ],
     );
@@ -261,8 +260,12 @@ class _CallScreenState extends State<CallScreen> {
 
   Widget _localPreview(bool isLandscape) {
     // Show our own camera feed when it's on; otherwise a placeholder glyph.
+    // The engine capability (a native tgcalls implementation owns the
+    // `mithka/video_view` platform views) decides, not the form factor: a
+    // mobile host without the engine keeps the placeholder instead of
+    // mounting a view type nothing renders into.
     final showVideo =
-        (Platform.isAndroid || Platform.isIOS) && widget.manager.isVideoEnabled;
+        widget.manager.supportsMediaCalls && widget.manager.isVideoEnabled;
     return Positioned(
       top: 56,
       right: isLandscape ? 24 : 16,

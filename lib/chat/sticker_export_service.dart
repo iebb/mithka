@@ -12,6 +12,7 @@ import 'package:lottie/lottie.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../platform/ohos_support.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import 'media_library_saver.dart';
@@ -126,7 +127,7 @@ class StickerExportService {
         allowedExtensions: [format.extension],
         bytes: bytes,
       );
-      if (selectedPath != null && !Platform.isIOS && !Platform.isAndroid) {
+      if (selectedPath != null && !isMobilePlatform) {
         await File(selectedPath).writeAsBytes(bytes, flush: true);
       }
       return selectedPath == null
@@ -201,7 +202,7 @@ class StickerExportService {
         allowedExtensions: const ['zip'],
         bytes: Uint8List.fromList(bytes),
       );
-      if (selectedPath != null && !Platform.isIOS && !Platform.isAndroid) {
+      if (selectedPath != null && !isMobilePlatform) {
         await File(selectedPath).writeAsBytes(bytes, flush: true);
       }
       return selectedPath == null
@@ -262,7 +263,7 @@ class StickerExportService {
 
   static bool _isSupportedPlatform(StickerExportDestination destination) {
     if (destination == StickerExportDestination.photos) {
-      return Platform.isIOS || Platform.isAndroid;
+      return isMobilePlatform;
     }
     return Platform.isIOS ||
         Platform.isAndroid ||
