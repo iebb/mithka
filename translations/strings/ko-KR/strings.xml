@@ -3669,6 +3669,7 @@
     <string name="videoPlayerPlaying">재생 중</string>
     <string name="videoPlayerSeekBackwardTenSeconds">10초 뒤로</string>
     <string name="videoPlayerSeekForwardTenSeconds">10초 앞으로</string>
+    <string name="videoPlayerHoldPlaybackSpeed">길게 눌러 빠르게 재생</string>
     <string name="videoPlayerStreamInspector">스트림 검사기</string>
     <string name="videoPlayerVideoNumber">동영상 {value1}</string>
     <string name="videoPlayerVideoZoom">동영상 확대</string>

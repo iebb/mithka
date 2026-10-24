@@ -3680,6 +3680,7 @@
     <string name="videoPlayerPlaying">Reproduciendo</string>
     <string name="videoPlayerSeekBackwardTenSeconds">Retroceder 10 segundos</string>
     <string name="videoPlayerSeekForwardTenSeconds">Avanzar 10 segundos</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Mantén pulsado para acelerar la reproducción</string>
     <string name="videoPlayerStreamInspector">Inspector de transmisión</string>
     <string name="videoPlayerVideoNumber">Vídeo {value1}</string>
     <string name="videoPlayerVideoZoom">Zoom de vídeo</string>
