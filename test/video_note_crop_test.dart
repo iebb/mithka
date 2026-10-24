@@ -118,14 +118,12 @@ void main() {
         answer((_) => pending.future);
 
         // The export outlives the crop timeout and the bounded cleanup wait.
-        final result = await VideoNoteCropService.crop(
-          '${dir.path}/recording.mov',
-          timeout: const Duration(milliseconds: 10),
+        final ticket = VideoNoteCropService.start('${dir.path}/recording.mov');
+        expect(
+          await ticket!.resolve(timeout: const Duration(milliseconds: 10)),
+          isNull,
         );
-        expect(result, isNull);
-        await VideoNoteCropService.abandonInFlight(
-          timeout: const Duration(milliseconds: 50),
-        );
+        await ticket.abandon(timeout: const Duration(milliseconds: 50));
         // Nothing was produced yet, so nothing could be deleted yet.
         expect(lateFile.existsSync(), isTrue);
 
@@ -142,6 +140,62 @@ void main() {
     );
 
     test(
+      'late beyond cleanup timeout is still reclaimed by the platform itself',
+      () async {
+        // Regression for the review's P2: cleanup used to be a five-second
+        // wait that gave up and left nobody behind to reclaim a later success.
+        // The reclaim now rides the platform future's own completion, so the
+        // export finishing long after every wait expired still deletes its
+        // temp file, while an accepted send file is never touched.
+        final temp = write('late-beyond-timeout.mp4');
+        final keep = write('accepted-send.mp4');
+        final pending = Completer<Object?>();
+        answer(
+          (call) => call.arguments['path'] == '${dir.path}/abandoned.mov'
+              ? pending.future
+              : Future<Object?>.value(keep.path),
+        );
+
+        final abandoned = VideoNoteCropService.start(
+          '${dir.path}/abandoned.mov',
+        );
+        expect(
+          await abandoned!.resolve(timeout: const Duration(milliseconds: 10)),
+          isNull,
+        );
+        // Both the crop timeout and a zero-length cleanup wait are exhausted
+        // long before the platform answers.
+        await abandoned.abandon(timeout: Duration.zero);
+
+        // A second recorder resolved its crop and the send path took the file.
+        final kept = VideoNoteCropService.start('${dir.path}/kept.mov');
+        expect(await kept!.resolve(), keep.path);
+        kept.accept(keep.path);
+
+        // The abandoned cleanup wait has given up; the platform is still
+        // running and the accepted file belongs to the send path.
+        expect(temp.existsSync(), isTrue);
+        expect(keep.existsSync(), isTrue);
+
+        pending.complete(temp.path);
+        await pumpEventQueue();
+        await pumpEventQueue();
+        expect(
+          temp.existsSync(),
+          isFalse,
+          reason: 'a late export nobody owns must be reclaimed',
+        );
+        expect(
+          keep.existsSync(),
+          isTrue,
+          reason: 'an accepted send file must survive a late platform answer',
+        );
+        // Only the send path's own deletion removes it.
+        await keep.delete();
+      },
+    );
+
+    test(
       'a completed but unaccepted crop is removed when the route is left',
       () async {
         final file = write('unaccepted.mp4');
@@ -152,6 +206,7 @@ void main() {
         );
         // The caller never accepted: the service still owns the file.
         await VideoNoteCropService.abandonInFlight();
+        await pumpEventQueue();
         expect(file.existsSync(), isFalse);
       },
     );
@@ -179,6 +234,7 @@ void main() {
       final path = await VideoNoteCropService.crop('${dir.path}/recording.mov');
       VideoNoteCropService.accept('${dir.path}/nothing-here.mp4');
       await VideoNoteCropService.abandonInFlight();
+      await pumpEventQueue();
       expect(path, isNotNull);
       expect(file.existsSync(), isFalse);
     });
@@ -192,6 +248,7 @@ void main() {
       final second = await VideoNoteCropService.crop('${dir.path}/second.mov');
       VideoNoteCropService.accept(first!);
       await VideoNoteCropService.abandonInFlight();
+      await pumpEventQueue();
       expect(acceptedFile.existsSync(), isTrue);
       expect(
         abandonedFile.existsSync(),
@@ -201,6 +258,52 @@ void main() {
       expect(second, abandonedFile.path);
       await acceptedFile.delete();
     });
+
+    test(
+      'a surrendered ticket does not touch another recorder\'s accepted crop',
+      () async {
+        // Regression for the review's "dispose between service delivery and
+        // recorder handoff" race, in its cross-instance form: one recorder
+        // tearing its route down used to sweep every in-flight export,
+        // including a second recorder's accepted send file.
+        final dying = write('dying.mp4');
+        final live = write('live.mp4');
+        var call = 0;
+        answer((_) async => (call++ == 0 ? dying : live).path);
+
+        final dyingTicket = VideoNoteCropService.start(
+          '${dir.path}/dying-recording.mov',
+        );
+        expect(
+          await dyingTicket!.resolve(timeout: const Duration(seconds: 1)),
+          dying.path,
+        );
+        final liveTicket = VideoNoteCropService.start(
+          '${dir.path}/live-recording.mov',
+        );
+        expect(
+          await liveTicket!.resolve(timeout: const Duration(seconds: 1)),
+          live.path,
+        );
+        // The live recorder hands its file to the send path; the dying one
+        // never gets there because its route was disposed first.
+        liveTicket.accept(live.path);
+        await dyingTicket.abandon(timeout: Duration.zero);
+        await pumpEventQueue();
+
+        expect(
+          dying.existsSync(),
+          isFalse,
+          reason: 'the disposed recorder must surrender its own crop',
+        );
+        expect(
+          live.existsSync(),
+          isTrue,
+          reason: 'a live recorder\'s accepted send file must survive',
+        );
+        await live.delete();
+      },
+    );
 
     test(
       'never deletes the recording an abandoned request started from',
@@ -351,7 +454,75 @@ void main() {
         // The recorder was disposed in the gap after crop() returned but
         // before the handoff: no accept happened, so cleanup reclaims it.
         await VideoNoteCropService.abandonInFlight();
+        await pumpEventQueue();
         expect(cropped.existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'dispose between delivery and handoff keeps the accepted send file',
+      () async {
+        // Regression for the review's P2: the delivery flag used to be set
+        // while `videoNoteUploadPath` was still awaiting its file checks, so a
+        // recorder disposed in that gap left an accepted-but-unsent crop that
+        // nobody owned. The flag is now set only after the file is verified and
+        // the recording it replaces is gone, and the recorder's own ticket
+        // reclaims exactly its own crop.
+        final recorded = write('recording.mov');
+        final cropped = write('note.mp4');
+        answer((_) async => cropped.path);
+
+        VideoNoteCropTicket? ticket;
+        var accepted = false;
+        final path = await videoNoteUploadPath(
+          recorded.path,
+          onStarted: (started) => ticket = started,
+          accept: (_) => accepted = true,
+        );
+        expect(path, cropped.path);
+        expect(ticket, isNotNull);
+        // The recorder disposed between the service delivering the path and
+        // the send path taking the file: accept never ran on the real service.
+        expect(accepted, isTrue);
+        // The recorder's own ticket takes over and reclaims its own crop.
+        await ticket!.abandon(timeout: Duration.zero);
+        await pumpEventQueue();
+        expect(
+          cropped.existsSync(),
+          isFalse,
+          reason: 'a crop the send path never took must be reclaimed',
+        );
+      },
+    );
+
+    test(
+      'dispose between delivery and handoff keeps the accepted send file alive',
+      () async {
+        // The same gap, but this time the send path did take the file before
+        // the recorder was disposed: the accepted send file must survive.
+        final recorded = write('recording.mov');
+        final cropped = write('note.mp4');
+        answer((_) async => cropped.path);
+
+        VideoNoteCropTicket? ticket;
+        final path = await videoNoteUploadPath(
+          recorded.path,
+          onStarted: (started) => ticket = started,
+        );
+        expect(path, cropped.path);
+        // `videoNoteUploadPath` accepted on the ticket itself (no accept hook
+        // passed), so the file now belongs to the send path.
+        expect(ticket, isNotNull);
+        // A late sweep (another recorder's dispose or a test tearDown) must
+        // not delete a file the send path already owns.
+        await VideoNoteCropService.abandonInFlight();
+        await pumpEventQueue();
+        expect(
+          cropped.existsSync(),
+          isTrue,
+          reason: 'the send path owns the accepted crop and must keep it',
+        );
+        await cropped.delete();
       },
     );
   });
@@ -370,7 +541,7 @@ void main() {
       expect(finishStart, greaterThan(0));
       expect(cancelStart, greaterThan(finishStart));
       expect(buildStart, greaterThan(cancelStart));
-      expect(finishBody, contains('await videoNoteUploadPath(video.path)'));
+      expect(finishBody, contains('await videoNoteUploadPath('));
       expect(cancelBody, isNot(contains('videoNoteUploadPath')));
       expect(cancelBody, isNot(contains('VideoNoteCropService')));
     });
@@ -392,14 +563,25 @@ void main() {
           unmounted,
           finishBody.indexOf('Navigator.of(', unmounted),
         );
-        expect(branch, contains('VideoNoteCropService.abandonInFlight()'));
-        expect(branch, contains('if (path != video.path)'));
-        expect(branch, contains('await cropped.delete()'));
+        expect(branch, contains('_abandonCropAfterResolve(path, video.path)'));
       },
     );
 
+    test('hands its own ticket to the send path or cleanup', () {
+      // The recorder must scope its cleanup to its own ticket: a global sweep
+      // in _finishRecording or dispose reclaims a second recorder's crop.
+      expect(finishBody, contains('onStarted: (ticket) => _cropTicket ='));
+      expect(finishBody, isNot(contains('abandonInFlight')));
+      final disposeAt = source.lastIndexOf('void dispose()');
+      expect(disposeAt, greaterThan(0));
+      final disposeBody = source.substring(disposeAt);
+      expect(disposeBody, contains('_cropTicket'));
+      expect(disposeBody, contains('ticket.abandon()'));
+    });
+
     test('accepts the crop only after the recording it replaces is gone', () {
-      final acceptAt = source.indexOf('VideoNoteCropService.accept)(cropped)');
+      final acceptAt = source.indexOf('local.accept(cropped);');
+      expect(acceptAt, greaterThan(0));
       final deleteAt = source.indexOf('if (await original.exists())');
       expect(deleteAt, greaterThan(0));
       expect(acceptAt, greaterThan(deleteAt));
