@@ -24,6 +24,7 @@ void main() {
     'tdjson-macos-universal.zip': {'libtdjson.dylib'},
     'tdjson-windows-arm64.zip': {'tdjson.dll'},
     'tdjson-windows-x64.zip': {'tdjson.dll'},
+    'tdjson-ohos-arm64.zip': {'arm64-v8a/libtdjson.so'},
   };
 
   test('TDJSON schema-v2 manifest pins every supported release artifact', () {
@@ -66,7 +67,14 @@ void main() {
     expect(assets.keys, unorderedEquals(expectedMembers.keys));
     for (final entry in expectedMembers.entries) {
       final asset = assets[entry.key] as Map<String, dynamic>;
-      expect(asset.keys, unorderedEquals(['sha256', 'size', 'members']));
+      // The OHOS asset is published under a separate immutable release tag,
+      // so only it carries the optional release pin the installer downloads.
+      expect(
+        asset.keys,
+        entry.key == 'tdjson-ohos-arm64.zip'
+            ? unorderedEquals(['sha256', 'size', 'members', 'release_tag'])
+            : unorderedEquals(['sha256', 'size', 'members']),
+      );
       expect(asset['sha256'], matches(RegExp(r'^[0-9a-f]{64}$')));
       expect(asset['size'], isA<int>());
       expect(asset['size'] as int, greaterThan(0));
