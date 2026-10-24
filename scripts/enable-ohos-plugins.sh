@@ -10,46 +10,66 @@
 # dependencies already; this script layers the blocked ones on top via
 # dependency_overrides, which ignores the overridden packages' sdk bounds.
 #
-# Usage:
+# Usage (from the repo root):
 #   scripts/enable-ohos-plugins.sh apply    # merge overlay into pubspec.yaml
-#   scripts/enable-ohos-plugins.sh revert   # restore pubspec.yaml from backup
+#   scripts/enable-ohos-plugins.sh revert   # restore pubspec.yaml and
+#                                           # pubspec.lock from their backups
 #
-# `apply` preserves the existing dependency_overrides block verbatim (the fvp
-# git pin) and appends the overlay's scalar overrides. A backup is kept so
-# `revert` restores exactly the previous content even if it had uncommitted
-# changes. Run with the OHOS Flutter fork's `flutter` on PATH, then
-# `flutter pub get` before building; run `revert` before switching back to
-# stock builds.
+# Safety contract (PR #272 review): the operation is transactional on the two
+# files `flutter pub get` rewrites — pubspec.yaml and pubspec.lock.
+#
+#   apply  refuses to run when an overlay is already active (a backup exists)
+#          or when a backup would be overwritten, so repeated apply is a
+#          no-op refusal, never a loss of the pre-overlay original.
+#   revert refuses to run when no apply is active, so it can never
+#          `git checkout` away a pubspec.yaml the user had edited but not
+#          committed. It restores the exact bytes of both files, including
+#          uncommitted local edits present at apply time.
+#
+# Neither command edits any other tracked file, and the script never
+# resets, checks out or discards user files. Run with the OHOS Flutter
+# fork's `flutter` on PATH, then `flutter pub get` before building; run
+# `revert` before switching back to stock builds.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 OVERLAY="pubspec_overrides.ohos.yaml"
 TARGET="pubspec.yaml"
+LOCK="pubspec.lock"
 BACKUP="pubspec.yaml.ohos-backup"
+LOCK_BACKUP="pubspec.lock.ohos-backup"
+
+die() { echo "enable-ohos-plugins: $*" >&2; exit 1; }
 
 cmd="${1:-}"
-if [[ "$cmd" != "apply" && "$cmd" != "revert" ]]; then
-  echo "usage: $0 apply|revert" >&2
-  exit 2
-fi
+case "$cmd" in
+  apply|revert) ;;
+  *) echo "usage: $0 apply|revert" >&2; exit 2 ;;
+esac
 
 if [[ "$cmd" == "revert" ]]; then
-  if [[ -f "$BACKUP" ]]; then
-    mv "$BACKUP" "$TARGET"
-    echo "restored $TARGET from backup"
-  else
-    git checkout -- "$TARGET" && echo "restored $TARGET from git"
+  [[ -f "$BACKUP" ]] || die "no active overlay to revert (no $BACKUP). Refusing to touch $TARGET so uncommitted edits are not lost; restore it manually if you really meant to."
+  [[ ! -f "$LOCK_BACKUP" || -f "$LOCK" ]] || die "expected $LOCK with a pending $LOCK_BACKUP"
+  mv -f "$BACKUP" "$TARGET"
+  if [[ -f "$LOCK_BACKUP" ]]; then
+    mv -f "$LOCK_BACKUP" "$LOCK"
   fi
+  echo "restored $TARGET and $LOCK from backups"
   exit 0
 fi
 
-[[ -f "$OVERLAY" ]] || { echo "overlay $OVERLAY not found" >&2; exit 1; }
+# apply: refuse unsafe states instead of discarding work.
+[[ -f "$OVERLAY" ]] || die "overlay $OVERLAY not found"
+[[ -f "$BACKUP" ]] && die "overlay already active ($BACKUP exists). Run revert first; refusing to overwrite the only backup of the original pubspec."
+[[ -f "$LOCK_BACKUP" ]] && die "stale $LOCK_BACKUP left behind. Run revert or remove it manually first."
+[[ -f "$TARGET" ]] || die "$TARGET not found"
 
-python3 - "$TARGET" "$OVERLAY" "$BACKUP" <<'PY'
+python3 - "$TARGET" "$OVERLAY" "$BACKUP" "$LOCK" "$LOCK_BACKUP" <<'PY'
+import shutil
 import sys
 
-target, overlay, backup = sys.argv[1:4]
-t_lines = open(target).read().splitlines()
+target, overlay, backup, lock, lock_backup = sys.argv[1:6]
+t_text = open(target).read()
 o_lines = open(overlay).read().splitlines()
 
 # Scalar "key: value" entries under the overlay's dependency_overrides section.
@@ -64,7 +84,15 @@ for raw in o_lines:
         key, _, val = raw.strip().partition(":")
         ovr.setdefault(key.strip(), val.strip())
 
-open(backup, "w").write("\n".join(t_lines) + "\n")
+# Back up the exact original bytes of both files pub get rewrites.
+with open(backup, "w") as f:
+    f.write(t_text)
+try:
+    shutil.copy2(lock, lock_backup)
+except FileNotFoundError:
+    pass  # pub get has not run yet; revert then leaves the lock absent too.
+
+t_lines = t_text.splitlines()
 
 # Split pubspec.yaml into pre / overrides-body / post around the block.
 pre, body, post = [], [], []
@@ -97,11 +125,9 @@ final.append("")
 final += post
 
 open(target, "w").write("\n".join(final).rstrip("\n") + "\n")
-print(f"merged {len(appended)} overrides into {target} (backup: {backup})")
+print(f"merged {len(appended)} overrides into {target} (backups: {backup}, {lock_backup})")
 PY
 
-# Never commit the backup or a pubspec.lock rewritten for OHOS.
-if ! grep -q "^/pubspec.yaml.ohos-backup$" .gitignore 2>/dev/null; then
-  printf '\n# OHOS plugin overlay working copies (scripts/enable-ohos-plugins.sh)\n/pubspec.yaml.ohos-backup\n' >> .gitignore
-  echo "added /pubspec.yaml.ohos-backup to .gitignore"
-fi
+# The backups and a lockfile rewritten for OHOS must never be committed; the
+# committed ignore entries (/pubspec.yaml.ohos-backup,
+# /pubspec.lock.ohos-backup) keep them out of the working copy's status.

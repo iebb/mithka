@@ -112,3 +112,4 @@ android/app/src/main/jniLibs/
 
 # OHOS plugin overlay working copies (scripts/enable-ohos-plugins.sh)
 /pubspec.yaml.ohos-backup
+/pubspec.lock.ohos-backup
