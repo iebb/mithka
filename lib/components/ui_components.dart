@@ -474,7 +474,7 @@ class _UnreadBadgeState extends State<UnreadBadge> {
       onPointerUp: (_) => _finishDrag(),
       child: SizedBox(
         width: hitWidth,
-        height: AppMetric.hitTarget,
+        height: math.max(AppMetric.hitTarget, visualSize.height),
         child: CustomPaint(
           painter: _UnreadBadgeMorphPainter(
             color: color,
@@ -504,32 +504,28 @@ class _UnreadBadgeState extends State<UnreadBadge> {
     );
   }
 
-  // The badge width needs a text measurement, and every unread row asks for one
-  // on every rebuild. The label set is tiny ('1'..'99+') and the painter does no
-  // scaling, so the layout result is bit-identical per (label, direction).
-  static final Map<(String, TextDirection), Size> _sizeCache = {};
-
+  // Use the same inherited font and per-font scaler as the visible body.
+  // A label/direction-only cache goes stale after content size, OS accessibility
+  // or font-family changes, displacing the drag tether from the badge centre.
   Size _visualSize(BuildContext context, String label) {
-    final key = (label, Directionality.of(context));
-    final cached = _sizeCache[key];
-    if (cached != null) return cached;
-    const style = TextStyle(
-      fontSize: AppTextSize.caption,
-      fontWeight: AppTextWeight.semibold,
+    final style = DefaultTextStyle.of(context).style.merge(
+      AppTextStyle.caption(
+        context.colors.badgeText,
+        weight: AppTextWeight.semibold,
+      ),
     );
     final painter = TextPainter(
       text: TextSpan(text: label, style: style),
-      textDirection: key.$2,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
     )..layout();
     final horizontalPadding = label.length > 1 ? (AppSpacing.xs + 1) * 2 : 0.0;
     final size = Size(
       math.max(AppMetric.unreadBadgeMin, painter.width + horizontalPadding),
-      AppMetric.unreadBadgeMin,
+      math.max(AppMetric.unreadBadgeMin, painter.height),
     );
     painter.dispose();
-    if (_sizeCache.length >= 256) _sizeCache.clear();
-    _sizeCache[key] = size;
     return size;
   }
 }

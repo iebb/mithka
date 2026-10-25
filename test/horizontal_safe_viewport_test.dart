@@ -8,72 +8,160 @@ import 'package:mithka/app/adaptive_split_layout.dart';
 import 'package:mithka/app/horizontal_safe_viewport.dart';
 
 void main() {
+  for (final value in <Object?>[
+    1.0, // Native full-edge reservation (including beyond the window).
+    double.nan,
+    double.infinity,
+    double.negativeInfinity,
+    -0.1,
+    1.1,
+    'invalid',
+  ]) {
+    testWidgets('unavailable or invalid native rail: $value', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        const channel = MethodChannel('mithka/window_geometry');
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          (_) async => {'topFraction': value},
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            null,
+          ),
+        );
+        SideNavigationGeometry? geometry;
+        const railKey = ValueKey('unavailable-rail');
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(466, 678),
+                padding: EdgeInsets.only(right: 84, bottom: 34),
+              ),
+              child: HorizontalSafeViewport(
+                sideNavigation: true,
+                child: Builder(
+                  builder: (context) {
+                    geometry = SideNavigationGeometry.of(context);
+                    return const SideNavigationPortal(
+                      visible: true,
+                      fillSide: true,
+                      child: SizedBox.expand(key: railKey),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(geometry!.sideTop, 678);
+        expect(geometry!.fits(1, 56), isFalse);
+        expect(find.byKey(railKey), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
+  test(
+    'missing geometry keeps fallback; valid fractions include both edges',
+    () {
+      SideNavigationGeometry geometry(double? fraction) =>
+          SideNavigationGeometry(
+            window: const MediaQueryData(
+              size: Size(466, 678),
+              padding: EdgeInsets.only(right: 84),
+            ),
+            enabled: true,
+            sideTopFraction: fraction,
+            child: const SizedBox.shrink(),
+          );
+      expect(geometry(null).sideTop, 339);
+      expect(geometry(null).fits(4, 56), isTrue);
+      expect(geometry(0).sideTop, 0);
+      expect(geometry(0).fits(10, 56), isTrue);
+      expect(geometry(1).sideTop, 678);
+      expect(geometry(1).fits(1, 56), isFalse);
+      expect(geometry(double.nan).fits(1, 56), isFalse);
+      expect(geometry(0).fits(1, double.infinity), isFalse);
+    },
+  );
+
   testWidgets(
     'native geometry keeps the rail in system space across Duo displays',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      const channel = MethodChannel('mithka/window_geometry');
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        channel,
-        (_) async => {'topFraction': 0.25},
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      try {
+        const channel = MethodChannel('mithka/window_geometry');
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           channel,
-          null,
-        ),
-      );
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(466, 678);
-      tester.view.padding = const FakeViewPadding(right: 84, bottom: 34);
-      tester.view.viewPadding = const FakeViewPadding(right: 84, bottom: 34);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetPadding);
-      addTearDown(tester.view.resetViewPadding);
-      const contentKey = ValueKey('retained-native-content');
-      const railKey = ValueKey('native-positioned-rail');
-      await tester.pumpWidget(
-        Directionality(
-          textDirection: TextDirection.ltr,
-          child: MediaQuery.fromView(
-            view: tester.view,
-            child: const HorizontalSafeViewport(
-              sideNavigation: true,
-              child: Stack(
-                key: contentKey,
-                children: [
-                  SideNavigationPortal(
-                    visible: true,
-                    fillSide: true,
-                    child: SizedBox.expand(key: railKey),
-                  ),
-                ],
+          (_) async => {'topFraction': 0.25},
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            channel,
+            null,
+          ),
+        );
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(466, 678);
+        tester.view.padding = const FakeViewPadding(right: 84, bottom: 34);
+        tester.view.viewPadding = const FakeViewPadding(right: 84, bottom: 34);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetPadding);
+        addTearDown(tester.view.resetViewPadding);
+        const contentKey = ValueKey('retained-native-content');
+        const railKey = ValueKey('native-positioned-rail');
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: MediaQuery.fromView(
+              view: tester.view,
+              child: const HorizontalSafeViewport(
+                sideNavigation: true,
+                child: Stack(
+                  key: contentKey,
+                  children: [
+                    SideNavigationPortal(
+                      visible: true,
+                      fillSide: true,
+                      child: SizedBox.expand(key: railKey),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final element = tester.element(find.byKey(contentKey));
-      expect(
-        tester.getRect(find.byKey(railKey)),
-        const Rect.fromLTWH(382, 169.5, 84, 474.5),
-      );
-      tester.view.physicalSize = const Size(951, 669);
-      await tester.pumpAndSettle();
-      expect(
-        tester.getRect(find.byKey(railKey)),
-        const Rect.fromLTWH(867, 167.25, 84, 467.75),
-      );
-      expect(
-        tester.getRect(find.byKey(contentKey)),
-        const Rect.fromLTWH(0, 0, 867, 669),
-      );
-      expect(tester.element(find.byKey(contentKey)), same(element));
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-      debugDefaultTargetPlatformOverride = null;
+        );
+        await tester.pumpAndSettle();
+        final element = tester.element(find.byKey(contentKey));
+        expect(
+          tester.getRect(find.byKey(railKey)),
+          const Rect.fromLTWH(382, 169.5, 84, 474.5),
+        );
+        tester.view.physicalSize = const Size(951, 669);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(find.byKey(railKey)),
+          const Rect.fromLTWH(867, 167.25, 84, 467.75),
+        );
+        expect(
+          tester.getRect(find.byKey(contentKey)),
+          const Rect.fromLTWH(0, 0, 867, 669),
+        );
+        expect(tester.element(find.byKey(contentKey)), same(element));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     },
   );
 

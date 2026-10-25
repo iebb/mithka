@@ -4,6 +4,7 @@
 //  Lists platform-installed font families for the text font picker.
 //
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class SystemFontCatalog {
@@ -27,6 +28,16 @@ class SystemFontCatalog {
     }
   }
 
+  // These engine aliases must not be persisted as a native font's private
+  // family name (UIKit may resolve the old Apple alias to such a name).
+  static bool _isSystemAlias(String family) =>
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      const {
+        '.AppleSystemUIFont',
+        'CupertinoSystemText',
+        'CupertinoSystemDisplay',
+      }.contains(family);
+
   static Future<List<String>> normalizeFamilies(List<String> families) async {
     try {
       final result = await _channel.invokeListMethod<String>(
@@ -36,7 +47,9 @@ class SystemFontCatalog {
       if (result == null || result.length != families.length) return families;
       return [
         for (var i = 0; i < result.length; i++)
-          result[i].trim().isEmpty ? families[i] : result[i].trim(),
+          _isSystemAlias(families[i]) || result[i].trim().isEmpty
+              ? families[i]
+              : result[i].trim(),
       ];
     } catch (_) {
       return families;

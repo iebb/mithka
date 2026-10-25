@@ -7,10 +7,8 @@ import '../theme/app_theme.dart';
 
 const _indicatorWhite = Color(0xFFFFFFFF);
 
-/// The animated selection pill shared by the app glass bar (non-iOS fallback)
-/// and the native glass surface (iOS): a rounded, tinted highlight that slides
-/// to the selected slot. Both hosts draw the same indicator, so selection
-/// looks identical whichever glass is beneath it.
+/// The animated selection pill shared by every app glass bar: a rounded,
+/// tinted highlight that slides to the selected slot.
 class GlassSelectionIndicator extends StatelessWidget {
   const GlassSelectionIndicator({
     super.key,
@@ -61,8 +59,10 @@ class GlassSelectionIndicator extends StatelessWidget {
   }
 }
 
-/// Glass fallback for non-iOS hosts. The shell overlays this transparent
-/// surface above the scrollable content, with no opaque backing strip.
+/// The app's glass bottom bar. The shell overlays this transparent surface
+/// above the scrollable content, with no opaque backing strip, on every
+/// target: [BackdropFilter] blurs the app's own layer tree, so the capsule
+/// refracts whatever actually scrolls behind it.
 class LiquidGlassBottomBar extends StatelessWidget {
   const LiquidGlassBottomBar({
     super.key,
@@ -85,6 +85,11 @@ class LiquidGlassBottomBar extends StatelessWidget {
     const black = Color(0xFF000000);
     const radius = BorderRadius.all(Radius.circular(AppRadius.pill));
     final rim = white.withValues(alpha: dark ? 0.22 : 0.85);
+    // A white capsule on a white page has no edge: the specular rim above
+    // disappears into the background. A dark hairline drawn outside it gives
+    // the stadium a silhouette on any surface while the rim keeps the lit top
+    // edge. High contrast already relies on its solid fill and text border.
+    final contour = black.withValues(alpha: dark ? 0.34 : 0.055);
     final tint = colors.navBar.withValues(alpha: dark ? 0.78 : 0.64);
 
     return SafeArea(
@@ -104,49 +109,58 @@ class LiquidGlassBottomBar extends StatelessWidget {
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              enabled: !highContrast,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: radius,
-                  color: highContrast ? colors.navBar : null,
-                  gradient: highContrast
-                      ? null
-                      : LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color.alphaBlend(
-                              white.withValues(alpha: dark ? 0.09 : 0.48),
+          child: DecoratedBox(
+            // Foreground so the contour sits on the capsule's outer edge
+            // instead of being covered by the glass clipped inside it.
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(color: contour, width: 0.6),
+            ),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                enabled: !highContrast,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: radius,
+                    color: highContrast ? colors.navBar : null,
+                    gradient: highContrast
+                        ? null
+                        : LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color.alphaBlend(
+                                white.withValues(alpha: dark ? 0.09 : 0.48),
+                                tint,
+                              ),
                               tint,
-                            ),
-                            tint,
-                            Color.alphaBlend(
-                              colors.linkBlue.withValues(alpha: 0.045),
-                              tint,
-                            ),
-                          ],
-                          stops: const [0, 0.52, 1],
-                        ),
-                  border: Border.all(
-                    color: highContrast ? colors.textSecondary : rim,
+                              Color.alphaBlend(
+                                colors.linkBlue.withValues(alpha: 0.045),
+                                tint,
+                              ),
+                            ],
+                            stops: const [0, 0.52, 1],
+                          ),
+                    border: Border.all(
+                      color: highContrast ? colors.textSecondary : rim,
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(5),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: GlassSelectionIndicator(
-                          selection: selection,
-                          itemCount: itemCount,
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: GlassSelectionIndicator(
+                            selection: selection,
+                            itemCount: itemCount,
+                          ),
                         ),
-                      ),
-                      child,
-                    ],
+                        child,
+                      ],
+                    ),
                   ),
                 ),
               ),

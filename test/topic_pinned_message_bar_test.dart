@@ -118,11 +118,13 @@ void main() {
       await _settle(tester);
       expect(find.text('Pinned in 78'), findsOneWidget);
 
+      await _revealTopic(tester, 88);
       await tester.tap(find.byKey(const ValueKey('topic-navigation-item-88')));
       await _settle(tester);
       expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 88);
       expect(find.text('Pinned in 78'), findsNothing);
 
+      await _revealTopic(tester, 78, delta: -200);
       await tester.tap(find.byKey(const ValueKey('topic-navigation-item-78')));
       await _settle(tester);
       expect(tester.widget<ChatView>(find.byType(ChatView)).forumTopicId, 78);
@@ -406,6 +408,24 @@ Future<void> _pumpMainShell(WidgetTester tester) async {
 Future<void> _disposeShell(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(seconds: 6));
+}
+
+// Topic rows share the chat list's row geometry, so a topic can sit outside
+// the overlay's viewport, where the lazy list has not built its row.
+Future<void> _revealTopic(
+  WidgetTester tester,
+  int id, {
+  double delta = 200,
+}) async {
+  await tester.scrollUntilVisible(
+    find.byKey(ValueKey('topic-navigation-item-$id')),
+    delta,
+    scrollable: find.descendant(
+      of: find.byKey(const ValueKey('topic-navigation-left')),
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await _settle(tester);
 }
 
 Future<void> _settle(WidgetTester tester) async {

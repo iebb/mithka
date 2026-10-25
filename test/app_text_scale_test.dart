@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_row_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/app_icon_controller.dart';
-import 'package:mithka/settings/appearance_view.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -44,7 +42,7 @@ void main() {
     );
   });
 
-  test('the composed scale stays inside the tested range', () async {
+  test('legacy linear estimate retains its compatibility cap', () async {
     final large = await _controller(ThemeController.maxFontScale);
     addTearDown(large.dispose);
     expect(
@@ -115,63 +113,30 @@ void main() {
     expect(doubled, lessThan(normal * 2));
   });
 
-  testWidgets('the font size page holds together at the largest scale', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    SharedPreferences.setMockInitialValues({
-      'fontScale': ThemeController.maxFontScale,
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final theme = ThemeController(prefs);
-    addTearDown(theme.dispose);
-
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeController>.value(value: theme),
-          ChangeNotifierProvider(create: (_) => AppIconController(prefs)),
-        ],
-        child: MaterialApp(
-          locale: const Locale('en'),
-          supportedLocales: AppLocalizations.supportedLocales,
-          localizationsDelegates: const [AppLocalizations.delegate],
-          theme: ThemeData(
-            brightness: Brightness.light,
-            platform: TargetPlatform.android,
-            extensions: [AppColors.light],
-          ),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(
-                theme.effectiveTextScale(MediaQuery.textScalerOf(context)),
-              ),
-            ),
-            child: child ?? const SizedBox.shrink(),
-          ),
-          home: const AppearanceView(),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(find.text('Font'));
-    await tester.pumpAndSettle();
-    final fontSizeRow = find.text('Font Size').first;
-    await tester.ensureVisible(fontSizeRow);
-    await tester.tap(fontSizeRow);
-    await tester.pumpAndSettle();
-
-    // Both previews follow the setting now that it reaches every surface.
-    expect(
-      find.byKey(const ValueKey('font-size-chat-preview')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('font-size-chat-list-preview')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
+  test('invalid saved content sizes fall back to Standard', () async {
+    for (final value in [
+      -1.0,
+      0.0,
+      .79,
+      2.01,
+      double.nan,
+      double.infinity,
+      double.negativeInfinity,
+    ]) {
+      final controller = await _controller(value);
+      expect(controller.fontScale, 1.0);
+      controller.dispose();
+    }
   });
+
+  test(
+    'saved custom sizes remain exact rather than snapping to presets',
+    () async {
+      for (final value in [1.07, 1.47, 1.8, 2.0]) {
+        final controller = await _controller(value);
+        expect(controller.fontScale, value);
+        controller.dispose();
+      }
+    },
+  );
 }

@@ -106,6 +106,12 @@ void main() {
     final composer = find.byType(ChatInputBar);
     final initialRect = tester.getRect(composer);
 
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('desktopComposerSenderPicker')))
+          .height,
+      greaterThanOrEqualTo(44),
+    );
     await tester.tap(find.byKey(const ValueKey('desktopComposerSenderPicker')));
     await tester.pump();
 
@@ -219,13 +225,13 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('desktopComposerToolbar')))
           .height,
-      41,
+      51,
     );
     expect(
       tester
           .getSize(find.byKey(const ValueKey('desktopComposerMediaAction')))
           .height,
-      32,
+      greaterThanOrEqualTo(44),
     );
     expect(
       find.byKey(const ValueKey('desktopComposerMoreAction')),

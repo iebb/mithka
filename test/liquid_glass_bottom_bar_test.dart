@@ -10,6 +10,8 @@ import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'helpers/glass_review_capture.dart';
+
 void main() {
   testWidgets('finite-height tab slots fit at larger text scales', (
     tester,
@@ -298,4 +300,196 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('glass capsule has a dark contour, a light rim, and a shadow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: const Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SizedBox(
+              width: 318,
+              child: LiquidGlassBottomBar(
+                selection: 0,
+                itemCount: 4,
+                child: SizedBox(height: 62, width: double.infinity),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final capsule = find.descendant(
+      of: find.byType(LiquidGlassBottomBar),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is ClipRRect &&
+            widget.borderRadius == BorderRadius.circular(AppRadius.pill),
+      ),
+    );
+    expect(capsule, findsOneWidget);
+
+    final decorations = tester
+        .widgetList<DecoratedBox>(
+          find.ancestor(of: capsule, matching: find.byType(DecoratedBox)),
+        )
+        .map((box) => (box: box, decoration: box.decoration as BoxDecoration))
+        .toList();
+    final contour = decorations.firstWhere(
+      (entry) => entry.decoration.border != null,
+    );
+    final shadow = decorations.firstWhere(
+      (entry) => entry.decoration.boxShadow != null,
+    );
+    // A white capsule on a white page is edgeless without this: the dark
+    // hairline shares the stadium radius and is painted over the glass edge,
+    // so the clip cannot cover it.
+    expect(contour.box.position, DecorationPosition.foreground);
+    expect(
+      contour.decoration.borderRadius,
+      BorderRadius.circular(AppRadius.pill),
+    );
+    final contourSide = contour.decoration.border!.top;
+    expect(contourSide.color, const Color(0xFF000000).withValues(alpha: 0.055));
+    expect(contourSide.width, 0.6);
+    // The specular rim stays inside the contour and stays white, so the two
+    // edge strokes are not the same paint.
+    final rim =
+        tester
+                .widget<DecoratedBox>(
+                  find
+                      .descendant(
+                        of: find.byType(BackdropFilter),
+                        matching: find.byType(DecoratedBox),
+                      )
+                      .first,
+                )
+                .decoration
+            as BoxDecoration;
+    expect(
+      rim.border!.top.color,
+      const Color(0xFFFFFFFF).withValues(alpha: 0.85),
+    );
+    expect(rim.border!.top.color, isNot(contourSide.color));
+    // The soft drop shadow still sits on the outermost box.
+    expect(shadow.decoration.boxShadow, hasLength(1));
+    expect(shadow.decoration.boxShadow!.single.blurRadius, 20);
+    expect(shadow.decoration.boxShadow!.single.offset, const Offset(0, 5));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('glass blur is strong and yields only to high contrast', (
+    tester,
+  ) async {
+    Widget host({bool highContrast = false}) => MaterialApp(
+      theme: ThemeData(extensions: [AppColors.light]),
+      home: MediaQuery(
+        data: MediaQueryData(
+          size: const Size(390, 844),
+          highContrast: highContrast,
+        ),
+        child: const Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: SizedBox(
+              width: 318,
+              child: LiquidGlassBottomBar(
+                selection: 0,
+                itemCount: 4,
+                child: SizedBox(height: 62, width: double.infinity),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    BackdropFilter blur() => tester.widget<BackdropFilter>(
+      find.descendant(
+        of: find.byType(LiquidGlassBottomBar),
+        matching: find.byType(BackdropFilter),
+      ),
+    );
+
+    await tester.pumpWidget(host());
+    expect(blur().enabled, isTrue);
+    expect(blur().filter.toString(), contains('ImageFilter.blur(24.0, 24.0'));
+
+    await tester.pumpWidget(host(highContrast: true));
+    expect(blur().enabled, isFalse);
+    expect(blur().filter.toString(), contains('ImageFilter.blur(24.0, 24.0'));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'capture patterned glass surfaces for visual review',
+    (tester) async {
+      for (final scene in [
+        (name: 'capsule-light', dark: false, highContrast: false),
+        (name: 'capsule-dark', dark: true, highContrast: false),
+        (name: 'capsule-high-contrast', dark: false, highContrast: true),
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(
+              brightness: scene.dark ? Brightness.dark : Brightness.light,
+              extensions: [scene.dark ? AppColors.dark : AppColors.light],
+            ),
+            home: Scaffold(
+              body: Center(
+                child: glassReviewBoundary(
+                  SizedBox(
+                    width: 390,
+                    height: 180,
+                    child: MediaQuery(
+                      data: MediaQueryData(highContrast: scene.highContrast),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(painter: _ReviewBackdrop()),
+                          ),
+                          const Align(
+                            alignment: Alignment.bottomCenter,
+                            child: LiquidGlassBottomBar(
+                              selection: 1,
+                              itemCount: 4,
+                              child: SizedBox(
+                                height: 62,
+                                width: double.infinity,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await captureGlassReviewImage(tester, scene.name);
+      }
+    },
+    skip: !captureGlassReview,
+  );
+}
+
+class _ReviewBackdrop extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const colors = [Color(0xFF186AAB), Color(0xFFF6CC5D), Color(0xFFEA6262)];
+    for (var index = 0; index * 18 < size.width; index++) {
+      canvas.drawRect(
+        Rect.fromLTWH(index * 18.0, 0, 18, size.height),
+        Paint()..color = colors[index % colors.length],
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ReviewBackdrop oldDelegate) => false;
 }

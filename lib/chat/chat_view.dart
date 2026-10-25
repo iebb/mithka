@@ -70,6 +70,7 @@ import '../tdlib/td_models.dart';
 import '../tdlib/td_requests.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/content_size.dart';
 import '../theme/date_text.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
@@ -1012,6 +1013,8 @@ class ChatView extends StatefulWidget {
   final int? initialMessageId;
   final ChatMessage? seedMessage;
   final bool showBackButton;
+
+  /// Minimum toolbar height; accessible title/status text can grow it.
   final double headerHeight;
   final Color? headerColor;
   final bool showHeaderDivider;
@@ -1128,8 +1131,8 @@ class _ChatHeaderAction extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
-        width: AppMetric.hitTarget,
-        height: AppMetric.hitTarget,
+        width: math.max(44, AppMetric.hitTarget),
+        height: math.max(44, AppMetric.hitTarget),
         child: Center(
           child: AppIcon(icon, size: AppIconSize.nav, color: c.textPrimary),
         ),
@@ -6912,24 +6915,45 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
+  List<ChatMessage> _messagesForForward(ChatMessage message) {
+    if (message.mediaAlbumId == 0 ||
+        !context.read<ThemeController>().groupImageMessages) {
+      return [message];
+    }
+    for (final entry in _transcriptEntries(true)) {
+      if (entry.isImageGroup &&
+          entry.messages.any((candidate) => candidate.id == message.id)) {
+        return entry.messages;
+      }
+    }
+    return [message];
+  }
+
   Future<void> _forwardMessage(ChatMessage message) async {
     if (!_vm.canForwardContent) {
       _showForwardFailure(const ForwardBlockedException());
       return;
     }
+    final messageIds = _messagesForForward(
+      message,
+    ).map((candidate) => candidate.id).toList();
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
         builder: (_) => ChatPickerView(
           title: AppStringKeys.chatForwardToTitle,
           showForwardOptions: true,
-          markdownOffer: _forwardMarkdownOffer([message.id]),
+          markdownOffer: _forwardMarkdownOffer(messageIds),
         ),
       ),
     );
     if (result == null || !mounted) return;
     final target = result.chat;
     try {
-      await _vm.forward(message.id, target.id, options: result.forwardOptions);
+      await _vm.forwardMany(
+        messageIds,
+        target.id,
+        options: result.forwardOptions,
+      );
       if (!mounted) return;
       showToast(
         context,
@@ -8496,22 +8520,29 @@ class _ChatViewState extends State<ChatView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            height: widget.headerHeight,
+          // Let the two text lines determine the height at accessibility
+          // sizes instead of squeezing them into a fixed toolbar.
+          ConstrainedBox(
+            key: const ValueKey('chatHeaderToolbar'),
+            constraints: BoxConstraints(minHeight: widget.headerHeight),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
                   if (widget.showBackButton)
                     GestureDetector(
+                      key: const ValueKey('chatHeaderBack'),
                       behavior: HitTestBehavior.opaque,
                       onTap: _handleBack,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: AppIcon(
-                          HeroAppIcons.chevronLeft,
-                          size: 22,
-                          color: c.textPrimary,
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Center(
+                          child: AppIcon(
+                            HeroAppIcons.chevronLeft,
+                            size: 22,
+                            color: c.textPrimary,
+                          ),
                         ),
                       ),
                     )
@@ -8648,7 +8679,8 @@ class _ChatViewState extends State<ChatView> {
             ],
           )
         : titleText;
-    final content = Column(
+    final text = Column(
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -8677,6 +8709,10 @@ class _ChatViewState extends State<ChatView> {
             ),
           ),
       ],
+    );
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: text,
     );
     if (_showsTopicSurfaces) {
       return GestureDetector(
@@ -10155,21 +10191,23 @@ class _ChatViewState extends State<ChatView> {
     final usesExactMediaTarget = entry.isImageGroup || entry.isDocumentGroup;
     final Widget messageBody;
     if (message.isService) {
-      messageBody = message.communityPreview != null
-          ? ChatCommunityServiceCard(
-              preview: message.communityPreview!,
-              label: message.text,
-              onView: () =>
-                  unawaited(_openCommunityPreview(message.communityPreview!)),
-            )
-          : message.appearancePreview == null
-          ? SystemBanner(text: message.text)
-          : ChatAppearanceMessagePreview(
-              preview: message.appearancePreview!,
-              label: message.text,
-              controller: _wallpaperController,
-              fallback: SystemBanner(text: message.text),
-            );
+      messageBody = ContentSizeScope(
+        child: message.communityPreview != null
+            ? ChatCommunityServiceCard(
+                preview: message.communityPreview!,
+                label: message.text,
+                onView: () =>
+                    unawaited(_openCommunityPreview(message.communityPreview!)),
+              )
+            : message.appearancePreview == null
+            ? SystemBanner(text: message.text)
+            : ChatAppearanceMessagePreview(
+                preview: message.appearancePreview!,
+                label: message.text,
+                controller: _wallpaperController,
+                fallback: SystemBanner(text: message.text),
+              ),
+      );
     } else if (entry.isBlockedRun) {
       messageBody = _blockedMessagePlaceholder(context, entry);
     } else if (entry.isImageGroup) {
@@ -10209,11 +10247,16 @@ class _ChatViewState extends State<ChatView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_needsUnreadDivider(messageIndex, messages: messages))
-            KeyedSubtree(key: _unreadKey, child: _unreadDivider()),
+            KeyedSubtree(
+              key: _unreadKey,
+              child: ContentSizeScope(child: _unreadDivider()),
+            ),
           if (_needsSeparator(messageIndex, messages: messages))
-            TimeSeparator(unix: message.date),
+            ContentSizeScope(child: TimeSeparator(unix: message.date)),
           if (_needsTopicSeparator(messageIndex, messages: messages))
-            _topicSectionHeader(_topicSectionId(message)!),
+            ContentSizeScope(
+              child: _topicSectionHeader(_topicSectionId(message)!),
+            ),
           // Anchor the message itself: unread/date separators can disappear
           // between visits and must not shift the restored reading position.
           TranscriptEntryBoundary(

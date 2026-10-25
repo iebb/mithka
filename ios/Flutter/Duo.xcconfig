@@ -1,0 +1,10 @@
+// Gate SDK symbols independently of the Swift compiler and deployment target.
+// Both Xcode 27.0 and 27.1 ship a compiler >= 6.4, but only the latter has
+// UIView.reservedRegions. Keep unknown SDK major versions on the safe fallback
+// until their API has been checked. Patch releases inherit their minor version.
+MITHKA_RESERVED_REGIONS_CONDITION =
+MITHKA_RESERVED_REGIONS_CONDITION[sdk=iphoneos27.*] = MITHKA_HAS_RESERVED_REGIONS
+MITHKA_RESERVED_REGIONS_CONDITION[sdk=iphonesimulator27.*] = MITHKA_HAS_RESERVED_REGIONS
+MITHKA_RESERVED_REGIONS_CONDITION[sdk=iphoneos27.0*] =
+MITHKA_RESERVED_REGIONS_CONDITION[sdk=iphonesimulator27.0*] =
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(MITHKA_RESERVED_REGIONS_CONDITION)

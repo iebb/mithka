@@ -12,6 +12,7 @@ import '../platform/adaptive_platform.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/content_size.dart';
 import '../theme/date_text.dart';
 import '../theme/message_name_colors.dart';
 import '../theme/telegram_cloud_theme.dart';
@@ -128,7 +129,10 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   ChatMessage get _first => messages.first;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ContentSizeScope(child: Builder(builder: _buildContent));
+
+  Widget _buildContent(BuildContext context) {
     final first = _first;
     final outgoing = first.isOutgoing;
     final avatarTitle = outgoing
@@ -150,7 +154,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
       child: PhotoAvatar(
         title: avatarTitle,
         photo: avatarPhoto,
-        size: 38,
+        size: 38 * ContentSizeScope.of(context).appScale,
         isDeleted: !outgoing && isGroup && first.senderIsDeleted,
       ),
     );

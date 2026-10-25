@@ -5,6 +5,7 @@ import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/content_size.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,7 +31,8 @@ void main() {
       senderEmojiStatusId: 42,
     );
 
-    Widget bubble(double scale) =>
+    // [scale] is the OS text size; [appScale] is the app's content size.
+    Widget bubble(double scale, {double appScale = 1}) =>
         ChangeNotifierProvider<ThemeController>.value(
           value: theme,
           child: MaterialApp(
@@ -40,13 +42,16 @@ void main() {
             supportedLocales: AppLocalizations.supportedLocales,
             home: MediaQuery(
               data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: TickerMode(
-                  enabled: false,
-                  child: MessageBubble(
-                    message: message,
-                    peerTitle: 'Test Group',
-                    isGroup: true,
+              child: ContentSizeRoot(
+                appScale: appScale,
+                child: Scaffold(
+                  body: TickerMode(
+                    enabled: false,
+                    child: MessageBubble(
+                      message: message,
+                      peerTitle: 'Test Group',
+                      isGroup: true,
+                    ),
                   ),
                 ),
               ),
@@ -67,6 +72,14 @@ void main() {
     expect(
       tester.widget<StatusEmojiView>(find.byType(StatusEmojiView)).size,
       28,
+    );
+
+    // The app's content-size setting scales the chat text too.
+    await tester.pumpWidget(bubble(1, appScale: 1.6));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(
+      tester.widget<StatusEmojiView>(find.byType(StatusEmojiView)).size,
+      closeTo(22.4, 1e-9),
     );
   });
 }

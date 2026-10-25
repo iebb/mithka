@@ -43,6 +43,7 @@ import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/json_helpers.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/content_size.dart';
 import 'package:mithka/theme/date_text.dart';
 import 'package:mithka/theme/emoji_font_catalog.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -2960,7 +2961,13 @@ void main() {
         tester.element(textFieldFinder),
         editableTextState,
       );
-      final buttonItems = (toolbar as AdaptiveTextSelectionToolbar).buttonItems;
+      final toolbarScope = toolbar as MediaQuery;
+      expect(
+        toolbarScope.data.textScaler,
+        ContentSizeScope.of(tester.element(textFieldFinder)).systemTextScaler,
+      );
+      final buttonItems =
+          (toolbarScope.child as AdaptiveTextSelectionToolbar).buttonItems;
 
       final pasteItems = buttonItems!.where(
         (item) => item.type == ContextMenuButtonType.paste,
@@ -3091,7 +3098,13 @@ void main() {
           tester.element(textFieldFinder),
           editableTextState,
         );
-        final items = (toolbar as AdaptiveTextSelectionToolbar).buttonItems!;
+        final toolbarScope = toolbar as MediaQuery;
+        expect(
+          toolbarScope.data.textScaler,
+          ContentSizeScope.of(tester.element(textFieldFinder)).systemTextScaler,
+        );
+        final items =
+            (toolbarScope.child as AdaptiveTextSelectionToolbar).buttonItems!;
         items.singleWhere((item) => item.label == 'Format').onPressed!();
       }
 
@@ -5960,7 +5973,13 @@ void main() {
         r"static const [A-Za-z0-9_]+ = '([^']+)';",
       ).allMatches(source).map((match) => match.group(1)!).toSet();
       final zhValues = L10nFixtures.load().messages('zhHans');
-      final intentionalHan = RegExp(r'^(appLocale|country|markdown|theme)');
+      // The content-size preview samples are deliberately bilingual
+      // (identical Latin + Han + emoji text in every catalogue) so the
+      // preview shows how both scripts scale together.
+      final intentionalHan = RegExp(
+        r'^(appLocale|country|markdown|theme|'
+        r'contentSizePreview(Incoming|Outgoing|Name\d|Line\d)$)',
+      );
       final han = RegExp(r'[\u3400-\u9fff]');
       final failures = <String>[];
       for (final localeKey in ['en', 'ko', 'fr', 'es', 'de']) {

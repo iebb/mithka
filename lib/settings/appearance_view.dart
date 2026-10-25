@@ -2,13 +2,13 @@
 //  appearance_view.dart
 //
 
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-
 //  外观 is the hub for theme, interface, font, and app-icon settings. Each
 //  interface surface owns its controls and a live account-backed preview.
 //
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +42,7 @@ import '../theme/message_name_colors.dart';
 import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
+import 'content_size_settings_view.dart';
 import 'message_bubble_settings_view.dart';
 import 'quick_reaction_settings_view.dart';
 
@@ -288,26 +289,6 @@ class ThemeSettingsView extends StatelessWidget {
                 () => theme.mode = mode,
               ),
           ]),
-        ],
-      ),
-    );
-  }
-}
-
-class _TextSizeSettingsView extends StatelessWidget {
-  const _TextSizeSettingsView();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.watch<ThemeController>();
-    return SettingsPageScaffold(
-      title: AppStringKeys.appearanceFontSize,
-      onBack: () => Navigator.of(context).pop(),
-      child: SettingsListView(
-        children: [
-          const AppearanceView()._fontSizeCard(context, theme),
-          const SizedBox(height: AppSpacing.xl),
-          const AppearanceView()._fontSizePreview(context, theme),
         ],
       ),
     );
@@ -1192,146 +1173,6 @@ class _ChatViewQuickReactionOverlay extends StatelessWidget {
   }
 }
 
-class _RepresentativeChatListRow extends StatelessWidget {
-  const _RepresentativeChatListRow({required this.theme});
-
-  final ThemeController theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Row(
-        children: [
-          Container(
-            width: theme.avatarSize,
-            height: theme.avatarSize,
-            decoration: BoxDecoration(
-              color: AppTheme.brand.withValues(alpha: 0.16),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: AppIcon(
-              HeroAppIcons.solidMessage,
-              size: AppIconSize.xl,
-              color: AppTheme.brand,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppStrings.t(AppStringKeys.appearancePreviewUsersSample),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: AppTextSize.bodyLarge,
-                    fontWeight: FontWeight.w600,
-                    color: c.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxs),
-                Text(
-                  AppStrings.t(AppStringKeys.appearancePreviewMessageSample),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: AppTextSize.footnote,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '10:42',
-                style: TextStyle(
-                  fontSize: AppTextSize.caption,
-                  color: c.textTertiary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Container(
-                width: 18,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: AppTheme.brand,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  '2',
-                  style: TextStyle(
-                    color: Color(0xFFFFFFFF),
-                    fontSize: AppTextSize.caption,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RepresentativeMessageBubble extends StatelessWidget {
-  const _RepresentativeMessageBubble();
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Align(
-      key: const ValueKey('font-size-chat-preview'),
-      alignment: Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 260),
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.md,
-          AppSpacing.lg,
-          AppSpacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: c.bubbleIncoming,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              AppStrings.t(AppStringKeys.appearancePreviewChatTextSample),
-              style: TextStyle(
-                fontSize: AppTextSize.bodyLarge,
-                color: c.bubbleIncomingText,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '10:42',
-                style: TextStyle(
-                  fontSize: AppTextSize.caption,
-                  color: c.textTertiary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 enum NameColorSettingsSurface { chat, chatList }
 
 class NameColorSettingsView extends StatelessWidget {
@@ -1631,37 +1472,6 @@ extension _DisplayAppearanceHelpers on AppearanceView {
     );
   }
 
-  Widget _fontSizeCard(BuildContext context, ThemeController theme) {
-    final c = context.colors;
-    return SettingsPanel(
-      clipBehavior: Clip.antiAlias,
-      child: _scaleSlider(
-        context,
-        icon: HeroAppIcons.font.data,
-        title: AppStrings.t(AppStringKeys.appearanceFontSize),
-        value: theme.fontScale,
-        min: ThemeController.minFontScale,
-        max: ThemeController.maxFontScale,
-        divisions: 24,
-        leading: Text(
-          'A',
-          style: TextStyle(
-            fontSize: AppTextSize.footnote,
-            color: c.textSecondary,
-          ),
-        ),
-        trailing: Text(
-          'A',
-          style: TextStyle(
-            fontSize: AppTextSize.largeDisplay,
-            color: c.textPrimary,
-          ),
-        ),
-        onChanged: (value) => theme.fontScale = value,
-      ),
-    );
-  }
-
   Widget _interfaceSizeCard(BuildContext context, ThemeController theme) {
     final c = context.colors;
     return SettingsPanel(
@@ -1685,47 +1495,6 @@ extension _DisplayAppearanceHelpers on AppearanceView {
           color: c.textPrimary,
         ),
         onChanged: (value) => theme.interfaceScale = value,
-      ),
-    );
-  }
-
-  Widget _fontSizePreview(BuildContext context, ThemeController theme) {
-    return _previewCard(
-      context,
-      title: AppStrings.t(AppStringKeys.appearanceFontSize),
-      value: theme.fontScale,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            AppStrings.t(AppStringKeys.appearanceChatView),
-            style: TextStyle(
-              fontSize: AppTextSize.caption,
-              color: context.colors.textTertiary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          const _RepresentativeMessageBubble(),
-          const SizedBox(height: AppSpacing.xl),
-          Text(
-            AppStrings.t(AppStringKeys.appearanceChatList),
-            style: TextStyle(
-              fontSize: AppTextSize.caption,
-              color: context.colors.textTertiary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Container(
-            key: const ValueKey('font-size-chat-list-preview'),
-            decoration: BoxDecoration(
-              color: context.colors.background,
-              borderRadius: BorderRadius.circular(AppRadius.control),
-              border: Border.all(color: context.colors.divider),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: _RepresentativeChatListRow(theme: theme),
-          ),
-        ],
       ),
     );
   }
@@ -2101,11 +1870,11 @@ class FontSettingsView extends StatelessWidget {
             dividerInset: AppMetric.settingsTextDividerInset,
             rows: [
               SettingsRow(
-                title: AppStrings.t(AppStringKeys.appearanceFontSize),
-                value: '${(theme.fontScale * 100).round()}%',
+                title: AppStrings.t(AppStringKeys.contentSizeTitle),
+                value: contentSizeValue(theme.fontScale),
                 onTap: () => Navigator.of(context).push(
                   AppPageRoute<void>(
-                    pageBuilder: (_, _, _) => const _TextSizeSettingsView(),
+                    pageBuilder: (_, _, _) => const ContentSizeSettingsView(),
                   ),
                 ),
               ),
@@ -2720,8 +2489,8 @@ Future<Set<String>> _cachedGoogleFontFamilies() async {
 
 List<String> _fontTitleFallback() {
   return switch (defaultTargetPlatform) {
-    TargetPlatform.iOS || TargetPlatform.macOS => const [
-      '.AppleSystemUIFont',
+    TargetPlatform.iOS || TargetPlatform.macOS => [
+      AppFontChoice.apple.fontFamily,
       'SF Pro',
       'Helvetica Neue',
       'Arial',
@@ -2745,15 +2514,18 @@ TextStyle _fontTitleStyle(
     ).copyWith(fontFamilyFallback: fallback);
   }
   if (googleFamily != null) return base.copyWith(fontFamilyFallback: fallback);
-  return base.copyWith(fontFamily: family, fontFamilyFallback: fallback);
+  return base.copyWith(
+    fontFamily: AppFontChoice.resolvePlatformFontFamily(family),
+    fontFamilyFallback: fallback,
+  );
 }
 
 String _fontPreviewSample() => appFontPreviewText;
 
 int _popularSystemFontPriority(String family) {
   final popular = switch (defaultTargetPlatform) {
-    TargetPlatform.iOS || TargetPlatform.macOS => const [
-      '.AppleSystemUIFont',
+    TargetPlatform.iOS || TargetPlatform.macOS => [
+      AppFontChoice.apple.fontFamily,
       'SF Pro',
       'Helvetica Neue',
       'Helvetica',

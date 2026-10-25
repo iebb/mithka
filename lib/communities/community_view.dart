@@ -39,12 +39,9 @@ class CommunityChatListRow extends StatelessWidget {
   final bool selected;
   final VoidCallback? onClearUnread;
 
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final theme = context.watch<ThemeController>();
+  ChatSummary get summary {
     final latest = entry.latestChat;
-    final summary = ChatSummary(
+    return ChatSummary(
       id: -entry.community.id.abs(),
       title: entry.community.name,
       lastMessage: latest.lastMessage.trim().isEmpty
@@ -62,6 +59,13 @@ class CommunityChatListRow extends StatelessWidget {
       isPinned: entry.isPinned,
       isMarkedUnread: entry.isMarkedUnread,
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    final summary = this.summary;
     return ChatRowView(
       chat: summary,
       selected: selected,

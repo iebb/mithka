@@ -61,9 +61,7 @@ import 'desktop_navigation_rail.dart';
 import 'desktop_utility_window.dart';
 import 'detail_content_reveal.dart';
 import 'horizontal_safe_viewport.dart';
-import 'liquid_glass_bottom_bar.dart'
-    show GlassSelectionIndicator, LiquidGlassBottomBar;
-import 'native_glass_surface.dart';
+import 'liquid_glass_bottom_bar.dart';
 import 'primary_chat_launcher.dart';
 import 'unread_badge_model.dart';
 
@@ -2188,8 +2186,9 @@ class _MainBottomBar extends StatelessWidget {
   /// sits over the detail pane, not over this column.
   final bool reserveBottomInset;
 
-  /// Label size the bar is laid out around. The icon block above it keeps its
-  /// size at every text scale, so only this line's growth is added to the bar.
+  /// Label size the classic bar is laid out around. The icon block above it
+  /// keeps its size at every text scale, so only this line's growth is added
+  /// to the bar. The glass bar draws no label at all and always grows by zero.
   static const double _labelSize = 11;
 
   /// Line box of the label relative to its font size.
@@ -2283,11 +2282,15 @@ class _MainBottomBar extends StatelessWidget {
         ),
       );
     }
-    final labelGrowth = math.max(
-      0.0,
-      (MediaQuery.textScalerOf(context).scale(_labelSize) - _labelSize) *
-          _labelLineHeight,
-    );
+    // The glass row contains only centered icons and reserves no label height;
+    // the classic bar keeps growing with the scaled label line.
+    final labelGrowth = glass
+        ? 0.0
+        : math.max(
+            0.0,
+            (MediaQuery.textScalerOf(context).scale(_labelSize) - _labelSize) *
+                _labelLineHeight,
+          );
     // Only the compact shell reserves the home indicator's own height; the
     // split shell leaves the window edge to its column, so the row keeps the
     // bar's whole box.
@@ -2383,31 +2386,37 @@ class _MainBottomBar extends StatelessWidget {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          AnimatedDefaultTextStyle(
-                            duration: AppMotion.duration(
-                              context,
-                              AppMotion.responsive,
+                          // The glass row is icon-only: the label line and its
+                          // gutter are dropped, and the icon stays centred in
+                          // the slot. Every other target keeps the classic
+                          // icon + label column untouched.
+                          if (!glass) ...[
+                            const SizedBox(height: 2),
+                            AnimatedDefaultTextStyle(
+                              duration: AppMotion.duration(
+                                context,
+                                AppMotion.responsive,
+                              ),
+                              curve: AppMotion.standard,
+                              style: TextStyle(
+                                fontSize: _labelSize,
+                                fontWeight: selection == i
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: selection == i
+                                    ? AppTheme.brand
+                                    : c.textTertiary,
+                              ),
+                              // A wrapped label would outgrow the bar; the tab
+                              // is identified by its icon either way.
+                              child: Text(
+                                items[i].label.l10n(context),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            curve: AppMotion.standard,
-                            style: TextStyle(
-                              fontSize: _labelSize,
-                              fontWeight: selection == i
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: selection == i
-                                  ? AppTheme.brand
-                                  : c.textTertiary,
-                            ),
-                            // A wrapped label would outgrow the bar; the tab
-                            // is identified by its icon either way.
-                            child: Text(
-                              items[i].label.l10n(context),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
@@ -2420,42 +2429,11 @@ class _MainBottomBar extends StatelessWidget {
     );
     final controls = controlsWithBottomInset(0.0);
     if (glass) {
-      // iOS hosts the real Liquid Glass: a native surface draws only the glass
-      // (public UIGlassEffect on iOS 26+, system material blur before), while
-      // the app-owned row, its selection pill, and every gesture stay in
-      // Flutter above the surface — one geometry source in any host, window
-      // bottom bar or sidebar column. The Flutter glass bar remains the
-      // fallback for every other target.
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-        // A platform view has no insets of its own, so the host repeats the
-        // exact containment chain the Flutter glass bar applies: the surface
-        // stops at the bottom safe area instead of reaching under the home
-        // indicator, and the shared lateral/top/capsule margins keep the row
-        // inside the stadium at the same rect either host draws it at.
-        return SafeArea(
-          top: false,
-          minimum: const EdgeInsets.only(bottom: 10),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-            child: NativeGlassSurface(
-              child: Padding(
-                padding: const EdgeInsets.all(5),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: GlassSelectionIndicator(
-                        selection: selection,
-                        itemCount: items.length,
-                      ),
-                    ),
-                    controls,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }
+      // One Flutter glass bar serves every target, including iOS: the shell
+      // blurs its own layer tree, so the bar refracts the content that
+      // actually scrolls behind it. The row, its selection pill, and every
+      // gesture stay app-owned too, which keeps the compact phone bar and the
+      // tablet split shell's sidebar column on one geometry source.
       return LiquidGlassBottomBar(
         selection: selection,
         itemCount: items.length,

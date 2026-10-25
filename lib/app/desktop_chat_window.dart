@@ -363,9 +363,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
               ],
             );
             return ScaledAppView(
-              textScale: _theme.effectiveTextScale(
-                MediaQuery.textScalerOf(context),
-              ),
+              textScale: _theme.fontScale,
               interfaceScale: _theme.renderedInterfaceScale,
               child: appSurface,
             );

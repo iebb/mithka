@@ -79,6 +79,23 @@ typedef ChatListQuery =
 typedef ChatMembershipResolver =
     Future<bool> Function(ChatSummary summary, Map<String, dynamic> raw);
 
+/// The chat list a pin action was started against, with the pin read/write
+/// bound to that exact list. Captured at action start so an async rollback
+/// cannot land in a folder the user only selected afterwards.
+class _PinTarget {
+  _PinTarget({
+    required this.chatList,
+    required this.isPinned,
+    required this.apply,
+  });
+
+  /// The TDLib chat list object (`chatListMain` / `chatListFolder`).
+  final Map<String, dynamic> chatList;
+  final bool Function(ChatSummary chat) isPinned;
+  final void Function(Map<String, dynamic> chatList, int chatId, bool value)
+  apply;
+}
+
 class ChatListViewModel extends ChangeNotifier {
   ChatListViewModel({
     @visibleForTesting this._queryForTesting,
@@ -178,6 +195,16 @@ class ChatListViewModel extends ChangeNotifier {
       ? _chats
       : _projectChats(folderId, _visibleChats());
 
+  /// Whether [chat] is pinned in the folder currently shown to the user (the
+  /// Main list's pin when no folder is selected).
+  bool isPinnedInSelectedList(ChatSummary chat) =>
+      isPinnedInList(chat, _chatListForFolderId(_selectedFilter.folderId));
+
+  /// Whether [chat] is pinned inside [folderId]'s own list, for the read-only
+  /// folder peek rendered while a swipe is in flight.
+  bool isPinnedInFolder(ChatSummary chat, int folderId) =>
+      isPinnedInList(chat, _chatListForFolderId(folderId));
+
   void _invalidateEntriesCaches() {
     _entriesCache = null;
     _peekEntries = null;
@@ -197,6 +224,11 @@ class ChatListViewModel extends ChangeNotifier {
   final Set<int> _viewableCommunityChatIds = {};
   final Set<int> _checkingCommunityChatAccess = {};
   final Map<int, Map<int, int>> _folderOrders = {};
+
+  /// Pin state local to each folder, mirroring [_folderOrders]. A chat pinned
+  /// in a folder is not pinned in the Main list and vice versa, so the two
+  /// projections can never share one per-row flag.
+  final Map<int, Map<int, bool>> _folderPins = {};
   final Map<int, bool> _joinedChatCache = {};
   final Map<String, String> _senderNames = {};
   final Map<String, Set<int>> _pendingSenderTargets = {};
@@ -383,9 +415,46 @@ class ChatListViewModel extends ChangeNotifier {
 
   // MARK: - Loading
 
+  /// The chat list the user is currently looking at: Main when no folder is
+  /// selected, the folder's own list otherwise. Pin toggles and pin reads for
+  /// the visible list must go through here so each list keeps its own state.
   Map<String, dynamic> get _activeChatList => _selectedFilter.folderId == null
       ? {'@type': 'chatListMain'}
       : {'@type': 'chatListFolder', 'chat_folder_id': _selectedFilter.folderId};
+
+  Map<String, dynamic>? _chatListForFolderId(int? folderId) => folderId == null
+      ? null
+      : {'@type': 'chatListFolder', 'chat_folder_id': folderId};
+
+  /// Whether [chat] is pinned in [chatList]'s own list. Null [chatList] means
+  /// the Main list, where [ChatSummary.isPinned] already lives.
+  bool isPinnedInList(ChatSummary chat, Map<String, dynamic>? chatList) {
+    if (chatList == null || chatList.type != 'chatListFolder') {
+      return chat.isPinned;
+    }
+    final folderId = chatList.integer('chat_folder_id');
+    if (folderId == null) return chat.isPinned;
+    return _folderPins[folderId]?[chat.id] ?? false;
+  }
+
+  /// Pin state for the chat list a row action was invoked on, captured when the
+  /// action starts so a later folder switch can never redirect the rollback.
+  _PinTarget _pinTargetForCurrentList() => _PinTarget(
+    chatList: _activeChatList,
+    isPinned: (chat) => isPinnedInList(chat, _activeChatList),
+    apply: _applyPinForList,
+  );
+
+  void _applyPinForList(Map<String, dynamic> chatList, int chatId, bool value) {
+    if (chatList.type != 'chatListFolder') {
+      _mutate(chatId, (s) => s.isPinned = value);
+      return;
+    }
+    final folderId = chatList.integer('chat_folder_id');
+    if (folderId == null) return;
+    final pins = _folderPins.putIfAbsent(folderId, () => {});
+    pins[chatId] = value;
+  }
 
   void _loadFilters() {
     // The cached bootstrap update belongs to the foreground account. A pinned
@@ -702,9 +771,12 @@ class ChatListViewModel extends ChangeNotifier {
   // MARK: - Row actions (swipe)
 
   void togglePin(ChatSummary chat) {
-    final newValue = !chat.isPinned;
+    // Capture the list the user is acting on before anything async runs: a
+    // folder switch mid-flight must not redirect the request or the rollback.
+    final target = _pinTargetForCurrentList();
+    final newValue = !target.isPinned(chat);
     final id = chat.id;
-    _mutate(id, (s) => s.isPinned = newValue);
+    target.apply(target.chatList, id, newValue);
     _resort();
 
     _client
@@ -712,13 +784,13 @@ class ChatListViewModel extends ChangeNotifier {
           '@type': 'toggleChatIsPinned',
           // Pin in the list the user is looking at — pinning from a folder
           // filter used to silently mutate the Main list instead.
-          'chat_list': _activeChatList,
+          'chat_list': target.chatList,
           'chat_id': id,
           'is_pinned': newValue,
         })
         .catchError((Object error) async {
           // Failure: revert and restore the chat's true position from TDLib.
-          _mutate(id, (s) => s.isPinned = !newValue);
+          target.apply(target.chatList, id, !newValue);
           try {
             final raw = await _client.query({
               '@type': 'getChat',
@@ -1376,6 +1448,7 @@ class ChatListViewModel extends ChangeNotifier {
             final folderId = list.integer('chat_folder_id');
             if (folderId != null) {
               _folderOrders[folderId]?.remove(id);
+              _folderPins[folderId]?.remove(id);
               _mutate(id, (s) => s.folderIds.remove(folderId));
             }
         }
@@ -1392,6 +1465,9 @@ class ChatListViewModel extends ChangeNotifier {
         _lastSenderKeys.remove(id);
         for (final orders in _folderOrders.values) {
           orders.remove(id);
+        }
+        for (final pins in _folderPins.values) {
+          pins.remove(id);
         }
         _scheduleResort();
 
@@ -1584,6 +1660,19 @@ class ChatListViewModel extends ChangeNotifier {
           orders[id] = order;
         } else {
           orders.remove(id);
+        }
+        // Pin state is per folder, exactly like the order above it. A position
+        // without the flag keeps whatever the folder already recorded.
+        final pinned = position.boolean('is_pinned');
+        if (pinned != null) {
+          final pins = _folderPins.putIfAbsent(folderId, () => {});
+          if (order > 0) {
+            pins[id] = pinned;
+          } else {
+            pins.remove(id);
+          }
+        } else if (order <= 0) {
+          _folderPins[folderId]?.remove(id);
         }
         _mutate(id, (s) {
           if (order > 0) {
@@ -2067,8 +2156,13 @@ class ChatListViewModel extends ChangeNotifier {
       return visible.where((c) => c.order > 0).toList()..sort(_compare);
     }
     final folderOrders = _folderOrders[folderId] ?? const {};
+    final folderPins = _folderPins[folderId] ?? const {};
+    bool pinnedInFolder(ChatSummary chat) => folderPins[chat.id] ?? false;
     return visible.where((c) => (folderOrders[c.id] ?? 0) > 0).toList()
       ..sort((a, b) {
+        final ap = pinnedInFolder(a);
+        final bp = pinnedInFolder(b);
+        if (ap != bp) return ap ? -1 : 1;
         final ao = folderOrders[a.id] ?? 0;
         final bo = folderOrders[b.id] ?? 0;
         if (ao != bo) return bo.compareTo(ao);

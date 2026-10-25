@@ -62,6 +62,7 @@ import 'chat_folder_tag_controller.dart';
 import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
 import 'chat_removal_actions.dart';
+import 'chat_row_metrics.dart';
 import 'chat_row_view.dart';
 import 'filtered_chats_view.dart';
 import 'qr_scanner_view.dart';
@@ -1169,6 +1170,7 @@ class _ChatListViewState extends State<ChatListView>
   bool _modelDirtyWhileInactive = false;
   bool _reactivationFollowUpPending = false;
   int _lastVisibleRows = 1;
+  double? _lastRowWidth;
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
   final ScrollController _folderTabScrollController = ScrollController();
   final Map<int?, GlobalKey> _folderTabKeys = {};
@@ -1288,7 +1290,11 @@ class _ChatListViewState extends State<ChatListView>
     if (positions.length != 1) return;
     final position = positions.single;
     final theme = context.read<ThemeController>();
-    final rowHeight = chatListRowExtentFor(context, listen: false) + 0.5;
+    final rowHeight = chatListRowExtentFor(
+      context,
+      listen: false,
+      width: _lastRowWidth,
+    );
     final archiveMode = effectiveChatListArchiveDisplayMode(
       theme.archivedChatsDisplayMode,
     );
@@ -2147,8 +2153,14 @@ class _ChatListViewState extends State<ChatListView>
     );
     if (entryIndex < 0) return null;
 
-    var itemIndex = entryIndex;
-    if (_model.isAllFilter && _model.filtered.isNotEmpty) itemIndex++;
+    final preceding = <double>[
+      for (final entry in entries.take(entryIndex)) _entryExtent(entry),
+    ];
+    if (_model.isAllFilter && _model.filtered.isNotEmpty) {
+      preceding.add(
+        _summaryExtent(FilteredChatsRow(chats: _model.filtered).summary),
+      );
+    }
     final archiveMode = effectiveChatListArchiveDisplayMode(
       context.read<ThemeController>().archivedChatsDisplayMode,
     );
@@ -2163,17 +2175,59 @@ class _ChatListViewState extends State<ChatListView>
               chatCount: entries.length,
               visibleRows: _lastVisibleRows,
             );
-      if (archiveIndex <= entryIndex) itemIndex++;
+      if (archiveIndex <= entryIndex) preceding.add(_archiveExtent());
     }
-    return chatListItemScrollOffset(
-      itemIndex: itemIndex,
-      rowHeight: chatListRowExtentFor(context, listen: false),
-      maxScrollExtent: _scrollController.position.maxScrollExtent,
-      leadingExtent: _leadingListControlsExtent(
-        context.read<ThemeController>(),
+    // These builders contain no inter-row Divider/SizedBox. Do not add the
+    // former estimated 0.5px: it accumulated drift on long unread jumps.
+    return math.min(
+      _scrollController.position.maxScrollExtent,
+      chatRowCumulativeOffset(
+        preceding,
+        leadingExtent: _leadingListControlsExtent(
+          context.read<ThemeController>(),
+        ),
       ),
     );
   }
+
+  double _summaryExtent(
+    ChatSummary summary, {
+    bool? pinned,
+    double trailingWidth = 0,
+    double titleAccessoryWidth = 0,
+  }) => chatRowMetricsFor(
+    context,
+    summary,
+    listen: false,
+    width: _lastRowWidth,
+    pinned: pinned,
+    trailingWidth: trailingWidth,
+    titleAccessoryWidth: titleAccessoryWidth,
+  ).extent;
+
+  double _entryExtent(CommunityChatListEntry entry) => switch (entry) {
+    CommunityChatEntry(:final chat) => _summaryExtent(
+      chat,
+      pinned: _model.isPinnedInSelectedList(chat),
+      titleAccessoryWidth:
+          (chat.kind == ChatKind.secret ? 18 : 0) +
+          (chat.peerEmojiStatusId != 0 &&
+                  context
+                      .read<ThemeController>()
+                      .chatListStatusEmojiMode
+                      .visible
+              ? 21
+              : 0),
+    ),
+    CommunityGroupEntry() => _summaryExtent(
+      CommunityChatListRow(entry: entry).summary,
+      trailingWidth: isDesktopTargetPlatform() ? 0 : 13,
+      titleAccessoryWidth: 22,
+    ),
+  };
+
+  double _archiveExtent() =>
+      _summaryExtent(ArchivedChatsRow(archived: _model.archived).summary);
 
   void _animateListTo(double target) {
     if (!_scrollController.hasClients) return;
@@ -2875,7 +2929,19 @@ class _ChatListViewState extends State<ChatListView>
   /// A read-only rendering of the folder a swipe is heading for. It never takes
   /// the shared scroll controller and never wires up row actions, so the list
   /// being left behind keeps its position and its gestures.
-  Widget _folderPeekList(ChatFilterOption filter) {
+  Widget _folderPeekList(ChatFilterOption filter) => LayoutBuilder(
+    builder: (context, constraints) => ChatRowWidth(
+      width: constraints.maxWidth,
+      child: Builder(
+        builder: (context) => _folderPeekListContents(context, filter),
+      ),
+    ),
+  );
+
+  Widget _folderPeekListContents(
+    BuildContext context,
+    ChatFilterOption filter,
+  ) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final entries = _model.chatListEntriesForFolder(
@@ -2895,7 +2961,7 @@ class _ChatListViewState extends State<ChatListView>
           color: c.background,
           child: LayoutBuilder(
             builder: (context, geo) {
-              final rowH = chatListRowExtentFor(context) + 0.5;
+              final rowH = chatListRowExtentFor(context);
               if (entries.isEmpty && !showInlineArchive) {
                 return ListView(
                   primary: false,
@@ -2934,7 +3000,10 @@ class _ChatListViewState extends State<ChatListView>
                       : listIndex;
                   final entry = entries[entryIndex];
                   return switch (entry) {
-                    CommunityChatEntry(:final chat) => _peekRow(chat),
+                    CommunityChatEntry(:final chat) => _peekRow(
+                      chat,
+                      filter.folderId,
+                    ),
                     CommunityGroupEntry() => _communityRow(entry),
                   };
                 },
@@ -2946,7 +3015,7 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  Widget _peekRow(ChatSummary chat) {
+  Widget _peekRow(ChatSummary chat, int? folderId) {
     final selected = widget.selectedChatId == chat.id;
     return ChatListSelectionHighlight(
       key: ValueKey(chat.id),
@@ -2954,6 +3023,9 @@ class _ChatListViewState extends State<ChatListView>
       child: ChatRowView(
         chat: chat,
         selected: selected,
+        pinned: folderId == null
+            ? null
+            : _model.isPinnedInFolder(chat, folderId),
         avatarBadge: _communityBadge(
           chat,
           communitiesEnabled: context
@@ -2964,7 +3036,17 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  Widget _chatList() {
+  Widget _chatList() => LayoutBuilder(
+    builder: (context, constraints) {
+      _lastRowWidth = constraints.maxWidth;
+      return ChatRowWidth(
+        width: constraints.maxWidth,
+        child: Builder(builder: _chatListContents),
+      );
+    },
+  );
+
+  Widget _chatListContents(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final leadingControlsExtent = _leadingListControlsExtent(theme);
@@ -2976,7 +3058,7 @@ class _ChatListViewState extends State<ChatListView>
       color: c.background,
       child: LayoutBuilder(
         builder: (context, geo) {
-          final rowH = chatListRowExtentFor(context) + 0.5;
+          final rowH = chatListRowExtentFor(context);
           final searchHeight = leadingControlsExtent;
           final visibleRows = math.max(1, (geo.maxHeight / rowH).ceil());
           _lastVisibleRows = visibleRows;
@@ -3140,7 +3222,7 @@ class _ChatListViewState extends State<ChatListView>
         : const Duration(milliseconds: 180);
     return ChatListPullDownArchiveSlot(
       controller: _scrollController,
-      rowHeight: rowHeight,
+      rowHeight: _archiveExtent(),
       visible: visible,
       duration: duration,
       child: _assistantRow(),
@@ -3244,7 +3326,9 @@ class _ChatListViewState extends State<ChatListView>
       mode: swipeMode,
       multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
     );
-    final actions = chat.isPinned
+    // The pin state of the list the user is looking at, not the Main list's.
+    final pinnedInList = _model.isPinnedInSelectedList(chat);
+    final actions = pinnedInList
         ? [
             SwipeActionItem(
               title: AppStringKeys.chatListMarkUnread,
@@ -3302,6 +3386,7 @@ class _ChatListViewState extends State<ChatListView>
         child: ChatRowView(
           chat: chat,
           selected: selected,
+          pinned: _model.isPinnedInSelectedList(chat),
           onClearUnread: () => _model.markRead(chat),
           avatarBadge: _communityBadge(
             chat,
@@ -3340,10 +3425,11 @@ class _ChatListViewState extends State<ChatListView>
     }
 
     final owner = ChatPreviewAccounts.defaultPreviewAccounts.pinActiveOwner();
+    final pinnedInList = _model.isPinnedInSelectedList(chat);
     entry = OverlayEntry(
       builder: (_) => DesktopChatContextMenu(
         anchor: anchor,
-        isPinned: chat.isPinned,
+        isPinned: pinnedInList,
         hasUnread: chat.unreadCount > 0 || chat.isMarkedUnread,
         isMuted: chat.isMuted,
         deleteOrLeaveLabel: _deleteOrLeaveTitle(chat),
@@ -3393,6 +3479,8 @@ class _ChatListViewState extends State<ChatListView>
   void _showChatPreview(ChatSummary chat) {
     if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
     final hasUnread = chat.unreadCount > 0 || chat.isMarkedUnread;
+    // The preview's pin label/icon follow the list the row was opened from.
+    final pinnedInList = _model.isPinnedInSelectedList(chat);
     final accounts = context.read<AccountStore>();
     final activeAccount = accounts.activeSummary;
     final avatarPath = activeAccount?.avatarPath?.trim();
@@ -3405,6 +3493,7 @@ class _ChatListViewState extends State<ChatListView>
         mePhoto: avatarPath == null || avatarPath.isEmpty
             ? null
             : TdFileRef(id: 0, localPath: avatarPath),
+        pinned: pinnedInList,
         actions: [
           if (chatListPreviewSupportsQuickReply(chat))
             ChatListPreviewAction(
@@ -3426,7 +3515,7 @@ class _ChatListViewState extends State<ChatListView>
                 hasUnread ? _model.markRead(chat) : _model.markUnread(chat),
           ),
           ChatListPreviewAction(
-            label: chat.isPinned
+            label: pinnedInList
                 ? AppStringKeys.chatListUnpin
                 : AppStringKeys.chatInfoPin,
             icon: HeroAppIcons.thumbtack,

@@ -942,9 +942,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
               return AnnotatedRegion<SystemUiOverlayStyle>(
                 value: systemUiOverlayStyleForSurface(context.colors.navBar),
                 child: ScaledAppView(
-                  textScale: theme.effectiveTextScale(
-                    MediaQuery.textScalerOf(context),
-                  ),
+                  textScale: theme.fontScale,
                   interfaceScale: theme.renderedInterfaceScale,
                   child: DefaultTextStyle(
                     style: theme.applyAppTextStyle(

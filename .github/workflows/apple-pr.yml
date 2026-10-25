@@ -1,0 +1,187 @@
+name: Apple PR verification
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'apple/**'
+      - 'lib/app/liquid_glass_bottom_bar.dart'
+      - 'lib/app/main_tab_view.dart'
+      - 'test/*glass*'
+      - 'test/helpers/glass_review_capture.dart'
+      - 'pubspec.*'
+      - 'scripts/refresh-apple-mdk.sh'
+      - '.github/workflows/apple-pr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Credential-free iOS build, native tests and glass captures
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify the exact source snapshot
+        env:
+          EXPECTED_MERGE: ${{ github.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git show --no-patch --format='%H %P' HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MERGE"
+          if [ -n "$EXPECTED_HEAD" ]; then
+            test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
+            test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+          fi
+          git log --oneline -1
+
+      - name: Select Xcode 26
+        run: |
+          apple_xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
+          test -n "$apple_xcode_path"
+          echo "DEVELOPER_DIR=$apple_xcode_path/Contents/Developer" >> "$GITHUB_ENV"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Verify formatting of the reviewed Dart files
+        run: |
+          dart format lib/app/liquid_glass_bottom_bar.dart lib/app/main_tab_view.dart \
+            test/glass_bottom_bar_geometry_test.dart test/liquid_glass_bottom_bar_test.dart \
+            test/helpers/glass_review_capture.dart
+          git diff --exit-code -- lib/app/liquid_glass_bottom_bar.dart lib/app/main_tab_view.dart \
+            test/glass_bottom_bar_geometry_test.dart test/liquid_glass_bottom_bar_test.dart \
+            test/helpers/glass_review_capture.dart
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install locked CocoaPods tooling
+        run: sudo gem install cocoapods -v 1.17.0 --no-document
+
+      - name: Install the manifest-pinned TDLib framework
+        run: scripts/build-tdjson-ios.sh
+
+      - name: Prepare credential-free Flutter and MDK inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          xcodebuild -version
+          cp lib/config/secrets_example.dart lib/config/secrets.dart
+          flutter config --enable-swift-package-manager
+          flutter pub get
+          sh scripts/refresh-apple-mdk.sh refresh
+          sh scripts/refresh-apple-mdk.sh check
+          flutter precache --ios
+
+      - name: Capture the production glass widgets for review
+        run: |
+          flutter test --concurrency=1 --dart-define=CAPTURE_GLASS_REVIEW=true \
+            test/glass_bottom_bar_geometry_test.dart \
+            test/liquid_glass_bottom_bar_test.dart
+
+      - name: Upload glass review images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: glass-review-${{ github.sha }}
+          path: build/glass-review/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Install CocoaPods dependencies
+        run: |
+          # Widget tests regenerate FlutterGeneratedPluginSwiftPackage with
+          # Flutter's default iOS floor. Reapply the project's iOS 15 floor
+          # after those tests, before invoking Xcode directly.
+          flutter build ios --config-only --debug --no-codesign
+          cd ios
+          pod install --repo-update
+
+      - name: Build the actual iOS app without signing
+        run: |
+          xcodebuild build \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/derived \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            > "$RUNNER_TEMP/ios-build.log" 2>&1 || {
+              tail -n 160 "$RUNNER_TEMP/ios-build.log"
+              exit 1
+            }
+          tail -n 12 "$RUNNER_TEMP/ios-build.log"
+
+      - name: Run native RunnerTests on iPhone 17 Pro
+        run: |
+          apple_sim_id="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          phones = [
+              device for runtime in sorted(devices, reverse=True)
+              if "SimRuntime.iOS-" in runtime
+              for device in devices[runtime]
+              if device.get("isAvailable") and device["name"] == "iPhone 17 Pro"
+          ]
+          print(phones[0]["udid"] if phones else "")
+          ')"
+          test -n "$apple_sim_id" || { echo 'iPhone 17 Pro simulator unavailable'; exit 1; }
+          # RunnerUITests sources are intentionally absent from clean checkouts.
+          # Keep the real RunnerTests bundle, removing only the missing UI-test target.
+          apple_test_scheme=ios/Runner.xcodeproj/xcshareddata/xcschemes/RunnerTestsOnly.xcscheme
+          python3 - "$apple_test_scheme" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          tree = ET.parse("ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme")
+          root = tree.getroot()
+          testables = root.find("TestAction/Testables")
+          for reference in list(testables):
+              buildable = reference.find("BuildableReference")
+              if buildable is None or buildable.get("BlueprintName") != "RunnerTests":
+                  testables.remove(reference)
+          for parent in list(root.find("BuildAction").iter()):
+              for entry in list(parent):
+                  buildable = entry.find("BuildableReference")
+                  if (entry.tag == "BuildActionEntry" and buildable is not None
+                          and buildable.get("BlueprintName") == "RunnerUITests"):
+                      parent.remove(entry)
+          tree.write(sys.argv[1], xml_declaration=True, encoding="UTF-8")
+          PY
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme RunnerTestsOnly \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$apple_sim_id" \
+            -derivedDataPath build/derived \
+            -only-testing:RunnerTests -skip-testing:RunnerUITests \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            > "$RUNNER_TEMP/ios-tests.log" 2>&1 || {
+              tail -n 160 "$RUNNER_TEMP/ios-tests.log"
+              exit 1
+            }
+          tail -n 24 "$RUNNER_TEMP/ios-tests.log"
+
+      - name: Upload native test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-tests-${{ github.sha }}
+          path: build/derived/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7

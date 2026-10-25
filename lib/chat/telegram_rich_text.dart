@@ -98,14 +98,27 @@ class _TelegramRichTextState extends State<TelegramRichText> {
   Widget build(BuildContext context) {
     // A nullable read: this renderer is also mounted where no theme controller
     // is in scope, and 盘古之白 is simply off there.
-    _display = (context.watch<ThemeController?>()?.panguOnReceive ?? false)
+    final theme = context.watch<ThemeController?>();
+    _display = (theme?.panguOnReceive ?? false)
         ? _spacing.resolve(widget.text, widget.entities)
         : PanguDisplay(widget.text, widget.entities, const []);
-    final baseStyle =
+    var baseStyle =
         widget.style ??
         DefaultTextStyle.of(
           context,
         ).style.copyWith(color: context.colors.textPrimary);
+    // RichText does not merge DefaultTextStyle like Text does. Give ordinary
+    // iOS message text the same system face/fallbacks without replacing custom
+    // chains, code faces, or explicit tracking supplied by the caller.
+    if (theme != null &&
+        theme.usesIosSystemTypography &&
+        baseStyle.fontFamily == null &&
+        baseStyle.fontFamilyFallback == null) {
+      baseStyle = theme.applyAppTextStyle(
+        baseStyle,
+        boldText: MediaQuery.boldTextOf(context),
+      );
+    }
     final linkColor = widget.linkColor ?? context.colors.linkBlue;
     if (widget.quoteBackgroundColor != null && _hasBlockQuote()) {
       _disposeRecognizers();

@@ -1,3 +1,4 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Sentry.xcconfig"
 #include "Generated.xcconfig"
+#include "Duo.xcconfig"

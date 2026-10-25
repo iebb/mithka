@@ -142,8 +142,15 @@ void main() {
         tester.element(find.byType(ChatView)),
         rootNavigator: true,
       );
-      await tester.ensureVisible(
+      // Topic rows share the chat list's row geometry, so the last topic can
+      // start below the fold, where the lazy list has not built it yet.
+      await tester.scrollUntilVisible(
         find.byKey(const ValueKey('topic-navigation-item-88')),
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('topic-navigation-left')),
+          matching: find.byType(Scrollable),
+        ),
       );
       await _settle(tester);
       await tester.tap(find.byKey(const ValueKey('topic-navigation-item-88')));

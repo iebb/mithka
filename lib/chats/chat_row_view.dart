@@ -2,9 +2,9 @@
 //  chat_row_view.dart
 //
 //  Reusable chat-list row: avatar with the unread count badged on its top-right
-//  corner and an optional marker on its bottom-right one; title + preview; and
-//  a right column holding the timestamp (top) and the mute bell at the row's
-//  bottom-right. Port of the Swift `ChatRowView`.
+//  corner and an optional marker on its bottom-right one; the title with the
+//  timestamp on its trailing edge, sharing the name's baseline; the preview;
+//  and the mute bell at the row's bottom-right. Port of the Swift `ChatRowView`.
 //
 
 import 'package:flutter/material.dart';
@@ -19,9 +19,11 @@ import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/content_size.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'chat_folder_tag_controller.dart';
+import 'chat_row_metrics.dart';
 
 const List<Color> _telegramAccentColors = [
   Color(0xFFCC5049),
@@ -44,6 +46,7 @@ class ChatRowView extends StatelessWidget {
     this.avatarBadge,
     this.titleTrailing,
     this.trailingIndicator,
+    this.pinned,
   });
   final ChatSummary chat;
   final bool archived;
@@ -57,8 +60,23 @@ class ChatRowView extends StatelessWidget {
   final Widget? titleTrailing;
   final Widget? trailingIndicator;
 
+  /// Pin state for the list this row is rendered in. Null keeps the Main
+  /// list's [ChatSummary.isPinned]; a folder projection passes its own value
+  /// so the two lists never share one flag.
+  final bool? pinned;
+  bool get _pinned => pinned ?? chat.isPinned;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ContentSizeScope(
+    child: LayoutBuilder(
+      builder: (context, constraints) => ChatRowWidth(
+        width: constraints.maxWidth,
+        child: Builder(builder: _buildContent),
+      ),
+    ),
+  );
+
+  Widget _buildContent(BuildContext context) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final showSavedMessagesIdentity =
@@ -72,11 +90,25 @@ class ChatRowView extends StatelessWidget {
               ) ??
               chat.title
         : chat.title;
-    final rowHeight = chatListRowExtentFor(context);
     final folderTags =
         context.watch<ChatFolderTagController?>()?.tagsFor(chat.folderIds) ??
         const <ChatFolderTag>[];
-    final avatarSize = AppMetric.chatListAvatarSize();
+    final metrics = chatRowMetricsFor(
+      context,
+      chat,
+      pinned: _pinned,
+      trailingWidth: trailingIndicator != null && !isDesktopTargetPlatform()
+          ? 13
+          : 0,
+      titleAccessoryWidth:
+          (titleTrailing != null ? 22 : 0) +
+          (chat.peerEmojiStatusId != 0 && theme.chatListStatusEmojiMode.visible
+              ? 21
+              : 0) +
+          (chat.kind == ChatKind.secret ? 18 : 0),
+    );
+    final rowHeight = metrics.extent;
+    final avatarSize = metrics.avatar;
     final titleFontSize = AppTextSize.chatListTitle();
     final previewFontSize = AppTextSize.chatListPreview();
     final timestampFontSize = AppTextSize.chatListTimestamp();
@@ -96,7 +128,7 @@ class ChatRowView extends StatelessWidget {
       height: rowHeight,
       color: selected
           ? c.listHeaderTint
-          : (chat.isPinned ? c.pinnedRow : c.background),
+          : (_pinned ? c.pinnedRow : c.background),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
@@ -108,75 +140,101 @@ class ChatRowView extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.lg),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (chat.kind == ChatKind.secret) ...[
-                      AppIcon(
+            // Name and time share one baseline-aligned line; the indicators
+            // keep the bottom trailing corner beside the preview.
+            child: ChatRowTextColumn(
+              title: Row(
+                children: [
+                  if (chat.kind == ChatKind.secret) ...[
+                    IgnoreBaseline(
+                      child: AppIcon(
                         HeroAppIcons.lock,
                         size: 14,
                         color: c.textSecondary,
                       ),
-                      const SizedBox(width: AppSpacing.xs),
-                    ],
-                    Flexible(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: titleFontSize,
-                          fontWeight:
-                              chat.peerIsPremium && !showSavedMessagesIdentity
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: nameColor,
-                        ),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                  ],
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight:
+                            chat.peerIsPremium && !showSavedMessagesIdentity
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: nameColor,
                       ),
                     ),
-                    if (titleTrailing case final trailing?) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      trailing,
-                    ],
-                    if (showStatus) ...[
-                      const SizedBox(width: AppSpacing.xs),
-                      StatusEmojiView(
+                  ),
+                  if (titleTrailing case final trailing?) ...[
+                    const SizedBox(width: AppSpacing.sm),
+                    IgnoreBaseline(child: trailing),
+                  ],
+                  if (showStatus) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    IgnoreBaseline(
+                      child: StatusEmojiView(
                         id: chat.peerEmojiStatusId,
                         size: 17,
                         color: nameColor,
                         animate: theme.chatListStatusEmojiMode.animate,
                       ),
-                    ],
+                    ),
                   ],
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                chat.draftText.trim().isNotEmpty
-                    ? ChatPreviewText(
-                        message: chat.draftText,
-                        draft: true,
-                        fontSize: previewFontSize,
-                      )
-                    : ChatPreviewText(
-                        sender: chat.lastSender,
-                        message: chat.lastMessage,
-                        fontSize: previewFontSize,
-                      ),
-                if (folderTags.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.xxs),
-                  _folderTags(context, folderTags),
                 ],
-              ],
+              ),
+              time: !metrics.timeBelow && chat.date > 0
+                  ? _time(context, timestampFontSize)
+                  : null,
+              timeWidth: metrics.timestampWidth,
+              indicators: metrics.timeBelow || !_hasIndicators
+                  ? null
+                  : _indicators(context),
+              body: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: AppSpacing.xs),
+                  chat.draftText.trim().isNotEmpty
+                      ? ChatPreviewText(
+                          message: chat.draftText,
+                          draft: true,
+                          fontSize: previewFontSize,
+                        )
+                      : ChatPreviewText(
+                          sender: chat.lastSender,
+                          message: chat.lastMessage,
+                          fontSize: previewFontSize,
+                        ),
+                  if (metrics.timeBelow && chat.date > 0)
+                    _time(context, timestampFontSize),
+                  if (folderTags.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.xxs),
+                    _folderTags(context, folderTags),
+                  ],
+                  if (metrics.timeBelow) ...[
+                    const SizedBox(height: 4),
+                    _indicators(context),
+                  ],
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          _rightColumn(context, rowHeight, timestampFontSize),
         ],
       ),
     );
   }
+
+  Widget _time(BuildContext context, double fontSize) => Text(
+    DateText.listLabel(chat.date),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(fontSize: fontSize, color: context.colors.textTertiary),
+  );
 
   /// 文件夹标签, on their own line along the bottom of the row, under the
   /// message preview. Names only, in each folder's own colour — a chat in five
@@ -185,7 +243,7 @@ class ChatRowView extends StatelessWidget {
     final fontSize = AppTextSize.chatListFolderTag();
     return SizedBox(
       key: const ValueKey('chat-row-folder-tags'),
-      height: fontSize * 1.35,
+      height: MediaQuery.textScalerOf(context).scale(fontSize) * 1.35,
       child: Row(
         children: [
           for (final tag in tags) ...[
@@ -239,9 +297,9 @@ class ChatRowView extends StatelessWidget {
               size: avatarSize,
               background: AppTheme.brand,
               centerChild: true,
-              child: AppIcon(
+              child: const AppIcon(
                 HeroAppIcons.bookmark,
-                size: avatarSize * 0.46,
+                size: 48 * 0.46,
                 color: Colors.white,
               ),
             )
@@ -287,85 +345,50 @@ class ChatRowView extends StatelessWidget {
     );
   }
 
-  Widget _rightColumn(
-    BuildContext context,
-    double rowHeight,
-    double timestampFontSize,
-  ) {
+  bool get _hasIndicators =>
+      chat.unreadMentionCount > 0 ||
+      chat.unreadReactionCount > 0 ||
+      _pinned ||
+      chat.isMuted ||
+      (trailingIndicator != null && !isDesktopTargetPlatform());
+
+  Widget _indicators(BuildContext context) {
     final c = context.colors;
     final showTrailingIndicator = !isDesktopTargetPlatform();
-    return SizedBox(
-      height: rowHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: AppSpacing.md + AppSpacing.xxs,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              DateText.listLabel(chat.date),
-              style: TextStyle(
-                fontSize: timestampFontSize,
-                color: c.textTertiary,
-              ),
-            ),
-            const Spacer(),
-            SizedBox(
-              height:
-                  chat.unreadMentionCount > 0 || chat.unreadReactionCount > 0
-                  ? AppMetric.unreadBadgeMin
-                  : AppIconSize.sm,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (chat.unreadMentionCount > 0)
-                    _UnreadActivityBadge(
-                      key: const ValueKey('chat-row-unread-mention'),
-                      icon: HeroAppIcons.at,
-                      count: chat.unreadMentionCount,
-                      label: AppStrings.t(AppStringKeys.notificationMentions),
-                    ),
-                  if (chat.unreadMentionCount > 0 &&
-                      chat.unreadReactionCount > 0)
-                    const SizedBox(width: AppSpacing.xs),
-                  if (chat.unreadReactionCount > 0)
-                    _UnreadActivityBadge(
-                      key: const ValueKey('chat-row-unread-reaction'),
-                      icon: HeroAppIcons.heart,
-                      count: chat.unreadReactionCount,
-                      label: AppStrings.t(AppStringKeys.notificationReactions),
-                    ),
-                  if ((chat.unreadMentionCount > 0 ||
-                          chat.unreadReactionCount > 0) &&
-                      (chat.isPinned || chat.isMuted))
-                    const SizedBox(width: AppSpacing.xs),
-                  if (chat.isPinned)
-                    AppPinIcon(
-                      key: const ValueKey('chat-row-pinned'),
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    ),
-                  if (chat.isPinned && chat.isMuted)
-                    const SizedBox(width: AppSpacing.xs),
-                  if (chat.isMuted)
-                    AppIcon(
-                      HeroAppIcons.bellSlash,
-                      key: const ValueKey('chat-row-muted'),
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    ),
-                  if ((chat.isPinned || chat.isMuted) &&
-                      showTrailingIndicator &&
-                      trailingIndicator != null)
-                    const SizedBox(width: AppSpacing.xs),
-                  if (showTrailingIndicator) ?trailingIndicator,
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (chat.unreadMentionCount > 0)
+          _UnreadActivityBadge(
+            key: const ValueKey('chat-row-unread-mention'),
+            icon: HeroAppIcons.at,
+            count: chat.unreadMentionCount,
+            label: AppStrings.t(AppStringKeys.notificationMentions),
+          ),
+        if (chat.unreadReactionCount > 0)
+          _UnreadActivityBadge(
+            key: const ValueKey('chat-row-unread-reaction'),
+            icon: HeroAppIcons.heart,
+            count: chat.unreadReactionCount,
+            label: AppStrings.t(AppStringKeys.notificationReactions),
+          ),
+        if (_pinned)
+          AppPinIcon(
+            key: const ValueKey('chat-row-pinned'),
+            size: AppIconSize.sm,
+            color: c.textTertiary,
+          ),
+        if (chat.isMuted)
+          AppIcon(
+            HeroAppIcons.bellSlash,
+            key: const ValueKey('chat-row-muted'),
+            size: AppIconSize.sm,
+            color: c.textTertiary,
+          ),
+        if (showTrailingIndicator) ?trailingIndicator,
+      ],
     );
   }
 }
@@ -389,7 +412,7 @@ class _UnreadActivityBadge extends StatelessWidget {
     return Semantics(
       label: '$label: $countLabel',
       child: Container(
-        height: AppMetric.unreadBadgeMin,
+        constraints: const BoxConstraints(minHeight: AppMetric.unreadBadgeMin),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
         decoration: BoxDecoration(
           color: colors.badgeBackground,

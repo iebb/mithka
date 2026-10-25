@@ -172,9 +172,6 @@ import UserNotifications
     guard !didRegisterFlutterPlugins else { return }
     didRegisterFlutterPlugins = true
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NativeGlassSurface") {
-      registrar.register(NativeGlassSurfaceFactory(registrar: registrar), withId: "mithka/native_glass")
-    }
     let windowGeometryChannel = FlutterMethodChannel(
       name: "mithka/window_geometry",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -187,7 +184,8 @@ import UserNotifications
       var bottom: CGFloat = 0
       let insets = window.safeAreaInsets
       let sideWidth = max(insets.left, insets.right)
-      guard sideWidth >= 64, window.bounds.height > 0 else {
+      guard sideWidth.isFinite, sideWidth >= 64,
+            window.bounds.height.isFinite, window.bounds.height > 0 else {
         result(nil)
         return
       }
@@ -199,7 +197,7 @@ import UserNotifications
         let frame = window.convert(manager.statusBarFrame, from: scene.coordinateSpace)
         if frame.intersects(side) { bottom = max(bottom, frame.maxY) }
       }
-      #if compiler(>=6.4)
+      #if MITHKA_HAS_RESERVED_REGIONS
       if #available(iOS 27.1, *) {
         for region in window.reservedRegions(kind: .occlusion) where region.isActive {
           if region.frame.intersects(side) { bottom = max(bottom, region.frame.maxY) }
@@ -208,8 +206,10 @@ import UserNotifications
       #endif
       // Do not invent usable space when the system reserves the whole edge.
       var geometry: [String: Any] = [:]
-      if bottom > 0 && bottom < window.bounds.height {
-        geometry["topFraction"] = Double((bottom + 8) / window.bounds.height)
+      if !bottom.isFinite || bottom >= window.bounds.height {
+        geometry["topFraction"] = 1.0
+      } else if bottom > 0 {
+        geometry["topFraction"] = Double(min(1, (bottom + 8) / window.bounds.height))
       }
       result(geometry)
     }

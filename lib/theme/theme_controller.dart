@@ -401,7 +401,7 @@ enum AppFontChoice {
   String get fontFamily {
     return switch (this) {
       AppFontChoice.system => _platformFontFamily(),
-      AppFontChoice.apple => '.AppleSystemUIFont',
+      AppFontChoice.apple => resolvePlatformFontFamily('.AppleSystemUIFont'),
       AppFontChoice.pingFang => 'PingFang SC',
       AppFontChoice.pingFangHk => 'PingFang HK',
       AppFontChoice.pingFangTw => 'PingFang TC',
@@ -753,9 +753,21 @@ enum AppFontChoice {
     ];
   }
 
+  /// CupertinoSystemText is a framework fallback sentinel, not a registered
+  /// face in Flutter 3.44.2's txt/platform_mac.mm (only Display is registered).
+  /// With explicit emoji/CJK fallbacks it never reaches the default system
+  /// face: those fonts consume spaces, digits and Latin first. Resolve it to
+  /// the native text family before adding fallbacks; leave storage untouched.
+  static String resolvePlatformFontFamily(String family) =>
+      defaultTargetPlatform == TargetPlatform.iOS &&
+          family == 'CupertinoSystemText'
+      ? '.AppleSystemUIFont'
+      : family;
+
   static String _platformFontFamily() {
     return switch (defaultTargetPlatform) {
-      TargetPlatform.iOS || TargetPlatform.macOS => '.AppleSystemUIFont',
+      TargetPlatform.iOS => '.AppleSystemUIFont',
+      TargetPlatform.macOS => '.AppleSystemUIFont',
       TargetPlatform.android => 'Roboto',
       _ => 'system-ui',
     };
@@ -1024,7 +1036,7 @@ class ThemeController extends ChangeNotifier {
     );
     _invalidateFontCaches();
     unawaited(_normalizeStoredPlatformFontFamilies());
-    _fontScale = _prefs.getDouble(_fontKey) ?? 1.0;
+    _fontScale = _validStoredFontScale(_prefs.getDouble(_fontKey));
     _interfaceScale = _prefs.getDouble(_interfaceScaleKey) ?? 1.0;
     _circularGroupAvatars = _prefs.getBool(_groupAvatarCircleKey) ?? true;
     _animateAvatars = _prefs.getBool(_animateAvatarsKey) ?? true;
@@ -1326,6 +1338,9 @@ class ThemeController extends ChangeNotifier {
   late double _interfaceScale;
   Timer? _scalePersistTimer;
   bool _fontScaleNeedsPersist = false;
+  Future<void> _fontScaleWrite = Future<void>.value();
+  int _fontScaleRevision = 0;
+  bool _scaleControllerDisposed = false;
   bool _interfaceScaleNeedsPersist = false;
   late bool _circularGroupAvatars;
   late bool _animateAvatars;
@@ -1898,12 +1913,10 @@ class ThemeController extends ChangeNotifier {
     return value;
   }
 
-  /// App-wide text scale factor, applied at the root via MediaQuery.textScaler
-  /// by the scaled app views. Every surface follows it — chat transcripts,
-  /// chat list, navigation and settings alike.
+  /// App content scale, applied only by opt-in ContentSizeScope widgets.
   double get fontScale => _fontScale;
 
-  /// The scale text actually renders at: the user's own font size preference
+  /// Legacy linear estimate (not used by window roots). The scale text renders at: the user's own font size preference
   /// on top of the platform accessibility text size, capped at the range the
   /// app's layouts are tested against so an extreme system setting cannot
   /// break a fixed layout on its own.
@@ -1919,7 +1932,7 @@ class ThemeController extends ChangeNotifier {
         maxFontScale,
       );
 
-  // Font scaling is applied once by the root MediaQuery; Text applies it
+  // Font scaling is applied once by content scopes; Text applies it
   // implicitly and RichText reads it explicitly. Returning an already scaled
   // size here made chat typography grow twice.
   double chatTextSize(double base) => base;
@@ -1945,7 +1958,7 @@ class ThemeController extends ChangeNotifier {
   List<String> _normalFontFamilyChain([TextStyle? base]) {
     return _normalFontFamilyChainCache ??= dedupeFontFamilies([
       ...(_fontFallbackChain.isNotEmpty
-          ? _fontFallbackChain
+          ? _fontFallbackChain.map(AppFontChoice.resolvePlatformFontFamily)
           : [AppFontChoice._platformFontFamily()]),
       ...AppFontChoice._platformFontFallback(),
       // Last resort. The platform's own UI face carries every weight and every
@@ -1981,16 +1994,40 @@ class ThemeController extends ChangeNotifier {
     return styled;
   }
 
+  /// An explicit system-only selection has the same typography as clearing
+  /// the picker. Mixed chains remain custom, including system-first chains.
+  /// This is a rendering policy only: the stored selection is never rewritten.
+  bool get usesIosSystemTypography =>
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      (_fontFallbackChain.isEmpty ||
+          (_fontFallbackChain.length == 1 &&
+              const {
+                '.AppleSystemUIFont',
+                'CupertinoSystemText',
+                'CupertinoSystemDisplay',
+              }.contains(_fontFallbackChain.single)));
+
   TextStyle _computeAppTextStyle(TextStyle base, {bool boldText = false}) {
     final families = effectiveFontFamilyChain(base);
     final weightedBase = base.copyWith(
+      // Explicit tracking belongs to the caller. Material theme tracking is
+      // removed at the theme boundary below, not from arbitrary rich text.
+      letterSpacing: usesIosSystemTypography
+          ? (base.letterSpacing ?? 0)
+          : base.letterSpacing,
       fontWeight: AppTextWeight.forSystemBoldText(
         base.fontWeight ?? FontWeight.w400,
         boldText: boldText,
       ),
     );
     if (families.isEmpty) return weightedBase;
-    final first = families.first;
+    // Keep point sizes/scaling intact; Flutter selects the optical system face
+    // at the same 20-point boundary as its iOS typography.
+    final first = usesIosSystemTypography
+        ? ((base.fontSize ?? 14) >= 20
+              ? 'CupertinoSystemDisplay'
+              : '.AppleSystemUIFont')
+        : families.first;
     final googleFamily = _googleFamilyFor(first);
     final withPrimary = googleFamily == null
         ? weightedBase.copyWith(fontFamily: first)
@@ -2019,24 +2056,40 @@ class ThemeController extends ChangeNotifier {
   }
 
   TextTheme applyAppTextTheme(TextTheme textTheme, {bool boldText = false}) {
-    TextStyle? apply(TextStyle? style) =>
-        style == null ? null : applyAppTextStyle(style, boldText: boldText);
+    // ThemeData's color/weight theme can have null sizes until Theme.of merges
+    // the locale's geometry. Resolve the optical face from Material 3 geometry
+    // in that case, without installing sizes or overriding localized geometry.
+    final geometry = Typography.material2021().englishLike;
+    TextStyle? apply(TextStyle? style, TextStyle? geometryStyle) {
+      if (style == null) return null;
+      final result = applyAppTextStyle(
+        usesIosSystemTypography ? style.copyWith(letterSpacing: 0) : style,
+        boldText: boldText,
+      );
+      if (!usesIosSystemTypography || style.fontSize != null) return result;
+      return result.copyWith(
+        fontFamily: (geometryStyle?.fontSize ?? 14) >= 20
+            ? 'CupertinoSystemDisplay'
+            : '.AppleSystemUIFont',
+      );
+    }
+
     return textTheme.copyWith(
-      displayLarge: apply(textTheme.displayLarge),
-      displayMedium: apply(textTheme.displayMedium),
-      displaySmall: apply(textTheme.displaySmall),
-      headlineLarge: apply(textTheme.headlineLarge),
-      headlineMedium: apply(textTheme.headlineMedium),
-      headlineSmall: apply(textTheme.headlineSmall),
-      titleLarge: apply(textTheme.titleLarge),
-      titleMedium: apply(textTheme.titleMedium),
-      titleSmall: apply(textTheme.titleSmall),
-      bodyLarge: apply(textTheme.bodyLarge),
-      bodyMedium: apply(textTheme.bodyMedium),
-      bodySmall: apply(textTheme.bodySmall),
-      labelLarge: apply(textTheme.labelLarge),
-      labelMedium: apply(textTheme.labelMedium),
-      labelSmall: apply(textTheme.labelSmall),
+      displayLarge: apply(textTheme.displayLarge, geometry.displayLarge),
+      displayMedium: apply(textTheme.displayMedium, geometry.displayMedium),
+      displaySmall: apply(textTheme.displaySmall, geometry.displaySmall),
+      headlineLarge: apply(textTheme.headlineLarge, geometry.headlineLarge),
+      headlineMedium: apply(textTheme.headlineMedium, geometry.headlineMedium),
+      headlineSmall: apply(textTheme.headlineSmall, geometry.headlineSmall),
+      titleLarge: apply(textTheme.titleLarge, geometry.titleLarge),
+      titleMedium: apply(textTheme.titleMedium, geometry.titleMedium),
+      titleSmall: apply(textTheme.titleSmall, geometry.titleSmall),
+      bodyLarge: apply(textTheme.bodyLarge, geometry.bodyLarge),
+      bodyMedium: apply(textTheme.bodyMedium, geometry.bodyMedium),
+      bodySmall: apply(textTheme.bodySmall, geometry.bodySmall),
+      labelLarge: apply(textTheme.labelLarge, geometry.labelLarge),
+      labelMedium: apply(textTheme.labelMedium, geometry.labelMedium),
+      labelSmall: apply(textTheme.labelSmall, geometry.labelSmall),
     );
   }
 
@@ -2477,13 +2530,58 @@ class ThemeController extends ChangeNotifier {
     setFontFallbackChain(next);
   }
 
+  static double _validStoredFontScale(double? value) =>
+      value != null &&
+          value.isFinite &&
+          value >= minFontScale &&
+          value <= maxFontScale
+      ? value
+      : 1.0;
+
   set fontScale(double value) {
-    final next = value.clamp(minFontScale, maxFontScale);
+    final next = value.isFinite ? value.clamp(minFontScale, maxFontScale) : 1.0;
     if (_fontScale == next) return;
     _fontScale = next;
+    _fontScaleRevision++;
     _fontScaleNeedsPersist = true;
     _scheduleScalePersist();
     notifyListeners();
+  }
+
+  /// Applies immediately and reports the actual storage result. A failed write
+  /// deliberately leaves the selected value visible; calling again retries it.
+  Future<void> setFontScale(double value) {
+    final next = value.isFinite ? value.clamp(minFontScale, maxFontScale) : 1.0;
+    final changed = _fontScale != next;
+    _fontScale = next;
+    _fontScaleRevision++;
+    // Supersede any pending legacy setter write, but leave interface-size
+    // persistence alone. All started font writes are serialized below.
+    _fontScaleNeedsPersist = false;
+    final result = _writeFontScale(next);
+    if (changed) notifyListeners();
+    return result;
+  }
+
+  Future<void> _writeFontScale(double value) {
+    final revision = _fontScaleRevision;
+    final result = _fontScaleWrite.then((_) async {
+      if (!await _prefs.setDouble(_fontKey, value)) {
+        throw StateError('Could not persist font scale');
+      }
+      // Desktop settings sync must also observe the committed value, even if
+      // this was a same-value retry or storage exceeded its 350ms debounce.
+      if (!_scaleControllerDisposed && revision == _fontScaleRevision) {
+        notifyListeners();
+      }
+    });
+    // Keep the queue usable after a failure, while returning the original
+    // failing future to callers that can present persistence feedback.
+    _fontScaleWrite = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
   }
 
   set interfaceScale(double value) {
@@ -2518,7 +2616,7 @@ class ThemeController extends ChangeNotifier {
     _scalePersistTimer = null;
     if (_fontScaleNeedsPersist) {
       _fontScaleNeedsPersist = false;
-      _prefs.setDouble(_fontKey, _fontScale);
+      unawaited(_writeFontScale(_fontScale).catchError((Object _) {}));
     }
     if (_interfaceScaleNeedsPersist) {
       _interfaceScaleNeedsPersist = false;
@@ -2528,6 +2626,7 @@ class ThemeController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _scaleControllerDisposed = true;
     GoogleFontWeightLoader.shared.removeListener(_onGoogleFontWeightsLoaded);
     if (_scalePersistTimer != null) {
       _scalePersistTimer!.cancel();

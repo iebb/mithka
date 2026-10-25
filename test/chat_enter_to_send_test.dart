@@ -272,14 +272,15 @@ void main() {
 
     expect(toolbar, findsOneWidget);
     expect(input, findsOneWidget);
-    expect(tester.getSize(toolbar).height, 41);
+    // Compact, but every toolbar action keeps a 44-point hit target.
+    expect(tester.getSize(toolbar).height, 51);
     expect(
       tester.getTopLeft(toolbar).dy,
       lessThan(tester.getTopLeft(input).dy),
     );
     expect(
       tester.getSize(find.byKey(const ValueKey('desktopComposerMediaAction'))),
-      const Size.square(32),
+      const Size.square(44),
     );
     final richTextAction = find.byKey(
       const ValueKey('desktopComposerRichTextAction'),
@@ -419,6 +420,92 @@ void main() {
         closeTo(tester.getSize(inputBox).width - 4, 0.01),
       );
 
+      // The leading action group scrolls once its 44-point targets outgrow
+      // the composer, and how far the bot actions sit past the edge depends on
+      // the host (location is hidden on macOS hosts only). Reveal the action
+      // in the toolbar's scroll view, as a user would, before tapping it.
+      await tester.ensureVisible(keyboard);
+      await tester.pump();
+      expect(_receivesHitAtCenter(tester, keyboard), isTrue);
+      await tester.tap(keyboard);
+      await tester.pump();
+      expect(tester.widget<AppInteractiveSurface>(keyboard).selected, isTrue);
+    },
+  );
+
+  testWidgets(
+    'every desktop toolbar action can be revealed and receives its own hits',
+    (tester) async {
+      // Narrow enough that the bot actions start past the scroll viewport on
+      // every host, reproducing the Linux-hosted layout on macOS as well.
+      await _pumpComposer(
+        tester,
+        enterToSend: false,
+        platform: TargetPlatform.macOS,
+        composerWidth: 520,
+        includeReplyKeyboardWebApp: true,
+      );
+
+      final toolbar = find.byKey(const ValueKey('desktopComposerToolbar'));
+      final scrollable = find.descendant(
+        of: toolbar,
+        matching: find.byType(Scrollable),
+      );
+      expect(scrollable, findsOneWidget);
+      expect(
+        tester.state<ScrollableState>(scrollable).position.maxScrollExtent,
+        greaterThan(0),
+      );
+      final keyboard = find.byKey(
+        const ValueKey('desktopComposerReplyKeyboardAction'),
+      );
+      // Its centre lies past the clipped scroll viewport, so a blind tap would
+      // miss it, as it did on Linux where it landed on the Rich Text action.
+      expect(_receivesHitAtCenter(tester, keyboard), isFalse);
+
+      final viewport = tester.getRect(scrollable);
+      final actionKeys = find
+          .descendant(of: toolbar, matching: find.byType(AppInteractiveSurface))
+          .evaluate()
+          .map((element) => element.widget.key!)
+          .toList();
+      expect(
+        actionKeys,
+        containsAll(const [
+          ValueKey('desktopComposerMediaAction'),
+          ValueKey('desktopComposerMiniAppAction'),
+          ValueKey('desktopComposerReplyKeyboardAction'),
+          ValueKey('desktopComposerRichTextAction'),
+          ValueKey('desktopComposerAiReplyAction'),
+          ValueKey('desktopComposerAiEditorAction'),
+        ]),
+      );
+      for (final key in actionKeys) {
+        final action = find.byKey(key);
+        await tester.ensureVisible(action);
+        await tester.pump();
+        final rect = tester.getRect(action);
+        final scrolls = find
+            .descendant(of: scrollable, matching: action)
+            .evaluate()
+            .isNotEmpty;
+        if (scrolls) {
+          // Revealed actions sit wholly inside the scroll viewport...
+          expect(rect.left, greaterThanOrEqualTo(viewport.left - 0.01));
+          expect(rect.right, lessThanOrEqualTo(viewport.right + 0.01));
+        } else {
+          // ...and the pinned trailing actions never overlap it.
+          expect(rect.left, greaterThanOrEqualTo(viewport.right - 0.01));
+        }
+        expect(
+          _receivesHitAtCenter(tester, action),
+          isTrue,
+          reason: '$key is obscured at its centre',
+        );
+      }
+
+      await tester.ensureVisible(keyboard);
+      await tester.pump();
       await tester.tap(keyboard);
       await tester.pump();
       expect(tester.widget<AppInteractiveSurface>(keyboard).selected, isTrue);
@@ -602,6 +689,15 @@ void main() {
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
+}
+
+/// Applies the same check [WidgetController.tap] warns about: the centre of
+/// [finder] must reach that widget's own render box, not whatever is painted
+/// there after scroll clipping or an overlapping sibling.
+bool _receivesHitAtCenter(WidgetTester tester, Finder finder) {
+  final box = tester.renderObject<RenderBox>(finder);
+  final result = tester.hitTestOnBinding(tester.getCenter(finder));
+  return result.path.any((entry) => identical(entry.target, box));
 }
 
 Future<_EnterToSendViewModel> _pumpComposer(

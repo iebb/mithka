@@ -12,12 +12,14 @@
 import 'package:flutter/material.dart';
 
 import '../chat/custom_emoji.dart';
+import '../chats/chat_row_metrics.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/content_size.dart';
 import '../theme/date_text.dart';
 import 'topic_navigation.dart';
 
@@ -50,19 +52,30 @@ class TopicListRowView extends StatelessWidget {
   final bool usesSquareAvatar;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ContentSizeScope(
+    child: LayoutBuilder(
+      builder: (context, constraints) => ChatRowWidth(
+        width: constraints.maxWidth,
+        child: Builder(builder: _buildContent),
+      ),
+    ),
+  );
+
+  Widget _buildContent(BuildContext context) {
     final c = context.colors;
     final item = topic;
     final name = item?.name ?? AppStringKeys.topicChatAllFilter.l10n(context);
     final preview = item?.lastPreview ?? '';
-    final rowHeight = AppMetric.rowExtentFor(
+    final time = DateText.listLabel(item?.lastMessageDate ?? 0);
+    final metrics = ChatRowMetrics.resolve(
       context,
-      base: 58,
-      lines: [
-        AppTextSize.chatListTitle(),
-        if (preview.isNotEmpty) AppTextSize.chatListPreview(),
-      ],
+      timestamp: time,
+      pinned: item?.isPinned ?? false,
+      muted: item?.isMuted ?? false,
+      titleAccessoryWidth: item?.isClosed == true ? 17 : 0,
     );
+    final rowHeight = metrics.extent;
+    final timeBelow = metrics.timeBelow;
     return Semantics(
       button: true,
       selected: selected,
@@ -82,49 +95,59 @@ class TopicListRowView extends StatelessWidget {
               _avatar(context, item, name),
               const SizedBox(width: AppSpacing.lg),
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        if (item?.isClosed == true) ...[
-                          AppIcon(
+                // Name and time share one baseline-aligned line; pin and
+                // mute keep the bottom trailing corner, as in chat rows.
+                child: ChatRowTextColumn(
+                  title: Row(
+                    children: [
+                      if (item?.isClosed == true) ...[
+                        IgnoreBaseline(
+                          child: AppIcon(
                             HeroAppIcons.lock,
                             size: 13,
                             color: c.textSecondary,
                           ),
-                          const SizedBox(width: AppSpacing.xs),
-                        ],
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: AppTextSize.chatListTitle(),
-                              fontWeight: selected
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                              color: selected ? AppTheme.brand : c.textPrimary,
-                            ),
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                      ],
+                      Flexible(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.chatListTitle(),
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: selected ? AppTheme.brand : c.textPrimary,
                           ),
                         ),
-                      ],
-                    ),
-                    if (preview.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      ChatPreviewText(
-                        sender: item?.lastSender,
-                        message: preview,
-                        fontSize: AppTextSize.chatListPreview(),
                       ),
                     ],
-                  ],
+                  ),
+                  time: !timeBelow && time.isNotEmpty
+                      ? _time(context, time)
+                      : null,
+                  timeWidth: metrics.timestampWidth,
+                  indicators: _indicators(context, item),
+                  body: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (preview.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        ChatPreviewText(
+                          sender: item?.lastSender,
+                          message: preview,
+                          fontSize: AppTextSize.chatListPreview(),
+                        ),
+                      ],
+                      if (timeBelow && time.isNotEmpty) _time(context, time),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
-              _trailing(context, item, rowHeight),
             ],
           ),
         ),
@@ -132,8 +155,18 @@ class TopicListRowView extends StatelessWidget {
     );
   }
 
+  Widget _time(BuildContext context, String time) => Text(
+    time,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      fontSize: AppTextSize.chatListTimestamp(),
+      color: context.colors.textTertiary,
+    ),
+  );
+
   Widget _avatar(BuildContext context, TopicNavigationItem? item, String name) {
-    final avatarSize = AppMetric.chatListAvatarSize();
+    final avatarSize = ChatRowMetrics.resolve(context).avatar;
     final isGeneral = item?.isGeneral == true;
     final iconId = item?.iconCustomEmojiId ?? 0;
     final rawColor = item?.iconColor ?? 0;
@@ -176,57 +209,28 @@ class TopicListRowView extends StatelessWidget {
     );
   }
 
-  Widget _trailing(
-    BuildContext context,
-    TopicNavigationItem? item,
-    double rowHeight,
-  ) {
+  /// Pin and mute markers, or null when the topic shows neither.
+  Widget? _indicators(BuildContext context, TopicNavigationItem? item) {
+    if (item == null || !(item.isPinned || item.isMuted)) return null;
     final c = context.colors;
-    final date = item?.lastMessageDate ?? 0;
-    final showPin = item?.isPinned == true;
-    final showMute = item?.isMuted == true;
-    if (item == null) return const SizedBox.shrink();
-    return SizedBox(
-      height: rowHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: AppSpacing.md + AppSpacing.xxs,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (date > 0)
-              Text(
-                DateText.listLabel(date),
-                style: TextStyle(
-                  fontSize: AppTextSize.chatListTimestamp(),
-                  color: c.textTertiary,
-                ),
-              ),
-            const Spacer(),
-            if (showPin || showMute)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showPin)
-                    AppPinIcon(
-                      key: ValueKey('topic-row-pinned-${item.id}'),
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    ),
-                  if (showPin && showMute) const SizedBox(width: AppSpacing.xs),
-                  if (showMute)
-                    AppIcon(
-                      HeroAppIcons.bellSlash,
-                      key: ValueKey('topic-row-muted-${item.id}'),
-                      size: AppIconSize.sm,
-                      color: c.textTertiary,
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (item.isPinned)
+          AppPinIcon(
+            key: ValueKey('topic-row-pinned-${item.id}'),
+            size: AppIconSize.sm,
+            color: c.textTertiary,
+          ),
+        if (item.isPinned && item.isMuted) const SizedBox(width: AppSpacing.xs),
+        if (item.isMuted)
+          AppIcon(
+            HeroAppIcons.bellSlash,
+            key: ValueKey('topic-row-muted-${item.id}'),
+            size: AppIconSize.sm,
+            color: c.textTertiary,
+          ),
+      ],
     );
   }
 }

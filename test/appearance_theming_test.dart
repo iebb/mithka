@@ -9,6 +9,7 @@ import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/app_icon_controller.dart';
 import 'package:mithka/settings/appearance_view.dart';
+import 'package:mithka/settings/content_size_settings_view.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -597,22 +598,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(FontSettingsView), findsOneWidget);
 
-    final fontSizeRow = find.text('Font Size');
-    await tester.ensureVisible(fontSizeRow.first);
-    await tester.tap(fontSizeRow.first);
+    final textSizeRow = find.text('Text size');
+    expect(find.text('Standard · 100%'), findsOneWidget);
+    await tester.ensureVisible(textSizeRow.first);
+    await tester.tap(textSizeRow.first);
     await tester.pumpAndSettle();
 
+    expect(find.byType(ContentSizeSettingsView), findsOneWidget);
     expect(find.text('Interface Size'), findsNothing);
+    // The preview is a two-page carousel that always opens on the
+    // conversation; the chat list is one swipe away.
     expect(
       find.byKey(const ValueKey('font-size-chat-preview')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('font-size-chat-list-preview')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('This is how chat text will look.'), findsOneWidget);
-    expect(find.text('Mithka Users'), findsOneWidget);
+    expect(find.byType(ContentSizeSlider), findsOneWidget);
 
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();

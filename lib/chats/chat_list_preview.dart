@@ -112,6 +112,7 @@ Future<void> showChatListPreview(
   TdFileRef? mePhoto,
   ChatListPreviewLoader? loadMessages,
   ChatPreviewAccounts accounts = _tdChatPreviewAccounts,
+  bool? pinned,
 }) async {
   unawaited(HapticFeedback.mediumImpact());
   final owner = accounts.pinActiveOwner();
@@ -127,6 +128,7 @@ Future<void> showChatListPreview(
       mePhoto: mePhoto,
       loadMessages: loadMessages,
       accounts: accounts,
+      pinned: pinned,
     ),
     transitionBuilder: (dialogContext, animation, _, child) {
       if (reduceMotion) return child;
@@ -421,10 +423,16 @@ class ChatListPreviewSurface extends StatefulWidget {
     this.accounts,
     this.meName,
     this.mePhoto,
+    this.pinned,
   });
 
   final ChatSummary chat;
   final List<ChatListPreviewAction> actions;
+
+  /// Pin state of the list the previewed row belongs to. Null keeps the Main
+  /// list's [ChatSummary.isPinned]; a folder passes its own value so the
+  /// preview never shows the Main list's pin.
+  final bool? pinned;
 
   /// Null loads through [loadChatListPreviewMessages], pinned to the account
   /// that is foreground when the peek starts and abandoned on dismissal.
@@ -601,7 +609,7 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
             const SizedBox(width: 8),
             AppIcon(HeroAppIcons.bellSlash, size: 17, color: c.textTertiary),
           ],
-          if (widget.chat.isPinned) ...[
+          if (widget.pinned ?? widget.chat.isPinned) ...[
             const SizedBox(width: 8),
             AppPinIcon(size: 15, color: c.textTertiary),
           ],

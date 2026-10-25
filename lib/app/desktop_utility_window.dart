@@ -877,9 +877,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
               return ColoredBox(color: currentTheme.scaffoldBackgroundColor);
             }
             return ScaledAppView(
-              textScale: _theme.effectiveTextScale(
-                MediaQuery.textScalerOf(context),
-              ),
+              textScale: _theme.fontScale,
               interfaceScale: _theme.renderedInterfaceScale,
               child: appSurface,
             );

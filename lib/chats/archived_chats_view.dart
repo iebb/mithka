@@ -29,11 +29,10 @@ class ArchivedChatsRow extends StatelessWidget {
   ChatSummary? get _latest => archived.isEmpty ? null : archived.first;
   int get _totalUnread => archived.fold(0, (a, c) => a + c.unreadCount);
 
-  @override
-  Widget build(BuildContext context) {
+  ChatSummary get summary {
     final latest = _latest;
     final title = AppStrings.t(AppStringKeys.archivedChatsGroupAssistant);
-    final summary = ChatSummary(
+    return ChatSummary(
       id: 0,
       title: title,
       lastMessage: latest?.lastMessage ?? '',
@@ -44,6 +43,11 @@ class ArchivedChatsRow extends StatelessWidget {
       isMuted: true,
       lastSender: latest?.title,
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = this.summary;
     return ChatRowView(
       chat: summary,
       archived: true,
@@ -57,9 +61,9 @@ class ArchivedChatsRow extends StatelessWidget {
           color: Color(0xFFFF9D2E),
           shape: BoxShape.circle,
         ),
-        child: AppIcon(
+        child: const AppIcon(
           HeroAppIcons.solidMessage,
-          size: size * 0.46,
+          size: 48 * 0.46,
           color: Colors.white,
         ),
       ),

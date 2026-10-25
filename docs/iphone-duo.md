@@ -12,18 +12,17 @@ retain their route stack across resize rebuilds.
 
 ## Toolchain
 
-Use Xcode 27.1 beta and its iOS 27.1 Simulator runtime. On this development Mac,
-the beta is installed at `~/Applications/Xcode-27.1-beta.app`. Select it per
-command without changing the system-wide Xcode selection:
+Use Xcode 27.1 and its iOS 27.1 Simulator runtime to exercise Duo APIs.
+`ios/Flutter/Duo.xcconfig` derives `MITHKA_HAS_RESERVED_REGIONS` from the
+selected device/simulator SDK: enabled for 27.x except 27.0. The query also
+has a runtime iOS 27.1 availability check. Older and unrecognized future SDK
+major versions retain the status-bar fallback; verify and extend the SDK
+selector before adopting a new SDK major version. Debug, Release, and Profile
+inherit this configuration without raising the deployment target.
 
-```sh
-DEVELOPER_DIR="$HOME/Applications/Xcode-27.1-beta.app/Contents/Developer" \
-  flutter build ios --simulator --debug --no-pub
-```
-
-Xcode's required system components must finish installing before building or
-creating a Duo simulator. This installation may require macOS administrator
-authentication.
+In AirBuild, select `macos-xcode-beta` for Xcode 27.1 RC and `iphone-duo` for
+the preview. Standard builds use the default Xcode environment. No machine-wide
+Xcode selection change is required.
 
 ## Verification
 
@@ -48,9 +47,29 @@ Simulator checks still required for the first beta pass:
 - Extend compact detail retention to Contacts, Channels, and Moments after
   providing those detail screens with compact navigation controls.
 
-The Flutter shell does not yet consume UIKit's new reserved-region APIs for
-the folding region or camera occlusions. The size-based changes alone do not
-establish support for every partially folded pose or native vertical bars.
+The native bridge queries active UIKit occlusion regions for side-navigation
+placement. A fully occupied edge is explicitly unavailable, and malformed
+fractions fail closed. This is not general fold avoidance: division regions
+are not bridged, and same-size occlusion changes do not currently invalidate
+the cached geometry. The size-based changes alone do not establish support for
+every partially folded pose or native vertical bars.
+
+The selection-format menu caps its width and height to the usable area above
+the keyboard, scrolling its existing actions when they do not all fit.
+`test/horizontal_safe_viewport_test.dart` and
+`test/composer_format_menu_bounds_test.dart` cover these narrow fixes. On
+2026-10-24, the combined focused composer/adaptive suite passed 96 tests.
+On a fresh Simulator retry later that day, the inner display and accessibility
+capture became available. A review-account self-chat and unsent draft survived
+closed → open → half-folded → closed transitions, including rotation into both
+inner-screen orientations. The composer and attachment row remained above the
+keyboard in the captured open and half-folded layouts. Rotation/display changes
+dismissed the keyboard; refocusing the retained draft reopened it correctly.
+The 3D capture still rendered a closed exterior model despite an active inner
+display, so it does not establish physical hinge clearance. General fold-region
+avoidance, sheets, camera transitions, and full pose coverage remain unverified.
+An accessibility-large text check exposed a separate chat-header title/status
+overflow; this is not evidence of complete accessibility coverage.
 
 References: [Apple's Duo preparation guide](https://developer.apple.com/documentation/technologyoverviews/preparing-your-app-for-iphone-duo)
 and [Xcode 27.1 beta release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_1-release-notes).
