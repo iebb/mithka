@@ -3576,6 +3576,9 @@ class _ChatViewState extends State<ChatView> {
         _vm.historyReachesLatest &&
         _isTranscriptShort();
     if (_repairParkedShortTranscriptPivot()) {
+      // Rebuild the rebased slivers before correcting their scroll coordinates.
+      // Waiting for a frame alone leaves the old center layout in place.
+      setState(() {});
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
       if (_initialTranscriptPositioningAborted) {

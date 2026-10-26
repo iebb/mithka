@@ -199,6 +199,128 @@ void main() {
     },
   );
 
+  testWidgets(
+    'actual bubble and preview body roles retain custom and OS scaling',
+    (tester) async {
+      final controller = await theme();
+      const text = 'Ordinary bubble text';
+      for (final platform in [
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      ]) {
+        debugDefaultTargetPlatformOverride = platform;
+        try {
+          final size =
+              platform == TargetPlatform.iOS ||
+                  platform == TargetPlatform.android
+              ? 17.0
+              : 14.0;
+          for (final scale in [.8, 1.0, 1.47, 2.0]) {
+            for (final osScale in [1.0, 1.7]) {
+              await tester.pumpWidget(
+                harness(
+                  controller,
+                  SizedBox(
+                    width: 360,
+                    child: Column(
+                      children: [
+                        MessageBubble(
+                          peerTitle: 'Fictional',
+                          isGroup: false,
+                          message: ChatMessage(
+                            id: 80,
+                            isOutgoing: false,
+                            text: text,
+                            date: 1,
+                          ),
+                        ),
+                        ContentSizePreview(
+                          appScale: scale,
+                          chatList: false,
+                          now: DateTime(2026),
+                        ),
+                      ],
+                    ),
+                  ),
+                  scale,
+                  osScale: osScale,
+                ),
+              );
+              await tester.pump();
+              final paragraph = tester.renderObject<RenderParagraph>(
+                find
+                    .byWidgetPredicate(
+                      (widget) =>
+                          widget is RichText &&
+                          widget.text.toPlainText().startsWith(text),
+                    )
+                    .first,
+              );
+              expect(paragraph.text.style?.fontSize, size);
+              expect(
+                paragraph.textScaler.scale(size),
+                closeTo(size * scale * osScale, .0001),
+              );
+              final previewText = tester.widget<Text>(
+                find.descendant(
+                  of: find.byKey(const ValueKey('content-size-bubble-in')),
+                  matching: find.byType(Text),
+                ),
+              );
+              expect(previewText.style?.fontSize, size);
+              final previewParagraph = tester.renderObject<RenderParagraph>(
+                find.descendant(
+                  of: find.byKey(const ValueKey('content-size-bubble-in')),
+                  matching: find.byType(RichText),
+                ),
+              );
+              expect(
+                previewParagraph.textScaler.scale(size),
+                closeTo(size * scale * osScale, .0001),
+              );
+              expect(tester.takeException(), isNull);
+            }
+          }
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      }
+    },
+  );
+
+  testWidgets('emoji-only bubble keeps its 34 point role', (tester) async {
+    final controller = await theme();
+    await tester.pumpWidget(
+      harness(
+        controller,
+        MessageBubble(
+          peerTitle: 'Fictional',
+          isGroup: false,
+          message: ChatMessage(
+            id: 81,
+            isOutgoing: false,
+            text: '😀😀',
+            date: 1,
+          ),
+        ),
+        1,
+      ),
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is RichText &&
+                widget.text.toPlainText().startsWith('😀'),
+          )
+          .first,
+    );
+    expect(paragraph.text.style?.fontSize, 34.0);
+  });
+
   testWidgets('album media dimensions do not inherit content scaling', (
     tester,
   ) async {
@@ -298,6 +420,21 @@ void main() {
           tester.getSize(find.byKey(const ValueKey('ordinary-row'))).height,
           64,
         );
+        final title = tester.widget<Text>(find.text(chat.title));
+        expect(title.style?.fontSize, 16);
+        expect(title.style?.fontWeight, AppTextWeight.medium);
+        expect(
+          tester.widget<ChatPreviewText>(find.byType(ChatPreviewText)).fontSize,
+          14,
+        );
+        expect(
+          tester
+              .widget<Text>(find.text(DateText.listLabel(chat.date)))
+              .style
+              ?.fontSize,
+          13,
+        );
+
         expect(tester.takeException(), isNull);
       }
     } finally {
@@ -519,6 +656,26 @@ void main() {
             find.byKey(const ValueKey('topic-row-muted-5')),
             findsOneWidget,
           );
+          expect(
+            tester.widget<Text>(find.text(topic.name)).style?.fontSize,
+            16,
+          );
+          expect(
+            tester
+                .widget<ChatPreviewText>(find.byType(ChatPreviewText))
+                .fontSize,
+            14,
+          );
+          expect(
+            tester
+                .widget<Text>(
+                  find.text(DateText.listLabel(topic.lastMessageDate)),
+                )
+                .style
+                ?.fontSize,
+            13,
+          );
+
           expect(tester.takeException(), isNull);
         }
       }

@@ -5547,6 +5547,40 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  double _touchTextFieldMaxHeight() {
+    // Read above Scaffold's resized body: its descendant MediaQuery has already
+    // removed the keyboard inset, but still reports the full screen size.
+    final viewportContext = Scaffold.maybeOf(context)?.context ?? context;
+    final viewportElement = viewportContext
+        .getElementForInheritedWidgetOfExactType<MediaQuery>();
+    // Subscribe THIS composer to the original metrics, not Scaffold's context:
+    // cached chat shells otherwise keep a stale cap during keyboard resizing.
+    final viewport = viewportElement == null
+        ? MediaQuery.of(context)
+        : (context.dependOnInheritedElement(viewportElement) as MediaQuery)
+              .data;
+    final availableHeight = math.max(
+      0.0,
+      viewport.size.height - viewport.viewInsets.bottom,
+    );
+    final data = ContentSizeScope.of(context);
+    final fontSize = data.systemTextScaler.scale(
+      AppTextSize.messageBody(Theme.of(context).platform) * data.appScale,
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: ' ',
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(fontSize: fontSize),
+      ),
+      textDirection: Directionality.of(context),
+    )..layout();
+    final lineHeight = painter.preferredLineHeight;
+    painter.dispose();
+    return math.max(lineHeight, availableHeight * .35);
+  }
+
   Widget _inputRow(
     _ReplyKeyboard? replyKeyboard, {
     required AiSettingsController? aiSettings,
@@ -5749,135 +5783,151 @@ class _ChatInputBarState extends State<ChatInputBar>
                                         ),
                                   },
                                   child: ContentSizeScope(
-                                    child: TextField(
-                                      controller: _controller,
-                                      focusNode: _focus,
-                                      onTap: _handleEmptyInputTap,
-                                      // Submit from editing completion without
-                                      // onSubmitted: Flutter restarts the input
-                                      // connection after a completion action
-                                      // whenever onSubmitted is present, even
-                                      // when onEditingComplete retains focus.
-                                      onEditingComplete: () {
-                                        _controller.clearComposing();
-                                        if (!desktop && widget.enterToSend) {
-                                          unawaited(_sendCurrentText());
-                                        }
-                                      },
-                                      minLines: desktop ? null : 1,
-                                      maxLines: desktop ? null : 4,
-                                      expands: desktop,
-                                      keyboardType: TextInputType.multiline,
-                                      textInputAction: desktop
-                                          ? TextInputAction.newline
-                                          : widget.enterToSend
-                                          ? TextInputAction.send
-                                          : TextInputAction.newline,
-                                      inputFormatters:
-                                          widget.enterToSend &&
-                                              Theme.of(context).platform ==
-                                                  TargetPlatform.android
-                                          ? [
-                                              _ComposerEnterToSendFormatter(
-                                                onSend: _scheduleKeyboardSend,
-                                              ),
-                                            ]
-                                          : null,
-                                      style: TextStyle(
-                                        fontSize: AppTextSize.messageBody(
-                                          Theme.of(context).platform,
-                                        ),
-                                        color: c.textPrimary,
-                                      ),
-                                      contentInsertionConfiguration: editing
-                                          ? null
-                                          : ContentInsertionConfiguration(
-                                              allowedMimeTypes: _imageMimeTypes,
-                                              onContentInserted:
-                                                  _handleInsertedContent,
+                                    child: ConstrainedBox(
+                                      constraints: desktop
+                                          ? const BoxConstraints()
+                                          : BoxConstraints(
+                                              maxHeight:
+                                                  _touchTextFieldMaxHeight(),
                                             ),
-                                      contextMenuBuilder:
-                                          (
-                                            BuildContext context,
-                                            EditableTextState editableTextState,
-                                          ) {
-                                            ContextMenuButtonItem?
-                                            originalPaste;
-                                            final items =
-                                                <ContextMenuButtonItem>[];
-                                            for (final item
-                                                in editableTextState
-                                                    .contextMenuButtonItems) {
-                                              if (item.type ==
-                                                  ContextMenuButtonType.paste) {
-                                                originalPaste = item;
-                                              } else {
-                                                items.add(item);
-                                              }
-                                            }
-                                            final paste = ContextMenuButtonItem(
-                                              type: ContextMenuButtonType.paste,
-                                              label:
-                                                  originalPaste?.label ??
-                                                  AppStringKeys
-                                                      .accountBackupLoadSessionPaste
-                                                      .l10n(context),
-                                              onPressed: () => unawaited(
-                                                _handlePaste(originalPaste),
+                                      child: TextField(
+                                        controller: _controller,
+                                        focusNode: _focus,
+                                        onTap: _handleEmptyInputTap,
+                                        // Submit from editing completion without
+                                        // onSubmitted: Flutter restarts the input
+                                        // connection after a completion action
+                                        // whenever onSubmitted is present, even
+                                        // when onEditingComplete retains focus.
+                                        onEditingComplete: () {
+                                          _controller.clearComposing();
+                                          if (!desktop && widget.enterToSend) {
+                                            unawaited(_sendCurrentText());
+                                          }
+                                        },
+                                        minLines: desktop ? null : 1,
+                                        maxLines: null,
+                                        expands: desktop,
+                                        keyboardType: TextInputType.multiline,
+                                        textInputAction: desktop
+                                            ? TextInputAction.newline
+                                            : widget.enterToSend
+                                            ? TextInputAction.send
+                                            : TextInputAction.newline,
+                                        inputFormatters:
+                                            widget.enterToSend &&
+                                                Theme.of(context).platform ==
+                                                    TargetPlatform.android
+                                            ? [
+                                                _ComposerEnterToSendFormatter(
+                                                  onSend: _scheduleKeyboardSend,
+                                                ),
+                                              ]
+                                            : null,
+                                        style: TextStyle(
+                                          fontSize: AppTextSize.messageBody(
+                                            Theme.of(context).platform,
+                                          ),
+                                          color: c.textPrimary,
+                                        ),
+                                        contentInsertionConfiguration: editing
+                                            ? null
+                                            : ContentInsertionConfiguration(
+                                                allowedMimeTypes:
+                                                    _imageMimeTypes,
+                                                onContentInserted:
+                                                    _handleInsertedContent,
                                               ),
-                                            );
-                                            final copyIndex = items.indexWhere(
-                                              (item) =>
-                                                  item.type ==
-                                                  ContextMenuButtonType.copy,
-                                            );
-                                            final pasteIndex = copyIndex < 0
-                                                ? 0
-                                                : copyIndex + 1;
-                                            items.insert(pasteIndex, paste);
-                                            final selection =
-                                                _controller.selection;
-                                            if (selection.isValid &&
-                                                !selection.isCollapsed) {
-                                              items.insert(
-                                                pasteIndex + 1,
-                                                ContextMenuButtonItem(
-                                                  label: AppStringKeys
-                                                      .composerFormat
-                                                      .l10n(context),
-                                                  onPressed: () => unawaited(
-                                                    _showComposerFormatMenu(
-                                                      editableTextState,
-                                                    ),
-                                                  ),
+                                        contextMenuBuilder:
+                                            (
+                                              BuildContext context,
+                                              EditableTextState
+                                              editableTextState,
+                                            ) {
+                                              ContextMenuButtonItem?
+                                              originalPaste;
+                                              final items =
+                                                  <ContextMenuButtonItem>[];
+                                              for (final item
+                                                  in editableTextState
+                                                      .contextMenuButtonItems) {
+                                                if (item.type ==
+                                                    ContextMenuButtonType
+                                                        .paste) {
+                                                  originalPaste = item;
+                                                } else {
+                                                  items.add(item);
+                                                }
+                                              }
+                                              final paste = ContextMenuButtonItem(
+                                                type:
+                                                    ContextMenuButtonType.paste,
+                                                label:
+                                                    originalPaste?.label ??
+                                                    AppStringKeys
+                                                        .accountBackupLoadSessionPaste
+                                                        .l10n(context),
+                                                onPressed: () => unawaited(
+                                                  _handlePaste(originalPaste),
                                                 ),
                                               );
-                                            }
-                                            return MediaQuery(
-                                              data: MediaQuery.of(context)
-                                                  .copyWith(
-                                                    textScaler:
-                                                        ContentSizeScope.of(
-                                                          context,
-                                                        ).systemTextScaler,
+                                              final copyIndex = items
+                                                  .indexWhere(
+                                                    (item) =>
+                                                        item.type ==
+                                                        ContextMenuButtonType
+                                                            .copy,
+                                                  );
+                                              final pasteIndex = copyIndex < 0
+                                                  ? 0
+                                                  : copyIndex + 1;
+                                              items.insert(pasteIndex, paste);
+                                              final selection =
+                                                  _controller.selection;
+                                              if (selection.isValid &&
+                                                  !selection.isCollapsed) {
+                                                items.insert(
+                                                  pasteIndex + 1,
+                                                  ContextMenuButtonItem(
+                                                    label: AppStringKeys
+                                                        .composerFormat
+                                                        .l10n(context),
+                                                    onPressed: () => unawaited(
+                                                      _showComposerFormatMenu(
+                                                        editableTextState,
+                                                      ),
+                                                    ),
                                                   ),
-                                              child:
-                                                  AdaptiveTextSelectionToolbar.buttonItems(
-                                                    anchors: editableTextState
-                                                        .contextMenuAnchors,
-                                                    buttonItems: items,
-                                                  ),
-                                            );
-                                          },
-                                      decoration: InputDecoration(
-                                        hintText: AppStringKeys
-                                            .chatMessageInputPlaceholder
-                                            .l10n(context),
-                                        border: InputBorder.none,
-                                        isCollapsed: true,
-                                        contentPadding: desktop && hasText
-                                            ? const EdgeInsets.only(bottom: 42)
-                                            : EdgeInsets.zero,
+                                                );
+                                              }
+                                              return MediaQuery(
+                                                data: MediaQuery.of(context)
+                                                    .copyWith(
+                                                      textScaler:
+                                                          ContentSizeScope.of(
+                                                            context,
+                                                          ).systemTextScaler,
+                                                    ),
+                                                child:
+                                                    AdaptiveTextSelectionToolbar.buttonItems(
+                                                      anchors: editableTextState
+                                                          .contextMenuAnchors,
+                                                      buttonItems: items,
+                                                    ),
+                                              );
+                                            },
+                                        decoration: InputDecoration(
+                                          hintText: AppStringKeys
+                                              .chatMessageInputPlaceholder
+                                              .l10n(context),
+                                          border: InputBorder.none,
+                                          isCollapsed: true,
+                                          contentPadding: desktop && hasText
+                                              ? const EdgeInsets.only(
+                                                  bottom: 42,
+                                                )
+                                              : EdgeInsets.zero,
+                                        ),
                                       ),
                                     ),
                                   ),

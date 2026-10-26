@@ -13,7 +13,6 @@
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
-		3D4E5902AB7F165C43F64F26 /* MithkaWhite.icon in Resources */ = {isa = PBXBuildFile; fileRef = E55FCC0A5626166720397D1F /* MithkaWhite.icon */; };
 		41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */ = {isa = PBXBuildFile; fileRef = 51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */; };
 		51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */ = {isa = PBXBuildFile; fileRef = C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */; };
 		56461556E6B04081CB084252 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */; };
@@ -43,6 +42,7 @@
 		C5B0C022A4F08FF23637352C /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
 		C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */ = {isa = PBXBuildFile; fileRef = A257B729519AB240FBD5E29F /* MithkaPurple.icon */; };
 		EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F1053565C108E047425E7C1F /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F331E1000100000001 /* AppPurchases.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -147,6 +147,7 @@
 		F1053565C108E047425E7C1F /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
+		9A4F20F331E1000100000001 /* AppPurchases.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppPurchases.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -268,6 +269,7 @@
 				9A4F20E331E1000100000001 /* MediaDropBridge.swift */,
 				9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */,
 				9A4F20E731E1000100000001 /* MithkaProBridge.swift */,
+				9A4F20F331E1000100000001 /* AppPurchases.swift */,
 				9A4F20F131E1000100000001 /* NowPlayingBridge.swift */,
 				9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */,
 				9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */,
@@ -506,7 +508,6 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
-				3D4E5902AB7F165C43F64F26 /* MithkaWhite.icon in Resources */,
 				B005C7BA5D2714CB149B4B95 /* MithkaBlue.icon in Resources */,
 				C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */,
 				51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */,
@@ -694,6 +695,7 @@
 				9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */,
 				9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */,
 				9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */,
+				9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */,
 				9A4F20F231E1000100000001 /* NowPlayingBridge.swift in Sources */,
 				9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */,
 				9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */,
@@ -814,6 +816,27 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
+					MithkaWhite,
+					MithkaBlue,
+					MithkaPurple,
+					MithkaPixel,
+					MithkaAurora,
+					MithkaPrism,
+					MithkaSignal,
+					MithkaPilot,
+					MithkaHeadphones,
+					MithkaWinter,
+					MithkaAstronaut,
+					MithkaCrown,
+					MithkaParty,
+					MithkaSleepy,
+					MithkaHeart,
+					MithkaCoffee,
+					MithkaDetective,
+					MithkaGamer,
+					MithkaFishing,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
@@ -1116,6 +1139,27 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
+					MithkaWhite,
+					MithkaBlue,
+					MithkaPurple,
+					MithkaPixel,
+					MithkaAurora,
+					MithkaPrism,
+					MithkaSignal,
+					MithkaPilot,
+					MithkaHeadphones,
+					MithkaWinter,
+					MithkaAstronaut,
+					MithkaCrown,
+					MithkaParty,
+					MithkaSleepy,
+					MithkaHeart,
+					MithkaCoffee,
+					MithkaDetective,
+					MithkaGamer,
+					MithkaFishing,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
@@ -1155,6 +1199,27 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
+					MithkaWhite,
+					MithkaBlue,
+					MithkaPurple,
+					MithkaPixel,
+					MithkaAurora,
+					MithkaPrism,
+					MithkaSignal,
+					MithkaPilot,
+					MithkaHeadphones,
+					MithkaWinter,
+					MithkaAstronaut,
+					MithkaCrown,
+					MithkaParty,
+					MithkaSleepy,
+					MithkaHeart,
+					MithkaCoffee,
+					MithkaDetective,
+					MithkaGamer,
+					MithkaFishing,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;

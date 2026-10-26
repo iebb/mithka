@@ -11,22 +11,56 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  test('native desktop uses compact chat typography and row geometry', () {
-    expect(AppMetric.chatListRowHeight(TargetPlatform.macOS), 58);
-    expect(AppMetric.chatListAvatarSize(TargetPlatform.macOS), 44);
-    expect(AppTextSize.chatListTitle(TargetPlatform.macOS), 14);
-    expect(AppTextSize.chatListPreview(TargetPlatform.macOS), 12);
-    expect(AppTextSize.chatListTimestamp(TargetPlatform.macOS), 12);
-    expect(AppTextSize.messageBody(TargetPlatform.macOS), 14);
-  });
+  for (final platform in [
+    TargetPlatform.macOS,
+    TargetPlatform.windows,
+    TargetPlatform.linux,
+  ]) {
+    test('$platform retains compact chat typography and geometry', () {
+      expect(AppMetric.chatListRowHeight(platform), 58);
+      expect(AppMetric.chatListAvatarSize(platform), 44);
+      expect(AppTextSize.chatListTitle(platform), 14);
+      expect(AppTextSize.chatListPreview(platform), 12);
+      expect(AppTextSize.chatListTimestamp(platform), 12);
+      expect(AppTextSize.chatListFolderTag(platform), 10);
+      expect(AppTextSize.messageBody(platform), 14);
+    });
+  }
 
-  test('touch platforms preserve the existing chat metrics', () {
-    expect(AppMetric.chatListRowHeight(TargetPlatform.iOS), 64);
-    expect(AppMetric.chatListAvatarSize(TargetPlatform.iOS), 48);
-    expect(AppTextSize.chatListTitle(TargetPlatform.iOS), 15);
-    expect(AppTextSize.chatListPreview(TargetPlatform.iOS), 13);
-    expect(AppTextSize.chatListTimestamp(TargetPlatform.iOS), 12);
-    expect(AppTextSize.messageBody(TargetPlatform.iOS), 15);
+  for (final platform in [
+    TargetPlatform.iOS,
+    TargetPlatform.android,
+    TargetPlatform.fuchsia,
+  ]) {
+    test(
+      '$platform uses larger touch chat roles without changing geometry',
+      () {
+        expect(AppMetric.chatListRowHeight(platform), 64);
+        expect(AppMetric.chatListAvatarSize(platform), 48);
+        expect(AppTextSize.chatListTitle(platform), 16);
+        expect(AppTextSize.chatListPreview(platform), 14);
+        expect(AppTextSize.chatListTimestamp(platform), 13);
+        expect(AppTextSize.chatListFolderTag(platform), 12);
+        expect(AppTextSize.messageBody(platform), 17);
+      },
+    );
+  }
+
+  test('shared settings and navigation text tokens are unchanged', () {
+    expect(
+      [
+        AppTextSize.tiny,
+        AppTextSize.caption,
+        AppTextSize.footnote,
+        AppTextSize.callout,
+        AppTextSize.body,
+        AppTextSize.bodyLarge,
+        AppTextSize.title,
+        AppTextSize.display,
+        AppTextSize.largeDisplay,
+      ],
+      [10, 12, 13, 14, 15, 16, 17, 22, 24],
+    );
   });
 
   testWidgets('chat row consumes compact desktop metrics', (tester) async {

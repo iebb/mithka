@@ -53,9 +53,9 @@ The action uses Flutter 3.44.2 and delegates source preparation to
 The iOS action delegates preparation to `ios/ci_scripts/ci_post_clone.sh`. It
 recreates the ignored Firebase configuration, TDLib and TgVoip frameworks,
 Flutter generated inputs, Swift packages, and CocoaPods sandbox before the
-archive. GitHub's commit-height build number overrides the source build number
-while the marketing version continues to use the major and minor components
-from `pubspec.yaml` with a zero patch component.
+archive. GitHub's commit-height build number overrides the source build number,
+while the marketing version keeps the complete `X.Y.Z` from the checked-out
+branch's `pubspec.yaml`, including the patch.
 
 The published TDLib release identity, source provenance, asset names, and
 checksums live only in `scripts/tdjson-manifest.json`. Both Apple post-clone
@@ -89,17 +89,25 @@ The GitHub workflows use the full Git commit height as the build number with an
 offset of zero. This starts with the `1.0.0` train, after the temporary
 epoch-numbered migration builds on `0.10.0`. Xcode Cloud continues to supply
 its native `CI_BUILD_NUMBER` if either retained workflow is reactivated. The
-Apple marketing version depends on the branch, identically on iOS and macOS.
-App Store Connect reviews a marketing version rather than a build, so a nightly
-keeps the major and minor components from `pubspec.yaml` and forces the patch to
-`0`: its patch increments advance the Android and desktop artifacts without
-opening a review train per night. A `release` branch — including
-`release-ios**` and `release-macos**` — keeps the exact patch it ships. Any
-other ref is treated as a nightly, the choice that cannot open an unintended
-train. `scripts/apple_marketing_version.sh` is the single rule, applied by both
-post-clone hooks in GitHub Actions and the retained Xcode Cloud workflow, and
-both GitHub workflows verify the archived app's `CFBundleShortVersionString`
-before uploading it to App Store Connect.
+Apple marketing version is identical on iOS and macOS: preserve the exact
+`X.Y.Z` from the checked-out branch's `pubspec.yaml`, removing only its optional
+`+build` suffix. This applies to nightly, master, release (including platform
+release branches), manual dispatches, and missing branch names alike; no branch
+forces a zero patch. Nightly sync (`.github/workflows/sync-nightly.yml`) computes
+and stamps the nightly branch's patch before the GitHub release and Apple jobs
+read it. The helper does not look up the latest GitHub release or infer a patch
+from a build number: building an older source checkout still uses that older
+source version. For example, a computed nightly version of `1.8.4` remains
+`1.8.4`, not `1.8.0`.
+
+App Store Connect distinguishes marketing versions from build numbers. Keeping
+each nightly patch can open a separate marketing/review train for each patch;
+external testing remains subject to Apple's Beta App Review requirements.
+`scripts/apple_marketing_version.sh` is the single rule, applied by both
+post-clone hooks in GitHub Actions and the retained Xcode Cloud workflow. Both
+GitHub workflows verify the archived app's `CFBundleShortVersionString` before
+uploading it to App Store Connect and use the same exact version when selecting
+the processed build for TestFlight groups.
 
 ## App Store metadata prerequisite
 
@@ -113,7 +121,7 @@ review metadata.
 The guarded App Store review helper accepts `--platform IOS` or
 `--platform MAC_OS`. It verifies the selected platform on the uploaded build, scopes store
 version metadata and review submissions to that platform, and uses the matching
-GitHub archive job. Both platforms follow the branch-dependent marketing
+GitHub archive job. Both platforms preserve the complete source marketing
 version described above, so `--binary-version` carries what the binary actually
-holds — the zeroed patch for a nightly (source `1.2.1` uploads as `1.2.0`), the
-exact patch for a release — while `--version` names the App Store listing.
+holds (source `1.2.1` uploads as `1.2.1` on every branch), while `--version`
+names the App Store listing.

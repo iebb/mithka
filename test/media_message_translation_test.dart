@@ -79,29 +79,33 @@ void main() {
           localizationsDelegates: const [AppLocalizations.delegate],
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: MessageBubble(
-              message: message,
-              groupedMedia: groupedMedia,
-              peerTitle: 'Test',
-              isGroup: isGroup,
-              showCommentAttachment: showCommentAttachment,
-              channelHasLinkedDiscussion: channelHasLinkedDiscussion,
-              outgoingBubbleColor: outgoingBubbleColor,
-              outgoingBubbleTextColor: outgoingBubbleTextColor,
-              incomingBubbleColor: incomingBubbleColor,
-              incomingBubbleTextColor: incomingBubbleTextColor,
-              messageColors: messageColors,
-              translationDisplayStyle: translationDisplayStyle,
-              showOriginalTranslationMessageIds:
-                  showOriginalTranslationMessageIds,
-              mobileTextSelectionAreaKey: mobileTextSelectionAreaKey,
-              onMobileTextSelectionChanged: onMobileTextSelectionChanged,
-              onOpenComments: onOpenComments,
-              onLongPress:
-                  onActionMenu ??
-                  (onLongPress == null
-                      ? null
-                      : (message, _, _) => onLongPress(message)),
+            // Match the transcript: media plus translated captions may be taller
+            // than the viewport and must grow vertically instead of overflowing.
+            body: SingleChildScrollView(
+              child: MessageBubble(
+                message: message,
+                groupedMedia: groupedMedia,
+                peerTitle: 'Test',
+                isGroup: isGroup,
+                showCommentAttachment: showCommentAttachment,
+                channelHasLinkedDiscussion: channelHasLinkedDiscussion,
+                outgoingBubbleColor: outgoingBubbleColor,
+                outgoingBubbleTextColor: outgoingBubbleTextColor,
+                incomingBubbleColor: incomingBubbleColor,
+                incomingBubbleTextColor: incomingBubbleTextColor,
+                messageColors: messageColors,
+                translationDisplayStyle: translationDisplayStyle,
+                showOriginalTranslationMessageIds:
+                    showOriginalTranslationMessageIds,
+                mobileTextSelectionAreaKey: mobileTextSelectionAreaKey,
+                onMobileTextSelectionChanged: onMobileTextSelectionChanged,
+                onOpenComments: onOpenComments,
+                onLongPress:
+                    onActionMenu ??
+                    (onLongPress == null
+                        ? null
+                        : (message, _, _) => onLongPress(message)),
+              ),
             ),
           ),
         ),

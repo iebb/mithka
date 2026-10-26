@@ -28,20 +28,21 @@ abstract final class AppTextSize {
   static const double display = 22;
   static const double largeDisplay = 24;
 
-  /// Compact chat typography for native desktop windows while preserving the
-  /// existing touch layouts and every user-selected font family.
+  /// Role-specific chat typography: readable touch sizes and compact native
+  /// desktop sizes, independent of settings/navigation tokens and font family.
   static double chatListTitle([TargetPlatform? platform]) =>
-      isDesktopTargetPlatform(platform) ? callout : body;
+      isDesktopTargetPlatform(platform) ? callout : bodyLarge;
   static double chatListPreview([TargetPlatform? platform]) =>
+      isDesktopTargetPlatform(platform) ? caption : callout;
+  static double chatListTimestamp([TargetPlatform? platform]) =>
       isDesktopTargetPlatform(platform) ? caption : footnote;
-  static double chatListTimestamp([TargetPlatform? platform]) => caption;
 
   /// The folder-tag line a chat row draws between its name and its preview.
   static double chatListFolderTag([TargetPlatform? platform]) =>
-      isDesktopTargetPlatform(platform) ? tiny : caption - 1;
+      isDesktopTargetPlatform(platform) ? tiny : caption;
 
   static double messageBody([TargetPlatform? platform]) =>
-      isDesktopTargetPlatform(platform) ? callout : body;
+      isDesktopTargetPlatform(platform) ? callout : title;
 }
 
 abstract final class AppTextWeight {

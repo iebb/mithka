@@ -80,6 +80,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        mithkaPro?.onActivityResumed()
         FVideoPictureInPicturePlugin.onActivityResumed(this)
         if (fullscreenSystemUi) applyFullscreenSystemUi()
     }
@@ -101,6 +102,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onPause() {
+        mithkaPro?.onActivityPaused()
         FVideoPictureInPicturePlugin.onActivityPaused(this)
         super.onPause()
     }
@@ -213,11 +215,65 @@ class MainActivity : FlutterFragmentActivity() {
                     "setIcon" -> {
                         val args = call.arguments as? Map<*, *>
                         val name = args?.get("name") as? String ?: "default"
-                        try {
-                            setLauncherIcon(name)
-                            result.success(null)
-                        } catch (e: Exception) {
-                            result.error("app_icon_failed", e.localizedMessage, null)
+                        val freeIcons = setOf(
+                            "default", "white", "blue", "purple",
+                            "pixel", "aurora", "prism", "signal",
+                        )
+                        val paidIcons = setOf(
+                            "pilot", "headphones", "winter", "astronaut",
+                            "crown", "party", "sleepy", "heart",
+                            "coffee", "detective", "gamer", "fishing",
+                        )
+                        fun applyIcon() {
+                            runOnUiThread {
+                                try {
+                                    setLauncherIcon(name)
+                                    result.success(null)
+                                } catch (e: Exception) {
+                                    result.error("app_icon_failed", e.localizedMessage, null)
+                                }
+                            }
+                        }
+                        fun denyPaidIcon() {
+                            runOnUiThread {
+                                result.error(
+                                    "supporter_required",
+                                    "An active Mithka Pro subscription is required for this icon",
+                                    null,
+                                )
+                            }
+                        }
+                        when (name) {
+                            in freeIcons -> applyIcon()
+                            in paidIcons -> {
+                                val pro = mithkaPro
+                                if (pro == null) {
+                                    denyPaidIcon()
+                                } else {
+                                    // Query Play for each paid selection; never trust
+                                    // cached Dart/native state or alter an existing icon
+                                    // merely because the subscription has expired.
+                                    pro.querySupporterEvidence { evidence ->
+                                        runOnUiThread {
+                                            try {
+                                                // Final epoch/lifecycle check surrounds
+                                                // the setter itself, not an earlier hop.
+                                                if (pro.applyIfCurrent(evidence) {
+                                                        setLauncherIcon(name)
+                                                    }
+                                                ) {
+                                                    result.success(null)
+                                                } else {
+                                                    denyPaidIcon()
+                                                }
+                                            } catch (e: Exception) {
+                                                result.error("app_icon_failed", e.localizedMessage, null)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> result.error("invalid_icon", "Unknown app icon", null)
                         }
                     }
                     else -> result.notImplemented()
@@ -778,6 +834,18 @@ class MainActivity : FlutterFragmentActivity() {
         "aurora" to "$packageName.MainActivityAurora",
         "prism" to "$packageName.MainActivityPrism",
         "signal" to "$packageName.MainActivitySignal",
+        "pilot" to "$packageName.MainActivityPilot",
+        "headphones" to "$packageName.MainActivityHeadphones",
+        "winter" to "$packageName.MainActivityWinter",
+        "astronaut" to "$packageName.MainActivityAstronaut",
+        "crown" to "$packageName.MainActivityCrown",
+        "party" to "$packageName.MainActivityParty",
+        "sleepy" to "$packageName.MainActivitySleepy",
+        "heart" to "$packageName.MainActivityHeart",
+        "coffee" to "$packageName.MainActivityCoffee",
+        "detective" to "$packageName.MainActivityDetective",
+        "gamer" to "$packageName.MainActivityGamer",
+        "fishing" to "$packageName.MainActivityFishing",
     )
 
     private fun currentLauncherIcon(): String {

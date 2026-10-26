@@ -221,6 +221,150 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity-alias>
+        <activity-alias
+            android:name=".MainActivityPilot"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_pilot"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityHeadphones"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_headphones"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityWinter"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_winter"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityAstronaut"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_astronaut"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityCrown"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_crown"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityParty"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_party"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivitySleepy"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sleepy"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityHeart"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_heart"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityCoffee"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_coffee"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityDetective"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_detective"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityGamer"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_gamer"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityFishing"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_fishing"
+            android:label="Mithka"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

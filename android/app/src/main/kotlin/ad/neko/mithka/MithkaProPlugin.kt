@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
+import android.os.Looper
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
@@ -41,7 +42,7 @@ class MithkaProPlugin(
     private val connectionWaiters = mutableListOf<(BillingResult?) -> Unit>()
     private var connecting = false
     private var storeAvailable = false
-    private var isPro = false
+    private val entitlementGuard = SupporterEvidenceGuard()
     private var purchaseResult: MethodChannel.Result? = null
     private var requestedProductId: String? = null
     private var disposed = false
@@ -65,6 +66,12 @@ class MithkaProPlugin(
         billingResult: BillingResult,
         purchases: MutableList<Purchase>?,
     ) {
+        invalidateEntitlement()
+        // Only transaction updates invalidate Dart's entitlement cache. State queries
+        // (including the native icon gate) must not emit this event and loop.
+        activity.runOnUiThread {
+            if (!disposed) channel.invokeMethod("entitlementChanged", null)
+        }
         when (billingResult.responseCode) {
             BillingClient.BillingResponseCode.OK -> {
                 val returnedPurchases = purchases.orEmpty()
@@ -113,7 +120,7 @@ class MithkaProPlugin(
                                 acknowledgementError,
                             )
                         } else {
-                            if (isPro) {
+                            if (activePurchases.any(::isActiveSupporterPurchase)) {
                                 finishPurchase("purchased", requestedProductId)
                             } else {
                                 finishPurchaseWithError(
@@ -130,6 +137,7 @@ class MithkaProPlugin(
     }
 
     fun dispose() {
+        invalidateEntitlement()
         disposed = true
         channel.setMethodCallHandler(null)
         purchaseResult = null
@@ -138,28 +146,104 @@ class MithkaProPlugin(
         billingClient.endConnection()
     }
 
+    /** Synchronous invalidation precedes any queued billing or lifecycle work. */
+    fun invalidateEntitlement() {
+        entitlementGuard.invalidate()
+    }
+
+    fun onActivityPaused() {
+        entitlementGuard.setForeground(false)
+    }
+
+    fun onActivityResumed() {
+        entitlementGuard.setForeground(true)
+        // Never make old evidence valid again on resume. Recheck store availability.
+        if (!disposed && distribution == DISTRIBUTION_PLAY_STORE) {
+            hasActiveSupporter { }
+        }
+    }
+
     private fun getState(result: MethodChannel.Result) {
-        if (distribution != DISTRIBUTION_PLAY_STORE) {
-            result.success(stateMap())
+        querySupporterEvidence { evidence ->
+            result.success(stateMap(
+                active = evidence.active && entitlementGuard.isCurrent(evidence),
+                available = evidence.storeAvailable && entitlementGuard.isCurrent(evidence),
+            ))
+        }
+    }
+
+    /** Fresh client-side Play evidence, not server verification or an expiry date. */
+    fun hasActiveSupporter(callback: (Boolean) -> Unit) {
+        querySupporterEvidence { evidence ->
+            callback(evidence.active && entitlementGuard.isCurrent(evidence))
+        }
+    }
+
+    /** Query-local immutable result. Acknowledgements are housekeeping, not authority. */
+    fun querySupporterEvidence(callback: (SupporterEvidenceGuard.Evidence) -> Unit) {
+        val ticket = entitlementGuard.beginQuery()
+        var completed = false
+        fun complete(active: Boolean, available: Boolean) {
+            activity.runOnUiThread {
+                if (!completed) {
+                    completed = true
+                    val evidence = entitlementGuard.complete(ticket, active, available)
+                    callback(evidence)
+                }
+            }
+        }
+        if (disposed || distribution != DISTRIBUTION_PLAY_STORE ||
+            !entitlementGuard.isForeground()
+        ) {
+            complete(false, false)
             return
         }
-        ensureConnected { connectionError ->
-            if (connectionError != null) {
-                result.success(stateMap())
-                return@ensureConnected
+        try {
+            ensureConnected { connectionError ->
+                if (disposed || connectionError != null) {
+                    complete(false, false)
+                    return@ensureConnected
+                }
+                try {
+                    queryActivePurchases { queryResult, purchases ->
+                        if (disposed ||
+                            queryResult.responseCode != BillingClient.BillingResponseCode.OK
+                        ) {
+                            complete(false, false)
+                            return@queryActivePurchases
+                        }
+                        // Respond from this query now, without waiting for acknowledge.
+                        // Older callbacks cannot mutate the newer query's cached state.
+                        complete(purchases.any(::isActiveSupporterPurchase), true)
+                        try {
+                            processPurchases(purchases) { /* Retry on the next refresh. */ }
+                        } catch (_: Exception) {
+                            // Acknowledgement failure is not entitlement evidence.
+                        }
+                    }
+                } catch (_: Exception) {
+                    complete(false, false)
+                }
             }
-            queryActivePurchases { queryResult, purchases ->
-                if (queryResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    storeAvailable = false
-                    isPro = false
-                    result.success(stateMap())
-                    return@queryActivePurchases
-                }
-                processPurchases(purchases) {
-                    // A purchased entitlement remains visible even when a transient
-                    // acknowledgement call fails; it will be retried on next refresh.
-                    result.success(stateMap())
-                }
+        } catch (_: Exception) {
+            complete(false, false)
+        }
+    }
+
+    /** Must wrap the actual alias setter, on the UI thread, not an earlier callback. */
+    fun applyIfCurrent(
+        evidence: SupporterEvidenceGuard.Evidence,
+        apply: () -> Unit,
+    ): Boolean {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        return entitlementGuard.withActiveEvidence(evidence) {
+            if (disposed || activity.isFinishing || activity.isDestroyed ||
+                distribution != DISTRIBUTION_PLAY_STORE || !billingClient.isReady
+            ) {
+                false
+            } else {
+                apply()
+                true
             }
         }
     }
@@ -252,6 +336,7 @@ class MithkaProPlugin(
     }
 
     private fun restore(result: MethodChannel.Result) {
+        val ticket = entitlementGuard.beginQuery()
         if (distribution != DISTRIBUTION_PLAY_STORE) {
             result.success(stateMap("not_found"))
             return
@@ -274,6 +359,11 @@ class MithkaProPlugin(
                     )
                     return@queryActivePurchases
                 }
+                val evidence = entitlementGuard.complete(
+                    ticket,
+                    purchases.any(::isActiveSupporterPurchase),
+                    true,
+                )
                 processPurchases(purchases) { acknowledgementError ->
                     if (acknowledgementError != null) {
                         result.error(
@@ -282,7 +372,12 @@ class MithkaProPlugin(
                             acknowledgementError.responseCode,
                         )
                     } else {
-                        result.success(stateMap(if (isPro) "restored" else "not_found"))
+                        val active = evidence.active && entitlementGuard.isCurrent(evidence)
+                        result.success(stateMap(
+                            if (active) "restored" else "not_found",
+                            active = active,
+                            available = evidence.storeAvailable && entitlementGuard.isCurrent(evidence),
+                        ))
                     }
                 }
             }
@@ -364,6 +459,7 @@ class MithkaProPlugin(
             }
 
             override fun onBillingServiceDisconnected() {
+                invalidateEntitlement()
                 connecting = false
                 storeAvailable = false
                 val error = unavailableBillingResult("Google Play billing disconnected")
@@ -401,15 +497,15 @@ class MithkaProPlugin(
         ) { billingResult, purchases -> callback(billingResult, purchases) }
     }
 
+    private fun isActiveSupporterPurchase(purchase: Purchase): Boolean =
+        purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+            purchase.products.any(PRODUCT_IDS::contains)
+
     private fun processPurchases(
         purchases: List<Purchase>,
         completion: (BillingResult?) -> Unit,
     ) {
-        val purchased = purchases.filter { purchase ->
-            purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
-                purchase.products.any(PRODUCT_IDS::contains)
-        }
-        isPro = purchased.isNotEmpty()
+        val purchased = purchases.filter(::isActiveSupporterPurchase)
         val unacknowledged = purchased.filterNot(Purchase::isAcknowledged)
         if (unacknowledged.isEmpty()) {
             completion(null)
@@ -437,9 +533,15 @@ class MithkaProPlugin(
     private fun stateMap(
         status: String? = null,
         productId: String? = null,
+        active: Boolean = entitlementGuard.cachedActive(),
+        available: Boolean = storeAvailable,
     ): Map<String, Any?> = buildMap {
-        put("storeAvailable", storeAvailable && distribution == DISTRIBUTION_PLAY_STORE)
-        put("isPro", isPro)
+        put("storeAvailable", available && distribution == DISTRIBUTION_PLAY_STORE)
+        // Keep Play's connection/distribution requirement for new payments.
+        put("canMakePayments", available && distribution == DISTRIBUTION_PLAY_STORE)
+        // Opening account management does not require a BillingClient connection.
+        put("canManageSubscriptions", distribution == DISTRIBUTION_PLAY_STORE)
+        put("isPro", active)
         put("distribution", distribution)
         if (status != null) put("status", status)
         if (productId != null) put("productId", productId)
@@ -532,4 +634,57 @@ class MithkaProPlugin(
         private const val DISTRIBUTION_APK = "apk"
         private const val DISTRIBUTION_DEVELOPMENT = "development"
     }
+}
+
+/** Pure Kotlin epoch/query guard; no Billing, Flutter, Android or clock dependency. */
+class SupporterEvidenceGuard {
+    data class Ticket(val epoch: Long, val query: Long)
+    data class Evidence(val ticket: Ticket, val active: Boolean, val storeAvailable: Boolean)
+
+    private var epoch = 0L
+    private var query = 0L
+    private var foreground = false
+    private var active = false
+
+    @Synchronized
+    fun invalidate() {
+        epoch += 1
+        active = false
+    }
+
+    @Synchronized
+    fun setForeground(value: Boolean) {
+        invalidate()
+        foreground = value
+    }
+
+    @Synchronized
+    fun isForeground(): Boolean = foreground
+
+    @Synchronized
+    fun beginQuery(): Ticket {
+        query += 1
+        active = false
+        return Ticket(epoch, query)
+    }
+
+    @Synchronized
+    fun complete(ticket: Ticket, purchased: Boolean, available: Boolean): Evidence {
+        val evidence = Evidence(ticket, purchased, available)
+        if (isCurrent(evidence)) active = purchased && available
+        return evidence
+    }
+
+    @Synchronized
+    fun isCurrent(evidence: Evidence): Boolean =
+        foreground && evidence.ticket == Ticket(epoch, query)
+
+    @Synchronized
+    fun cachedActive(): Boolean = foreground && active
+
+    // Keep validation and the actual alias mutation indivisible with respect to
+    // synchronous invalidation, even if Play calls a listener off the UI thread.
+    @Synchronized
+    fun withActiveEvidence(evidence: Evidence, apply: () -> Boolean): Boolean =
+        if (isCurrent(evidence) && evidence.active && evidence.storeAvailable) apply() else false
 }

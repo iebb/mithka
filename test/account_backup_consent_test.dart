@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -72,6 +73,98 @@ void main() {
 
     expect(await service.consentedAccountIds(), hasLength(8));
   });
+
+  test(
+    'free customer can list and delete cloud backups beyond old limits',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'mithka.accountBackup.explicitConsentMigration.v1': true,
+      });
+      const channel = MethodChannel('mithka/account_backup.free_access_test');
+      const proChannel = MethodChannel('mithka/pro');
+      var entitlementQueries = 0;
+      final deleted = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(proChannel, (call) async {
+        entitlementQueries++;
+        return {'isPro': false, 'storeAvailable': false};
+      });
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'isSupported':
+            return true;
+          case 'isLocalStorageSupported':
+            return false;
+          case 'getAllSessions':
+            expect((call.arguments as Map)['storage'], 'synced');
+            return [
+              for (var id = 1; id <= 12; id++)
+                _backupRecord(
+                  format: 'mithka.tdlib.session_string.v2.explicit_consent',
+                  id: '$id',
+                ),
+            ];
+          case 'deleteSession':
+            deleted.add((call.arguments as Map)['id'] as String);
+            return null;
+        }
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(channel, null);
+        messenger.setMockMethodCallHandler(proChannel, null);
+      });
+      final service = AccountBackupService(
+        channel: channel,
+        platformEligible: true,
+      );
+      final backups = await service.listBackups();
+      expect(backups, hasLength(12));
+      expect(
+        backups.every(
+          (backup) => backup.storage == AccountSessionBackupStorage.synced,
+        ),
+        isTrue,
+      );
+      expect(await service.consentedAccountCount(), 12);
+      await service.delete(backups.first);
+      expect(deleted, [backups.first.id]);
+      expect(await service.hasConsentForAccountId(backups.first.id), isFalse);
+      expect(entitlementQueries, 0);
+    },
+  );
+
+  test(
+    'source contract: functional account and sync paths have no Supporter dependency',
+    () {
+      final supporter = RegExp(
+        r'MithkaPro|mithka_pro|requiresSupporter|activeSupporter|requirePro|\bisPro\b',
+      );
+      for (final path in [
+        'lib/auth/account_backup_service.dart',
+        'lib/auth/account_store.dart',
+        'lib/auth/auth_manager.dart',
+        'lib/auth/login_view.dart',
+        'lib/profile/profile_view.dart',
+        'lib/settings/account_backup_view.dart',
+        'lib/tdlib/td_client.dart',
+        'android/app/src/main/kotlin/ad/neko/mithka/AccountBackupPlugin.kt',
+      ]) {
+        expect(
+          supporter.hasMatch(File(path).readAsStringSync()),
+          isFalse,
+          reason: path,
+        );
+      }
+      final apple = File('ios/Runner/AppDelegate.swift').readAsStringSync();
+      final backup = apple.split(
+        'private final class AccountSessionBackupKeychain {',
+      )[1];
+      expect(supporter.hasMatch(backup), isFalse);
+      expect(backup, contains('kSecAttrSynchronizable'));
+    },
+  );
 
   test('backup decision requires pending or previously stored consent', () {
     expect(

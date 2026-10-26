@@ -2,6 +2,12 @@ import Flutter
 import StoreKit
 import UIKit
 
+// Disabled for every build until the privacy source, retention, and deletion
+// policy for purchase reporting are resolved. No runtime or build-mode opt-in.
+private enum MithkaPurchaseReportingPolicy {
+  static let isEnabled = false
+}
+
 @MainActor
 final class MithkaProBridge {
   static let monthlyProductID = "ad.neko.mithka.pro.monthly"
@@ -10,19 +16,33 @@ final class MithkaProBridge {
   private static let productIDs = [monthlyProductID, yearlyProductID]
   private static let productIDSet = Set(productIDs)
 
+  // Shared with native paid-feature entry points. Always ask StoreKit rather
+  // than trusting cached Dart state or the currently selected app icon.
+  static func hasActiveSupporterEntitlement() async -> Bool {
+    await currentEntitlement() != nil
+  }
+
   private let channel: FlutterMethodChannel
   private var transactionUpdates: Task<Void, Never>?
+  private var foregroundUpdates: Task<Void, Never>?
+  private var expirationInvalidation: Task<Void, Never>?
 
   init(messenger: FlutterBinaryMessenger) {
     channel = FlutterMethodChannel(name: "mithka/pro", binaryMessenger: messenger)
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call: call, result: result)
     }
+    if MithkaPurchaseReportingPolicy.isEnabled {
+      PurchaseReporter.start()
+    }
     transactionUpdates = listenForTransactionUpdates()
+    foregroundUpdates = listenForForegroundUpdates()
   }
 
   deinit {
     transactionUpdates?.cancel()
+    foregroundUpdates?.cancel()
+    expirationInvalidation?.cancel()
   }
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -74,6 +94,9 @@ final class MithkaProBridge {
 
   private func purchase(productID: String, result: @escaping FlutterResult) async {
     do {
+      guard AppStore.canMakePayments else {
+        throw ProPurchaseError.paymentsNotAllowed
+      }
       guard let product = try await Product.products(for: [productID]).first else {
         throw ProPurchaseError.productUnavailable
       }
@@ -83,6 +106,9 @@ final class MithkaProBridge {
         let transaction = try Self.verified(verification)
         guard Self.productIDSet.contains(transaction.productID) else {
           throw ProPurchaseError.invalidProduct
+        }
+        if MithkaPurchaseReportingPolicy.isEnabled {
+          PurchaseReporter.report(verification)
         }
         await transaction.finish()
         result(await state())
@@ -127,9 +153,17 @@ final class MithkaProBridge {
 
   private func state() async -> [String: Any] {
     let distribution = Self.distribution
-    let entitlement = await currentEntitlement()
+    let entitlement = await Self.currentEntitlement()
+    scheduleExpirationInvalidation(at: entitlement?.expirationDate)
     var response: [String: Any] = [
-      "storeAvailable": AppStore.canMakePayments,
+      // StoreKit is supported here. It has no synchronous connectivity probe;
+      // sync/products/manage report their own availability errors. Screen Time
+      // restrictions apply only to new purchases, never existing customers.
+      "storeAvailable": true,
+      "canMakePayments": AppStore.canMakePayments,
+      "canManageSubscriptions": UIApplication.shared.connectedScenes.contains {
+        $0 is UIWindowScene && $0.activationState == .foregroundActive
+      },
       "isPro": entitlement != nil,
       "distribution": distribution.rawValue,
     ]
@@ -141,15 +175,14 @@ final class MithkaProBridge {
     return response
   }
 
-  private func currentEntitlement() async -> Transaction? {
-    let now = Date()
+  private static func currentEntitlement() async -> Transaction? {
     var newestEntitlement: Transaction?
     for await verification in Transaction.currentEntitlements {
       guard
         case .verified(let transaction) = verification,
         Self.productIDSet.contains(transaction.productID),
         transaction.revocationDate == nil,
-        transaction.expirationDate.map({ $0 > now }) ?? true
+        transaction.expirationDate.map({ $0 > Date() }) ?? true
       else {
         continue
       }
@@ -161,16 +194,64 @@ final class MithkaProBridge {
   }
 
   private func listenForTransactionUpdates() -> Task<Void, Never> {
-    Task.detached(priority: .background) {
+    Task { @MainActor [weak self] in
       for await verification in Transaction.updates {
+        guard !Task.isCancelled else { return }
         guard
           case .verified(let transaction) = verification,
           Self.productIDSet.contains(transaction.productID)
         else {
           continue
         }
+        // PurchaseReporter has its own updates listener. Keep finishing and
+        // entitlement invalidation here, without adding a second report hook.
         await transaction.finish()
+        await self?.entitlementDidChange()
       }
+    }
+  }
+
+  private func listenForForegroundUpdates() -> Task<Void, Never> {
+    Task { @MainActor [weak self] in
+      await self?.refreshExpirationTimer()
+      for await _ in NotificationCenter.default.notifications(
+        named: UIApplication.didBecomeActiveNotification
+      ) {
+        guard !Task.isCancelled else { return }
+        // Expiration can pass while suspended, without a StoreKit update.
+        await self?.entitlementDidChange()
+      }
+    }
+  }
+
+  private func entitlementDidChange() async {
+    await refreshExpirationTimer()
+    // This is only an invalidation signal. Dart must fetch fresh StoreKit
+    // state; neither this callback nor the reporter grants entitlements.
+    channel.invokeMethod("entitlementChanged", arguments: nil)
+  }
+
+  private func refreshExpirationTimer() async {
+    let entitlement = await Self.currentEntitlement()
+    scheduleExpirationInvalidation(at: entitlement?.expirationDate)
+  }
+
+  private func scheduleExpirationInvalidation(at expirationDate: Date?) {
+    expirationInvalidation?.cancel()
+    expirationInvalidation = nil
+    guard let expirationDate else { return }
+    // Bound the conversion well below UInt64.max; StoreKit subscription
+    // periods are much shorter. An early wake simply rechecks StoreKit.
+    let delay = min(max(0, expirationDate.timeIntervalSinceNow), 10 * 366 * 24 * 60 * 60)
+    expirationInvalidation = Task { @MainActor [weak self] in
+      do {
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      } catch {
+        return
+      }
+      guard !Task.isCancelled, UIApplication.shared.applicationState == .active else { return }
+      // Never reset an already selected icon when a subscription expires.
+      await self?.entitlementDidChange()
     }
   }
 
@@ -246,6 +327,7 @@ final class MithkaProBridge {
 
   private enum ProPurchaseError: LocalizedError {
     case invalidProduct
+    case paymentsNotAllowed
     case productUnavailable
     case productsUnavailable
     case cancelled
@@ -259,6 +341,7 @@ final class MithkaProBridge {
     var code: String {
       switch self {
       case .invalidProduct: return "pro_invalid_product"
+      case .paymentsNotAllowed: return "pro_payments_not_allowed"
       case .productUnavailable: return "pro_product_unavailable"
       case .productsUnavailable: return "pro_products_unavailable"
       case .cancelled: return "pro_purchase_cancelled"
@@ -274,6 +357,7 @@ final class MithkaProBridge {
     var errorDescription: String? {
       switch self {
       case .invalidProduct: return "The Mithka Pro product identifier is invalid"
+      case .paymentsNotAllowed: return "New purchases are not allowed on this device"
       case .productUnavailable: return "The Mithka Pro product is unavailable"
       case .productsUnavailable: return "Mithka Pro products could not be loaded"
       case .cancelled: return "The Mithka Pro purchase was cancelled"

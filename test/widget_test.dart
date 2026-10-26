@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -3863,83 +3864,88 @@ void main() {
     testWidgets('desktop hover overlays group time in the sender header', (
       tester,
     ) async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final theme = ThemeController(prefs);
-      addTearDown(theme.dispose);
-      final message = ChatMessage(
-        id: 21,
-        isOutgoing: false,
-        text: 'group timestamp',
-        date: DateTime(2024, 8, 3, 12, 15, 20).millisecondsSinceEpoch ~/ 1000,
-        senderName: 'Alice',
-      );
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final theme = ThemeController(prefs);
+        addTearDown(theme.dispose);
+        final message = ChatMessage(
+          id: 21,
+          isOutgoing: false,
+          text: 'group timestamp',
+          date: DateTime(2024, 8, 3, 12, 15, 20).millisecondsSinceEpoch ~/ 1000,
+          senderName: 'Alice',
+        );
 
-      await tester.pumpWidget(
-        ChangeNotifierProvider<ThemeController>.value(
-          value: theme,
-          child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: const TextScaler.linear(1.4)),
-              child: child!,
-            ),
-            theme: ThemeData(
-              platform: TargetPlatform.macOS,
-              extensions: [AppColors.light],
-            ),
-            home: Scaffold(
-              body: Align(
-                child: SizedBox(
-                  width: 600,
-                  height: 90,
-                  child: MessageBubble(
-                    message: message,
-                    peerTitle: 'Group',
-                    isGroup: true,
+        await tester.pumpWidget(
+          ChangeNotifierProvider<ThemeController>.value(
+            value: theme,
+            child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.4)),
+                child: child!,
+              ),
+              theme: ThemeData(
+                platform: TargetPlatform.macOS,
+                extensions: [AppColors.light],
+              ),
+              home: Scaffold(
+                body: Align(
+                  child: SizedBox(
+                    width: 600,
+                    height: 90,
+                    child: MessageBubble(
+                      message: message,
+                      peerTitle: 'Group',
+                      isGroup: true,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      final layoutRectBefore = tester.getRect(find.byType(MessageBubble));
-      expect(
-        find.byKey(const ValueKey('messageTappedTimestamp')),
-        findsNothing,
-      );
+        final layoutRectBefore = tester.getRect(find.byType(MessageBubble));
+        expect(
+          find.byKey(const ValueKey('messageTappedTimestamp')),
+          findsNothing,
+        );
 
-      final mouse = await tester.createGesture(
-        kind: ui.PointerDeviceKind.mouse,
-      );
-      addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(
-        tester.getCenter(find.byKey(const ValueKey('messageTapTarget-21'))),
-      );
-      await tester.pump();
+        final mouse = await tester.createGesture(
+          kind: ui.PointerDeviceKind.mouse,
+        );
+        addTearDown(mouse.removePointer);
+        await mouse.addPointer(location: Offset.zero);
+        await mouse.moveTo(
+          tester.getCenter(find.byKey(const ValueKey('messageTapTarget-21'))),
+        );
+        await tester.pump();
 
-      final timestamp = find.byKey(const ValueKey('messageTappedTimestamp'));
-      final header = find.byKey(const ValueKey('messageSenderHeader-21'));
-      expect(timestamp, findsOneWidget);
-      expect(header, findsOneWidget);
-      expect(
-        tester.getRect(header).overlaps(tester.getRect(timestamp)),
-        isTrue,
-      );
-      expect(
-        tester.getSize(timestamp).height,
-        lessThanOrEqualTo(tester.getSize(header).height),
-      );
-      expect(tester.getRect(find.byType(MessageBubble)), layoutRectBefore);
+        final timestamp = find.byKey(const ValueKey('messageTappedTimestamp'));
+        final header = find.byKey(const ValueKey('messageSenderHeader-21'));
+        expect(timestamp, findsOneWidget);
+        expect(header, findsOneWidget);
+        expect(
+          tester.getRect(header).overlaps(tester.getRect(timestamp)),
+          isTrue,
+        );
+        expect(
+          tester.getSize(timestamp).height,
+          lessThanOrEqualTo(tester.getSize(header).height),
+        );
+        expect(tester.getRect(find.byType(MessageBubble)), layoutRectBefore);
 
-      await mouse.moveTo(Offset.zero);
-      await tester.pumpAndSettle();
-      expect(timestamp, findsNothing);
-      expect(tester.getRect(find.byType(MessageBubble)), layoutRectBefore);
+        await mouse.moveTo(Offset.zero);
+        await tester.pumpAndSettle();
+        expect(timestamp, findsNothing);
+        expect(tester.getRect(find.byType(MessageBubble)), layoutRectBefore);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 

@@ -452,7 +452,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   late final ChatFolderTagController _folderTags = ChatFolderTagController(
     widget.prefs,
   );
-  late AppIconController _appIcons = AppIconController(widget.prefs);
+  late AppIconController _appIcons = AppIconController(
+    widget.prefs,
+    proService: _mithkaPro,
+  );
   late final AutoDownloadMediaController _autoDownload =
       AutoDownloadMediaController.shared;
   late DeveloperModeController _developer = DeveloperModeController(
@@ -629,7 +632,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         final nextTranslation = TranslationController(widget.prefs);
         final nextAi = AiSettingsController(widget.prefs);
         final nextLocale = AppLocaleController(widget.prefs);
-        final nextAppIcons = AppIconController(widget.prefs);
+        final nextAppIcons = AppIconController(
+          widget.prefs,
+          proService: _mithkaPro,
+        );
         final nextDeveloper = DeveloperModeController(widget.prefs);
         final nextPerformance = AppPerformanceController(
           widget.prefs,
@@ -722,7 +728,10 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) {
       // `inactive` on its own is a Control Center glance, the notification
       // shade or a permission sheet — the app never actually left.
-      if (state != AppLifecycleState.inactive) _wasBackgrounded = true;
+      if (state != AppLifecycleState.inactive) {
+        _wasBackgrounded = true;
+        _mithkaPro.invalidateEntitlement();
+      }
       return;
     }
     TdClient.shared.restartReceiveIsolate();
@@ -731,7 +740,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     // transaction listener, never through this poll.
     if (!_wasBackgrounded) return;
     _wasBackgrounded = false;
-    unawaited(_mithkaPro.refresh());
+    // Never coalesce resume authorization into a pre-background catalog load.
+    // Its state response was invalidated and may still be suspended.
+    unawaited(_mithkaPro.refreshEntitlement());
   }
 
   /// Last [_themeData] result per brightness, with the inputs it was built

@@ -11,6 +11,9 @@ on:
       - 'test/helpers/glass_review_capture.dart'
       - 'pubspec.*'
       - 'scripts/refresh-apple-mdk.sh'
+      - 'scripts/apple_shipping_sdk.py'
+      - 'test/scripts/apple_shipping_sdk_test.py'
+      - '.github/workflows/ios-testflight.yml'
       - '.github/workflows/apple-pr.yml'
   workflow_dispatch:
 
@@ -24,7 +27,7 @@ concurrency:
 jobs:
   ios:
     name: Credential-free iOS build, native tests and glass captures
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -46,11 +49,15 @@ jobs:
           fi
           git log --oneline -1
 
-      - name: Select Xcode 26
+      - name: Test shipping SDK guard
+        run: python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+
+      # Use the shipping selector even for credential-free verification; never
+      # accept green PR builds from an older SDK than the upload requires.
+      - name: Select and verify approved Xcode 27.1 RC/GA shipping SDK
         run: |
-          apple_xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
-          test -n "$apple_xcode_path"
-          echo "DEVELOPER_DIR=$apple_xcode_path/Contents/Developer" >> "$GITHUB_ENV"
+          python3 scripts/apple_shipping_sdk.py select \
+            --provenance "$RUNNER_TEMP/shipping-sdk/selection.json"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -113,6 +120,34 @@ jobs:
           cd ios
           pod install --repo-update
 
+      - name: Verify the credential-free device build uses the shipping SDK
+        id: test_shipping_device_sdk
+        run: |
+          xcodebuild build \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/shipping-derived \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            > "$RUNNER_TEMP/ios-device-build.log" 2>&1 || {
+              tail -n 160 "$RUNNER_TEMP/ios-device-build.log"
+              exit 1
+            }
+          python3 scripts/apple_shipping_sdk.py verify \
+            --provenance "$RUNNER_TEMP/shipping-sdk/selection.json" \
+            --artifact build/shipping-derived/Build/Products/Debug-iphoneos/Runner.app \
+            --report "$RUNNER_TEMP/shipping-sdk/device-app.json"
+
+      - name: Retain shipping SDK provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-pr-shipping-sdk-${{ github.sha }}
+          path: ${{ runner.temp }}/shipping-sdk/*.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Build the actual iOS app without signing
         run: |
           xcodebuild build \
@@ -128,7 +163,7 @@ jobs:
             }
           tail -n 12 "$RUNNER_TEMP/ios-build.log"
 
-      - name: Run native RunnerTests on iPhone 17 Pro
+      - name: Run native RunnerTests on an available verification iPhone
         run: |
           apple_sim_id="$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -137,11 +172,11 @@ jobs:
               device for runtime in sorted(devices, reverse=True)
               if "SimRuntime.iOS-" in runtime
               for device in devices[runtime]
-              if device.get("isAvailable") and device["name"] == "iPhone 17 Pro"
+              if device.get("isAvailable") and device["name"] in ("iPhone Duo", "iPhone 17 Pro")
           ]
           print(phones[0]["udid"] if phones else "")
           ')"
-          test -n "$apple_sim_id" || { echo 'iPhone 17 Pro simulator unavailable'; exit 1; }
+          test -n "$apple_sim_id" || { echo 'Compatible verification iPhone simulator unavailable'; exit 1; }
           # RunnerUITests sources are intentionally absent from clean checkouts.
           # Keep the real RunnerTests bundle, removing only the missing UI-test target.
           apple_test_scheme=ios/Runner.xcodeproj/xcshareddata/xcschemes/RunnerTestsOnly.xcscheme

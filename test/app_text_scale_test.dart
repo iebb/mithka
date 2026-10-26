@@ -132,10 +132,29 @@ void main() {
   test(
     'saved custom sizes remain exact rather than snapping to presets',
     () async {
-      for (final value in [1.07, 1.47, 1.8, 2.0]) {
+      for (final value in [
+        .8,
+        .9,
+        1.0,
+        1.07,
+        1.1,
+        1.2,
+        1.35,
+        1.47,
+        1.6,
+        1.8,
+        2.0,
+      ]) {
         final controller = await _controller(value);
         expect(controller.fontScale, value);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getDouble('fontScale'), value);
+        await controller.setFontScale(value);
+        expect(prefs.getDouble('fontScale'), value);
         controller.dispose();
+        final reloaded = ThemeController(prefs);
+        expect(reloaded.fontScale, value);
+        reloaded.dispose();
       }
     },
   );

@@ -39,17 +39,24 @@ class MithkaProState {
     required this.storeAvailable,
     required this.isPro,
     required this.distribution,
+    bool? canMakePayments,
+    bool? canManageSubscriptions,
     this.expirationDate,
-  });
+  }) : canMakePayments = canMakePayments ?? storeAvailable,
+       canManageSubscriptions = canManageSubscriptions ?? storeAvailable;
 
   const MithkaProState.development()
     : storeAvailable = false,
+      canMakePayments = false,
+      canManageSubscriptions = false,
       isPro = false,
       distribution = MithkaDistribution.development,
       expirationDate = null;
 
   const MithkaProState.uninitialized()
     : storeAvailable = false,
+      canMakePayments = false,
+      canManageSubscriptions = false,
       isPro = false,
       distribution = MithkaDistribution.unknown,
       expirationDate = null;
@@ -59,6 +66,12 @@ class MithkaProState {
     final distribution = MithkaDistribution.parse(map['distribution']);
     return MithkaProState(
       storeAvailable: map['storeAvailable'] == true,
+      canMakePayments: map.containsKey('canMakePayments')
+          ? map['canMakePayments'] == true
+          : null,
+      canManageSubscriptions: map.containsKey('canManageSubscriptions')
+          ? map['canManageSubscriptions'] == true
+          : null,
       isPro: map['isPro'] == true,
       distribution: distribution,
       expirationDate: expirationMillis == null || expirationMillis <= 0
@@ -68,6 +81,8 @@ class MithkaProState {
   }
 
   final bool storeAvailable;
+  final bool canMakePayments;
+  final bool canManageSubscriptions;
   final bool isPro;
   final MithkaDistribution distribution;
   final DateTime? expirationDate;
@@ -116,10 +131,27 @@ abstract interface class MithkaProGateway {
   Future<void> restore();
 }
 
-class MethodChannelMithkaProGateway implements MithkaProGateway {
+/// Optional invalidation source. Events never grant access by themselves.
+abstract interface class MithkaProEntitlementEvents {
+  void setEntitlementChangedHandler(VoidCallback? handler);
+}
+
+class MethodChannelMithkaProGateway
+    implements MithkaProGateway, MithkaProEntitlementEvents {
   const MethodChannelMithkaProGateway();
 
   static const _channel = MethodChannel('mithka/pro');
+
+  @override
+  void setEntitlementChangedHandler(VoidCallback? handler) {
+    _channel.setMethodCallHandler(
+      handler == null
+          ? null
+          : (call) async {
+              if (call.method == 'entitlementChanged') handler();
+            },
+    );
+  }
 
   @override
   Future<Map<Object?, Object?>?> getState() =>
@@ -130,10 +162,19 @@ class MethodChannelMithkaProGateway implements MithkaProGateway {
       await _channel.invokeListMethod<Object?>('getProducts') ?? const [];
 
   @override
-  Future<void> purchase(String productId) => _channel.invokeMethod<void>(
-    'purchase',
-    <String, Object?>{'productId': productId},
-  );
+  Future<void> purchase(String productId) async {
+    final result = await _channel.invokeMethod<Object?>(
+      'purchase',
+      <String, Object?>{'productId': productId},
+    );
+    // Google Play returns an explicit result; StoreKit reports these as errors.
+    if (result is Map) {
+      final status = result['status'];
+      if (status == 'pending' || status == 'cancelled') {
+        throw PlatformException(code: 'purchase_$status');
+      }
+    }
+  }
 
   @override
   Future<void> manage({String? productId}) => _channel.invokeMethod<void>(
@@ -145,127 +186,214 @@ class MethodChannelMithkaProGateway implements MithkaProGateway {
   Future<void> restore() => _channel.invokeMethod<void>('restore');
 }
 
+bool supporterIconsAvailableForPlatform(
+  TargetPlatform platform, {
+  bool isWeb = kIsWeb,
+}) =>
+    !isWeb &&
+    (platform == TargetPlatform.iOS || platform == TargetPlatform.android);
+
 class MithkaProService extends ChangeNotifier {
-  MithkaProService({MithkaProGateway? gateway})
-    : _gateway = gateway ?? const MethodChannelMithkaProGateway();
+  MithkaProService({MithkaProGateway? gateway, TargetPlatform? platform})
+    : _gateway = gateway ?? const MethodChannelMithkaProGateway(),
+      _platform = platform ?? defaultTargetPlatform {
+    final events = _gateway;
+    if (events is MithkaProEntitlementEvents) {
+      (events as MithkaProEntitlementEvents).setEntitlementChangedHandler(
+        _entitlementChanged,
+      );
+    }
+  }
 
   static final MithkaProService shared = MithkaProService();
 
   final MithkaProGateway _gateway;
+  final TargetPlatform _platform;
   MithkaProState _state = const MithkaProState.uninitialized();
   List<MithkaProProduct> _products = const [];
-  bool _loading = false;
+  Future<void>? _refreshFuture;
   bool _working = false;
   bool _initialized = false;
+  bool _verified = false;
+  bool _disposed = false;
+  int _stateRequest = 0;
+  Timer? _expiryTimer;
 
   MithkaProState get state => _state;
   List<MithkaProProduct> get products => _products;
-  bool get loading => _loading;
+  bool get loading => _refreshFuture != null;
   bool get working => _working;
   bool get initialized => _initialized;
+  bool get mobileSupporterAvailable =>
+      supporterIconsAvailableForPlatform(_platform);
+  bool get isAppleStore => _platform == TargetPlatform.iOS;
+  bool get storeAvailable =>
+      mobileSupporterAvailable &&
+      !_disposed &&
+      _verified &&
+      _state.storeAvailable;
+  bool get canMakePayments => storeAvailable && _state.canMakePayments;
+  bool get canRestore => storeAvailable;
+  // Management can open the provider's account UI even when billing is offline.
+  // It grants no entitlement; native code still checks for a scene/URL handler.
+  bool get canManageSubscriptions =>
+      mobileSupporterAvailable && !_disposed && _state.canManageSubscriptions;
+  bool get isPro =>
+      mobileSupporterAvailable &&
+      _verified &&
+      _state.isPro &&
+      (_state.expirationDate == null ||
+          _state.expirationDate!.isAfter(DateTime.now()));
 
-  /// Whether this build can actually reach a store. The platform reports it,
-  /// and it stays false until it does, so a build with no purchase channel
-  /// never advertises a paywall it cannot open.
-  bool get storeAvailable => _state.storeAvailable;
-  bool get isPro => _state.isPro;
-  Future<void> initialize() async {
-    if (_initialized || _loading) return;
-    await refresh();
+  MithkaProProduct? product(String id) {
+    for (final product in _products) {
+      if (product.id == id && product.displayPrice.trim().isNotEmpty) {
+        return product;
+      }
+    }
+    return null;
   }
 
-  Future<void> refresh() async {
-    if (_loading) return;
-    _loading = true;
-    notifyListeners();
+  Future<void> initialize() async {
+    if (!_initialized) await refresh();
+  }
+
+  Future<void> refresh() {
+    final pending = _refreshFuture;
+    if (pending != null) return pending;
+    if (!mobileSupporterAvailable) return Future<void>.value();
+    final future = _refresh();
+    _refreshFuture = future;
+    _notify();
+    return future;
+  }
+
+  Future<void> _refresh() async {
     try {
       await Future.wait<void>([
-        _refreshStateSafely(),
+        refreshEntitlement().then((_) {}),
         _refreshProductsSafely(),
       ]);
     } finally {
-      _loading = false;
-      notifyListeners();
+      _refreshFuture = null;
+      _notify();
     }
   }
 
-  Future<void> _refreshStateSafely() async {
+  /// Invalidate immediately on backgrounding or native transaction changes.
+  /// A later result from an older request must never reinstate stale access.
+  void invalidateEntitlement() {
+    _stateRequest++;
+    _verified = false;
+    _expiryTimer?.cancel();
+    _notify();
+  }
+
+  void _entitlementChanged() {
+    invalidateEntitlement();
+    unawaited(refreshEntitlement());
+  }
+
+  /// Always asks the current native provider, never a persisted Pro flag.
+  /// This is also the central controller's authorization boundary.
+  Future<bool> refreshEntitlement() async {
+    if (!mobileSupporterAvailable) return false;
+    final request = ++_stateRequest;
+    _verified = false;
     try {
-      final rawState = await _gateway.getState();
-      if (rawState == null) return;
-      _state = MithkaProState.fromMap(rawState);
+      final raw = await _gateway.getState();
+      if (_disposed || request != _stateRequest) return false;
+      if (raw == null) throw StateError('Entitlement unavailable');
+      _state = MithkaProState.fromMap(raw);
       _initialized = true;
-    } on MissingPluginException {
-      // Stay fail-closed until the platform can identify its distribution.
-    } on PlatformException {
-      // Offline/store initialization errors are retried on app resume.
+      _verified = true;
+      _expiryTimer?.cancel();
+      final expiration = _state.expirationDate;
+      if (_state.isPro &&
+          expiration != null &&
+          expiration.isAfter(DateTime.now())) {
+        _expiryTimer = Timer(expiration.difference(DateTime.now()), () {
+          if (!_disposed) invalidateEntitlement();
+        });
+      }
+      return isPro;
     } catch (_) {
-      // App startup must remain non-fatal; policy stays fail-closed.
+      if (request == _stateRequest) _verified = false;
+      return false;
+    } finally {
+      _notify();
     }
   }
 
   Future<void> _refreshProductsSafely() async {
     try {
-      final rawProducts = await _gateway.getProducts();
-      _products = rawProducts
+      final raw = await _gateway.getProducts();
+      if (_disposed) return;
+      _products = raw
           .whereType<Map<Object?, Object?>>()
           .map(MithkaProProduct.fromMap)
-          .where((product) => product.id.isNotEmpty && product.isKnownProduct)
+          .where(
+            (product) =>
+                product.isKnownProduct &&
+                product.displayPrice.trim().isNotEmpty,
+          )
           .toList(growable: false);
-    } on MissingPluginException {
-      // The paywall remains visible with configured fallback prices.
-    } on PlatformException {
-      // Product metadata is optional while offline.
     } catch (_) {
-      // A catalog failure must not discard a valid entitlement state.
+      // Do not advertise stale or invented prices after a catalog failure.
+      _products = const [];
     }
   }
 
-  Future<void> purchase(String productId) async {
-    if (_working) return;
+  Future<bool> purchase(String productId) async {
     if (productId != mithkaProMonthlyProductId &&
         productId != mithkaProYearlyProductId) {
       throw ArgumentError.value(productId, 'productId');
     }
-    _working = true;
-    notifyListeners();
-    try {
-      await _gateway.purchase(productId);
-      await _reloadStateAfterTransaction();
-    } finally {
-      _working = false;
-      notifyListeners();
+    if (_working || !canMakePayments || product(productId) == null) {
+      return false;
     }
+    return _transaction(() => _gateway.purchase(productId));
   }
 
-  Future<void> restore() async {
-    if (_working) return;
+  Future<bool> restore() async {
+    if (_working || !canRestore) return false;
+    return _transaction(_gateway.restore);
+  }
+
+  Future<bool> _transaction(Future<void> Function() action) async {
     _working = true;
-    notifyListeners();
+    _notify();
     try {
-      await _gateway.restore();
-      await _reloadStateAfterTransaction();
+      await action();
+      await refreshEntitlement();
+      // A transaction update can supersede this request and finish first.
+      // Reconcile against the newest verified snapshot, not the older
+      // request's (correctly rejected) result.
+      return isPro;
     } finally {
       _working = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   Future<void> manage({String? productId}) async {
-    if (_working) return;
-    _working = true;
-    notifyListeners();
-    try {
-      await _gateway.manage(productId: productId);
-      await _reloadStateAfterTransaction();
-    } finally {
-      _working = false;
-      notifyListeners();
-    }
+    if (_working || !canManageSubscriptions) return;
+    await _transaction(() => _gateway.manage(productId: productId));
   }
 
-  Future<void> _reloadStateAfterTransaction() async {
-    final rawState = await _gateway.getState();
-    if (rawState != null) _state = MithkaProState.fromMap(rawState);
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _stateRequest++;
+    _expiryTimer?.cancel();
+    final events = _gateway;
+    if (events is MithkaProEntitlementEvents) {
+      (events as MithkaProEntitlementEvents).setEntitlementChangedHandler(null);
+    }
+    super.dispose();
   }
 }

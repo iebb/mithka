@@ -69,6 +69,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Test Apple shipping SDK selection and artifact guards
+        run: python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+
       - name: Test Apple MDK helper failure paths
         run: bash scripts/tests/refresh_apple_mdk_test.sh
 

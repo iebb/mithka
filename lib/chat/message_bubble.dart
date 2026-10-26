@@ -2576,9 +2576,9 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     final painter = TextPainter(
       text: TextSpan(
         text: 'M',
-        style: DefaultTextStyle.of(
-          context,
-        ).style.merge(TextStyle(fontSize: _chatFontSize(AppTextSize.body))),
+        style: DefaultTextStyle.of(context).style.merge(
+          TextStyle(fontSize: _chatFontSize(AppTextSize.messageBody())),
+        ),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),

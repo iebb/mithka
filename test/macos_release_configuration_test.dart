@@ -113,11 +113,12 @@ void main() {
     }
   });
 
-  test('macOS TestFlight follows the shared Apple version policy', () {
+  test('macOS TestFlight preserves the exact shared Apple version', () {
     for (final testCase in const {
-      '0.8.14': '0.8.0',
+      '0.8.14': '0.8.14',
       '1.0.0+282': '1.0.0',
-      '12.34.56+789': '12.34.0',
+      '12.34.56+789': '12.34.56',
+      '1.8.4': '1.8.4',
     }.entries) {
       final result = Process.runSync('sh', [
         'scripts/apple_marketing_version.sh',

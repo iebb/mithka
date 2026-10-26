@@ -34,6 +34,38 @@ void main() {
       'mithkaProTerms',
       'mithkaProTitle',
       'mithkaProYearly',
+      'supporterFunctionalAccess',
+      'supporterIcons',
+      'supporterIconsBenefit',
+      'supporterIconsMobileBenefit',
+      'supporterIconsCaption',
+      'supporterIconAccess',
+      'supporterIconLockedHint',
+      'supporterIconAccessibility',
+      'supporterIconRequired',
+      'supporterIconSelected',
+      'supporterIconAvailable',
+      'supporterPlansLoading',
+      'supporterPlansUnavailable',
+      'supporterPlansRetry',
+      'supporterPurchasePending',
+      'supporterPurchaseSuccess',
+      'supporterRestoring',
+      'supporterRestoreSuccess',
+      'supporterBillingNoticeGoogle',
+      'supporterNothingToRestoreGoogle',
+      'appIconPilot',
+      'appIconHeadphones',
+      'appIconWinter',
+      'appIconAstronaut',
+      'appIconCrown',
+      'appIconParty',
+      'appIconSleepy',
+      'appIconHeart',
+      'appIconCoffee',
+      'appIconDetective',
+      'appIconGamer',
+      'appIconFishing',
     };
     final locales = <String, Map<String, String>>{
       'en': fixtures.messages('en'),
@@ -78,12 +110,23 @@ void main() {
     }
 
     expect(
+      fixtures.messages('en')['supporterFunctionalAccess'],
+      'Supporter adds cosmetic extras. All other features are the same.',
+    );
+    for (final locale in ['zhHans', 'zhHant']) {
+      expect(
+        fixtures.messages(locale)['supporterFunctionalAccess'],
+        isNot(fixtures.messages('en')['supporterFunctionalAccess']),
+      );
+    }
+
+    expect(
       fixtures.messages('en')['mithkaProSupportDevelopmentDescription'],
-      'The warm feeling that you supported the development.',
+      'Help support Mithka and unlock 12 extra penguin icons.',
     );
     expect(
       fixtures.messages('en')['mithkaProSupportOnly'],
-      'All features are available without Pro.',
+      'Help support Mithka and unlock 12 extra penguin icons.',
     );
   });
 }

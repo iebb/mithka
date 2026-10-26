@@ -25,6 +25,7 @@ import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/content_size.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _barSurfaceKey = ValueKey('chat-input-safe-area-background');
@@ -69,9 +70,38 @@ Future<ChatViewModel> _pumpComposer(
   bool phoneStrip = false,
   ChatViewModel? viewModel,
   TargetPlatform? platform,
+  double appScale = 1,
+  double osScale = 1,
+  Size viewportSize = const Size(800, 600),
+  double keyboardInset = 0,
+  ValueNotifier<double>? keyboardInsets,
 }) async {
   final vm = viewModel ?? _ComposerSurfacesViewModel();
   addTearDown(vm.dispose);
+  final body = ContentSizeRoot(
+    appScale: appScale,
+    child: Scaffold(
+      body: Align(
+        alignment: Alignment.bottomCenter,
+        child: ChatInputBar(
+          vm: vm,
+          quickRepliesEnabled: false,
+          phoneStripForTesting: phoneStrip,
+          onStartCall: (_) {},
+          onMessageSent: () {},
+        ),
+      ),
+    ),
+  );
+  Widget viewport(Widget child, double inset) => MediaQuery(
+    data: MediaQueryData(
+      size: viewportSize,
+      viewInsets: EdgeInsets.only(bottom: inset),
+      padding: padding,
+      textScaler: TextScaler.linear(osScale),
+    ),
+    child: child,
+  );
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -87,21 +117,13 @@ Future<ChatViewModel> _pumpComposer(
         brightness: brightness,
         extensions: [colors],
       ),
-      home: MediaQuery(
-        data: MediaQueryData(padding: padding),
-        child: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: ChatInputBar(
-              vm: vm,
-              quickRepliesEnabled: false,
-              phoneStripForTesting: phoneStrip,
-              onStartCall: (_) {},
-              onMessageSent: () {},
+      home: keyboardInsets == null
+          ? viewport(body, keyboardInset)
+          : ValueListenableBuilder<double>(
+              valueListenable: keyboardInsets,
+              child: body,
+              builder: (context, inset, child) => viewport(child!, inset),
             ),
-          ),
-        ),
-      ),
     ),
   );
   await tester.pump();
@@ -127,6 +149,123 @@ void main() {
     StickerStore.shared.reset();
     GifStore.shared.replaceItemsForTest(const []);
   });
+
+  testWidgets(
+    'composer uses touch or desktop body role with exact app and OS scaling',
+    (tester) async {
+      for (final platform in [
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      ]) {
+        final size =
+            platform == TargetPlatform.iOS || platform == TargetPlatform.android
+            ? 17.0
+            : 14.0;
+        for (final appScale in [.8, 1.0, 1.47, 2.0]) {
+          for (final osScale in [1.0, 1.7]) {
+            await _pumpComposer(
+              tester,
+              colors: AppColors.light,
+              platform: platform,
+              appScale: appScale,
+              osScale: osScale,
+            );
+            final editable = tester.widget<EditableText>(
+              find.byType(EditableText),
+            );
+            expect(
+              editable.style.fontSize,
+              size,
+              reason: '$platform app=$appScale os=$osScale',
+            );
+            expect(
+              tester
+                  .state<EditableTextState>(find.byType(EditableText))
+                  .renderEditable
+                  .textScaler
+                  .scale(size),
+              closeTo(size * appScale * osScale, .0001),
+            );
+            expect(tester.takeException(), isNull);
+          }
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    },
+  );
+
+  testWidgets(
+    'large touch composer caps above keyboard then scrolls without shrinking text',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final keyboard = ValueNotifier(300.0);
+      addTearDown(keyboard.dispose);
+      await _pumpComposer(
+        tester,
+        keyboardInsets: keyboard,
+        colors: AppColors.light,
+        platform: TargetPlatform.iOS,
+        appScale: 1.6,
+        osScale: 3.2,
+        viewportSize: const Size(390, 844),
+        keyboardInset: 300,
+        padding: EdgeInsets.zero,
+      );
+      await tester.enterText(
+        find.byType(TextField),
+        List.filled(20, 'A full line of text').join('\n'),
+      );
+      await tester.pump();
+      final editableFinder = find.byType(EditableText);
+      final editable = tester.widget<EditableText>(editableFinder);
+      expect(editable.style.fontSize, 17);
+      expect(
+        tester
+            .state<EditableTextState>(editableFinder)
+            .renderEditable
+            .textScaler
+            .scale(17),
+        closeTo(17 * 1.6 * 3.2, .0001),
+      );
+      expect(
+        tester.getSize(editableFinder).height,
+        closeTo((844 - 300) * .35, 1),
+      );
+      final scrollable = tester.state<ScrollableState>(
+        find
+            .descendant(of: editableFinder, matching: find.byType(Scrollable))
+            .first,
+      );
+      expect(scrollable.position.maxScrollExtent, greaterThan(0));
+      final state = tester.state<EditableTextState>(editableFinder);
+      for (final inset in [400.0, 300.0]) {
+        keyboard.value = inset;
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(editableFinder), same(state));
+        expect(
+          tester.getSize(editableFinder).height,
+          closeTo((844 - inset) * .35, 1),
+        );
+        expect(
+          state.widget.controller.text,
+          List.filled(20, 'A full line of text').join('\n'),
+        );
+      }
+
+      expect(
+        tester.getSize(find.byKey(const ValueKey('composerSendButton'))),
+        const Size(44, 44),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
 
   testWidgets('dark palette: function panel and its safe-area overlay share '
       'the composer bar surface', (tester) async {

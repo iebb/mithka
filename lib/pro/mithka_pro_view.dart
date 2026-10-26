@@ -13,9 +13,14 @@ import '../theme/app_theme.dart';
 import 'mithka_pro_service.dart';
 
 class MithkaProView extends StatefulWidget {
-  const MithkaProView({super.key, this.service});
+  const MithkaProView({
+    super.key,
+    this.service,
+    this.returnOnEntitlement = false,
+  });
 
   final MithkaProService? service;
+  final bool returnOnEntitlement;
 
   @override
   State<MithkaProView> createState() => _MithkaProViewState();
@@ -27,6 +32,13 @@ class _MithkaProViewState extends State<MithkaProView> {
 
   String _selectedProductId = mithkaProYearlyProductId;
   String? _errorKey;
+  String? _statusKey;
+  bool _restoring = false;
+  bool _awaitingConfirmation = false;
+  bool _completed = false;
+  bool _operationInFlight = false;
+  int _operation = 0;
+  late final MithkaProService _observedService;
 
   MithkaProService _service(BuildContext context) =>
       widget.service ?? context.watch<MithkaProService>();
@@ -34,46 +46,172 @@ class _MithkaProViewState extends State<MithkaProView> {
   @override
   void initState() {
     super.initState();
-    final service = widget.service ?? MithkaProService.shared;
+    final service = _observedService =
+        widget.service ?? MithkaProService.shared;
+    service.addListener(_serviceChanged);
     if (!service.initialized) unawaited(service.initialize());
   }
 
-  Future<void> _purchase(MithkaProService service) async {
-    if (service.working || !service.state.storeAvailable) return;
-    setState(() => _errorKey = null);
+  bool get _routeCurrent =>
+      mounted && ModalRoute.of(context)?.isCurrent != false;
+
+  bool _acceptOperation(int token) =>
+      _routeCurrent && !_completed && token == _operation;
+
+  void _serviceChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _reconcilePending();
+  }
+
+  void _reconcilePending() {
+    if (_awaitingConfirmation &&
+        !_operationInFlight &&
+        !_observedService.working &&
+        _observedService.isPro) {
+      _finishVerified(AppStringKeys.supporterPurchaseSuccess);
+    }
+  }
+
+  void _finishVerified(String key) {
+    if (!_routeCurrent ||
+        _completed ||
+        _operationInFlight ||
+        !_observedService.isPro) {
+      return;
+    }
+    _awaitingConfirmation = false;
+    if (widget.returnOnEntitlement) {
+      _completed = true;
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _statusKey = key);
+    }
+  }
+
+  void _cancelOnce() {
+    _awaitingConfirmation = false;
+    if (!_routeCurrent || _completed) return;
+    _completed = true;
+    Navigator.of(context).pop();
+  }
+
+  int _beginOperation({required bool restoring}) {
+    // A retry owns its own outcome. A prior pending purchase may complete
+    // during it, but must not dismiss this route before cancellation/error
+    // for the new attempt has been handled.
+    final token = ++_operation;
+    _operationInFlight = true;
+    _awaitingConfirmation = false;
+    setState(() {
+      _errorKey = null;
+      _statusKey = null;
+      _restoring = restoring;
+    });
+    return token;
+  }
+
+  void _showPending(int token) {
+    if (!_acceptOperation(token)) return;
+    _operationInFlight = false;
+    setState(() {
+      _statusKey = AppStringKeys.supporterPurchasePending;
+      _awaitingConfirmation = true;
+    });
+    // The verified event may have arrived before the transaction's final
+    // working=false notification, while pending completion was suspended.
+    _reconcilePending();
+  }
+
+  @override
+  void dispose() {
+    _operation++;
+    _observedService.removeListener(_serviceChanged);
+    super.dispose();
+  }
+
+  Future<void> _purchase(
+    MithkaProService service, {
+    bool manageOnly = false,
+  }) async {
+    final managing = manageOnly || service.isPro;
+    if (_operationInFlight ||
+        _completed ||
+        service.working ||
+        !(managing
+            ? service.canManageSubscriptions
+            : service.canMakePayments)) {
+      return;
+    }
+    final token = _beginOperation(restoring: false);
     try {
-      if (service.isPro) {
+      if (managing) {
         await service.manage(productId: _selectedProductId);
+        if (_acceptOperation(token)) _operationInFlight = false;
       } else {
         await service.purchase(_selectedProductId);
+        if (!_acceptOperation(token)) return;
+        _operationInFlight = false;
+        if (service.isPro) {
+          _finishVerified(AppStringKeys.supporterPurchaseSuccess);
+        } else {
+          _showPending(token);
+        }
       }
     } on PlatformException catch (error) {
-      if (!_isCancellation(error.code) && mounted) {
+      if (!_acceptOperation(token)) return;
+      _operationInFlight = false;
+      if (_isCancellation(error.code)) {
+        _cancelOnce();
+      } else if (error.code.toLowerCase().contains('pending')) {
+        _showPending(token);
+      } else {
         setState(() => _errorKey = AppStringKeys.mithkaProPurchaseFailed);
       }
     } catch (_) {
-      if (mounted) {
+      if (_acceptOperation(token)) {
+        _operationInFlight = false;
         setState(() => _errorKey = AppStringKeys.mithkaProPurchaseFailed);
       }
     }
   }
 
   Future<void> _restore(MithkaProService service) async {
-    if (service.working || !service.state.storeAvailable) return;
-    setState(() => _errorKey = null);
+    if (_operationInFlight ||
+        _completed ||
+        service.working ||
+        !service.canRestore) {
+      return;
+    }
+    final token = _beginOperation(restoring: true);
     try {
       await service.restore();
-      if (mounted && !service.isPro) {
-        setState(() => _errorKey = AppStringKeys.mithkaProNothingToRestore);
+      if (!_acceptOperation(token)) return;
+      _operationInFlight = false;
+      if (service.isPro) {
+        _finishVerified(AppStringKeys.supporterRestoreSuccess);
+      } else {
+        setState(
+          () => _statusKey = service.isAppleStore
+              ? AppStringKeys.mithkaProNothingToRestore
+              : AppStringKeys.supporterNothingToRestoreGoogle,
+        );
       }
     } on PlatformException catch (error) {
-      if (!_isCancellation(error.code) && mounted) {
+      if (!_acceptOperation(token)) return;
+      _operationInFlight = false;
+      if (_isCancellation(error.code)) {
+        _cancelOnce();
+      } else {
         setState(() => _errorKey = AppStringKeys.mithkaProRestoreFailed);
       }
     } catch (_) {
-      if (mounted) {
+      if (_acceptOperation(token)) {
+        _operationInFlight = false;
         setState(() => _errorKey = AppStringKeys.mithkaProRestoreFailed);
       }
+    } finally {
+      if (_acceptOperation(token)) setState(() => _restoring = false);
     }
   }
 
@@ -92,47 +230,60 @@ class _MithkaProViewState extends State<MithkaProView> {
       child: SettingsListView(
         children: [
           _hero(service),
+          _notice(AppStringKeys.supporterFunctionalAccess),
           const SizedBox(height: 14),
           SettingsPanel(
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
                 _benefit(
-                  HeroAppIcons.solidStar,
-                  AppStringKeys.mithkaProSupportDevelopment,
-                  AppStringKeys.mithkaProSupportDevelopmentDescription,
+                  HeroAppIcons.image,
+                  AppStringKeys.supporterIconsBenefit,
+                  AppStringKeys.supporterIconsMobileBenefit,
                 ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          SettingsPanel(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                _productCard(
-                  service,
-                  id: mithkaProMonthlyProductId,
-                  titleKey: AppStringKeys.mithkaProMonthly,
-                  fallbackPrice: r'$0.69',
-                  periodKey: AppStringKeys.mithkaProPerMonth,
-                ),
-                const InsetDivider(leadingInset: 16),
-                _productCard(
-                  service,
-                  id: mithkaProYearlyProductId,
-                  titleKey: AppStringKeys.mithkaProYearly,
-                  fallbackPrice: r'$4.99',
-                  periodKey: AppStringKeys.mithkaProPerYear,
-                  badgeKey: AppStringKeys.mithkaProBestValue,
-                ),
-              ],
+          if (service.loading)
+            _notice(AppStringKeys.supporterPlansLoading)
+          else if (service.products.isEmpty) ...[
+            _notice(AppStringKeys.supporterPlansUnavailable),
+            _retryButton(service),
+          ] else
+            SettingsPanel(
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  _productCard(
+                    service,
+                    id: mithkaProMonthlyProductId,
+                    titleKey: AppStringKeys.mithkaProMonthly,
+                    periodKey: AppStringKeys.mithkaProPerMonth,
+                  ),
+                  const InsetDivider(leadingInset: 16),
+                  _productCard(
+                    service,
+                    id: mithkaProYearlyProductId,
+                    titleKey: AppStringKeys.mithkaProYearly,
+                    periodKey: AppStringKeys.mithkaProPerYear,
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 14),
           _purchaseButton(service),
           const SizedBox(height: 6),
-          _restoreButton(service),
+          _accountButton(service),
+          if (!service.isPro && service.canManageSubscriptions)
+            _accountButton(service, manage: true),
+          if (_statusKey != null) _notice(_statusKey!),
+          if (service.working)
+            _notice(
+              _restoring
+                  ? AppStringKeys.supporterRestoring
+                  : AppStringKeys.supporterPurchasing,
+            ),
           if (_errorKey != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -146,8 +297,14 @@ class _MithkaProViewState extends State<MithkaProView> {
             ),
           ],
           const SizedBox(height: 10),
+          _notice(AppStringKeys.supporterIconAccess),
+          _notice(AppStringKeys.supporterCancellation),
           Text(
-            AppStrings.t(AppStringKeys.mithkaProBillingNotice),
+            AppStrings.t(
+              service.isAppleStore
+                  ? AppStringKeys.mithkaProBillingNotice
+                  : AppStringKeys.supporterBillingNoticeGoogle,
+            ),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, height: 1.35, color: c.textTertiary),
           ),
@@ -180,6 +337,41 @@ class _MithkaProViewState extends State<MithkaProView> {
       ),
     );
   }
+
+  Widget _notice(String key) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Text(
+      AppStrings.t(key),
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 13,
+        height: 1.35,
+        color: context.colors.textSecondary,
+      ),
+    ),
+  );
+
+  Widget _retryButton(MithkaProService service) => Semantics(
+    button: true,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: service.loading || service.working
+          ? null
+          : () => unawaited(service.refresh()),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          AppStrings.t(AppStringKeys.supporterPlansRetry),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: AppTheme.brand,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    ),
+  );
 
   Widget _legalLink(String labelKey, Future<bool> Function() onTap) {
     return Semantics(
@@ -240,7 +432,7 @@ class _MithkaProViewState extends State<MithkaProView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  AppStrings.t(AppStringKeys.mithkaProTitle),
+                  AppStrings.t(AppStringKeys.mithkaProSupportDevelopment),
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -315,7 +507,6 @@ class _MithkaProViewState extends State<MithkaProView> {
     MithkaProService service, {
     required String id,
     required String titleKey,
-    required String fallbackPrice,
     required String periodKey,
     String? badgeKey,
   }) {
@@ -323,15 +514,13 @@ class _MithkaProViewState extends State<MithkaProView> {
     final selected = _selectedProductId == id;
     final products = service.products.where((product) => product.id == id);
     final product = products.isEmpty ? null : products.first;
-    final price = product?.displayPrice.trim().isNotEmpty == true
-        ? product!.displayPrice
-        : fallbackPrice;
+    final price = product?.displayPrice;
     return Semantics(
       button: true,
       selected: selected,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: service.working
+        onTap: service.working || price == null
             ? null
             : () => setState(() => _selectedProductId = id),
         child: AnimatedContainer(
@@ -386,7 +575,14 @@ class _MithkaProViewState extends State<MithkaProView> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '$price ${AppStrings.t(periodKey)}',
+                      price == null
+                          ? AppStrings.t(
+                              AppStringKeys.supporterPlansUnavailable,
+                            )
+                          : AppStrings.t(AppStringKeys.supporterPlanPrice, {
+                              'value1': price,
+                              'value2': AppStrings.t(periodKey),
+                            }),
                       style: TextStyle(fontSize: 12, color: c.textSecondary),
                     ),
                   ],
@@ -408,7 +604,12 @@ class _MithkaProViewState extends State<MithkaProView> {
   }
 
   Widget _purchaseButton(MithkaProService service) {
-    final enabled = service.state.storeAvailable && !service.working;
+    final enabled =
+        !service.working &&
+        (service.isPro
+            ? service.canManageSubscriptions
+            : service.canMakePayments &&
+                  service.product(_selectedProductId) != null);
     return Semantics(
       button: true,
       enabled: enabled,
@@ -431,7 +632,7 @@ class _MithkaProViewState extends State<MithkaProView> {
                     AppStrings.t(
                       service.isPro
                           ? AppStringKeys.mithkaProManagePlan
-                          : service.state.storeAvailable
+                          : service.canMakePayments
                           ? AppStringKeys.mithkaProContinue
                           : AppStringKeys.mithkaProStoreUnavailable,
                     ),
@@ -447,19 +648,31 @@ class _MithkaProViewState extends State<MithkaProView> {
     );
   }
 
-  Widget _restoreButton(MithkaProService service) {
+  Widget _accountButton(MithkaProService service, {bool manage = false}) {
     final c = context.colors;
-    final enabled = service.state.storeAvailable && !service.working;
+    final enabled =
+        !service.working &&
+        (manage ? service.canManageSubscriptions : service.canRestore);
     return Semantics(
       button: true,
       enabled: enabled,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: enabled ? () => unawaited(_restore(service)) : null,
+        onTap: enabled
+            ? () => unawaited(
+                manage
+                    ? _purchase(service, manageOnly: true)
+                    : _restore(service),
+              )
+            : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
-            AppStrings.t(AppStringKeys.mithkaProRestore),
+            AppStrings.t(
+              manage
+                  ? AppStringKeys.mithkaProManagePlan
+                  : AppStringKeys.mithkaProRestore,
+            ),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,

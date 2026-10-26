@@ -776,7 +776,7 @@ class _SettingsViewState extends State<SettingsView> {
           'locale',
         ],
       ),
-      if (pro.storeAvailable)
+      if (pro.storeAvailable || pro.canManageSubscriptions)
         _SettingsDestination(
           id: 'mithka-pro',
           owner: _SettingsOwner.mithka,

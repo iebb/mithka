@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
@@ -30,15 +31,21 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text(r'$0.69 per month'), findsOneWidget);
-    expect(find.text(r'$4.99 per year'), findsOneWidget);
+    expect(find.text(r'$0.69 / month'), findsOneWidget);
+    expect(find.text(r'$3.99 / year'), findsOneWidget);
     expect(find.byType(AppCheckbox), findsNWidgets(2));
     expect(find.byType(Checkbox), findsNothing);
     expect(find.byType(Switch), findsNothing);
     expect(find.byType(Radio<String>), findsNothing);
-    expect(find.text('Support Mithka development'), findsOneWidget);
+    expect(find.text('Support Mithka'), findsOneWidget);
     expect(
-      find.text('The warm feeling that you supported the development.'),
+      find.text(
+        'Supporter adds cosmetic extras. All other features are the same.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Help support Mithka and unlock 12 extra penguin icons.'),
       findsOneWidget,
     );
     expect(find.text('Unlimited cloud session syncs'), findsNothing);
@@ -64,12 +71,83 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.drag(find.byType(ListView), const Offset(0, -650));
+    await tester.ensureVisible(find.text('Manage subscription'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manage subscription'));
     await tester.pumpAndSettle();
 
     expect(gateway.managedProductId, mithkaProYearlyProductId);
+  });
+
+  for (final active in [false, true]) {
+    testWidgets(
+      'restricted purchases keep Restore and Manage enabled (active=$active)',
+      (tester) async {
+        final gateway = _ViewGateway(pro: active, canMakePayments: false);
+        await _pumpStoreView(tester, gateway);
+        if (!active) {
+          await tester.ensureVisible(find.text('Store unavailable'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Store unavailable'));
+          await tester.pumpAndSettle();
+          expect(gateway.purchaseCalls, 0);
+        }
+        await tester.ensureVisible(find.text('Manage subscription'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage subscription'));
+        await tester.pumpAndSettle();
+        expect(gateway.manageCalls, 1);
+        await tester.ensureVisible(find.text('Restore purchases'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Restore purchases'));
+        await tester.pumpAndSettle();
+        expect(gateway.restoreCalls, 1);
+        expect(gateway.purchaseCalls, 0);
+      },
+    );
+  }
+
+  testWidgets(
+    'unavailable billing disables Restore but can still open Manage',
+    (tester) async {
+      final gateway = _ViewGateway(storeAvailable: false);
+      await _pumpStoreView(tester, gateway);
+      await tester.ensureVisible(find.text('Restore purchases'));
+      await tester.pumpAndSettle();
+      final restore = tester.widget<GestureDetector>(
+        find
+            .ancestor(
+              of: find.text('Restore purchases'),
+              matching: find.byType(GestureDetector),
+            )
+            .first,
+      );
+      expect(restore.onTap, isNull);
+      await tester.ensureVisible(find.text('Manage subscription'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manage subscription'));
+      await tester.pumpAndSettle();
+      expect(gateway.manageCalls, 1);
+      expect(gateway.restoreCalls, 0);
+      expect(gateway.purchaseCalls, 0);
+    },
+  );
+
+  testWidgets('restricted Restore displays actual store failure, not success', (
+    tester,
+  ) async {
+    final gateway = _ViewGateway(canMakePayments: false, failRestore: true);
+    await _pumpStoreView(tester, gateway);
+    await tester.ensureVisible(find.text('Restore purchases'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore purchases'));
+    await tester.pumpAndSettle();
+    expect(gateway.restoreCalls, 1);
+    await tester.ensureVisible(
+      find.text('Couldn’t restore purchases. Try again.'),
+    );
+    expect(find.text('Couldn’t restore purchases. Try again.'), findsOneWidget);
+    expect(gateway.pro, isFalse);
   });
 
   testWidgets('Pro header owns the system inset like other settings pages', (
@@ -172,14 +250,27 @@ void main() {
 }
 
 class _ViewGateway implements MithkaProGateway {
-  _ViewGateway({this.pro = false});
+  _ViewGateway({
+    this.pro = false,
+    this.storeAvailable = true,
+    this.canMakePayments = true,
+    this.failRestore = false,
+  });
 
   bool pro;
+  final bool storeAvailable;
+  final bool canMakePayments;
+  final bool failRestore;
+  int manageCalls = 0;
+  int restoreCalls = 0;
+  int purchaseCalls = 0;
   String? managedProductId;
 
   @override
   Future<Map<Object?, Object?>> getState() async => {
-    'storeAvailable': true,
+    'storeAvailable': storeAvailable,
+    'canMakePayments': canMakePayments,
+    'canManageSubscriptions': true,
     'isPro': pro,
     'distribution': 'app_store',
     'expirationDateMillis': null,
@@ -198,19 +289,48 @@ class _ViewGateway implements MithkaProGateway {
       'id': mithkaProYearlyProductId,
       'title': 'Yearly',
       'description': '',
-      'displayPrice': r'$4.99',
+      'displayPrice': r'$3.99',
       'period': 'yearly',
     },
   ];
 
   @override
-  Future<void> purchase(String productId) async {}
+  Future<void> purchase(String productId) async {
+    purchaseCalls++;
+  }
 
   @override
   Future<void> manage({String? productId}) async {
+    manageCalls++;
     managedProductId = productId;
   }
 
   @override
-  Future<void> restore() async {}
+  Future<void> restore() async {
+    restoreCalls++;
+    if (failRestore) throw PlatformException(code: 'pro_restore_failed');
+    pro = true;
+  }
+}
+
+Future<void> _pumpStoreView(WidgetTester tester, _ViewGateway gateway) async {
+  SharedPreferences.setMockInitialValues({});
+  final theme = ThemeController(await SharedPreferences.getInstance());
+  final service = MithkaProService(
+    gateway: gateway,
+    platform: TargetPlatform.iOS,
+  );
+  addTearDown(theme.dispose);
+  addTearDown(service.dispose);
+  await service.initialize();
+  await tester.pumpWidget(
+    ChangeNotifierProvider<ThemeController>.value(
+      value: theme,
+      child: MaterialApp(
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: MithkaProView(service: service),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }

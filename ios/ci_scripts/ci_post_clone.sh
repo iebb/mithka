@@ -235,10 +235,8 @@ case "$APP_BUILD_NUMBER" in
     exit 1
     ;;
 esac
-# The same marketing train macOS uploads on: a nightly collapses onto X.Y.0 so
-# App Store Connect sees one train whose builds differ by build number, rather
-# than a version per night it would have to review from scratch. A release
-# keeps the exact patch it is named for.
+# Match macOS: preserve the exact source/GitHub marketing version, including
+# the patch, for nightly, release, master, and local builds alike.
 XCODE_BUILD_NAME="$(sh "$REPO/scripts/apple_marketing_version.sh" \
   "$APP_BUILD_NAME" "${CI_BRANCH:-${GITHUB_REF_NAME:-}}")"
 echo "▸ iOS app version: $XCODE_BUILD_NAME+$APP_BUILD_NUMBER (source: $APP_BUILD_NAME)"

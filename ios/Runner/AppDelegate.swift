@@ -143,6 +143,18 @@ import UserNotifications
     case "aurora": return "MithkaAurora"
     case "prism": return "MithkaPrism"
     case "signal": return "MithkaSignal"
+    case "pilot": return "MithkaPilot"
+    case "headphones": return "MithkaHeadphones"
+    case "winter": return "MithkaWinter"
+    case "astronaut": return "MithkaAstronaut"
+    case "crown": return "MithkaCrown"
+    case "party": return "MithkaParty"
+    case "sleepy": return "MithkaSleepy"
+    case "heart": return "MithkaHeart"
+    case "coffee": return "MithkaCoffee"
+    case "detective": return "MithkaDetective"
+    case "gamer": return "MithkaGamer"
+    case "fishing": return "MithkaFishing"
     default: return nil
     }
   }
@@ -156,6 +168,18 @@ import UserNotifications
     case "MithkaAurora": return "aurora"
     case "MithkaPrism": return "prism"
     case "MithkaSignal": return "signal"
+    case "MithkaPilot": return "pilot"
+    case "MithkaHeadphones": return "headphones"
+    case "MithkaWinter": return "winter"
+    case "MithkaAstronaut": return "astronaut"
+    case "MithkaCrown": return "crown"
+    case "MithkaParty": return "party"
+    case "MithkaSleepy": return "sleepy"
+    case "MithkaHeart": return "heart"
+    case "MithkaCoffee": return "coffee"
+    case "MithkaDetective": return "detective"
+    case "MithkaGamer": return "gamer"
+    case "MithkaFishing": return "fishing"
     default: return "default"
     }
   }
@@ -456,18 +480,41 @@ import UserNotifications
         let args = call.arguments as? [String: Any]
         let requested = args?["name"] as? String ?? "default"
         let nativeName = Self.nativeIconName(requested)
-        UIApplication.shared.setAlternateIconName(nativeName) { error in
-          if let error {
-            result(
-              FlutterError(
-                code: "app_icon_failed",
-                message: error.localizedDescription,
-                details: nil
+        guard requested == "default" || nativeName != nil else {
+          result(FlutterError(code: "invalid_icon", message: "Unknown app icon", details: nil))
+          return
+        }
+        let freeIconNames: Set<String> = [
+          "default", "white", "blue", "purple", "pixel", "aurora", "prism", "signal",
+        ]
+        Task { @MainActor in
+          // Gate explicit paid selections only. Reading or retaining the
+          // currently installed icon never requires an active subscription.
+          if !freeIconNames.contains(requested) {
+            guard await MithkaProBridge.hasActiveSupporterEntitlement() else {
+              result(
+                FlutterError(
+                  code: "supporter_required",
+                  message: "An active Mithka Pro subscription is required to select this icon",
+                  details: nil
+                )
               )
-            )
-            return
+              return
+            }
           }
-          result(nil)
+          UIApplication.shared.setAlternateIconName(nativeName) { error in
+            if let error {
+              result(
+                FlutterError(
+                  code: "app_icon_failed",
+                  message: error.localizedDescription,
+                  details: nil
+                )
+              )
+              return
+            }
+            result(nil)
+          }
         }
       default:
         result(FlutterMethodNotImplemented)

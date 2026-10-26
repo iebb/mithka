@@ -23,7 +23,7 @@ jobs:
   archive-upload:
     name: Archive and upload iOS
     needs: quality
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 120
     env:
       APP_STORE_ID: '6783830742'
@@ -50,12 +50,15 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Select Xcode 26
+      # xcode-27 is the documented standard ARM64 Xcode image (not xlarge).
+      # Its inventory can change: verify actual tools before preparing credentials.
+      - name: Test shipping SDK guard
+        run: python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+
+      - name: Select and verify approved Xcode 27.1 RC/GA shipping SDK
         run: |
-          set -euo pipefail
-          xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
-          test -n "$xcode_path"
-          echo "DEVELOPER_DIR=$xcode_path/Contents/Developer" >> "$GITHUB_ENV"
+          python3 scripts/apple_shipping_sdk.py select \
+            --provenance "$RUNNER_TEMP/shipping-sdk/selection.json"
 
       - name: Prepare App Store Connect credential
         env:
@@ -152,6 +155,13 @@ jobs:
           test "$dsym_uuid" = "$binary_uuid"
           echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
 
+      - name: Verify the archive was compiled with the selected shipping SDK
+        run: |
+          python3 scripts/apple_shipping_sdk.py verify \
+            --provenance "$RUNNER_TEMP/shipping-sdk/selection.json" \
+            --artifact "$ARCHIVE_PATH" \
+            --report "$RUNNER_TEMP/shipping-sdk/archive.json"
+
       - name: Verify iOS marketing version
         run: |
           set -euo pipefail
@@ -191,6 +201,11 @@ jobs:
           ipa_count="$(find "$upload_path" -maxdepth 1 -type f -name '*.ipa' -print | wc -l | tr -d ' ')"
           test "$ipa_count" -eq 1
           ipa="$(find "$upload_path" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          # Export can alter the payload: inspect the actual IPA immediately before upload.
+          python3 scripts/apple_shipping_sdk.py verify \
+            --provenance "$RUNNER_TEMP/shipping-sdk/selection.json" \
+            --artifact "$ipa" \
+            --report "$RUNNER_TEMP/shipping-sdk/ipa.json"
           API_PRIVATE_KEYS_DIR="$(dirname "$ASC_KEY_PATH")" \
             xcrun altool --upload-package "$ipa" \
               --api-key "$ASC_KEY_ID" \
@@ -223,6 +238,15 @@ jobs:
             --platform IOS \
             --internal-group "$TESTFLIGHT_INTERNAL_GROUP" \
             --external-group "$TESTFLIGHT_EXTERNAL_GROUP"
+
+      - name: Retain shipping SDK provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-shipping-sdk-${{ github.sha }}
+          path: ${{ runner.temp }}/shipping-sdk/*.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Remove temporary credentials and generated secrets
         if: always()
