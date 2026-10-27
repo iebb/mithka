@@ -44,43 +44,6 @@ void main() {
       // If these ever collapse into each other, every tap that rolls a little
       // becomes a seek again.
       expect(videoPlaybackPanEngages(const Offset(kTouchSlop + 1, 0)), isFalse);
-      expect(videoHeldSeekFirstStepAt, greaterThan(kLongPressTimeout));
-    });
-
-    test('a hold only steps the position once it outlasts the dwell', () {
-      expect(videoHeldSeekSteps(Duration.zero), 0);
-      expect(videoHeldSeekSteps(const Duration(milliseconds: 400)), 0);
-      // Long-press recognition alone must not move playback: this is the press
-      // length a slow tap reports on the reported device.
-      expect(videoHeldSeekSteps(kLongPressTimeout), 0);
-      expect(
-        videoHeldSeekSteps(
-          videoHeldSeekFirstStepAt - const Duration(milliseconds: 1),
-        ),
-        0,
-      );
-      expect(videoHeldSeekSteps(videoHeldSeekFirstStepAt), 1);
-      expect(
-        videoHeldSeekSteps(
-          videoHeldSeekFirstStepAt +
-              videoHeldSeekStepInterval -
-              const Duration(milliseconds: 1),
-        ),
-        1,
-      );
-      expect(
-        videoHeldSeekSteps(
-          videoHeldSeekFirstStepAt + videoHeldSeekStepInterval,
-        ),
-        2,
-      );
-    });
-
-    test('a deliberate hold still steps repeatedly', () {
-      expect(
-        videoHeldSeekSteps(const Duration(milliseconds: 2000)),
-        greaterThan(2),
-      );
     });
   });
 
@@ -133,11 +96,14 @@ void main() {
       );
     });
 
-    test('the hold is armed through the published delay', () {
-      expect(bodyOf('void _startHeldSeek('), contains('_heldSeekDwell'));
+    test('the hold routes through the serialized rate pump', () {
       expect(
-        bodyOf('void _startHeldSeek('),
-        contains('videoHeldSeekStepInterval'),
+        bodyOf('void _startHeldSpeed('),
+        contains('videoHeldSpeedRate(current)'),
+      );
+      expect(
+        bodyOf('Future<void> _pumpHeldSpeedWrites('),
+        contains('setPlaybackSpeed(rate)'),
       );
     });
   });
@@ -395,7 +361,7 @@ void main() {
       }
     });
 
-    testWidgets('a deliberate hold still seeks and stops on release', (
+    testWidgets('a deliberate hold raises the rate and stops on release', (
       tester,
     ) async {
       tester.view.devicePixelRatio = 1;
@@ -427,29 +393,25 @@ void main() {
         );
 
         final hold = await tester.startGesture(const Offset(360, 420));
-        // Long press is recognized inside this frame; the dwell timer starts
-        // there, so the clock has to move again for the first step to be due.
         await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        // The step is awaited onto the platform: let its future settle.
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
         );
         await tester.pump();
         expect(
-          platform.seekPositions,
-          isNotEmpty,
-          reason: 'a deliberate hold must still step the position',
+          platform.playbackSpeeds,
+          contains(2.0),
+          reason: 'a deliberate hold must raise the playback rate',
         );
         await hold.up();
         await tester.pump();
-        final countAfterRelease = platform.seekPositions.length;
+        final countAfterRelease = platform.playbackSpeeds.length;
         await tester.pump(const Duration(seconds: 2));
         expect(
-          platform.seekPositions.length,
+          platform.playbackSpeeds.length,
           countAfterRelease,
-          reason: 'the hold must stop stepping after release',
+          reason: 'the hold must stop writing rates after release',
         );
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(seconds: 6));
@@ -462,7 +424,7 @@ void main() {
     for (final finish in ['cancel', 'dispose']) {
       for (final hasSeeked in [false, true]) {
         final stage = hasSeeked ? 'periodic hold' : 'pending dwell';
-        testWidgets('$finish stops a held seek during $stage', (tester) async {
+        testWidgets('$finish stops a held rate during $stage', (tester) async {
           tester.view.devicePixelRatio = 1;
           tester.view.physicalSize = const Size(390, 844);
           addTearDown(tester.view.resetDevicePixelRatio);
@@ -496,21 +458,22 @@ void main() {
               kLongPressTimeout + const Duration(milliseconds: 60),
             );
             await tester.pump();
-            expect(
-              find.byKey(const ValueKey('video-held-seek-indicator')),
-              findsOneWidget,
-            );
+            expect(find.text('2x'), findsOneWidget);
             if (hasSeeked) {
               await tester.pump(const Duration(milliseconds: 300));
               await tester.runAsync(
                 () => Future<void>.delayed(const Duration(milliseconds: 20)),
               );
               await tester.pump();
-              expect(platform.seekPositions, isNotEmpty);
+              expect(platform.playbackSpeeds, contains(2.0));
             } else {
-              expect(platform.seekPositions, isEmpty);
+              // The speed hold starts at long-press recognition, before any
+              // seek dwell would have elapsed under the old rule; the badge
+              // is the sign the hold is live and no restore is on the wire.
+              expect(find.text('2x'), findsOneWidget);
+              expect(platform.playbackSpeeds, isNotEmpty);
             }
-            final countAtEnd = platform.seekPositions.length;
+            final countAtEnd = platform.playbackSpeeds.length;
 
             if (finish == 'dispose') {
               await tester.pumpWidget(const SizedBox.shrink());
@@ -521,11 +484,16 @@ void main() {
               () => Future<void>.delayed(const Duration(milliseconds: 20)),
             );
             await tester.pump();
-            expect(platform.seekPositions.length, countAtEnd);
-            expect(
-              find.byKey(const ValueKey('video-held-seek-indicator')),
-              findsNothing,
-            );
+            if (finish == 'cancel') {
+              // A cancelled hold still queues the restore of the base rate.
+              expect(platform.playbackSpeeds.last, 1.0);
+            } else {
+              // Disposal writes nothing after unmount: the last native rate
+              // stays whatever was in flight, and the badge died with the
+              // route.
+              expect(platform.playbackSpeeds.length, countAtEnd);
+            }
+            expect(find.text('2x'), findsNothing);
             expect(tester.takeException(), isNull);
 
             await tester.pumpWidget(const SizedBox.shrink());

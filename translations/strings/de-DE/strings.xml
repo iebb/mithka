@@ -3771,6 +3771,7 @@
     <string name="videoPlayerPlaying">Wird wiedergegeben</string>
     <string name="videoPlayerSeekBackwardTenSeconds">10 Sekunden zurück</string>
     <string name="videoPlayerSeekForwardTenSeconds">10 Sekunden vor</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Gedrückt halten für schnelleres Abspielen</string>
     <string name="videoPlayerStreamInspector">Stream-Inspektor</string>
     <string name="videoPlayerVideoNumber">Video {value1}</string>
     <string name="videoPlayerVideoZoom">Videozoom</string>

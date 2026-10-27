@@ -3771,6 +3771,7 @@
     <string name="videoPlayerPlaying">En cours de lecture</string>
     <string name="videoPlayerSeekBackwardTenSeconds">Reculer de 10 secondes</string>
     <string name="videoPlayerSeekForwardTenSeconds">Avancer de 10 secondes</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Maintenir pour accélérer la lecture</string>
     <string name="videoPlayerStreamInspector">Inspecteur du flux</string>
     <string name="videoPlayerVideoNumber">Vidéo {value1}</string>
     <string name="videoPlayerVideoZoom">Zoom vidéo</string>

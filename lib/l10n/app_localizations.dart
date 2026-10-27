@@ -4351,6 +4351,7 @@ abstract final class AppStringKeys {
       'videoPlayerSeekBackwardTenSeconds';
   static const videoPlayerSeekForwardTenSeconds =
       'videoPlayerSeekForwardTenSeconds';
+  static const videoPlayerHoldPlaybackSpeed = 'videoPlayerHoldPlaybackSpeed';
   static const videoPlayerStreamInspector = 'videoPlayerStreamInspector';
   static const videoPlayerVideoNumber = 'videoPlayerVideoNumber';
   static const videoPlayerVideoZoom = 'videoPlayerVideoZoom';
