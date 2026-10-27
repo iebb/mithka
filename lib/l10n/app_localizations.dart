@@ -311,6 +311,8 @@ abstract final class AppStringKeys {
   static const accountBackupTitle = 'accountBackupTitle';
   static const accountBackupUnavailable = 'accountBackupUnavailable';
   static const accountBackupUserId = 'accountBackupUserId';
+  static const accountPickerMessage = 'accountPickerMessage';
+  static const accountPickerTitle = 'accountPickerTitle';
   static const appIconAstronaut = 'appIconAstronaut';
   static const appIconCoffee = 'appIconCoffee';
   static const appIconCrown = 'appIconCrown';

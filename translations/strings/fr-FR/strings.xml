@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">Sur cet appareil</string>
     <string name="accountBackupTitle">Sauvegarde des comptes</string>
     <string name="accountBackupUnavailable">La sauvegarde des comptes n’est pas disponible sur cet appareil ou cette distribution.</string>
-    <string name="accountBackupUserId">ID utilisateur : {value1}</string>
+        <string name="accountPickerTitle">Choisir un compte</string>
+    <string name="accountPickerMessage">Ce lien appartient à l’un de vos comptes. Choisissez dans lequel l’ouvrir.</string>
+<string name="accountBackupUserId">ID utilisateur : {value1}</string>
     <string name="accountSecurityANewCodeWasSent">Un nouveau code a été envoyé.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Votre compte Telegram et vos contacts seront transférés vers le nouveau numéro.</string>
     <string name="accountSecurityAccountInactivity">Inactivité du compte</string>

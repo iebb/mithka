@@ -52,6 +52,7 @@ import '../theme/app_theme.dart';
 import '../theme/telegram_cloud_theme.dart';
 import '../theme/theme_controller.dart';
 import '../update/update_checker.dart';
+import 'account_picker_sheet.dart';
 import 'adaptive_split_layout.dart';
 import 'app_navigator.dart';
 import 'bottom_bar_layout.dart';
@@ -489,10 +490,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     if (!mounted) return;
     final request = _chatDeepLinks?.consumePending();
     if (request == null) return;
-    _openMessageDeepLink(request);
+    unawaited(_openMessageDeepLink(request));
   }
 
-  void _openMessageDeepLink(ChatDeepLinkRequest request) {
+  Future<void> _openMessageDeepLink(ChatDeepLinkRequest request) async {
     final accounts = context.read<AccountStore>();
     final requestedSlot = resolveDeepLinkAccountSlot(
       requestedSlot: request.accountSlot,
@@ -503,8 +504,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           (slot: account.slot, userId: account.userId),
       ],
     );
-    // Nothing to place the chat id against safely; opening it here would show
-    // a different conversation with the same id.
+    // Nothing to place the chat id against automatically. Opening it against
+    // the active account would show a different conversation with the same
+    // id, but dropping the request silently reads as a dead tap — so when the
+    // ambiguity is only WHICH signed-in account, ask. (A link naming an
+    // account that is not signed in has nothing to offer the user.)
+    if (requestedSlot == null &&
+        request.accountSlot == null &&
+        request.accountUserId == null &&
+        accounts.summaries.length > 1) {
+      final picked = await showAccountPickerDialog(
+        context,
+        accounts: accounts.summaries,
+        activeSlot: accounts.activeSlot,
+      );
+      if (!mounted || picked == null) return;
+      await _openMessageDeepLink(request.scopedToAccountSlot(picked));
+      return;
+    }
     if (requestedSlot == null) return;
     if (requestedSlot != accounts.activeSlot) {
       accounts.switchTo(requestedSlot, context.read<AuthManager>());
