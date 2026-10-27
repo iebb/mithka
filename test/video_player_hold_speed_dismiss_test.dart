@@ -226,6 +226,84 @@ void main() {
       await tester.pump();
     }
 
+    testWidgets('a tick reporting the transient rate between release and '
+        'settlement cannot poison the remembered base', (tester) async {
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = await pumpPlayer(tester);
+      try {
+        // The held request and its restore are both parked on the wire.
+        platform.holdPlaybackSpeed = true;
+        platform.blockPlaybackSpeed(2.0);
+        platform.blockPlaybackSpeed(1.0);
+        final hold = await tester.startGesture(const Offset(195, 420));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
+        await tester.pump();
+        expect(platform.playbackSpeeds.last, 2.0);
+
+        // Release: the badge is gone but the held write and the restore are
+        // both still in flight — held work is outstanding.
+        await hold.up();
+        await tester.pump();
+        expect(find.text('2x'), findsNothing);
+
+        // An ordinary buffering tick lands in the gap: the controller's value
+        // still carries the 2x the held write recorded when it was issued,
+        // so the listener reads a transient 2x while the restore is parked.
+        // The old gate only checked the badge flag, so this tick overwrote
+        // the remembered base with 2x.
+        platform.emitBufferingTick();
+        await tester.pump();
+        expect(
+          videoPlayerBaseSpeedForTesting,
+          1.0,
+          reason:
+              'the remembered base must survive a transient-rate tick '
+              'while held work is still outstanding',
+        );
+
+        // The held rate settles, then the restore; the final native rate and
+        // the remembered base are the original ones.
+        platform.releasePlaybackSpeed(2.0);
+        await flushNative(tester);
+        expect(platform.nativeRates, [2.0]);
+        expect(platform.pendingPlaybackSpeeds(1.0), 1);
+        expect(
+          videoPlayerBaseSpeedForTesting,
+          1.0,
+          reason:
+              'the remembered base must survive a transient-rate tick '
+              'while the restore is still pending',
+        );
+
+        // The restore settles; the final native rate and the remembered base
+        // are the original ones.
+        platform.releasePlaybackSpeed(1.0);
+        await flushNative(tester);
+        expect(platform.nativeRates.last, 1.0);
+        expect(debugVideoPlayerBaseSpeed, 1.0);
+        expect(videoPlayerBaseSpeedForTesting, 1.0);
+
+        // A re-hold after everything settled uses the untainted base, not a
+        // doubled one.
+        platform.holdPlaybackSpeed = false;
+        final secondHold = await tester.startGesture(const Offset(195, 420));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
+        await tester.pump();
+        expect(
+          platform.playbackSpeeds.last,
+          2.0,
+          reason: 'a fresh hold doubles the untouched base, not 2x',
+        );
+        expect(find.text('2x'), findsOneWidget);
+        await secondHold.up();
+        await settle(tester);
+      } finally {
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+        platform.playbackSpeedBarriers.clear();
+      }
+    });
+
     testWidgets('release while the held rate is pending ends at the base rate, '
         'held first then restore', (tester) async {
       final previousPlatform = VideoPlayerPlatform.instance;
@@ -1021,6 +1099,18 @@ class _FakeVideoPlatform extends VideoPlayerPlatform {
   /// Rates the test still holds a completion for, oldest first.
   int pendingPlaybackSpeeds(double rate) =>
       playbackSpeedBarriers[rate]?.where((c) => !c.isCompleted).length ?? 0;
+
+  /// Delivers an ordinary buffering notification, exactly the way a real
+  /// controller reports position/buffering ticks while a rate write is on
+  /// the wire: the listener reads the whole value, including the
+  /// playbackSpeed the last issued write already recorded.
+  void emitBufferingTick() {
+    for (final controller in _events.values) {
+      if (!controller.isClosed) {
+        controller.add(VideoEvent(eventType: VideoEventType.bufferingStart));
+      }
+    }
+  }
 
   @override
   Future<void> init() async {}

@@ -1523,7 +1523,17 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     if (value != null) {
       // While a hold is active the controller still reports the base rate
       // until the host applies the held one; keep the base for the restore.
-      if (!_heldSpeedActive) {
+      // The same guard covers the windows after release/cancel: the pump may
+      // still be settling a held or restore write on the wire, so an ordinary
+      // position/buffering tick reporting the transient rate must not poison
+      // the remembered base (a re-hold would double it and restore the wrong
+      // rate). Only once no held work is outstanding does the controller's
+      // reported rate become the truth again.
+      final heldWorkOutstanding =
+          _heldSpeedActive ||
+          _heldSpeedWriteInFlight ||
+          _heldSpeedDesiredRate != null;
+      if (!heldWorkOutstanding) {
         _speed = value.playbackSpeed;
         if (value.playbackSpeed.isFinite && value.playbackSpeed > 0) {
           _heldSpeedBaseRate = value.playbackSpeed;
