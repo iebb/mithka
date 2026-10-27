@@ -40,12 +40,14 @@ void main() {
             '@type': 'user',
             'id': 1,
             'first_name': 'Alpha',
+            'phone_number': '+15550100',
             'type': {'@type': 'userTypeRegular'},
           },
           _ => {
             '@type': 'user',
             'id': 2,
             'first_name': 'Beta',
+            'phone_number': '+15550101',
             'type': {'@type': 'userTypeRegular'},
           },
         },
@@ -158,6 +160,68 @@ void main() {
       replayed,
       isNull,
       reason: 'the replay is consumed by the shell; nothing may linger',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
+
+  testWidgets('the picker honours the hide-phone policy', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    // Policy on: the account rows must not expose either phone number.
+    theme.hideSidebarPhone = true;
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(
+      chatId: -10042,
+      title: 'Target chat',
+      messageId: 7 << 20,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final dialog = find.byKey(const ValueKey('account-picker-dialog'));
+    expect(dialog, findsOneWidget);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Alpha')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.textContaining('5550100')),
+      findsNothing,
+      reason: 'a hidden phone must not be rendered by the picker',
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('+15550101')),
+      findsNothing,
+      reason: 'a hidden phone must not be rendered by the picker',
+    );
+
+    // Policy off: the phone subtitle is visible again.
+    theme.hideSidebarPhone = false;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.descendant(of: dialog, matching: find.textContaining('5550100')),
+      findsOneWidget,
     );
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 6));

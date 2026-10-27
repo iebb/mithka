@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
 import '../components/app_interactive_surface.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 /// Lets the user pick which signed-in account an account-less deep link
 /// belongs to, instead of the shell silently dropping the request.
@@ -122,6 +124,7 @@ class _AccountPickerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final hidePhone = context.watch<ThemeController>().hideSidebarPhone;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: AppInteractiveSurface(
@@ -159,7 +162,11 @@ class _AccountPickerRow extends StatelessWidget {
                             : FontWeight.w500,
                       ),
                     ),
-                    if (account.phone.isNotEmpty)
+                    // The same hide-phone policy the other account
+                    // surfaces honour: when the user asked for the phone to
+                    // stay hidden, no phone text (and no semantics node for
+                    // it) leaves this sheet either.
+                    if (!hidePhone && account.phone.isNotEmpty)
                       Text(
                         account.phone,
                         maxLines: 1,
