@@ -688,11 +688,18 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
     needs: prepare
     runs-on: ubuntu-latest
+    # The untrusted toolchain container never needs to mutate the repository:
+    # it only produces artifacts. Publication credentials stay exclusive to
+    # the release job below.
+    permissions:
+      contents: read
     container:
       # Ships Ubuntu 20.04 with the HarmonyOS SDK (API 22), hvigor, ohpm, and
       # node 18. Its bundled /opt/flutter is an older 3.35.8-ohos fork that
       # must not be used; the job installs the 3.44.9+ohos canary below.
-      image: ghcr.io/niuhuan/harmony-next-flutter-pipeline-docker/image:latest
+      # Pinned by digest: a mutable `latest` tag could repoint under this
+      # workflow without review; the digest is the reviewed toolchain.
+      image: ghcr.io/niuhuan/harmony-next-flutter-pipeline-docker/image@sha256:2ec15fafd8f57ff74ea58e4ca934266eb11409169d39ef99b038be07db54e2a9
       options: --user root
     timeout-minutes: 90
     env:
@@ -716,6 +723,11 @@ jobs:
           node --version
 
       - uses: actions/checkout@v7
+        with:
+          # The toolchain runs inside an untrusted third-party container:
+          # never leave repository credentials where its scripts can read
+          # them.
+          persist-credentials: false
 
       - name: Install python3
         run: |
@@ -821,20 +833,39 @@ jobs:
           )
           text = text.replace(anchor, anchor + aliases, 1)
 
-          # With the real module gone these two calls can no longer be made.
-          # The sdkApiVersion guard above already skips autofill below 26.
+          # With the real module gone these two calls can no longer be made
+          # at compile time. The replacement preserves the runtime SDK
+          # distinction: below 26 the guarded path already returned, so this
+          # arm only runs on >= 26 runtimes — where silently failing would
+          # hide a lost capability, so the stub reports the failure loudly
+          # instead (the surrounding helper logs it; the callback still gets
+          # its failure so the Flutter side degrades the same way).
           text, n_fill = re.subn(
               r"autoFillManager\.requestAutoFill\(uiContext, fillRequest, callback\);",
-              "// API 26 autoFillManager unavailable on API 22 SDKs; guarded above.\n"
+              "// API 26 autoFillManager unavailable on the CI API 22 SDK; "
+              "runtime >= 26 reaches here only through the reviewed shim.\n"
+              "        hilog.error(0x0, TAG, 'requestAutoFill shim: "
+              "autoFillManager unavailable; failing loudly');\n"
               "        callback.onFailure({ errCode: -1 });",
               text,
           )
           text, n_save = re.subn(
               r"autoFillManager\.requestAutoSave\(uiContext, saveRequest, napiCallback\);",
-              "// API 26 autoFillManager unavailable on API 22 SDKs; guarded above.\n"
+              "// API 26 autoFillManager unavailable on the CI API 22 SDK; "
+              "runtime >= 26 reaches here only through the reviewed shim.\n"
+              "        hilog.error(0x0, TAG, 'requestAutoSave shim: "
+              "autoFillManager unavailable; failing loudly');\n"
               "        napiCallback.onFailure();",
               text,
           )
+          # The shim's loud failure needs hilog; ensure the import exists.
+          if not re.search(r"import\s+\{\s*hilog\s*\}", text):
+              text = text.replace(
+                  "const TAG = 'OhosAutoFillHelper';",
+                  "import { hilog } from '@kit.PerformanceAnalysisKit';\n"
+                  "const TAG = 'OhosAutoFillHelper';",
+                  1,
+              )
 
           for name in (
               "AutoFillType",
@@ -996,19 +1027,25 @@ jobs:
       - name: Build the ohos release hap
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        # The container's default shell is dash; the status capture below
+        # needs bash (PIPESTATUS).
+        shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           unsigned="ohos/entry/build/default/outputs/default/entry-default-unsigned.hap"
           log="$(mktemp)"
           status=0
+          # errexit would kill the script at the pipeline, so the exit status
+          # is captured here and classified below instead: this is the only
+          # way the signing-only tolerance can see a non-zero status at all.
           flutter build hap --target-platform ohos-arm64 --release \
             --build-name="${{ needs.prepare.outputs.app_version }}" \
             --build-number="${{ needs.prepare.outputs.version_code }}" \
             --dart-define="I_DONT_FUCKING_CARE_ABOUT_TOS=false" \
             --dart-define="GIT_COMMIT=${{ needs.prepare.outputs.short_sha }}" \
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" \
-            --dart-define="SENTRY_DSN=$SENTRY_DSN" 2>&1 | tee "$log"
-          status=${PIPESTATUS[0]}
+            --dart-define="SENTRY_DSN=$SENTRY_DSN" 2>&1 | tee "$log" || status=$?
+          status=${PIPESTATUS[0]:-$status}
           if [ "$status" -eq 0 ]; then
             exit 0
           fi
@@ -1035,75 +1072,8 @@ jobs:
           set -euo pipefail
           hap="ohos/entry/build/default/outputs/default/entry-default-unsigned.hap"
           test -s "$hap"
-          python3 - "$hap" <<'PY'
-          import hashlib
-          import json
-          import sys
-          import zipfile
-          from pathlib import Path
-
-          hap = Path(sys.argv[1])
-          manifest = json.loads(
-              Path("scripts/tdjson-manifest.json").read_text(encoding="utf-8")
-          )
-          asset = manifest["assets"]["tdjson-ohos-arm64.zip"]
-          member = asset["members"]["arm64-v8a/libtdjson.so"]
-          hap_member = "libs/arm64-v8a/libtdjson.so"
-
-          with zipfile.ZipFile(hap) as bundle:
-              names = bundle.namelist()
-              for required in ("pack.info", "ets/modules.abc", hap_member):
-                  if required not in names:
-                      raise SystemExit(
-                          "hap payload is missing a required entry: "
-                          f"{required} (have {sorted(names)[:20]})"
-                      )
-              info = bundle.getinfo(hap_member)
-              if info.file_size != member["size"]:
-                  raise SystemExit(
-                      f"{hap_member} size {info.file_size} does not match the "
-                      f"pinned {member['size']} bytes"
-                  )
-              with bundle.open(hap_member) as stream:
-                  digest = hashlib.sha256()
-                  while chunk := stream.read(1024 * 1024):
-                      digest.update(chunk)
-              if digest.hexdigest() != member["sha256"]:
-                  raise SystemExit(
-                      f"{hap_member} does not match the pinned manifest digest"
-                  )
-
-          installed = Path("ohos/entry/libs/arm64-v8a/libtdjson.so").read_bytes()
-          with zipfile.ZipFile(hap) as bundle:
-              packaged = bundle.read(hap_member)
-          if installed != packaged:
-              raise SystemExit(
-                  "packaged libtdjson.so differs from the installed pinned bytes"
-              )
-
-          # Loader/exports boundary: the packaged ELF must be an arm64 shared
-          # object whose dynamic symbol table exposes the td_json_client entry
-          # points the Dart adapter resolves.
-          elf = packaged[:20]
-          if elf[:4] != b"\x7fELF" or elf[4] != 2 or elf[5] != 1 or elf[18] != 0xB7:
-              raise SystemExit("packaged libtdjson.so is not an arm64 ELF")
-          for symbol in (
-              "td_json_client_create",
-              "td_json_client_send",
-              "td_json_client_receive",
-              "td_json_client_execute",
-              "td_json_client_destroy",
-          ):
-              if symbol.encode() not in packaged:
-                  raise SystemExit(
-                      f"packaged libtdjson.so lacks the {symbol} entry point"
-                  )
-          print(
-              f"hap payload verified ({len(names)} entries); "
-              f"{hap_member} matches the pinned manifest entry from release "
-              f"{asset.get('release_tag', manifest['release_tag'])}"
-          )
-          PY
+          python3 scripts/verify_ohos_hap_payload.py "$hap" \
+            --installed ohos/entry/libs/arm64-v8a/libtdjson.so
           mkdir -p dist
           cp "$hap" "dist/mithka-${ARTIFACT_LABEL}-ohos-arm64.hap"
           ls -lh dist
@@ -1118,7 +1088,12 @@ jobs:
   release:
     name: Publish GitHub Release
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
-    needs: [prepare, build, build-desktop, build-ohos]
+    # build-ohos is deliberately NOT a hard dependency yet: its assembled
+    # path is still being validated, and a failure there must not block the
+    # established platforms' releases. The ohos hap artifact is simply absent
+    # from the release until the job goes green; flip this to a hard need
+    # once the validation evidence lands.
+    needs: [prepare, build, build-desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
