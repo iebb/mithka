@@ -29,6 +29,27 @@
             "actions": [
               "action.system.home"
             ]
+          },
+          {
+            // External deep links: the tg scheme (tg://resolve?domain=…)
+            // plus the https universal-link host, the same pair Android
+            // declares. Without these skills the ability can never be a
+            // launch target for a link and app_links sees nothing to deliver.
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "tg"
+              },
+              {
+                "scheme": "https",
+                "host": "t.me"
+              }
+            ]
           }
         ]
       }
