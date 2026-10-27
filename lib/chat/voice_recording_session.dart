@@ -72,7 +72,57 @@ class SharedVoiceRecordingAudioSession implements VoiceRecordingAudioSession {
     // recorder gets no input) until the session is activated. Activating here
     // rather than relying on the recorder also surfaces an occupied session
     // as a capture error instead of a silently empty recording.
-    await session.setActive(true);
+    //
+    // Activation can refuse (returns false) or throw — an interrupted phone
+    // call, another app holding the input, a route change mid-activation.
+    // Either way the configuration was already changed, so the previous
+    // playback recipe is restored before the failure surfaces: ordinary
+    // release cannot roll back, because the caller only keeps the session
+    // after preparation succeeds. A rollback failure is swallowed (the
+    // original failure is the one to report; a half-restored playback config
+    // self-heals on the next playback's own configure).
+    await activateConfiguredSession(
+      activate: () => session.setActive(true),
+      restore: () => session.configure(const AudioSessionConfiguration.music()),
+    );
+  }
+
+  /// The activation decision table shared by the real session and tests:
+  /// activates, treats a refused (`false`) or thrown activation as failure,
+  /// and restores the playback configuration before that failure surfaces.
+  @visibleForTesting
+  static Future<void> activateConfiguredSession({
+    required Future<bool> Function() activate,
+    required Future<void> Function() restore,
+  }) async {
+    final bool activated;
+    try {
+      activated = await activate();
+    } catch (error) {
+      try {
+        await restore();
+      } catch (_) {
+        // The original failure is the one to report; a half-restored
+        // playback config self-heals on the next playback's configure.
+      }
+      rethrow;
+    }
+    if (!activated) {
+      try {
+        await restore();
+      } catch (_) {
+        // The refusal is the failure to report.
+      }
+      throw StateError('audio session activation was refused');
+    }
+  }
+
+  /// Reconfigures the shared session back to the playback recipe the rest of
+  /// the app expects, without touching the active flag.
+  @visibleForTesting
+  static Future<void> restorePlaybackConfiguration() async {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
   }
 
   @override
@@ -80,7 +130,7 @@ class SharedVoiceRecordingAudioSession implements VoiceRecordingAudioSession {
     final session = await AudioSession.instance;
     // Restore the playback recipe the rest of the app expects, so a later
     // voice note plays without reconfiguring first.
-    await session.configure(const AudioSessionConfiguration.music());
+    await SharedVoiceRecordingAudioSession.restorePlaybackConfiguration();
     await session.setActive(
       false,
       avAudioSessionSetActiveOptions:

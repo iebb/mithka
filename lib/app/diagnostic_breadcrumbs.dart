@@ -102,9 +102,12 @@ abstract final class DiagnosticBreadcrumbs {
     required Object error,
     String? codec,
   }) {
+    // Only the stage and the exception TYPE reach the console too: the
+    // platform message can carry private paths or account content, and a
+    // debugPrint is not confined to debug builds.
     debugPrint(
       'Voice recording failed at $stage'
-      '${codec == null ? '' : ' ($codec)'}: $error',
+      '${codec == null ? '' : ' ($codec)'}: ${error.runtimeType}',
     );
     if (!sentryEnabled) return;
     unawaited(
