@@ -1367,6 +1367,7 @@
     <string name="composerMediaSelectionLimit">Wähle bis zu {value1} Fotos oder Videos aus.</string>
     <string name="composerMessageExceedsRichTextLimit">Diese Nachricht überschreitet die Rich-Text-Grenze von 32768 Zeichen.</string>
     <string name="composerMicrophonePermissionRequired">Mikrofonberechtigung erforderlich</string>
+    <string name="composerMicrophonePermissionRestricted">Das Mikrofon ist systemweit gesperrt — erlaube es in den Systemeinstellungen</string>
     <string name="composerMicrophonePermissionSettings">Erlaube den Mikrofonzugriff in den Systemeinstellungen</string>
     <string name="composerNoEmoji">Keine emoji vorhanden</string>
     <string name="composerNoGifs">Keine gespeicherten GIFs</string>

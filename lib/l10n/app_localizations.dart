@@ -1361,6 +1361,8 @@ abstract final class AppStringKeys {
       'composerMessageExceedsRichTextLimit';
   static const composerMicrophonePermissionRequired =
       'composerMicrophonePermissionRequired';
+  static const composerMicrophonePermissionRestricted =
+      'composerMicrophonePermissionRestricted';
   static const composerMicrophonePermissionSettings =
       'composerMicrophonePermissionSettings';
   static const composerNoEmoji = 'composerNoEmoji';

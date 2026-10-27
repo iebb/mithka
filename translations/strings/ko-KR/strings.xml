@@ -1360,6 +1360,7 @@
     <string name="composerMediaSelectionLimit">사진 또는 동영상은 최대 {value1}개까지 선택할 수 있습니다.</string>
     <string name="composerMessageExceedsRichTextLimit">이 메시지는 서식 있는 메시지의 32768자 제한을 초과합니다.</string>
     <string name="composerMicrophonePermissionRequired">마이크 권한이 필요합니다</string>
+    <string name="composerMicrophonePermissionRestricted">시스템에서 마이크가 차단되어 있습니다. 시스템 설정에서 허용해 주세요</string>
     <string name="composerMicrophonePermissionSettings">시스템 설정에서 마이크 권한을 허용해 주세요</string>
     <string name="composerNoEmoji">emoji가 없습니다</string>
     <string name="composerNoGifs">저장된 GIF가 없습니다</string>

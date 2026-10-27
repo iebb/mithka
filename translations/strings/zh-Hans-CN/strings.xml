@@ -1360,6 +1360,7 @@
     <string name="composerMediaSelectionLimit">最多选择 {value1} 张照片或视频。</string>
     <string name="composerMessageExceedsRichTextLimit">该消息超过富文本消息的 32768 字符限制。</string>
     <string name="composerMicrophonePermissionRequired">需要麦克风权限</string>
+    <string name="composerMicrophonePermissionRestricted">麦克风被系统限制，请在系统设置中允许</string>
     <string name="composerMicrophonePermissionSettings">请在系统设置中允许麦克风权限</string>
     <string name="composerNoEmoji">暂无表情</string>
     <string name="composerNoGifs">暂无已保存的 GIF</string>

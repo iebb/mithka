@@ -1367,6 +1367,7 @@
     <string name="composerMediaSelectionLimit">Selecciona hasta {value1} fotos o vídeos.</string>
     <string name="composerMessageExceedsRichTextLimit">Este mensaje supera el límite de 32768 caracteres de los mensajes enriquecidos.</string>
     <string name="composerMicrophonePermissionRequired">Se necesita permiso para usar el micrófono</string>
+    <string name="composerMicrophonePermissionRestricted">El sistema ha bloqueado el micrófono; permite el acceso en los ajustes</string>
     <string name="composerMicrophonePermissionSettings">Permite el acceso al micrófono en los ajustes del sistema</string>
     <string name="composerNoEmoji">No hay emoji</string>
     <string name="composerNoGifs">No hay GIF guardados</string>

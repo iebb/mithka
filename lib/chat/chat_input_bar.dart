@@ -27,6 +27,7 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart' as desktop_record;
 
 import '../app/desktop_utility_window.dart';
+import '../app/diagnostic_breadcrumbs.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -100,8 +101,34 @@ import 'video_note_preview_view.dart';
 import 'video_note_recorder_view.dart';
 import 'voice_note_preview_view.dart';
 import 'voice_recording_clock.dart';
+import 'voice_recording_session.dart';
 
 enum _Panel { none, function, emoji, sticker, voice, format }
+
+/// A desktop microphone the system refused to hand to this app.
+///
+/// Not a recorder exception: `record` reports it as `hasPermission() == false`,
+/// and on macOS the system prompt never appears again once it was refused.
+class DesktopMicrophoneRefused implements Exception {
+  const DesktopMicrophoneRefused();
+
+  @override
+  String toString() => 'desktop microphone refused';
+}
+
+/// A preparation failure whose cause was already reported to the user.
+///
+/// Opening the voice panel prepares the recorder in the background, and every
+/// press waits on that same preparation. Without this marker the open's single
+/// prompt would be repeated verbatim on each press until the panel is reopened.
+class _ReportedCaptureFailure implements Exception {
+  const _ReportedCaptureFailure(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'reported capture failure: $cause';
+}
 
 /// The kind of media the unified composer panel is showing. Both
 /// `_Panel.emoji` and `_Panel.sticker` render the same unified media panel;
@@ -497,6 +524,9 @@ class ChatInputBar extends StatefulWidget {
     this.desktopVoiceRecorderFactory,
     this.mobileVoiceRecorderFactory,
     this.microphonePermissionForTesting,
+    this.voiceRecordingSession,
+    this.openAppSettingsForTesting,
+    this.onRecordingIssueForTesting,
     this.desktopScreenshotCapture,
     this.desktopClipboardAttachmentReader,
     this.desktopUtilityWindowLauncher,
@@ -533,6 +563,27 @@ class ChatInputBar extends StatefulWidget {
   final FlutterSoundRecorder Function()? mobileVoiceRecorderFactory;
   @visibleForTesting
   final Future<PermissionStatus> Function()? microphonePermissionForTesting;
+
+  /// Owns the shared audio session while the mobile recorder captures.
+  ///
+  /// Defaults to [SharedVoiceRecordingAudioSession]; a test passes a recorder
+  /// that throws the way an occupied native session does.
+  @visibleForTesting
+  final VoiceRecordingAudioSession? voiceRecordingSession;
+
+  /// Opens the platform's app-settings page for the microphone prompt.
+  ///
+  /// Defaults to `openAppSettings`; injectable so a widget test can assert the
+  /// prompt routed there without a live platform channel.
+  @visibleForTesting
+  final Future<bool> Function()? openAppSettingsForTesting;
+
+  /// Observes each user-facing recording problem, with the stage it came from.
+  ///
+  /// A toast is inserted into the root overlay, so counting renders cannot tell
+  /// one report from two; this seam pins that each tap reports exactly once.
+  @visibleForTesting
+  final void Function(String stage, Object? error)? onRecordingIssueForTesting;
   @visibleForTesting
   final DesktopScreenshotCapture? desktopScreenshotCapture;
   @visibleForTesting
@@ -631,6 +682,19 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   // Mobile uses flutter_sound/Opus; all native desktops use record/AAC.
   FlutterSoundRecorder? _recorder;
+
+  /// The category this composer's capture put on the shared audio session.
+  ///
+  /// Non-null only while a capture owns it, so releasing is idempotent even
+  /// when a stop, a cancel and dispose all run for one recording.
+  VoiceRecordingAudioSession? _captureSession;
+
+  /// The cause of the last preparation that could not get the microphone.
+  ///
+  /// The panel opening prepares once and every press waits on that same
+  /// preparation, so without this a single failure would report itself again on
+  /// each press. Opening the panel again clears it and retries.
+  Object? _recorderPreparationFailure;
   desktop_record.AudioRecorder? _desktopRecorder;
   Future<void>? _recorderPreparation;
   Future<void>? _desktopRecorderPreparation;
@@ -1883,11 +1947,21 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     _setPanel(opening ? _Panel.voice : _Panel.none);
     if (opening) {
+      // A new opening is a new attempt: whatever refused the microphone last
+      // time can be retried, and its prompt is due once for this opening.
+      _recorderPreparationFailure = null;
       final testingHook = widget.onVoicePanelOpenedForTesting;
       if (testingHook != null) {
         testingHook();
       } else {
-        unawaited(_prepareRecorder());
+        // A preparation nobody waits on must still handle its failure: the
+        // open reports it once, and the flag keeps every press in this opening
+        // from reporting the same cause again.
+        unawaited(
+          _prepareRecorder().catchError((Object error) {
+            _recorderPreparationFailure = error;
+          }),
+        );
       }
       if (_usesNativeDesktopComposer(context)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1905,6 +1979,13 @@ class _ChatInputBarState extends State<ChatInputBar>
       return;
     }
     if (_recorder != null) return;
+    // Reopening the panel is the retry. Until then, one failed preparation
+    // answers every press: the session cannot be claimed either way, and a
+    // second attempt would report the same failure twice for one tap.
+    final failed = _recorderPreparationFailure;
+    if (failed != null) {
+      throw _ReportedCaptureFailure(failed);
+    }
     final pending = _recorderPreparation;
     if (pending != null) return pending;
     late final Future<void> preparation;
@@ -1915,6 +1996,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     });
     _recorderPreparation = preparation;
     await preparation;
+    final failure = _recorderPreparationFailure;
+    if (failure != null) throw _ReportedCaptureFailure(failure);
   }
 
   Future<void> _createMobileRecorder() async {
@@ -1926,20 +2009,13 @@ class _ChatInputBarState extends State<ChatInputBar>
           : await Permission.microphone.status;
       if (permission == null &&
           !status.isGranted &&
-          !status.isPermanentlyDenied) {
+          !status.isPermanentlyDenied &&
+          !status.isRestricted) {
         status = await Permission.microphone.request();
       }
       if (_voiceDisposed || !mounted) return;
       if (!status.isGranted) {
-        showToast(
-          context,
-          AppStrings.t(
-            status.isPermanentlyDenied
-                ? AppStringKeys.composerMicrophonePermissionSettings
-                : AppStringKeys.composerMicrophonePermissionRequired,
-          ),
-        );
-        if (status.isPermanentlyDenied) unawaited(openAppSettings());
+        _reportMicrophonePermission(status);
         return;
       }
       recorder =
@@ -1952,16 +2028,91 @@ class _ChatInputBarState extends State<ChatInputBar>
         return;
       }
       setState(() => _recorder = recorder);
-    } catch (_) {
+    } catch (error) {
+      await _releaseCaptureSession();
       try {
         await recorder?.closeRecorder();
       } catch (_) {}
-      _showRecordingError();
+      _recorderPreparationFailure = error;
+      _showRecordingError(error: error, stage: 'open');
     }
+  }
+
+  /// Claims the capture audio session for this composer.
+  ///
+  /// Failures propagate: a session that cannot be claimed is exactly the state
+  /// that used to end in an unexplained "could not record" toast, so the caller
+  /// reports it instead of opening a recorder that captures nothing. The mobile
+  /// recorder and this session share one platform decision, so a composer
+  /// already using the desktop recorder never touches the session.
+  Future<void> _prepareCaptureSession() async {
+    if (_captureSession != null) return;
+    if (_voiceUsesDesktopRecorder) return;
+    final session =
+        widget.voiceRecordingSession ??
+        (composerUsesMobileVoiceSession(Theme.of(context).platform)
+            ? const SharedVoiceRecordingAudioSession()
+            : null);
+    if (session == null) return;
+    await session.prepareForCapture();
+    _captureSession = session;
+  }
+
+  /// Hands the shared session back to playback, once per capture.
+  Future<void> _releaseCaptureSession() async {
+    final session = _captureSession;
+    if (session == null) return;
+    _captureSession = null;
+    try {
+      await session.releaseAfterCapture();
+    } catch (_) {}
+  }
+
+  /// Tells the user why the microphone is unavailable, in terms they can act on.
+  ///
+  /// `restricted` is not the same refusal as `permanentlyDenied`: on iOS it is a
+  /// system-wide microphone lock (Screen Time, MDM, or the OS microphone switch)
+  /// that the app cannot prompt through, and it used to end in the "permission
+  /// required" toast with no route to fix it.
+  void _reportMicrophonePermission(PermissionStatus status) {
+    widget.onRecordingIssueForTesting?.call('permission', status);
+    if (!mounted || _voiceDisposed) return;
+    final restricted = status.isRestricted;
+    showToast(
+      context,
+      AppStrings.t(
+        restricted
+            ? AppStringKeys.composerMicrophonePermissionRestricted
+            : status.isPermanentlyDenied
+            ? AppStringKeys.composerMicrophonePermissionSettings
+            : AppStringKeys.composerMicrophonePermissionRequired,
+      ),
+    );
+    if (status.isPermanentlyDenied || restricted) {
+      unawaited(_openMicrophoneSettings());
+    }
+    // Any refusal answers this opening. A `request()` on an already-refused
+    // permission never shows a sheet, so pressing again would only repeat the
+    // same toast; the retries are reopening the panel, returning from Settings,
+    // or granting the permission while the app was away.
+    _recorderPreparationFailure ??= _ReportedCaptureFailure(status.name);
+  }
+
+  Future<void> _openMicrophoneSettings() async {
+    final open = widget.openAppSettingsForTesting ?? openAppSettings;
+    try {
+      await open();
+    } catch (_) {}
   }
 
   Future<void> _prepareDesktopRecorder() async {
     if (_desktopRecorder != null) return;
+    // The panel opening prepares once and every press waits on that same
+    // preparation, so a refusal must answer the whole opening.
+    final failed = _recorderPreparationFailure;
+    if (failed != null) {
+      throw _ReportedCaptureFailure(failed);
+    }
     final pending = _desktopRecorderPreparation;
     if (pending != null) {
       await pending;
@@ -1984,18 +2135,27 @@ class _ChatInputBarState extends State<ChatInputBar>
     bool allowed;
     try {
       allowed = await recorder.hasPermission();
-    } catch (_) {
+    } catch (error) {
+      // A platform that cannot answer the permission query is not the same
+      // failure as a denied microphone; keep the cause instead of reporting a
+      // generic capture error.
       await recorder.dispose();
-      _showRecordingError();
+      _showRecordingError(error: error, stage: 'permission');
       return;
     }
     if (!allowed) {
       await recorder.dispose();
       if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired),
+      // `record` only shows the macOS prompt while the grant is undetermined.
+      // Once refused, nothing in the app can ask again, so the settings page is
+      // the user's only route - and the same refusal must not be re-reported on
+      // every later press in this opening.
+      _recorderPreparationFailure = const DesktopMicrophoneRefused();
+      _showRecordingError(
+        error: const DesktopMicrophoneRefused(),
+        stage: 'permission',
       );
+      unawaited(_openMicrophoneSettings());
       return;
     }
     if (_voiceDisposed || !mounted) {
@@ -2040,8 +2200,11 @@ class _ChatInputBarState extends State<ChatInputBar>
               shouldStart: () => _canStartHeldRecording,
               start: _startRec,
             )
-            .catchError((Object _) {
-              _showRecordingError();
+            .catchError((Object error) {
+              // A preparation that failed while the panel opened was reported
+              // then; every press in the same opening would otherwise repeat it.
+              if (error is _ReportedCaptureFailure) return;
+              _showRecordingError(error: error, stage: 'begin');
             })
             .whenComplete(() {
               if (identical(_voiceStart, start)) _voiceStart = null;
@@ -2052,9 +2215,17 @@ class _ChatInputBarState extends State<ChatInputBar>
     return start;
   }
 
-  void _showRecordingError() {
+  void _showRecordingError({Object? error, String? stage, String? codec}) {
+    widget.onRecordingIssueForTesting?.call(stage ?? 'unknown', error);
     if (mounted && !_voiceDisposed && _panel == _Panel.voice) {
       showToast(context, AppStrings.t(AppStringKeys.composerRecordingFailed));
+    }
+    if (error != null) {
+      DiagnosticBreadcrumbs.voiceRecordingFailed(
+        stage: stage ?? 'unknown',
+        error: error,
+        codec: codec,
+      );
     }
   }
 
@@ -2065,6 +2236,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     final r = _recorder;
     if (r == null || _recording) return;
+    // The shared session belongs to whatever audio would normally play, and a
+    // playback category admits no input: the recorder would open on top of it
+    // with no microphone route. Claim the capture category for exactly this
+    // recording - the recorder itself stays open across recordings.
+    await _prepareCaptureSession();
+    if (_voiceDisposed || !mounted) return;
     final dir = await getTemporaryDirectory();
     const candidates = [
       (Codec.opusOGG, 'ogg'),
@@ -2073,6 +2250,11 @@ class _ChatInputBarState extends State<ChatInputBar>
       (Codec.aacMP4, 'm4a'),
     ];
     var started = false;
+    // The recorder's own message never says which container failed, and every
+    // attempt is discarded on the way to the next one; keep the first cause so
+    // the failure the user sees is diagnosable.
+    Object? firstFailure;
+    String? firstFailureCodec;
     for (final (codec, extension) in candidates) {
       if (!_canStartHeldRecording) return;
       try {
@@ -2084,7 +2266,9 @@ class _ChatInputBarState extends State<ChatInputBar>
         await r.startRecorder(toFile: path, codec: codec, sampleRate: 48000);
         started = true;
         break;
-      } catch (_) {
+      } catch (error) {
+        firstFailure ??= error;
+        firstFailureCodec ??= codec.name;
         // Some devices claim Opus support but fail when opening the encoder.
         // Close that attempt before trying the next supported container.
         try {
@@ -2096,7 +2280,14 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
     }
     if (!started) {
-      _showRecordingError();
+      _showRecordingError(
+        error: firstFailure,
+        stage: 'start',
+        codec: firstFailureCodec,
+      );
+      // No container opened: this recorder holds nothing, and the capture
+      // session must go back to playback rather than stay on `playAndRecord`.
+      await _releaseCaptureSession();
       return;
     }
     if (_voiceDisposed || !mounted) return;
@@ -2148,13 +2339,13 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
         path: path,
       );
-    } catch (_) {
+    } catch (error) {
       try {
         await recorder.cancel();
       } catch (_) {}
       await _deleteTempFile(path);
       _recPath = null;
-      _showRecordingError();
+      _showRecordingError(error: error, stage: 'start');
       return;
     }
     if (_voiceDisposed || !mounted) return;
@@ -2203,6 +2394,18 @@ class _ChatInputBarState extends State<ChatInputBar>
     // for that exact start, then finalize it once; never start another clip
     // or send twice while the previous stop is still asynchronous.
     await _voiceStart;
+    // The capture session is released on every way out of this method. It was
+    // claimed for exactly one recording; leaving it on `playAndRecord` would
+    // hand the next track a category that changes how it plays, and holding it
+    // through a failed start would keep other apps from taking audio back.
+    try {
+      await _finishMobileVoiceCapture();
+    } finally {
+      await _releaseCaptureSession();
+    }
+  }
+
+  Future<void> _finishMobileVoiceCapture() async {
     if (_voiceDisposed || !_recording) return;
     final target = vm;
     final duration = _elapsed.round();
@@ -2236,6 +2439,11 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
       } catch (_) {}
     }
+    // Capture is over the moment the recorder stops. Hand the session back
+    // before the preview (which plays the clip through its own player) and
+    // before any upload, so nothing keeps `playAndRecord` while the user is
+    // trimming or while the file is in flight.
+    await _releaseCaptureSession();
     final url = await _waitForRecordingFile(recordedPath);
     _recPath = null;
     final cancelled =
@@ -2368,6 +2576,11 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Returning from the system settings page is the other way to retry a
+    // microphone the last attempt could not get.
+    if (state == AppLifecycleState.resumed) {
+      _recorderPreparationFailure = null;
+    }
     // A held gesture can lose its release when the app loses focus. A locked
     // mobile recording is intentional and must not be discarded by a system
     // permission sheet, notification, or brief app switch.
@@ -2393,6 +2606,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     } catch (_) {}
     final path = _recPath;
     if (path != null) await _deleteTempFile(path);
+    await _releaseCaptureSession();
     _discardDesktopVoiceDraft();
   }
 
