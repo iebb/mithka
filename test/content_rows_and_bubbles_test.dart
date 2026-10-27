@@ -122,6 +122,7 @@ void main() {
                 extent,
               );
               expect(extent, greaterThanOrEqualTo(previous));
+              if (osScale == 2) expect(extent, greaterThan(72 * scale));
               previous = extent;
               expect(
                 tester.widget<PhotoAvatar>(find.byType(PhotoAvatar)).size,
@@ -151,6 +152,489 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'touch row pitch matches actual, synthetic and scroll estimates',
+    (tester) async {
+      final controller = await theme();
+      final chat = ChatSummary(
+        id: 70,
+        title: 'Conversation',
+        lastMessage: 'Preview',
+        lastMessageId: 1,
+        date: 0,
+        unreadCount: 0,
+        order: 1,
+        isMuted: false,
+      );
+      for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+        debugDefaultTargetPlatformOverride = platform;
+        try {
+          for (final (scale, expected) in [
+            (.9, 64.8),
+            (1.0, 72.0),
+            (1.6, 115.2),
+          ]) {
+            late double actual;
+            late double estimate;
+            await tester.pumpWidget(
+              harness(
+                controller,
+                SizedBox(
+                  width: 390,
+                  child: Builder(
+                    builder: (context) {
+                      actual = chatRowMetricsFor(
+                        context,
+                        chat,
+                        width: 390,
+                      ).extent;
+                      estimate = chatListRowExtentFor(context, width: 390);
+                      return Column(
+                        children: [
+                          ChatRowView(
+                            key: const ValueKey('pitch-row'),
+                            chat: chat,
+                          ),
+                          ContentSizePreview(
+                            appScale: scale,
+                            chatList: true,
+                            now: DateTime.now(),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                scale,
+              ),
+            );
+            await tester.pump();
+            expect(actual, closeTo(expected, .0001));
+            expect(estimate, closeTo(expected, .0001));
+            expect(
+              tester.getSize(find.byKey(const ValueKey('pitch-row'))).height,
+              closeTo(expected, .0001),
+            );
+            final previewRows = find.descendant(
+              of: find.byKey(const ValueKey('font-size-chat-list-preview')),
+              matching: find.byType(ChatRowView),
+            );
+            for (final row in previewRows.evaluate()) {
+              expect(
+                tester.getSize(find.byWidget(row.widget)).height,
+                closeTo(expected, .0001),
+              );
+            }
+            final avatar = tester.getRect(
+              find.descendant(
+                of: find.byKey(const ValueKey('pitch-row')),
+                matching: find.byType(PhotoAvatar),
+              ),
+            );
+            final row = tester.getRect(find.byKey(const ValueKey('pitch-row')));
+            expect(avatar.height, closeTo(48 * scale, .0001));
+            expect(avatar.center.dy, closeTo(row.center.dy, .0001));
+            expect(
+              chatRowCumulativeOffset([actual, estimate]),
+              closeTo(2 * expected, .0001),
+            );
+            expect(tester.takeException(), isNull);
+          }
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      }
+    },
+  );
+
+  testWidgets('three-line CJK and mixed emoji body uses 22pt even pitch', (
+    tester,
+  ) async {
+    final controller = await theme();
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        for (final text in ['中文测试\n第二行文\n第三行文', '中文👋Hi\n第二行😀\n第三行文']) {
+          for (final (scale, osScale) in [(1.0, 1.0), (1.6, 1.0), (1.0, 2.0)]) {
+            await tester.pumpWidget(
+              harness(
+                controller,
+                SizedBox(
+                  width: 600,
+                  child: DefaultTextStyle.merge(
+                    // An explicit inherited 24pt pitch at 17pt must be replaced,
+                    // not multiplied into the body's new leading.
+                    style: const TextStyle(height: 24 / 17),
+                    child: MessageBubble(
+                      peerTitle: 'Fictional',
+                      isGroup: false,
+                      message: ChatMessage(
+                        id: 71,
+                        isOutgoing: false,
+                        text: text,
+                        date: 1,
+                      ),
+                    ),
+                  ),
+                ),
+                scale,
+                osScale: osScale,
+              ),
+            );
+            final paragraph = tester.renderObject<RenderParagraph>(
+              find
+                  .byWidgetPredicate(
+                    (widget) =>
+                        widget is RichText &&
+                        widget.text.toPlainText().startsWith(text),
+                  )
+                  .first,
+            );
+            final painter = TextPainter(
+              text: paragraph.text,
+              textDirection: paragraph.textDirection,
+              textScaler: paragraph.textScaler,
+              textHeightBehavior: paragraph.textHeightBehavior,
+            )..layout(maxWidth: paragraph.size.width);
+            final lines = painter.computeLineMetrics();
+            expect(lines, hasLength(3));
+            for (var i = 1; i < lines.length; i++) {
+              expect(
+                lines[i].baseline - lines[i - 1].baseline,
+                closeTo((22 * scale * osScale).roundToDouble(), .05),
+              );
+            }
+            expect(paragraph.text.style?.height, 22 / 17);
+            expect(
+              paragraph.text.style?.leadingDistribution,
+              TextLeadingDistribution.even,
+            );
+            painter.dispose();
+            expect(tester.takeException(), isNull);
+          }
+        }
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+  });
+
+  testWidgets(
+    'body leading includes quotes and captions but excludes code and reply',
+    (tester) async {
+      final controller = await theme();
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        const body = 'Body text\n';
+        const quote = 'Quoted text\n';
+        const code = 'Code text';
+        await tester.pumpWidget(
+          harness(
+            controller,
+            DefaultTextStyle.merge(
+              style: const TextStyle(
+                height: 1.5,
+                leadingDistribution: TextLeadingDistribution.proportional,
+              ),
+              child: Column(
+                children: [
+                  MessageBubble(
+                    peerTitle: 'Fictional',
+                    isGroup: false,
+                    message: ChatMessage(
+                      id: 72,
+                      isOutgoing: false,
+                      text: '$body$quote$code',
+                      date: 1,
+                      replyToQuote: const MessageTextQuote(
+                        text: 'Reply preview',
+                        position: 0,
+                      ),
+                      textEntities: const [
+                        MessageTextEntity(
+                          offset: body.length,
+                          length: quote.length,
+                          type: 'textEntityTypeBlockQuote',
+                        ),
+                        MessageTextEntity(
+                          offset: body.length + quote.length,
+                          length: code.length,
+                          type: 'textEntityTypePre',
+                        ),
+                      ],
+                    ),
+                  ),
+                  MessageBubble(
+                    peerTitle: 'Fictional',
+                    isGroup: false,
+                    message: ChatMessage(
+                      id: 73,
+                      isOutgoing: false,
+                      text: 'Document caption',
+                      date: 1,
+                      contentType: 'messageDocument',
+                      document: MessageDocument(
+                        fileName: 'test.pdf',
+                        size: 1024,
+                        ext: 'PDF',
+                        file: null,
+                      ),
+                    ),
+                  ),
+                  MessageBubble(
+                    peerTitle: 'Fictional',
+                    isGroup: false,
+                    message: ChatMessage(
+                      id: 75,
+                      isOutgoing: false,
+                      text: 'Start inline body',
+                      date: 1,
+                      textEntities: const [
+                        MessageTextEntity(
+                          offset: 6,
+                          length: 6,
+                          type: 'textEntityTypeCode',
+                        ),
+                      ],
+                      linkPreview: const MessageLinkPreview(
+                        url: 'https://example.com',
+                        displayUrl: 'example.com',
+                        siteName: 'Example',
+                        title: 'Card title',
+                        description: 'Card description',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            1,
+          ),
+        );
+        TextStyle? styleFor(String text) => tester
+            .widget<RichText>(
+              find
+                  .byWidgetPredicate(
+                    (widget) =>
+                        widget is RichText &&
+                        widget.text.toPlainText().startsWith(text),
+                  )
+                  .first,
+            )
+            .text
+            .style;
+        expect(styleFor(body)?.height, 22 / 17);
+        for (final text in [quote, 'Document caption', 'Card description']) {
+          expect(styleFor(text)?.height, 22 / 17, reason: text);
+          expect(
+            styleFor(text)?.leadingDistribution,
+            TextLeadingDistribution.even,
+            reason: text,
+          );
+        }
+        for (final text in [code, 'Reply preview', 'inline']) {
+          expect(styleFor(text)?.height, 1.5, reason: text);
+          expect(
+            styleFor(text)?.leadingDistribution,
+            TextLeadingDistribution.proportional,
+            reason: text,
+          );
+        }
+        expect(styleFor(code)?.fontSize, 16);
+        expect(styleFor('Reply preview')?.fontSize, 14);
+        expect(tester.takeException(), isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets('link description uses body leading without changing card UI', (
+    tester,
+  ) async {
+    final controller = await theme();
+    const description = 'Card description\n第二行正文\nThird line 😀';
+    for (final platform in [
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    ]) {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        final touch =
+            platform == TargetPlatform.iOS ||
+            platform == TargetPlatform.android;
+        for (final osScale in [1.0, 1.6]) {
+          await tester.pumpWidget(
+            harness(
+              controller,
+              DefaultTextStyle.merge(
+                style: const TextStyle(
+                  height: 1.5,
+                  leadingDistribution: TextLeadingDistribution.proportional,
+                ),
+                child: MessageBubble(
+                  peerTitle: 'Fictional',
+                  isGroup: false,
+                  message: ChatMessage(
+                    id: 76,
+                    isOutgoing: false,
+                    text: 'Linked message',
+                    date: 1,
+                    linkPreview: const MessageLinkPreview(
+                      url: 'https://example.com',
+                      displayUrl: 'example.com',
+                      siteName: 'Example',
+                      title: 'Card title',
+                      description: description,
+                    ),
+                  ),
+                ),
+              ),
+              1,
+              osScale: osScale,
+            ),
+          );
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.text(description, findRichText: true),
+          );
+          expect(paragraph.text.style?.fontSize, touch ? 17 : 14);
+          expect(paragraph.text.style?.height, touch ? 22 / 17 : 1.5);
+          expect(
+            paragraph.text.style?.leadingDistribution,
+            touch
+                ? TextLeadingDistribution.even
+                : TextLeadingDistribution.proportional,
+          );
+          final painter = TextPainter(
+            text: paragraph.text,
+            textDirection: paragraph.textDirection,
+            textScaler: paragraph.textScaler,
+            textHeightBehavior: paragraph.textHeightBehavior,
+          )..layout(maxWidth: paragraph.size.width);
+          final lines = painter.computeLineMetrics();
+          expect(lines, hasLength(3));
+          for (var i = 1; i < lines.length; i++) {
+            expect(
+              lines[i].baseline - lines[i - 1].baseline,
+              closeTo(((touch ? 22 : 21) * osScale).roundToDouble(), .05),
+            );
+          }
+          painter.dispose();
+          final site = tester.widget<Text>(find.text('Example'));
+          final title = tester.widget<Text>(find.text('Card title'));
+          final url = tester.widget<Text>(find.text('example.com'));
+          expect(site.style?.fontSize, 12);
+          expect(site.style?.fontWeight, FontWeight.w600);
+          expect(title.style?.fontSize, 15);
+          expect(title.style?.fontWeight, FontWeight.w600);
+          expect(title.style?.height, 1.2);
+          expect(url.style?.fontSize, 12);
+          for (final label in [site, title, url]) {
+            expect(label.style?.leadingDistribution, isNull);
+          }
+          expect(tester.takeException(), isNull);
+        }
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+  });
+
+  testWidgets('nested rich list/details and quote body share body leading', (
+    tester,
+  ) async {
+    final controller = await theme();
+    const body = '列表正文\n第二行文\n第三行文';
+    const quoted = '引用正文\n第二行文\n第三行文';
+    RichMessageBlock listWithDetails(String text) => RichMessageBlock.container(
+      kind: RichMessageBlockKind.list,
+      listItems: [
+        RichMessageListItem(
+          blocks: [
+            RichMessageBlock.container(
+              kind: RichMessageBlockKind.details,
+              text: 'Details',
+              isOpen: true,
+              children: [
+                RichMessageBlock.text(
+                  kind: RichMessageBlockKind.paragraph,
+                  text: text,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await tester.pumpWidget(
+          harness(
+            controller,
+            DefaultTextStyle.merge(
+              style: const TextStyle(height: 1.5),
+              child: MessageBubble(
+                peerTitle: 'Fictional',
+                isGroup: false,
+                message: ChatMessage(
+                  id: 74,
+                  isOutgoing: false,
+                  text: '',
+                  date: 1,
+                  contentType: 'messageRichMessage',
+                  richBlocks: [
+                    listWithDetails(body),
+                    RichMessageBlock.container(
+                      kind: RichMessageBlockKind.blockQuote,
+                      children: [listWithDetails(quoted)],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            1,
+          ),
+        );
+        await tester.pump();
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(body, findRichText: true),
+        );
+        expect(paragraph.text.style?.height, 22 / 17);
+        expect(
+          paragraph.text.style?.leadingDistribution,
+          TextLeadingDistribution.even,
+        );
+        final painter = TextPainter(
+          text: paragraph.text,
+          textDirection: paragraph.textDirection,
+          textScaler: paragraph.textScaler,
+          textHeightBehavior: paragraph.textHeightBehavior,
+        )..layout(maxWidth: paragraph.size.width);
+        final lines = painter.computeLineMetrics();
+        expect(lines, hasLength(3));
+        for (var i = 1; i < lines.length; i++) {
+          expect(lines[i].baseline - lines[i - 1].baseline, closeTo(22, .05));
+        }
+        painter.dispose();
+        final quoteParagraph = tester.renderObject<RenderParagraph>(
+          find.text(quoted, findRichText: true),
+        );
+        expect(quoteParagraph.text.style?.height, 22 / 17);
+        expect(
+          quoteParagraph.text.style?.leadingDistribution,
+          TextLeadingDistribution.even,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+  });
 
   testWidgets(
     'bubble text grows naturally and sender avatar follows content size',
@@ -260,6 +744,22 @@ void main() {
                     .first,
               );
               expect(paragraph.text.style?.fontSize, size);
+              final touch =
+                  platform == TargetPlatform.iOS ||
+                  platform == TargetPlatform.android;
+              final inheritedStyle = DefaultTextStyle.of(
+                tester.element(find.byType(MessageBubble)),
+              ).style;
+              expect(
+                paragraph.text.style?.height,
+                touch ? 22 / 17 : inheritedStyle.height,
+              );
+              expect(
+                paragraph.text.style?.leadingDistribution,
+                touch
+                    ? TextLeadingDistribution.even
+                    : inheritedStyle.leadingDistribution,
+              );
               expect(
                 paragraph.textScaler.scale(size),
                 closeTo(size * scale * osScale, .0001),
@@ -271,6 +771,11 @@ void main() {
                 ),
               );
               expect(previewText.style?.fontSize, size);
+              expect(previewText.style?.height, touch ? 22 / 17 : null);
+              expect(
+                previewText.style?.leadingDistribution,
+                touch ? TextLeadingDistribution.even : null,
+              );
               final previewParagraph = tester.renderObject<RenderParagraph>(
                 find.descendant(
                   of: find.byKey(const ValueKey('content-size-bubble-in')),
@@ -319,6 +824,7 @@ void main() {
           .first,
     );
     expect(paragraph.text.style?.fontSize, 34.0);
+    expect(paragraph.text.style?.height, isNot(22 / 17));
   });
 
   testWidgets('album media dimensions do not inherit content scaling', (
@@ -385,7 +891,7 @@ void main() {
     expect(chatRowCumulativeOffset([], leadingExtent: 44), 44);
   });
 
-  testWidgets('ordinary Standard rows remain exactly64 at280 and320', (
+  testWidgets('ordinary Standard rows remain exactly72 at280 and320', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -418,14 +924,14 @@ void main() {
         await tester.pump();
         expect(
           tester.getSize(find.byKey(const ValueKey('ordinary-row'))).height,
-          64,
+          72,
         );
         final title = tester.widget<Text>(find.text(chat.title));
-        expect(title.style?.fontSize, 16);
+        expect(title.style?.fontSize, 17);
         expect(title.style?.fontWeight, AppTextWeight.medium);
         expect(
           tester.widget<ChatPreviewText>(find.byType(ChatPreviewText)).fontSize,
-          14,
+          13,
         );
         expect(
           tester
@@ -658,13 +1164,13 @@ void main() {
           );
           expect(
             tester.widget<Text>(find.text(topic.name)).style?.fontSize,
-            16,
+            17,
           );
           expect(
             tester
                 .widget<ChatPreviewText>(find.byType(ChatPreviewText))
                 .fontSize,
-            14,
+            13,
           );
           expect(
             tester
@@ -762,11 +1268,11 @@ void main() {
                 timestamp: '12:34',
                 pinned: true,
               );
-              expect(plain.extent, 64);
+              expect(plain.extent, 72);
               expect(plain.timeBelow, isFalse);
-              expect(topic.extent, 64);
+              expect(topic.extent, 72);
               expect(topic.timeBelow, isFalse);
-              expect(tagged.extent, greaterThanOrEqualTo(plain.extent));
+              expect(tagged.extent, greaterThan(plain.extent));
               return const SizedBox();
             },
           ),

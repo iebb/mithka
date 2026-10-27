@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../theme/app_theme.dart';
@@ -51,17 +52,21 @@ class ChatRowMetrics {
       double size, {
       double? height,
       FontWeight? weight,
+      TextScaler? textScaler,
     }) {
       final painter = TextPainter(
         text: TextSpan(
           text: text,
           style: base.copyWith(
-            fontSize: data.systemTextScaler.scale(size * scale),
+            fontSize: textScaler == null
+                ? data.systemTextScaler.scale(size * scale)
+                : size,
             height: height,
             fontWeight: weight,
           ),
         ),
         textDirection: Directionality.of(context),
+        textScaler: textScaler ?? TextScaler.noScaling,
         maxLines: 1,
       )..layout();
       final result = painter.size;
@@ -69,6 +74,10 @@ class ChatRowMetrics {
       return result;
     }
 
+    final calibratedTouch =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android);
     final avatar = AppMetric.chatListAvatarSize() * scale;
     final time = measure(timestamp, AppTextSize.chatListTimestamp());
     final available =
@@ -124,7 +133,11 @@ class ChatRowMetrics {
       if (accessories.isNotEmpty) accessoryHeight += lineHeight + 4;
     }
     final title = measure('\u56FDAg', AppTextSize.chatListTitle()).height;
-    final preview = measure('\u56FDAg', AppTextSize.chatListPreview()).height;
+    final preview = measure(
+      '\u56FDAg',
+      AppTextSize.chatListPreview(),
+      textScaler: ContentSizeScope.chatListPreviewScalerOf(context),
+    ).height;
     final tags = folderTags
         ? data.systemTextScaler.scale(AppTextSize.chatListFolderTag() * scale) *
                   1.35 +
@@ -142,10 +155,15 @@ class ChatRowMetrics {
       avatar: avatar,
       extent: [
         AppMetric.chatListRowHeight() * scale,
+        // Touch rows keep 8pt above and below a scaled avatar. Do not
+        // derive this inset from the new 72pt base (that would add 24pt).
         avatar +
-            (AppMetric.chatListRowHeight() - AppMetric.chatListAvatarSize()),
+            (calibratedTouch
+                ? 16.0
+                : AppMetric.chatListRowHeight() -
+                      AppMetric.chatListAvatarSize()),
         stack + 16,
-        44.0,
+        if (!calibratedTouch) 44.0,
       ].reduce(math.max),
       timestampWidth: time.width,
       timeBelow: timeBelow,

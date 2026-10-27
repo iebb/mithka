@@ -43,6 +43,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../contacts/add_people_view.dart';
 import '../contacts/create_group_view.dart';
+import '../platform/adaptive_platform.dart' show isTouchTargetPlatform;
 import '../profile/emoji_status_picker.dart';
 import '../security/local_app_lock_controller.dart';
 import '../settings/chat_folder_management_view.dart';
@@ -2827,7 +2828,7 @@ class _ChatListViewState extends State<ChatListView>
             Text(
               AppStringKeys.topicChatSearch.l10n(context),
               style: TextStyle(
-                fontSize: AppTextSize.callout,
+                fontSize: isTouchTargetPlatform() ? 16 : AppTextSize.callout,
                 color: c.textTertiary,
               ),
             ),

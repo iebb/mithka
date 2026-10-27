@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'app_theme.dart';
+
 /// Discrete content-size choices. Persisted custom sizes are not quantized.
 const contentSizePresets = <double>[.9, 1, 1.1, 1.2, 1.35, 1.6];
 
@@ -14,7 +16,7 @@ class ContentSizeData {
   final TextScaler systemTextScaler;
 }
 
-/// Captures the original OS scaler without changing any chrome's MediaQuery.
+/// Captures the window OS scaler (already floored on touch) for all content.
 class ContentSizeRoot extends StatelessWidget {
   const ContentSizeRoot({
     super.key,
@@ -55,6 +57,16 @@ class ContentSizeScope extends StatelessWidget {
         appScale: 1,
         systemTextScaler: MediaQuery.textScalerOf(context),
       );
+
+  /// Shared by chat preview rendering and row-height measurement. Apply the
+  /// role's app multiplier before the OS scaler, preserving nonlinear growth.
+  static TextScaler chatListPreviewScalerOf(BuildContext context) {
+    final data = of(context);
+    return _ContentTextScaler(
+      data.systemTextScaler,
+      AppTextSize.chatListPreviewContentScale(data.appScale),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

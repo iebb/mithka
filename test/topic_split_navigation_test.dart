@@ -233,6 +233,7 @@ void main() {
           expect(navigator.canPop(), isFalse);
           expect(find.byType(TopicChatView), findsNothing);
 
+          await _revealRailTopic(tester, '77', scrollDelta: -200);
           await tester.tap(
             find.byKey(const ValueKey('topic-navigation-item-77')),
           );
@@ -715,10 +716,14 @@ Future<_MainShellHarness> _pumpMainShell(
 
 // Topic rows grow with content sizing and timestamp fallback. The final topic
 // can be outside both the viewport and ListView's lazy-build cache.
-Future<void> _revealRailTopic(WidgetTester tester, String id) async {
+Future<void> _revealRailTopic(
+  WidgetTester tester,
+  String id, {
+  double? scrollDelta,
+}) async {
   await tester.scrollUntilVisible(
     find.byKey(ValueKey('topic-navigation-item-$id')),
-    id == 'all' ? -200 : 200,
+    scrollDelta ?? (id == 'all' ? -200 : 200),
     scrollable: find.descendant(
       of: find.byKey(const ValueKey('topic-navigation-left')),
       matching: find.byType(Scrollable),

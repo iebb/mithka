@@ -11,3 +11,11 @@ bool isDesktopTargetPlatform([TargetPlatform? platform]) {
       target == TargetPlatform.windows ||
       target == TargetPlatform.linux;
 }
+
+/// Native touch targets; web and desktop keep their existing scaling policy.
+bool isTouchTargetPlatform([TargetPlatform? platform]) =>
+    !kIsWeb &&
+    switch (platform ?? defaultTargetPlatform) {
+      TargetPlatform.iOS || TargetPlatform.android => true,
+      _ => false,
+    };

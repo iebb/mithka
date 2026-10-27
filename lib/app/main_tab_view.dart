@@ -61,7 +61,9 @@ import 'desktop_navigation_rail.dart';
 import 'desktop_utility_window.dart';
 import 'detail_content_reveal.dart';
 import 'horizontal_safe_viewport.dart';
-import 'liquid_glass_bottom_bar.dart';
+import 'liquid_glass_bottom_bar.dart'
+    show GlassSelectionIndicator, LiquidGlassBottomBar;
+import 'native_glass_surface.dart';
 import 'primary_chat_launcher.dart';
 import 'unread_badge_model.dart';
 
@@ -364,9 +366,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   static const _allTabs = [
     _MainTabItem(0, AppStringKeys.tabMessages, HeroAppIcons.solidMessage),
-    _MainTabItem(1, AppStringKeys.tabChannels, HeroAppIcons.hashtag),
-    _MainTabItem(2, AppStringKeys.tabContacts, HeroAppIcons.users),
-    _MainTabItem(3, AppStringKeys.tabMoments, HeroAppIcons.circleNotch),
+    _MainTabItem(
+      1,
+      AppStringKeys.tabChannels,
+      HeroAppIcons.hashtag,
+      selectedIcon: HeroAppIcons.solidHashtag,
+    ),
+    _MainTabItem(
+      2,
+      AppStringKeys.tabContacts,
+      HeroAppIcons.users,
+      selectedIcon: HeroAppIcons.solidUsers,
+    ),
+    _MainTabItem(
+      3,
+      AppStringKeys.tabMoments,
+      HeroAppIcons.circleNotch,
+      selectedIcon: HeroAppIcons.solidCircleNotch,
+    ),
   ];
 
   List<_MainTabItem> _visibleTabs(
@@ -1925,11 +1942,17 @@ class _SplitEmptyPane extends StatelessWidget {
 }
 
 class _MainTabItem {
-  const _MainTabItem(this.index, this.label, this.icon);
+  const _MainTabItem(
+    this.index,
+    this.label,
+    this.icon, {
+    AppIconData? selectedIcon,
+  }) : selectedIcon = selectedIcon ?? icon;
 
   final int index;
   final String label;
   final AppIconData icon;
+  final AppIconData selectedIcon;
 }
 
 class _LazyTabStack extends StatefulWidget {
@@ -2305,20 +2328,20 @@ class _MainBottomBar extends StatelessWidget {
     // which leaves the label a deliberate margin above the window edge instead
     // of a band that belongs to nobody. The glass hosts pass 0 — their capsules
     // carry the inset themselves.
+    final controlsHeight = 62 + labelGrowth;
     Widget controlsWithBottomInset(double inset) => SizedBox(
-      height: 62 + labelGrowth + inset,
+      height: controlsHeight + inset,
       child: Row(
         children: [
           for (var i = 0; i < items.length; i++)
             Expanded(
               child: AppInteractiveSurface(
                 key: ValueKey('bottom-tab-${items[i].index}'),
-                // Match the selection indicator's corner radius so the tap
-                // ripple, hover tint, and highlight share one slot shape. A
-                // full stadium would clip the label's corners (see
-                // LiquidGlassBottomBar).
+                // The icon-only glass slot and selection share a full capsule,
+                // concentric with the outer surface across its 5pt inset.
+                // Classic icon + label tabs retain their square press surface.
                 borderRadius: glass
-                    ? BorderRadius.circular(AppRadius.control)
+                    ? BorderRadius.circular((controlsHeight + inset) / 2)
                     : BorderRadius.zero,
                 semanticLabel: items[i].label.l10n(context),
                 selected: selection == i,
@@ -2363,10 +2386,14 @@ class _MainBottomBar extends StatelessWidget {
                                         child: Transform.scale(
                                           scale: 1 + value * 0.08,
                                           child: AppIcon(
-                                            items[i].icon,
+                                            glass && selection == i
+                                                ? items[i].selectedIcon
+                                                : items[i].icon,
                                             size: 24,
                                             color: Color.lerp(
-                                              c.textTertiary,
+                                              glass
+                                                  ? c.textPrimary
+                                                  : c.textTertiary,
                                               AppTheme.brand,
                                               value,
                                             ),
@@ -2429,11 +2456,44 @@ class _MainBottomBar extends StatelessWidget {
     );
     final controls = controlsWithBottomInset(0.0);
     if (glass) {
-      // One Flutter glass bar serves every target, including iOS: the shell
-      // blurs its own layer tree, so the bar refracts the content that
-      // actually scrolls behind it. The row, its selection pill, and every
-      // gesture stay app-owned too, which keeps the compact phone bar and the
-      // tablet split shell's sidebar column on one geometry source.
+      // iOS hosts the real Liquid Glass: a native surface draws only the glass
+      // (public UIGlassEffect on iOS 26+, system material blur before), while
+      // the app-owned row, its selection pill, and every gesture stay in
+      // Flutter above the surface — one geometry source in any host, window
+      // bottom bar or sidebar column. The Flutter glass bar remains the
+      // fallback for every other target.
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.iOS &&
+          !MediaQuery.highContrastOf(context)) {
+        // A platform view has no insets of its own, so the host repeats the
+        // exact containment chain the Flutter glass bar applies: the surface
+        // stops at the bottom safe area instead of reaching under the home
+        // indicator, and the shared lateral/top/capsule margins keep the row
+        // inside the stadium at the same rect either host draws it at.
+        return SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 10),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: NativeGlassSurface(
+              child: Padding(
+                padding: const EdgeInsets.all(5),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: GlassSelectionIndicator(
+                        selection: selection,
+                        itemCount: items.length,
+                      ),
+                    ),
+                    controls,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
       return LiquidGlassBottomBar(
         selection: selection,
         itemCount: items.length,

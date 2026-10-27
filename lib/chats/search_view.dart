@@ -27,6 +27,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/media_metadata.dart';
+import '../platform/adaptive_platform.dart' show isTouchTargetPlatform;
 import '../platform/keyboard_modifiers.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -1652,14 +1653,14 @@ class _SearchViewState extends State<SearchView> {
                               autocorrect: false,
                               textInputAction: TextInputAction.search,
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: isTouchTargetPlatform() ? 16 : 15,
                                 color: c.textPrimary,
                               ),
                               placeholder: AppStrings.t(
                                 AppStringKeys.topicChatSearch,
                               ),
                               placeholderStyle: TextStyle(
-                                fontSize: 15,
+                                fontSize: isTouchTargetPlatform() ? 16 : 15,
                                 color: c.textTertiary,
                               ),
                               padding: EdgeInsets.zero,

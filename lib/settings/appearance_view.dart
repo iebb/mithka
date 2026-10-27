@@ -19,6 +19,7 @@ import 'package:mithka/l10n/preview_texts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_appearance_preview.dart';
 import '../chat/chat_wallpaper.dart';
 import '../chat/chat_wallpaper_view.dart';
@@ -29,9 +30,11 @@ import '../chat/message_bubble.dart';
 import '../chat/message_bubble_chat_preview.dart';
 import '../chat/quick_reaction_choice.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
+import '../platform/system_ui.dart';
 import '../pro/mithka_pro_view.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
@@ -44,6 +47,7 @@ import '../theme/system_font_catalog.dart';
 import '../theme/theme_controller.dart';
 import 'app_icon_controller.dart';
 import 'content_size_settings_view.dart';
+import 'interface_scale_control.dart';
 import 'message_bubble_settings_view.dart';
 import 'quick_reaction_settings_view.dart';
 
@@ -113,13 +117,16 @@ class AppearanceView extends StatelessWidget {
               child: _navigationRow(
                 context,
                 AppStrings.t(AppStringKeys.appearanceInterfaceSize),
-                '${(theme.interfaceScale * 100).round()}%',
+                InterfaceScaleSteps.percent(theme.interfaceScale),
                 () => Navigator.of(context).push(
                   AppPageRoute<void>(
                     pageBuilder: (_, _, _) => const InterfaceSizeSettingsView(),
                   ),
                 ),
                 icon: HeroAppIcons.expand.data,
+                minimumTapExtent: InterfaceScaleSteps.targetExtent(
+                  theme.renderedInterfaceScale,
+                ),
               ),
             ),
             KeyedSubtree(
@@ -522,15 +529,94 @@ class InterfaceSizeSettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
-    return SettingsPageScaffold(
-      title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
-      onBack: () => Navigator.of(context).pop(),
-      child: SettingsListView(
-        children: [
-          const AppearanceView()._interfaceSizeCard(context, theme),
-          const SizedBox(height: AppSpacing.xl),
-          const AppearanceView()._interfaceSizePreview(context, theme),
-        ],
+    final colors = context.colors;
+    final target = InterfaceScaleSteps.targetExtent(
+      theme.renderedInterfaceScale,
+    );
+    final navigator = Navigator.of(context);
+    final pointerDense = isDesktopTargetPlatform();
+    final canGoBack =
+        navigator.canPop() && !SettingsSplitPaneScope.isRootRoute(context);
+    // Only this adjustment page needs a scale-aware header. The shared header's
+    // 44 virtual-point back target shrinks below 44 screen points at 50%.
+    return AnnotatedRegion(
+      value: systemUiOverlayStyleForSurface(colors.navBar),
+      child: Scaffold(
+        backgroundColor: colors.groupedBackground,
+        body: Column(
+          children: [
+            Container(
+              constraints: BoxConstraints(
+                minHeight: theme.navHeaderHeight + topChromeInsetOf(context),
+              ),
+              padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+              decoration: BoxDecoration(
+                color: colors.navBar,
+                border: Border(
+                  bottom: BorderSide(
+                    color: colors.divider,
+                    width: AppMetric.divider,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: AppInsets.navHeader,
+                child: Row(
+                  children: [
+                    if (canGoBack)
+                      AppInteractiveSurface(
+                        key: const ValueKey('interface-scale-back'),
+                        semanticLabel: AppStrings.t(
+                          AppStringKeys.navigationBack,
+                        ),
+                        onTap: navigator.pop,
+                        child: SizedBox(
+                          width: target,
+                          height: target,
+                          child: Center(
+                            child: AppIcon(
+                              HeroAppIcons.chevronLeft,
+                              size: pointerDense
+                                  ? AppIconSize.lg
+                                  : AppIconSize.nav,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
+                        child: Text(
+                          AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: pointerDense
+                              ? AppTextStyle.bodyLarge(
+                                  colors.textPrimary,
+                                  weight: AppTextWeight.medium,
+                                )
+                              : AppTextStyle.title(colors.textPrimary),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: SettingsListView(
+                children: [
+                  const AppearanceView()._interfaceSizeCard(context, theme),
+                  const SizedBox(height: AppSpacing.xl),
+                  const AppearanceView()._interfaceSizePreview(context, theme),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1565,27 +1651,11 @@ extension _DisplayAppearanceHelpers on AppearanceView {
   }
 
   Widget _interfaceSizeCard(BuildContext context, ThemeController theme) {
-    final c = context.colors;
     return SettingsPanel(
       clipBehavior: Clip.antiAlias,
-      child: _scaleSlider(
-        context,
-        icon: HeroAppIcons.tableCells.data,
-        title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
+      child: InterfaceScaleControl(
         value: theme.interfaceScale,
-        min: ThemeController.minInterfaceScale,
-        max: ThemeController.maxInterfaceScale,
-        divisions: 84,
-        leading: AppIcon(
-          HeroAppIcons.square,
-          size: AppTextSize.body,
-          color: c.textSecondary,
-        ),
-        trailing: AppIcon(
-          HeroAppIcons.square,
-          size: AppIconSize.add,
-          color: c.textPrimary,
-        ),
+        renderedScale: theme.renderedInterfaceScale,
         onChanged: (value) => theme.interfaceScale = value,
       ),
     );
@@ -1597,6 +1667,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
       context,
       title: AppStrings.t(AppStringKeys.appearanceInterfaceSize),
       value: theme.interfaceScale,
+      valueLabel: InterfaceScaleSteps.percent(theme.interfaceScale),
       child: Container(
         decoration: BoxDecoration(
           color: c.groupedBackground,
@@ -1618,12 +1689,16 @@ extension _DisplayAppearanceHelpers on AppearanceView {
                       color: c.textPrimary,
                     ),
                     const SizedBox(width: AppSpacing.lg),
-                    Text(
-                      AppStrings.t(AppStringKeys.appearanceTitle),
-                      style: TextStyle(
-                        fontSize: AppTextSize.bodyLarge,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
+                    Expanded(
+                      child: Text(
+                        AppStrings.t(AppStringKeys.appearanceTitle),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: AppTextSize.bodyLarge,
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -1698,6 +1773,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
     BuildContext context, {
     required String title,
     required double value,
+    String? valueLabel,
     required Widget child,
   }) {
     final c = context.colors;
@@ -1719,7 +1795,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
                 ),
               ),
               Text(
-                '${(value * 100).round()}%',
+                valueLabel ?? '${(value * 100).round()}%',
                 style: TextStyle(
                   fontSize: AppTextSize.footnote,
                   color: AppTheme.brand,
@@ -1732,144 +1808,6 @@ extension _DisplayAppearanceHelpers on AppearanceView {
           child,
         ],
       ),
-    );
-  }
-
-  Widget _scaleSlider(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required Widget leading,
-    required Widget trailing,
-    required ValueChanged<double> onChanged,
-  }) {
-    final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.xxl,
-        AppSpacing.lg,
-        AppSpacing.xxl,
-        AppSpacing.md,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: AppTheme.brand),
-              const SizedBox(width: AppSpacing.xl),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: AppTextSize.bodyLarge,
-                  color: c.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${(value * 100).round()}%',
-                style: TextStyle(
-                  fontSize: AppTextSize.body,
-                  color: c.textSecondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Row(
-            children: [
-              SizedBox(
-                width: AppIconSize.nav,
-                child: Center(child: leading),
-              ),
-              Expanded(
-                child: _nativeSlider(
-                  context,
-                  value: value,
-                  min: min,
-                  max: max,
-                  divisions: divisions,
-                  onChanged: onChanged,
-                ),
-              ),
-              SizedBox(
-                width: AppIconSize.toolbar + AppSpacing.xs,
-                child: Center(child: trailing),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _nativeSlider(
-    BuildContext context, {
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required ValueChanged<double> onChanged,
-  }) {
-    final c = context.colors;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        void update(Offset position) {
-          final fraction = (position.dx / constraints.maxWidth).clamp(0.0, 1.0);
-          final step = (fraction * divisions).round() / divisions;
-          onChanged(min + (max - min) * step);
-        }
-
-        final fraction = ((value - min) / (max - min)).clamp(0.0, 1.0);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (details) => update(details.localPosition),
-          onHorizontalDragUpdate: (details) => update(details.localPosition),
-          child: SizedBox(
-            height: AppMetric.hitTarget,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: c.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: fraction,
-                  child: Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: c.linkBlue,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: fraction * (constraints.maxWidth - 22),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: c.card,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: c.linkBlue, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x26000000), blurRadius: 4),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -1928,6 +1866,7 @@ extension _DisplayAppearanceHelpers on AppearanceView {
     VoidCallback onTap, {
     IconData? icon,
     Widget? preview,
+    double? minimumTapExtent,
   }) {
     Widget? leading;
     if (icon != null) {
@@ -1938,11 +1877,19 @@ extension _DisplayAppearanceHelpers on AppearanceView {
         child: preview,
       );
     }
-    return SettingsRow(
+    final row = SettingsRow(
       title: label,
       value: value ?? '',
       leading: leading,
+      onTap: minimumTapExtent == null ? onTap : null,
+    );
+    if (minimumTapExtent == null) return row;
+    return AppInteractiveSurface(
       onTap: onTap,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: minimumTapExtent),
+        child: IgnorePointer(child: row),
+      ),
     );
   }
 }

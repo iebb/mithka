@@ -2775,6 +2775,7 @@
     <string name="quickReactionsLimit">Wähle bis zu 9 Schnellreaktionen.</string>
     <string name="quickReactionsSelected">Ausgewählt</string>
     <string name="quickReactionsTitle">Schnellreaktionen</string>
+    <string name="resetInterfaceScale">Auf 100 % zurücksetzen</string>
     <string name="richTextBlockAnchor">Anker</string>
     <string name="richTextBlockAnimation">Animation</string>
     <string name="richTextBlockAudio">Audio</string>

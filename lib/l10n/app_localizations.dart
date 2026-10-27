@@ -2660,6 +2660,7 @@ abstract final class AppStringKeys {
   static const quickReactionsLimit = 'quickReactionsLimit';
   static const quickReactionsSelected = 'quickReactionsSelected';
   static const quickReactionsTitle = 'quickReactionsTitle';
+  static const resetInterfaceScale = 'resetInterfaceScale';
   static const richTextBlockAnchor = 'richTextBlockAnchor';
   static const richTextBlockAnimation = 'richTextBlockAnimation';
   static const richTextBlockAudio = 'richTextBlockAudio';

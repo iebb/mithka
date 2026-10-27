@@ -2765,6 +2765,7 @@
     <string name="quickReactionsLimit">最多可选择 9 个快捷回应。</string>
     <string name="quickReactionsSelected">已选择</string>
     <string name="quickReactionsTitle">快捷表情回应</string>
+    <string name="resetInterfaceScale">重置为 100%</string>
     <string name="richTextBlockAnchor">锚点</string>
     <string name="richTextBlockAnimation">动画</string>
     <string name="richTextBlockAudio">音频</string>

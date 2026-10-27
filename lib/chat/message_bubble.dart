@@ -2570,14 +2570,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     return '•';
   }
 
-  /// One line of rich-block body text, measured with the same style, font size
-  /// and text scaler the block's paragraphs are laid out with.
+  /// One line of rich-block body text, including the body leading used by
+  /// quote paragraphs. Keep the folding cap in sync with their actual layout.
   double _richQuoteLineHeight() {
     final painter = TextPainter(
       text: TextSpan(
         text: 'M',
         style: DefaultTextStyle.of(context).style.merge(
-          TextStyle(fontSize: _chatFontSize(AppTextSize.messageBody())),
+          AppTextStyle.messageBody(
+            _incomingTextColor,
+          ).copyWith(fontSize: _chatFontSize(AppTextSize.messageBody())),
         ),
       ),
       textDirection: Directionality.of(context),
@@ -4457,6 +4459,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     bool appendMeta, [
     List<MessageTextEntity>? entities,
     double fontSize = 15,
+    bool bodyLeading = true,
   ]) {
     final resolvedFontSize = fontSize == AppTextSize.body
         ? AppTextSize.messageBody()
@@ -4482,6 +4485,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           appendMeta,
           entities: sourceEntities,
           fontSize: resolvedFontSize,
+          bodyLeading: bodyLeading,
         ),
       ];
     }
@@ -4505,6 +4509,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             false,
             entities: sourceEntities,
             fontSize: resolvedFontSize,
+            bodyLeading: bodyLeading,
           ),
         );
         widgets.add(const SizedBox(height: 5));
@@ -4531,6 +4536,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
                 outgoing,
                 sourceEntities,
                 resolvedFontSize,
+                bodyLeading,
               ),
       );
       cursor = end;
@@ -4548,6 +4554,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           appendMeta,
           entities: sourceEntities,
           fontSize: resolvedFontSize,
+          bodyLeading: bodyLeading,
         ),
       );
       metaAdded = appendMeta;
@@ -4577,6 +4584,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     int? maxLines,
     List<MessageTextEntity>? entities,
     double fontSize = 15,
+    bool bodyLeading = true,
   }) {
     final effectiveFontSize = _chatFontSize(fontSize);
     final children = _entitySpans(
@@ -4598,11 +4606,18 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           e.offset < end &&
           e.end > start,
     );
+    // Apply leading to body-sized message runs, including quotes/captions,
+    // never to an ancestor subtree. Code WidgetSpans resolve their own ambient
+    // style; pre blocks and smaller UI retain their existing line metrics.
+    final bodyStyle = bodyLeading && fontSize == AppTextSize.messageBody()
+        ? AppTextStyle.messageBody(base)
+        : const TextStyle();
     final style = DefaultTextStyle.of(context).style.merge(
       TextStyle(
         fontSize: effectiveFontSize,
         color: base,
-        height: hasCustomEmoji ? 1.0 : null,
+        height: bodyStyle.height ?? (hasCustomEmoji ? 1.0 : null),
+        leadingDistribution: bodyStyle.leadingDistribution,
       ),
     );
     return Builder(
@@ -4636,6 +4651,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     bool outgoing,
     List<MessageTextEntity> entities,
     double fontSize,
+    bool bodyLeading,
   ) {
     final key = '${quote.offset}:${quote.length}';
     final quoteColor = _messageQuoteColor(outgoing);
@@ -4680,6 +4696,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
               maxLines: expanded ? null : 3,
               entities: entities,
               fontSize: fontSize,
+              bodyLeading: bodyLeading,
             ),
             if (quote.isExpandableBlockQuote) ...[
               const SizedBox(height: 4),

@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'helpers/glass_review_capture.dart';
 
 void main() {
-  testWidgets('finite-height tab slots fit at larger text scales', (
+  testWidgets('icon-only capsule slots fit at larger text scales', (
     tester,
   ) async {
     const labels = ['Chats', 'Channels', 'Contacts', 'Moments'];
@@ -33,7 +33,7 @@ void main() {
                       selection: selected,
                       itemCount: labels.length,
                       child: SizedBox(
-                        height: 62 + (11 * scale - 11) * 1.1,
+                        height: 62,
                         child: Row(
                           children: [
                             for (final label in labels)
@@ -51,17 +51,6 @@ void main() {
                                           key: ValueKey('scaled-icon-$label'),
                                           width: 36,
                                           height: 28,
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          label,
-                                          key: ValueKey('scaled-label-$label'),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            height: 1.1,
-                                          ),
                                         ),
                                       ],
                                     ),
@@ -84,7 +73,11 @@ void main() {
             tester.widget<DecoratedBox>(indicator).decoration as BoxDecoration;
         final radius = decoration.borderRadius! as BorderRadius;
         final shape = radius.toRRect(tester.getRect(indicator));
-        for (final prefix in ['scaled-icon', 'scaled-label']) {
+        expect(
+          radius,
+          BorderRadius.circular(tester.getSize(indicator).height / 2),
+        );
+        for (final prefix in ['scaled-icon']) {
           final bounds = tester.getRect(
             find.byKey(ValueKey('$prefix-${labels[selected]}')),
           );
@@ -202,226 +195,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('selection indicator fully covers the selected icon and label', (
+  testWidgets('selection capsule derives its radius from its own height', (
     tester,
   ) async {
-    // A full stadium (radius = slot height) pulls the corner arcs ~10 px
-    // inward at the label row, so the label's lower corners fell outside the
-    // filled pill — most visibly on narrow tablet tabs. The indicator must
-    // keep a small corner radius so the whole icon+label of the selected tab
-    // sits inside the filled shape at any slot size or text scale.
-    //
-    // The child mirrors the real bottom bar: each slot is an Expanded cell
-    // centring an icon block above a label with a 2 px gutter on each side.
-    Widget slot(String label) => Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(key: ValueKey('icon-$label'), width: 36, height: 28),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              key: ValueKey('label-$label'),
-              style: const TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(extensions: [AppColors.light]),
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            // A narrow tablet slot: sidebar(~328) minus glass chrome, /4.
-            child: SizedBox(
-              width: 318,
-              child: LiquidGlassBottomBar(
-                selection: 0,
-                itemCount: 4,
-                child: Row(
-                  children: [
-                    Expanded(child: slot('Chats')),
-                    Expanded(child: slot('Channels')),
-                    Expanded(child: slot('Contacts')),
-                    Expanded(child: slot('Moments')),
-                  ],
+    // The glass row is icon-only. Its full capsule follows the outer surface
+    // across the 5pt inset; the classic icon + label bar is a separate path.
+    for (final rowHeight in [62.0, 71.0]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(extensions: [AppColors.light]),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                width: 318,
+                child: LiquidGlassBottomBar(
+                  selection: 0,
+                  itemCount: 4,
+                  child: SizedBox(
+                    height: rowHeight,
+                    child: Row(
+                      children: [
+                        for (var index = 0; index < 4; index++)
+                          Expanded(
+                            child: Center(
+                              child: SizedBox(
+                                key: ValueKey('capsule-icon-$index'),
+                                width: 36,
+                                height: 28,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    final pill = find.byKey(const ValueKey('liquid-glass-selection'));
-    final pr = tester.getRect(pill);
-    final radius =
-        (tester.widget<DecoratedBox>(pill).decoration as BoxDecoration)
-                .borderRadius
-            as BorderRadius;
-    // Guard against a regression to a full stadium, which is what clipped.
-    expect(radius.bottomLeft.y, lessThanOrEqualTo(16));
-    expect(radius.bottomLeft.y, isNot(AppRadius.pill));
-
-    bool insideRounded(Offset p) {
-      if (!pr.contains(p)) return false;
-      final r = radius.bottomLeft.y;
-      // Only the corner discs can carve out the bounding box.
-      final dx = p.dx < pr.left + r
-          ? p.dx - (pr.left + r)
-          : p.dx > pr.right - r
-          ? p.dx - (pr.right - r)
-          : 0.0;
-      final dy = p.dy < pr.top + r
-          ? p.dy - (pr.top + r)
-          : p.dy > pr.bottom - r
-          ? p.dy - (pr.bottom - r)
-          : 0.0;
-      return dx == 0 || dy == 0 || dx * dx + dy * dy <= r * r;
-    }
-
-    for (final key in ['icon-Chats', 'label-Chats']) {
-      final r = tester.getRect(find.byKey(ValueKey(key)));
+      );
+      final pill = find.byKey(const ValueKey('liquid-glass-selection'));
+      final rect = tester.getRect(pill);
+      final decoration =
+          tester.widget<DecoratedBox>(pill).decoration as BoxDecoration;
+      final radius = decoration.borderRadius! as BorderRadius;
+      expect(rect.height, rowHeight);
+      expect(radius, BorderRadius.circular(rowHeight / 2));
+      final shape = radius.toRRect(rect);
+      final icon = tester.getRect(find.byKey(const ValueKey('capsule-icon-0')));
       for (final corner in [
-        r.topLeft,
-        r.topRight,
-        r.bottomLeft,
-        r.bottomRight,
+        icon.topLeft,
+        icon.topRight,
+        icon.bottomLeft,
+        icon.bottomRight,
       ]) {
-        expect(
-          insideRounded(corner),
-          isTrue,
-          reason: '$key corner $corner outside the indicator $pr',
-        );
+        expect(shape.contains(corner), isTrue);
       }
+      expect(tester.takeException(), isNull);
     }
-    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('glass capsule has a dark contour, a light rim, and a shadow', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(extensions: [AppColors.light]),
-        home: const Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: SizedBox(
-              width: 318,
-              child: LiquidGlassBottomBar(
-                selection: 0,
-                itemCount: 4,
-                child: SizedBox(height: 62, width: double.infinity),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    final capsule = find.descendant(
-      of: find.byType(LiquidGlassBottomBar),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is ClipRRect &&
-            widget.borderRadius == BorderRadius.circular(AppRadius.pill),
-      ),
-    );
-    expect(capsule, findsOneWidget);
-
-    final decorations = tester
-        .widgetList<DecoratedBox>(
-          find.ancestor(of: capsule, matching: find.byType(DecoratedBox)),
-        )
-        .map((box) => (box: box, decoration: box.decoration as BoxDecoration))
-        .toList();
-    final contour = decorations.firstWhere(
-      (entry) => entry.decoration.border != null,
-    );
-    final shadow = decorations.firstWhere(
-      (entry) => entry.decoration.boxShadow != null,
-    );
-    // A white capsule on a white page is edgeless without this: the dark
-    // hairline shares the stadium radius and is painted over the glass edge,
-    // so the clip cannot cover it.
-    expect(contour.box.position, DecorationPosition.foreground);
-    expect(
-      contour.decoration.borderRadius,
-      BorderRadius.circular(AppRadius.pill),
-    );
-    final contourSide = contour.decoration.border!.top;
-    expect(contourSide.color, const Color(0xFF000000).withValues(alpha: 0.055));
-    expect(contourSide.width, 0.6);
-    // The specular rim stays inside the contour and stays white, so the two
-    // edge strokes are not the same paint.
-    final rim =
-        tester
-                .widget<DecoratedBox>(
-                  find
-                      .descendant(
-                        of: find.byType(BackdropFilter),
-                        matching: find.byType(DecoratedBox),
-                      )
-                      .first,
-                )
-                .decoration
-            as BoxDecoration;
-    expect(
-      rim.border!.top.color,
-      const Color(0xFFFFFFFF).withValues(alpha: 0.85),
-    );
-    expect(rim.border!.top.color, isNot(contourSide.color));
-    // The soft drop shadow still sits on the outermost box.
-    expect(shadow.decoration.boxShadow, hasLength(1));
-    expect(shadow.decoration.boxShadow!.single.blurRadius, 20);
-    expect(shadow.decoration.boxShadow!.single.offset, const Offset(0, 5));
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('glass blur is strong and yields only to high contrast', (
-    tester,
-  ) async {
-    Widget host({bool highContrast = false}) => MaterialApp(
-      theme: ThemeData(extensions: [AppColors.light]),
-      home: MediaQuery(
-        data: MediaQueryData(
-          size: const Size(390, 844),
-          highContrast: highContrast,
-        ),
-        child: const Scaffold(
-          body: Align(
-            alignment: Alignment.bottomCenter,
-            child: SizedBox(
-              width: 318,
-              child: LiquidGlassBottomBar(
-                selection: 0,
-                itemCount: 4,
-                child: SizedBox(height: 62, width: double.infinity),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    BackdropFilter blur() => tester.widget<BackdropFilter>(
-      find.descendant(
-        of: find.byType(LiquidGlassBottomBar),
-        matching: find.byType(BackdropFilter),
-      ),
-    );
-
-    await tester.pumpWidget(host());
-    expect(blur().enabled, isTrue);
-    expect(blur().filter.toString(), contains('ImageFilter.blur(24.0, 24.0'));
-
-    await tester.pumpWidget(host(highContrast: true));
-    expect(blur().enabled, isFalse);
-    expect(blur().filter.toString(), contains('ImageFilter.blur(24.0, 24.0'));
-    expect(tester.takeException(), isNull);
-  });
   testWidgets(
     'capture patterned glass surfaces for visual review',
     (tester) async {

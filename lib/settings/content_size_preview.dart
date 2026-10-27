@@ -123,11 +123,8 @@ class ContentSizePreview extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: TextStyle(
-            fontSize: AppTextSize.messageBody(),
-            color: outgoing
-                ? AppTheme.bubbleOutgoingText
-                : colors.bubbleIncomingText,
+          style: AppTextStyle.messageBody(
+            outgoing ? AppTheme.bubbleOutgoingText : colors.bubbleIncomingText,
           ),
         ),
       ),

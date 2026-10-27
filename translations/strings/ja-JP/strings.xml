@@ -2765,6 +2765,7 @@
     <string name="quickReactionsLimit">クイックリアクションは9個まで選択できます。</string>
     <string name="quickReactionsSelected">選択済み</string>
     <string name="quickReactionsTitle">クイックリアクション</string>
+    <string name="resetInterfaceScale">100%に戻す</string>
     <string name="richTextBlockAnchor">アンカー</string>
     <string name="richTextBlockAnimation">アニメーション</string>
     <string name="richTextBlockAudio">音声</string>

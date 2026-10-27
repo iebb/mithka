@@ -195,13 +195,13 @@ void main() {
       );
 
       // Scroll the overlay well past its top and pick a row from there.
-      await tester.drag(
-        find.byKey(const ValueKey('topic-navigation-left')),
-        const Offset(0, -600),
-      );
-      await _settle(tester);
-      await tester.ensureVisible(
+      await tester.scrollUntilVisible(
         find.byKey(const ValueKey('topic-navigation-item-95')),
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('topic-navigation-left')),
+          matching: find.byType(Scrollable),
+        ),
       );
       await _settle(tester);
       final before = overlayList().position.pixels;
@@ -288,13 +288,13 @@ void main() {
         ),
       );
 
-      await tester.drag(
-        find.byKey(const ValueKey('topic-navigation-left')),
-        const Offset(0, -600),
-      );
-      await _settle(tester);
-      await tester.ensureVisible(
+      await tester.scrollUntilVisible(
         find.byKey(const ValueKey('topic-navigation-item-95')),
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('topic-navigation-left')),
+          matching: find.byType(Scrollable),
+        ),
       );
       await _settle(tester);
       final before = overlayList().position.pixels;

@@ -27,24 +27,24 @@ void main() {
     });
   }
 
-  for (final platform in [
-    TargetPlatform.iOS,
-    TargetPlatform.android,
-    TargetPlatform.fuchsia,
-  ]) {
-    test(
-      '$platform uses larger touch chat roles without changing geometry',
-      () {
-        expect(AppMetric.chatListRowHeight(platform), 64);
-        expect(AppMetric.chatListAvatarSize(platform), 48);
-        expect(AppTextSize.chatListTitle(platform), 16);
-        expect(AppTextSize.chatListPreview(platform), 14);
-        expect(AppTextSize.chatListTimestamp(platform), 13);
-        expect(AppTextSize.chatListFolderTag(platform), 12);
-        expect(AppTextSize.messageBody(platform), 17);
-      },
-    );
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    test('$platform uses calibrated touch chat roles and row geometry', () {
+      expect(AppMetric.chatListRowHeight(platform), 72);
+      expect(AppMetric.chatListAvatarSize(platform), 48);
+      expect(AppTextSize.chatListTitle(platform), 17);
+      expect(AppTextSize.chatListPreview(platform), 13);
+      expect(AppTextSize.chatListTimestamp(platform), 13);
+      expect(AppTextSize.chatListFolderTag(platform), 12);
+      expect(AppTextSize.messageBody(platform), 17);
+    });
   }
+
+  test('other targets and unrelated contact row metrics are unchanged', () {
+    expect(AppMetric.listRowHeight, 64);
+    expect(AppMetric.chatListRowHeight(TargetPlatform.fuchsia), 64);
+    expect(AppTextSize.chatListTitle(TargetPlatform.fuchsia), 16);
+    expect(AppTextSize.chatListPreview(TargetPlatform.fuchsia), 14);
+  });
 
   test('shared settings and navigation text tokens are unchanged', () {
     expect(

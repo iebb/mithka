@@ -85,8 +85,10 @@ void main() {
     );
     expect(media.size, const Size(400, 600));
     expect(media.viewInsets.bottom, 200);
-    expect(media.textScaler, same(system));
-    expect(size.systemTextScaler, same(system));
+    for (final fontSize in [12.0, 17.0, 32.0]) {
+      expect(media.textScaler.scale(fontSize), system.scale(fontSize));
+    }
+    expect(size.systemTextScaler, same(media.textScaler));
     expect(size.appScale, 1.35);
   });
 

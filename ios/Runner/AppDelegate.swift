@@ -196,6 +196,9 @@ import UserNotifications
     guard !didRegisterFlutterPlugins else { return }
     didRegisterFlutterPlugins = true
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NativeGlassSurface") {
+      registrar.register(NativeGlassSurfaceFactory(registrar: registrar), withId: "mithka/native_glass")
+    }
     let windowGeometryChannel = FlutterMethodChannel(
       name: "mithka/window_geometry",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

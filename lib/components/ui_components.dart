@@ -18,6 +18,7 @@ import '../platform/adaptive_platform.dart';
 import '../platform/system_ui.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import '../theme/content_size.dart';
 import '../theme/date_text.dart';
 import '../theme/theme_controller.dart';
 import 'app_icons.dart';
@@ -1980,7 +1981,7 @@ class ChatPreviewText extends StatelessWidget {
       context,
     ).style.merge(TextStyle(fontSize: fontSize));
     return RichText(
-      textScaler: MediaQuery.textScalerOf(context),
+      textScaler: ContentSizeScope.chatListPreviewScalerOf(context),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
