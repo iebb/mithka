@@ -53,6 +53,11 @@ if [[ "$cmd" == "revert" ]]; then
   mv -f "$BACKUP" "$TARGET"
   if [[ -f "$LOCK_BACKUP" ]]; then
     mv -f "$LOCK_BACKUP" "$LOCK"
+  else
+    # The original had no lockfile (the backup's absence records that), so a
+    # lock that OHOS pub get created during the overlay must not survive the
+    # revert either: restore absence as well as content.
+    rm -f "$LOCK"
   fi
   echo "restored $TARGET and $LOCK from backups"
   exit 0
@@ -84,9 +89,13 @@ for raw in o_lines:
         key, _, val = raw.strip().partition(":")
         ovr.setdefault(key.strip(), val.strip())
 
-# Back up the exact original bytes of both files pub get rewrites.
-with open(backup, "w") as f:
-    f.write(t_text)
+# Back up the exact original bytes of both files pub get rewrites: the
+# YAML is copied byte-for-byte (newline style included), never re-encoded
+# through text mode, so a dirty CRLF file restores byte-identically.
+with open(target, "rb") as f:
+    t_bytes = f.read()
+with open(backup, "wb") as f:
+    f.write(t_bytes)
 try:
     shutil.copy2(lock, lock_backup)
 except FileNotFoundError:

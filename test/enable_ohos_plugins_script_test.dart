@@ -11,6 +11,7 @@
 @Timeout(Duration(minutes: 3))
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -183,6 +184,58 @@ void main() {
     expect(
       File('${scratch.path}/pubspec.lock').readAsStringSync(),
       pristineLock,
+    );
+  });
+
+  test('apply/resolve/revert from a lockless tree restores lock absence', () {
+    // The original tree had no lockfile: revert must remove the lock the
+    // overlay's pub get created, not leave it behind as if it predated the
+    // overlay.
+    File('${scratch.path}/pubspec.lock').deleteSync();
+    expect(run(['apply']).code, 0, reason: 'lockless apply must succeed');
+    expect(
+      File('${scratch.path}/pubspec.lock.ohos-backup').existsSync(),
+      isFalse,
+      reason: 'no lock existed, so no lock backup may exist',
+    );
+    // pub get creates a lock during the overlay.
+    File(
+      '${scratch.path}/pubspec.lock',
+    ).writeAsStringSync('# created by OHOS pub get\n');
+
+    final r = run(['revert']);
+    expect(r.code, 0, reason: 'revert must succeed\n${r.err}');
+    expect(
+      File('${scratch.path}/pubspec.lock').existsSync(),
+      isFalse,
+      reason: 'a lock born during the overlay must not survive the revert',
+    );
+    expect(
+      File('${scratch.path}/pubspec.yaml').readAsStringSync(),
+      pristinePubspec,
+    );
+  });
+
+  test('a dirty CRLF pubspec restores byte-identically', () {
+    // The backup must preserve the exact bytes — newline style included —
+    // rather than re-encoding the file through text mode. Byte comparisons
+    // throughout: Dart's readAsStringSync folds CRLF to LF.
+    final crlf = pristinePubspec.replaceAll('\n', '\r\n');
+    final crlfBytes = utf8.encode(crlf);
+    File('${scratch.path}/pubspec.yaml').writeAsBytesSync(crlfBytes);
+
+    expect(run(['apply']).code, 0, reason: 'apply on a dirty file');
+    expect(
+      File('${scratch.path}/pubspec.yaml.ohos-backup').readAsBytesSync(),
+      crlfBytes,
+      reason: 'the backup itself must keep CRLF bytes',
+    );
+
+    expect(run(['revert']).code, 0, reason: 'revert must succeed');
+    expect(
+      File('${scratch.path}/pubspec.yaml').readAsBytesSync(),
+      crlfBytes,
+      reason: 'the restored file is byte-identical to the dirty original',
     );
   });
 
