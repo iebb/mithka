@@ -44,6 +44,59 @@
 		C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */ = {isa = PBXBuildFile; fileRef = A257B729519AB240FBD5E29F /* MithkaPurple.icon */; };
 		EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F1053565C108E047425E7C1F /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F331E1000100000001 /* AppPurchases.swift */; };
+		7BA753F56FC9528E6CF7DC49 /* MithkaPilot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3A050CA6684F95B56CCB99F7 /* MithkaPilot.icon */; };
+		504DB1F5A57784DC5005A58E /* MithkaHeadphones.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8B874D32ED58E9DF0318F276 /* MithkaHeadphones.icon */; };
+		FADB62E9EF538F63485B8633 /* MithkaWinter.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0D0E6F7A2EC38579AB8CA764 /* MithkaWinter.icon */; };
+		A9EA3AD9DEA735D00294857B /* MithkaAstronaut.icon in Resources */ = {isa = PBXBuildFile; fileRef = 52092B9F9F101A5B9DF3B7DB /* MithkaAstronaut.icon */; };
+		9BC58A80BF4A4B9057ECD960 /* MithkaCrown.icon in Resources */ = {isa = PBXBuildFile; fileRef = B4095D31E7ED0E0A8DDD086D /* MithkaCrown.icon */; };
+		0496EB27E3D601D7793E1E06 /* MithkaParty.icon in Resources */ = {isa = PBXBuildFile; fileRef = 384FDC3257F15C4EC920B436 /* MithkaParty.icon */; };
+		1051AFEF38316A05E6C22025 /* MithkaSleepy.icon in Resources */ = {isa = PBXBuildFile; fileRef = 2F4A77D7BE2A4D11E7E7D80B /* MithkaSleepy.icon */; };
+		F60292999D62586CBAC72820 /* MithkaHeart.icon in Resources */ = {isa = PBXBuildFile; fileRef = 1900FAAC344B8DC1DEF15A55 /* MithkaHeart.icon */; };
+		F82773F3F2B03E671E9F0A53 /* MithkaCoffee.icon in Resources */ = {isa = PBXBuildFile; fileRef = 96E0803465EF111764DB741D /* MithkaCoffee.icon */; };
+		EEEBDF25F0B8EF70572ED636 /* MithkaDetective.icon in Resources */ = {isa = PBXBuildFile; fileRef = 729A9D5608357EC1EFAC46BE /* MithkaDetective.icon */; };
+		D9BE712ECECD234DA91BB6A2 /* MithkaGamer.icon in Resources */ = {isa = PBXBuildFile; fileRef = E03151DA27686624205A005E /* MithkaGamer.icon */; };
+		685A63CA4EA86849372F0C20 /* MithkaFishing.icon in Resources */ = {isa = PBXBuildFile; fileRef = 17B9FAE30014EEC54D13B6F4 /* MithkaFishing.icon */; };
+		AD14ECB3970AEA0D90DA3019 /* MithkaSkateboard.icon in Resources */ = {isa = PBXBuildFile; fileRef = F30F6E3F0A3E65317BC31B56 /* MithkaSkateboard.icon */; };
+		F6D2F883749FCD89185317B6 /* MithkaSurfboard.icon in Resources */ = {isa = PBXBuildFile; fileRef = EBD96A3AF10D88BC99DB16BF /* MithkaSurfboard.icon */; };
+		FDF649EEEEC83316E04B9821 /* MithkaBasketball.icon in Resources */ = {isa = PBXBuildFile; fileRef = 71E8A98E936348BEB4081751 /* MithkaBasketball.icon */; };
+		352101321FAAECBB9D6B80F8 /* MithkaFootball.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6B7729F720D7E2A949FB2CC4 /* MithkaFootball.icon */; };
+		E8FA4A37B6278F92371826D0 /* MithkaTennis.icon in Resources */ = {isa = PBXBuildFile; fileRef = A14146450201F7259ACBCD6C /* MithkaTennis.icon */; };
+		8FAC898B8D7C27CC51984A63 /* MithkaSkiing.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0E2D5CD9D151A5876CF7204E /* MithkaSkiing.icon */; };
+		B70368F6F3D87F39FC389593 /* MithkaPainter.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0B63453D2B03CA13607006A2 /* MithkaPainter.icon */; };
+		8B0EAE12EA254186D2A5F9B9 /* MithkaGuitar.icon in Resources */ = {isa = PBXBuildFile; fileRef = 6B8152837446EAEBC454BD95 /* MithkaGuitar.icon */; };
+		0CDECE2AC88130B7D7F15C7B /* MithkaDrummer.icon in Resources */ = {isa = PBXBuildFile; fileRef = 2835151D718F8B390737B5B4 /* MithkaDrummer.icon */; };
+		47328B3A0D8003DB2FC8EF68 /* MithkaPhotographer.icon in Resources */ = {isa = PBXBuildFile; fileRef = E31F90EFF67F49938B98ADBF /* MithkaPhotographer.icon */; };
+		72AE7FF21512229E6B48E6C5 /* MithkaMagician.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4E3AE0F339A7E043ADFD0070 /* MithkaMagician.icon */; };
+		3D8D45591310B41E28826B8D /* MithkaChef.icon in Resources */ = {isa = PBXBuildFile; fileRef = 38AF88EA1DD4FD82B4E42915 /* MithkaChef.icon */; };
+		7941A87077B127BFA4FA1BC8 /* MithkaReader.icon in Resources */ = {isa = PBXBuildFile; fileRef = DBABDF70F75E14288B2F5D67 /* MithkaReader.icon */; };
+		805C51E042DC7DE7A6B1C93E /* MithkaScientist.icon in Resources */ = {isa = PBXBuildFile; fileRef = D8A08BEDF2F79DABC3BBD02C /* MithkaScientist.icon */; };
+		4F5535B4FD5105B3FF86D405 /* MithkaGardener.icon in Resources */ = {isa = PBXBuildFile; fileRef = 83E05DFD30FAAAE520129D2C /* MithkaGardener.icon */; };
+		461F38C6B1D68835510FC6C7 /* MithkaMailCarrier.icon in Resources */ = {isa = PBXBuildFile; fileRef = A4EBA4EA1B8F16506C0FC39B /* MithkaMailCarrier.icon */; };
+		A1FA89F326B2EDE59CD5437C /* MithkaPirate.icon in Resources */ = {isa = PBXBuildFile; fileRef = DA92C0A126131CB310B44DF5 /* MithkaPirate.icon */; };
+		3D93ED2960CA61EE5EE1F684 /* MithkaDragon.icon in Resources */ = {isa = PBXBuildFile; fileRef = BBDB4CB5CD32A9916DEB134D /* MithkaDragon.icon */; };
+		B6AF2C5FFEB781B1EE660148 /* MithkaBubblegum.icon in Resources */ = {isa = PBXBuildFile; fileRef = AEAEA50A6CA2BD4D500AB73C /* MithkaBubblegum.icon */; };
+		B7924D862E4854C86F720CFD /* MithkaRaincoat.icon in Resources */ = {isa = PBXBuildFile; fileRef = 273C21B70304FDDE67FB86D8 /* MithkaRaincoat.icon */; };
+		4D953B44EAACF77FD4BED6D9 /* MithkaNoodles.icon in Resources */ = {isa = PBXBuildFile; fileRef = CABCA57F0AADF7BDE00E7D69 /* MithkaNoodles.icon */; };
+		453BDEFA8B2CE16398A88EB6 /* MithkaIceCream.icon in Resources */ = {isa = PBXBuildFile; fileRef = A9C11ABF33F9208260CE0494 /* MithkaIceCream.icon */; };
+		26DC4F7AB93AEB2DA3785721 /* MithkaSunflower.icon in Resources */ = {isa = PBXBuildFile; fileRef = 334C01780A316967C67BA5EE /* MithkaSunflower.icon */; };
+		33C83B523F4C4CEB96C0077D /* MithkaNinja.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3C2B0E8C73693207A6F49242 /* MithkaNinja.icon */; };
+		755BDB34B711F0949210996E /* MithkaHighFive.icon in Resources */ = {isa = PBXBuildFile; fileRef = AF8D14A2D9796B505293A919 /* MithkaHighFive.icon */; };
+		539C4D7794219FB21A84D8EA /* MithkaHug.icon in Resources */ = {isa = PBXBuildFile; fileRef = FD9B33A0C5801D5D1D0A9560 /* MithkaHug.icon */; };
+		5E592C0AFD6015FF1DD2DF95 /* MithkaSeesaw.icon in Resources */ = {isa = PBXBuildFile; fileRef = F5A3CC6A590B29925EA77DD9 /* MithkaSeesaw.icon */; };
+		0CECF034CA1E491AE5B7A3EB /* MithkaDance.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9932FB7A3ADAC80600BE029B /* MithkaDance.icon */; };
+		BD6FDC78C5A57C143CA75E42 /* MithkaPillowFight.icon in Resources */ = {isa = PBXBuildFile; fileRef = A4B54748E2ABE27EEE192D0D /* MithkaPillowFight.icon */; };
+		6611049CF34057CB8282DB9C /* MithkaSnowball.icon in Resources */ = {isa = PBXBuildFile; fileRef = FCF73181C292449ECBEA7A19 /* MithkaSnowball.icon */; };
+		FD772E3726CDE73AEA772DB9 /* MithkaParade.icon in Resources */ = {isa = PBXBuildFile; fileRef = BCC1A944BD76775DF5104CB2 /* MithkaParade.icon */; };
+		0A540F01C81D293B24D9BCEB /* MithkaChoir.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9FD92085E3FAFDADC664E277 /* MithkaChoir.icon */; };
+		510DEB53398C28049E52E2A1 /* MithkaStack.icon in Resources */ = {isa = PBXBuildFile; fileRef = F850965DC9937FC80FF5AFF6 /* MithkaStack.icon */; };
+		127ABADD26198173A716D82F /* MithkaPicnic.icon in Resources */ = {isa = PBXBuildFile; fileRef = A4577F2D3C124C4A26566B8F /* MithkaPicnic.icon */; };
+		ED8BE74DDBABB2517B3CD1F7 /* MithkaPaperPlanes.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42B9C203331FE7B6D428EFBC /* MithkaPaperPlanes.icon */; };
+		E79F7109CC555B73B47BEA37 /* MithkaStargazing.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4FBB0880B85BC2183EC052CA /* MithkaStargazing.icon */; };
+		2A186481AD329361381A3F25 /* MithkaWhite.icon in Resources */ = {isa = PBXBuildFile; fileRef = E55FCC0A5626166720397D1F /* MithkaWhite.icon */; };
+		5742E03352565F861BAD0D8B /* MithkaPixelNeutral.icon in Resources */ = {isa = PBXBuildFile; fileRef = CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */; };
+		CE75591296999C3B5485D6DA /* MithkaPixelGradient.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */; };
+		ECD25D7BA036F60AC8DE332A /* MithkaLetterMNeutral.icon in Resources */ = {isa = PBXBuildFile; fileRef = 2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */; };
+		1D52520CFE285107D9FD4BBE /* MithkaLetterMGradient.icon in Resources */ = {isa = PBXBuildFile; fileRef = E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -150,6 +203,58 @@
 		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
 		9A4F20F331E1000100000001 /* AppPurchases.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppPurchases.swift; sourceTree = "<group>"; };
+		3A050CA6684F95B56CCB99F7 /* MithkaPilot.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPilot.icon; sourceTree = "<group>"; };
+		8B874D32ED58E9DF0318F276 /* MithkaHeadphones.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaHeadphones.icon; sourceTree = "<group>"; };
+		0D0E6F7A2EC38579AB8CA764 /* MithkaWinter.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaWinter.icon; sourceTree = "<group>"; };
+		52092B9F9F101A5B9DF3B7DB /* MithkaAstronaut.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaAstronaut.icon; sourceTree = "<group>"; };
+		B4095D31E7ED0E0A8DDD086D /* MithkaCrown.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaCrown.icon; sourceTree = "<group>"; };
+		384FDC3257F15C4EC920B436 /* MithkaParty.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaParty.icon; sourceTree = "<group>"; };
+		2F4A77D7BE2A4D11E7E7D80B /* MithkaSleepy.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSleepy.icon; sourceTree = "<group>"; };
+		1900FAAC344B8DC1DEF15A55 /* MithkaHeart.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaHeart.icon; sourceTree = "<group>"; };
+		96E0803465EF111764DB741D /* MithkaCoffee.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaCoffee.icon; sourceTree = "<group>"; };
+		729A9D5608357EC1EFAC46BE /* MithkaDetective.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaDetective.icon; sourceTree = "<group>"; };
+		E03151DA27686624205A005E /* MithkaGamer.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaGamer.icon; sourceTree = "<group>"; };
+		17B9FAE30014EEC54D13B6F4 /* MithkaFishing.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaFishing.icon; sourceTree = "<group>"; };
+		F30F6E3F0A3E65317BC31B56 /* MithkaSkateboard.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSkateboard.icon; sourceTree = "<group>"; };
+		EBD96A3AF10D88BC99DB16BF /* MithkaSurfboard.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSurfboard.icon; sourceTree = "<group>"; };
+		71E8A98E936348BEB4081751 /* MithkaBasketball.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaBasketball.icon; sourceTree = "<group>"; };
+		6B7729F720D7E2A949FB2CC4 /* MithkaFootball.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaFootball.icon; sourceTree = "<group>"; };
+		A14146450201F7259ACBCD6C /* MithkaTennis.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaTennis.icon; sourceTree = "<group>"; };
+		0E2D5CD9D151A5876CF7204E /* MithkaSkiing.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSkiing.icon; sourceTree = "<group>"; };
+		0B63453D2B03CA13607006A2 /* MithkaPainter.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPainter.icon; sourceTree = "<group>"; };
+		6B8152837446EAEBC454BD95 /* MithkaGuitar.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaGuitar.icon; sourceTree = "<group>"; };
+		2835151D718F8B390737B5B4 /* MithkaDrummer.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaDrummer.icon; sourceTree = "<group>"; };
+		E31F90EFF67F49938B98ADBF /* MithkaPhotographer.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPhotographer.icon; sourceTree = "<group>"; };
+		4E3AE0F339A7E043ADFD0070 /* MithkaMagician.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaMagician.icon; sourceTree = "<group>"; };
+		38AF88EA1DD4FD82B4E42915 /* MithkaChef.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaChef.icon; sourceTree = "<group>"; };
+		DBABDF70F75E14288B2F5D67 /* MithkaReader.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaReader.icon; sourceTree = "<group>"; };
+		D8A08BEDF2F79DABC3BBD02C /* MithkaScientist.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaScientist.icon; sourceTree = "<group>"; };
+		83E05DFD30FAAAE520129D2C /* MithkaGardener.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaGardener.icon; sourceTree = "<group>"; };
+		A4EBA4EA1B8F16506C0FC39B /* MithkaMailCarrier.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaMailCarrier.icon; sourceTree = "<group>"; };
+		DA92C0A126131CB310B44DF5 /* MithkaPirate.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPirate.icon; sourceTree = "<group>"; };
+		BBDB4CB5CD32A9916DEB134D /* MithkaDragon.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaDragon.icon; sourceTree = "<group>"; };
+		AEAEA50A6CA2BD4D500AB73C /* MithkaBubblegum.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaBubblegum.icon; sourceTree = "<group>"; };
+		273C21B70304FDDE67FB86D8 /* MithkaRaincoat.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaRaincoat.icon; sourceTree = "<group>"; };
+		CABCA57F0AADF7BDE00E7D69 /* MithkaNoodles.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaNoodles.icon; sourceTree = "<group>"; };
+		A9C11ABF33F9208260CE0494 /* MithkaIceCream.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaIceCream.icon; sourceTree = "<group>"; };
+		334C01780A316967C67BA5EE /* MithkaSunflower.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSunflower.icon; sourceTree = "<group>"; };
+		3C2B0E8C73693207A6F49242 /* MithkaNinja.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaNinja.icon; sourceTree = "<group>"; };
+		AF8D14A2D9796B505293A919 /* MithkaHighFive.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaHighFive.icon; sourceTree = "<group>"; };
+		FD9B33A0C5801D5D1D0A9560 /* MithkaHug.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaHug.icon; sourceTree = "<group>"; };
+		F5A3CC6A590B29925EA77DD9 /* MithkaSeesaw.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSeesaw.icon; sourceTree = "<group>"; };
+		9932FB7A3ADAC80600BE029B /* MithkaDance.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaDance.icon; sourceTree = "<group>"; };
+		A4B54748E2ABE27EEE192D0D /* MithkaPillowFight.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPillowFight.icon; sourceTree = "<group>"; };
+		FCF73181C292449ECBEA7A19 /* MithkaSnowball.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSnowball.icon; sourceTree = "<group>"; };
+		BCC1A944BD76775DF5104CB2 /* MithkaParade.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaParade.icon; sourceTree = "<group>"; };
+		9FD92085E3FAFDADC664E277 /* MithkaChoir.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaChoir.icon; sourceTree = "<group>"; };
+		F850965DC9937FC80FF5AFF6 /* MithkaStack.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaStack.icon; sourceTree = "<group>"; };
+		A4577F2D3C124C4A26566B8F /* MithkaPicnic.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPicnic.icon; sourceTree = "<group>"; };
+		42B9C203331FE7B6D428EFBC /* MithkaPaperPlanes.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPaperPlanes.icon; sourceTree = "<group>"; };
+		4FBB0880B85BC2183EC052CA /* MithkaStargazing.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaStargazing.icon; sourceTree = "<group>"; };
+		CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixelNeutral.icon; sourceTree = "<group>"; };
+		0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixelGradient.icon; sourceTree = "<group>"; };
+		2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaLetterMNeutral.icon; sourceTree = "<group>"; };
+		E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaLetterMGradient.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -287,6 +392,58 @@
 				51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */,
 				73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */,
 				95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */,
+				CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */,
+				0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */,
+				2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */,
+				E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */,
+				3A050CA6684F95B56CCB99F7 /* MithkaPilot.icon */,
+				8B874D32ED58E9DF0318F276 /* MithkaHeadphones.icon */,
+				0D0E6F7A2EC38579AB8CA764 /* MithkaWinter.icon */,
+				52092B9F9F101A5B9DF3B7DB /* MithkaAstronaut.icon */,
+				B4095D31E7ED0E0A8DDD086D /* MithkaCrown.icon */,
+				384FDC3257F15C4EC920B436 /* MithkaParty.icon */,
+				2F4A77D7BE2A4D11E7E7D80B /* MithkaSleepy.icon */,
+				1900FAAC344B8DC1DEF15A55 /* MithkaHeart.icon */,
+				96E0803465EF111764DB741D /* MithkaCoffee.icon */,
+				729A9D5608357EC1EFAC46BE /* MithkaDetective.icon */,
+				E03151DA27686624205A005E /* MithkaGamer.icon */,
+				17B9FAE30014EEC54D13B6F4 /* MithkaFishing.icon */,
+				F30F6E3F0A3E65317BC31B56 /* MithkaSkateboard.icon */,
+				EBD96A3AF10D88BC99DB16BF /* MithkaSurfboard.icon */,
+				71E8A98E936348BEB4081751 /* MithkaBasketball.icon */,
+				6B7729F720D7E2A949FB2CC4 /* MithkaFootball.icon */,
+				A14146450201F7259ACBCD6C /* MithkaTennis.icon */,
+				0E2D5CD9D151A5876CF7204E /* MithkaSkiing.icon */,
+				0B63453D2B03CA13607006A2 /* MithkaPainter.icon */,
+				6B8152837446EAEBC454BD95 /* MithkaGuitar.icon */,
+				2835151D718F8B390737B5B4 /* MithkaDrummer.icon */,
+				E31F90EFF67F49938B98ADBF /* MithkaPhotographer.icon */,
+				4E3AE0F339A7E043ADFD0070 /* MithkaMagician.icon */,
+				38AF88EA1DD4FD82B4E42915 /* MithkaChef.icon */,
+				DBABDF70F75E14288B2F5D67 /* MithkaReader.icon */,
+				D8A08BEDF2F79DABC3BBD02C /* MithkaScientist.icon */,
+				83E05DFD30FAAAE520129D2C /* MithkaGardener.icon */,
+				A4EBA4EA1B8F16506C0FC39B /* MithkaMailCarrier.icon */,
+				DA92C0A126131CB310B44DF5 /* MithkaPirate.icon */,
+				BBDB4CB5CD32A9916DEB134D /* MithkaDragon.icon */,
+				AEAEA50A6CA2BD4D500AB73C /* MithkaBubblegum.icon */,
+				273C21B70304FDDE67FB86D8 /* MithkaRaincoat.icon */,
+				CABCA57F0AADF7BDE00E7D69 /* MithkaNoodles.icon */,
+				A9C11ABF33F9208260CE0494 /* MithkaIceCream.icon */,
+				334C01780A316967C67BA5EE /* MithkaSunflower.icon */,
+				3C2B0E8C73693207A6F49242 /* MithkaNinja.icon */,
+				AF8D14A2D9796B505293A919 /* MithkaHighFive.icon */,
+				FD9B33A0C5801D5D1D0A9560 /* MithkaHug.icon */,
+				F5A3CC6A590B29925EA77DD9 /* MithkaSeesaw.icon */,
+				9932FB7A3ADAC80600BE029B /* MithkaDance.icon */,
+				A4B54748E2ABE27EEE192D0D /* MithkaPillowFight.icon */,
+				FCF73181C292449ECBEA7A19 /* MithkaSnowball.icon */,
+				BCC1A944BD76775DF5104CB2 /* MithkaParade.icon */,
+				9FD92085E3FAFDADC664E277 /* MithkaChoir.icon */,
+				F850965DC9937FC80FF5AFF6 /* MithkaStack.icon */,
+				A4577F2D3C124C4A26566B8F /* MithkaPicnic.icon */,
+				42B9C203331FE7B6D428EFBC /* MithkaPaperPlanes.icon */,
+				4FBB0880B85BC2183EC052CA /* MithkaStargazing.icon */,
 				B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */,
 			);
 			path = Runner;
@@ -517,6 +674,59 @@
 				41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */,
 				62C9DBE3F5071A2B3C4D5E6F /* MithkaPrism.icon in Resources */,
 				84EBFD0517293C4D5E6F7081 /* MithkaSignal.icon in Resources */,
+				2A186481AD329361381A3F25 /* MithkaWhite.icon in Resources */,
+				5742E03352565F861BAD0D8B /* MithkaPixelNeutral.icon in Resources */,
+				CE75591296999C3B5485D6DA /* MithkaPixelGradient.icon in Resources */,
+				ECD25D7BA036F60AC8DE332A /* MithkaLetterMNeutral.icon in Resources */,
+				1D52520CFE285107D9FD4BBE /* MithkaLetterMGradient.icon in Resources */,
+				7BA753F56FC9528E6CF7DC49 /* MithkaPilot.icon in Resources */,
+				504DB1F5A57784DC5005A58E /* MithkaHeadphones.icon in Resources */,
+				FADB62E9EF538F63485B8633 /* MithkaWinter.icon in Resources */,
+				A9EA3AD9DEA735D00294857B /* MithkaAstronaut.icon in Resources */,
+				9BC58A80BF4A4B9057ECD960 /* MithkaCrown.icon in Resources */,
+				0496EB27E3D601D7793E1E06 /* MithkaParty.icon in Resources */,
+				1051AFEF38316A05E6C22025 /* MithkaSleepy.icon in Resources */,
+				F60292999D62586CBAC72820 /* MithkaHeart.icon in Resources */,
+				F82773F3F2B03E671E9F0A53 /* MithkaCoffee.icon in Resources */,
+				EEEBDF25F0B8EF70572ED636 /* MithkaDetective.icon in Resources */,
+				D9BE712ECECD234DA91BB6A2 /* MithkaGamer.icon in Resources */,
+				685A63CA4EA86849372F0C20 /* MithkaFishing.icon in Resources */,
+				AD14ECB3970AEA0D90DA3019 /* MithkaSkateboard.icon in Resources */,
+				F6D2F883749FCD89185317B6 /* MithkaSurfboard.icon in Resources */,
+				FDF649EEEEC83316E04B9821 /* MithkaBasketball.icon in Resources */,
+				352101321FAAECBB9D6B80F8 /* MithkaFootball.icon in Resources */,
+				E8FA4A37B6278F92371826D0 /* MithkaTennis.icon in Resources */,
+				8FAC898B8D7C27CC51984A63 /* MithkaSkiing.icon in Resources */,
+				B70368F6F3D87F39FC389593 /* MithkaPainter.icon in Resources */,
+				8B0EAE12EA254186D2A5F9B9 /* MithkaGuitar.icon in Resources */,
+				0CDECE2AC88130B7D7F15C7B /* MithkaDrummer.icon in Resources */,
+				47328B3A0D8003DB2FC8EF68 /* MithkaPhotographer.icon in Resources */,
+				72AE7FF21512229E6B48E6C5 /* MithkaMagician.icon in Resources */,
+				3D8D45591310B41E28826B8D /* MithkaChef.icon in Resources */,
+				7941A87077B127BFA4FA1BC8 /* MithkaReader.icon in Resources */,
+				805C51E042DC7DE7A6B1C93E /* MithkaScientist.icon in Resources */,
+				4F5535B4FD5105B3FF86D405 /* MithkaGardener.icon in Resources */,
+				461F38C6B1D68835510FC6C7 /* MithkaMailCarrier.icon in Resources */,
+				A1FA89F326B2EDE59CD5437C /* MithkaPirate.icon in Resources */,
+				3D93ED2960CA61EE5EE1F684 /* MithkaDragon.icon in Resources */,
+				B6AF2C5FFEB781B1EE660148 /* MithkaBubblegum.icon in Resources */,
+				B7924D862E4854C86F720CFD /* MithkaRaincoat.icon in Resources */,
+				4D953B44EAACF77FD4BED6D9 /* MithkaNoodles.icon in Resources */,
+				453BDEFA8B2CE16398A88EB6 /* MithkaIceCream.icon in Resources */,
+				26DC4F7AB93AEB2DA3785721 /* MithkaSunflower.icon in Resources */,
+				33C83B523F4C4CEB96C0077D /* MithkaNinja.icon in Resources */,
+				755BDB34B711F0949210996E /* MithkaHighFive.icon in Resources */,
+				539C4D7794219FB21A84D8EA /* MithkaHug.icon in Resources */,
+				5E592C0AFD6015FF1DD2DF95 /* MithkaSeesaw.icon in Resources */,
+				0CECF034CA1E491AE5B7A3EB /* MithkaDance.icon in Resources */,
+				BD6FDC78C5A57C143CA75E42 /* MithkaPillowFight.icon in Resources */,
+				6611049CF34057CB8282DB9C /* MithkaSnowball.icon in Resources */,
+				FD772E3726CDE73AEA772DB9 /* MithkaParade.icon in Resources */,
+				0A540F01C81D293B24D9BCEB /* MithkaChoir.icon in Resources */,
+				510DEB53398C28049E52E2A1 /* MithkaStack.icon in Resources */,
+				127ABADD26198173A716D82F /* MithkaPicnic.icon in Resources */,
+				ED8BE74DDBABB2517B3CD1F7 /* MithkaPaperPlanes.icon in Resources */,
+				E79F7109CC555B73B47BEA37 /* MithkaStargazing.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -840,6 +1050,46 @@
 					MithkaDetective,
 					MithkaGamer,
 					MithkaFishing,
+					MithkaPixelNeutral,
+					MithkaPixelGradient,
+					MithkaLetterMNeutral,
+					MithkaLetterMGradient,
+					MithkaSkateboard,
+					MithkaSurfboard,
+					MithkaBasketball,
+					MithkaFootball,
+					MithkaTennis,
+					MithkaSkiing,
+					MithkaPainter,
+					MithkaGuitar,
+					MithkaDrummer,
+					MithkaPhotographer,
+					MithkaMagician,
+					MithkaChef,
+					MithkaReader,
+					MithkaScientist,
+					MithkaGardener,
+					MithkaMailCarrier,
+					MithkaPirate,
+					MithkaDragon,
+					MithkaBubblegum,
+					MithkaRaincoat,
+					MithkaNoodles,
+					MithkaIceCream,
+					MithkaSunflower,
+					MithkaNinja,
+					MithkaHighFive,
+					MithkaHug,
+					MithkaSeesaw,
+					MithkaDance,
+					MithkaPillowFight,
+					MithkaSnowball,
+					MithkaParade,
+					MithkaChoir,
+					MithkaStack,
+					MithkaPicnic,
+					MithkaPaperPlanes,
+					MithkaStargazing,
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
@@ -1163,6 +1413,46 @@
 					MithkaDetective,
 					MithkaGamer,
 					MithkaFishing,
+					MithkaPixelNeutral,
+					MithkaPixelGradient,
+					MithkaLetterMNeutral,
+					MithkaLetterMGradient,
+					MithkaSkateboard,
+					MithkaSurfboard,
+					MithkaBasketball,
+					MithkaFootball,
+					MithkaTennis,
+					MithkaSkiing,
+					MithkaPainter,
+					MithkaGuitar,
+					MithkaDrummer,
+					MithkaPhotographer,
+					MithkaMagician,
+					MithkaChef,
+					MithkaReader,
+					MithkaScientist,
+					MithkaGardener,
+					MithkaMailCarrier,
+					MithkaPirate,
+					MithkaDragon,
+					MithkaBubblegum,
+					MithkaRaincoat,
+					MithkaNoodles,
+					MithkaIceCream,
+					MithkaSunflower,
+					MithkaNinja,
+					MithkaHighFive,
+					MithkaHug,
+					MithkaSeesaw,
+					MithkaDance,
+					MithkaPillowFight,
+					MithkaSnowball,
+					MithkaParade,
+					MithkaChoir,
+					MithkaStack,
+					MithkaPicnic,
+					MithkaPaperPlanes,
+					MithkaStargazing,
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
@@ -1223,6 +1513,46 @@
 					MithkaDetective,
 					MithkaGamer,
 					MithkaFishing,
+					MithkaPixelNeutral,
+					MithkaPixelGradient,
+					MithkaLetterMNeutral,
+					MithkaLetterMGradient,
+					MithkaSkateboard,
+					MithkaSurfboard,
+					MithkaBasketball,
+					MithkaFootball,
+					MithkaTennis,
+					MithkaSkiing,
+					MithkaPainter,
+					MithkaGuitar,
+					MithkaDrummer,
+					MithkaPhotographer,
+					MithkaMagician,
+					MithkaChef,
+					MithkaReader,
+					MithkaScientist,
+					MithkaGardener,
+					MithkaMailCarrier,
+					MithkaPirate,
+					MithkaDragon,
+					MithkaBubblegum,
+					MithkaRaincoat,
+					MithkaNoodles,
+					MithkaIceCream,
+					MithkaSunflower,
+					MithkaNinja,
+					MithkaHighFive,
+					MithkaHug,
+					MithkaSeesaw,
+					MithkaDance,
+					MithkaPillowFight,
+					MithkaSnowball,
+					MithkaParade,
+					MithkaChoir,
+					MithkaStack,
+					MithkaPicnic,
+					MithkaPaperPlanes,
+					MithkaStargazing,
 				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;

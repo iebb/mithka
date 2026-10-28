@@ -1,37 +1,47 @@
 {
-  "fill" : {
-    "solid" : "srgb:0.40000,0.45490,0.85098,1.00000"
-  },
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "glass" : true,
-          "image-name" : "pixel_penguin.png",
-          "name" : "pixel_penguin_24",
-          "position" : {
-            "scale" : 0.96,
-            "translation-in-points" : [
+          "glass": true,
+          "image-name": "pixel_penguin.png",
+          "name": "pixel_penguin_24",
+          "position": {
+            "scale": 0.96,
+            "translation-in-points": [
               0,
               0
             ]
           }
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
       },
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0
+      "translucency": {
+        "enabled": false,
+        "value": 0
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : "shared"
-  }
+    "squares": "shared"
+  },
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    }
+  ]
 }

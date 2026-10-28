@@ -1,14 +1,4 @@
 {
-  "fill": {
-    "linear-gradient": [
-      "display-p3:0.02745,0.12157,0.25882,1.00000",
-      "display-p3:0.08235,0.71373,0.78039,1.00000"
-    ],
-    "orientation": {
-      "start": { "x": 0, "y": 0 },
-      "stop": { "x": 1, "y": 1 }
-    }
-  },
   "groups": [
     {
       "layers": [
@@ -18,16 +8,40 @@
           "name": "aurora-monogram",
           "position": {
             "scale": 0.9,
-            "translation-in-points": [0, 0]
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
         }
       ],
-      "shadow": { "kind": "neutral", "opacity": 0.24 },
-      "translucency": { "enabled": true, "value": 0.2 }
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.24
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.2
+      }
     }
   ],
   "supported-platforms": {
-    "circles": ["watchOS"],
+    "circles": [
+      "watchOS"
+    ],
     "squares": "shared"
-  }
+  },
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    }
+  ]
 }

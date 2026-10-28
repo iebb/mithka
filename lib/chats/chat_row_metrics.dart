@@ -35,6 +35,8 @@ class ChatRowMetrics {
   static ChatRowMetrics resolve(
     BuildContext context, {
     bool folderTags = false,
+    bool splitPreview = false,
+    bool previewHasSender = false,
     double? width,
     String timestamp = '',
     int mentions = 0,
@@ -78,11 +80,13 @@ class ChatRowMetrics {
         !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android);
-    final avatar = AppMetric.chatListAvatarSize() * scale;
+    final avatar =
+        AppMetric.chatListAvatarSize() *
+        (calibratedTouch ? math.max(scale, 1.0) : scale);
     final time = measure(timestamp, AppTextSize.chatListTimestamp());
     final available =
         (width ?? ChatRowWidth.of(context)) -
-        AppSpacing.xl * 2 -
+        AppMetric.chatRowHorizontalInset() * 2 -
         avatar -
         AppSpacing.lg;
     Size counter(int count) => measure(
@@ -133,11 +137,22 @@ class ChatRowMetrics {
       if (accessories.isNotEmpty) accessoryHeight += lineHeight + 4;
     }
     final title = measure('\u56FDAg', AppTextSize.chatListTitle()).height;
-    final preview = measure(
-      '\u56FDAg',
-      AppTextSize.chatListPreview(),
-      textScaler: ContentSizeScope.chatListPreviewScalerOf(context),
-    ).height;
+    final preview = splitPreview
+        ? measure(
+            '\u56FDAg',
+            previewHasSender
+                ? math.max(
+                    AppTextSize.chatRowPreviewMessageSize(scale),
+                    AppTextSize.chatRowPreviewSenderSize(scale),
+                  )
+                : AppTextSize.chatRowPreviewMessageSize(scale),
+            textScaler: data.systemTextScaler,
+          ).height
+        : measure(
+            '\u56FDAg',
+            AppTextSize.chatListPreview(),
+            textScaler: ContentSizeScope.chatListPreviewScalerOf(context),
+          ).height;
     final tags = folderTags
         ? data.systemTextScaler.scale(AppTextSize.chatListFolderTag() * scale) *
                   1.35 +
@@ -145,7 +160,7 @@ class ChatRowMetrics {
         : 0.0;
     final stack =
         title +
-        4 +
+        (splitPreview ? AppMetric.chatRowPreviewGap() : AppSpacing.xs) +
         preview +
         tags +
         (timeBelow
@@ -155,6 +170,7 @@ class ChatRowMetrics {
       avatar: avatar,
       extent: [
         AppMetric.chatListRowHeight() * scale,
+        if (calibratedTouch) 68.0,
         // Touch rows keep 8pt above and below a scaled avatar. Do not
         // derive this inset from the new 72pt base (that would add 24pt).
         avatar +

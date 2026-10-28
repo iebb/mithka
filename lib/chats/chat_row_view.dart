@@ -129,7 +129,9 @@ class ChatRowView extends StatelessWidget {
       color: selected
           ? c.listHeaderTint
           : (_pinned ? c.pinnedRow : c.background),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      padding: EdgeInsets.symmetric(
+        horizontal: AppMetric.chatRowHorizontalInset(),
+      ),
       child: Row(
         children: [
           _avatar(
@@ -198,17 +200,19 @@ class ChatRowView extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: AppSpacing.xs),
+                  SizedBox(height: AppMetric.chatRowPreviewGap()),
                   chat.draftText.trim().isNotEmpty
                       ? ChatPreviewText(
                           message: chat.draftText,
                           draft: true,
                           fontSize: previewFontSize,
+                          chatRowSizing: isTouchTargetPlatform(),
                         )
                       : ChatPreviewText(
                           sender: chat.lastSender,
                           message: chat.lastMessage,
                           fontSize: previewFontSize,
+                          chatRowSizing: isTouchTargetPlatform(),
                         ),
                   if (metrics.timeBelow && chat.date > 0)
                     _time(context, timestampFontSize),
@@ -320,6 +324,7 @@ class ChatRowView extends StatelessWidget {
                 count: chat.unreadCount,
                 muted: archived || chat.isMuted,
                 onClear: onClearUnread,
+                chatAvatar: isTouchTargetPlatform(),
               ),
             )
           else if (chat.isMarkedUnread)

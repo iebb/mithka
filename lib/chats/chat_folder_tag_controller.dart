@@ -266,6 +266,8 @@ double chatListRowExtentFor(
   double? width,
 }) => ChatRowMetrics.resolve(
   context,
+  splitPreview: true,
+  previewHasSender: true,
   width: width,
   folderTags:
       (listen
@@ -290,6 +292,9 @@ ChatRowMetrics chatRowMetricsFor(
   return ChatRowMetrics.resolve(
     context,
     width: width,
+    splitPreview: true,
+    previewHasSender:
+        chat.draftText.trim().isEmpty && (chat.lastSender?.isNotEmpty ?? false),
     timestamp: DateText.listLabel(chat.date),
     folderTags: tags?.tagsFor(chat.folderIds).isNotEmpty ?? false,
     mentions: chat.unreadMentionCount,

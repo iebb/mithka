@@ -4,6 +4,10 @@ self-hosted-runner:
     - mithka-physical-android
 
 paths:
+  .github/workflows/ios-testflight.yml:
+    ignore:
+      # GitHub's approved Xcode 27 image is newer than actionlint 1.7.12.
+      - 'label "xcode-27" is unknown'
   .github/workflows/release.yml:
     ignore:
       # GitHub supports this newer token scope, but actionlint 1.7.12 does not.

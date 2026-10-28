@@ -30,21 +30,18 @@ void main() {
     );
   });
 
-  test(
-    'abstract Icon Composer variants are exposed to the app icon picker',
-    () {
-      final variants = {
-        for (final variant in AppIconVariant.values) variant.key: variant,
-      };
+  test('legacy Icon Composer variants retain their native artwork', () {
+    final variants = {
+      for (final variant in AppIconVariant.values) variant.key: variant,
+    };
 
-      for (final key in ['aurora', 'prism', 'signal']) {
-        final variant = variants[key];
-        expect(variant, isNotNull);
-        expect(File(variant!.asset).lengthSync(), greaterThan(10 * 1024));
-        expect(variant.asset, endsWith('$key.png'));
-      }
-    },
-  );
+    for (final key in ['aurora', 'prism', 'signal']) {
+      final variant = variants[key];
+      expect(variant, isNotNull);
+      expect(File(variant!.asset).lengthSync(), greaterThan(10 * 1024));
+      expect(variant.asset, endsWith('$key.png'));
+    }
+  });
 
   test('abstract variants have valid native Icon Composer packages', () {
     const nativeNames = {
@@ -164,11 +161,14 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     final controller = AppIconController(prefs);
+    addTearDown(controller.dispose);
     await controller.initialize();
 
     expect(controller.supported, isTrue);
     expect(controller.variant, AppIconVariant.blue);
-    expect(prefs.getString('selected_app_icon'), 'blue');
+    // Native identity wins in memory, but initialization must remain read-only.
+    expect(prefs.getString('selected_app_icon'), 'purple');
+    expect(calls.where((call) => call.method == 'setIcon'), isEmpty);
 
     expect(await controller.setVariant(AppIconVariant.signal), isTrue);
     expect(controller.variant, AppIconVariant.signal);

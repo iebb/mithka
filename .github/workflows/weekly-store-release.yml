@@ -1,0 +1,67 @@
+name: Friday Store Release
+run-name: Store ${{ github.event_name == 'schedule' && 'release' || inputs.operation }} from master
+
+on:
+  schedule:
+    # Friday 09:00 Asia/Tokyo. Keep this in GitHub, not a maintainer-PC timer.
+    - cron: '0 0 * * 5'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read-only plan, or build and submit both Apple platforms and Play
+        type: choice
+        options: [plan, release]
+        default: plan
+      release_key:
+        description: Optional YYYY-MM-DD snapshot to resume (empty means today in Tokyo)
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  # Shares the version allocator's lock. Do not hold the Play edit lock here:
+  # the child publication and state-check workflows acquire that lock themselves.
+  group: sync-nightly
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  release:
+    if: github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Coordinate the pinned store release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          STORE_OPERATION: ${{ github.event_name == 'schedule' && 'release' || inputs.operation }}
+          STORE_RELEASE_KEY: ${{ inputs.release_key }}
+        run: |
+          set -euo pipefail
+          : "${ASC_KEY_ID:?missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_ISSUER_ID:?missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_PRIVATE_KEY:?missing APP_STORE_CONNECT_PRIVATE_KEY}"
+          umask 077
+          export ASC_KEY_PATH="$RUNNER_TEMP/store-coordinator-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+          unset ASC_PRIVATE_KEY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          arguments=(--operation "$STORE_OPERATION")
+          if [ -n "$STORE_RELEASE_KEY" ]; then
+            arguments+=(--release-key "$STORE_RELEASE_KEY")
+          fi
+          python scripts/weekly_store_release.py "${arguments[@]}"

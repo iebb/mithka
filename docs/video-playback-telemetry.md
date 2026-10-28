@@ -57,8 +57,7 @@ the main window remains responsible for process-wide crash/tracing settings.
 ## Verification
 
 Run `flutter test test/video_playback_reporting_test.dart
-test/mobile_fullscreen_video_player_widget_test.dart
-test/sentry_performance_config_test.dart test/desktop_video_window_test.dart`.
+test/mobile_fullscreen_video_player_widget_test.dart`.
 Tests use an in-memory capture sink and do not send synthetic production events.
 After shipping a Sentry-enabled build, verify real reports under
 `logger:mithka.video` before drawing device-level conclusions. Keep the existing

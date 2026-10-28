@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -62,6 +63,7 @@ class AppearanceView extends StatelessWidget {
     final appIcons = showAppIconPicker
         ? context.watch<AppIconController>()
         : null;
+    final currentIcon = appIcons?.currentVariant;
     // The icon assets are 1024x1024; the row preview is 22 px wide, so the
     // undecoded-size default would hold a 4 MiB bitmap in the image cache.
     final appIconPreviewPx =
@@ -85,14 +87,21 @@ class AppearanceView extends StatelessWidget {
                     pageBuilder: (_, _, _) => const AppIconSettingsView(),
                   ),
                 ),
-                preview: Image.asset(
-                  appIcons!.variant.previewAsset(
-                    MediaQuery.platformBrightnessOf(context),
-                  ),
-                  width: AppIconSize.nav,
-                  height: AppIconSize.nav,
-                  cacheWidth: appIconPreviewPx,
-                ),
+                preview: currentIcon == null
+                    ? null
+                    : Image.asset(
+                        currentIcon.pickerAsset,
+                        key: const ValueKey('appearance-app-icon-preview'),
+                        width: AppIconSize.nav,
+                        height: AppIconSize.nav,
+                        cacheWidth: appIconPreviewPx,
+                        fit: BoxFit.contain,
+                        filterQuality:
+                            currentIcon.freeMotif ==
+                                AppIconFreeMotif.pixelPenguin
+                            ? FilterQuality.none
+                            : FilterQuality.medium,
+                      ),
               ),
             ]),
           SettingsSection(
@@ -314,11 +323,20 @@ class AppIconSettingsView extends StatefulWidget {
 
 class _AppIconSettingsViewState extends State<AppIconSettingsView> {
   bool _selecting = false;
+  bool _changeFailed = false;
 
   Future<void> _select(AppIconVariant icon) async {
     if (_selecting) return;
-    setState(() => _selecting = true);
     final controller = context.read<AppIconController>();
+    if (!controller.supported || controller.loading) return;
+    // Retaining the actual applied icon is never a purchase or native change,
+    // including an expired paid choice. Other paid choices still use the
+    // controller's unchanged entitlement-first verification below.
+    if (controller.isCurrent(icon)) return;
+    setState(() {
+      _selecting = true;
+      _changeFailed = false;
+    });
     try {
       var applied = await controller.setVariant(icon);
       if (!mounted) return;
@@ -336,6 +354,7 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView> {
         applied = await controller.setVariant(icon);
       }
       if (!applied && mounted) {
+        setState(() => _changeFailed = true);
         showToast(context, AppStringKeys.appIconChangeFailed);
       }
     } finally {
@@ -343,81 +362,258 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView> {
     }
   }
 
-  Widget _grid(AppIconController controller, List<AppIconVariant> icons) =>
-      GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 132,
-          mainAxisExtent: 116,
-          mainAxisSpacing: AppSpacing.xl,
-          crossAxisSpacing: AppSpacing.xl,
+  // Rows hug their tallest actual label; no nested scrollable, implicit
+  // MediaQuery padding, fixed two-line reservation, or catalogue-size math.
+  Widget _choices(
+    AppIconController controller,
+    List<AppIconVariant> icons,
+    int columns,
+  ) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (var start = 0; start < icons.length; start += columns) ...[
+        if (start != 0) const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var column = 0; column < columns; column++) ...[
+              if (column != 0) const SizedBox(width: 12),
+              Expanded(
+                child: start + column >= icons.length
+                    ? const SizedBox.shrink()
+                    : _AppIconVariantTile(
+                        key: ValueKey(icons[start + column].key),
+                        variant: icons[start + column],
+                        selected: controller.isCurrent(icons[start + column]),
+                        locked: controller.isLocked(icons[start + column]),
+                        enabled:
+                            controller.supported &&
+                            !controller.loading &&
+                            !_selecting,
+                        horizontal: columns == 1,
+                        onTap: () => unawaited(_select(icons[start + column])),
+                      ),
+              ),
+            ],
+          ],
         ),
-        itemCount: icons.length,
-        itemBuilder: (context, index) {
-          final icon = icons[index];
-          return _AppIconVariantTile(
-            variant: icon,
-            selected: controller.variant == icon,
-            locked: controller.isLocked(icon),
-            enabled: controller.supported && !controller.loading && !_selecting,
-            onTap: () => unawaited(_select(icon)),
-          );
-        },
-      );
+      ],
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<AppIconController>();
     final icons = controller.availableVariants;
+    final retained = controller.unlistedCurrent;
+    final c = context.colors;
+    final textScale = MediaQuery.textScalerOf(context).scale(13) / 13;
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.appIconTitle),
       onBack: () => Navigator.of(context).pop(),
-      child: ListView(
-        padding: AppInsets.screen,
-        children: [
-          if (!controller.supported)
-            SettingsNote(text: AppStrings.t(AppStringKeys.appIconUnsupported)),
-          _grid(
-            controller,
-            icons.where((icon) => !icon.requiresSupporter).toList(),
-          ),
-          if (controller.supporterAvailable) ...[
-            const AppearanceView()._label(
-              context,
-              AppStrings.t(AppStringKeys.supporterIcons),
+      // NavHeader owns the top inset. This is the body's only safe-area owner.
+      child: SafeArea(
+        top: false,
+        child: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = textScale >= 2.4 || constraints.maxWidth < 220
+                    ? 1
+                    : constraints.maxWidth < 360 || textScale >= 1.6
+                    ? 2
+                    : 3;
+                return ListView(
+                  key: const ValueKey('app-icon-scroll'),
+                  primary: false,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  children: [
+                    if (!controller.supported)
+                      SettingsNote(
+                        text: AppStrings.t(AppStringKeys.appIconUnsupported),
+                      ),
+                    // Unknown current IDs use approved generic retention copy
+                    // only: no invented name, foreground, or unsupported claim.
+                    if (retained != null ||
+                        controller.currentVariant == null) ...[
+                      _RetainedAppIconStatus(
+                        key: ValueKey(
+                          'app-icon-current-${controller.currentKey}',
+                        ),
+                        variant: retained,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    _choices(
+                      controller,
+                      icons.where((icon) => !icon.requiresSupporter).toList(),
+                      columns,
+                    ),
+                    if (controller.supported &&
+                        controller.supporterAvailable &&
+                        icons.any((icon) => icon.requiresSupporter)) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        AppStrings.t(AppStringKeys.supporterIcons),
+                        key: const ValueKey('app-icon-supporter-heading'),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppStrings.t(AppStringKeys.supporterIconsCaption),
+                        key: const ValueKey('app-icon-supporter-caption'),
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 18 / 13,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _choices(
+                        controller,
+                        icons.where((icon) => icon.requiresSupporter).toList(),
+                        columns,
+                      ),
+                      SettingsNote(
+                        text: AppStrings.t(AppStringKeys.supporterIconAccess),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
-            Padding(
-              padding: const EdgeInsetsDirectional.only(
-                start: AppSpacing.xxl,
-                bottom: AppSpacing.xl,
-              ),
-              child: Text(
-                AppStrings.t(AppStringKeys.supporterIconsCaption),
-                style: TextStyle(
-                  fontSize: 13,
-                  color: context.colors.textSecondary,
+            // Keep the established toast and expose the same localized failure
+            // as a visible live region with a real semantic rect. Overlaying it
+            // changes no list extent, choice geometry, or retained scroll offset.
+            if (_changeFailed)
+              PositionedDirectional(
+                start: 16,
+                end: 16,
+                bottom: 24,
+                child: IgnorePointer(
+                  key: const ValueKey('app-icon-failure-pointer-pass-through'),
+                  child: Semantics(
+                    key: const ValueKey('app-icon-change-failure'),
+                    container: true,
+                    excludeSemantics: true,
+                    liveRegion: true,
+                    label: AppStrings.t(AppStringKeys.appIconChangeFailed),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: c.groupedBackground,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        AppStrings.t(AppStringKeys.appIconChangeFailed),
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 18 / 13,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            _grid(
-              controller,
-              icons.where((icon) => icon.requiresSupporter).toList(),
-            ),
-            SettingsNote(text: AppStrings.t(AppStringKeys.supporterIconAccess)),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _AppIconVariantTile extends StatelessWidget {
+// A retained identity is status, not an extra choice or an entitlement action.
+// The single semantic node preserves heading → actual localized name → note.
+class _RetainedAppIconStatus extends StatelessWidget {
+  const _RetainedAppIconStatus({super.key, required this.variant});
+
+  final AppIconVariant? variant;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = variant;
+    final c = context.colors;
+    final heading = AppStrings.t(AppStringKeys.appIconCurrentHeading);
+    final name = icon == null ? null : AppStrings.t(icon.labelKey);
+    final note = AppStrings.t(AppStringKeys.appIconCurrentNote);
+    return Semantics(
+      key: const ValueKey('app-icon-current-status'),
+      container: true,
+      excludeSemantics: true,
+      label: name == null ? '$heading\n$note' : '$heading\n$name\n$note',
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 72),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Image.asset(
+                icon.pickerAsset,
+                key: const ValueKey('app-icon-current-art'),
+                width: 56,
+                height: 56,
+                cacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
+                    .ceil(),
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    heading,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  if (name != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 17 / 13,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    note,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 18 / 13,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AppIconVariantTile extends StatefulWidget {
   const _AppIconVariantTile({
+    super.key,
     required this.variant,
     required this.selected,
     required this.locked,
     required this.enabled,
+    required this.horizontal,
     required this.onTap,
   });
 
@@ -425,97 +621,187 @@ class _AppIconVariantTile extends StatelessWidget {
   final bool selected;
   final bool locked;
   final bool enabled;
+  final bool horizontal;
   final VoidCallback onTap;
+
+  @override
+  State<_AppIconVariantTile> createState() => _AppIconVariantTileState();
+}
+
+class _AppIconVariantTileState extends State<_AppIconVariantTile> {
+  bool _pressed = false;
+  bool _focused = false;
+  bool _focusHighlight = false;
+
+  void _press(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppIconVariantTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) _pressed = false;
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    final tilePx = (96 * MediaQuery.devicePixelRatioOf(context)).ceil();
+    final variant = widget.variant;
+    final selected = widget.selected;
+    final locked = widget.locked;
+    final enabled = widget.enabled;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tilePx = (88 * MediaQuery.devicePixelRatioOf(context)).ceil();
+    final target = InterfaceScaleSteps.targetExtent(
+      context.watch<ThemeController>().renderedInterfaceScale,
+    );
     final stateKey = selected
         ? AppStringKeys.supporterIconSelected
         : locked
         ? AppStringKeys.supporterIconRequired
         : AppStringKeys.supporterIconAvailable;
+    final art = SizedBox(
+      key: ValueKey('icon-art-${variant.key}'),
+      width: 88,
+      height: 88,
+      child: Stack(
+        children: [
+          Image.asset(
+            variant.pickerAsset,
+            width: 88,
+            height: 88,
+            fit: BoxFit.contain,
+            filterQuality: variant.freeMotif == AppIconFreeMotif.pixelPenguin
+                ? FilterQuality.none
+                : FilterQuality.medium,
+            cacheWidth: tilePx,
+            excludeFromSemantics: true,
+          ),
+          // Overlay the outline so it never pads, clips, or shrinks the art.
+          Positioned.fill(
+            child: DecoratedBox(
+              key: ValueKey('icon-outline-${variant.key}'),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: selected
+                    ? Border.all(color: AppTheme.brand, width: 2)
+                    : null,
+              ),
+            ),
+          ),
+          if (selected || locked)
+            PositionedDirectional(
+              end: 0,
+              bottom: 0,
+              child: Container(
+                key: ValueKey(
+                  selected
+                      ? 'icon-selected-${variant.key}'
+                      : 'icon-locked-${variant.key}',
+                ),
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppTheme.brand
+                      : dark
+                      ? const Color(0xFFEDEDED)
+                      : const Color(0xFF1A1A1A),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.groupedBackground, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: AppIcon(
+                  selected ? HeroAppIcons.check : HeroAppIcons.lock,
+                  size: 13,
+                  color: selected || !dark
+                      ? Colors.white
+                      : const Color(0xFF1A1A1A),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    // Final copy 699 / design 712: background label at every adaptive width,
+    // full motif + background name in semantics; natural wrapping, never ellipsis.
+    final semanticNameKey = variant.fullSemanticNameKey;
+    final visibleNameKey = variant.pickerLabelKey ?? variant.labelKey;
+    final label = Text(
+      AppStrings.t(visibleNameKey),
+      key: ValueKey('icon-label-${variant.key}'),
+      textAlign: widget.horizontal ? TextAlign.start : TextAlign.center,
+      softWrap: true,
+      style: TextStyle(
+        fontSize: 13,
+        height: 17 / 13,
+        fontWeight: FontWeight.w400,
+        color: c.textPrimary,
+        decoration: _focusHighlight ? TextDecoration.underline : null,
+      ),
+    );
     return Semantics(
       key: ValueKey('app-icon-${variant.key}'),
+      container: true,
+      excludeSemantics: true,
       button: true,
       enabled: enabled,
+      focusable: enabled,
+      focused: _focused,
       selected: selected,
       label: AppStrings.t(AppStringKeys.supporterIconAccessibility, {
-        'value1': AppStrings.t(variant.labelKey),
+        'value1': AppStrings.t(semanticNameKey),
         'value2': AppStrings.t(stateKey),
       }),
       hint: locked ? AppStrings.t(AppStringKeys.supporterIconLockedHint) : null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onTap : null,
-        child: Center(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 96,
-                height: 96,
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: c.card,
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: Border.all(
-                    color: selected ? AppTheme.brand : c.divider,
-                    width: selected ? 3 : 1,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  child: Image.asset(
-                    variant.previewAsset(
-                      MediaQuery.platformBrightnessOf(context),
+      onTap: enabled ? widget.onTap : null,
+      child: FocusableActionDetector(
+        enabled: enabled,
+        includeFocusSemantics: false,
+        mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+        onFocusChange: (value) => setState(() => _focused = value),
+        onShowFocusHighlight: (value) =>
+            setState(() => _focusHighlight = value),
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter, includeRepeats: false):
+              ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space, includeRepeats: false):
+              ActivateIntent(),
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              if (enabled) widget.onTap();
+              return null;
+            },
+          ),
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: enabled ? widget.onTap : null,
+          onTapDown: enabled ? (_) => _press(true) : null,
+          onTapUp: enabled ? (_) => _press(false) : null,
+          onTapCancel: enabled ? () => _press(false) : null,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: target, minHeight: target),
+            child: AnimatedOpacity(
+              key: ValueKey('icon-press-${variant.key}'),
+              duration: const Duration(milliseconds: 120),
+              opacity: _pressed && enabled ? 0.72 : 1,
+              child: widget.horizontal
+                  ? Row(
+                      children: [
+                        art,
+                        const SizedBox(width: 12),
+                        Expanded(child: label),
+                      ],
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [art, const SizedBox(height: 4), label],
                     ),
-                    fit: BoxFit.cover,
-                    cacheWidth: tilePx,
-                    excludeFromSemantics: true,
-                  ),
-                ),
-              ),
-              if (selected || locked)
-                Positioned(
-                  right: -6,
-                  bottom: -6,
-                  child: ExcludeSemantics(
-                    child: Container(
-                      key: ValueKey(
-                        selected
-                            ? 'icon-selected-${variant.key}'
-                            : 'icon-locked-${variant.key}',
-                      ),
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? AppTheme.brand
-                            : dark
-                            ? const Color(0xFFEDEDED)
-                            : const Color(0xFF1A1A1A),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: c.groupedBackground,
-                          width: 3,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: AppIcon(
-                        selected ? HeroAppIcons.check : HeroAppIcons.lock,
-                        size: 15,
-                        color: selected || !dark
-                            ? Colors.white
-                            : const Color(0xFF1A1A1A),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         ),
       ),

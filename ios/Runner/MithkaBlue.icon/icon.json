@@ -1,20 +1,4 @@
 {
-  "fill": {
-    "linear-gradient": [
-      "display-p3:0.08627,0.70588,1.00000,1.00000",
-      "display-p3:0.12157,0.36863,1.00000,1.00000"
-    ],
-    "orientation": {
-      "start": {
-        "x": 0.5,
-        "y": 0
-      },
-      "stop": {
-        "x": 0.5,
-        "y": 1
-      }
-    }
-  },
   "groups": [
     {
       "layers": [
@@ -46,5 +30,18 @@
       "watchOS"
     ],
     "squares": "shared"
-  }
+  },
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.13333,0.61961,0.85098,1.00000"
+      }
+    }
+  ]
 }

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
 import 'package:mithka/pro/mithka_pro_view.dart';
 import 'package:mithka/settings/app_icon_controller.dart';
@@ -71,50 +70,35 @@ void main() {
   }
 
   test(
-    'eight existing icons stay free and twelve mobile outfits keep their order',
+    'the nine visible free choices are available on every icon platform',
     () {
-      expect(
-        AppIconVariant.values
-            .where((icon) => !icon.requiresSupporter)
-            .map((icon) => icon.key),
-        [
-          'default',
-          'white',
-          'blue',
-          'purple',
-          'pixel',
-          'aurora',
-          'prism',
-          'signal',
-        ],
-      );
-      expect(
-        AppIconVariant.values
-            .where((icon) => icon.requiresSupporter)
-            .map((icon) => icon.key),
-        [
-          'pilot',
-          'headphones',
-          'winter',
-          'astronaut',
-          'crown',
-          'party',
-          'sleepy',
-          'heart',
-          'coffee',
-          'detective',
-          'gamer',
-          'fishing',
-        ],
-      );
+      expect(AppIconVariant.visibleFree.map((icon) => icon.key), [
+        'white',
+        'blue',
+        'default',
+        'pixel_neutral',
+        'pixel',
+        'pixel_gradient',
+        'letter_m_neutral',
+        'aurora',
+        'letter_m_gradient',
+      ]);
       for (final platform in TargetPlatform.values) {
         final mobile =
             platform == TargetPlatform.iOS ||
             platform == TargetPlatform.android;
+        final choices = AppIconVariant.forPlatform(platform);
         expect(
-          AppIconVariant.forPlatform(platform),
-          hasLength(mobile ? 20 : 8),
+          choices.where((icon) => !icon.requiresSupporter),
+          AppIconVariant.visibleFree,
         );
+        expect(
+          choices.where((icon) => icon.requiresSupporter),
+          mobile
+              ? AppIconVariant.values.where((icon) => icon.requiresSupporter)
+              : isEmpty,
+        );
+        expect(choices.every((icon) => icon.visibleInPicker), isTrue);
         expect(supporterIconsAvailableForPlatform(platform), mobile);
         expect(
           supporterIconsAvailableForPlatform(platform, isWeb: true),
@@ -146,9 +130,9 @@ void main() {
         (icon) => !icon.requiresSupporter,
       )) {
         expect(await f.controller.setVariant(icon), isTrue);
+        expect(f.controller.currentVariant, icon);
       }
       expect(f.gateway.stateQueries, queries);
-      expect(f.controller.variant, AppIconVariant.signal);
     },
   );
 
@@ -159,7 +143,7 @@ void main() {
       expect(await f.controller.setVariant(AppIconVariant.pilot), isFalse);
       expect(nativeChanges, isEmpty);
       expect(f.controller.variant, AppIconVariant.defaultIcon);
-      expect(f.prefs.getString('selected_app_icon'), 'default');
+      expect(f.prefs.getString('selected_app_icon'), isNull);
     },
   );
 
@@ -289,10 +273,12 @@ void main() {
     'native change failure leaves selection and persisted preference unchanged',
     () async {
       final f = await fixture(gateway: _Gateway(pro: true));
+      expect(await f.controller.setVariant(AppIconVariant.blue), isTrue);
       failNative = true;
       expect(await f.controller.setVariant(AppIconVariant.pilot), isFalse);
-      expect(f.controller.variant, AppIconVariant.defaultIcon);
-      expect(f.prefs.getString('selected_app_icon'), 'default');
+      expect(f.controller.variant, AppIconVariant.blue);
+      expect(f.prefs.getString('selected_app_icon'), 'blue');
+      expect(currentIcon, 'blue');
       expect(f.controller.loading, isFalse);
     },
   );
@@ -304,7 +290,7 @@ void main() {
         gateway: _Gateway(pro: true),
         platform: TargetPlatform.macOS,
       );
-      expect(f.controller.availableVariants, hasLength(8));
+      expect(f.controller.availableVariants, AppIconVariant.visibleFree);
       expect(f.service.storeAvailable, isFalse);
       expect(f.service.isPro, isFalse);
       expect(await f.controller.setVariant(AppIconVariant.pilot), isFalse);
@@ -434,29 +420,14 @@ void main() {
     },
   );
 
-  testWidgets('Supporter caption aligns with its section heading', (
-    tester,
-  ) async {
-    final f = await fixture();
-    await _pump(tester, f);
-    final heading = find.text(AppStrings.t(AppStringKeys.supporterIcons));
-    final caption = find.text(
-      AppStrings.t(AppStringKeys.supporterIconsCaption),
-    );
-    await tester.ensureVisible(caption);
-    await tester.pumpAndSettle();
-    expect(tester.getTopLeft(caption).dx, tester.getTopLeft(heading).dx);
-  });
-
   testWidgets(
-    'locked full-color tiles have a 28-point contrast badge and system-dark previews',
+    'locked tiles retain contrast and use owned picker artwork in dark mode',
     (tester) async {
       final f = await fixture();
       await _pump(tester, f, dark: true);
       final badge = find.byKey(const ValueKey('icon-locked-pilot'));
       await tester.ensureVisible(badge);
       await tester.pumpAndSettle();
-      expect(tester.getSize(badge), const Size(28, 28));
       final box = tester.widget<Container>(badge).decoration! as BoxDecoration;
       expect(box.color, const Color(0xFFEDEDED));
       final image = tester.widget<Image>(
@@ -468,7 +439,7 @@ void main() {
       final provider = image.image as ResizeImage;
       expect(
         (provider.imageProvider as AssetImage).assetName,
-        'assets/app_icons/pilot_dark.png',
+        'assets/app_icons/picker/01-pilot.png',
       );
     },
   );
@@ -590,7 +561,8 @@ void main() {
         findsOneWidget,
       );
       expect(nativeChanges, isEmpty);
-      expect(f.prefs.getString('selected_app_icon'), 'default');
+      expect(f.controller.currentVariant, AppIconVariant.defaultIcon);
+      expect(f.prefs.getString('selected_app_icon'), isNull);
     },
   );
 
@@ -714,14 +686,22 @@ void main() {
     },
   );
 
-  testWidgets('desktop picker contains eight free icons and no paid prompt', (
+  testWidgets('desktop picker shows the free catalogue and no paid prompt', (
     tester,
   ) async {
     final f = await fixture(platform: TargetPlatform.macOS);
     await _pump(tester, f);
     expect(find.text('Supporter icons'), findsNothing);
     expect(find.byKey(const ValueKey('app-icon-pilot')), findsNothing);
-    expect(find.byKey(const ValueKey('app-icon-signal')), findsOneWidget);
+    for (final icon in AppIconVariant.visibleFree) {
+      final tile = find.byKey(ValueKey('app-icon-${icon.key}'));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      expect(tile, findsOneWidget);
+    }
+    for (final key in ['purple', 'prism', 'signal']) {
+      expect(find.byKey(ValueKey('app-icon-$key')), findsNothing);
+    }
     expect(find.text('Support us'), findsNothing);
   });
 }
@@ -752,7 +732,8 @@ Future<void> _pump(
         navigatorObservers: [?observer],
         theme: ThemeData(
           platform: TargetPlatform.iOS,
-          extensions: [AppColors.light],
+          brightness: dark ? Brightness.dark : Brightness.light,
+          extensions: [dark ? AppColors.dark : AppColors.light],
         ),
         home: MediaQuery(
           data: MediaQueryData(

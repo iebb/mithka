@@ -18,6 +18,10 @@ final class MacOSAppIconPlugin: NSObject, FlutterPlugin {
     "aurora",
     "prism",
     "signal",
+    "pixel_neutral",
+    "pixel_gradient",
+    "letter_m_neutral",
+    "letter_m_gradient",
   ]
 
   private let registrar: FlutterPluginRegistrar
@@ -75,10 +79,14 @@ final class MacOSAppIconPlugin: NSObject, FlutterPlugin {
 
   private func applyPersistedIcon() {
     let selected = Self.persistedIconName()
-    if !applyIcon(named: selected) {
-      UserDefaults.standard.removeObject(forKey: Self.selectedIconKey)
-      _ = applyIcon(named: Self.defaultIconName)
-    }
+    // Registration (including child engines) must not repair an unknown saved
+    // identity by resetting the running Dock icon or deleting its preference.
+    // A missing known asset likewise leaves the running image and choice alone.
+    // Primary is already supplied by the signed bundle; registration need not
+    // reset a runtime image. Explicit setIcon(default) still applies normally.
+    guard selected != Self.defaultIconName,
+          Self.isValidIconName(selected) else { return }
+    _ = applyIcon(named: selected)
   }
 
   @discardableResult
@@ -150,8 +158,9 @@ final class MacOSAppIconPlugin: NSObject, FlutterPlugin {
   }
 
   private static func persistedIconName() -> String {
-    let stored = UserDefaults.standard.string(forKey: selectedIconKey)
-    return isValidIconName(stored) ? stored! : defaultIconName
+    // Reading a stored identity does not grant permission to apply it. The
+    // setter and startup asset lookup retain their strict free-only allowlist.
+    return UserDefaults.standard.string(forKey: selectedIconKey) ?? defaultIconName
   }
 
   private static func isValidIconName(_ name: String?) -> Bool {

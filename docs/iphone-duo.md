@@ -27,16 +27,13 @@ Xcode selection change is required.
 ## Verification
 
 ```sh
-flutter test test/adaptive_split_layout_test.dart \
-  test/main_tab_motion_test.dart test/topic_split_navigation_test.dart \
-  test/primary_chat_launcher_split_test.dart \
-  test/adaptive_profile_launcher_test.dart test/general_settings_split_test.dart
+flutter test test/main_tab_motion_test.dart
 ```
 
-The resize tests check that topic settings and the topic screen retain their
-element/state identity across compact, tall, and wide windows, with normal and
-reduced motion. They also check compact Back behavior and preservation of an
-existing compact navigation route when opening the display.
+The retained shell tests cover compact Back behavior, navigation ownership and
+preservation of an existing compact navigation route when opening the display.
+The previous per-screen layout permutations were retired during suite pruning;
+use the simulator checks below for full display and resize verification.
 
 Simulator checks still required for the first beta pass:
 
@@ -56,9 +53,8 @@ every partially folded pose or native vertical bars.
 
 The selection-format menu caps its width and height to the usable area above
 the keyboard, scrolling its existing actions when they do not all fit.
-`test/horizontal_safe_viewport_test.dart` and
-`test/composer_format_menu_bounds_test.dart` cover these narrow fixes. On
-2026-10-24, the combined focused composer/adaptive suite passed 96 tests.
+The previous focused viewport and format-menu tests were retired during suite
+pruning. On 2026-10-24, the then-current composer/adaptive suite passed 96 tests.
 On a fresh Simulator retry later that day, the inner display and accessibility
 capture became available. A review-account self-chat and unsent draft survived
 closed → open → half-folded → closed transitions, including rotation into both

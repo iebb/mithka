@@ -10,9 +10,8 @@ name: 🚀 Multi-platform Releases
 # Each Android ABI publishes one standard APK using the tracked Android release
 # code, matching the Google Play artifact built from the same release commit.
 #
-# master never builds release packages. The daily sync workflow merges new master
-# commits into nightly, increments the patch version once, and dispatches this
-# workflow.
+# Ordinary packages follow nightly/release. A master store dispatch builds its
+# exact immutable submitted source, even after master advances its version.
 #
 # Required repository secrets:
 #   TELEGRAM_API_ID, TELEGRAM_API_HASH   — baked into lib/config/secrets.dart
@@ -27,6 +26,9 @@ on:
     branches: [nightly, release]
   workflow_dispatch:
     inputs:
+      source_commit:
+        description: Exact store snapshot for a stable GitHub release; dispatch from master
+        type: string
       desktop_test_only:
         description: Build desktop artifacts without Android or a GitHub release
         required: false
@@ -43,11 +45,15 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.44.2'
+  SOURCE_COMMIT: ${{ inputs.source_commit || github.sha }}
+  CI_COMMIT: ${{ inputs.source_commit || github.sha }}
 
 jobs:
   quality:
     name: Required quality gate
     uses: ./.github/workflows/quality.yml
+    with:
+      source_commit: ${{ inputs.source_commit }}
 
   prepare:
     name: Read pubspec version
@@ -68,12 +74,17 @@ jobs:
       short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit || github.sha }}
 
       - name: Read version from pubspec.yaml
         id: version
         env:
           DESKTOP_TEST_ONLY: ${{ inputs.desktop_test_only }}
+          STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
           raw_version="$(awk '/^version:/ { print $2; exit }' pubspec.yaml)"
           test -n "$raw_version"
           app_version="${raw_version%%+*}"
@@ -86,8 +97,16 @@ jobs:
           read -r build_stamp release_date release_title_date <<< "$(
             date -u '+%y%m%d%H %Y%m%d %Y-%m-%d'
           )"
-          short_sha="${GITHUB_SHA::7}"
+          short_sha="${SOURCE_COMMIT::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+          if [ -n "$STORE_SOURCE_COMMIT" ]; then
+            test "$GITHUB_REPOSITORY" = 'iebb/mithka'
+            test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
+            test "$GITHUB_REF" = 'refs/heads/master'
+            [[ "$STORE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+            test "$DESKTOP_TEST_ONLY" != 'true'
+            branch_name='store-snapshot'
+          fi
           if [ "$DESKTOP_TEST_ONLY" = "true" ]; then
             release_tag="desktop-test-${app_version}-${release_date}-${short_sha}"
             release_name="Mithka $app_version desktop test ($short_sha)"
@@ -105,7 +124,7 @@ jobs:
               prerelease="true"
               make_latest="false"
               ;;
-            release)
+            release|store-snapshot)
               release_tag="v$app_version"
               release_name="Mithka $app_version · $release_date"
               release_channel="release"
@@ -154,6 +173,8 @@ jobs:
             target: android-arm
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit || github.sha }}
 
       - uses: actions/setup-java@v6
         with:
@@ -267,6 +288,11 @@ jobs:
             analyzer="$(command -v apkanalyzer)"
           fi
           actual_version_code="$("$analyzer" manifest version-code "$apk")"
+          actual_version_name="$("$analyzer" manifest version-name "$apk")"
+          if [ "$actual_version_name" != '${{ needs.prepare.outputs.app_version }}' ]; then
+            echo "APK marketing version differs from the selected snapshot." >&2
+            exit 1
+          fi
           expected_version_code="${{ needs.prepare.outputs.android_version_code }}"
           if [ "$actual_version_code" != "$expected_version_code" ]; then
             echo "Expected APK version code $expected_version_code, got $actual_version_code" >&2
@@ -374,6 +400,8 @@ jobs:
             flutter_source: git
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit || github.sha }}
 
       - uses: subosito/flutter-action@v2
         if: matrix.flutter_source == 'archive'
@@ -439,6 +467,8 @@ jobs:
       - name: Refresh the MDK Apple SDK
         if: matrix.platform == 'macos'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           # libmdk draws an "MDK SDK is outdated" QR frame over the video and
           # stops 44 days after its own build stamp when no key is set, so the
@@ -658,6 +688,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source_commit || github.sha }}
           fetch-depth: 0
 
       - name: Download all release packages
@@ -712,12 +743,22 @@ jobs:
       - name: Create release tag
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
+          set -euo pipefail
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$SOURCE_COMMIT"
+            exit 0
           fi
-          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
-          git push --force origin "$RELEASE_TAG"
+          if [ -n "$STORE_SOURCE_COMMIT" ]; then
+            echo 'The store snapshot must already have its canonical version tag.' >&2
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Mithka $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
 
       - name: Set up Node.js for Copilot CLI
         if: needs.prepare.outputs.prerelease == 'true'
@@ -734,7 +775,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
         run: |
+          if [ -n "$STORE_SOURCE_COMMIT" ]; then
+            python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          version = os.environ['APP_VERSION']
+          notes = json.loads(Path(f'distribution/app-store/release-notes-{version}.json').read_text())
+          Path('release-notes.md').write_text(notes['en-US'] + '\n\n' + notes['zh-Hans'] + '\n\nSource: `' + os.environ['SOURCE_COMMIT'] + '`\n')
+          PY
+            exit 0
+          fi
           : > change-summary.md
           if [ "$PRERELEASE" = "true" ]; then
             previous_tag="$(
@@ -834,6 +887,7 @@ jobs:
           fi
 
       - name: Remove old Mithka package assets
+        if: inputs.source_commit == ''
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -847,19 +901,71 @@ jobs:
                 gh release delete-asset "$RELEASE_TAG" "$asset" --yes
               done
 
+      - name: Record store package provenance
+        if: inputs.source_commit != ''
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          ANDROID_VERSION_CODE: ${{ needs.prepare.outputs.android_version_code }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert source == os.environ['SOURCE_COMMIT']
+          files = {path.name: {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'size': path.stat().st_size}
+                   for path in sorted(Path('release-assets').iterdir()) if path.is_file()}
+          Path('release-assets/release-manifest.json').write_text(json.dumps({
+              'schema_version': 1, 'source_sha': source, 'version': os.environ['APP_VERSION'],
+              'android_version_code': int(os.environ['ANDROID_VERSION_CODE']),
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'], 'files': files,
+          }, indent=2) + '\n')
+          PY
+
       - name: Publish to GitHub Release
+        id: github_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
           name: ${{ needs.prepare.outputs.release_name }}
-          target_commitish: ${{ github.sha }}
+          # The store tag was already verified above. This API field cannot
+          # move that tag; using master avoids requesting workflow-write
+          # permission merely to release an older submitted source.
+          target_commitish: ${{ inputs.source_commit != '' && 'master' || github.sha }}
+          draft: ${{ inputs.source_commit != '' }}
+          overwrite_files: ${{ inputs.source_commit == '' }}
           prerelease: ${{ needs.prepare.outputs.prerelease }}
-          make_latest: ${{ needs.prepare.outputs.make_latest }}
+          make_latest: ${{ inputs.source_commit != '' && 'false' || needs.prepare.outputs.make_latest }}
           body_path: release-notes.md
           files: release-assets/*
           fail_on_unmatched_files: true
 
+      - name: Verify and publish the store GitHub release
+        if: inputs.source_commit != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          RELEASE_ID: ${{ steps.github_release.outputs.id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          release_id = os.environ['RELEASE_ID']
+          assert release_id.isdigit()
+          release = json.loads(subprocess.check_output(['gh', 'api', f'repos/iebb/mithka/releases/{release_id}'], text=True))
+          assert release['tag_name'] == tag
+          assets = {asset['name']: asset for asset in release['assets']}
+          manifest = json.loads(Path('release-assets/release-manifest.json').read_text())
+          for name, expected in manifest['files'].items():
+              actual = assets[name]
+              assert actual['size'] == expected['size'] and actual.get('digest') == 'sha256:' + expected['sha256'], name
+          subprocess.run(['gh', 'api', '--method', 'PATCH', f'repos/iebb/mithka/releases/{release_id}', '--input', '-'],
+                         input=json.dumps({'target_commitish': 'master', 'draft': False, 'prerelease': False, 'make_latest': 'true'}), text=True,
+                         check=True, stdout=subprocess.DEVNULL)
+          PY
+
       - name: Notify Telegram channel
+        if: inputs.source_commit == ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CI_CHANNEL: ${{ secrets.TELEGRAM_CI_CHANNEL }}

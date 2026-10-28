@@ -1,32 +1,49 @@
 name: 📦 Google Play Release
 
 # Nightly builds go to Google Play's beta track (Open testing), while release
-# builds continue to go to Production. Manual runs are available from either
-# publishing branch.
+# builds continue to go to Production. A manual master run also publishes to
+# Production, using the exact selected master commit and the same quality gate.
 
 on:
   push:
     branches: [nightly, release]
   workflow_dispatch:
+    inputs:
+      expected_source_commit:
+        description: Optional exact source SHA; required for store snapshot tags
+        type: string
 
 concurrency:
   # Serialize every Play publication so one version code cannot race across
   # beta and production.
   group: google-play-publication
   cancel-in-progress: false
+  queue: max
 
 permissions:
   actions: read
   contents: read
 
 jobs:
+  source:
+    name: Verify source snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - env:
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+        run: bash scripts/verify-store-source.sh
+
   quality:
     name: Required quality gate
+    needs: source
     uses: ./.github/workflows/quality.yml
 
   prepare:
     name: Read release version
-    if: github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/release'
+    if: github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/release' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/store-v')))
     needs: quality
     runs-on: ubuntu-latest
     outputs:
@@ -65,7 +82,7 @@ jobs:
               play_track="beta"
               release_name="Mithka $app_version Beta · $release_date ($short_sha)"
               ;;
-            release)
+            master|release|store-v*)
               play_track="production"
               release_name="Mithka $app_version · $release_date"
               ;;
@@ -240,15 +257,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
 
       - name: Create immutable version marker
         env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
           VERSION_CODE: ${{ needs.prepare.outputs.android_version_code }}
         run: |
-          marker_tag="play-version-code-$VERSION_CODE"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$marker_tag" -m "Google Play version code $VERSION_CODE" "$GITHUB_SHA"
-          git push origin "refs/tags/$marker_tag"
+          python3 -m unittest discover -s test/scripts -p 'weekly_store_release_test.py' -v
+          python3 scripts/record_play_marker.py

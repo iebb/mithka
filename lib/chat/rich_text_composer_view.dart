@@ -11,6 +11,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_text_selection_toolbar.dart';
 import '../components/toast.dart';
 import '../media/app_asset_picker.dart';
 import '../tdlib/td_models.dart';
@@ -1841,9 +1842,10 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
             unawaited(_showRichBlockInsertMenu(editableTextState, blockIndex)),
       ),
     );
-    return AdaptiveTextSelectionToolbar.buttonItems(
+    return AppTextSelectionToolbar.fromButtonItems(
+      context: context,
       anchors: editableTextState.contextMenuAnchors,
-      buttonItems: items,
+      items: items,
     );
   }
 
@@ -2922,9 +2924,10 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                 ),
               ),
             );
-            return AdaptiveTextSelectionToolbar.buttonItems(
+            return AppTextSelectionToolbar.fromButtonItems(
+              context: context,
               anchors: editableTextState.contextMenuAnchors,
-              buttonItems: items,
+              items: items,
             );
           },
           style: AppTextStyle.callout(

@@ -1,0 +1,118 @@
+name: App Store Review Submission
+run-name: ASC ${{ inputs.operation }} ${{ inputs.platform }} ${{ inputs.version }} (${{ inputs.build_number }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate without writes, or submit this exact uploaded build to App Review
+        type: choice
+        options: [validate, submit]
+        default: validate
+      platform:
+        description: App Store platform
+        type: choice
+        options: [IOS, MAC_OS]
+        default: IOS
+      version:
+        description: App Store listing version, for example 1.8.0
+        required: true
+        type: string
+      binary_version:
+        description: Uploaded binary marketing version (empty means listing version)
+        type: string
+      build_number:
+        description: Exact uploaded CFBundleVersion
+        required: true
+        type: string
+      source_commit:
+        description: Full 40-character source SHA of that uploaded build
+        required: true
+        type: string
+      provenance:
+        description: Build service that uploaded the binary
+        type: choice
+        options: [github_actions, xcode_cloud]
+        default: github_actions
+      build_run_id:
+        description: GitHub Actions numeric run ID or Xcode Cloud run UUID
+        required: true
+        type: string
+      uploaded_build_id:
+        description: ASC build UUID (required for GitHub Actions provenance)
+        type: string
+      release_notes_path:
+        description: Committed release-notes JSON under distribution/app-store/
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: app-store-review-${{ inputs.platform }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  context:
+    name: Require the canonical master dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [ "$GITHUB_REPOSITORY" != 'iebb/mithka' ] || [ "$GITHUB_REF" != 'refs/heads/master' ]; then
+            echo 'Run App Store Review Submission from iebb/mithka master.' >&2
+            exit 1
+          fi
+
+  quality:
+    name: Required quality gate
+    needs: context
+    uses: ./.github/workflows/quality.yml
+    with:
+      source_commit: ${{ inputs.source_commit }}
+
+  submit:
+    name: Validate or submit the exact App Store build
+    needs: quality
+    # The release verifier's IPA identity tests use Apple's plutil.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test submission and provenance boundaries
+        run: |
+          ruby -Itest test/scripts/app_store_release_test.rb
+          ruby -Itest test/scripts/app_store_workflow_test.rb
+
+      - name: Validate or submit to App Store Connect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          STORE_OPERATION: ${{ inputs.operation }}
+          STORE_PLATFORM: ${{ inputs.platform }}
+          STORE_VERSION: ${{ inputs.version }}
+          STORE_BINARY_VERSION: ${{ inputs.binary_version }}
+          STORE_BUILD_NUMBER: ${{ inputs.build_number }}
+          STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          STORE_PROVENANCE: ${{ inputs.provenance }}
+          STORE_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          STORE_UPLOADED_BUILD_ID: ${{ inputs.uploaded_build_id }}
+          STORE_RELEASE_NOTES_PATH: ${{ inputs.release_notes_path }}
+        run: |
+          set -euo pipefail
+          : "${ASC_KEY_ID:?missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_ISSUER_ID:?missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_PRIVATE_KEY:?missing APP_STORE_CONNECT_PRIVATE_KEY}"
+          umask 077
+          export ASC_KEY_PATH="$RUNNER_TEMP/store-submission-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+          unset ASC_PRIVATE_KEY
+          ruby scripts/app_store_workflow.rb

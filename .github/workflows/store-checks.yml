@@ -1,0 +1,156 @@
+name: Store Workflow Checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_play_version_code:
+        description: Optional production code to verify after a release
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/app-store-submit.yml'
+      - '.github/workflows/google-play.yml'
+      - '.github/workflows/ios-testflight.yml'
+      - '.github/workflows/macos-testflight.yml'
+      - '.github/workflows/store-checks.yml'
+      - '.github/workflows/weekly-store-release.yml'
+      - '.github/workflows/quality.yml'
+      - '.github/workflows/release.yml'
+      - 'scripts/*store*'
+      - 'scripts/check_google_play_credentials.py'
+      - 'scripts/verify-store-source.sh'
+      - 'scripts/record_play_marker.py'
+      - 'test/scripts/*store*'
+      - 'test/scripts/check_google_play_credentials_test.py'
+      - 'test/scripts/store_source_test.py'
+      - 'test/scripts/quality_release_source_test.py'
+      - 'test/scripts/release_snapshot_workflow_test.py'
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/app-store-submit.yml'
+      - '.github/workflows/google-play.yml'
+      - '.github/workflows/ios-testflight.yml'
+      - '.github/workflows/macos-testflight.yml'
+      - '.github/workflows/store-checks.yml'
+      - '.github/workflows/weekly-store-release.yml'
+      - '.github/workflows/quality.yml'
+      - '.github/workflows/release.yml'
+      - 'scripts/*store*'
+      - 'scripts/check_google_play_credentials.py'
+      - 'scripts/verify-store-source.sh'
+      - 'scripts/record_play_marker.py'
+      - 'test/scripts/*store*'
+      - 'test/scripts/check_google_play_credentials_test.py'
+      - 'test/scripts/store_source_test.py'
+      - 'test/scripts/quality_release_source_test.py'
+      - 'test/scripts/release_snapshot_workflow_test.py'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    # Keep the real IPA/plutil provenance tests enabled.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - run: python -m pip install -r scripts/requirements-store-checks.txt
+      - name: Test store submission boundaries
+        run: |
+          ruby -Itest test/scripts/app_store_release_test.rb
+          ruby -Itest test/scripts/app_store_workflow_test.rb
+          ruby -Itest test/scripts/store_release_state_test.rb
+          python -m unittest discover -s test/scripts -p 'check_google_play_credentials_test.py' -v
+          python -m unittest discover -s test/scripts -p 'store_source_test.py' -v
+          python -m unittest discover -s test/scripts -p 'weekly_store_release_test.py' -v
+          python -m unittest discover -s test/scripts -p 'quality_release_source_test.py' -v
+          python -m unittest discover -s test/scripts -p 'release_snapshot_workflow_test.py' -v
+          python -m unittest discover -s test/scripts -p 'publish_store_github_release_test.py' -v
+      - name: Validate the store workflows
+        run: |
+          # actionlint 1.7.12 predates GitHub's documented concurrency.queue.
+          # Keep all other lint checks; GitHub validates queue: max itself.
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 \
+            -ignore 'unexpected key "queue" for "concurrency" section' \
+            .github/workflows/app-store-submit.yml \
+            .github/workflows/google-play.yml \
+            .github/workflows/ios-testflight.yml \
+            .github/workflows/macos-testflight.yml \
+            .github/workflows/weekly-store-release.yml \
+            .github/workflows/quality.yml \
+            .github/workflows/release.yml \
+            .github/workflows/github-store-publish.yml \
+            .github/workflows/store-checks.yml
+
+  asc-credentials:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check App Store Connect access without writes
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          : "${ASC_KEY_ID:?missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_ISSUER_ID:?missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_PRIVATE_KEY:?missing APP_STORE_CONNECT_PRIVATE_KEY}"
+          umask 077
+          export ASC_KEY_PATH="$RUNNER_TEMP/store-check-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+          unset ASC_PRIVATE_KEY
+          ruby -r ./scripts/app_store_release.rb -e '
+            client = MithkaAppStoreRelease::Client.new(
+              key_id: ENV.fetch("ASC_KEY_ID"), issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+              key_path: ENV.fetch("ASC_KEY_PATH"))
+            app = client.get("/apps/6783830742").fetch("data")
+            abort "ASC app identity mismatch" unless app.dig("attributes", "bundleId") == "ad.neko.mithka"
+            puts "App Store Connect credential verified for Mithka."
+          '
+
+  play-credentials:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    needs: tests
+    runs-on: ubuntu-latest
+    environment: google-play-production
+    concurrency:
+      group: google-play-publication
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements-store-checks.txt
+      - name: Verify Google Play app access and discard the temporary edit
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_PLAY_STATE_PATH: ${{ runner.temp }}/play-state.json
+          EXPECTED_PLAY_VERSION_CODE: ${{ inputs.expected_play_version_code }}
+        run: python scripts/check_google_play_credentials.py
+      - name: Retain public version-code state
+        uses: actions/upload-artifact@v6
+        with:
+          name: play-state
+          path: ${{ runner.temp }}/play-state.json
+          retention-days: 14
+          if-no-files-found: error

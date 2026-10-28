@@ -29,7 +29,9 @@ class TabBarVisibility extends ChangeNotifier {
   bool _notifyScheduled = false;
 
   void setDepth(int tab, int depth) {
-    if (_depths[tab] == depth) return;
+    // Unseen tabs already have depth 0. The initial root push must not notify
+    // an ancestor while its Navigator is mounting, even if the scheduler is idle.
+    if ((_depths[tab] ?? 0) == depth) return;
     _depths[tab] = depth;
     _notifyListenersSafely();
   }

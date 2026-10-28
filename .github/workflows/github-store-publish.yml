@@ -1,0 +1,68 @@
+name: Recover Store GitHub Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_run_id:
+        description: Completed release.yml run whose Quality and every package build passed
+        required: true
+        type: string
+      source_commit:
+        description: Exact submitted source, already tagged store-vX.Y.Z and vX.Y.Z
+        required: true
+        type: string
+      controller_commit:
+        description: Exact trusted master commit that ran the package workflow
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: store-github-publication-${{ inputs.package_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test publication recovery boundaries
+        run: python3 -m unittest discover -s test/scripts -p 'publish_store_github_release_test.py' -v
+      - name: Verify all original package builds and their source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PACKAGE_CONTROLLER: ${{ inputs.controller_commit }}
+        run: |
+          python3 scripts/publish_store_github_release.py --verify \
+            --package-run-id "$PACKAGE_RUN_ID" --source "$SOURCE_COMMIT" \
+            --controller "$PACKAGE_CONTROLLER"
+      - name: Download only the verified run's artifacts
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          repository: iebb/mithka
+          run-id: ${{ inputs.package_run_id }}
+          path: release-assets
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Publish the matching version without rebuilding or moving tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PACKAGE_CONTROLLER: ${{ inputs.controller_commit }}
+        run: |
+          python3 scripts/publish_store_github_release.py --assets release-assets \
+            --package-run-id "$PACKAGE_RUN_ID" --source "$SOURCE_COMMIT" \
+            --controller "$PACKAGE_CONTROLLER"

@@ -1,6 +1,6 @@
 {
   "fill": {
-    "solid": "display-p3:1.00000,1.00000,1.00000,1.00000"
+    "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
   },
   "groups": [
     {
@@ -33,5 +33,13 @@
       "watchOS"
     ],
     "squares": "shared"
-  }
+  },
+  "fill-specializations": [
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.04314,0.04314,0.05098,1.00000"
+      }
+    }
+  ]
 }

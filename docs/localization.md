@@ -40,7 +40,7 @@ The important files:
 - `lib/l10n/app_locale_controller.dart` — the single language preference;
   `null` means follow the system language.
 - `lib/settings/language_settings_view.dart` — the language picker.
-- `test/l10n_completeness_test.dart` — key, placeholder, and plural parity.
+- `translations/tools/check.py` — key, placeholder, and plural parity.
 - `test/locale_catalogue_test.dart` — interpolation, plural selection, fallback.
 
 Mithka bundles Simplified Chinese, Traditional Chinese, Japanese, Korean,
@@ -121,7 +121,8 @@ Templates use ordered placeholders:
 
 Every locale uses the same placeholder set as English. A translator may move
 `{value1}` wherever the grammar needs it, but must not rename, drop, or add
-one. `tools/check.py` and `test/l10n_completeness_test.dart` both enforce this.
+one. `translations/tools/check.py` enforces this in Quality; the duplicate
+Flutter catalogue-parity suite was retired.
 
 Do not build a sentence by concatenating translated fragments. Use one complete
 template so each language can choose its own word order.
@@ -164,7 +165,7 @@ Run these for every localization change:
 ```sh
 python3 translations/tools/check.py
 python3 translations/tools/gen_assets.py
-flutter test test/l10n_completeness_test.dart test/locale_catalogue_test.dart
+flutter test test/locale_catalogue_test.dart
 python3 tool/check_l10n_strings.py
 flutter analyze
 ```

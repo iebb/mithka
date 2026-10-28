@@ -2521,15 +2521,31 @@ class _ChatListViewState extends State<ChatListView>
         child: Row(
           children: [
             GestureDetector(
+              key: const ValueKey('chat-list-header-avatar-hit'),
+              behavior: HitTestBehavior.opaque,
               onTap: () => context.read<dc.DrawerController>().open(),
-              child: PhotoAvatar(
-                title: _meName,
-                photo: _mePhoto,
-                size: AppMetric.headerAvatarSize,
-                allowAnimation: false,
+              child: SizedBox(
+                width: AppMetric.chatHeaderHitTarget(),
+                height: AppMetric.chatHeaderHitTarget(),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PhotoAvatar(
+                    title: _meName,
+                    photo: _mePhoto,
+                    size: AppMetric.chatHeaderAvatarSize(),
+                    allowAnimation: false,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: AppSpacing.lg),
+            // The larger transparent hit box borrows from the existing 12pt
+            // artwork/name gap, leaving artwork at the same 16pt inset.
+            SizedBox(
+              width:
+                  AppSpacing.lg -
+                  (AppMetric.chatHeaderHitTarget() -
+                      AppMetric.chatHeaderAvatarSize()),
+            ),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2638,14 +2654,15 @@ class _ChatListViewState extends State<ChatListView>
               ),
             ],
             GestureDetector(
+              key: const ValueKey('chat-list-header-add-hit'),
               behavior: HitTestBehavior.opaque,
               onTap: _openPlusMenu,
               child: SizedBox(
-                width: AppMetric.hitTarget,
-                height: AppMetric.hitTarget,
+                width: AppMetric.chatHeaderHitTarget(),
+                height: AppMetric.chatHeaderHitTarget(),
                 child: AppIcon(
                   HeroAppIcons.plus,
-                  size: AppIconSize.add,
+                  size: AppMetric.chatHeaderAddSize(),
                   color: c.textPrimary,
                 ),
               ),
@@ -2803,8 +2820,83 @@ class _ChatListViewState extends State<ChatListView>
 
   // MARK: - Search
 
+  // Measure the same inherited font, locale and OS scaler as the visible
+  // placeholder. The default remains 33pt; accessibility and tall custom fonts
+  // grow the visual and its scroll allocation together instead of clipping.
+  double _touchSearchVisualHeight() {
+    final style = AppTextStyle.forSystemBoldTextMeasurement(
+      DefaultTextStyle.of(context).style.merge(const TextStyle(fontSize: 16)),
+      boldText: MediaQuery.boldTextOf(context),
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: AppStringKeys.topicChatSearch.l10n(context),
+        style: style,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+      maxLines: 1,
+    )..layout();
+    final height = math.max(AppMetric.chatSearchHeight(), painter.height + 8);
+    painter.dispose();
+    return height;
+  }
+
+  double _searchSlotExtent() =>
+      isTouchTargetPlatform() && !widget.desktopSidebar
+      ? math.max(_searchPillExtent, _touchSearchVisualHeight() + 17)
+      : _searchPillExtent;
+
   Widget _searchPill() {
     final c = context.colors;
+    if (isTouchTargetPlatform() && !widget.desktopSidebar) {
+      return Container(
+        key: const ValueKey('chat-list-inline-search'),
+        color: c.listHeaderTint,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: GestureDetector(
+          key: const ValueKey('chat-list-search-hit'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const SearchView())),
+          child: SizedBox(
+            height: _searchSlotExtent(),
+            child: Center(
+              child: Container(
+                key: const ValueKey('chat-list-search-visual'),
+                height: _touchSearchVisualHeight(),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: c.searchFill,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AppIcon(
+                      HeroAppIcons.magnifyingGlass,
+                      size: AppMetric.chatSearchIcon(),
+                      color: c.textTertiary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        AppStringKeys.topicChatSearch.l10n(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 16, color: c.textTertiary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final search = GestureDetector(
       onTap: () => Navigator.of(
         context,
@@ -3198,7 +3290,7 @@ class _ChatListViewState extends State<ChatListView>
 
   double _leadingListControlsExtent(ThemeController theme) {
     if (!widget.desktopSidebar) {
-      return theme.showChatListSearch ? _searchPillExtent : 0;
+      return theme.showChatListSearch ? _searchSlotExtent() : 0;
     }
     final showFolder =
         theme.chatFolderDisplayMode == ChatFolderDisplayMode.menu &&

@@ -5463,6 +5463,12 @@ class _ChatViewState extends State<ChatView> {
     }
   }
 
+  /// Opens a link as this transcript, even though the State's context is above
+  /// its [InternalChatLinkScope]: the scope's target is re-supplied so the
+  /// navigation request carries the owning chat and account.
+  Future<void> _openLinkFromTranscript(BuildContext context, String url) =>
+      openLink(context, url, sourceChat: _internalLinkTarget);
+
   Future<void> _pressMessageButton(
     ChatMessage message,
     MessageButton button,
@@ -5487,12 +5493,12 @@ class _ChatViewState extends State<ChatView> {
         showToast(context, AppStrings.t(AppStringKeys.miniAppCannotStart));
         return;
       }
-      await openLink(context, url);
+      await _openLinkFromTranscript(context, url);
       return;
     }
     final userId = button.userId;
     if (userId != null && userId > 0) {
-      await openLink(context, 'tg://user?id=$userId');
+      await _openLinkFromTranscript(context, 'tg://user?id=$userId');
       return;
     }
     final copyText = button.copyText;
@@ -5509,7 +5515,7 @@ class _ChatViewState extends State<ChatView> {
         if (!mounted) return;
         final answerUrl = answer.str('url');
         if (answerUrl != null && answerUrl.isNotEmpty) {
-          await openLink(context, answerUrl);
+          await _openLinkFromTranscript(context, answerUrl);
           return;
         }
         final text = answer.str('text');
@@ -5541,7 +5547,7 @@ class _ChatViewState extends State<ChatView> {
       _vm.activateInlineQuery(username);
       return;
     }
-    await openLink(context, 'https://t.me/$username');
+    await _openLinkFromTranscript(context, 'https://t.me/$username');
   }
 
   Future<void> _activateSwitchInlineButton(
@@ -7037,16 +7043,22 @@ class _ChatViewState extends State<ChatView> {
         : TelegramMessageColors.fromChatThemeStyle(style);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    Widget withInternalLinkRouting(Widget child) => InternalChatLinkScope(
-      target: InternalChatLinkTarget(
+  /// The link-routing target this transcript mounts below its subtree. Kept
+  /// as a field so handlers running on the State's own context — which sits
+  /// ABOVE the scope, so `InternalChatLinkScope.targetOf(context)` returns
+  /// null there — can still open links as this chat, on this account (a
+  /// multi-account shell otherwise drops the account-less request silently).
+  late final InternalChatLinkTarget _internalLinkTarget =
+      InternalChatLinkTarget(
         chatId: widget.chatId,
         accountSlot: _sessionKey.accountSlot,
         openMessage: _scrollToMessage,
-      ),
-      child: child,
-    );
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    Widget withInternalLinkRouting(Widget child) =>
+        InternalChatLinkScope(target: _internalLinkTarget, child: child);
 
     _shellLayoutGeneration++;
     final c = context.colors;

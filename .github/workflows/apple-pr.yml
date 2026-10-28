@@ -50,7 +50,9 @@ jobs:
           git log --oneline -1
 
       - name: Test shipping SDK guard
-        run: python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+        run: |
+          python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+          python3 -m unittest discover -s test/scripts -p 'apple_pr_simulator_build_test.py' -v
 
       # Use the shipping selector even for credential-free verification; never
       # accept green PR builds from an older SDK than the upload requires.
@@ -150,6 +152,14 @@ jobs:
 
       - name: Build the actual iOS app without signing
         run: |
+          # Flutter's unpack phase requires individual architectures. A generic
+          # simulator destination can report "arm64 x86_64" as one value;
+          # verify the simulator app for the CPU that will run RunnerTests.
+          apple_sim_arch="$(uname -m)"
+          case "$apple_sim_arch" in
+            arm64|x86_64) ;;
+            *) echo "Unsupported verification host architecture: $apple_sim_arch" >&2; exit 1 ;;
+          esac
           xcodebuild build \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -157,6 +167,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/derived \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            ARCHS="$apple_sim_arch" ONLY_ACTIVE_ARCH=YES \
             > "$RUNNER_TEMP/ios-build.log" 2>&1 || {
               tail -n 160 "$RUNNER_TEMP/ios-build.log"
               exit 1
@@ -204,6 +215,7 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$apple_sim_id" \
             -derivedDataPath build/derived \
+            -parallel-testing-enabled NO \
             -only-testing:RunnerTests -skip-testing:RunnerUITests \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             > "$RUNNER_TEMP/ios-tests.log" 2>&1 || {

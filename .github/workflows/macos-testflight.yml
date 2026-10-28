@@ -2,6 +2,14 @@ name: macOS TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_source_commit:
+        description: Optional exact source SHA; required for store snapshot tags
+        type: string
+      distribute_testflight:
+        description: Distribute to internal/external TestFlight groups after upload
+        type: boolean
+        default: true
   push:
     branches:
       - release
@@ -13,11 +21,24 @@ permissions:
 
 concurrency:
   group: mithka-macos-testflight-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+  queue: max
 
 jobs:
+  source:
+    name: Verify source snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - env:
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+        run: bash scripts/verify-store-source.sh
+
   quality:
     name: Required quality gate
+    needs: source
     uses: ./.github/workflows/quality.yml
 
   archive-upload:
@@ -117,6 +138,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Prepare deterministic macOS build inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: sh ci_scripts/macos_post_clone.sh
 
       - name: Archive macOS app
@@ -178,6 +201,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
       - name: Distribute internally and submit external Beta App Review
+        if: github.event_name != 'workflow_dispatch' || inputs.distribute_testflight
         env:
           TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP || 'Internal' }}
           TESTFLIGHT_EXTERNAL_GROUP: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP || 'External' }}

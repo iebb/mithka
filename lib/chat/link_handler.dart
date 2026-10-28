@@ -73,13 +73,17 @@ export 'telegram_premium_features.dart';
 typedef _TdLinkQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
-Future<void> openLink(BuildContext context, String url) async {
+Future<void> openLink(
+  BuildContext context,
+  String url, {
+  InternalChatLinkTarget? sourceChat,
+}) async {
   final nav = Navigator.of(context);
-  final sourceChat = InternalChatLinkScope.targetOf(context);
+  sourceChat ??= InternalChatLinkScope.targetOf(context);
   final query = sourceChat == null
       ? TdClient.shared.query
       : (Map<String, dynamic> request) =>
-            TdClient.shared.queryForSlot(request, sourceChat.accountSlot);
+            TdClient.shared.queryForSlot(request, sourceChat!.accountSlot);
   final link = normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {

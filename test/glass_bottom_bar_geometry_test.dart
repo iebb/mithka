@@ -1,13 +1,11 @@
 //
 //  glass_bottom_bar_geometry_test.dart
 //
-//  The iOS glass bar hosts a native Liquid Glass surface whose glass never
-//  draws tabs or selection: the app-owned row, its pill indicator, and every
-//  gesture stay in Flutter on top of the surface. One path therefore serves the
-//  compact phone bottom bar and the tablet split shell's sidebar column — the
-//  old "system bar paints its capsule against the window, not this column"
-//  failure mode cannot recur, because nothing system-drawn is positioned
-//  relative to tab slots anymore.
+//  iOS 26+ native-control tests use mocked native metrics below. The existing
+//  geometry tests explicitly select the preserved pre-26 fallback.
+//  That fallback uses a single native host for outer/selected material; Flutter owns
+//  controls and semantics. Mocked widget tests verify the configuration and
+//  row containment, NOT the native material's appearance or rendered frame.
 //
 //  The native host keeps the same window containment as the Flutter glass bar:
 //  the surface stops inside the bottom safe area instead of reaching under the
@@ -31,6 +29,8 @@ import 'package:heroicons_flutter/heroicons_flutter.dart';
 import 'package:mithka/app/chat_deep_link_controller.dart';
 import 'package:mithka/app/liquid_glass_bottom_bar.dart';
 import 'package:mithka/app/main_tab_view.dart';
+import 'package:mithka/app/native_glass_surface.dart';
+import 'package:mithka/app/native_tab_bar.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -47,6 +47,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/glass_review_capture.dart';
+import 'helpers/native_tab_bar_mock.dart';
 
 const _surfaceKey = ValueKey('native-glass-surface');
 const _barKey = _surfaceKey;
@@ -66,6 +67,27 @@ const _surfaceHeight = _rowHeight + 2 * _capsuleInset;
 const _surfaceBottomGap = 10.0;
 const _sideMargin = 14.0;
 
+/// Contract geometry only: native tests must verify UIKit's actual layout.
+Rect _configuredSelectionRect(WidgetTester tester) {
+  final native = find.byType(NativeGlassSurface);
+  if (native.evaluate().isEmpty) {
+    return tester.getRect(find.byKey(_indicatorKey));
+  }
+  expect(find.byKey(_indicatorKey), findsNothing);
+  final widget = tester.widget<NativeGlassSurface>(native);
+  final rect = tester.getRect(native).deflate(widget.selectionInset);
+  final rtl = Directionality.of(tester.element(native)) == TextDirection.rtl;
+  final slot = rtl
+      ? widget.itemCount - 1 - widget.selection!
+      : widget.selection!;
+  return Rect.fromLTWH(
+    rect.left + rect.width * slot / widget.itemCount,
+    rect.top,
+    rect.width / widget.itemCount,
+    rect.height,
+  );
+}
+
 void main() {
   final updates = StreamController<Map<String, dynamic>>.broadcast();
   tearDownAll(() async {
@@ -84,6 +106,75 @@ void main() {
     );
   });
 
+  for (final size in [_phoneSize, const Size(900, 800)]) {
+    testWidgets(
+      'iOS 26+ ${size.width} uses actual-control contract and measured footer',
+      (tester) async {
+        await onIOS(() async {
+          final nativeMock = NativeTabBarMock(
+            tester.binding.defaultBinaryMessenger,
+          )..install();
+          addTearDown(nativeMock.dispose);
+          // Warm exact DPR1/LTR keys in the real async zone BEFORE the shell
+          // can cache engine futures in testWidgets' fake zone.
+          await tester.runAsync(() async {
+            await Future.wait([
+              for (final icon in [
+                HeroAppIcons.solidMessage,
+                HeroAppIcons.hashtag,
+                HeroAppIcons.solidHashtag,
+                HeroAppIcons.users,
+                HeroAppIcons.solidUsers,
+                HeroAppIcons.circleNotch,
+                HeroAppIcons.solidCircleNotch,
+                HeroAppIcons.circleCheck,
+              ])
+                NativeTabIconRasterizer.png(icon.data, 1, TextDirection.ltr),
+            ]);
+          });
+          await _pumpShell(
+            tester,
+            size,
+            insets: const FakeViewPadding(bottom: _phoneBottomInset),
+          );
+          await _pumpNativeConfiguration(tester);
+          expect(defaultTargetPlatform, TargetPlatform.iOS);
+          expect(find.byType(NativeTabBar), findsOneWidget);
+          expect(find.byType(NativeGlassSurface), findsNothing);
+          expect(find.byKey(_firstSlotKey), findsNothing);
+          expect(find.byKey(_indicatorKey), findsNothing);
+          expect(find.byType(UiKitView), findsOneWidget);
+          expect(nativeMock.created, hasLength(1));
+          expect(nativeMock.updates, isNotEmpty);
+          expect(
+            nativeMock.latest['bottomInset'],
+            size == _phoneSize ? _phoneBottomInset : 0,
+          );
+          expect(
+            (nativeMock.latest['items'] as List).map((item) => item['label']),
+            _tabs.map((tab) => tab.label),
+          );
+          await nativeMock.send('metrics', {'height': 95.5});
+          await tester.pump();
+          await tester.pump();
+          expect(
+            tester.getSize(find.byKey(const ValueKey('native-tab-bar'))).height,
+            95.5,
+          );
+          await nativeMock.send('select', {'id': 2});
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 1));
+          expect(
+            tester.widget<NativeTabBar>(find.byType(NativeTabBar)).selectedId,
+            2,
+          );
+          expect(tester.takeException(), isNull);
+          await _dispose(tester);
+        });
+      },
+    );
+  }
+
   testWidgets('iOS split shell hosts the native glass with app-owned tabs', (
     tester,
   ) async {
@@ -93,14 +184,10 @@ void main() {
       // The native surface is present behind the app-owned bar.
       expect(find.byKey(_surfaceKey), findsOneWidget);
       expect(find.byType(UiKitView), findsOneWidget);
-      // The selection pill and the tab slots are all Flutter-drawn, so the
-      // pill still covers the selected tab exactly inside the narrow sidebar
-      // column — the geometry no longer depends on where UIKit thinks the
-      // window-bottom bar is.
-      final indicator = find.byKey(_indicatorKey);
-      expect(indicator, findsOneWidget);
+      // Selected geometry is configured relative to this host, not the window.
+      expect(find.byKey(_indicatorKey), findsNothing);
       final slots = find.byKey(_firstSlotKey);
-      expect(tester.getRect(indicator), tester.getRect(slots));
+      expect(_configuredSelectionRect(tester), tester.getRect(slots));
       // A window with no bell keeps the shared capsule gap below the surface
       // and draws no phantom bar of its own.
       final surface = tester.getRect(find.byKey(_surfaceKey));
@@ -122,9 +209,9 @@ void main() {
       await _pumpShell(tester, _phoneSize);
       expect(find.byKey(_surfaceKey), findsOneWidget);
       expect(find.byType(UiKitView), findsOneWidget);
-      final indicator = find.byKey(_indicatorKey);
+      expect(find.byKey(_indicatorKey), findsNothing);
       final slots = find.byKey(_firstSlotKey);
-      expect(tester.getRect(indicator), tester.getRect(slots));
+      expect(_configuredSelectionRect(tester), tester.getRect(slots));
       // An uninset window still leaves the shared capsule gap at its bottom.
       expect(
         tester.getRect(find.byKey(_surfaceKey)).bottom,
@@ -135,7 +222,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       expect(
-        tester.getRect(find.byKey(_indicatorKey)),
+        _configuredSelectionRect(tester),
         tester.getRect(find.byKey(const ValueKey('bottom-tab-2'))),
       );
       await _dispose(tester);
@@ -172,7 +259,7 @@ void main() {
       final slot = find.byKey(_firstSlotKey);
       expect(tester.getRect(slot).bottom, lessThanOrEqualTo(homeIndicatorTop));
       expect(tester.getRect(slot).bottom, homeIndicatorTop - _capsuleInset);
-      expect(tester.getRect(slot), tester.getRect(find.byKey(_indicatorKey)));
+      expect(tester.getRect(slot), _configuredSelectionRect(tester));
       expect(tester.takeException(), isNull);
       await _dispose(tester);
     });
@@ -207,7 +294,7 @@ void main() {
       expect(stadium, findsOneWidget);
       expect(tester.getRect(stadium), nativeSurface);
       expect(tester.getRect(find.byKey(_firstSlotKey)), nativeSlot);
-      expect(tester.getRect(find.byKey(_indicatorKey)), nativeSlot);
+      expect(_configuredSelectionRect(tester), nativeSlot);
       expect(tester.takeException(), isNull);
       await _dispose(tester);
     });
@@ -236,46 +323,14 @@ void main() {
               const FakeAccessibilityFeatures(highContrast: true);
           await tester.pump();
           await tester.pump(const Duration(seconds: 1));
-          expect(find.byType(UiKitView), findsNothing);
-          expect(find.byKey(_surfaceKey), findsNothing);
-          final fallback = find.byType(LiquidGlassBottomBar);
-          expect(fallback, findsOneWidget);
-          final colors = tester.element(fallback).colors;
-          final opaqueSurface = find.descendant(
-            of: fallback,
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is DecoratedBox &&
-                  widget.decoration is BoxDecoration &&
-                  (widget.decoration as BoxDecoration).color == colors.navBar,
-            ),
-          );
-          expect(opaqueSurface, findsOneWidget);
-          final decoration =
-              tester.widget<DecoratedBox>(opaqueSurface).decoration
-                  as BoxDecoration;
-          expect(decoration.color!.a, 1);
-          expect(decoration.gradient, isNull);
-          expect(decoration.border, Border.all(color: colors.textSecondary));
-          expect(tester.getRect(opaqueSurface), nativeRect);
-          final blur = tester.widget<BackdropFilter>(
-            find.descendant(
-              of: fallback,
-              matching: find.byType(BackdropFilter),
-            ),
-          );
-          expect(blur.enabled, isFalse);
-          final indicatorDecoration =
-              tester.widget<DecoratedBox>(find.byKey(_indicatorKey)).decoration
-                  as BoxDecoration;
-          expect(
-            indicatorDecoration.color,
-            colors.linkBlue.withValues(alpha: 0.22),
-          );
-          expect(
-            indicatorDecoration.border,
-            Border.all(color: colors.linkBlue, width: 0.8),
-          );
+          expect(find.byType(UiKitView), findsOneWidget);
+          expect(find.byType(LiquidGlassBottomBar), findsNothing);
+          expect(find.byKey(_indicatorKey), findsNothing);
+          expect(tester.getRect(find.byKey(_surfaceKey)), nativeRect);
+          final config = mock.calls.last.arguments as Map;
+          expect(config['highContrast'], isTrue);
+          expect(Color(config['opaqueBackground'] as int).a, 1);
+          expect(Color(config['opaqueSelection'] as int).a, 1);
           for (final tab in _tabs) {
             expect(
               semanticLabelOf(tester, ValueKey('bottom-tab-${tab.index}')),
@@ -292,10 +347,10 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
           expect(find.byType(UiKitView), findsOneWidget);
           expect(find.byType(LiquidGlassBottomBar), findsNothing);
-          expect(mock.createdParams, hasLength(2));
+          expect(mock.createdParams, hasLength(1));
           expect(tester.getRect(find.byKey(_surfaceKey)), nativeRect);
           expect(
-            tester.getRect(find.byKey(_indicatorKey)),
+            _configuredSelectionRect(tester),
             tester.getRect(find.byKey(const ValueKey('bottom-tab-2'))),
           );
           expect(tester.takeException(), isNull);
@@ -338,16 +393,25 @@ void main() {
                 find.byKey(const ValueKey('bottom-tab-3')),
               );
               expect(first.expandToInclude(last), outer.deflate(_capsuleInset));
-              final selection =
-                  tester
-                          .widget<DecoratedBox>(find.byKey(_indicatorKey))
-                          .decoration
-                      as BoxDecoration;
-              expect(
-                selection.borderRadius,
-                BorderRadius.circular(first.height / 2),
-              );
-              expect(tester.getRect(find.byKey(_indicatorKey)), first);
+              if (platform == TargetPlatform.iOS) {
+                expect(find.byKey(_indicatorKey), findsNothing);
+                final native = tester.widget<NativeGlassSurface>(
+                  find.byType(NativeGlassSurface),
+                );
+                expect(native.selectionInset, _capsuleInset);
+                expect(native.itemCount, _tabs.length);
+              } else {
+                final selection =
+                    tester
+                            .widget<DecoratedBox>(find.byKey(_indicatorKey))
+                            .decoration
+                        as BoxDecoration;
+                expect(
+                  selection.borderRadius,
+                  BorderRadius.circular(first.height / 2),
+                );
+              }
+              expect(_configuredSelectionRect(tester), first);
               expect(outer.height / 2 - first.height / 2, _capsuleInset);
               for (final tab in _tabs) {
                 final slot = find.byKey(ValueKey('bottom-tab-${tab.index}'));
@@ -405,10 +469,7 @@ void main() {
                 await gesture.up();
                 await tester.pump();
                 await tester.pump(const Duration(seconds: 1));
-                expect(
-                  tester.getRect(find.byKey(_indicatorKey)),
-                  tester.getRect(slot),
-                );
+                expect(_configuredSelectionRect(tester), tester.getRect(slot));
                 final icon = tester.widget<AppIcon>(
                   find.descendant(of: slot, matching: find.byType(AppIcon)),
                 );
@@ -503,7 +564,7 @@ void main() {
       expect(surfaceRect.right, size.width - _sideMargin);
       final slot = find.byKey(_firstSlotKey);
       expect(tester.getRect(slot).bottom, lessThanOrEqualTo(size.height - 34));
-      expect(tester.getRect(slot), tester.getRect(find.byKey(_indicatorKey)));
+      expect(tester.getRect(slot), _configuredSelectionRect(tester));
       expect(tester.takeException(), isNull);
       await _dispose(tester);
     });
@@ -524,7 +585,7 @@ void main() {
       expect(surfaceRect.height, _surfaceHeight);
       final slot = find.byKey(_firstSlotKey);
       expect(tester.getRect(slot).bottom, lessThanOrEqualTo(800 - 34));
-      expect(tester.getRect(slot), tester.getRect(find.byKey(_indicatorKey)));
+      expect(tester.getRect(slot), _configuredSelectionRect(tester));
       expect(tester.takeException(), isNull);
       await _dispose(tester);
     });
@@ -552,7 +613,7 @@ void main() {
       final slot = find.byKey(_firstSlotKey);
       expect(tester.getRect(slot).bottom, lessThanOrEqualTo(homeIndicatorTop));
       // Both the row and the pill mirror: the first slot sits on the right.
-      expect(tester.getRect(slot), tester.getRect(find.byKey(_indicatorKey)));
+      expect(tester.getRect(slot), _configuredSelectionRect(tester));
       expect(tester.getRect(slot).left, greaterThan(_phoneSize.width / 2));
       expect(tester.takeException(), isNull);
       await _dispose(tester);
@@ -712,9 +773,14 @@ class GlassSurfaceMock {
 
   final TestDefaultBinaryMessenger _messenger;
   final List<Map<Object?, Object?>> createdParams = [];
+  final List<MethodCall> calls = [];
   final Map<int, MethodChannel> _channels = {};
 
   void install() {
+    _messenger.setMockMethodCallHandler(
+      const MethodChannel('mithka/native_tab_bar'),
+      (call) async => false,
+    );
     _messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
       call,
     ) async {
@@ -729,13 +795,20 @@ class GlassSurfaceMock {
         );
         final channel = MethodChannel('mithka/native_glass/$id');
         _channels[id] = channel;
-        _messenger.setMockMethodCallHandler(channel, (call) async => null);
+        _messenger.setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          return null;
+        });
       }
       return null;
     });
   }
 
   void dispose() {
+    _messenger.setMockMethodCallHandler(
+      const MethodChannel('mithka/native_tab_bar'),
+      null,
+    );
     _messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
     for (final channel in _channels.values) {
       _messenger.setMockMethodCallHandler(channel, null);
@@ -760,6 +833,16 @@ Future<void> onIOS(Future<void> Function() body) async {
     await body();
   } finally {
     debugDefaultTargetPlatformOverride = null;
+  }
+}
+
+Future<void> _pumpNativeConfiguration(WidgetTester tester) async {
+  // Prewarming must stay before mount. Completed cached PNG Futures still
+  // schedule listeners in runAsync's real zone; alternate real microtask turns
+  // with fake pumps for item artwork, read-action artwork and the view handshake.
+  for (var phase = 0; phase < 3; phase++) {
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
   }
 }
 

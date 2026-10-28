@@ -2,6 +2,11 @@ name: Quality
 
 on:
   workflow_call:
+    inputs:
+      source_commit:
+        description: Exact store snapshot; only App Review or Multi-platform Releases may override it
+        type: string
+        default: ''
   pull_request:
   push:
     branches:
@@ -30,12 +35,42 @@ jobs:
       - run: 'true'
 
   flutter:
-    name: Analyze and test
+    # Keep release-source evidence distinct from current-head PR/push checks.
+    name: ${{ inputs.source_commit != '' && format('Analyze and test release source {0}', inputs.source_commit) || 'Analyze and test' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Verify requested release source
+        env:
+          QUALITY_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="${QUALITY_SOURCE_COMMIT:-}"
+          if [ -z "$source_commit" ]; then
+            exit 0
+          fi
+          if [ "$GITHUB_REPOSITORY" != 'iebb/mithka' ] ||
+             [ "$GITHUB_EVENT_NAME" != 'workflow_dispatch' ] ||
+             [ "$GITHUB_REF" != 'refs/heads/master' ]; then
+            echo 'Only canonical master release dispatches may select an uploaded source.' >&2
+            exit 1
+          fi
+          case "$GITHUB_WORKFLOW" in
+            'App Store Review Submission'|'🚀 Multi-platform Releases') ;;
+            *) echo 'This workflow cannot override its Quality source.' >&2; exit 1 ;;
+          esac
+          [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          merge_base="$(gh api "repos/iebb/mithka/compare/$source_commit...master" --jq '.merge_base_commit.sha')"
+          if [ "$merge_base" != "$source_commit" ]; then
+            echo 'The uploaded release source must be an ancestor of master.' >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.source_commit || github.sha }}
           fetch-depth: 2
           persist-credentials: false
 
@@ -70,7 +105,9 @@ jobs:
         run: flutter pub get
 
       - name: Test Apple shipping SDK selection and artifact guards
-        run: python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+        run: |
+          python3 -m unittest discover -s test/scripts -p 'apple_shipping_sdk_test.py' -v
+          python3 -m unittest discover -s test/scripts -p 'apple_pr_simulator_build_test.py' -v
 
       - name: Test Apple MDK helper failure paths
         run: bash scripts/tests/refresh_apple_mdk_test.sh

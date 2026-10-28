@@ -409,10 +409,15 @@ class UnreadBadge extends StatefulWidget {
     required this.count,
     this.muted = false,
     this.onClear,
+    this.chatAvatar = false,
   });
   final int count;
   final bool muted;
   final VoidCallback? onClear;
+
+  /// Only the touch chat-row avatar badge uses the 17pt visual minimum.
+  /// Drag-clear hit geometry and all other badge users stay unchanged.
+  final bool chatAvatar;
 
   @override
   State<UnreadBadge> createState() => _UnreadBadgeState();
@@ -458,7 +463,12 @@ class _UnreadBadgeState extends State<UnreadBadge> {
         .watch<ThemeController>()
         .unreadBadgeOverflowMode;
     final label = overflowMode.format(widget.count);
-    final body = _UnreadBadgeBody(label: label, color: color);
+    final body = _UnreadBadgeBody(
+      label: label,
+      color: color,
+      minimum: widget.chatAvatar ? 17 : AppMetric.unreadBadgeMin,
+      fullCount: widget.chatAvatar ? widget.count : null,
+    );
     if (widget.onClear == null) return body;
     final visualSize = _visualSize(context, label);
     final hitWidth = math.max(AppMetric.hitTarget, visualSize.width);
@@ -522,9 +532,10 @@ class _UnreadBadgeState extends State<UnreadBadge> {
       maxLines: 1,
     )..layout();
     final horizontalPadding = label.length > 1 ? (AppSpacing.xs + 1) * 2 : 0.0;
+    final minimum = widget.chatAvatar ? 17.0 : AppMetric.unreadBadgeMin;
     final size = Size(
-      math.max(AppMetric.unreadBadgeMin, painter.width + horizontalPadding),
-      math.max(AppMetric.unreadBadgeMin, painter.height),
+      math.max(minimum, painter.width + horizontalPadding),
+      math.max(minimum, painter.height),
     );
     painter.dispose();
     return size;
@@ -532,29 +543,35 @@ class _UnreadBadgeState extends State<UnreadBadge> {
 }
 
 class _UnreadBadgeBody extends StatelessWidget {
-  const _UnreadBadgeBody({required this.label, required this.color});
+  const _UnreadBadgeBody({
+    required this.label,
+    required this.color,
+    required this.minimum,
+    this.fullCount,
+  });
 
   final String label;
   final Color color;
+  final double minimum;
+  final int? fullCount;
 
   @override
   Widget build(BuildContext context) {
     // A fixed-height row (the topic rail) hands children a bounded cross
     // extent, and the centering Align inside Container would stretch the
     // pill into a vertical strip there. Unbounded input keeps it a dot.
-    return UnconstrainedBox(
+    final body = UnconstrainedBox(
       child: Container(
-        constraints: const BoxConstraints(
-          minWidth: AppMetric.unreadBadgeMin,
-          minHeight: AppMetric.unreadBadgeMin,
-        ),
+        constraints: BoxConstraints(minWidth: minimum, minHeight: minimum),
         padding: EdgeInsets.symmetric(
           horizontal: label.length > 1 ? AppSpacing.xs + 1 : 0,
         ),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(AppMetric.unreadBadgeMin / 2),
+          borderRadius: BorderRadius.circular(
+            fullCount != null ? AppRadius.pill : AppMetric.unreadBadgeMin / 2,
+          ),
         ),
         child: Text(
           label,
@@ -568,6 +585,13 @@ class _UnreadBadgeBody extends StatelessWidget {
         ),
       ),
     );
+    return fullCount == null
+        ? body
+        : Semantics(
+            label: fullCount.toString(),
+            excludeSemantics: true,
+            child: body,
+          );
   }
 }
 
@@ -1959,12 +1983,14 @@ class ChatPreviewText extends StatelessWidget {
     this.draft = false,
     this.alertPrefix,
     this.fontSize = AppTextSize.footnote,
+    this.chatRowSizing = false,
   });
   final String? sender;
   final String message;
   final bool draft; // render a red "[草稿]" prefix and ignore sender
   final String? alertPrefix;
   final double fontSize;
+  final bool chatRowSizing;
 
   static const _redTags = [
     AppStringKeys.commonUiNewFileBadge,
@@ -1977,11 +2003,19 @@ class ChatPreviewText extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final isRed = _redTags.any(message.startsWith);
-    final baseStyle = DefaultTextStyle.of(
-      context,
-    ).style.merge(TextStyle(fontSize: fontSize));
+    final data = ContentSizeScope.of(context);
+    final baseStyle = DefaultTextStyle.of(context).style.merge(
+      TextStyle(
+        fontSize: chatRowSizing
+            ? AppTextSize.chatRowPreviewMessageSize(data.appScale)
+            : fontSize,
+      ),
+    );
     return RichText(
-      textScaler: ContentSizeScope.chatListPreviewScalerOf(context),
+      // Row span sizes already include the app multiplier, not the OS scaler.
+      textScaler: chatRowSizing
+          ? data.systemTextScaler
+          : ContentSizeScope.chatListPreviewScalerOf(context),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       text: TextSpan(
@@ -2000,7 +2034,12 @@ class ChatPreviewText extends StatelessWidget {
           else if (sender != null && sender!.isNotEmpty)
             TextSpan(
               text: '$sender: ',
-              style: TextStyle(color: c.textSecondary),
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: chatRowSizing
+                    ? AppTextSize.chatRowPreviewSenderSize(data.appScale)
+                    : null,
+              ),
             ),
           TextSpan(
             text: _previewMessage(context),

@@ -7,10 +7,9 @@ import '../theme/app_theme.dart';
 
 const _indicatorWhite = Color(0xFFFFFFFF);
 
-/// The animated selection pill shared by the app glass bar (non-iOS fallback)
-/// and the native glass surface (iOS): a rounded, tinted highlight that slides
-/// to the selected slot. Both hosts draw the same indicator, so selection
-/// looks identical whichever glass is beneath it.
+/// The painted animated selection capsule for the non-iOS glass fallback.
+/// iOS draws its selected material natively in the same host as the outer glass;
+/// this widget does not paint over that native selected layer.
 class GlassSelectionIndicator extends StatelessWidget {
   const GlassSelectionIndicator({
     super.key,

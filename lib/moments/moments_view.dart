@@ -41,6 +41,7 @@ import '../chat/video_sticker_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
+import '../components/app_text_selection_toolbar.dart';
 import '../components/desktop_content_constraint.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -3949,8 +3950,10 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
             maxLines: 16,
             textInputAction: TextInputAction.newline,
             contextMenuBuilder: (context, editableTextState) {
-              return AdaptiveTextSelectionToolbar.editableText(
-                editableTextState: editableTextState,
+              return AppTextSelectionToolbar.fromButtonItems(
+                context: context,
+                anchors: editableTextState.contextMenuAnchors,
+                items: editableTextState.contextMenuButtonItems,
               );
             },
             style: AppTextStyle.bodyLarge(c.textPrimary).copyWith(height: 1.4),
