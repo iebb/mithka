@@ -26,6 +26,7 @@ import '../app/chat_pane.dart';
 import '../app/desktop_video_window.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
+import '../app/top_corner_cluster.dart';
 import '../app/video_split_controller.dart';
 import '../auth/account_store.dart';
 import '../auth/telegram_country_names.dart';
@@ -8541,7 +8542,11 @@ class _ChatViewState extends State<ChatView> {
             key: const ValueKey('chatHeaderToolbar'),
             constraints: BoxConstraints(minHeight: widget.headerHeight),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              // Only the toolbar row meets the corner status cluster; the
+              // panels below it keep the full width.
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14) +
+                  TopClusterInsets.of(context),
               child: Row(
                 children: [
                   if (widget.showBackButton)
@@ -9100,7 +9105,7 @@ class _ChatViewState extends State<ChatView> {
     final c = context.colors;
     final count = _selectedMessageIds.length;
     return Container(
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),

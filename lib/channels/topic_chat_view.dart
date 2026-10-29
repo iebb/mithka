@@ -1967,7 +1967,7 @@ class _TopicChatViewState extends State<TopicChatView> {
               widget.chat.title;
     return Container(
       height: top + widget.headerHeight,
-      padding: EdgeInsets.only(top: top),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: widget.headerColor ?? c.navBar,
         image: const DecorationImage(

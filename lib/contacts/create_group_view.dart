@@ -115,7 +115,7 @@ class _CreateGroupViewState extends State<CreateGroupView> {
     final c = context.colors;
     final canCreate = _selected.isNotEmpty && !_creating;
     return Container(
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'top_corner_cluster.dart';
+
 /// Reserves side-mounted system chrome for every route, sheet, and overlay.
 /// Descendants receive the usable window size so adaptive panes and interface
 /// scaling do not lay themselves out beneath a vertical status area.
@@ -27,6 +29,7 @@ class _HorizontalSafeViewportState extends State<HorizontalSafeViewport> {
   static const _geometryChannel = MethodChannel('mithka/window_geometry');
   MediaQueryData? _queriedMedia;
   double? _sideTopFraction;
+  TopOcclusionData? _topOcclusion;
 
   void _refreshSideGeometry(MediaQueryData media) {
     if (!widget.sideNavigation ||
@@ -56,12 +59,39 @@ class _HorizontalSafeViewportState extends State<HorizontalSafeViewport> {
       } on PlatformException {
         // Geometry will be refreshed on the next window change.
       }
+      final topOcclusion = await _fetchTopOcclusion();
       if (!mounted || !identical(_queriedMedia, media)) return;
-      if (fraction != _sideTopFraction) {
+      if (fraction != _sideTopFraction || topOcclusion != _topOcclusion) {
         _sideTopFraction = fraction;
+        _topOcclusion = topOcclusion;
+        _entry.markNeedsBuild();
+      }
+      // The status cluster settles into its corner just after the window
+      // changes (opening the device, turning it); read it once more.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (!mounted || !identical(_queriedMedia, media)) return;
+      final settled = await _fetchTopOcclusion();
+      if (!mounted || !identical(_queriedMedia, media)) return;
+      if (settled != _topOcclusion) {
+        _topOcclusion = settled;
         _entry.markNeedsBuild();
       }
     });
+  }
+
+  Future<TopOcclusionData?> _fetchTopOcclusion() async {
+    try {
+      return TopOcclusionData.fromMap(
+        await _geometryChannel.invokeMapMethod<String, dynamic>(
+          'topOcclusionGeometry',
+        ),
+      );
+    } on MissingPluginException {
+      // Older native builds keep the full top inset everywhere.
+    } on PlatformException {
+      // Geometry will be refreshed on the next window change.
+    }
+    return null;
   }
 
   @override
@@ -114,7 +144,10 @@ class _HorizontalSafeViewportState extends State<HorizontalSafeViewport> {
               window: media,
               enabled: widget.sideNavigation,
               sideTopFraction: _sideTopFraction,
-              child: widget.child,
+              child: TopOcclusionGeometry(
+                data: widget.sideNavigation ? _topOcclusion : null,
+                child: widget.child,
+              ),
             ),
           );
         },
