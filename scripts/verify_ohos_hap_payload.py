@@ -4,10 +4,12 @@
 Checks the hap carries the required entries, that the packaged
 arm64-v8a/libtdjson.so is byte-identical to the installed pinned library,
 that its SHA-256/size match the pinned manifest member, and — the loader
-gate — that the ELF's *dynamic symbol table* defines the five
-td_json_client entry points as global functions. A byte substring match
-(the old gate) can hit a string table mention without the loader ever
-resolving the symbol; parsing .dynsym cannot.
+gate — that the ELF's *dynamic symbol table* defines the four modern entry
+points the Dart client binds (td_create_client_id/td_send/td_receive/
+td_execute). A byte substring match (the old gate) can hit a string table
+mention without the loader ever resolving the symbol; parsing .dynsym
+cannot. A library exporting only the legacy td_json_client_* aliases must
+fail: this client would still be unable to load it.
 """
 
 import argparse
@@ -19,11 +21,10 @@ import zipfile
 from pathlib import Path
 
 _REQUIRED_DYN_SYMBOLS = (
-    "td_json_client_create",
-    "td_json_client_send",
-    "td_json_client_receive",
-    "td_json_client_execute",
-    "td_json_client_destroy",
+    "td_create_client_id",
+    "td_send",
+    "td_receive",
+    "td_execute",
 )
 
 
@@ -128,7 +129,7 @@ def main() -> int:
         f"hap payload verified ({len(names)} entries); {hap_member} matches "
         f"the pinned manifest entry from release "
         f"{asset.get('release_tag', manifest['release_tag'])}; dynsym defines "
-        f"all {len(_REQUIRED_DYN_SYMBOLS)} td_json_client entry points"
+        f"all {len(_REQUIRED_DYN_SYMBOLS)} modern tdjson entry points"
     )
     return 0
 
