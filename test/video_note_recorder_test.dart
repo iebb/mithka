@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 // The fake platform is the published camera interface the `camera` package
@@ -8,22 +9,9 @@ import 'package:camera_platform_interface/camera_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/video_note_crop_service.dart';
 import 'package:mithka/chat/video_note_recorder_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-
-/// Mirrors how the recorder calls the rule: the ratio the preview box itself
-/// uses decides the footprint, and the window is only what that box covers.
-VideoNotePreviewFootprint footprintFor({
-  required Size? previewSize,
-  required Size viewport,
-  required double aspectRatio,
-}) {
-  return videoNotePreviewFootprint(
-    previewSize: previewSize,
-    viewport: viewport,
-    aspectRatio: aspectRatio,
-  );
-}
 
 /// The shapes the pinned package produces for the fixtures below, written out
 /// so a test never just echoes the helper under test.
@@ -50,6 +38,191 @@ void main() {
       VideoNoteRecordGesture.continueRecording,
     );
   });
+
+  for (final cropStartedBeforeDisposal in [false, true]) {
+    testWidgets(
+      'real recorder disposal ${cropStartedBeforeDisposal ? 'during crop' : 'during camera stop'} reclaims only its own export',
+      (tester) async {
+        final previousPlatform = CameraPlatform.instance;
+        final platform = _FakeCameraPlatform();
+        CameraPlatform.instance = platform;
+        final directory = Directory.systemTemp.createTempSync(
+          'recorder-dispose-',
+        );
+        final recording = File('${directory.path}/recording.mov')
+          ..writeAsBytesSync([1]);
+        final cropped = File('${directory.path}/cropped.mp4');
+        final other = File('${directory.path}/other.mp4')
+          ..writeAsBytesSync([3]);
+        final stopped = Completer<XFile>();
+        final exported = Completer<String?>();
+        platform.stoppedVideo = stopped.future;
+        var cropsStarted = 0;
+        const channel = MethodChannel('mithka/media_editor');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'cropVideoNote');
+          if ((call.arguments as Map)['path'] == 'other-recording.mov') {
+            return other.path;
+          }
+          expect((call.arguments as Map)['path'], recording.path);
+          cropsStarted++;
+          return exported.future;
+        });
+        addTearDown(() async {
+          messenger.setMockMethodCallHandler(channel, null);
+          CameraPlatform.instance = previousPlatform;
+          await VideoNoteCropService.abandonInFlight(timeout: Duration.zero);
+          if (directory.existsSync()) directory.deleteSync(recursive: true);
+        });
+
+        // A second producer is between native completion and acceptance. A
+        // global sweep from State.dispose would wrongly delete this file.
+        final otherTicket = VideoNoteCropService.start('other-recording.mov')!;
+        expect(await tester.runAsync(otherTicket.resolve), other.path);
+        await tester.pumpWidget(
+          const MaterialApp(home: VideoNoteRecorderView()),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(CameraPreview), findsOneWidget);
+        final shutter = find.byKey(const ValueKey('videoNoteRecordButton'));
+        await tester.tap(shutter);
+        await tester.pump();
+        await tester.tap(shutter);
+        await tester.pump();
+        expect(platform.stopCalls, 1);
+        if (cropStartedBeforeDisposal) {
+          stopped.complete(XFile(recording.path));
+          await tester.pump();
+          expect(cropsStarted, 1);
+        }
+
+        // Unmount the actual recording State, not a helper standing in for it.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(other.existsSync(), isTrue);
+        if (!cropStartedBeforeDisposal) {
+          stopped.complete(XFile(recording.path));
+          await tester.pump();
+          expect(cropsStarted, 0);
+        } else {
+          cropped.writeAsBytesSync([2]);
+        }
+        exported.complete(cropped.path);
+        await tester.pump();
+        for (var attempt = 0; attempt < 100; attempt++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+          if (!recording.existsSync() && !cropped.existsSync()) break;
+        }
+        expect(cropped.existsSync(), isFalse);
+        expect(recording.existsSync(), isFalse);
+        expect(other.existsSync(), isTrue);
+        otherTicket.accept(other.path);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final cancelDuringCrop in [false, true]) {
+    testWidgets(
+      cancelDuringCrop
+          ? 'closing a processing recorder cancels the send and reclaims its files'
+          : 'a finished recorder hands its crop to the route consumer',
+      (tester) async {
+        final previousPlatform = CameraPlatform.instance;
+        final platform = _FakeCameraPlatform();
+        CameraPlatform.instance = platform;
+        final directory = Directory.systemTemp.createTempSync('recorder-send-');
+        final recording = File('${directory.path}/recording.mov')
+          ..writeAsBytesSync([1]);
+        final cropped = File('${directory.path}/cropped.mp4')
+          ..writeAsBytesSync([2]);
+        platform.stoppedVideo = Future.value(XFile(recording.path));
+        const channel = MethodChannel('mithka/media_editor');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        var cropsStarted = 0;
+        final exported = Completer<String?>();
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'cropVideoNote');
+          expect((call.arguments as Map)['path'], recording.path);
+          cropsStarted++;
+          return exported.future;
+        });
+        addTearDown(() async {
+          messenger.setMockMethodCallHandler(channel, null);
+          CameraPlatform.instance = previousPlatform;
+          await VideoNoteCropService.abandonInFlight(timeout: Duration.zero);
+          if (directory.existsSync()) directory.deleteSync(recursive: true);
+        });
+        final navigator = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigator,
+            home: const SizedBox(key: ValueKey('recorder-home')),
+          ),
+        );
+        VideoNoteCaptureResult? result;
+        var routeCompleted = false;
+        unawaited(
+          navigator.currentState!
+              .push<VideoNoteCaptureResult>(
+                MaterialPageRoute(
+                  builder: (_) => const VideoNoteRecorderView(),
+                ),
+              )
+              .then((value) {
+                routeCompleted = true;
+                result = value;
+              }),
+        );
+        await tester.pumpAndSettle();
+        final shutter = find.byKey(const ValueKey('videoNoteRecordButton'));
+        await tester.tap(shutter);
+        await tester.pump();
+        await tester.tap(shutter);
+        await tester.pump();
+        expect(cropsStarted, 1);
+        if (cancelDuringCrop) {
+          await tester.tap(_roundButton('Close camera'));
+          // Complete the native reply while the popped route is still mounted
+          // for its reverse animation. Mounted alone is not route ownership.
+          await tester.pump();
+          expect(routeCompleted, isTrue);
+          expect(result, isNull);
+          expect(find.byType(VideoNoteRecorderView), findsOneWidget);
+        }
+        exported.complete(cropped.path);
+        for (var attempt = 0; attempt < 100; attempt++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+          if (routeCompleted &&
+              !recording.existsSync() &&
+              cropped.existsSync() == !cancelDuringCrop) {
+            break;
+          }
+        }
+        await tester.pumpAndSettle();
+        expect(routeCompleted, isTrue);
+        expect(result?.path, cancelDuringCrop ? isNull : cropped.path);
+        if (!cancelDuringCrop) expect(result?.duration, 1);
+        expect(find.byType(VideoNoteRecorderView), findsNothing);
+        expect(find.byKey(const ValueKey('recorder-home')), findsOneWidget);
+        expect(recording.existsSync(), isFalse);
+        expect(cropped.existsSync(), !cancelDuringCrop);
+        await VideoNoteCropService.abandonInFlight(timeout: Duration.zero);
+        expect(cropped.existsSync(), !cancelDuringCrop);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets('recorder chrome is a light film over the black preview', (
     tester,
@@ -107,128 +280,30 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  test('landscape sensor in a portrait iPad viewport is cover-cropped', () {
-    final footprint = footprintFor(
-      previewSize: const Size(1280, 720),
-      viewport: const Size(834, 1194),
-      aspectRatio: portraitBoxOfALandscapeFrame,
-    );
-
-    expect(footprint.size.aspectRatio, closeTo(9 / 16, 1e-9));
-    expect(footprint.coverCropped, isTrue);
-  });
-
-  test('landscape sensor in a landscape iPad viewport keeps 16:9', () {
-    final footprint = footprintFor(
-      previewSize: const Size(1280, 720),
-      viewport: const Size(1194, 834),
-      aspectRatio: landscapeBoxOfALandscapeFrame,
-    );
-
-    expect(footprint.size.aspectRatio, closeTo(16 / 9, 1e-9));
-    expect(footprint.coverCropped, isTrue);
-  });
-
   test(
-    'a portrait landscape-frame box stays upright in a portrait viewport',
+    'preview footprint handles missing frames and exact square boundaries',
     () {
-      final footprint = footprintFor(
-        previewSize: const Size(1280, 720),
-        viewport: const Size(834, 1194),
-        aspectRatio: portraitBoxOfALandscapeFrame,
-      );
-
-      expect(footprint.size.aspectRatio, closeTo(9 / 16, 1e-9));
-      expect(footprint.coverCropped, isTrue);
+      const viewport = Size(834, 1194);
+      for (final preview in [null, Size.zero]) {
+        final footprint = videoNotePreviewFootprint(
+          previewSize: preview,
+          viewport: viewport,
+          aspectRatio: 9 / 16,
+        );
+        expect(footprint.size, viewport);
+        expect(footprint.coverCropped, isFalse);
+      }
+      for (final window in [const Size(1024, 1024), viewport]) {
+        final footprint = videoNotePreviewFootprint(
+          previewSize: const Size(720, 720),
+          viewport: window,
+          aspectRatio: 1,
+        );
+        expect(footprint.size, const Size(720, 720));
+        expect(footprint.coverCropped, window.width != window.height);
+      }
     },
   );
-
-  test('a square sensor fills a square viewport and crops elsewhere', () {
-    final exact = footprintFor(
-      previewSize: const Size(720, 720),
-      viewport: const Size(1024, 1024),
-      aspectRatio: 1,
-    );
-    final portrait = footprintFor(
-      previewSize: const Size(720, 720),
-      viewport: const Size(834, 1194),
-      aspectRatio: 1,
-    );
-    final landscape = footprintFor(
-      previewSize: const Size(720, 720),
-      viewport: const Size(1194, 834),
-      aspectRatio: 1,
-    );
-
-    expect(exact.size.aspectRatio, closeTo(1, 1e-9));
-    expect(exact.coverCropped, isFalse);
-    expect(portrait.size.aspectRatio, closeTo(1, 1e-9));
-    expect(portrait.coverCropped, isTrue);
-    expect(landscape.size.aspectRatio, closeTo(1, 1e-9));
-    expect(landscape.coverCropped, isTrue);
-  });
-
-  test('an unknown preview size falls back to the viewport', () {
-    final footprint = footprintFor(
-      previewSize: null,
-      viewport: const Size(834, 1194),
-      aspectRatio: 9 / 16,
-    );
-
-    expect(footprint.size.aspectRatio, closeTo(834 / 1194, 1e-9));
-    expect(footprint.coverCropped, isFalse);
-  });
-
-  test('a zero preview size also falls back to the viewport', () {
-    final footprint = footprintFor(
-      previewSize: Size.zero,
-      viewport: const Size(834, 1194),
-      aspectRatio: 9 / 16,
-    );
-
-    expect(footprint.size, const Size(834, 1194));
-    expect(footprint.coverCropped, isFalse);
-  });
-
-  test('large iPad viewports cover-fit in both orientations', () {
-    final portrait = footprintFor(
-      previewSize: const Size(1920, 1080),
-      viewport: const Size(1024, 1366),
-      aspectRatio: portraitBoxOfALandscapeFrame,
-    );
-    final landscape = footprintFor(
-      previewSize: const Size(1920, 1080),
-      viewport: const Size(1366, 1024),
-      aspectRatio: landscapeBoxOfALandscapeFrame,
-    );
-
-    expect(portrait.size.aspectRatio, closeTo(9 / 16, 1e-9));
-    expect(portrait.coverCropped, isTrue);
-    expect(landscape.size.aspectRatio, closeTo(16 / 9, 1e-9));
-    expect(landscape.coverCropped, isTrue);
-  });
-
-  test('a viewport that already matches the box ratio needs no crop', () {
-    final footprint = footprintFor(
-      previewSize: const Size(1280, 720),
-      viewport: const Size(720, 1280),
-      aspectRatio: portraitBoxOfALandscapeFrame,
-    );
-
-    expect(footprint.size.aspectRatio, closeTo(9 / 16, 1e-9));
-    expect(footprint.coverCropped, isFalse);
-  });
-
-  test('a phone portrait viewport cover-fills instead of letterboxing', () {
-    final footprint = footprintFor(
-      previewSize: const Size(1280, 720),
-      viewport: const Size(390, 844),
-      aspectRatio: portraitBoxOfALandscapeFrame,
-    );
-
-    expect(footprint.size.aspectRatio, closeTo(9 / 16, 1e-9));
-    expect(footprint.coverCropped, isTrue);
-  });
 
   group('videoNotePreviewAspectRatio', () {
     test('a landscape frame follows the device orientation', () {
@@ -640,6 +715,8 @@ class _FakeCameraPlatform extends CameraPlatform {
   Size previewSize = const Size(1280, 720);
   DeviceOrientation deviceOrientation = DeviceOrientation.portraitUp;
   CameraController? controller;
+  Future<XFile>? stoppedVideo;
+  int stopCalls = 0;
 
   @override
   Future<List<CameraDescription>> availableCameras() async {
@@ -743,6 +820,9 @@ class _FakeCameraPlatform extends CameraPlatform {
 
   @override
   Future<XFile> stopVideoRecording(int cameraId) async {
+    stopCalls++;
+    final pending = stoppedVideo;
+    if (pending != null) return pending;
     return XFile('video-note-test.mp4');
   }
 

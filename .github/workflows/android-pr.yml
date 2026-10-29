@@ -1,0 +1,62 @@
+name: Android PR verification
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'pubspec.*'
+      - 'scripts/build-tdjson-android.sh'
+      - 'scripts/tdjson-manifest.json'
+      - '.github/workflows/android-pr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Credential-free Android build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify the exact source snapshot
+        env:
+          EXPECTED_MERGE: ${{ github.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MERGE"
+          if [ -n "$EXPECTED_HEAD" ]; then
+            test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
+            test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+          fi
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Prepare credential-free dependencies
+        run: |
+          cp lib/config/secrets_example.dart lib/config/secrets.dart
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+          scripts/build-tdjson-android.sh arm64-v8a
+
+      - name: Compile the Android app and native plugin entry points
+        run: flutter build apk --debug --target-platform android-arm64

@@ -112,6 +112,9 @@ jobs:
       - name: Test Apple MDK helper failure paths
         run: bash scripts/tests/refresh_apple_mdk_test.sh
 
+      - name: Test Firebase release configuration verification
+        run: python3 -m unittest discover -s test/scripts -p 'firebase_configuration_test.py' -v
+
       - name: Verify Apple MDK preparation through the resolved dependency
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -128,6 +131,9 @@ jobs:
 
       - name: Verify the registration anchors match their pinned dataset
         run: python3 tool/gen_registration_anchors.py --check
+
+      - name: Check optimized artwork budgets
+        run: python3 tool/optimize_app_artwork.py --check
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver

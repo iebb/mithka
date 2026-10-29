@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/keyboard_inset_padding.dart';
 import '../components/toast.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -741,9 +742,13 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
+    return KeyboardInsetPadding(
+      backgroundColor: _canReply && !_emojiVisible && !_stickersVisible
+          ? c.navBar
+          : c.background,
+      paintBehindKeyboard: !appModalUsesCenteredPresentation(
+        MediaQuery.sizeOf(context),
+      ),
       child: FractionallySizedBox(
         heightFactor: 0.72,
         child: Container(

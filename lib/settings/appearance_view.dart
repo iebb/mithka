@@ -64,8 +64,8 @@ class AppearanceView extends StatelessWidget {
         ? context.watch<AppIconController>()
         : null;
     final currentIcon = appIcons?.currentVariant;
-    // The icon assets are 1024x1024; the row preview is 22 px wide, so the
-    // undecoded-size default would hold a 4 MiB bitmap in the image cache.
+    // Picker artwork is pre-sized to 256px; decode the row preview at its
+    // actual physical width rather than retaining the full bitmap.
     final appIconPreviewPx =
         (AppIconSize.nav * MediaQuery.devicePixelRatioOf(context)).ceil();
     return SettingsPageScaffold(

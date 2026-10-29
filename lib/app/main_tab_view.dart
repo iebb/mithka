@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -72,15 +73,38 @@ import 'unread_badge_model.dart';
 bool desktopChatKindUsesContextPane(ChatKind? kind) =>
     kind == ChatKind.group || kind == ChatKind.channel;
 
+/// Per-tab navigator keys for one shell instance.
+///
+/// Owned by each [_MainRootViewState]: simultaneous shells (the split root
+/// plus a desktop chat window, or an account-keyed replacement shell) each
+/// keep their own keys, so a replacement shell can never retain the old
+/// Navigator subtree and two live shells can never collide over key
+/// ownership. Tests reach a shell's own keys through the instance-scoped
+/// [MainTabView.keysHost] / [MainSplitRootView.keysHost] hook.
+@visibleForTesting
+List<GlobalKey<NavigatorState>> createTabNavigatorKeys() =>
+    List.generate(4, (_) => GlobalKey<NavigatorState>());
+
+/// Receives the per-shell navigator keys a shell state owns; an
+/// instance-scoped testing hook, invoked exactly once per mounted shell.
+typedef TabNavigatorKeysHost =
+    void Function(List<GlobalKey<NavigatorState>> keys);
+
 class MainTabView extends StatefulWidget {
-  const MainTabView({super.key});
+  const MainTabView({super.key, this.keysHost});
+
+  @visibleForTesting
+  final TabNavigatorKeysHost? keysHost;
 
   @override
   State<MainTabView> createState() => _MainTabViewState();
 }
 
 class MainSplitRootView extends StatefulWidget {
-  const MainSplitRootView({super.key});
+  const MainSplitRootView({super.key, this.keysHost});
+
+  @visibleForTesting
+  final TabNavigatorKeysHost? keysHost;
 
   @override
   State<MainSplitRootView> createState() => _MainSplitRootViewState();
@@ -134,6 +158,12 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   @override
   void initState() {
     super.initState();
+    switch (widget) {
+      case final MainTabView tab:
+        tab.keysHost?.call(_navKeys);
+      case final MainSplitRootView split:
+        split.keysHost?.call(_navKeys);
+    }
     if (_androidShareIntent.supported) {
       _androidShareIntent.addListener(_handleAndroidShareIntentChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -360,10 +390,12 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   void _toggleContextPane() =>
       setState(() => _contextPaneShown = !_contextPaneShown);
 
-  late final List<GlobalKey<NavigatorState>> _navKeys = List.generate(
-    4,
-    (_) => GlobalKey<NavigatorState>(),
-  );
+  final List<GlobalKey<NavigatorState>> _navKeys = createTabNavigatorKeys();
+
+  /// The navigator keys owned by this shell, for tests that need to push or
+  /// inspect a tab's nested route stack.
+  @visibleForTesting
+  List<GlobalKey<NavigatorState>> get tabNavigatorKeys => _navKeys;
 
   static const _allTabs = [
     _MainTabItem(0, AppStringKeys.tabMessages, HeroAppIcons.solidMessage),
@@ -650,7 +682,9 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         child: PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) async {
-            if (!didPop) await _onWillPop();
+            if (!didPop && await _onWillPop()) {
+              await SystemNavigator.pop();
+            }
           },
           child: _rootStack(),
         ),

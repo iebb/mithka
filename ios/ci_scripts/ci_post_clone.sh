@@ -285,6 +285,7 @@ else
 fi
 
 # --- Native TDLib framework (git-ignored; manifest-pinned release artifact) --
+python3 scripts/verify_firebase_configuration.py --platform ios
 echo "▸ preparing pinned tdjson.xcframework"
 "$REPO/scripts/build-tdjson-ios.sh"
 

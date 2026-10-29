@@ -1,7 +1,7 @@
 name: mithka
 description: "Mithka — a cross-platform Telegram client (Flutter), built on TDLib."
 publish_to: 'none'
-version: 1.9.1+297
+version: 1.9.2+297
 
 environment:
   sdk: ^3.12.2
@@ -173,7 +173,30 @@ flutter:
     - assets/flags/
     - assets/penguin.png
     - assets/app_icon.png
-    - assets/app_icons/
+    # Full launcher PNGs are only read by the macOS Dock plugin.
+    # iOS uses its native icon catalogue; every Flutter picker uses WebP.
+    - path: assets/app_icons/white.png
+      platforms: [macos]
+    - path: assets/app_icons/blue.png
+      platforms: [macos]
+    - path: assets/app_icons/purple.png
+      platforms: [macos]
+    - path: assets/app_icons/pixel.png
+      platforms: [macos]
+    - path: assets/app_icons/aurora.png
+      platforms: [macos]
+    - path: assets/app_icons/prism.png
+      platforms: [macos]
+    - path: assets/app_icons/signal.png
+      platforms: [macos]
+    - path: assets/app_icons/pixel_neutral.png
+      platforms: [macos]
+    - path: assets/app_icons/pixel_gradient.png
+      platforms: [macos]
+    - path: assets/app_icons/letter_m_neutral.png
+      platforms: [macos]
+    - path: assets/app_icons/letter_m_gradient.png
+      platforms: [macos]
     - assets/app_icons/picker/
     - assets/emoji_preview/
     - assets/message_bubbles/

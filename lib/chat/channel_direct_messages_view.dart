@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../chats/chat_delete_dialog.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/keyboard_inset_padding.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
@@ -1083,9 +1084,11 @@ class _SuggestedPostComposerSheetState
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: keyboard),
+    return KeyboardInsetPadding(
+      backgroundColor: colors.card,
+      paintBehindKeyboard: !appModalUsesCenteredPresentation(
+        MediaQuery.sizeOf(context),
+      ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
         decoration: BoxDecoration(

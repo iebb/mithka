@@ -58,6 +58,7 @@ import 'chats/chat_folder_tag_controller.dart';
 import 'chats/local_pin_store.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'config/build_flags.dart';
+import 'firebase_options.dart';
 import 'history/message_history_store.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
@@ -339,7 +340,9 @@ Future<void> _initTelemetry() async {
       AppVersion.load(),
     ).wait;
     if (hasFirebaseConfiguration) {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
       await FirebaseAnalytics.instance.setDefaultEventParameters(
         appVersion.analyticsParameters,

@@ -1,0 +1,229 @@
+name: Release build verification
+
+# Compile release configurations without signing identities, store uploads,
+# release/tag creation, or real Telegram credentials. Native Firebase client
+# files identify the existing public SDK apps; they are checked against Dart.
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/platform-builds.yml'
+      - 'firebase.json'
+      - 'lib/firebase_options.dart'
+      - 'lib/platform/firebase_configuration.dart'
+      - 'scripts/verify_firebase_configuration.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iOS release with Firebase
+    if: github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Prepare release SDK and native dependencies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/apple_shipping_sdk.py select --provenance "$RUNNER_TEMP/shipping-sdk.json"
+          sudo gem install cocoapods -v 1.17.0 --no-document
+          cp lib/config/secrets_example.dart lib/config/secrets.dart
+          flutter config --enable-swift-package-manager
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+          scripts/build-tdjson-ios.sh
+          sh scripts/refresh-apple-mdk.sh refresh
+          sh scripts/refresh-apple-mdk.sh check
+      - name: Verify the actual release Firebase client input
+        env:
+          CLIENT_CONFIG_B64: ${{ secrets.FIREBASE_IOS_GOOGLESERVICE_INFO_PLIST_B64 }}
+        run: |
+          test -n "$CLIENT_CONFIG_B64"
+          printf '%s' "$CLIENT_CONFIG_B64" | base64 -D > ios/Runner/GoogleService-Info.plist
+          python3 scripts/verify_firebase_configuration.py --platform ios
+      - name: Compile the unsigned iOS release app
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+      - name: Verify Firebase in the actual release app and shipping SDK
+        run: |
+          python3 scripts/verify_firebase_configuration.py --platform ios \
+            --ios-app build/ios/iphoneos/Runner.app
+          python3 scripts/apple_shipping_sdk.py verify \
+            --provenance "$RUNNER_TEMP/shipping-sdk.json" \
+            --artifact build/ios/iphoneos/Runner.app \
+            --report "$RUNNER_TEMP/ios-release-sdk.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-release-sdk-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/shipping-sdk.json
+            ${{ runner.temp }}/ios-release-sdk.json
+          retention-days: 7
+
+  android:
+    name: Android release with Firebase
+    if: github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Prepare credential-free app and both shipping Android ABIs
+        run: |
+          cp lib/config/secrets_example.dart lib/config/secrets.dart
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+          scripts/build-tdjson-android.sh arm64-v8a
+          scripts/build-tdjson-android.sh armeabi-v7a
+      - name: Verify the actual release Firebase client input
+        env:
+          CLIENT_CONFIG_B64: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          test -n "$CLIENT_CONFIG_B64"
+          printf '%s' "$CLIENT_CONFIG_B64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_firebase_configuration.py --platform android
+      - name: Compile Google Play release bundle and release APK
+        run: |
+          flutter build appbundle --release --target-platform android-arm,android-arm64 \
+            --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+          flutter build apk --release --target-platform android-arm64 \
+            --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+      - name: Verify Firebase survived release resource processing and shrinking
+        run: |
+          python3 scripts/verify_firebase_configuration.py --platform android \
+            --apk build/app/outputs/flutter-apk/app-release.apk
+
+  desktop:
+    name: ${{ matrix.label }} release
+    if: github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: linux, label: Linux x64, os: ubuntu-24.04, architecture: x64, library: libtdjson.so, flutter_source: archive}
+          - {platform: linux, label: Linux arm64, os: ubuntu-24.04-arm, architecture: arm64, library: libtdjson.so, flutter_source: git}
+          - {platform: macos, label: macOS universal, os: macos-15, architecture: universal, library: libtdjson.dylib, flutter_source: archive}
+          - {platform: windows, label: Windows x64, os: windows-2022, architecture: x64, library: tdjson.dll, flutter_source: archive}
+          - {platform: windows, label: Windows arm64, os: windows-11-arm, architecture: arm64, library: tdjson.dll, flutter_source: git}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        if: matrix.flutter_source == 'archive'
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Install Flutter on arm64
+        if: matrix.flutter_source == 'git'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            flutter_install='/c/flutter'
+            flutter_bin='C:\flutter\bin'
+          else
+            flutter_install="$RUNNER_TEMP/flutter"
+            flutter_bin="$flutter_install/bin"
+          fi
+          git clone --depth 1 --branch 3.44.2 --config advice.detachedHead=false \
+            https://github.com/flutter/flutter.git "$flutter_install"
+          "$flutter_install/bin/flutter" --version
+          echo "$flutter_bin" >> "$GITHUB_PATH"
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake libavcodec-dev libavformat-dev libavutil-dev \
+            libcurl4-openssl-dev libgtk-3-dev libjpeg-dev liblzma-dev \
+            libkeybinder-3.0-dev libsecret-1-dev libswscale-dev libpulse0 \
+            libgirepository1.0-dev librsvg2-dev patchelf \
+            desktop-file-utils ninja-build pkg-config xvfb xdotool
+      - name: Prepare credential-free dependencies
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cp lib/config/secrets_example.dart lib/config/secrets.dart
+          if [ '${{ matrix.platform }}' = macos ]; then
+            flutter config --enable-swift-package-manager
+          fi
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+          scripts/build-tdjson-desktop.sh '${{ matrix.platform }}' \
+            'native-libs/${{ matrix.library }}' '${{ matrix.architecture }}'
+          if [ '${{ matrix.platform }}' = macos ]; then
+            sh scripts/refresh-apple-mdk.sh refresh
+            sh scripts/refresh-apple-mdk.sh check
+          fi
+      - name: Apply the existing Windows arm64 Firebase SDK exclusion
+        if: matrix.platform == 'windows' && matrix.architecture == 'arm64'
+        shell: bash
+        run: |
+          python3 scripts/drop-windows-plugin.py firebase_core \
+            --reason 'Firebase publishes no Windows ARM64 binaries'
+          flutter pub get
+          for generated in windows/flutter/generated_plugin_registrant.cc windows/flutter/generated_plugins.cmake; do
+            if grep -qi firebase "$generated"; then
+              echo 'Unexpected Firebase registration in Windows arm64' >&2
+              exit 1
+            fi
+          done
+      - name: Build Linux release
+        if: matrix.platform == 'linux'
+        run: |
+          flutter build linux --release --target-platform=linux-${{ matrix.architecture }} \
+            --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+          bundle='build/linux/${{ matrix.architecture }}/release/bundle'
+          install -m 0755 native-libs/libtdjson.so "$bundle/lib/libtdjson.so"
+          scripts/build-linux-appimage.sh '${{ matrix.architecture }}' "$bundle" "$RUNNER_TEMP/mithka.AppImage"
+          scripts/test-linux-appimage.sh "$RUNNER_TEMP/mithka.AppImage"
+      - name: Build macOS release
+        if: matrix.platform == 'macos'
+        run: |
+          flutter build macos --release --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+          test -f build/macos/Build/Products/Release/Mithka.app/Contents/MacOS/Mithka
+      - name: Build Windows release
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:CL = "$env:CL /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          flutter build windows --release --no-pub --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release compilation failed' }
+          if (-not (Test-Path 'build/windows/${{ matrix.architecture }}/runner/Release/mithka.exe')) {
+            throw 'Expected Windows release executable is missing'
+          }

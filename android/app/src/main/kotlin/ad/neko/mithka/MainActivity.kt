@@ -590,27 +590,39 @@ class MainActivity : FlutterFragmentActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/media_editor")
             .setMethodCallHandler { call, result ->
-                if (call.method != "trimVideo") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
-                val path = call.argument<String>("path")
-                val startMs = call.argument<Number>("startMs")?.toLong()
-                val endMs = call.argument<Number>("endMs")?.toLong()
-                if (path.isNullOrBlank() || startMs == null || endMs == null || startMs < 0 || endMs <= startMs) {
-                    result.error("invalid_arguments", "A valid video trim range is required", null)
-                    return@setMethodCallHandler
-                }
-                Thread {
-                    try {
-                        val output = trimVideo(path, startMs, endMs)
-                        runOnUiThread { result.success(output) }
-                    } catch (error: Exception) {
-                        runOnUiThread {
-                            result.error("video_trim_failed", error.localizedMessage, null)
+                when (call.method) {
+                    "trimVideo" -> {
+                        val path = call.argument<String>("path")
+                        val startMs = call.argument<Number>("startMs")?.toLong()
+                        val endMs = call.argument<Number>("endMs")?.toLong()
+                        if (path.isNullOrBlank() || startMs == null || endMs == null || startMs < 0 || endMs <= startMs) {
+                            result.error("invalid_arguments", "A valid video trim range is required", null)
+                            return@setMethodCallHandler
                         }
+                        Thread {
+                            try {
+                                val output = trimVideo(path, startMs, endMs)
+                                runOnUiThread { result.success(output) }
+                            } catch (error: Exception) {
+                                runOnUiThread {
+                                    result.error("video_trim_failed", error.localizedMessage, null)
+                                }
+                            }
+                        }.start()
                     }
-                }.start()
+                    // Android keeps the recording's 16:9 framing: see
+                    // VideoNoteCropper.kt for why no hand-written transcode is
+                    // shipped. Dart falls back to the original file.
+                    "cropVideoNote" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank()) {
+                            result.error("invalid_arguments", "A recorded video note path is required", null)
+                            return@setMethodCallHandler
+                        }
+                        result.error(VideoNoteCropper.UNSUPPORTED_CODE, VideoNoteCropper.UNSUPPORTED_REASON, null)
+                    }
+                    else -> result.notImplemented()
+                }
             }
         mediaDropChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

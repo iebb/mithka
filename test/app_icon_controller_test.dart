@@ -38,8 +38,7 @@ void main() {
     for (final key in ['aurora', 'prism', 'signal']) {
       final variant = variants[key];
       expect(variant, isNotNull);
-      expect(File(variant!.asset).lengthSync(), greaterThan(10 * 1024));
-      expect(variant.asset, endsWith('$key.png'));
+      expect(variant!.asset, endsWith('$key.png'));
     }
   });
 

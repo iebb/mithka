@@ -70,6 +70,18 @@ void main() {
   }
 
   test(
+    'optimized picker artwork is bundled for every compatible icon identity',
+    () async {
+      final assets = (await AssetManifest.loadFromAssetBundle(
+        rootBundle,
+      )).listAssets().toSet();
+      for (final icon in AppIconVariant.values) {
+        expect(assets, contains(icon.pickerAsset));
+      }
+    },
+  );
+
+  test(
     'the nine visible free choices are available on every icon platform',
     () {
       expect(AppIconVariant.visibleFree.map((icon) => icon.key), [
@@ -439,7 +451,7 @@ void main() {
       final provider = image.image as ResizeImage;
       expect(
         (provider.imageProvider as AssetImage).assetName,
-        'assets/app_icons/picker/01-pilot.png',
+        'assets/app_icons/picker/01-pilot.webp',
       );
     },
   );

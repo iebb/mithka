@@ -234,6 +234,7 @@ jobs:
           : "${FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64:?set FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64 in repository secrets}"
           mkdir -p android/app
           printf '%s' "$FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_B64" | base64 -d > android/app/google-services.json
+          python3 scripts/verify_firebase_configuration.py --platform android
 
       - name: Write secrets.dart
         env:

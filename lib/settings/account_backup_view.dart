@@ -11,6 +11,7 @@ import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/keyboard_inset_padding.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
@@ -620,8 +621,8 @@ class _SessionImportSheetState extends State<_SessionImportSheet> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final media = MediaQuery.of(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+    return KeyboardInsetPadding(
+      backgroundColor: c.groupedBackground,
       child: DefaultTextStyle(
         style: AppTextStyle.body(c.textPrimary),
         child: Container(

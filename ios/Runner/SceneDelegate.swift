@@ -1,6 +1,14 @@
 import Flutter
 import UIKit
 
+/// Flutter owns the app's split panes and embedded bottom tab row. Keep UIKit's
+/// window-wide vertical bar adaptation from moving that row out of its host.
+@objc(MithkaFlutterViewController)
+final class MithkaFlutterViewController: FlutterViewController {
+  @available(iOS 27.1, *)
+  override var preferredVerticalBarBehavior: UIVerticalBarBehavior { .disabled }
+}
+
 class SceneDelegate: FlutterSceneDelegate {
   override func scene(
     _ scene: UIScene,

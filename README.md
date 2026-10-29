@@ -143,6 +143,28 @@ missing—or contains only an empty placeholder—the app builds and runs with
 analytics disabled. Maintainers and release CI provide the real, git-ignored
 configuration files automatically.
 
+FlutterFire's `lib/firebase_options.dart` and `firebase.json` use the existing
+Android/iOS apps in Firebase project `mithka`. To refresh their configuration,
+sign in with `firebase login`, then run from the project root:
+
+```bash
+dart pub global activate flutterfire_cli
+flutterfire configure --project=mithka --platforms=android,ios
+```
+
+Startup awaits `Firebase.initializeApp` with
+`DefaultFirebaseOptions.currentPlatform` inside the existing optional telemetry
+task. Missing native configuration still disables analytics for contributor
+builds; initialization errors do not prevent the app from opening.
+
+`Release build verification` in GitHub Actions compiles the iOS/Android release
+apps and macOS, Windows x64/arm64, and Linux x64/arm64 builds without publishing.
+It checks mobile Firebase client inputs against the generated Dart options and
+verifies the config bundled into the iOS app and Android release resources.
+Store build scripts run the same input check. Desktop analytics remains off:
+Windows/Linux have no supported Analytics plugin, and Windows arm64 excludes
+the unavailable native Firebase SDK using the existing release build rule.
+
 ### Android release signing
 
 Android release builds use the project’s upload key when
