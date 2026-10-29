@@ -837,7 +837,7 @@ class _StandardAppIconImage extends StatelessWidget {
             child: ClipRRect(
               borderRadius: radius,
               child: Image.asset(
-                variant.previewAsset(Theme.of(context).brightness),
+                variant.standardPickerAsset(Theme.of(context).brightness),
                 width: size,
                 height: size,
                 fit: BoxFit.cover,

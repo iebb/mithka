@@ -441,8 +441,7 @@ void main() {
       final f = await fixture();
       await _pump(tester, f, dark: true);
       final badge = find.byKey(const ValueKey('icon-locked-pilot'));
-      await tester.ensureVisible(badge);
-      await tester.pumpAndSettle();
+      await _reveal(tester, badge);
       final box = tester.widget<Container>(badge).decoration! as BoxDecoration;
       expect(box.color, const Color(0xFFEDEDED));
       final image = tester.widget<Image>(
@@ -465,6 +464,7 @@ void main() {
       currentIcon = 'pilot';
       final f = await fixture();
       await _pump(tester, f);
+      await _reveal(tester, find.byKey(const ValueKey('icon-selected-pilot')));
       expect(find.byKey(const ValueKey('icon-selected-pilot')), findsOneWidget);
       expect(find.byKey(const ValueKey('icon-locked-pilot')), findsNothing);
       expect(find.byKey(const ValueKey('icon-locked-heart')), findsOneWidget);
@@ -768,9 +768,25 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-Future<void> _tap(WidgetTester tester, Finder target) async {
+// The penguins sit below the standard icons and today's free penguin, past
+// the list's build range in an 800x600 test view: scroll them in first.
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  final list = find.byKey(const ValueKey('app-icon-scroll'));
+  if (target.evaluate().isEmpty && list.evaluate().isNotEmpty) {
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first,
+    );
+  }
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
+}
+
+Future<void> _tap(WidgetTester tester, Finder target) async {
+  await _reveal(tester, target);
   await tester.tap(target);
   await tester.pumpAndSettle();
 }

@@ -11,7 +11,8 @@ import '../pro/mithka_pro_service.dart';
 enum AppIconFreeMotif { penguin, pixelPenguin, letterM }
 
 /// Native backing metadata only. Standard picker tiles show the opaque
-/// [AppIconVariant.previewAsset]; nothing paints a colour from this value.
+/// [AppIconVariant.standardPickerAsset]; nothing paints a colour from this
+/// value.
 enum AppIconFreeBackground { neutral, telegramBlue, pinkPurple }
 
 enum AppIconVariant {
@@ -640,12 +641,17 @@ enum AppIconVariant {
   final bool requiresSupporter;
   final String? darkAsset;
 
-  /// Opaque 256px picker preview of the launcher artwork (with its real
-  /// background) for [brightness]; `standard-<launcher file>.webp` in
-  /// `assets/app_icons/picker/`. Only the nine standard icons have one.
-  String previewAsset(Brightness brightness) {
-    final source = brightness == Brightness.dark ? darkAsset ?? asset : asset;
-    final name = source.split('/').last.replaceAll('.png', '');
+  String previewAsset(Brightness brightness) =>
+      brightness == Brightness.dark ? darkAsset ?? asset : asset;
+
+  /// Opaque 256px picker preview of [previewAsset] (with its real background):
+  /// `standard-<launcher file>.webp` in `assets/app_icons/picker/`. Only the
+  /// nine standard icons ([isStandard]) have one.
+  String standardPickerAsset(Brightness brightness) {
+    assert(isStandard, '$key has no standard picker preview');
+    final name = previewAsset(
+      brightness,
+    ).split('/').last.replaceAll('.png', '');
     return 'assets/app_icons/picker/standard-$name.webp';
   }
 
