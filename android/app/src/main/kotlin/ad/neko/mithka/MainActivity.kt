@@ -223,7 +223,11 @@ class MainActivity : FlutterFragmentActivity() {
                             "letter_m_neutral",
                             "letter_m_gradient",
                         )
-                        val paidIcons = setOf(
+                        // The 48 penguins in their fixed catalogue order (01-pilot …
+                        // 48-stargazing). Must match AppIconVariant.dailyPenguinOrder in
+                        // lib/settings/app_icon_controller.dart and dailyPenguinOrder in
+                        // AppDelegate.swift; never sort it.
+                        val paidIcons = listOf(
                             "pilot", "headphones", "winter", "astronaut",
                             "crown", "party", "sleepy", "heart",
                             "coffee", "detective", "gamer", "fishing",
@@ -283,8 +287,15 @@ class MainActivity : FlutterFragmentActivity() {
                                 )
                             }
                         }
+                        // Today's penguin is free without Play billing evidence and on
+                        // every distribution. Compute the UTC day here at apply time,
+                        // never trusting Dart: floor(unixSeconds / 86400) mod 48.
+                        val utcDay = Math.floorDiv(System.currentTimeMillis(), 86_400_000L)
+                        val dailyPenguin =
+                            paidIcons[Math.floorMod(utcDay, paidIcons.size.toLong()).toInt()]
                         when (name) {
                             in freeIcons -> applyIcon()
+                            dailyPenguin -> applyIcon()
                             in paidIcons -> {
                                 val pro = mithkaPro
                                 if (pro == null) {
