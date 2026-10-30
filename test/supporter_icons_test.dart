@@ -50,9 +50,11 @@ void main() {
         .setMockMethodCallHandler(iconChannel, null);
   });
 
+  // A fixed clock keeps the daily penguin away from the icons used below.
   Future<_Fixture> fixture({
     _Gateway? gateway,
     TargetPlatform platform = TargetPlatform.iOS,
+    DateTime Function()? now,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final store = gateway ?? _Gateway();
@@ -61,6 +63,7 @@ void main() {
       prefs,
       proService: service,
       platform: platform,
+      now: now ?? () => _guitarDay,
     );
     addTearDown(controller.dispose);
     addTearDown(service.dispose);
@@ -438,8 +441,7 @@ void main() {
       final f = await fixture();
       await _pump(tester, f, dark: true);
       final badge = find.byKey(const ValueKey('icon-locked-pilot'));
-      await tester.ensureVisible(badge);
-      await tester.pumpAndSettle();
+      await _reveal(tester, badge);
       final box = tester.widget<Container>(badge).decoration! as BoxDecoration;
       expect(box.color, const Color(0xFFEDEDED));
       final image = tester.widget<Image>(
@@ -462,6 +464,7 @@ void main() {
       currentIcon = 'pilot';
       final f = await fixture();
       await _pump(tester, f);
+      await _reveal(tester, find.byKey(const ValueKey('icon-selected-pilot')));
       expect(find.byKey(const ValueKey('icon-selected-pilot')), findsOneWidget);
       expect(find.byKey(const ValueKey('icon-locked-pilot')), findsNothing);
       expect(find.byKey(const ValueKey('icon-locked-heart')), findsOneWidget);
@@ -703,7 +706,8 @@ void main() {
   ) async {
     final f = await fixture(platform: TargetPlatform.macOS);
     await _pump(tester, f);
-    expect(find.text('Supporter icons'), findsNothing);
+    expect(find.text('Penguin icons', skipOffstage: false), findsNothing);
+    expect(find.text('Free today', skipOffstage: false), findsNothing);
     expect(find.byKey(const ValueKey('app-icon-pilot')), findsNothing);
     for (final icon in AppIconVariant.visibleFree) {
       final tile = find.byKey(ValueKey('app-icon-${icon.key}'));
@@ -717,6 +721,10 @@ void main() {
     expect(find.text('Support us'), findsNothing);
   });
 }
+
+// 2026-10-29 is UTC day 20755, index 19 (guitar): clear of the penguins the
+// purchase tests use.
+final _guitarDay = DateTime.utc(2026, 10, 29, 12);
 
 class _Fixture {
   _Fixture(this.prefs, this.gateway, this.service, this.controller);
@@ -760,9 +768,25 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-Future<void> _tap(WidgetTester tester, Finder target) async {
+// The penguins sit below the standard icons and today's free penguin, past
+// the list's build range in an 800x600 test view: scroll them in first.
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  final list = find.byKey(const ValueKey('app-icon-scroll'));
+  if (target.evaluate().isEmpty && list.evaluate().isNotEmpty) {
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first,
+    );
+  }
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
+}
+
+Future<void> _tap(WidgetTester tester, Finder target) async {
+  await _reveal(tester, target);
   await tester.tap(target);
   await tester.pumpAndSettle();
 }

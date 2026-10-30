@@ -4,11 +4,18 @@ Reuse existing artwork before adding another source. Icon identities and native
 alternate-icon names are compatibility data: keep previously selected icons
 available even when they are no longer offered in the picker.
 
-The Flutter picker uses transparent WebP tiles with a maximum edge of 256px.
-Non-square legacy artwork keeps its aspect ratio. Multiple color variants
-share one foreground tile where the UI supplies the background. Pixel artwork
-uses nearest-neighbor resizing and lossless WebP. Native launcher artwork keeps
-its original canvas size and transparency; do not resize the 1024px iOS sources.
+The Flutter picker uses transparent WebP tiles with a maximum edge of 256px
+for the 48 penguin icons and the legacy identities. Non-square legacy artwork
+keeps its aspect ratio. Pixel artwork uses nearest-neighbor resizing and
+lossless WebP. Native launcher artwork keeps its original canvas size and
+transparency; do not resize the 1024px iOS sources.
+
+The nine standard icons are previewed with their real backgrounds from opaque
+256px WebPs, `picker/standard-<launcher file>.webp` (light and `_dark`
+versions, about 44 KB in total), read through `AppIconVariant.previewAsset`.
+They are made from the launcher PNGs with Lanczos resizing, or
+nearest-neighbor and lossless WebP for pixel artwork. Regenerate them whenever
+a standard launcher PNG changes.
 
 Only the eleven PNGs supported by `MacOSAppIconPlugin` enter the macOS Flutter
 bundle. iOS uses its native icon catalogue and Icon Composer files; Android uses
@@ -38,7 +45,7 @@ The optimization of the larger master catalogue reduces picker sources from
 7,947,623 to 579,782 bytes, launcher PNG sources from 45,959,823 to 12,230,371
 bytes, native catalogue PNGs from 45,386,735 to 12,087,813 bytes, and Icon Composer
 layers from 22,953,703 to 6,770,931 bytes. All 60 icon identities remain available.
-The production Flutter asset builder confirms that iOS/Android bundle the 54
+The production Flutter asset builder confirms that iOS/Android bundle the
 shared picker WebPs and no full launcher PNGs; macOS additionally includes its
 eleven Dock PNGs. MaterialIcons is disabled and absent from the audited IPA.
 
