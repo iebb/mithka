@@ -423,7 +423,10 @@ class HeroAppIcons {
   static const solidMessage = AppIconData(HeroiconsSolid.chatBubbleLeft);
   static const solidMoon = AppIconData(HeroiconsSolid.moon);
   static const solidPaperPlane = AppIconData(HeroiconsSolid.paperAirplane);
+  static const solidPause = AppIconData(HeroiconsSolid.pause);
+  static const solidPlay = AppIconData(HeroiconsSolid.play);
   static const solidStar = AppIconData(HeroiconsSolid.star);
+  static const solidStop = AppIconData(HeroiconsSolid.stop);
   static const solidSun = AppIconData(HeroiconsSolid.sun);
   static const solidUsers = AppIconData(HeroiconsSolid.userGroup);
   static const square = AppIconData(HeroiconsOutline.stop);

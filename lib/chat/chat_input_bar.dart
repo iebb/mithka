@@ -9128,28 +9128,31 @@ class _ChatInputBarState extends State<ChatInputBar>
         color: c.textSecondary,
       ),
     );
-    Widget error(AppIconData icon, String key) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AppIcon(icon, size: 18, color: AppTheme.tagRed),
-        const SizedBox(width: 8),
-        // Red stays on the icon: tagRed text on the light panel is below
-        // 4.5:1 at 14pt.
-        Flexible(
-          child: Text(
-            AppStrings.t(key),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14,
-              height: 18 / 14,
-              fontWeight: FontWeight.w500,
-              color: c.textPrimary,
+    // The icon leads the first line inside the text, so a message that wraps
+    // stays one centred block. Red stays on the icon: tagRed text on the
+    // light panel is below 4.5:1 at 14pt.
+    Widget error(AppIconData icon, String key) => Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: AppIcon(icon, size: 18, color: AppTheme.tagRed),
             ),
           ),
-        ),
-      ],
+          TextSpan(text: AppStrings.t(key)),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 14,
+        height: 18 / 14,
+        fontWeight: FontWeight.w500,
+        color: c.textPrimary,
+      ),
     );
     final content = _recording
         // The record button reports the elapsed time; a live region reading
@@ -9264,7 +9267,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         : cancelZone
         ? AppIcon(HeroAppIcons.trash, size: 30, color: c.onAccent)
         : locked
-        ? AppIcon(HeroAppIcons.square, size: 26, color: c.onAccent)
+        ? AppIcon(HeroAppIcons.solidStop, size: 26, color: c.onAccent)
         : AppIcon(HeroAppIcons.microphone, size: 32, color: c.onAccent);
     final button = Listener(
       key: const ValueKey('mobileVoiceRecordButton'),
@@ -9395,7 +9398,9 @@ class _ChatInputBarState extends State<ChatInputBar>
               offset: const Offset(92, 0),
               child: _mobileVoiceSideButton(
                 key: const ValueKey('mobileVoicePauseResume'),
-                icon: _recordingPaused ? HeroAppIcons.play : HeroAppIcons.pause,
+                icon: _recordingPaused
+                    ? HeroAppIcons.solidPlay
+                    : HeroAppIcons.solidPause,
                 color: AppTheme.brand,
                 label: AppStrings.t(
                   _recordingPaused
