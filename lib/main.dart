@@ -70,6 +70,7 @@ import 'notifications/notification_preferences.dart';
 import 'notifications/push_device_registrar.dart';
 import 'platform/application_exit_coordinator.dart';
 import 'platform/firebase_configuration.dart';
+import 'platform/ohos_support.dart';
 import 'platform/system_ui.dart';
 import 'pro/mithka_pro_service.dart';
 import 'security/local_app_lock_controller.dart';
@@ -220,9 +221,7 @@ Future<void> _bootstrapAndRunApp() async {
   // AuthManager's stream whenever it is ready.
   final auth = AuthManager()..start();
   _initializeVideoBackend();
-  final isMobile =
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.android;
+  final isMobile = isMobilePlatform;
   if (isMobile) {
     // Let iPhone and iPad follow every physical orientation. Desktop windows
     // have no orientation/system bars — skip both platform-channel round

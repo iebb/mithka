@@ -14,6 +14,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/keyboard_modifiers.dart';
+import '../platform/ohos_support.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -304,7 +305,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
         bytes: bytes,
       );
       if (selected == null) return;
-      if (!Platform.isAndroid && !Platform.isIOS) {
+      if (!isMobilePlatform) {
         await File(selected).writeAsBytes(bytes, flush: true);
       }
       _showStatus(AppStrings.t(AppStringKeys.accentColorPickerSave));

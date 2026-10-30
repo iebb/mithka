@@ -48,9 +48,9 @@ bool internalBrowserSupported({TargetPlatform? platform, bool isWeb = kIsWeb}) {
     TargetPlatform.android ||
     TargetPlatform.iOS ||
     TargetPlatform.macOS => true,
-    TargetPlatform.fuchsia ||
-    TargetPlatform.linux ||
-    TargetPlatform.windows => false,
+    // Desktop, fuchsia, and the ohos fork's extra enum value fall back to the
+    // system browser instead of throwing.
+    _ => false,
   };
 }
 

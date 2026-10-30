@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../platform/ohos_support.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
@@ -50,9 +52,17 @@ class MediaLibrarySaveTarget {
 class MediaLibrarySaver {
   const MediaLibrarySaver._();
 
+  /// Saves a chat photo/video into the system gallery.
+  ///
+  /// Being a mobile OS does not guarantee a photo_library implementation: a
+  /// host without one (HarmonyOS today) has no handler on the photo_manager
+  /// channel, and [PhotoManager.systemVersion] short-circuits there without
+  /// crossing the channel, so the first real round trip is the save itself.
+  /// A missing channel reads as [MediaLibrarySaveResult.unsupported] — the
+  /// same answer a desktop host gets — instead of a call-time crash.
   static Future<MediaLibrarySaveResult> save(ChatMessage message) async {
     final target = MediaLibrarySaveTarget.fromMessage(message);
-    if (target == null || (!Platform.isIOS && !Platform.isAndroid)) {
+    if (target == null || !isMobilePlatform) {
       return MediaLibrarySaveResult.unsupported;
     }
 
@@ -72,6 +82,8 @@ class MediaLibrarySaver {
         creationDate: target.creationDate,
         permissionAlreadyGranted: true,
       );
+    } on MissingPluginException {
+      return MediaLibrarySaveResult.unsupported;
     } catch (_) {
       return MediaLibrarySaveResult.failed;
     }
@@ -85,7 +97,7 @@ class MediaLibrarySaver {
     required bool isVideo,
     DateTime? creationDate,
   }) async {
-    if (!Platform.isIOS && !Platform.isAndroid) {
+    if (!isMobilePlatform) {
       return MediaLibrarySaveResult.unsupported;
     }
     try {
@@ -94,6 +106,8 @@ class MediaLibrarySaver {
         isVideo: isVideo,
         creationDate: creationDate,
       );
+    } on MissingPluginException {
+      return MediaLibrarySaveResult.unsupported;
     } catch (_) {
       return MediaLibrarySaveResult.failed;
     }

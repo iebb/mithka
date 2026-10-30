@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../platform/ohos_support.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 
@@ -114,10 +115,7 @@ class MusicNowPlayingBridge {
   /// generation must never publish onto a reused file id.
   int _artworkGeneration = 0;
 
-  static bool get _platformSupported =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.android);
+  static bool get _platformSupported => isMobilePlatform;
 
   static Future<String?> _defaultArtwork(TdFileRef cover) =>
       TdFileCenter.shared.pathFor(cover);

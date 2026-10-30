@@ -1,0 +1,22 @@
+# OHOS-only plugin overlay — merged into pubspec.yaml by
+# scripts/enable-ohos-plugins.sh before a HarmonyOS build, and NOT committed
+# into the main pubspec.yaml, because these ports pin `sdk: <3.0.0` on every
+# published version and cannot pass version solving under the stock Dart 3
+# SDK used by CI.
+#
+# After `scripts/enable-ohos-plugins.sh apply`, run `flutter pub get` with the
+# OHOS Flutter fork so these resolve. win32 is widened because file_picker_ohos
+# pins win32 ^4 while package_info_plus 9.x needs win32 ^5; the widened range
+# lets the solver pick one win32 5.x satisfying both (win32 is unused on
+# OHOS, which only needs the file_picker_ohos native module).
+#
+# Still missing on OHOS (no compatible pub.dev port): record (record_ohos
+# targets platform-interface v1, host record 7.x needs v2),
+# flutter_secure_storage (same v1/v2 platform-interface split), camera,
+# mobile_scanner, flutter_sound, photo_manager, flutter_local_notifications.
+dependency_overrides:
+  package_info_plus_ohos: 0.0.7
+  permission_handler_ohos: 0.0.8
+  file_picker_ohos: 1.0.1
+  geolocator_ohos: 0.0.3
+  win32: ">=4.1.3 <6.0.0"

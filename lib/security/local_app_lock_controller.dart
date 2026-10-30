@@ -4,10 +4,12 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../platform/ohos_support.dart';
 import 'app_lock_privacy.dart';
 
 enum AppLockCredentialType { pin, gesture }
@@ -97,6 +99,11 @@ class LocalAppLockController extends ChangeNotifier {
   bool _initialized = false;
   bool _locked = false;
   bool _storageUnavailable = false;
+
+  /// Whether the current initialize pass saw a known lock before a
+  /// MissingPluginException, so the catch arm can fail closed instead of
+  /// treating the missing plugin as an unsupported first install.
+  bool _missingStorageKnownLock = false;
   bool _readingStorage = false;
   bool _authenticatingBiometrics = false;
   bool _biometricAvailable = false;
@@ -141,6 +148,15 @@ class LocalAppLockController extends ChangeNotifier {
       if (value != null && value.isNotEmpty && _stored == null) {
         throw const FormatException('Invalid app-lock record');
       }
+      // A known lock survives a disappearing secure-storage implementation:
+      // the read either succeeded (value != null) or a previous pass had
+      // already established the lock. Only a host that never stored anything
+      // treats the missing plugin as the unsupported-first-install case.
+      final knownLock = value != null || _stored != null;
+      // Recorded before the attempts read: that read is exactly where the
+      // plugin can vanish next, and the catch arm must know whether a lock
+      // was already established.
+      _missingStorageKnownLock = knownLock;
       _failedAttempts = _StoredFailedAttempts.tryParse(
         await _secureRead(_attemptStorageKey),
       );
@@ -151,11 +167,26 @@ class LocalAppLockController extends ChangeNotifier {
           await _persist(_stored!);
         }
       }
+    } on MissingPluginException catch (error) {
+      // A mobile OS does not guarantee a secure-storage implementation — a
+      // host without one (HarmonyOS today) never stored a lock, so there is
+      // nothing to protect: stay unlocked instead of failing closed behind a
+      // gate no credential could ever open. But if this pass saw a known
+      // lock (or read one before the plugin vanished), the protection must
+      // be preserved: fail closed instead of resetting the gate.
+      if (_missingStorageKnownLock) {
+        debugPrint('Local app lock storage vanished with a known lock: $error');
+        _failClosedForStorageError();
+      } else {
+        debugPrint('Local app lock secure storage is not implemented: $error');
+        _resetForMissingSecureStorage();
+      }
     } catch (error) {
       debugPrint('Local app lock could not read secure storage: $error');
       _failClosedForStorageError();
     } finally {
       _readingStorage = false;
+      _missingStorageKnownLock = false;
     }
     _initialized = true;
     await refreshBiometricAvailability();
@@ -174,9 +205,14 @@ class LocalAppLockController extends ChangeNotifier {
     if (_readingStorage) return;
     _readingStorage = true;
     notifyListeners();
+    // A known lock (read this pass or established by an earlier one) must
+    // fail closed if the plugin vanishes mid-reload; an unlockable host that
+    // never stored anything keeps the safe first-install answer.
+    var knownLock = _stored != null;
     try {
       final wasStorageUnavailable = _storageUnavailable;
       final value = await _secureRead(_storageKey);
+      knownLock = knownLock || value != null;
       _stored = _StoredAppLock.tryParse(value);
       if (value != null && value.isNotEmpty && _stored == null) {
         throw const FormatException('Invalid app-lock record');
@@ -194,6 +230,19 @@ class LocalAppLockController extends ChangeNotifier {
         _locked = true;
         _lockEpoch += 1;
       }
+    } on MissingPluginException catch (error) {
+      if (knownLock) {
+        // A lock was configured before: a disappearing implementation is a
+        // storage failure of a known lock, never the unsupported first
+        // install, so the protection fails closed.
+        debugPrint('Local app lock storage vanished during reload: $error');
+        _failClosedForStorageError();
+      } else {
+        // Nothing was ever stored on this host: the safe first-install
+        // answer still applies.
+        debugPrint('Local app lock secure storage is not implemented: $error');
+        _resetForMissingSecureStorage();
+      }
     } catch (error) {
       debugPrint('Local app lock could not reload secure storage: $error');
       _failClosedForStorageError();
@@ -203,6 +252,17 @@ class LocalAppLockController extends ChangeNotifier {
     await refreshBiometricAvailability();
     unawaited(_applyPrivacyShield(false));
     notifyListeners();
+  }
+
+  /// Treats an absent secure-storage implementation as "no lock configured"
+  /// rather than as a storage failure: nothing was ever persisted, so no gate
+  /// can be unlocked and none should be shown.
+  void _resetForMissingSecureStorage() {
+    _stored = null;
+    _failedAttempts = const _StoredFailedAttempts();
+    _locked = false;
+    _storageUnavailable = false;
+    _authenticatingBiometrics = false;
   }
 
   void _failClosedForStorageError() {
@@ -577,10 +637,7 @@ class LocalAppLockController extends ChangeNotifier {
         persistAcrossBackgrounding: true,
       );
 
-  static bool get _defaultPlatformSupportsBiometrics =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+  static bool get _defaultPlatformSupportsBiometrics => isMobilePlatform;
 
   @override
   void dispose() {

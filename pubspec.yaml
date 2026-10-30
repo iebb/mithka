@@ -135,6 +135,38 @@ dependencies:
   local_auth: ^3.0.2
   app_links: ^7.2.1
 
+  # HarmonyOS (OpenHarmony) federated plugin implementations. Each port below
+  # declares a `platforms: ohos` plugin (most also `implements:` the host
+  # package); stock flutter_tools ignores the ohos platform on Android/iOS/
+  # desktop, while the OHOS Flutter fork resolves these as the platform
+  # implementation when building for HarmonyOS. Regular dependencies (not
+  # overrides) so the OHOS solver sees them; harmless elsewhere.
+  # The remaining ports (package_info_plus / permission_handler / file_picker /
+  # geolocator / flutter_secure_storage _ohos) cap their SDK at <3.0.0 and so
+  # cannot resolve under stock Dart 3; they live in pubspec_overrides.ohos.yaml
+  # and are merged in by scripts/enable-ohos-plugins.sh for OHOS builds.
+  # NOTE: camera / mobile_scanner / flutter_sound / photo_manager /
+  # flutter_local_notifications have no ohos port on pub yet — those
+  # capabilities are missing on HarmonyOS for now.
+
+  # Persisted preferences on OHOS (implements shared_preferences).
+  shared_preferences_ohos: ^2.2.0
+  # TDLib database / files directories on OHOS (implements path_provider).
+  path_provider_ohos: ^2.2.1
+  # External links and the system viewer on OHOS (implements url_launcher).
+  url_launcher_ohos: ^6.3.0
+  # Accelerometer/gyroscope on OHOS — companion plugin whose native side
+  # serves sensors_plus' channels (sensors_plus has no ohos platform entry).
+  sensors_plus_ohos: ^0.1.2
+  # Deep links (t.me / tg://) on OHOS — companion for app_links.
+  app_links_ohos: ^0.2.0
+  # Opening downloaded files on OHOS (implements open_filex).
+  open_filex_ohos: ^4.7.0
+  # Biometric unlock on OHOS (implements local_auth).
+  local_auth_ohos: ^1.0.0
+  # Auth-key login web view on OHOS (implements webview_flutter).
+  webview_flutter_ohos: ^3.15.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
