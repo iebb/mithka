@@ -2,6 +2,13 @@
 
 Describe the problem, resulting behavior, and affected platforms. Link related issues if applicable.
 
+Use one PR per feature, fix, or improvement in this repository. Search existing
+open and recently closed PRs first, and update the existing PR for revisions,
+tests, documentation, and CI. Link any related PRs below and explain why each is
+independently useful; consolidate same-topic submissions into one canonical PR.
+
+Related PRs and canonical PR (or `None; existing PRs checked`):
+
 ## Telegram API Terms classification
 
 Follow the [contribution and agentic review rules](https://github.com/iebb/mithka/blob/master/AGENTS.md#contributions-and-agentic-pr-review). Select exactly one classification and explain it below.
