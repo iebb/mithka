@@ -1,17 +1,7 @@
-import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/auth/phone_number_format.dart';
 
-/// Mirror of LoginView._formatAsYouType (private), kept in sync for regression.
-String fmt(String input) {
-  final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.isEmpty) return '+';
-  final formatter = PhoneNumberUtil.instance.getAsYouTypeFormatter('US');
-  var out = formatter.inputDigit('+');
-  for (final ch in digits.split('')) {
-    out = formatter.inputDigit(ch);
-  }
-  return out.trim();
-}
+String fmt(String input) => formatLoginPhoneNumber(input);
 
 void main() {
   test('as-you-type: empty input stays "+"', () {
@@ -43,4 +33,35 @@ void main() {
     // Sanity that a known number formats to the expected international layout.
     expect(fmt('+8613800138000'), '+86 138 0013 8000');
   });
+
+  test('Gibraltar mobiles retain the calling-code separator while typing', () {
+    for (final digits in ['35057123456', '35060101234']) {
+      for (var length = 4; length <= digits.length; length++) {
+        final partial = digits.substring(0, length);
+        expect(fmt(partial), '+350 ${partial.substring(3)}');
+      }
+    }
+    expect(fmt('+350 5712 3456'), '+350 57123456');
+    expect(fmt('+35020012345'), '+350 200 12345');
+    expect(fmt('+350'), '+350');
+  });
+
+  test(
+    'fallback formatting preserves digits on deletion and invalid input',
+    () {
+      for (final number in [
+        '+350571234567890',
+        '+390212345678',
+        '+99912345678',
+      ]) {
+        for (var length = number.length; length > 0; length--) {
+          final partial = number.substring(0, length);
+          expect(
+            fmt(partial).replaceAll(RegExp(r'[^0-9]'), ''),
+            partial.replaceAll(RegExp(r'[^0-9]'), ''),
+          );
+        }
+      }
+    },
+  );
 }

@@ -348,6 +348,7 @@ class HeroAppIcons {
   static const forward = AppIconData(HeroiconsOutline.arrowUturnRight);
   static const gear = AppIconData(HeroiconsOutline.cog6Tooth);
   static const gif = AppIconData(HeroiconsOutline.gif);
+  static const flag = AppIconData(HeroiconsOutline.flag);
   static const globe = AppIconData(HeroiconsOutline.globeAlt);
   static const grip = AppIconData(HeroiconsOutline.squares2x2);
   static const hashtag = AppIconData(HeroiconsOutline.hashtag);

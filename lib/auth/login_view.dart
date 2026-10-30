@@ -9,7 +9,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +28,7 @@ import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/account_backup_view.dart';
 import '../settings/api_credentials_view.dart';
+import '../settings/language_settings_view.dart';
 import '../settings/proxy_config.dart';
 import '../settings/proxy_view.dart';
 import '../tdlib/td_client.dart';
@@ -38,6 +38,7 @@ import 'account_backup_service.dart';
 import 'account_store.dart';
 import 'auth_manager.dart';
 import 'country_picker.dart';
+import 'phone_number_format.dart';
 import 'terms_sheet.dart';
 
 /// Whether the login flow owns the back action instead of allowing the root
@@ -61,12 +62,18 @@ bool loginHasBackAction({
       configuredAccountCount > 1;
 }
 
-/// Width of the login composition on roomy surfaces.
+/// Maximum width of the compact login lane.
 ///
-/// The flow is one centred column: letting it stretch to a tablet or desktop
-/// window edge turns every control into an unusable full-width bar, so the
-/// lane keeps the form at a comfortable reading width on every target.
+/// Phones and short landscape windows keep one bounded column. Roomier
+/// windows use the narrower form page beside the method sidebar.
 const double kLoginLaneMaxWidth = 420;
+
+abstract final class _TouchLoginMetrics {
+  static const double sidebarWidth = 184;
+  static const double controlHeight = 44;
+  static const double fieldHeight = 48;
+  static const double brandMark = 28;
+}
 
 /// Geometry of the desktop login: a method sidebar beside a left-aligned
 /// page of pointer-sized controls, sized to a desktop window rather than to a
@@ -227,31 +234,15 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
-  /// Formats the input as `+<cc> <national groups>` via libphonenumber's
-  /// as-you-type formatter (country-specific grouping). Re-runs from scratch on
-  /// each change so paste/delete reformat correctly.
-  static String _formatAsYouType(String input) {
-    final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return '+';
-    try {
-      final formatter = PhoneNumberUtil.instance.getAsYouTypeFormatter('US');
-      var out = formatter.inputDigit('+');
-      for (final ch in digits.split('')) {
-        out = formatter.inputDigit(ch);
-      }
-      return out.trim();
-    } catch (_) {
-      return '+$digits';
-    }
-  }
-
   void _selectCountry(Country country) {
     final digits = _phoneDigits;
     final current = _detectedCountry;
     final national = current != null
         ? digits.substring(current.dial.length)
         : '';
-    setState(() => _phone.text = _formatAsYouType('+${country.dial}$national'));
+    setState(
+      () => _phone.text = formatLoginPhoneNumber('+${country.dial}$national'),
+    );
   }
 
   @override
@@ -288,7 +279,7 @@ class _LoginViewState extends State<LoginView> {
           );
         }
       },
-      child: _desktop
+      child: _usesSidebar
           ? _desktopLayout(
               auth,
               accounts,
@@ -308,15 +299,19 @@ class _LoginViewState extends State<LoginView> {
 
   bool get _desktop => isDesktopTargetPlatform(Theme.of(context).platform);
 
-  /// Step copy reads as a centred column on touch and as a left-aligned page
-  /// on desktop.
-  TextAlign get _align => _desktop ? TextAlign.start : TextAlign.center;
+  bool get _usesSidebar {
+    final size = MediaQuery.sizeOf(context);
+    return _desktop || (size.width >= 740 && size.height >= 600);
+  }
 
-  bool get _compactDesktopWindow =>
+  TextAlign get _align => TextAlign.start;
+
+  bool get _compactWindow =>
       MediaQuery.sizeOf(context).height <
       _DesktopLoginMetrics.compactWindowHeight;
 
-  /// The single centred column used on phones and tablets.
+  /// Compact screens keep the brand, methods and form in one scrollable lane.
+  /// The keyboard can shorten the viewport without pinning a footer over it.
   Widget _laneLayout(
     AuthManager auth,
     AccountStore accounts, {
@@ -329,65 +324,54 @@ class _LoginViewState extends State<LoginView> {
         MediaQuery.of(context).padding.top + iPadWindowChromeInsetOf(context);
     return Scaffold(
       backgroundColor: c.background,
-      body: Stack(
-        children: [
-          const Positioned.fill(child: _LoginBackdrop()),
-          Column(
-            children: [
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, viewport) {
-                    final topInset = chromeTop + 56;
-                    return SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(24, topInset, 24, 24),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: math.max(
-                            0,
-                            viewport.maxHeight - topInset - 24,
-                          ),
-                        ),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxWidth: kLoginLaneMaxWidth,
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _header(),
-                                const SizedBox(height: 30),
-                                ..._stepBody(auth, accounts),
-                              ],
-                            ),
-                          ),
+      body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(
+          24 + MediaQuery.paddingOf(context).left,
+          chromeTop + AppSpacing.md,
+          24 + MediaQuery.paddingOf(context).right,
+          AppSpacing.section + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kLoginLaneMaxWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    if (canGoBack)
+                      _backButton(
+                        auth,
+                        accounts,
+                        backToPhoneOnly: backToPhoneOnly,
+                        showingPhone: showingPhone,
+                      ),
+                    _penguinMark(_TouchLoginMetrics.brandMark),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Text(
+                        'Mithka',
+                        style: AppTextStyle.body(
+                          c.textPrimary,
+                          weight: AppTextWeight.semibold,
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    _topRightActions(auth, showingPhone),
+                  ],
                 ),
-              ),
-              _termsFooter(),
-            ],
-          ),
-          if (canGoBack)
-            Positioned(
-              top: chromeTop + 6,
-              left: 6,
-              child: _backButton(
-                auth,
-                accounts,
-                backToPhoneOnly: backToPhoneOnly,
-                showingPhone: showingPhone,
-              ),
+                const SizedBox(height: AppSpacing.xxl),
+                _touchMethodSwitch(auth),
+                const SizedBox(height: AppSpacing.section),
+                ..._stepBody(auth, accounts),
+                const SizedBox(height: AppSpacing.xxl),
+                _termsFooter(),
+              ],
             ),
-          Positioned(
-            top: chromeTop + 6,
-            right: 6,
-            child: _topRightActions(auth, showingPhone),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -405,75 +389,93 @@ class _LoginViewState extends State<LoginView> {
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.background,
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              _DesktopLoginMetrics.sidebarInset,
-              0,
-              0,
-              _DesktopLoginMetrics.sidebarInset,
+      body: Padding(
+        padding: _desktop
+            ? EdgeInsets.zero
+            : EdgeInsets.only(
+                top:
+                    MediaQuery.paddingOf(context).top +
+                    iPadWindowChromeInsetOf(context),
+                left: MediaQuery.paddingOf(context).left,
+                right: MediaQuery.paddingOf(context).right,
+                bottom: MediaQuery.paddingOf(context).bottom,
+              ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                _DesktopLoginMetrics.sidebarInset,
+                0,
+                0,
+                _DesktopLoginMetrics.sidebarInset,
+              ),
+              child: SizedBox(
+                width: _desktop
+                    ? _DesktopLoginMetrics.sidebarWidth
+                    : _TouchLoginMetrics.sidebarWidth,
+                child: _desktopSidebar(auth),
+              ),
             ),
-            child: SizedBox(
-              width: _DesktopLoginMetrics.sidebarWidth,
-              child: _desktopSidebar(auth),
-            ),
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, viewport) {
-                // A little more air above the page as the window grows, so a
-                // tall window does not leave the form pinned under the bar.
-                final top = (viewport.maxHeight * 0.1).clamp(
-                  _DesktopLoginMetrics.pageMinTopPadding,
-                  _DesktopLoginMetrics.pageMaxTopPadding,
-                );
-                return SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    _DesktopLoginMetrics.pageHorizontalPadding,
-                    top,
-                    _DesktopLoginMetrics.pageHorizontalPadding,
-                    AppSpacing.section,
-                  ),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: _DesktopLoginMetrics.pageMaxWidth,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // QR and bot login step back through the sidebar;
-                          // the explicit back only remains where it offers
-                          // more (re-enter, previous account, switch).
-                          if (canGoBack && !backToPhoneOnly) ...[
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Transform.translate(
-                                offset: const Offset(-AppSpacing.sm, 0),
-                                child: _backButton(
-                                  auth,
-                                  accounts,
-                                  backToPhoneOnly: backToPhoneOnly,
-                                  showingPhone: showingPhone,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, viewport) {
+                  // A little more air above the page as the window grows, so a
+                  // tall window does not leave the form pinned under the bar.
+                  final top = (viewport.maxHeight * 0.1).clamp(
+                    _DesktopLoginMetrics.pageMinTopPadding,
+                    _DesktopLoginMetrics.pageMaxTopPadding,
+                  );
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      _desktop
+                          ? _DesktopLoginMetrics.pageHorizontalPadding
+                          : 32,
+                      top,
+                      _desktop
+                          ? _DesktopLoginMetrics.pageHorizontalPadding
+                          : 32,
+                      AppSpacing.section,
+                    ),
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: _DesktopLoginMetrics.pageMaxWidth,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // QR and bot login step back through the sidebar;
+                            // the explicit back only remains where it offers
+                            // more (re-enter, previous account, switch).
+                            if (canGoBack && !backToPhoneOnly) ...[
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Transform.translate(
+                                  offset: const Offset(-AppSpacing.sm, 0),
+                                  child: _backButton(
+                                    auth,
+                                    accounts,
+                                    backToPhoneOnly: backToPhoneOnly,
+                                    showingPhone: showingPhone,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: AppSpacing.xxl),
+                              const SizedBox(height: AppSpacing.xxl),
+                            ],
+                            ..._stepBody(auth, accounts),
                           ],
-                          ..._stepBody(auth, accounts),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -502,6 +504,7 @@ class _LoginViewState extends State<LoginView> {
 
   void _selectMethod(AuthManager auth, _LoginMethod method) {
     if (method == _activeMethod(auth)) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     switch (method) {
       case _LoginMethod.phoneNumber:
         if (_showBotLogin) _hideBotLogin();
@@ -512,6 +515,101 @@ class _LoginViewState extends State<LoginView> {
       case _LoginMethod.botToken:
         _openBotLogin();
     }
+  }
+
+  /// Three 44 pt targets. The selected method gets half the available width
+  /// for its localized label; the other two remain recognizable icon buttons.
+  /// Tooltips and semantics retain the full label at every text scale.
+  Widget _touchMethodSwitch(AuthManager auth) {
+    final c = context.colors;
+    final active = _activeMethod(auth);
+    final telegramReady = auth.step is! AuthMissingCredentials;
+    final switchable = !auth.isWorking && !_botWorking;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.textPrimary.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            children: [
+              for (final method in _LoginMethod.values)
+                AnimatedContainer(
+                  duration: AppMotion.duration(context, AppMotion.quick),
+                  curve: AppMotion.standard,
+                  width:
+                      constraints.maxWidth *
+                      (active == null
+                          ? 1 / 3
+                          : active == method
+                          ? 1 / 2
+                          : 1 / 4),
+                  child: Tooltip(
+                    message: AppStrings.t(method.label),
+                    excludeFromSemantics: true,
+                    child: AppInteractiveSurface(
+                      key: ValueKey('login-method-${method.name}'),
+                      semanticLabel: AppStrings.t(method.label),
+                      selected: active == method,
+                      enabled:
+                          switchable &&
+                          (telegramReady || method == _LoginMethod.botToken),
+                      onTap: () => _selectMethod(auth, method),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                      child: AnimatedContainer(
+                        duration: AppMotion.duration(context, AppMotion.quick),
+                        curve: AppMotion.standard,
+                        constraints: const BoxConstraints(
+                          minHeight: _TouchLoginMetrics.controlHeight,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: active == method ? c.background : null,
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            AppIcon(
+                              method.icon,
+                              size: 20,
+                              color:
+                                  !telegramReady &&
+                                      method != _LoginMethod.botToken
+                                  ? c.textTertiary
+                                  : active == method
+                                  ? AppTheme.brand
+                                  : c.textSecondary,
+                            ),
+                            if (active == method) ...[
+                              const SizedBox(width: AppSpacing.md),
+                              Flexible(
+                                child: Text(
+                                  AppStrings.t(method.label),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.footnote(
+                                    c.textPrimary,
+                                    weight: AppTextWeight.medium,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Desktop sidebar: a softly tinted inset panel with the app mark, the
@@ -529,60 +627,90 @@ class _LoginViewState extends State<LoginView> {
         color: c.textPrimary.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.xxl,
-          AppSpacing.md,
-          AppSpacing.md,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-              child: Row(
+      child: CustomScrollView(
+        key: const ValueKey('login-sidebar-scroll'),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.xxl,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _penguinMark(_DesktopLoginMetrics.brandMark),
-                  const SizedBox(width: AppSpacing.md),
-                  Text(
-                    'Mithka',
-                    style: AppTextStyle.body(
-                      c.textPrimary,
-                      weight: AppTextWeight.semibold,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
                     ),
+                    child: Row(
+                      children: [
+                        _penguinMark(_DesktopLoginMetrics.brandMark),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            'Mithka',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyle.body(
+                              c.textPrimary,
+                              weight: AppTextWeight.semibold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.section),
+                  for (final method in _LoginMethod.values)
+                    _sidebarRow(
+                      key: ValueKey('login-method-${method.name}'),
+                      icon: method.icon,
+                      label: AppStrings.t(method.label),
+                      selected: active == method,
+                      enabled:
+                          switchable &&
+                          (telegramReady || method == _LoginMethod.botToken),
+                      onTap: () => _selectMethod(auth, method),
+                    ),
+                  const Spacer(),
+                  if (!_desktop && (Platform.isIOS || Platform.isAndroid))
+                    _sidebarRow(
+                      icon: HeroAppIcons.key,
+                      label: AppStrings.t(
+                        AppStringKeys.accountBackupRestoreAccount,
+                      ),
+                      enabled: switchable,
+                      onTap: _openAccountRestore,
+                    ),
+                  _sidebarRow(
+                    key: const ValueKey('login-language'),
+                    icon: HeroAppIcons.globe,
+                    label: AppStrings.t(AppStringKeys.languageTitle),
+                    onTap: _openLanguageSettings,
+                  ),
+                  _sidebarRow(
+                    key: const ValueKey('login-proxy'),
+                    icon: HeroAppIcons.networkWired,
+                    label: AppStrings.t(AppStringKeys.proxyTitle),
+                    tint: proxyOn ? AppTheme.brand : null,
+                    onTap: _openProxySetup,
+                    // Secondary click turns a working proxy off, as on touch.
+                    onSecondaryTap: proxyOn ? _disableProxy : null,
+                  ),
+                  _sidebarRow(
+                    icon: HeroAppIcons.font,
+                    label: AppStrings.t(AppStringKeys.loginTermsButton),
+                    onTap: () => showTelegramTermsSheet(context),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: AppSpacing.section),
-            for (final method in _LoginMethod.values)
-              _sidebarRow(
-                key: ValueKey('login-method-${method.name}'),
-                icon: method.icon,
-                label: AppStrings.t(method.label),
-                selected: active == method,
-                enabled:
-                    switchable &&
-                    (telegramReady || method == _LoginMethod.botToken),
-                onTap: () => _selectMethod(auth, method),
-              ),
-            const Spacer(),
-            _sidebarRow(
-              icon: HeroAppIcons.globe,
-              label: AppStrings.t(AppStringKeys.proxyTitle),
-              tint: proxyOn ? AppTheme.brand : null,
-              onTap: _openProxySetup,
-              // Secondary click turns a working proxy off, as on touch.
-              onSecondaryTap: proxyOn ? _disableProxy : null,
-            ),
-            _sidebarRow(
-              icon: HeroAppIcons.font,
-              label: AppStrings.t(AppStringKeys.loginTermsButton),
-              onTap: () => showTelegramTermsSheet(context),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -614,7 +742,11 @@ class _LoginViewState extends State<LoginView> {
       child: AnimatedContainer(
         duration: AppMotion.quick,
         curve: AppMotion.standard,
-        height: _DesktopLoginMetrics.sidebarRowHeight,
+        constraints: BoxConstraints(
+          minHeight: _desktop
+              ? _DesktopLoginMetrics.sidebarRowHeight
+              : _TouchLoginMetrics.controlHeight,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2),
         decoration: BoxDecoration(
           color: selected ? c.textPrimary.withValues(alpha: 0.07) : null,
@@ -682,7 +814,7 @@ class _LoginViewState extends State<LoginView> {
           !_showBotLogin &&
           auth.step is! AuthMissingCredentials &&
           !accounts.isActiveSessionReplacementPending) ...[
-        const SizedBox(height: 18),
+        const SizedBox(height: AppSpacing.xxl),
         _backupConsentRow(),
       ],
       if (auth.errorMessage != null) ...[
@@ -763,12 +895,7 @@ class _LoginViewState extends State<LoginView> {
       onTap: () => unawaited(_setBackupConsent(!_backupConsent)),
       borderRadius: BorderRadius.circular(AppRadius.lg),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: c.groupedBackground,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: c.divider, width: 0.8),
-        ),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -787,8 +914,8 @@ class _LoginViewState extends State<LoginView> {
                   Text(
                     AppStrings.t(label),
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                       color: c.textPrimary,
                     ),
                   ),
@@ -812,21 +939,23 @@ class _LoginViewState extends State<LoginView> {
 
   Widget _termsFooter() {
     final c = context.colors;
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+    return Align(
+      alignment: Alignment.centerLeft,
       child: AppInteractiveSurface(
         onTap: () => showTelegramTermsSheet(context),
         borderRadius: BorderRadius.circular(AppRadius.control),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Container(
+          constraints: const BoxConstraints(
+            minHeight: _TouchLoginMetrics.controlHeight,
+          ),
+          alignment: Alignment.centerLeft,
           child: Text(
             AppStrings.t(AppStringKeys.loginTermsButton),
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.start,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: c.textTertiary,
+              color: c.textSecondary,
               decoration: TextDecoration.none,
             ),
           ),
@@ -993,31 +1122,6 @@ class _LoginViewState extends State<LoginView> {
     };
   }
 
-  Widget _header() {
-    final c = context.colors;
-    return Column(
-      children: [
-        _penguinMark(92),
-        const SizedBox(height: 12),
-        Text(
-          'Mithka',
-          style: TextStyle(
-            fontSize: 25,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-            color: c.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          AppStrings.t(AppStringKeys.loginTelegramAccountTitle),
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: c.textSecondary),
-        ),
-      ],
-    );
-  }
-
   /// Stable identity of the visible step, so [AnimatedSwitcher] cross-fades
   /// only when the flow actually moves between steps.
   String _stepIdentity(AuthManager auth) {
@@ -1028,8 +1132,7 @@ class _LoginViewState extends State<LoginView> {
 
   // MARK: Steps
 
-  /// Title block for desktop steps. The desktop column carries only the
-  /// penguin above the step, so each step names itself.
+  /// Left-aligned title block shared by the compact and sidebar layouts.
   Widget _desktopHeading(String title, {String? subtitle}) {
     final c = context.colors;
     return Padding(
@@ -1069,11 +1172,7 @@ class _LoginViewState extends State<LoginView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (desktop)
-          _desktopHeading(
-            AppStrings.t(AppStringKeys.loginTelegramAccountTitle),
-            subtitle: AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
-          ),
+        _desktopHeading(AppStrings.t(AppStringKeys.loginTelegramAccountTitle)),
         _FieldShell(
           focusNode: _phoneFocus,
           desktopHeight: _DesktopLoginMetrics.phoneFieldHeight,
@@ -1090,14 +1189,12 @@ class _LoginViewState extends State<LoginView> {
                 onTap: _showCountrySheet,
                 borderRadius: BorderRadius.circular(AppRadius.control),
                 child: SizedBox(
-                  width: desktop ? 30 : 40,
-                  height: desktop ? 30 : 40,
+                  width: desktop ? 30 : _TouchLoginMetrics.controlHeight,
+                  height: desktop ? 30 : _TouchLoginMetrics.controlHeight,
                   // On desktop the mark starts on the page's left edge, in
                   // line with the title above it.
                   child: Align(
-                    alignment: desktop
-                        ? Alignment.centerLeft
-                        : Alignment.center,
+                    alignment: Alignment.centerLeft,
                     child: _detectedCountry != null
                         ? CountryFlag(
                             iso: _detectedCountry!.iso,
@@ -1106,7 +1203,7 @@ class _LoginViewState extends State<LoginView> {
                                 : 28,
                           )
                         : AppIcon(
-                            HeroAppIcons.globe,
+                            HeroAppIcons.flag,
                             size: desktop ? AppIconSize.xl : 24,
                             color: c.textTertiary,
                           ),
@@ -1123,6 +1220,18 @@ class _LoginViewState extends State<LoginView> {
                   autofocus: desktop,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
+                  // Reveal the submit action with the focused number when the
+                  // keyboard shortens the viewport, even if the title wraps.
+                  scrollPadding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    desktop
+                        ? 20
+                        : _TouchLoginMetrics.controlHeight +
+                              20 +
+                              AppSpacing.section,
+                  ),
                   style: TextStyle(
                     fontSize: desktop
                         ? _DesktopLoginMetrics.phoneFieldTextSize
@@ -1140,10 +1249,10 @@ class _LoginViewState extends State<LoginView> {
                       color: c.textTertiary,
                     ),
                     border: InputBorder.none,
-                    isCollapsed: desktop,
+                    isCollapsed: true,
                   ),
                   onChanged: (v) {
-                    final formatted = _formatAsYouType(v);
+                    final formatted = formatLoginPhoneNumber(v);
                     if (formatted != v) {
                       _phone.value = TextEditingValue(
                         text: formatted,
@@ -1175,23 +1284,12 @@ class _LoginViewState extends State<LoginView> {
           const SizedBox(height: 12),
           _loginPasskeyButton(auth),
         ],
-        // Desktop offers the other ways in from its sidebar.
-        if (!desktop) ...[
-          const SizedBox(height: 6),
-          _textLink(
-            label: AppStrings.t(AppStringKeys.loginWithBotToken),
-            icon: HeroAppIcons.code,
-            enabled: !auth.isWorking,
-            onTap: _openBotLogin,
-          ),
-
-          const SizedBox(height: 18),
-          Text(
-            AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
-            textAlign: _align,
-            style: TextStyle(fontSize: 12, height: 1.45, color: c.textTertiary),
-          ),
-        ],
+        const SizedBox(height: AppSpacing.xl),
+        Text(
+          AppStrings.t(AppStringKeys.loginCodeWillBeSentToNumber),
+          textAlign: _align,
+          style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary),
+        ),
       ],
     );
   }
@@ -1273,15 +1371,6 @@ class _LoginViewState extends State<LoginView> {
           () => unawaited(_submitBotAccount(auth, accounts)),
           working: _botWorking,
         ),
-        if (!_desktop) ...[
-          const SizedBox(height: 6),
-          _textLink(
-            label: AppStrings.t(AppStringKeys.loginWithPhoneNumber),
-            icon: HeroAppIcons.phone,
-            enabled: !_botWorking,
-            onTap: _hideBotLogin,
-          ),
-        ],
       ],
     );
   }
@@ -1605,13 +1694,6 @@ class _LoginViewState extends State<LoginView> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showingPhone)
-          _loginIconButton(
-            icon: HeroAppIcons.qrcode,
-            tooltip: AppStrings.t(AppStringKeys.loginWithQrCode),
-            enabled: !auth.isWorking,
-            onTap: () => _requestQrLogin(auth),
-          ),
         if (showingPhone && (Platform.isIOS || Platform.isAndroid))
           _loginIconButton(
             icon: HeroAppIcons.key,
@@ -1621,6 +1703,13 @@ class _LoginViewState extends State<LoginView> {
             onTap: _openAccountRestore,
           ),
         if (!_showBotLogin) _proxyIconButton(),
+        _loginIconButton(
+          key: const ValueKey('login-language'),
+          icon: HeroAppIcons.globe,
+          tooltip: AppStrings.t(AppStringKeys.languageTitle),
+          enabled: true,
+          onTap: _openLanguageSettings,
+        ),
       ],
     );
   }
@@ -1670,6 +1759,7 @@ class _LoginViewState extends State<LoginView> {
   }
 
   Widget _loginIconButton({
+    Key? key,
     required AppIconData icon,
     required String tooltip,
     required bool enabled,
@@ -1681,6 +1771,7 @@ class _LoginViewState extends State<LoginView> {
     return Tooltip(
       message: tooltip,
       child: AppInteractiveSurface(
+        key: key,
         semanticLabel: tooltip,
         onTap: enabled ? onTap : null,
         enabled: enabled,
@@ -1692,7 +1783,7 @@ class _LoginViewState extends State<LoginView> {
             children: [
               AppIcon(
                 icon,
-                size: 25,
+                size: 24,
                 color: enabled ? c.textPrimary : c.textTertiary,
               ),
               if (badgeCount > 0)
@@ -1759,6 +1850,7 @@ class _LoginViewState extends State<LoginView> {
     return Tooltip(
       message: AppStrings.t(AppStringKeys.proxyTitle),
       child: AppInteractiveSurface(
+        key: const ValueKey('login-proxy'),
         semanticLabel: AppStrings.t(AppStringKeys.proxyTitle),
         onTap: _openProxySetup,
         onLongPress: enabled ? _disableProxy : null,
@@ -1770,8 +1862,8 @@ class _LoginViewState extends State<LoginView> {
             clipBehavior: Clip.none,
             children: [
               AppIcon(
-                HeroAppIcons.globe,
-                size: 25,
+                HeroAppIcons.networkWired,
+                size: 24,
                 color: enabled ? AppTheme.brand : c.textPrimary,
               ),
               if (enabled)
@@ -1805,6 +1897,16 @@ class _LoginViewState extends State<LoginView> {
     if (changed == true) await _loadProxy();
   }
 
+  Future<void> _openLanguageSettings() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const AppLanguageSettingsView(),
+      ),
+    );
+  }
+
   Future<void> _disableProxy() async {
     await ProxyConfig.disable();
     unawaited(TdClient.shared.applySavedProxyToActive());
@@ -1823,35 +1925,19 @@ class _LoginViewState extends State<LoginView> {
   Widget _qrCodeStep(AuthManager auth, String link) {
     final c = context.colors;
     final desktop = _desktop;
-    final qrSize = !desktop
-        ? 236.0
-        : _compactDesktopWindow
+    final qrSize = _compactWindow
         ? _DesktopLoginMetrics.compactQrSize
         : _DesktopLoginMetrics.qrSize;
     final plate = Container(
       width: qrSize,
       height: qrSize,
-      padding: EdgeInsets.all(desktop ? AppSpacing.md + 2 : 12),
+      padding: const EdgeInsets.all(AppSpacing.md + 2),
       // Desktop keeps the code on a plain white plate with a hairline:
       // it has to stay white to scan, but needs no lift or tint.
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(
-          desktop ? AppRadius.card : AppRadius.xl,
-        ),
-        border: Border.all(
-          color: desktop ? c.textPrimary.withValues(alpha: 0.1) : c.divider,
-          width: desktop ? 1 : 0.8,
-        ),
-        boxShadow: desktop
-            ? null
-            : [
-                BoxShadow(
-                  color: AppTheme.brand.withValues(alpha: 0.12),
-                  blurRadius: 26,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: c.textPrimary.withValues(alpha: 0.1)),
       ),
       child: link.isEmpty
           ? const Center(
@@ -1909,20 +1995,17 @@ class _LoginViewState extends State<LoginView> {
             ],
           )
         else ...[
-          Center(child: plate),
-          const SizedBox(height: 20),
-          _secondaryButton(
-            label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
-            icon: HeroAppIcons.arrowsRotate,
-            enabled: !auth.isWorking,
-            onTap: auth.requestQrLogin,
-          ),
-          const SizedBox(height: 2),
-          _textLink(
-            label: AppStrings.t(AppStringKeys.loginReenterPhoneNumber),
-            icon: HeroAppIcons.phone,
-            enabled: true,
-            onTap: _showPhoneEntry,
+          Align(alignment: Alignment.centerLeft, child: plate),
+          const SizedBox(height: AppSpacing.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _secondaryButton(
+              label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
+              icon: HeroAppIcons.arrowsRotate,
+              enabled: !auth.isWorking,
+              onTap: auth.requestQrLogin,
+              hug: true,
+            ),
           ),
         ],
       ],
@@ -2220,70 +2303,23 @@ class _LoginViewState extends State<LoginView> {
   }
 
   Widget _credentialsNotice(AuthManager auth) {
-    final c = context.colors;
-    if (_desktop) {
-      // Bot login needs no API credentials; the sidebar keeps it reachable.
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _desktopHeading(
-            AppStrings.t(AppStringKeys.loginTelegramApiCredentialsMissing),
-            subtitle:
-                AppStrings.t(
-                  AppStringKeys.loginTelegramApiSecretsInstructions,
-                ) +
-                AppStrings.t(AppStringKeys.loginTelegramApiPortalInstructions),
-          ),
-          _primaryButton(
-            auth,
-            AppStrings.t(AppStringKeys.loginConfigureCustomApi),
-            true,
-            () => _openApiSetup(auth),
-          ),
-        ],
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        children: [
-          AppIcon(
-            HeroAppIcons.triangleExclamation,
-            size: 40,
-            color: AppTheme.unreadBadge,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            AppStrings.t(AppStringKeys.loginTelegramApiCredentialsMissing),
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              color: c.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            AppStrings.t(AppStringKeys.loginTelegramApiSecretsInstructions) +
-                AppStrings.t(AppStringKeys.loginTelegramApiPortalInstructions),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: c.textSecondary),
-          ),
-          const SizedBox(height: 18),
-          _primaryButton(
-            auth,
-            AppStrings.t(AppStringKeys.loginConfigureCustomApi),
-            true,
-            () => _openApiSetup(auth),
-          ),
-          const SizedBox(height: 6),
-          _textLink(
-            label: AppStrings.t(AppStringKeys.loginWithBotToken),
-            icon: HeroAppIcons.code,
-            enabled: !auth.isWorking,
-            onTap: _openBotLogin,
-          ),
-        ],
-      ),
+    // Bot login remains reachable through the method switch without API keys.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _desktopHeading(
+          AppStrings.t(AppStringKeys.loginTelegramApiCredentialsMissing),
+          subtitle:
+              AppStrings.t(AppStringKeys.loginTelegramApiSecretsInstructions) +
+              AppStrings.t(AppStringKeys.loginTelegramApiPortalInstructions),
+        ),
+        _primaryButton(
+          auth,
+          AppStrings.t(AppStringKeys.loginConfigureCustomApi),
+          true,
+          () => _openApiSetup(auth),
+        ),
+      ],
     );
   }
 
@@ -2309,9 +2345,7 @@ class _LoginViewState extends State<LoginView> {
     final on = enabled && !busy;
     final c = context.colors;
     final desktop = _desktop;
-    final radius = BorderRadius.circular(
-      desktop ? _DesktopLoginMetrics.controlRadius : AppRadius.lg,
-    );
+    final radius = BorderRadius.circular(_DesktopLoginMetrics.controlRadius);
     return AppInteractiveSurface(
       semanticLabel: title,
       onTap: on ? action : null,
@@ -2323,22 +2357,17 @@ class _LoginViewState extends State<LoginView> {
         child: AnimatedContainer(
           duration: AppMotion.quick,
           curve: AppMotion.standard,
-          height: desktop ? _DesktopLoginMetrics.controlHeight : 52,
+          constraints: BoxConstraints(
+            minHeight: desktop
+                ? _DesktopLoginMetrics.controlHeight
+                : _TouchLoginMetrics.controlHeight,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           alignment: Alignment.center,
           // Desktop draws a flat accent fill: no gradient, no glow.
           decoration: BoxDecoration(
-            color: desktop ? AppTheme.brand : null,
-            gradient: desktop ? null : AppTheme.brandGradient,
+            color: AppTheme.brand,
             borderRadius: radius,
-            boxShadow: enabled && !desktop
-                ? [
-                    BoxShadow(
-                      color: AppTheme.brand.withValues(alpha: 0.26),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
           ),
           child: busy
               ? AppActivityIndicator(
@@ -2347,6 +2376,7 @@ class _LoginViewState extends State<LoginView> {
                 )
               : Text(
                   title,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: desktop ? AppTextSize.callout : 16,
                     fontWeight: FontWeight.w600,
@@ -2370,9 +2400,7 @@ class _LoginViewState extends State<LoginView> {
   }) {
     final c = context.colors;
     final desktop = _desktop;
-    final radius = BorderRadius.circular(
-      desktop ? _DesktopLoginMetrics.controlRadius : AppRadius.lg,
-    );
+    final radius = BorderRadius.circular(_DesktopLoginMetrics.controlRadius);
     final ink = desktop ? c.textPrimary : AppTheme.brand;
     return AppInteractiveSurface(
       semanticLabel: label,
@@ -2383,14 +2411,15 @@ class _LoginViewState extends State<LoginView> {
         duration: AppMotion.quick,
         opacity: enabled ? 1 : 0.5,
         child: Container(
-          height: desktop ? _DesktopLoginMetrics.controlHeight : 48,
+          constraints: BoxConstraints(
+            minHeight: desktop
+                ? _DesktopLoginMetrics.controlHeight
+                : _TouchLoginMetrics.controlHeight,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: desktop ? c.textPrimary.withValues(alpha: 0.06) : null,
+            color: c.textPrimary.withValues(alpha: 0.06),
             borderRadius: radius,
-            border: desktop
-                ? null
-                : Border.all(color: AppTheme.brand.withValues(alpha: 0.38)),
           ),
           child: Row(
             mainAxisSize: hug ? MainAxisSize.min : MainAxisSize.max,
@@ -2411,59 +2440,6 @@ class _LoginViewState extends State<LoginView> {
                     fontSize: desktop ? AppTextSize.callout : 15,
                     fontWeight: desktop ? FontWeight.w500 : FontWeight.w600,
                     color: ink,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Quiet icon+label link for the flow's alternate entrances.
-  Widget _textLink({
-    required String label,
-    required AppIconData icon,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    final c = context.colors;
-    final desktop = _desktop;
-    final tint = enabled ? AppTheme.brand : c.textTertiary;
-    return Align(
-      child: AppInteractiveSurface(
-        semanticLabel: label,
-        enabled: enabled,
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(
-          desktop ? AppRadius.md : AppRadius.control,
-        ),
-        child: Padding(
-          padding: desktop
-              ? const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md + AppSpacing.xxs,
-                  vertical: AppSpacing.sm,
-                )
-              : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(
-                icon,
-                size: desktop ? AppIconSize.sm + 1 : 16,
-                color: tint,
-              ),
-              SizedBox(width: desktop ? AppSpacing.xs + 1 : 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: desktop ? AppTextSize.footnote : 14,
-                    fontWeight: desktop ? FontWeight.w500 : FontWeight.w600,
-                    color: tint,
                   ),
                 ),
               ),
@@ -2676,28 +2652,7 @@ class _VerificationCodeBox extends StatelessWidget {
       width: width,
       height: desktop ? _DesktopLoginMetrics.codeBoxHeight : 54,
       alignment: Alignment.center,
-      foregroundDecoration: desktop
-          ? _desktopUnderline(c, focused: focused)
-          : null,
-      decoration: desktop
-          ? null
-          : BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(
-                color: focused ? AppTheme.brand : c.divider,
-                width: focused ? 1.8 : 1,
-              ),
-              boxShadow: focused
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.brand.withValues(alpha: 0.16),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
+      foregroundDecoration: _desktopUnderline(c, focused: focused),
       child: Text(
         value,
         textAlign: TextAlign.center,
@@ -2713,7 +2668,7 @@ class _VerificationCodeBox extends StatelessWidget {
   }
 }
 
-/// A pill-shaped reference text field with a leading glyph. Secure fields get a
+/// An underlined text field with a leading glyph. Secure fields get a
 /// plain text keyboard and a show/hide eye toggle — Telegram 2-step passwords
 /// are NOT numeric.
 class InputField extends StatefulWidget {
@@ -2771,7 +2726,11 @@ class _InputFieldState extends State<InputField> {
         children: [
           SizedBox(
             width: desktop ? 18 : 22,
-            child: Icon(widget.systemImage, size: glyph, color: c.textTertiary),
+            child: AppIcon(
+              AppIconData(widget.systemImage),
+              size: glyph,
+              color: c.textTertiary,
+            ),
           ),
           SizedBox(width: desktop ? AppSpacing.md : 10),
           Expanded(
@@ -2825,8 +2784,12 @@ class _InputFieldState extends State<InputField> {
               toggled: !_obscure,
               onTap: () => setState(() => _obscure = !_obscure),
               borderRadius: BorderRadius.circular(AppRadius.control),
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8),
+              child: Container(
+                constraints: BoxConstraints(
+                  minWidth: desktop ? 28 : _TouchLoginMetrics.controlHeight,
+                  minHeight: desktop ? 28 : _TouchLoginMetrics.controlHeight,
+                ),
+                alignment: Alignment.centerRight,
                 child: AppIcon(
                   _obscure ? HeroAppIcons.eyeSlash : HeroAppIcons.eye,
                   size: glyph,
@@ -2840,8 +2803,7 @@ class _InputFieldState extends State<InputField> {
   }
 }
 
-/// Recessed input card that lifts with a brand ring while its field is
-/// focused, so the login fields read as fields instead of floating pills.
+/// An open input line with an accent underline while focused.
 class _FieldShell extends StatefulWidget {
   const _FieldShell({required this.child, this.focusNode, this.desktopHeight});
 
@@ -2894,43 +2856,23 @@ class _FieldShellState extends State<_FieldShell> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    if (isDesktopTargetPlatform(Theme.of(context).platform)) {
-      return _desktopShell(c);
-    }
-    return AnimatedContainer(
-      duration: AppMotion.quick,
-      curve: AppMotion.standard,
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: _focused ? c.card : c.groupedBackground,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: _focused ? AppTheme.brand : c.divider,
-          width: _focused ? 1.4 : 0.8,
-        ),
-        boxShadow: _focused
-            ? [
-                BoxShadow(
-                  color: AppTheme.brand.withValues(alpha: 0.14),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: widget.child,
-    );
+    return _desktopShell(c);
   }
 
-  /// Desktop text field: one open line of text over an underline, flush
+  /// One open line of text over an underline, flush
   /// with the page's left edge. The rule thickens into the accent colour
   /// while editing.
   Widget _desktopShell(AppColors c) {
     return AnimatedContainer(
       duration: AppMotion.quick,
       curve: AppMotion.standard,
-      height: widget.desktopHeight ?? _DesktopLoginMetrics.fieldHeight,
+      constraints: BoxConstraints(
+        minHeight:
+            widget.desktopHeight ??
+            (isDesktopTargetPlatform(Theme.of(context).platform)
+                ? _DesktopLoginMetrics.fieldHeight
+                : _TouchLoginMetrics.fieldHeight),
+      ),
       foregroundDecoration: _desktopUnderline(c, focused: _focused),
       child: widget.child,
     );
@@ -2950,28 +2892,6 @@ BoxDecoration _desktopUnderline(AppColors c, {required bool focused}) {
       ),
     ),
   );
-}
-
-/// Soft brand wash over the top of the login canvas. Kept deliberately faint:
-/// depth without the saturated blobs that read as generated decoration.
-class _LoginBackdrop extends StatelessWidget {
-  const _LoginBackdrop();
-
-  @override
-  Widget build(BuildContext context) {
-    final brand = AppTheme.brand;
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: const Alignment(0, 0.4),
-            colors: [brand.withValues(alpha: 0.09), brand.withValues(alpha: 0)],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// The ways into an account the desktop sidebar offers.
