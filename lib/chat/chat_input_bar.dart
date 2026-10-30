@@ -8320,49 +8320,36 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget _mediaKindSegmentControl() {
     final c = context.colors;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    // A brand tint over the track, as on the format panel's selected cell. The
+    // light track is as white as a card, so a card-coloured fill would vanish.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final highlight = Color.alphaBlend(
+      AppTheme.brand.withValues(alpha: dark ? 0.28 : 0.14),
+      c.searchFill,
+    );
     Widget segment(_MediaKind kind, AppIconData icon, String label) {
       final selected = _mediaKind == kind;
-      final content = AnimatedContainer(
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        height: 30,
-        decoration: BoxDecoration(
-          color: selected ? c.card : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 3,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppIcon(
-              icon,
-              size: 16,
-              color: selected ? AppTheme.brand : c.textSecondary,
+      final content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(
+            icon,
+            size: 16,
+            color: selected ? AppTheme.brand : c.textSecondary,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? c.textPrimary : c.textSecondary,
             ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.fade,
-              softWrap: false,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selected ? c.textPrimary : c.textSecondary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
       return Expanded(
         child: Semantics(
@@ -8373,12 +8360,29 @@ class _ChatInputBarState extends State<ChatInputBar>
             key: ValueKey('mediaSegment-${kind.name}'),
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectMediaKind(kind),
-            // Large text scales shrink the pill content instead of clipping.
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: content,
+            // The highlight always fills the whole segment. Unselected
+            // segments have no colour at all, so a change fades the tint
+            // itself instead of passing through grey on the way to
+            // transparent black.
+            child: AnimatedContainer(
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? highlight : null,
+                // Concentric with the 9pt track inside its 2pt padding.
+                borderRadius: BorderRadius.circular(7),
+              ),
+              // Large text scales shrink the content, never the highlight.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: content,
+                ),
               ),
             ),
           ),
