@@ -1362,6 +1362,8 @@
     <string name="composerRecordingPaused">Grabación pausada</string>
     <string name="composerRecordingReleasePreview">Suelta para previsualizar · desliza arriba para bloquear · a la izquierda para cancelar</string>
     <string name="composerRecordingSendFailed">Error de envío. Grabación conservada — reintenta o descarta.</string>
+    <string name="composerRecordingStop">Detener grabación</string>
+    <string name="composerRecordingResume">Reanudar grabación</string>
     <string name="composerDesktopVoiceRelease">Suelta para enviar · Esc para cancelar</string>
     <string name="composerImage">Imagen</string>
     <string name="composerImagePreview">[Imagen]</string>

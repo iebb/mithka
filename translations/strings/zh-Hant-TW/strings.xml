@@ -1355,6 +1355,8 @@
     <string name="composerRecordingPaused">錄音已暫停</string>
     <string name="composerRecordingReleasePreview">放開預覽 · 上滑鎖定 · 左滑取消</string>
     <string name="composerRecordingSendFailed">傳送失敗，錄音已保留，可重試或捨棄。</string>
+    <string name="composerRecordingStop">停止錄音</string>
+    <string name="composerRecordingResume">繼續錄音</string>
     <string name="composerDesktopVoiceRelease">放開即可傳送 · 按 Esc 取消</string>
     <string name="composerImage">圖片</string>
     <string name="composerImagePreview">[圖片]</string>

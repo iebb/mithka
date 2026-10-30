@@ -1355,6 +1355,8 @@
     <string name="composerRecordingPaused">録音を一時停止中</string>
     <string name="composerRecordingReleasePreview">離してプレビュー · 上にスライドしてロック · 左にスライドしてキャンセル</string>
     <string name="composerRecordingSendFailed">送信に失敗しました。録音は保持されています。再試行または破棄してください。</string>
+    <string name="composerRecordingStop">録音を停止</string>
+    <string name="composerRecordingResume">録音を再開</string>
     <string name="composerDesktopVoiceRelease">離して送信 · Esc でキャンセル</string>
     <string name="composerImage">画像</string>
     <string name="composerImagePreview">[画像]</string>

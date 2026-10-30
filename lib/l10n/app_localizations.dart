@@ -1354,6 +1354,8 @@ abstract final class AppStringKeys {
   static const composerRecordingReleasePreview =
       'composerRecordingReleasePreview';
   static const composerRecordingSendFailed = 'composerRecordingSendFailed';
+  static const composerRecordingStop = 'composerRecordingStop';
+  static const composerRecordingResume = 'composerRecordingResume';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';

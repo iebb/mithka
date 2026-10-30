@@ -13,6 +13,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -108,6 +109,20 @@ enum _Panel { none, function, emoji, sticker, voice, format }
 /// `_Panel.emoji` and `_Panel.sticker` render the same unified media panel;
 /// this picks which segment (and secondary strip) is active.
 enum _MediaKind { emoji, sticker, gif }
+
+/// A failure the mobile voice panel shows in its own status line instead of a
+/// toast, which would land over the record button and vanish.
+enum _VoiceInlineError { none, failed, microphoneRequired, microphoneSettings }
+
+/// One segment of the composer's shared segmented switcher. A null [onTap]
+/// draws the segment disabled.
+typedef _ComposerSegment = ({
+  Key key,
+  AppIconData icon,
+  String label,
+  bool selected,
+  VoidCallback? onTap,
+});
 
 enum _RichTextSendMode { direct, botRelay }
 
@@ -645,6 +660,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _changingRecordingPause = false;
   bool _mobilePointerHeld = false;
   int? _voicePointerId;
+  // A press on the big button while a locked recording runs: its release
+  // stops the recording and opens the preview.
+  int? _lockedStopPointerId;
+  Offset _lockedStopDownPosition = Offset.zero;
+  _VoiceInlineError _voiceInlineError = _VoiceInlineError.none;
   VoiceNotePreviewResult? _desktopVoiceDraft;
   StreamSubscription<desktop_record.Amplitude>? _desktopRecProgress;
   final _desktopVoiceFocus = FocusNode(debugLabel: 'desktopVoiceMessage');
@@ -1778,6 +1798,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     setState(() {
       _panel = next;
       _quickReplyContextVisible = false;
+      _voiceInlineError = _VoiceInlineError.none;
     });
     widget.onPanelGeometryChanged?.call();
   }
@@ -1932,15 +1953,24 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
       if (_voiceDisposed || !mounted) return;
       if (!status.isGranted) {
-        showToast(
-          context,
-          AppStrings.t(
+        // The open panel explains the denial inline and offers Settings; it
+        // never opens system Settings without the user's press.
+        if (_showsMobileVoicePanel) {
+          _setVoiceInlineError(
             status.isPermanentlyDenied
-                ? AppStringKeys.composerMicrophonePermissionSettings
-                : AppStringKeys.composerMicrophonePermissionRequired,
-          ),
-        );
-        if (status.isPermanentlyDenied) unawaited(openAppSettings());
+                ? _VoiceInlineError.microphoneSettings
+                : _VoiceInlineError.microphoneRequired,
+          );
+        } else {
+          showToast(
+            context,
+            AppStrings.t(
+              status.isPermanentlyDenied
+                  ? AppStringKeys.composerMicrophonePermissionSettings
+                  : AppStringKeys.composerMicrophonePermissionRequired,
+            ),
+          );
+        }
         return;
       }
       recorder =
@@ -2055,8 +2085,35 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   void _showRecordingError() {
     if (mounted && !_voiceDisposed && _panel == _Panel.voice) {
+      if (!_voiceUsesDesktopRecorder) {
+        _setVoiceInlineError(_VoiceInlineError.failed);
+        return;
+      }
       showToast(context, AppStrings.t(AppStringKeys.composerRecordingFailed));
     }
+  }
+
+  bool get _showsMobileVoicePanel =>
+      _panel == _Panel.voice && !_voiceUsesDesktopRecorder;
+
+  /// Shows [error] in the mobile panel's status line until the next press on
+  /// the record button, a panel switch, or the composer closing.
+  void _setVoiceInlineError(_VoiceInlineError error) {
+    if (!mounted || _voiceDisposed || !_showsMobileVoicePanel) return;
+    // A live recording keeps its status line; the failed action (pause or
+    // resume) leaves the recording as it was, so only the haptic reports it.
+    if (_recording) {
+      unawaited(HapticFeedback.heavyImpact());
+      return;
+    }
+    if (_voiceInlineError == error) return;
+    setState(() => _voiceInlineError = error);
+    unawaited(HapticFeedback.heavyImpact());
+  }
+
+  void _clearVoiceInlineError() {
+    if (_voiceInlineError == _VoiceInlineError.none) return;
+    setState(() => _voiceInlineError = _VoiceInlineError.none);
   }
 
   Future<void> _startRec() async {
@@ -2067,14 +2124,18 @@ class _ChatInputBarState extends State<ChatInputBar>
     final r = _recorder;
     if (r == null || _recording) return;
     final dir = await getTemporaryDirectory();
+    // Apple's AAC encoder rejects anything below 32 kbps at 48 kHz, and
+    // AVAudioRecorder then records nothing without reporting an error, so
+    // AAC gets an explicit 32 kbps (the macOS recorder's setting). Opus keeps
+    // the plugin's 16 kbps default.
     const candidates = [
-      (Codec.opusOGG, 'ogg'),
-      (Codec.opusWebM, 'webm'),
-      (Codec.aacADTS, 'aac'),
-      (Codec.aacMP4, 'm4a'),
+      (Codec.opusOGG, 'ogg', 16000),
+      (Codec.opusWebM, 'webm', 16000),
+      (Codec.aacMP4, 'm4a', 32000),
+      (Codec.aacADTS, 'aac', 32000),
     ];
     var started = false;
-    for (final (codec, extension) in candidates) {
+    for (final (codec, extension, bitRate) in candidates) {
       if (!_canStartHeldRecording) return;
       try {
         if (!await r.isEncoderSupported(codec)) continue;
@@ -2082,7 +2143,12 @@ class _ChatInputBarState extends State<ChatInputBar>
         final path =
             '${dir.path}/voice_${DateTime.now().microsecondsSinceEpoch}.$extension';
         _recPath = path;
-        await r.startRecorder(toFile: path, codec: codec, sampleRate: 48000);
+        await r.startRecorder(
+          toFile: path,
+          codec: codec,
+          sampleRate: 48000,
+          bitRate: bitRate,
+        );
         started = true;
         break;
       } catch (_) {
@@ -2102,6 +2168,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     if (_voiceDisposed || !mounted) return;
     setState(() => _recording = true);
+    unawaited(HapticFeedback.mediumImpact());
     await _recProgress?.cancel();
     final clock = VoiceRecordingClock();
     _recProgress = r.onProgress?.listen((event) {
@@ -2356,6 +2423,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _desktopPointerHeld = false;
     _mobilePointerHeld = false;
     _voicePointerId = null;
+    _lockedStopPointerId = null;
   }
 
   void _cancelVoiceRecording() {
@@ -8318,6 +8386,42 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Widget _mediaKindSegmentControl() {
+    _ComposerSegment segment(_MediaKind kind, AppIconData icon, String label) =>
+        (
+          key: ValueKey('mediaSegment-${kind.name}'),
+          icon: icon,
+          label: label,
+          selected: _mediaKind == kind,
+          onTap: () => _selectMediaKind(kind),
+        );
+    return _composerSegmentSwitcher(
+      key: const ValueKey('mediaKindSegments'),
+      segments: [
+        segment(
+          _MediaKind.emoji,
+          HeroAppIcons.solidFaceSmile,
+          AppStrings.t(AppStringKeys.composerEmoji),
+        ),
+        segment(
+          _MediaKind.sticker,
+          HeroAppIcons.grip,
+          AppStrings.t(AppStringKeys.composerStickers),
+        ),
+        segment(
+          _MediaKind.gif,
+          HeroAppIcons.gif,
+          AppStrings.t(AppStringKeys.downloadsMediaAnimation),
+        ),
+      ],
+    );
+  }
+
+  /// The segmented switcher docked panels share (Emoji | Stickers | GIF, and
+  /// Voice | Video message), so every panel draws the same control.
+  Widget _composerSegmentSwitcher({
+    required Key key,
+    required List<_ComposerSegment> segments,
+  }) {
     final c = context.colors;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     // A brand tint over the track, as on the format panel's selected cell. The
@@ -8327,26 +8431,35 @@ class _ChatInputBarState extends State<ChatInputBar>
       AppTheme.brand.withValues(alpha: dark ? 0.28 : 0.14),
       c.searchFill,
     );
-    Widget segment(_MediaKind kind, AppIconData icon, String label) {
-      final selected = _mediaKind == kind;
+    Widget buildSegment(_ComposerSegment item) {
+      final selected = item.selected;
+      final enabled = item.onTap != null;
       final content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppIcon(
-            icon,
+            item.icon,
             size: 16,
-            color: selected ? AppTheme.brand : c.textSecondary,
+            color: !enabled
+                ? c.textTertiary
+                : selected
+                ? AppTheme.brand
+                : c.textSecondary,
           ),
           const SizedBox(width: 5),
           Text(
-            label,
+            item.label,
             maxLines: 1,
             overflow: TextOverflow.fade,
             softWrap: false,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: selected ? c.textPrimary : c.textSecondary,
+              color: !enabled
+                  ? c.textTertiary
+                  : selected
+                  ? c.textPrimary
+                  : c.textSecondary,
             ),
           ),
         ],
@@ -8355,11 +8468,12 @@ class _ChatInputBarState extends State<ChatInputBar>
         child: Semantics(
           button: true,
           selected: selected,
-          label: label,
+          enabled: enabled ? null : false,
+          label: item.label,
           child: GestureDetector(
-            key: ValueKey('mediaSegment-${kind.name}'),
+            key: item.key,
             behavior: HitTestBehavior.opaque,
-            onTap: () => _selectMediaKind(kind),
+            onTap: item.onTap,
             // The highlight always fills the whole segment. Unselected
             // segments have no colour at all, so a change fades the tint
             // itself instead of passing through grey on the way to
@@ -8391,32 +8505,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
 
     return Container(
-      key: const ValueKey('mediaKindSegments'),
+      key: key,
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: c.searchFill,
         borderRadius: BorderRadius.circular(9),
       ),
-      child: Row(
-        children: [
-          segment(
-            _MediaKind.emoji,
-            HeroAppIcons.solidFaceSmile,
-            AppStrings.t(AppStringKeys.composerEmoji),
-          ),
-          segment(
-            _MediaKind.sticker,
-            HeroAppIcons.grip,
-            AppStrings.t(AppStringKeys.composerStickers),
-          ),
-          segment(
-            _MediaKind.gif,
-            HeroAppIcons.gif,
-            AppStrings.t(AppStringKeys.downloadsMediaAnimation),
-          ),
-        ],
-      ),
+      child: Row(children: [for (final item in segments) buildSegment(item)]),
     );
   }
 
@@ -8939,209 +9035,375 @@ class _ChatInputBarState extends State<ChatInputBar>
     ),
   );
 
+  /// Fixed slots inside the 318pt panel, so nothing moves between states:
+  /// switcher 8–42, status line 82–126, record button 142–226 (centre 184,
+  /// halo 128–240), helper line centred on 260.
   Widget _mobileVoicePanel() {
-    final c = context.colors;
-    final granted = _recorder != null;
-    final label = _startingRecording
-        ? AppStrings.t(AppStringKeys.composerRecordingPreparing)
-        : _stoppingRecording
-        ? AppStrings.t(AppStringKeys.composerRecordingFinishing)
-        : !granted
-        ? AppStrings.t(AppStringKeys.composerMicrophonePermissionRequired)
-        : !_recording
-        ? AppStrings.t(AppStringKeys.composerHoldToTalk)
-        : _recordingLocked
-        ? (_recordingPaused
-              ? AppStrings.t(AppStringKeys.composerRecordingPaused)
-              : AppStrings.t(AppStringKeys.composerRecordingLocked))
-        : (_recordCancelled
-              ? AppStrings.t(AppStringKeys.composerReleaseFingerToCancel)
-              : AppStrings.t(AppStringKeys.composerRecordingReleasePreview));
+    final recordingBusy =
+        _recording || _startingRecording || _stoppingRecording;
     return Container(
       key: const ValueKey('composerMobileVoicePanel'),
       height: 318,
       width: double.infinity,
       color: _composerDockedSurfaceColor,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
         children: [
-          Container(
-            height: 42,
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: c.searchFill,
-              borderRadius: BorderRadius.circular(AppRadius.card),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _voiceModeButton(
-                    key: const ValueKey('voicePanelVoiceMessage'),
-                    selected: true,
-                    icon: HeroAppIcons.microphone,
-                    label: AppStrings.t(
-                      AppStringKeys.voiceNotePreviewVoiceMessage,
-                    ),
-                    onTap: () {},
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _composerSegmentSwitcher(
+              key: const ValueKey('voicePanelSegments'),
+              segments: [
+                (
+                  key: const ValueKey('voicePanelVoiceMessage'),
+                  icon: HeroAppIcons.microphone,
+                  label: AppStrings.t(
+                    AppStringKeys.voiceNotePreviewVoiceMessage,
                   ),
+                  selected: true,
+                  onTap: () {},
                 ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: _voiceModeButton(
-                    key: const ValueKey('voicePanelVideoMessage'),
-                    selected: false,
-                    icon: HeroAppIcons.solidFileVideo,
-                    label: AppStrings.t(
-                      AppStringKeys.videoNotePreviewVideoMessage,
-                    ),
-                    onTap:
-                        _recording || _startingRecording || _stoppingRecording
-                        ? null
-                        : () {
-                            _setPanel(_Panel.none);
-                            unawaited(_recordVideoNote());
-                          },
+                (
+                  key: const ValueKey('voicePanelVideoMessage'),
+                  icon: HeroAppIcons.solidFileVideo,
+                  label: AppStrings.t(
+                    AppStringKeys.videoNotePreviewVideoMessage,
                   ),
+                  selected: false,
+                  onTap: recordingBusy
+                      ? null
+                      : () {
+                          _setPanel(_Panel.none);
+                          unawaited(_recordVideoNote());
+                        },
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            label,
+          Positioned(
+            top: 82,
+            height: 44,
+            left: 24,
+            right: 24,
+            child: _mobileVoiceStatusLine(),
+          ),
+          Positioned(
+            // The 112pt halo's box, centred on the record button.
+            top: 128,
+            height: 112,
+            left: 0,
+            right: 0,
+            child: _mobileVoiceRecordControls(),
+          ),
+          Positioned(
+            // The 242–278 helper slot, grown by 4pt each way so the Settings
+            // button keeps a 44pt hit area; its text stays centred on 260.
+            top: 238,
+            height: 44,
+            left: 24,
+            right: 24,
+            child: _mobileVoiceHelperLine(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The error the mobile panel shows, if any. A live recording always keeps
+  /// its timer and waveform.
+  _VoiceInlineError get _visibleVoiceInlineError =>
+      _recording ? _VoiceInlineError.none : _voiceInlineError;
+
+  Widget _mobileVoiceStatusLine() {
+    final c = context.colors;
+    Widget message(String key) => Text(
+      AppStrings.t(key),
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        color: c.textSecondary,
+      ),
+    );
+    Widget error(AppIconData icon, String key) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppIcon(icon, size: 18, color: AppTheme.tagRed),
+        const SizedBox(width: 8),
+        // Red stays on the icon: tagRed text on the light panel is below
+        // 4.5:1 at 14pt.
+        Flexible(
+          child: Text(
+            AppStrings.t(key),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13,
-              color: _recordCancelled ? AppTheme.tagRed : c.textSecondary,
+              fontSize: 14,
+              height: 18 / 14,
+              fontWeight: FontWeight.w500,
+              color: c.textPrimary,
             ),
           ),
-          const SizedBox(height: 10),
-          if (_recording) ...[
-            SizedBox(
-              width: 220,
-              height: 28,
-              child: ValueListenableBuilder<_RecTick>(
-                valueListenable: _recTick,
-                builder: (context, tick, _) => Row(
-                  children: [
-                    for (final level in tick.levels)
-                      Expanded(
-                        child: Align(
-                          child: Container(
-                            width: 2,
-                            height:
-                                (4 + ((level.clamp(-60.0, 0.0) + 60) / 60) * 24)
-                                    .toDouble(),
-                            decoration: BoxDecoration(
-                              color: _recordingPaused
-                                  ? c.textTertiary
-                                  : AppTheme.brand,
-                              borderRadius: BorderRadius.circular(1),
-                            ),
-                          ),
+        ),
+      ],
+    );
+    final content = _recording
+        // The record button reports the elapsed time; a live region reading
+        // every tick of the timer would talk over everything else.
+        ? ExcludeSemantics(child: _mobileVoiceRecordingRow())
+        : switch (_visibleVoiceInlineError) {
+            _VoiceInlineError.failed => error(
+              HeroAppIcons.triangleExclamation,
+              AppStringKeys.composerRecordingFailed,
+            ),
+            _VoiceInlineError.microphoneRequired => error(
+              HeroAppIcons.microphoneSlash,
+              AppStringKeys.composerMicrophonePermissionRequired,
+            ),
+            _VoiceInlineError.microphoneSettings => error(
+              HeroAppIcons.microphoneSlash,
+              AppStringKeys.composerMicrophonePermissionSettings,
+            ),
+            _VoiceInlineError.none => message(
+              _stoppingRecording
+                  ? AppStringKeys.composerRecordingFinishing
+                  : _startingRecording
+                  ? AppStringKeys.composerRecordingPreparing
+                  : AppStringKeys.composerHoldToTalk,
+            ),
+          };
+    // A live region, so VoiceOver reads an error as soon as it appears.
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Center(child: content),
+    );
+  }
+
+  Widget _mobileVoiceRecordingRow() {
+    final c = context.colors;
+    final paused = _recordingPaused;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RecordingDot(
+          color: paused ? c.textTertiary : AppTheme.tagRed,
+          blinking: !paused && !reduceMotion,
+        ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          // Holds the waveform still as the minutes gain a digit.
+          constraints: const BoxConstraints(minWidth: 48),
+          child: ValueListenableBuilder<_RecTick>(
+            valueListenable: _recTick,
+            builder: (context, tick, _) => Text(
+              formatMediaDuration(tick.elapsed.floor()),
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: paused ? c.textSecondary : c.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        SizedBox(
+          width: 132,
+          height: 28,
+          child: ValueListenableBuilder<_RecTick>(
+            valueListenable: _recTick,
+            builder: (context, tick, _) => Row(
+              children: [
+                for (final level in tick.levels)
+                  Expanded(
+                    child: Align(
+                      child: Container(
+                        width: 2,
+                        height: (4 + ((level.clamp(-60.0, 0.0) + 60) / 60) * 24)
+                            .toDouble(),
+                        decoration: BoxDecoration(
+                          color: paused ? c.textTertiary : AppTheme.brand,
+                          borderRadius: BorderRadius.circular(1),
                         ),
                       ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
-          Opacity(
-            opacity: _recording ? 1 : 0.3,
-            child: ValueListenableBuilder<_RecTick>(
-              valueListenable: _recTick,
-              builder: (context, tick, _) => Text(
-                formatMediaDuration(tick.elapsed.floor()),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: c.textPrimary,
-                ),
-              ),
+                    ),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          Listener(
-            key: const ValueKey('mobileVoiceRecordButton'),
-            onPointerDown: (e) {
-              if (_recording || _voiceStop != null || _mobilePointerHeld) {
-                return;
-              }
-              _voicePointerId = e.pointer;
-              _mobilePointerHeld = true;
-              _pressStartX = e.position.dx;
-              _pressStartY = e.position.dy;
-              unawaited(_beginVoiceRecording());
-            },
-            onPointerMove: (e) {
-              if (_voicePointerId != e.pointer || _recordingLocked) return;
-              final cancel = e.position.dx - _pressStartX < -70;
-              final lock = _recording && e.position.dy - _pressStartY < -70;
-              if (lock) {
-                setState(() {
-                  _recordingLocked = true;
-                  _recordCancelled = false;
-                });
-                return;
-              }
-              if (cancel != _recordCancelled) {
-                setState(() => _recordCancelled = cancel);
-              }
-            },
-            onPointerUp: (e) {
-              if (_voicePointerId != e.pointer) return;
-              _voicePointerId = null;
-              _mobilePointerHeld = false;
-              if (!_recordingLocked) unawaited(_stopRec());
-            },
-            onPointerCancel: (e) {
-              if (_voicePointerId == e.pointer) _cancelVoiceRecording();
-            },
-            child: AnimatedScale(
-              scale: _recording ? 1.12 : 1,
-              duration: const Duration(milliseconds: 150),
+        ),
+      ],
+    );
+  }
+
+  Widget _mobileVoiceRecordControls() {
+    final c = context.colors;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final motion = reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 150);
+    final locked = _recording && _recordingLocked;
+    final held = _recording && !_recordingLocked;
+    final cancelZone = held && _recordCancelled;
+    final busy =
+        !_recording &&
+        _visibleVoiceInlineError == _VoiceInlineError.none &&
+        (_startingRecording || _stoppingRecording);
+    final accent = cancelZone ? AppTheme.tagRed : AppTheme.brand;
+    final Widget glyph = busy
+        ? AppActivityIndicator(size: 24, color: c.onAccent)
+        : cancelZone
+        ? AppIcon(HeroAppIcons.trash, size: 30, color: c.onAccent)
+        : locked
+        ? AppIcon(HeroAppIcons.square, size: 26, color: c.onAccent)
+        : AppIcon(HeroAppIcons.microphone, size: 32, color: c.onAccent);
+    final button = Listener(
+      key: const ValueKey('mobileVoiceRecordButton'),
+      onPointerDown: (e) {
+        if (_recording && _recordingLocked) {
+          // Tapping the locked button stops and opens the preview; it never
+          // starts another recording.
+          if (_voiceStop == null && _lockedStopPointerId == null) {
+            _lockedStopPointerId = e.pointer;
+            _lockedStopDownPosition = e.position;
+          }
+          return;
+        }
+        if (_recording || _voiceStop != null || _mobilePointerHeld) {
+          return;
+        }
+        _clearVoiceInlineError();
+        _voicePointerId = e.pointer;
+        _mobilePointerHeld = true;
+        _pressStartX = e.position.dx;
+        _pressStartY = e.position.dy;
+        unawaited(_beginVoiceRecording());
+      },
+      onPointerMove: (e) {
+        if (_lockedStopPointerId == e.pointer) {
+          // A drag is not a tap.
+          if ((e.position - _lockedStopDownPosition).distance > kTouchSlop) {
+            _lockedStopPointerId = null;
+          }
+          return;
+        }
+        if (_voicePointerId != e.pointer || _recordingLocked) return;
+        final cancel = e.position.dx - _pressStartX < -70;
+        final lock = _recording && e.position.dy - _pressStartY < -70;
+        if (lock) {
+          setState(() {
+            _recordingLocked = true;
+            _recordCancelled = false;
+          });
+          return;
+        }
+        if (cancel != _recordCancelled) {
+          setState(() => _recordCancelled = cancel);
+        }
+      },
+      onPointerUp: (e) {
+        if (_lockedStopPointerId == e.pointer) {
+          _lockedStopPointerId = null;
+          if (_recording && _recordingLocked) unawaited(_stopRec());
+          return;
+        }
+        if (_voicePointerId != e.pointer) return;
+        _voicePointerId = null;
+        _mobilePointerHeld = false;
+        if (!_recordingLocked) unawaited(_stopRec());
+      },
+      onPointerCancel: (e) {
+        if (_lockedStopPointerId == e.pointer) {
+          _lockedStopPointerId = null;
+          return;
+        }
+        if (_voicePointerId == e.pointer) _cancelVoiceRecording();
+      },
+      child: AnimatedScale(
+        scale: held ? 1.12 : 1,
+        duration: motion,
+        child: Container(
+          width: 84,
+          height: 84,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+          child: glyph,
+        ),
+      ),
+    );
+    return SizedBox(
+      width: double.infinity,
+      height: 112,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: held ? 1 : 0,
+              duration: motion,
               child: Container(
-                width: 84,
-                height: 84,
-                alignment: Alignment.center,
+                width: 112,
+                height: 112,
                 decoration: BoxDecoration(
-                  color: _recordCancelled ? AppTheme.tagRed : AppTheme.brand,
+                  color: accent.withValues(alpha: dark ? 0.24 : 0.16),
                   shape: BoxShape.circle,
                 ),
-                child: const AppIcon(
-                  HeroAppIcons.microphone,
-                  size: 32,
-                  color: Colors.white,
-                ),
               ),
             ),
           ),
-          if (_recordingLocked) ...[
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _voiceRecordingAction(
-                  icon: HeroAppIcons.trash,
-                  color: AppTheme.tagRed,
-                  onTap: _cancelLockedRecording,
+          ValueListenableBuilder<_RecTick>(
+            valueListenable: _recTick,
+            child: button,
+            builder: (context, tick, child) => Semantics(
+              button: true,
+              label: AppStrings.t(
+                locked
+                    ? AppStringKeys.composerRecordingStop
+                    : AppStringKeys.composerHoldToTalk,
+              ),
+              value: _recording
+                  ? formatMediaDuration(tick.elapsed.floor())
+                  : null,
+              onTap: locked ? () => unawaited(_stopRec()) : null,
+              excludeSemantics: true,
+              child: child,
+            ),
+          ),
+          // Side buttons sit 28pt off the button's edge (centres ±92pt), in
+          // the same stack, so they never shift the record button.
+          if (locked) ...[
+            Transform.translate(
+              offset: const Offset(-92, 0),
+              child: _mobileVoiceSideButton(
+                key: const ValueKey('mobileVoiceDiscard'),
+                icon: HeroAppIcons.trash,
+                color: AppTheme.tagRed,
+                label: AppStrings.t(AppStringKeys.composerRecordingDiscard),
+                onTap: _cancelLockedRecording,
+              ),
+            ),
+            Transform.translate(
+              offset: const Offset(92, 0),
+              child: _mobileVoiceSideButton(
+                key: const ValueKey('mobileVoicePauseResume'),
+                icon: _recordingPaused ? HeroAppIcons.play : HeroAppIcons.pause,
+                color: AppTheme.brand,
+                label: AppStrings.t(
+                  _recordingPaused
+                      ? AppStringKeys.composerRecordingResume
+                      : AppStringKeys.musicPlayerPause,
                 ),
-                const SizedBox(width: 22),
-                _voiceRecordingAction(
-                  icon: _recordingPaused
-                      ? HeroAppIcons.play
-                      : HeroAppIcons.pause,
-                  color: AppTheme.brand,
-                  onTap: () => unawaited(_toggleRecPause()),
-                ),
-                const SizedBox(width: 22),
-                _voiceRecordingAction(
-                  icon: HeroAppIcons.square,
-                  color: AppTheme.brand,
-                  onTap: () => unawaited(_stopRec()),
-                ),
-              ],
+                onTap: () => unawaited(_toggleRecPause()),
+              ),
             ),
           ],
         ],
@@ -9149,72 +9411,20 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Widget _voiceModeButton({
+  Widget _mobileVoiceSideButton({
     required Key key,
-    required bool selected,
-    required AppIconData icon,
-    required String label,
-    required VoidCallback? onTap,
-  }) {
-    final c = context.colors;
-    return GestureDetector(
-      key: key,
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        height: 36,
-        decoration: BoxDecoration(
-          color: selected ? c.card : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppIcon(
-              icon,
-              size: 17,
-              color: selected ? AppTheme.brand : c.textSecondary,
-            ),
-            const SizedBox(width: 7),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? c.textPrimary : c.textSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _voiceRecordingAction({
     required AppIconData icon,
     required Color color,
+    required String label,
     required VoidCallback onTap,
-  }) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
+  }) => AppInteractiveSurface(
+    key: key,
+    semanticLabel: label,
     onTap: onTap,
+    borderRadius: BorderRadius.circular(22),
     child: Container(
-      width: 42,
-      height: 42,
+      width: 44,
+      height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
@@ -9223,6 +9433,62 @@ class _ChatInputBarState extends State<ChatInputBar>
       child: AppIcon(icon, size: 20, color: color),
     ),
   );
+
+  Widget _mobileVoiceHelperLine() {
+    final c = context.colors;
+    if (_visibleVoiceInlineError == _VoiceInlineError.microphoneSettings) {
+      // Settings opens only on this press, never on its own.
+      return Center(
+        child: AppInteractiveSurface(
+          key: const ValueKey('mobileVoiceOpenSettings'),
+          semanticLabel: AppStrings.t(AppStringKeys.storyOpenSettings),
+          onTap: () => unawaited(openAppSettings()),
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                widthFactor: 1,
+                child: Text(
+                  AppStrings.t(AppStringKeys.storyOpenSettings),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.brand,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (!_recording) return const SizedBox.shrink();
+    final cancelZone = !_recordingLocked && _recordCancelled;
+    final key = _recordingLocked
+        ? (_recordingPaused
+              ? AppStringKeys.composerRecordingPaused
+              : AppStringKeys.composerRecordingLocked)
+        : cancelZone
+        ? AppStringKeys.composerReleaseFingerToCancel
+        : AppStringKeys.composerRecordingReleasePreview;
+    return Center(
+      child: Text(
+        AppStrings.t(key),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: cancelZone ? FontWeight.w600 : FontWeight.w400,
+          color: cancelZone ? c.textPrimary : c.textSecondary,
+        ),
+      ),
+    );
+  }
 
   Widget _stickerContent() {
     final store = StickerStore.shared;
@@ -9455,6 +9721,81 @@ class _ChatInputBarState extends State<ChatInputBar>
     StickerStore.shared.loadIfNeeded();
     EmojiStore.shared.loadIfNeeded();
   }
+}
+
+/// The voice panel's live-recording dot: blinks 1 → 0.3 → 1 each second
+/// while [blinking], and holds still otherwise (paused, or reduced motion).
+class _RecordingDot extends StatefulWidget {
+  const _RecordingDot({required this.color, required this.blinking});
+
+  final Color color;
+  final bool blinking;
+
+  @override
+  State<_RecordingDot> createState() => _RecordingDotState();
+}
+
+class _RecordingDotState extends State<_RecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  );
+  late final Animation<double> _opacity = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 0.3,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 1,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.3,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 1,
+    ),
+  ]).animate(_controller);
+
+  @override
+  void initState() {
+    super.initState();
+    _syncBlinking();
+  }
+
+  @override
+  void didUpdateWidget(_RecordingDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.blinking != widget.blinking) _syncBlinking();
+  }
+
+  void _syncBlinking() {
+    if (widget.blinking) {
+      _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: _opacity,
+    child: SizedBox.square(
+      dimension: 8,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+      ),
+    ),
+  );
 }
 
 class _AiReplyThinkingIndicator extends StatefulWidget {

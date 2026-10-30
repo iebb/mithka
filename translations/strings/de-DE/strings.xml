@@ -1362,6 +1362,8 @@
     <string name="composerRecordingPaused">Aufnahme pausiert</string>
     <string name="composerRecordingReleasePreview">Für Vorschau loslassen · zum Sperren nach oben, zum Abbrechen nach links wischen</string>
     <string name="composerRecordingSendFailed">Senden fehlgeschlagen. Aufnahme behalten — erneut senden oder verwerfen.</string>
+    <string name="composerRecordingStop">Aufnahme stoppen</string>
+    <string name="composerRecordingResume">Aufnahme fortsetzen</string>
     <string name="composerDesktopVoiceRelease">Zum Senden loslassen · Esc zum Abbrechen</string>
     <string name="composerImage">Bild</string>
     <string name="composerImagePreview">[Bild]</string>
