@@ -2690,7 +2690,7 @@ class _ChannelMomentsSearchViewState extends State<ChannelMomentsSearchView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
@@ -3870,11 +3870,9 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(
-        top: topChromeInsetOf(context),
-        left: AppSpacing.xxl,
-        right: AppSpacing.xxl,
-      ),
+      padding:
+          headerChromePaddingOf(context) +
+          const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
       height: topChromeInsetOf(context) + AppMetric.composerHeaderHeight,
       color: c.groupedBackground,
       child: Row(

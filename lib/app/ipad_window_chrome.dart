@@ -12,6 +12,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'top_corner_cluster.dart';
+
 /// Extra top inset, in logical pixels, reserved for the iPadOS window
 /// controls shown over the top-left corner of a floating window.
 const double iPadWindowControlsTopInset = 40;
@@ -45,6 +47,12 @@ double iPadWindowChromeInsetOf(BuildContext context) {
 /// screen header needs above its first row of content.
 double topChromeInsetOf(BuildContext context) =>
     MediaQuery.paddingOf(context).top + iPadWindowChromeInsetOf(context);
+
+/// Padding for a screen header: [topChromeInsetOf] above its row, plus the
+/// room [TopClusterInsets] keeps beside the system's corner status cluster.
+EdgeInsets headerChromePaddingOf(BuildContext context) =>
+    EdgeInsets.only(top: topChromeInsetOf(context)) +
+    TopClusterInsets.of(context);
 
 /// Pure variant of [iPadWindowChromeInsetOf].
 ///

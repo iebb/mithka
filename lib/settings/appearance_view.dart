@@ -835,7 +835,7 @@ class InterfaceSizeSettingsView extends StatelessWidget {
               constraints: BoxConstraints(
                 minHeight: theme.navHeaderHeight + topChromeInsetOf(context),
               ),
-              padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+              padding: headerChromePaddingOf(context),
               decoration: BoxDecoration(
                 color: colors.navBar,
                 border: Border(

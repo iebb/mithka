@@ -67,6 +67,7 @@ import 'liquid_glass_bottom_bar.dart' show LiquidGlassBottomBar;
 import 'native_glass_surface.dart';
 import 'native_tab_bar.dart';
 import 'primary_chat_launcher.dart';
+import 'top_corner_cluster.dart';
 import 'unread_badge_model.dart';
 
 @visibleForTesting
@@ -1266,70 +1267,76 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                           SizedBox(
                             key: const ValueKey('tablet-list-pane'),
                             width: compact ? 0 : sidebarWidth,
-                            child: Offstage(
-                              offstage: compact,
-                              child: OverflowBox(
-                                minWidth: sidebarWidth,
-                                maxWidth: sidebarWidth,
-                                child: _sidebarWithTopicList(
-                                  context,
-                                  BottomBarLayout(
-                                    overlay: theme.liquidGlassBottomBar,
-                                    body: _LazyTabStack(
-                                      selection: selection,
-                                      items: tabs,
-                                      builder: (tab) =>
-                                          _tabletSidebarRoot(tab.index),
-                                    ),
-                                    footer: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (!compact)
-                                          const MusicMiniPlayerDock(),
-                                        AnimatedBuilder(
-                                          animation: _unread,
-                                          builder: (context, _) =>
-                                              _MainBottomBar(
-                                                chatListController:
-                                                    _chatListController,
-                                                selection: selection,
-                                                onSelect: _select,
-                                                items: tabs,
-                                                reserveBottomInset: false,
-                                                onClearUnread:
-                                                    _chatListController
-                                                        .markAllRead,
-                                                unread: _unread.countFor(
-                                                  theme.unreadBadgeMode,
+                            child: TopClusterPane(
+                              enabled: !compact,
+                              child: Offstage(
+                                offstage: compact,
+                                child: OverflowBox(
+                                  minWidth: sidebarWidth,
+                                  maxWidth: sidebarWidth,
+                                  child: _sidebarWithTopicList(
+                                    context,
+                                    BottomBarLayout(
+                                      overlay: theme.liquidGlassBottomBar,
+                                      body: _LazyTabStack(
+                                        selection: selection,
+                                        items: tabs,
+                                        builder: (tab) =>
+                                            _tabletSidebarRoot(tab.index),
+                                      ),
+                                      footer: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (!compact)
+                                            const MusicMiniPlayerDock(),
+                                          AnimatedBuilder(
+                                            animation: _unread,
+                                            builder: (context, _) =>
+                                                _MainBottomBar(
+                                                  chatListController:
+                                                      _chatListController,
+                                                  selection: selection,
+                                                  onSelect: _select,
+                                                  items: tabs,
+                                                  reserveBottomInset: false,
+                                                  onClearUnread:
+                                                      _chatListController
+                                                          .markAllRead,
+                                                  unread: _unread.countFor(
+                                                    theme.unreadBadgeMode,
+                                                  ),
                                                 ),
-                                              ),
-                                        ),
-                                      ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                    overlayVisible: !compact,
                                   ),
-                                  overlayVisible: !compact,
                                 ),
                               ),
                             ),
                           ),
                           Expanded(
-                            child: _musicAwareContent(
-                              TopicListPlacementScope(
-                                placement: compact || activeTabIndex != 0
-                                    ? TopicListPlacement.inline
-                                    : TopicListPlacement.sidebar,
-                                child: _animatedTabletDetailPane(
-                                  activeTabIndex,
-                                  showMessageBackButton: compact,
-                                  onMessageInfoPressed: canToggleInfoPane
-                                      ? _toggleContextPane
-                                      : null,
-                                  messageTrailingPane: contextPane,
-                                  messageTrailingPaneWidth:
-                                      desktopInfoPaneWidth,
+                            child: TopClusterPane(
+                              enabled: !compact,
+                              child: _musicAwareContent(
+                                TopicListPlacementScope(
+                                  placement: compact || activeTabIndex != 0
+                                      ? TopicListPlacement.inline
+                                      : TopicListPlacement.sidebar,
+                                  child: _animatedTabletDetailPane(
+                                    activeTabIndex,
+                                    showMessageBackButton: compact,
+                                    onMessageInfoPressed: canToggleInfoPane
+                                        ? _toggleContextPane
+                                        : null,
+                                    messageTrailingPane: contextPane,
+                                    messageTrailingPaneWidth:
+                                        desktopInfoPaneWidth,
+                                  ),
                                 ),
+                                reserveForShellPlayer: compact,
                               ),
-                              reserveForShellPlayer: compact,
                             ),
                           ),
                         ],

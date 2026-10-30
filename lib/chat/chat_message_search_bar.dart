@@ -70,7 +70,7 @@ class ChatSearchHeaderBar extends StatelessWidget {
     final c = context.colors;
     return Container(
       key: const ValueKey('chatSearchHeader'),
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: backgroundColor ?? c.navBar,
         border: showDivider

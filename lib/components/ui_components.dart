@@ -335,7 +335,7 @@ class NavHeader extends StatelessWidget {
         constraints: BoxConstraints(
           minHeight: headerHeight + topChromeInsetOf(context),
         ),
-        padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+        padding: headerChromePaddingOf(context),
         decoration: BoxDecoration(
           color: c.navBar,
           border: Border(

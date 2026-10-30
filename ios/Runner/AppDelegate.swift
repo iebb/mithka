@@ -104,6 +104,45 @@ enum VideoNoteExportError: Error, Sendable {
       .first { $0.isKeyWindow }
   }
 
+  /// Where the system keeps its status items along the top edge, in window
+  /// points. On iPhone Duo the clock and status icons sit in a cluster in one
+  /// corner while the safe area still reserves the whole top edge; Dart uses
+  /// this to keep side-by-side panes level and their controls clear of the
+  /// cluster. Regions are read live because they move when the device turns.
+  private static func topOcclusionGeometry() -> [String: Any]? {
+    guard let window = keyWindow(),
+          window.bounds.width.isFinite, window.bounds.width > 0 else { return nil }
+    let safeTop = window.safeAreaInsets.top
+    var statusBarBottom: CGFloat = 0
+    if let scene = window.windowScene, let manager = scene.statusBarManager,
+       !manager.isStatusBarHidden {
+      let frame = window.convert(manager.statusBarFrame, from: scene.coordinateSpace)
+      if frame.maxY.isFinite { statusBarBottom = max(0, frame.maxY) }
+    }
+    var regions: [[Double]] = []
+    #if MITHKA_HAS_RESERVED_REGIONS
+    if #available(iOS 27.1, *) {
+      for region in window.reservedRegions(kind: .occlusion) where region.isActive {
+        let frame = region.frame
+        guard frame.minX.isFinite, frame.minY.isFinite,
+              frame.width.isFinite, frame.height.isFinite,
+              frame.width > 0, frame.height > 0,
+              frame.minY < safeTop else { continue }
+        regions.append([
+          Double(frame.minX), Double(frame.minY),
+          Double(frame.width), Double(frame.height),
+        ])
+      }
+    }
+    #endif
+    return [
+      "safeTop": Double(safeTop),
+      "statusBarBottom": Double(statusBarBottom),
+      "width": Double(window.bounds.width),
+      "regions": regions,
+    ]
+  }
+
   private func configureNativeSentryIfNeeded() {
     guard !SentrySDK.isEnabled else { return }
     let info = Bundle.main.infoDictionary ?? [:]
@@ -314,6 +353,10 @@ enum VideoNoteExportError: Error, Sendable {
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     windowGeometryChannel.setMethodCallHandler { call, result in
+      if call.method == "topOcclusionGeometry" {
+        result(Self.topOcclusionGeometry())
+        return
+      }
       guard call.method == "sideNavigationGeometry", let window = Self.keyWindow() else {
         result(nil)
         return

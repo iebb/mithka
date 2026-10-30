@@ -380,7 +380,7 @@ class _ContactsViewState extends State<ContactsView> {
     return Container(
       key: const ValueKey('contacts-root-header'),
       color: c.listHeaderTint,
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
