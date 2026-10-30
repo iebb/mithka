@@ -6990,11 +6990,11 @@ class _ChatInputBarState extends State<ChatInputBar>
             _panel == _Panel.emoji || _panel == _Panel.sticker,
             _toggleMediaPanel,
           ),
-          _icon(
-            HeroAppIcons.font,
+          _iconStripButton(
             AppStrings.t(AppStringKeys.composerFormat),
             _panel == _Panel.format,
             _toggleFormatPanel,
+            _formatButtonGlyph,
           ),
           _icon(
             _panel != _Panel.none
@@ -7019,6 +7019,20 @@ class _ChatInputBarState extends State<ChatInputBar>
     bool active,
     VoidCallback onTap,
   ) {
+    return _iconStripButton(
+      semanticLabel,
+      active,
+      onTap,
+      (color) => AppIcon(icon, size: 24, color: color),
+    );
+  }
+
+  Widget _iconStripButton(
+    String semanticLabel,
+    bool active,
+    VoidCallback onTap,
+    Widget Function(Color color) glyph,
+  ) {
     return Expanded(
       child: AppInteractiveSurface(
         semanticLabel: semanticLabel,
@@ -7028,13 +7042,30 @@ class _ChatInputBarState extends State<ChatInputBar>
         child: SizedBox(
           height: 44,
           child: Center(
-            child: AppIcon(
-              icon,
-              size: 24,
-              color: active ? AppTheme.brand : context.colors.textSecondary,
+            child: glyph(
+              active ? AppTheme.brand : context.colors.textSecondary,
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The format button's bold "A", in the platform UI face rather than the
+  /// chat font, at a fixed size like the icon glyphs beside it. The metrics
+  /// mirror Icon's: a 1.0 line split evenly keeps the cap height centred.
+  Widget _formatButtonGlyph(Color color) {
+    return Text(
+      'A',
+      textScaler: TextScaler.noScaling,
+      style: TextStyle(
+        inherit: false,
+        color: color,
+        fontFamily: AppFontChoice.system.fontFamily,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        height: 1,
+        leadingDistribution: TextLeadingDistribution.even,
       ),
     );
   }
@@ -8142,11 +8173,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     required bool selected,
   }) {
     final c = context.colors;
+    // Every ink is a theme token, so custom themes recolour the panel too.
+    // Disabled cells stay readable at full textSecondary, still clearly
+    // lighter than the textPrimary glyph of an enabled cell.
     final foreground = !enabled
-        ? c.textTertiary.withValues(alpha: 0.48)
+        ? c.textSecondary
         : selected
         ? AppTheme.brand
-        : c.textSecondary;
+        : c.textPrimary;
     return Semantics(
       button: true,
       enabled: enabled,
@@ -8172,7 +8206,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 border: Border.all(
                   color: selected
                       ? AppTheme.brand.withValues(alpha: 0.54)
-                      : c.divider,
+                      : c.textTertiary,
                 ),
               ),
               child: _formatActionGlyph(action, foreground),
@@ -8185,9 +8219,7 @@ class _ChatInputBarState extends State<ChatInputBar>
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
-                color: enabled
-                    ? c.textSecondary
-                    : c.textTertiary.withValues(alpha: 0.48),
+                color: c.textSecondary,
                 decoration: TextDecoration.none,
               ),
             ),
