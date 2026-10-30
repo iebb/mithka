@@ -20,6 +20,7 @@ class MacosDesktopTitleBar extends StatelessWidget {
     this.trailingControls,
     this.onDragAreaDoubleTap,
     this.backgroundColor,
+    this.showDivider = true,
   });
 
   static const double height = 40;
@@ -40,6 +41,10 @@ class MacosDesktopTitleBar extends StatelessWidget {
   final VoidCallback? onDragAreaDoubleTap;
   final Color? backgroundColor;
 
+  /// Whether the hairline under the bar is drawn. Off when the bar sits on a
+  /// canvas of its own colour and should read as part of it.
+  final bool showDivider;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -54,9 +59,14 @@ class MacosDesktopTitleBar extends StatelessWidget {
         key: const ValueKey('macos-desktop-title-bar-decoration'),
         decoration: BoxDecoration(
           color: backgroundColor ?? colors.navBar,
-          border: Border(
-            bottom: BorderSide(color: colors.divider, width: dividerWidth),
-          ),
+          border: showDivider
+              ? Border(
+                  bottom: BorderSide(
+                    color: colors.divider,
+                    width: dividerWidth,
+                  ),
+                )
+              : null,
         ),
         child: Row(
           children: [

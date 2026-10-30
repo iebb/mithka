@@ -44,6 +44,8 @@ class ProfileProxyButton extends StatefulWidget {
     required this.onTap,
     this.onLongPress,
     this.onSecondaryTap,
+    this.icon = HeroAppIcons.globe,
+    this.extent = 48,
   });
 
   /// Opens the 代理 page. The owner keeps the navigation, like the sibling
@@ -56,6 +58,12 @@ class ProfileProxyButton extends StatefulWidget {
   /// is free.
   final VoidCallback? onLongPress;
   final VoidCallback? onSecondaryTap;
+
+  /// Login uses a network glyph so its globe can identify language settings.
+  final AppIconData icon;
+
+  /// Compact login keeps a 44 pt target; profile bars retain their 48 pt target.
+  final double extent;
 
   @override
   State<ProfileProxyButton> createState() => _ProfileProxyButtonState();
@@ -93,8 +101,8 @@ class _ProfileProxyButtonState extends State<ProfileProxyButton> {
             message: label,
             child: SizedBox(
               key: const ValueKey('profile-proxy-button'),
-              width: 48,
-              height: 48,
+              width: widget.extent,
+              height: widget.extent,
               child: Center(child: _glyph(context, snapshot)),
             ),
           ),
@@ -110,7 +118,7 @@ class _ProfileProxyButtonState extends State<ProfileProxyButton> {
       clipBehavior: Clip.none,
       children: [
         AppIcon(
-          HeroAppIcons.globe,
+          widget.icon,
           key: const ValueKey('profile-proxy-icon'),
           size: 24,
           color: snapshot.isEnabled ? AppTheme.brand : c.textPrimary,

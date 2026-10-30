@@ -2096,6 +2096,8 @@
     <string name="loginGetVerificationCode">取得驗證碼</string>
     <string name="loginHidePassword">隱藏密碼</string>
     <string name="loginLastNameOptional">姓氏（選填）</string>
+    <string name="loginMethodPhoneNumber">電話號碼</string>
+    <string name="loginMethodQrCode">QR Code</string>
     <string name="loginNewAccountNicknamePrompt">這是新帳號，請填寫暱稱</string>
     <string name="loginPasswordHint">密碼提示：{value1}</string>
     <string name="loginPhoneNumberWithCountryCode">手機號碼（含國家區號）</string>

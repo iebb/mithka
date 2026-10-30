@@ -2096,6 +2096,8 @@
     <string name="loginGetVerificationCode">获取验证码</string>
     <string name="loginHidePassword">隐藏密码</string>
     <string name="loginLastNameOptional">姓氏（可选）</string>
+    <string name="loginMethodPhoneNumber">手机号</string>
+    <string name="loginMethodQrCode">二维码</string>
     <string name="loginNewAccountNicknamePrompt">这是一个新账号，请填写昵称</string>
     <string name="loginPasswordHint">密码提示：{value1}</string>
     <string name="loginPhoneNumberWithCountryCode">手机号（含国家区号）</string>

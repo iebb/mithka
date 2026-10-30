@@ -2139,6 +2139,8 @@ abstract final class AppStringKeys {
   static const loginFirstName = 'loginFirstName';
   static const loginGetVerificationCode = 'loginGetVerificationCode';
   static const loginLastNameOptional = 'loginLastNameOptional';
+  static const loginMethodPhoneNumber = 'loginMethodPhoneNumber';
+  static const loginMethodQrCode = 'loginMethodQrCode';
   static const loginNewAccountNicknamePrompt = 'loginNewAccountNicknamePrompt';
   static const loginPasswordHint = 'loginPasswordHint';
   static const loginPhoneNumberWithCountryCode =

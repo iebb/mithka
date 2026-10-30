@@ -2103,6 +2103,8 @@
     <string name="loginGetVerificationCode">Code anfordern</string>
     <string name="loginHidePassword">Passwort verbergen</string>
     <string name="loginLastNameOptional">Nachname (optional)</string>
+    <string name="loginMethodPhoneNumber">Telefonnummer</string>
+    <string name="loginMethodQrCode">QR-Code</string>
     <string name="loginNewAccountNicknamePrompt">Dies ist ein neues Konto. Bitte gib einen Anzeigenamen ein</string>
     <string name="loginPasswordHint">Passworthinweis: {value1}</string>
     <string name="loginPhoneNumberWithCountryCode">Telefonnummer (mit Ländervorwahl)</string>

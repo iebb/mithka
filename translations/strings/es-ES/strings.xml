@@ -2103,6 +2103,8 @@
     <string name="loginGetVerificationCode">Obtener código</string>
     <string name="loginHidePassword">Ocultar contraseña</string>
     <string name="loginLastNameOptional">Apellidos (opcional)</string>
+    <string name="loginMethodPhoneNumber">Número de teléfono</string>
+    <string name="loginMethodQrCode">Código QR</string>
     <string name="loginNewAccountNicknamePrompt">Esta es una cuenta nueva. Introduce un alias</string>
     <string name="loginPasswordHint">Pista de contraseña: {value1}</string>
     <string name="loginPhoneNumberWithCountryCode">Número de teléfono (con prefijo internacional)</string>
