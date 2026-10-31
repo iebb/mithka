@@ -1602,7 +1602,7 @@ class _SearchViewState extends State<SearchView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: c.listHeaderTint,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),

@@ -2512,7 +2512,7 @@ class _ChatListViewState extends State<ChatListView>
     final activeFilter = _model.selectedFilter;
     return Container(
       color: c.listHeaderTint,
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.xxl,

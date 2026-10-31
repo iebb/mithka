@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +10,9 @@ import '../pro/mithka_pro_service.dart';
 /// Motif/background are identity metadata, never instructions to paint a tile.
 enum AppIconFreeMotif { penguin, pixelPenguin, letterM }
 
-/// Native backing metadata only. Picker foregrounds remain background-free.
+/// Native backing metadata only. Standard picker tiles show the opaque
+/// [AppIconVariant.standardPickerAsset]; nothing paints a colour from this
+/// value.
 enum AppIconFreeBackground { neutral, telegramBlue, pinkPurple }
 
 enum AppIconVariant {
@@ -628,6 +632,9 @@ enum AppIconVariant {
   };
   String? get pickerLabelKey =>
       freeMotif == null ? labelKey : backgroundLabelKey;
+
+  /// One of the nine standard choices, previewed with its real background.
+  bool get isStandard => freeMotif != null;
   bool get hasDeferredPickerCopy => pickerLabelKey == null;
 
   final List<Color> colors;
@@ -636,6 +643,17 @@ enum AppIconVariant {
 
   String previewAsset(Brightness brightness) =>
       brightness == Brightness.dark ? darkAsset ?? asset : asset;
+
+  /// Opaque 256px picker preview of [previewAsset] (with its real background):
+  /// `standard-<launcher file>.webp` in `assets/app_icons/picker/`. Only the
+  /// nine standard icons ([isStandard]) have one.
+  String standardPickerAsset(Brightness brightness) {
+    assert(isStandard, '$key has no standard picker preview');
+    final name = previewAsset(
+      brightness,
+    ).split('/').last.replaceAll('.png', '');
+    return 'assets/app_icons/picker/standard-$name.webp';
+  }
 
   /// Complete compatibility catalogue; first 20 positions remain unchanged.
   static const knownValues = values;
@@ -658,6 +676,80 @@ enum AppIconVariant {
   static List<AppIconVariant> get supporterVariants => values
       .where((variant) => variant.requiresSupporter)
       .toList(growable: false);
+
+  /// The 48 penguins in their fixed catalogue order, picker assets
+  /// 01-pilot … 48-stargazing; index 0 is the first. Never sort or reorder
+  /// it, least of all by translated name: it defines each day's free penguin.
+  /// ios/Runner/AppDelegate.swift (`dailyPenguinOrder`) and
+  /// android/.../MainActivity.kt (`paidIcons`) hold identical native lists
+  /// for their guards; change all three together.
+  static const dailyPenguinOrder = <AppIconVariant>[
+    pilot,
+    headphones,
+    winter,
+    astronaut,
+    crown,
+    party,
+    sleepy,
+    heart,
+    coffee,
+    detective,
+    gamer,
+    fishing,
+    skateboard,
+    surfboard,
+    basketball,
+    football,
+    tennis,
+    skiing,
+    painter,
+    guitar,
+    drummer,
+    photographer,
+    magician,
+    chef,
+    reader,
+    scientist,
+    gardener,
+    mailCarrier,
+    pirate,
+    dragon,
+    bubblegum,
+    raincoat,
+    noodles,
+    iceCream,
+    sunflower,
+    ninja,
+    highFive,
+    hug,
+    seesaw,
+    dance,
+    pillowFight,
+    snowball,
+    parade,
+    choir,
+    stack,
+    picnic,
+    paperPlanes,
+    stargazing,
+  ];
+
+  /// Whole UTC days since the Unix epoch: floor(unixSeconds / 86400).
+  static int _utcDay(DateTime time) =>
+      (time.millisecondsSinceEpoch / Duration.millisecondsPerDay).floor();
+
+  /// The penguin free to choose on the UTC day containing [time]:
+  /// [dailyPenguinOrder] at floor(unixSeconds / 86400) mod 48.
+  static AppIconVariant dailyPenguinAt(DateTime time) =>
+      dailyPenguinOrder[_utcDay(time) % dailyPenguinOrder.length];
+
+  /// The next 00:00 UTC strictly after [time], when the free penguin changes.
+  /// Nothing changes the applied icon then.
+  static DateTime nextDailyPenguinChange(DateTime time) =>
+      DateTime.fromMillisecondsSinceEpoch(
+        (_utcDay(time) + 1) * Duration.millisecondsPerDay,
+        isUtc: true,
+      );
 
   static List<AppIconVariant> forPlatform(TargetPlatform platform) => [
     ...visibleFree,
@@ -707,8 +799,10 @@ class AppIconController extends ChangeNotifier {
     this._prefs, {
     MithkaProService? proService,
     TargetPlatform? platform,
+    DateTime Function()? now,
   }) : _pro = proService ?? MithkaProService.shared,
-       _platform = platform ?? defaultTargetPlatform {
+       _platform = platform ?? defaultTargetPlatform,
+       _now = now ?? DateTime.now {
     _pro.addListener(_entitlementChanged);
   }
 
@@ -718,6 +812,7 @@ class AppIconController extends ChangeNotifier {
   final SharedPreferences _prefs;
   final MithkaProService _pro;
   final TargetPlatform _platform;
+  final DateTime Function() _now;
   bool _disposed = false;
 
   bool get supporterAvailable => supporterIconsAvailableForPlatform(_platform);
@@ -726,10 +821,75 @@ class AppIconController extends ChangeNotifier {
   List<AppIconVariant> get availableVariants =>
       AppIconVariant.forPlatform(_platform);
   bool isLocked(AppIconVariant icon) =>
-      icon.requiresSupporter && !isCurrent(icon) && !activeSupporter;
+      icon.requiresSupporter &&
+      !isCurrent(icon) &&
+      !activeSupporter &&
+      !_isTodaysPenguin(icon);
+
+  /// Today's free penguin, read from the clock on every call. Null where the
+  /// 48 are not offered and for an active Supporter, who may choose any.
+  AppIconVariant? get dailyPenguin => supporterAvailable && !activeSupporter
+      ? AppIconVariant.dailyPenguinAt(_now())
+      : null;
+
+  /// The next 00:00 UTC, when [dailyPenguin] moves on. The applied icon stays.
+  DateTime get nextDailyPenguinChange =>
+      AppIconVariant.nextDailyPenguinChange(_now());
+
+  // Independent of Supporter state: today's penguin never needs a store query.
+  bool _isTodaysPenguin(AppIconVariant icon) =>
+      supporterAvailable && icon == AppIconVariant.dailyPenguinAt(_now());
 
   void _entitlementChanged() {
     if (!_disposed) notifyListeners();
+  }
+
+  // Day rollover. The free penguin is computed from the clock whenever it is
+  // read; this only tells listeners when it moves, while anyone is listening.
+  Timer? _dayTimer;
+  AppIconVariant? _knownDailyPenguin;
+
+  @override
+  void addListener(VoidCallback listener) {
+    super.addListener(listener);
+    _syncDailyPenguin();
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    if (!hasListeners) {
+      _dayTimer?.cancel();
+      _dayTimer = null;
+    }
+  }
+
+  /// Rechecks the UTC day, e.g. on app resume, when a suspended timer may be
+  /// late. Notifies only when today's penguin has changed.
+  void refreshDailyPenguin() {
+    if (_syncDailyPenguin()) notifyListeners();
+  }
+
+  // Re-arms the boundary timer; true when the free penguin changed.
+  bool _syncDailyPenguin() {
+    if (_disposed || !supporterAvailable) return false;
+    final now = _now();
+    final today = AppIconVariant.dailyPenguinAt(now);
+    final changed = _knownDailyPenguin != null && _knownDailyPenguin != today;
+    _knownDailyPenguin = today;
+    _dayTimer?.cancel();
+    _dayTimer = null;
+    if (hasListeners) {
+      final delay = AppIconVariant.nextDailyPenguinChange(now).difference(now);
+      _dayTimer = Timer(
+        delay < const Duration(seconds: 1) ? const Duration(seconds: 1) : delay,
+        () {
+          _dayTimer = null;
+          refreshDailyPenguin();
+        },
+      );
+    }
+    return changed;
   }
 
   AppIconVariant _variant = AppIconVariant.defaultIcon;
@@ -798,7 +958,10 @@ class AppIconController extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
-      if (next.requiresSupporter) {
+      // Today's penguin needs no store query. The day is rechecked at apply
+      // time: after a rollover the tapped penguin takes the Supporter path,
+      // and the native guard recomputes the day itself in any case.
+      if (next.requiresSupporter && !_isTodaysPenguin(next)) {
         final verified = await _pro.refreshEntitlement();
         if (!verified || !_pro.isPro) return false;
       }
@@ -813,13 +976,19 @@ class AppIconController extends ChangeNotifier {
       return false;
     } finally {
       _loading = false;
-      if (!_disposed) notifyListeners();
+      if (!_disposed) {
+        // A daily choice native rejected at a rollover shows the new day.
+        _syncDailyPenguin();
+        notifyListeners();
+      }
     }
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _dayTimer?.cancel();
+    _dayTimer = null;
     _pro.removeListener(_entitlementChanged);
     super.dispose();
   }

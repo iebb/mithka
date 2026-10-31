@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../app/adaptive_split_layout.dart';
 import '../app/app_version.dart';
 import '../app/ipad_window_chrome.dart';
+import '../app/top_corner_cluster.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../chat/chat_sticker_packs_view.dart';
@@ -223,54 +224,66 @@ class _SettingsViewState extends State<SettingsView> {
     return Scaffold(
       key: const ValueKey('settings-split-layout'),
       backgroundColor: c.groupedBackground,
+      // Each column clears the top edge on its own: on an opened iPhone Duo
+      // the status items sit in one corner, so both columns start at the
+      // same band as the main screen instead of under the full status height.
       body: SafeArea(
+        top: false,
         bottom: false,
         child: Row(
           children: [
             SizedBox(
               key: const ValueKey('settings-category-sidebar'),
               width: sidebarWidth,
-              child: ColoredBox(
-                color: sidebarColor,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _splitSidebarHeader(context),
-                    _searchField(context, compact: true),
-                    Expanded(
-                      child: ListView(
-                        key: const PageStorageKey<String>(
-                          'settings-category-list',
+              child: _splitColumn(
+                topColor: sidebarColor,
+                child: ColoredBox(
+                  color: sidebarColor,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Built below the column's pane, so it reads where
+                      // the column starts and where the cluster is.
+                      Builder(builder: _splitSidebarHeader),
+                      _searchField(context, compact: true),
+                      Expanded(
+                        child: ListView(
+                          key: const PageStorageKey<String>(
+                            'settings-category-list',
+                          ),
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.md,
+                            AppSpacing.sm,
+                            AppSpacing.md,
+                            AppSpacing.xl,
+                          ),
+                          children: query.isEmpty
+                              ? _sidebarTree(context, categories, selected)
+                              : _sidebarMatches(context, matches),
                         ),
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.md,
-                          AppSpacing.sm,
-                          AppSpacing.md,
-                          AppSpacing.xl,
-                        ),
-                        children: query.isEmpty
-                            ? _sidebarTree(context, categories, selected)
-                            : _sidebarMatches(context, matches),
                       ),
-                    ),
-                    // Signing out belongs to the account, not to any one
-                    // section, so it sits under the tree rather than inside a
-                    // category's screen.
-                    if (widget.allowSessionLifecycleActions)
-                      _sidebarLogOut(context),
-                  ],
+                      // Signing out belongs to the account, not to any one
+                      // section, so it sits under the tree rather than inside a
+                      // category's screen.
+                      if (widget.allowSessionLifecycleActions)
+                        _sidebarLogOut(context),
+                    ],
+                  ),
                 ),
               ),
             ),
             Container(width: AppMetric.divider, color: c.divider),
             Expanded(
-              child: ColoredBox(
-                color: c.groupedBackground,
-                child: _splitDetailNavigator(
-                  context,
-                  selected: selected,
-                  query: query,
-                  matches: matches,
+              child: _splitColumn(
+                topColor: c.navBar,
+                child: ColoredBox(
+                  color: c.groupedBackground,
+                  child: _splitDetailNavigator(
+                    context,
+                    selected: selected,
+                    query: query,
+                    matches: matches,
+                  ),
                 ),
               ),
             ),
@@ -280,19 +293,60 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+  /// One settings column: keeps the window's top inset, or the shared band
+  /// beside a corner status cluster, and tells its header where that is.
+  /// In that band the column's own top colour runs to the screen edge, as on
+  /// the main screen, instead of leaving a separate strip.
+  Widget _splitColumn({required Color topColor, required Widget child}) =>
+      TopClusterPane(
+        child: Builder(
+          builder: (context) => ColoredBox(
+            color: TopClusterInsets.bandActiveOf(context)
+                ? topColor
+                : Colors.transparent,
+            child: SafeArea(
+              left: false,
+              right: false,
+              bottom: false,
+              child: child,
+            ),
+          ),
+        ),
+      );
+
   Widget _splitSidebarHeader(BuildContext context) {
     final c = context.colors;
     final desktopDense = !kIsWeb && isDesktopTargetPlatform();
+    // Beside a corner status cluster the column starts on the main screen's
+    // band, so the title shares the detail header's row and centre line.
+    final band = !desktopDense && TopClusterInsets.bandActiveOf(context);
     // The enclosing SafeArea only clears the system inset; iPadOS floating
     // windows additionally need clearance for the traffic-light controls.
     return Container(
-      constraints: BoxConstraints(minHeight: desktopDense ? 48 : 58),
-      padding: EdgeInsets.fromLTRB(
-        desktopDense ? 14 : AppSpacing.lg,
-        (desktopDense ? 8 : AppSpacing.md) + iPadWindowChromeInsetOf(context),
-        desktopDense ? 14 : AppSpacing.lg,
-        desktopDense ? 4 : AppSpacing.xs,
+      constraints: BoxConstraints(
+        minHeight: band
+            ? AppMetric.navHeaderHeight
+            : desktopDense
+            ? 48
+            : 58,
       ),
+      padding:
+          EdgeInsets.fromLTRB(
+            desktopDense ? 14 : AppSpacing.lg,
+            (band
+                    ? 0
+                    : desktopDense
+                    ? 8
+                    : AppSpacing.md) +
+                iPadWindowChromeInsetOf(context),
+            desktopDense ? 14 : AppSpacing.lg,
+            band
+                ? 0
+                : desktopDense
+                ? 4
+                : AppSpacing.xs,
+          ) +
+          TopClusterInsets.of(context),
       alignment: Alignment.centerLeft,
       child: Row(
         children: [

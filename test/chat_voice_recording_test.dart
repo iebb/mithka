@@ -401,13 +401,13 @@ void main() {
         reason: 'Do not discard an intentionally locked recording',
       );
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.tap(find.byIcon(HeroAppIcons.pause.data));
+      await tester.tap(find.byIcon(HeroAppIcons.solidPause.data));
       await tester.pump();
       expect(recorder.pauses, 1);
       expect(find.text('Recording paused'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
       expect(find.text('0:01'), findsOneWidget);
-      await tester.tap(find.byIcon(HeroAppIcons.play.data));
+      await tester.tap(find.byIcon(HeroAppIcons.solidPlay.data));
       await tester.pump(const Duration(seconds: 1));
       expect(recorder.resumes, 1);
       expect(find.text('0:02'), findsOneWidget);

@@ -233,7 +233,7 @@ class _AudioSearchViewState extends State<AudioSearchView> {
   Widget _header() {
     final c = context.colors;
     return Container(
-      padding: EdgeInsets.only(top: topChromeInsetOf(context)),
+      padding: headerChromePaddingOf(context),
       decoration: BoxDecoration(
         color: c.navBar,
         border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
