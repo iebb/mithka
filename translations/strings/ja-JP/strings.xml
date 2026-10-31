@@ -1357,6 +1357,10 @@
     <string name="composerRecordingSendFailed">送信に失敗しました。録音は保持されています。再試行または破棄してください。</string>
     <string name="composerRecordingStop">録音を停止</string>
     <string name="composerRecordingResume">録音を再開</string>
+    <string name="composerRecordingTrimStart">トリミング開始位置</string>
+    <string name="composerRecordingTrimEnd">トリミング終了位置</string>
+    <string name="composerVoiceCaptionPlaceholder">キャプションを追加…</string>
+    <string name="composerAttachmentWaiting">先に上の添付ファイルを送信するか削除してください。</string>
     <string name="composerDesktopVoiceRelease">離して送信 · Esc でキャンセル</string>
     <string name="composerImage">画像</string>
     <string name="composerImagePreview">[画像]</string>
@@ -3825,8 +3829,7 @@
     <string name="videoPlayerWaitingForFile">動画ファイルを待機中</string>
     <string name="videoTrimFailed">トリミングした動画を作成できませんでした。</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">送信する前に録音を確認してください。送信オプションには、サイレント配信、スケジュール、エフェクト、ビューワンスが含まれます。</string>
-    <string name="voiceNotePreviewVoiceMessage">音声</string>
+    <string name="voiceNotePreviewVoiceMessage">音声メッセージ</string>
     <string name="mediaSpoilerReveal">ネタバレ。タップして表示</string>
     <string name="downloadsTasks">ダウンロードタスク</string>
     <string name="downloadsCacheHint">チャットとアーカイブ内のキャッシュです。古い項目を探すにはさらに読み込んでください。</string>

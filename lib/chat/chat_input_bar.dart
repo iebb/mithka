@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:geolocator/geolocator.dart';
@@ -100,7 +101,8 @@ import 'telegram_ai_service.dart';
 import 'telegram_mini_app_view.dart';
 import 'video_note_preview_view.dart';
 import 'video_note_recorder_view.dart';
-import 'voice_note_preview_view.dart';
+import 'voice_draft_card.dart';
+import 'voice_note_trimmer.dart';
 import 'voice_recording_clock.dart';
 
 enum _Panel { none, function, emoji, sticker, voice, format }
@@ -661,11 +663,15 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _mobilePointerHeld = false;
   int? _voicePointerId;
   // A press on the big button while a locked recording runs: its release
-  // stops the recording and opens the preview.
+  // stops the recording and leaves it as a draft above the field.
   int? _lockedStopPointerId;
   Offset _lockedStopDownPosition = Offset.zero;
   _VoiceInlineError _voiceInlineError = _VoiceInlineError.none;
-  VoiceNotePreviewResult? _desktopVoiceDraft;
+  VoiceNoteDraft? _desktopVoiceDraft;
+
+  /// The phone's finished recording, waiting above the field to be sent with
+  /// the field's text as its caption, or deleted.
+  ComposerVoiceDraft? _voiceDraft;
   StreamSubscription<desktop_record.Amplitude>? _desktopRecProgress;
   final _desktopVoiceFocus = FocusNode(debugLabel: 'desktopVoiceMessage');
   bool _desktopSpaceHeld = false;
@@ -1484,6 +1490,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       _syncedComposerFocusTick = widget.vm.composerFocusTick;
       _cancelVoiceRecording();
       _discardDesktopVoiceDraft();
+      _discardVoiceDraft(rebuild: false);
       if (_panel == _Panel.voice) _panel = _Panel.none;
       _hideDesktopPopovers(rebuild: false);
       _invalidateAiReplyGeneration(discardGeneratedDraft: true);
@@ -1539,6 +1546,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _desktopSendOptionsMenu?.dismiss();
     _desktopSendOptionsMenu = null;
     _discardPendingClipboardAttachments();
+    _discardVoiceDraft(rebuild: false);
     _aiReplyGeneration++;
     if (_activeAiReplyProvider case final HostedAiReplyProvider hosted) {
       hosted.close();
@@ -2052,7 +2060,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (_voiceDisposed ||
         _voiceStop != null ||
         _recording ||
-        _desktopVoiceDraft != null) {
+        _desktopVoiceDraft != null ||
+        (_showsMobileVoicePanel && _composerAttachmentWaiting)) {
       return Future<void>.value();
     }
     final pending = _voiceStart;
@@ -2181,7 +2190,11 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
       _recTick.value = (
         elapsed: _elapsed,
-        levels: _recLevels.reversed.take(36).toList().reversed.toList(),
+        levels: _recLevels.reversed
+            .take(_mobileMeterBars)
+            .toList()
+            .reversed
+            .toList(),
       );
     });
     _recTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
@@ -2327,7 +2340,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (!mounted || _voiceDisposed) return;
     if (_voiceUsesDesktopRecorder) {
       setState(
-        () => _desktopVoiceDraft = VoiceNotePreviewResult(
+        () => _desktopVoiceDraft = VoiceNoteDraft(
           path: url,
           duration: duration,
           waveform: encodeTelegramWaveform(levels),
@@ -2336,37 +2349,18 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
       await _sendDesktopVoiceDraft();
     } else {
-      final result = await Navigator.of(context).push<VoiceNotePreviewResult>(
-        MaterialPageRoute(
-          builder: (_) => VoiceNotePreviewView(
-            path: url,
-            duration: duration,
-            levels: levels,
-            allowWhenOnline: target.canSendWhenOnline,
-            effects: target.availableMessageEffects,
-          ),
-        ),
-      );
-      if (result == null) {
+      // The draft is the preview: the panel closes, the keyboard stays down,
+      // and the recording waits above the field until it is sent or deleted.
+      if (_composerAttachmentWaiting) {
         await _deleteTempFile(url);
         return;
       }
-      if (_voiceDisposed || !mounted || !identical(target, vm)) return;
-      final sent = await target.sendVoice(
-        result.path,
-        result.duration,
-        waveform: result.waveform,
-        sendConfiguration: result.sendConfiguration,
+      _voiceDraft = ComposerVoiceDraft(
+        path: url,
+        duration: duration,
+        levels: levels,
       );
-      if (!mounted || _voiceDisposed) return;
-      if (sent) {
-        _finishPanelSend();
-      } else {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.topicPostContentActionFailed),
-        );
-      }
+      _setPanel(_Panel.none);
     }
   }
 
@@ -2418,6 +2412,115 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
+  /// Whether a voice draft or pasted pictures wait above the field. Only one
+  /// attachment kind waits at a time.
+  bool get _composerAttachmentWaiting =>
+      _voiceDraft != null || _pendingClipboardAttachments.isNotEmpty;
+
+  /// Deletes the waiting phone recording: playback stops, its file goes and
+  /// the card collapses. The caption text stays.
+  void _discardVoiceDraft({bool rebuild = true}) {
+    final draft = _voiceDraft;
+    if (draft == null) return;
+    _voiceDraft = null;
+    // A send in flight still owns the file; it cleans up when it settles.
+    if (!draft.sending) unawaited(_deleteTempFile(draft.path));
+    draft.dispose();
+    if (rebuild && mounted && !_voiceDisposed) {
+      setState(() {});
+      widget.onPanelGeometryChanged?.call();
+    }
+  }
+
+  bool _voiceDraftIsCurrent(ComposerVoiceDraft draft, ChatViewModel target) =>
+      mounted &&
+      !_voiceDisposed &&
+      identical(_voiceDraft, draft) &&
+      identical(target, vm);
+
+  /// Sends the waiting recording as one voice message with the field's text
+  /// as its caption: the length and paid-message checks, the trim export,
+  /// then [ChatViewModel.sendVoice]. A failure keeps the recording for a
+  /// retry and says so under the card.
+  Future<void> _sendVoiceDraft({
+    MessageSendConfiguration sendConfiguration =
+        const MessageSendConfiguration(),
+  }) async {
+    final draft = _voiceDraft;
+    if (draft == null || draft.sending) return;
+    final target = vm;
+    draft.sending = true;
+    setState(() {});
+    unawaited(draft.pause());
+    TrimmedVoiceNote? exported;
+    var attempted = false;
+    var sent = false;
+    try {
+      sent = await () async {
+        final canAttemptSend = await target.prepareMessageSend();
+        if (!mounted ||
+            !canAttemptSend ||
+            !_voiceDraftIsCurrent(draft, target)) {
+          return false;
+        }
+        final (caption, entities) = _controller.toFormatted();
+        if (telegramMessageLengthTier(caption) ==
+            TelegramMessageLengthTier.exceeded) {
+          showToast(
+            context,
+            AppStringKeys.composerMessageExceedsRichTextLimit.l10n(context),
+          );
+          return false;
+        }
+        if (target.requiresPaidMessage) {
+          final ok = await _confirmPaidMessageSend();
+          if (!ok || !_voiceDraftIsCurrent(draft, target)) return false;
+        }
+        attempted = true;
+        final file = exported = await draft.export();
+        if (!_voiceDraftIsCurrent(draft, target)) return false;
+        return target.sendVoice(
+          file.path,
+          file.durationSeconds,
+          waveform: encodeTelegramWaveform(draft.trimmedLevels()),
+          caption: caption,
+          captionEntities: entities,
+          sendConfiguration: sendConfiguration,
+        );
+      }();
+    } catch (error) {
+      debugPrint('Failed to send the voice draft: $error');
+    }
+    final exportedPath = exported?.path;
+    final trimmedCopy = exportedPath != null && exportedPath != draft.path
+        ? exportedPath
+        : null;
+    if (sent) {
+      // TDLib uploads the sent file after accepting the message, so only an
+      // original that a trimmed copy replaced can go.
+      if (trimmedCopy != null) unawaited(_deleteTempFile(draft.path));
+      if (identical(_voiceDraft, draft)) _voiceDraft = null;
+      draft.dispose();
+    } else {
+      if (trimmedCopy != null) unawaited(deleteExportedVoiceNote(trimmedCopy));
+      if (!identical(_voiceDraft, draft)) {
+        // The composer let go of the draft while it was sending.
+        unawaited(_deleteTempFile(draft.path));
+      } else if (attempted) {
+        draft.markFailed();
+      } else {
+        draft.sending = false;
+      }
+    }
+    if (!mounted || _voiceDisposed || !identical(target, vm)) return;
+    setState(() {});
+    if (sent) {
+      widget.onPanelGeometryChanged?.call();
+      _controller.clear();
+      widget.onMessageSent();
+    }
+  }
+
   void _clearVoicePresses() {
     _desktopSpaceHeld = false;
     _desktopPointerHeld = false;
@@ -2437,6 +2540,10 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_voiceDraft?.pause());
+    }
     // A held gesture can lose its release when the app loses focus. A locked
     // mobile recording is intentional and must not be discarded by a system
     // permission sheet, notification, or brief app switch.
@@ -2639,6 +2746,10 @@ class _ChatInputBarState extends State<ChatInputBar>
       } catch (error) {
         if (mounted) showToast(context, '$error');
       }
+      return;
+    }
+    if (_voiceDraft != null) {
+      await _sendVoiceDraft();
       return;
     }
     if (_pendingClipboardAttachments.isNotEmpty) {
@@ -3268,14 +3379,23 @@ class _ChatInputBarState extends State<ChatInputBar>
         _desktopSendOptionsMenu = null;
       }
     } else {
+      if (_voiceDraft?.sending ?? false) return;
       configuration = await showMessageSendOptionsSheet(
         context,
         allowWhenOnline: widget.vm.canSendWhenOnline,
+        // Telegram takes View Once and self-destructing voice messages only
+        // in one-on-one chats with a person.
+        voiceOptions:
+            _voiceDraft != null && widget.vm.canSendSelfDestructingMedia,
         effects: widget.vm.availableMessageEffects,
         onOpenScheduledMessages: _openScheduledMessages,
       );
     }
     if (!mounted || configuration == null) return;
+    if (_voiceDraft != null && vm.editingMessage == null) {
+      await _sendVoiceDraft(sendConfiguration: configuration);
+      return;
+    }
     if (_pendingClipboardAttachments.isNotEmpty) {
       await _sendPendingClipboardAttachments(sendConfiguration: configuration);
       return;
@@ -3655,7 +3775,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         replyKeyboard != null &&
         _replyKeyboardVisible &&
         !_hasText &&
-        _pendingClipboardAttachments.isEmpty;
+        _pendingClipboardAttachments.isEmpty &&
+        _voiceDraft == null;
     final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
     final mediaPanelVisible =
         _panel == _Panel.emoji || _panel == _Panel.sticker;
@@ -3691,6 +3812,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                 if (editingMessage == null &&
                     _pendingClipboardAttachments.isNotEmpty)
                   _clipboardAttachmentStrip(desktop: desktopComposer),
+                if (!desktopComposer)
+                  _voiceDraftSlot(visible: editingMessage == null),
                 if (desktopComposer) ...[
                   if (editingMessage == null)
                     _desktopIconStrip(
@@ -4352,6 +4475,44 @@ class _ChatInputBarState extends State<ChatInputBar>
           );
         },
       ),
+    );
+  }
+
+  /// The waiting voice draft's slot above the field. The card grows and fades
+  /// in, and collapses when it is sent or deleted; instantly with Reduce
+  /// Motion. It hides while a message is being edited and returns afterwards.
+  Widget _voiceDraftSlot({required bool visible}) {
+    final draft = visible ? _voiceDraft : null;
+    final reduceMotion = AppMotion.isReduced(context);
+    return AnimatedSwitcher(
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 200),
+      reverseDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SizeTransition(
+          sizeFactor: animation,
+          alignment: Alignment.bottomCenter,
+          child: child,
+        ),
+      ),
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.bottomCenter,
+        children: [...previous, ?current],
+      ),
+      child: draft == null
+          ? const SizedBox(width: double.infinity)
+          : ComposerVoiceDraftCard(
+              draft: draft,
+              onDelete: () {
+                if (!draft.sending) _discardVoiceDraft();
+              },
+            ),
     );
   }
 
@@ -5398,7 +5559,13 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   void _handleEmptyInputTap() {
-    if (_hasText || !_canUseQuickReplies || _replyKeyboardVisible) return;
+    // With a voice draft waiting, the tap starts its caption.
+    if (_hasText ||
+        _voiceDraft != null ||
+        !_canUseQuickReplies ||
+        _replyKeyboardVisible) {
+      return;
+    }
     if (_quickReplyContextVisible) {
       setState(() => _quickReplyContextVisible = false);
       return;
@@ -5657,8 +5824,13 @@ class _ChatInputBarState extends State<ChatInputBar>
   }) {
     final c = context.colors;
     final editing = vm.editingMessage != null;
+    final voiceDraft = editing ? null : _voiceDraft;
+    final sendingVoiceDraft = voiceDraft?.sending ?? false;
     final hasText =
-        _hasText || editing || _pendingClipboardAttachments.isNotEmpty;
+        _hasText ||
+        editing ||
+        _pendingClipboardAttachments.isNotEmpty ||
+        voiceDraft != null;
     final replyTarget = _currentAiReplyTarget();
     final aiReplyWorking =
         replyTarget != null && _aiReplyWorkingTargetId == replyTarget.id;
@@ -5862,6 +6034,9 @@ class _ChatInputBarState extends State<ChatInputBar>
                                       child: TextField(
                                         controller: _controller,
                                         focusNode: _focus,
+                                        // The caption is fixed while its
+                                        // voice message is on the way.
+                                        readOnly: sendingVoiceDraft,
                                         onTap: _handleEmptyInputTap,
                                         // Submit from editing completion without
                                         // onSubmitted: Flutter restarts the input
@@ -5987,9 +6162,13 @@ class _ChatInputBarState extends State<ChatInputBar>
                                               );
                                             },
                                         decoration: InputDecoration(
-                                          hintText: AppStringKeys
-                                              .chatMessageInputPlaceholder
-                                              .l10n(context),
+                                          hintText:
+                                              (voiceDraft != null
+                                                      ? AppStringKeys
+                                                            .composerVoiceCaptionPlaceholder
+                                                      : AppStringKeys
+                                                            .chatMessageInputPlaceholder)
+                                                  .l10n(context),
                                           border: InputBorder.none,
                                           isCollapsed: true,
                                           contentPadding: desktop && hasText
@@ -6086,69 +6265,91 @@ class _ChatInputBarState extends State<ChatInputBar>
                       ),
                       const SizedBox(height: 6),
                     ],
-                    AppInteractiveSurface(
-                      key: const ValueKey('composerSendButton'),
-                      semanticLabel:
-                          (editing
-                                  ? AppStringKeys.messageActionEdit
-                                  : AppStringKeys.composerSend)
-                              .l10n(context),
-                      enabled: _aiReplyWorkingTargetId == null,
-                      onTap: () => unawaited(_sendCurrentText()),
-                      onLongPress: _aiReplyWorkingTargetId != null
+                    Semantics(
+                      // The long press as an action VoiceOver can reach.
+                      customSemanticsActions:
+                          _aiReplyWorkingTargetId != null ||
+                              editing ||
+                              sendingVoiceDraft
                           ? null
-                          : editing
-                          ? null
-                          : () => unawaited(_showTextSendOptions()),
-                      borderRadius: BorderRadius.circular(24),
-                      child: SizedBox(
-                        width: vm.requiresPaidMessage ? 58 : 44,
-                        height: 44,
-                        child: Center(
-                          child: Container(
-                            width: vm.requiresPaidMessage ? 58 : 36,
-                            height: 36,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: _aiReplyWorkingTargetId != null
-                                  ? AppTheme.brand.withValues(alpha: 0.42)
-                                  : editing
-                                  ? AppTheme.cloverGreen
-                                  : AppTheme.brand,
-                              shape: BoxShape.circle,
-                            ),
-                            child: editing
-                                ? const AppIcon(
-                                    HeroAppIcons.check,
-                                    size: 18,
-                                    color: Colors.white,
-                                  )
-                                : vm.requiresPaidMessage
-                                ? Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const AppIcon(
-                                        HeroAppIcons.solidStar,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        'x${vm.paidMessageStarCount}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                          : {
+                              CustomSemanticsAction(
+                                label: AppStringKeys.messageSendOptionsTitle
+                                    .l10n(context),
+                              ): () =>
+                                  unawaited(_showTextSendOptions()),
+                            },
+                      child: AppInteractiveSurface(
+                        key: const ValueKey('composerSendButton'),
+                        semanticLabel:
+                            (editing
+                                    ? AppStringKeys.messageActionEdit
+                                    : AppStringKeys.composerSend)
+                                .l10n(context),
+                        enabled: _aiReplyWorkingTargetId == null,
+                        onTap: () => unawaited(_sendCurrentText()),
+                        onLongPress:
+                            _aiReplyWorkingTargetId != null ||
+                                editing ||
+                                sendingVoiceDraft
+                            ? null
+                            : () => unawaited(_showTextSendOptions()),
+                        borderRadius: BorderRadius.circular(24),
+                        child: SizedBox(
+                          width: vm.requiresPaidMessage ? 58 : 44,
+                          height: 44,
+                          child: Center(
+                            child: Container(
+                              width: vm.requiresPaidMessage ? 58 : 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: _aiReplyWorkingTargetId != null
+                                    ? AppTheme.brand.withValues(alpha: 0.42)
+                                    : editing
+                                    ? AppTheme.cloverGreen
+                                    : AppTheme.brand,
+                                shape: BoxShape.circle,
+                              ),
+                              child: editing
+                                  ? const AppIcon(
+                                      HeroAppIcons.check,
+                                      size: 18,
+                                      color: Colors.white,
+                                    )
+                                  : sendingVoiceDraft
+                                  ? AppActivityIndicator(
+                                      size: 16,
+                                      color: c.onAccent,
+                                    )
+                                  : vm.requiresPaidMessage
+                                  ? Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const AppIcon(
+                                          HeroAppIcons.solidStar,
+                                          size: 14,
                                           color: Colors.white,
                                         ),
-                                      ),
-                                    ],
-                                  )
-                                : const AppIcon(
-                                    HeroAppIcons.solidPaperPlane,
-                                    size: 17,
-                                    color: Colors.white,
-                                  ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'x${vm.paidMessageStarCount}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : const AppIcon(
+                                      HeroAppIcons.solidPaperPlane,
+                                      size: 17,
+                                      color: Colors.white,
+                                    ),
+                            ),
                           ),
                         ),
                       ),
@@ -7307,6 +7508,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Future<void> _recordVideoNote() async {
+    unawaited(_voiceDraft?.pause());
     try {
       final capture = await Navigator.of(context).push<VideoNoteCaptureResult>(
         MaterialPageRoute(
@@ -7465,6 +7667,16 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Future<bool> _queueClipboardImageData(DesktopClipboardImageData image) async {
+    if (_voiceDraft != null) {
+      // Only one attachment kind waits at a time; the picture is not added.
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(AppStringKeys.composerAttachmentWaiting),
+        );
+      }
+      return true;
+    }
     final remaining =
         _maximumPendingClipboardAttachments -
         _pendingClipboardAttachments.length;
@@ -9158,6 +9370,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         // The record button reports the elapsed time; a live region reading
         // every tick of the timer would talk over everything else.
         ? ExcludeSemantics(child: _mobileVoiceRecordingRow())
+        : _composerAttachmentWaiting
+        ? message(AppStringKeys.composerAttachmentWaiting)
         : switch (_visibleVoiceInlineError) {
             _VoiceInlineError.failed => error(
               HeroAppIcons.triangleExclamation,
@@ -9187,65 +9401,103 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  /// The live recording's status row: the timer on the panel's centre line,
+  /// the red dot to its left balanced by a blank on its right, and the newest
+  /// meter levels mirrored on both sides, newest next to the timer.
   Widget _mobileVoiceRecordingRow() {
     final c = context.colors;
     final paused = _recordingPaused;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _RecordingDot(
-          color: paused ? c.textTertiary : AppTheme.tagRed,
-          blinking: !paused && !reduceMotion,
+    Widget meter(List<double> levels, {required bool mirrored}) {
+      final empty = _mobileMeterBars - levels.length;
+      final bars = <Widget>[
+        for (var index = 0; index < _mobileMeterBars; index++)
+          if (index < empty)
+            _mobileMeterBar(4, c.textTertiary)
+          else
+            _mobileMeterBar(
+              4 + (levels[index - empty].clamp(-60.0, 0.0) + 60) / 60 * 24,
+              paused ? c.textTertiary : AppTheme.brand,
+            ),
+      ];
+      final ordered = mirrored ? bars.reversed.toList() : bars;
+      return SizedBox(
+        width: 62,
+        height: 28,
+        child: Row(
+          children: [
+            for (var index = 0; index < ordered.length; index++) ...[
+              if (index > 0) const SizedBox(width: 2),
+              ordered[index],
+            ],
+          ],
         ),
-        const SizedBox(width: 8),
-        ConstrainedBox(
-          // Holds the waveform still as the minutes gain a digit.
-          constraints: const BoxConstraints(minWidth: 48),
-          child: ValueListenableBuilder<_RecTick>(
-            valueListenable: _recTick,
-            builder: (context, tick, _) => Text(
-              formatMediaDuration(tick.elapsed.floor()),
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: paused ? c.textSecondary : c.textPrimary,
-                fontFeatures: const [FontFeature.tabularFigures()],
+      );
+    }
+
+    return ValueListenableBuilder<_RecTick>(
+      valueListenable: _recTick,
+      builder: (context, tick, _) {
+        final levels = tick.levels.length > _mobileMeterBars
+            ? tick.levels.sublist(tick.levels.length - _mobileMeterBars)
+            : tick.levels;
+        return Directionality(
+          // Mirrored around the record button's centre in every locale.
+          textDirection: TextDirection.ltr,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              meter(levels, mirrored: false),
+              const SizedBox(width: 12),
+              _RecordingDot(
+                color: paused ? c.textTertiary : AppTheme.tagRed,
+                blinking: !paused && !reduceMotion,
               ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        SizedBox(
-          width: 132,
-          height: 28,
-          child: ValueListenableBuilder<_RecTick>(
-            valueListenable: _recTick,
-            builder: (context, tick, _) => Row(
-              children: [
-                for (final level in tick.levels)
-                  Expanded(
-                    child: Align(
-                      child: Container(
-                        width: 2,
-                        height: (4 + ((level.clamp(-60.0, 0.0) + 60) / 60) * 24)
-                            .toDouble(),
-                        decoration: BoxDecoration(
-                          color: paused ? c.textTertiary : AppTheme.brand,
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
-                    ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 56,
+                child: Text(
+                  formatMediaDuration(tick.elapsed.floor()),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: paused ? c.textSecondary : c.textPrimary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-              ],
-            ),
+                ),
+              ),
+              // Balances the dot so the timer, not the dot and timer, sits
+              // on the centre line.
+              const SizedBox(width: 6 + 8),
+              const SizedBox(width: 12),
+              meter(levels, mirrored: true),
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
+
+  static const _mobileMeterBars = 16;
+
+  Widget _mobileMeterBar(double height, Color color) => SizedBox(
+    width: 2,
+    height: 28,
+    child: Center(
+      child: Container(
+        width: 2,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    ),
+  );
 
   Widget _mobileVoiceRecordControls() {
     final c = context.colors;
@@ -9257,6 +9509,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     final locked = _recording && _recordingLocked;
     final held = _recording && !_recordingLocked;
     final cancelZone = held && _recordCancelled;
+    // A draft or pasted pictures already wait: send or remove them first.
+    final blocked = !_recording && _composerAttachmentWaiting;
     final busy =
         !_recording &&
         _visibleVoiceInlineError == _VoiceInlineError.none &&
@@ -9273,8 +9527,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       key: const ValueKey('mobileVoiceRecordButton'),
       onPointerDown: (e) {
         if (_recording && _recordingLocked) {
-          // Tapping the locked button stops and opens the preview; it never
-          // starts another recording.
+          // Tapping the locked button stops and leaves the recording as a
+          // draft; it never starts another recording.
           if (_voiceStop == null && _lockedStopPointerId == null) {
             _lockedStopPointerId = e.pointer;
             _lockedStopDownPosition = e.position;
@@ -9351,7 +9605,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         children: [
           IgnorePointer(
             child: AnimatedOpacity(
-              opacity: held ? 1 : 0,
+              opacity: held && !blocked ? 1 : 0,
               duration: motion,
               child: Container(
                 width: 112,
@@ -9365,9 +9619,17 @@ class _ChatInputBarState extends State<ChatInputBar>
           ),
           ValueListenableBuilder<_RecTick>(
             valueListenable: _recTick,
-            child: button,
+            child: IgnorePointer(
+              ignoring: blocked,
+              child: AnimatedOpacity(
+                opacity: blocked ? 0.4 : 1,
+                duration: motion,
+                child: button,
+              ),
+            ),
             builder: (context, tick, child) => Semantics(
               button: true,
+              enabled: blocked ? false : null,
               label: AppStrings.t(
                 locked
                     ? AppStringKeys.composerRecordingStop
@@ -9471,7 +9733,9 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
       );
     }
-    if (!_recording) return const SizedBox.shrink();
+    if (!_recording || _composerAttachmentWaiting) {
+      return const SizedBox.shrink();
+    }
     final cancelZone = !_recordingLocked && _recordCancelled;
     final key = _recordingLocked
         ? (_recordingPaused

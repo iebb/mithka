@@ -626,6 +626,8 @@ class _VoiceViewModel extends ChatViewModel {
     String path,
     int duration, {
     String waveform = '',
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
   }) async {

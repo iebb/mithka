@@ -1364,6 +1364,10 @@
     <string name="composerRecordingSendFailed">Senden fehlgeschlagen. Aufnahme behalten — erneut senden oder verwerfen.</string>
     <string name="composerRecordingStop">Aufnahme stoppen</string>
     <string name="composerRecordingResume">Aufnahme fortsetzen</string>
+    <string name="composerRecordingTrimStart">Anfang des Zuschnitts</string>
+    <string name="composerRecordingTrimEnd">Ende des Zuschnitts</string>
+    <string name="composerVoiceCaptionPlaceholder">Beschriftung hinzufügen…</string>
+    <string name="composerAttachmentWaiting">Sende oder entferne zuerst den Anhang oben.</string>
     <string name="composerDesktopVoiceRelease">Zum Senden loslassen · Esc zum Abbrechen</string>
     <string name="composerImage">Bild</string>
     <string name="composerImagePreview">[Bild]</string>
@@ -3836,7 +3840,6 @@
     <string name="videoPlayerWaitingForFile">Warten auf Videodatei</string>
     <string name="videoTrimFailed">Das zugeschnittene Video wurde nicht erstellt.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">Überprüfen Sie die Aufnahme vor dem Senden. Zu den Sendeoptionen gehören stille Zustellung, Planung, Effekte und einmalige Ansicht.</string>
     <string name="voiceNotePreviewVoiceMessage">Sprachnachricht</string>
     <string name="mediaSpoilerReveal">Spoiler. Zum Anzeigen tippen</string>
     <string name="downloadsTasks">Download-Aufgaben</string>

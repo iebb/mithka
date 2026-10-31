@@ -1364,6 +1364,10 @@
     <string name="composerRecordingSendFailed">Send failed. Recording kept — retry or discard.</string>
     <string name="composerRecordingStop">Stop recording</string>
     <string name="composerRecordingResume">Resume recording</string>
+    <string name="composerRecordingTrimStart">Trim start</string>
+    <string name="composerRecordingTrimEnd">Trim end</string>
+    <string name="composerVoiceCaptionPlaceholder">Add a caption…</string>
+    <string name="composerAttachmentWaiting">Send or remove the attachment above first.</string>
     <string name="composerDesktopVoiceRelease">Release to send · Esc to cancel</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
@@ -3836,7 +3840,6 @@
     <string name="videoPlayerWaitingForFile">Waiting for video file</string>
     <string name="videoTrimFailed">The trimmed video was not created.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">Review the recording before sending. Send options include silent delivery, scheduling, effects and view-once.</string>
     <string name="voiceNotePreviewVoiceMessage">Voice message</string>
     <string name="mediaSpoilerReveal">Spoiler. Tap to reveal</string>
     <string name="downloadsTasks">Download tasks</string>

@@ -998,6 +998,15 @@ class ChatViewModel extends ChangeNotifier {
   bool get canUseSpeechRecognition =>
       aiCapabilities?.transcriptionSupported == true;
   bool get canSendWhenOnline => !isGroup && !peerIsBot;
+
+  /// The chat is the account's own Saved Messages.
+  bool get isSavedMessages => peerUserId != null && peerUserId == meId;
+
+  /// Telegram accepts View Once and self-destructing media only in one-on-one
+  /// chats with another person: not groups, channels, bots, Saved Messages or
+  /// secret chats, which have their own message timer.
+  bool get canSendSelfDestructingMedia =>
+      canSendWhenOnline && !isSavedMessages && !isSecretChat;
   bool get showBotApiPrivacyWarning =>
       isBotApiAccount &&
       isGroup &&
@@ -2681,14 +2690,27 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  /// Sends one voice note. A non-empty [caption] travels on the same message
+  /// (`inputMessageVoiceNote.caption`) and clears the composer draft once
+  /// TDLib accepts it, as a sent text would.
   Future<bool> sendVoice(
     String path,
     int duration, {
     String waveform = '',
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
   }) async {
     if (!canSendMessages || !canSendVoiceNotes) return false;
+    final hasCaption = caption.trim().isNotEmpty;
+    final spaced = hasCaption
+        ? _spacedOutgoing(caption, captionEntities)
+        : (text: '', entities: const <Map<String, dynamic>>[]);
+    final allEntities = [
+      ...spaced.entities,
+      if (hasCaption) ..._mentionEntitiesFor(spaced.text, spaced.entities),
+    ];
     try {
       final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
@@ -2702,12 +2724,22 @@ class ChatViewModel extends ChangeNotifier {
               'duration': duration,
               'waveform': waveform,
             },
+            if (hasCaption)
+              'caption': {
+                '@type': 'formattedText',
+                'text': spaced.text,
+                if (allEntities.isNotEmpty) 'entities': allEntities,
+              },
             'self_destruct_type': ?sendConfiguration.selfDestructType,
           },
         }, sendConfiguration: sendConfiguration),
       );
       await _client.query(stamped.request);
       _consumeReplyAnchorIfCurrent(stamped.revision);
+      if (hasCaption) {
+        _clearDraft();
+        notifyListeners();
+      }
       return true;
     } catch (error) {
       if (_isVoiceMessageRestrictionError(error)) {

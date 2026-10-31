@@ -108,6 +108,7 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   MessageSendConfiguration initial = const MessageSendConfiguration(),
   bool allowWhenOnline = false,
   bool mediaOptions = false,
+  bool voiceOptions = false,
   List<AvailableMessageEffect> effects = const [],
   VoidCallback? onOpenScheduledMessages,
 }) {
@@ -128,6 +129,7 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
         initial: initial,
         allowWhenOnline: allowWhenOnline,
         mediaOptions: mediaOptions,
+        voiceOptions: voiceOptions,
         effects: effects,
         onSubmit: (value) => Navigator.of(sheetContext).pop(value),
         onOpenScheduledMessages: onOpenScheduledMessages == null
@@ -282,6 +284,7 @@ class _MessageSendOptionsSheet extends StatefulWidget {
     required this.initial,
     required this.allowWhenOnline,
     required this.mediaOptions,
+    this.voiceOptions = false,
     required this.effects,
     required this.onSubmit,
     this.onOpenScheduledMessages,
@@ -293,6 +296,11 @@ class _MessageSendOptionsSheet extends StatefulWidget {
   final MessageSendConfiguration initial;
   final bool allowWhenOnline;
   final bool mediaOptions;
+
+  /// Adds a voice-message section with View Once and the self-destruct timer.
+  /// It never offers caption-above-media or the spoiler, which a voice note
+  /// cannot carry.
+  final bool voiceOptions;
   final List<AvailableMessageEffect> effects;
   final ValueChanged<MessageSendConfiguration> onSubmit;
   final VoidCallback? onOpenScheduledMessages;
@@ -495,47 +503,12 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
                 onChanged: (value) =>
                     setState(() => _value = _value.copyWith(hasSpoiler: value)),
               ),
-              _toggle(
-                icon: HeroAppIcons.eye,
-                title: AppStrings.t(AppStringKeys.messageSendOptionsViewOnce),
-                value: _value.viewOnce,
-                onChanged: (value) => setState(
-                  () => _value = _value.copyWith(
-                    viewOnce: value,
-                    selfDestructSeconds: 0,
-                  ),
-                ),
+              ..._selfDestructOptions(),
+            ] else if (widget.voiceOptions) ...[
+              _section(
+                AppStringKeys.voiceNotePreviewVoiceMessage.l10n(context),
               ),
-              if (!_value.viewOnce) ...[
-                _section(
-                  AppStringKeys.messageSendOptionsSelfDestruct.l10n(context),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final item in <(int, String)>[
-                      (0, AppStringKeys.messageSendOptionsOff.l10n(context)),
-                      for (final seconds in const [3, 10, 30, 60])
-                        (
-                          seconds,
-                          context.l10n.t(
-                            AppStringKeys.messageSendOptionsSeconds,
-                            {'value1': seconds},
-                          ),
-                        ),
-                    ])
-                      _choice(
-                        item.$2,
-                        _value.selfDestructSeconds == item.$1,
-                        () => setState(
-                          () => _value = _value.copyWith(
-                            selfDestructSeconds: item.$1,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+              ..._selfDestructOptions(),
             ],
             if (widget.effects.isNotEmpty) ...[
               _section(
@@ -655,6 +628,43 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
       ),
     ),
   );
+
+  /// View Once, then the self-destruct timer while View Once is off.
+  List<Widget> _selfDestructOptions() => [
+    _toggle(
+      icon: HeroAppIcons.eye,
+      title: AppStrings.t(AppStringKeys.messageSendOptionsViewOnce),
+      value: _value.viewOnce,
+      onChanged: (value) => setState(
+        () => _value = _value.copyWith(viewOnce: value, selfDestructSeconds: 0),
+      ),
+    ),
+    if (!_value.viewOnce) ...[
+      _section(AppStringKeys.messageSendOptionsSelfDestruct.l10n(context)),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final item in <(int, String)>[
+            (0, AppStringKeys.messageSendOptionsOff.l10n(context)),
+            for (final seconds in const [3, 10, 30, 60])
+              (
+                seconds,
+                context.l10n.t(AppStringKeys.messageSendOptionsSeconds, {
+                  'value1': seconds,
+                }),
+              ),
+          ])
+            _choice(
+              item.$2,
+              _value.selfDestructSeconds == item.$1,
+              () => setState(
+                () => _value = _value.copyWith(selfDestructSeconds: item.$1),
+              ),
+            ),
+        ],
+      ),
+    ],
+  ];
 
   Widget _section(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 14, 4, 7),

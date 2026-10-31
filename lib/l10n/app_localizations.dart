@@ -1356,6 +1356,11 @@ abstract final class AppStringKeys {
   static const composerRecordingSendFailed = 'composerRecordingSendFailed';
   static const composerRecordingStop = 'composerRecordingStop';
   static const composerRecordingResume = 'composerRecordingResume';
+  static const composerRecordingTrimStart = 'composerRecordingTrimStart';
+  static const composerRecordingTrimEnd = 'composerRecordingTrimEnd';
+  static const composerVoiceCaptionPlaceholder =
+      'composerVoiceCaptionPlaceholder';
+  static const composerAttachmentWaiting = 'composerAttachmentWaiting';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';
@@ -4373,8 +4378,6 @@ abstract final class AppStringKeys {
       'videoNoteRecorderCancelRecording';
   static const videoNoteRecorderCloseCamera = 'videoNoteRecorderCloseCamera';
   static const videoNoteRecorderSwitchCamera = 'videoNoteRecorderSwitchCamera';
-  static const voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude =
-      'voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude';
   static const voiceNotePreviewVoiceMessage = 'voiceNotePreviewVoiceMessage';
   static const accountSecurityANewCodeWasSent =
       'accountSecurityANewCodeWasSent';

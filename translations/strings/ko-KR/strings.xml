@@ -1357,6 +1357,10 @@
     <string name="composerRecordingSendFailed">전송 실패. 녹음이 보관되었습니다. 다시 시도하거나 삭제하세요.</string>
     <string name="composerRecordingStop">녹음 중지</string>
     <string name="composerRecordingResume">녹음 재개</string>
+    <string name="composerRecordingTrimStart">다듬기 시작 지점</string>
+    <string name="composerRecordingTrimEnd">다듬기 끝 지점</string>
+    <string name="composerVoiceCaptionPlaceholder">캡션 추가…</string>
+    <string name="composerAttachmentWaiting">먼저 위의 첨부 파일을 보내거나 삭제하세요.</string>
     <string name="composerDesktopVoiceRelease">손을 떼면 전송 · Esc로 취소</string>
     <string name="composerImage">이미지</string>
     <string name="composerImagePreview">[이미지]</string>
@@ -3825,7 +3829,6 @@
     <string name="videoPlayerWaitingForFile">동영상 파일 대기 중</string>
     <string name="videoTrimFailed">잘라낸 동영상을 만들지 못했습니다.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">보내기 전에 녹음 내용을 검토하세요. 보내기 옵션에는 자동 전달, 예약, 효과 및 일회 보기가 포함됩니다.</string>
     <string name="voiceNotePreviewVoiceMessage">음성 메시지</string>
     <string name="mediaSpoilerReveal">스포일러. 탭하여 표시</string>
     <string name="downloadsTasks">다운로드 작업</string>

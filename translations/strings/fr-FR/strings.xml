@@ -1364,6 +1364,10 @@
     <string name="composerRecordingSendFailed">Échec de l’envoi. Enregistrement conservé — réessayez ou supprimez-le.</string>
     <string name="composerRecordingStop">Arrêter l’enregistrement</string>
     <string name="composerRecordingResume">Reprendre l’enregistrement</string>
+    <string name="composerRecordingTrimStart">Début du découpage</string>
+    <string name="composerRecordingTrimEnd">Fin du découpage</string>
+    <string name="composerVoiceCaptionPlaceholder">Ajouter une légende…</string>
+    <string name="composerAttachmentWaiting">Envoyez ou supprimez d’abord la pièce jointe ci-dessus.</string>
     <string name="composerDesktopVoiceRelease">Relâchez pour envoyer · Échap pour annuler</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
@@ -3836,7 +3840,6 @@
     <string name="videoPlayerWaitingForFile">En attente du fichier vidéo</string>
     <string name="videoTrimFailed">La vidéo découpée n'a pas été créée.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">Vérifiez l’enregistrement avant de l’envoyer. Les options d'envoi incluent la livraison silencieuse, la planification, les effets et la visualisation unique.</string>
     <string name="voiceNotePreviewVoiceMessage">Message vocal</string>
     <string name="mediaSpoilerReveal">Spoiler. Touchez pour afficher</string>
     <string name="downloadsTasks">Téléchargements</string>
