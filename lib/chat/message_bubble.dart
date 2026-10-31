@@ -57,6 +57,7 @@ import 'looping_video_view.dart';
 import 'media_preview_geometry.dart';
 import 'media_spoiler.dart';
 import 'message_action_menu.dart';
+import 'message_direction.dart';
 import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
 import 'message_swipe_reply.dart';
@@ -926,9 +927,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   Widget build(BuildContext context) {
     if (message.isService) return const SizedBox.shrink();
     _resolveTheme();
-    final outgoing = widget.bubble.meId != null
-        ? message.senderId == widget.bubble.meId
-        : message.isOutgoing;
+    final outgoing = isOutgoingTranscriptMessage(message, widget.bubble.meId);
     final mobileSelectionArmed =
         widget.bubble.mobileTextSelectionAreaKey != null;
     return LayoutBuilder(

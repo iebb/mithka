@@ -24,6 +24,7 @@ import 'media_album_layout.dart';
 import 'media_preview_geometry.dart';
 import 'media_spoiler.dart';
 import 'message_action_menu.dart';
+import 'message_direction.dart';
 import 'message_reply_count_badge.dart';
 import 'mobile_message_text_selection.dart';
 import 'telegram_rich_text.dart';
@@ -48,6 +49,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.peerPhoto,
     this.meName = AppStringKeys.chatMeLabel,
     this.mePhoto,
+    this.meId,
     this.hasCustomChatTheme = false,
     this.showCommentAttachment = false,
     this.channelHasLinkedDiscussion = false,
@@ -88,6 +90,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
   final bool isGroup;
   final String meName;
   final TdFileRef? mePhoto;
+  final int? meId;
   final bool hasCustomChatTheme;
   final bool showCommentAttachment;
   final bool channelHasLinkedDiscussion;
@@ -134,7 +137,7 @@ class ImageMediaAlbumBubble extends StatelessWidget {
 
   Widget _buildContent(BuildContext context) {
     final first = _first;
-    final outgoing = first.isOutgoing;
+    final outgoing = isOutgoingTranscriptMessage(first, meId);
     final avatarTitle = outgoing
         ? (first.senderIsChat ? (first.senderName ?? meName) : meName)
         : (isGroup && (first.senderName?.isNotEmpty ?? false))

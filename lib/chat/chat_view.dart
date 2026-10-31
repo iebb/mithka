@@ -10887,6 +10887,7 @@ class _ChatViewState extends State<ChatView> {
         isGroup: _vm.isGroup,
         meName: _vm.meName,
         mePhoto: _vm.mePhoto,
+        meId: _vm.meId,
         hasCustomChatTheme: _hasCustomChatTheme,
         showCommentAttachment: chatTranscriptAllowsCommentAttachment(
           isChannel: _vm.isChannel,
