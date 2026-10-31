@@ -1361,7 +1361,7 @@
     <string name="composerRecordingTrimEnd">修剪終點</string>
     <string name="composerVoiceCaptionPlaceholder">新增說明…</string>
     <string name="composerAttachmentWaiting">請先傳送或移除上方的附件。</string>
-    <string name="composerCaptionTooLong">說明超出了 Telegram 的 {value1} 字元上限。</string>
+    <string name="composerCaptionTooLong">說明超出 {value1} 字元上限。</string>
     <string name="composerDesktopVoiceRelease">放開即可傳送 · 按 Esc 取消</string>
     <string name="composerImage">圖片</string>
     <string name="composerImagePreview">[圖片]</string>

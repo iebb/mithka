@@ -1361,7 +1361,7 @@
     <string name="composerRecordingTrimEnd">トリミング終了位置</string>
     <string name="composerVoiceCaptionPlaceholder">キャプションを追加…</string>
     <string name="composerAttachmentWaiting">先に上の添付ファイルを送信するか削除してください。</string>
-    <string name="composerCaptionTooLong">キャプションがTelegramの上限（{value1}文字）を超えています。</string>
+    <string name="composerCaptionTooLong">キャプションが上限の{value1}文字を超えています。</string>
     <string name="composerDesktopVoiceRelease">離して送信 · Esc でキャンセル</string>
     <string name="composerImage">画像</string>
     <string name="composerImagePreview">[画像]</string>
