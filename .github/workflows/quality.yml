@@ -88,9 +88,12 @@ jobs:
           test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
           test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
 
-      - name: Test the trusted PR review controller
+      - name: Test workflow controllers without publishing fixture outputs
         # This ordinary read-only workflow is the only PR-code execution path.
-        run: node --test .github/scripts/pr-review.test.mjs
+        run: |
+          node --test .github/scripts/pr-review.test.mjs
+          node --test .github/scripts/nightly-summary.test.mjs
+          python3 -m unittest discover -s test/scripts -p 'pr_review_output_test.py' -v
 
       - uses: subosito/flutter-action@v2
         with:

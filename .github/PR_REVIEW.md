@@ -4,6 +4,12 @@ Incoming PRs are reviewed by GitHub Actions, not a scheduled job on the
 maintainer's computer. There is no PR-review cron. The separate nightly build
 and release schedules are not changed by this workflow.
 
+Nightly synchronization and PR review are separate workflows. Nightly's only
+AI task compares its exact source with the previous published release and writes
+release notes. It makes no PR recommendations or merge decisions. Controller
+unit tests use private temporary Actions command files, so example reviews and
+fake eligibility outputs cannot appear in any real workflow summary or output.
+
 ## Recommendations and authority
 
 `PR Review` reads the current PR head, live master ref, complete file inventory,

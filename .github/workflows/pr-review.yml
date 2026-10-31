@@ -62,7 +62,7 @@ jobs:
             .github/scripts
             AGENTS.md
           sparse-checkout-cone-mode: false
-      - name: Review live PR evidence with free models
+      - name: Review current PR evidence
         id: review
         if: inputs.reviewed_head == ''
         env:

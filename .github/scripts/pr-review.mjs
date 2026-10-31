@@ -398,7 +398,7 @@ export async function buildContext(api, snapshot, policy) {
     evidence.comments = []; evidence.inline = []; evidence.reviews = [];
     evidence.incomplete.push('Feedback too large; requires manual review.');
   }
-  if (JSON.stringify(evidence).length > MAX_CONTEXT) throw new Error('Review context exceeds free-model bounds.');
+  if (JSON.stringify(evidence).length > MAX_CONTEXT) throw new Error('Review context exceeds safe bounds.');
   return evidence;
 }
 
@@ -423,7 +423,7 @@ export async function askModel(context, previous = null, { key, fetcher = fetch 
       'HTTP-Referer': 'https://github.com/iebb/mithka', 'X-OpenRouter-Title': 'Mithka PR Review' },
     body: JSON.stringify(openRouterRequest(messages, previous !== null)),
   });
-  if (!response.ok) throw new Error(`Free OpenRouter review unavailable (HTTP ${response.status}); no paid fallback and no merge.`);
+  if (!response.ok) throw new Error(`Automated review unavailable (HTTP ${response.status}); manual review required.`);
   const text = await response.text();
   if (text.length > 150_000) throw new Error('Model response exceeds safe bounds.');
   const data = JSON.parse(text);
@@ -459,12 +459,12 @@ export function report(snapshot, digest, decisions, blockers, error = null) {
     `Auto-merge: **${ready && !blockers.length ? 'eligible for exact merged-result validation' : 'blocked'}**. Only iebb can authorize the current head.`,
   ];
   for (const [index, decision] of decisions.entries()) {
-    lines.push('', `### ${index ? 'Independent challenge' : 'Code review'} (${display(decision.model)})`, display(decision.result.summary));
+    lines.push('', `### ${index ? 'Independent challenge' : 'Code review'}`, display(decision.result.summary));
     for (const finding of decision.result.findings) lines.push('', `- [${finding.priority}] ${display(finding.path)}:${finding.line}: ${display(finding.message)}`, `  Current-head citation: ${display(JSON.stringify(finding.quote))}`);
   }
   if (error) lines.push('', `Review unavailable: ${display(error)}`);
   if (blockers.length) lines.push('', '### Remaining gates', '', ...blockers.map(reason => `- ${display(reason)}`));
-  lines.push('', 'No PR code runs with the model key or write token. Free-only routing; provider/rate-limit failures never authorize a merge. Existing review findings must be resolved, not hidden by a new recommendation.');
+  lines.push('', 'No PR code runs with the model key or write token. Provider failures never authorize a merge. Existing review findings must be resolved, not hidden by a new recommendation.');
   return lines.join('\n');
 }
 
@@ -498,7 +498,7 @@ export async function reviewAll(api, { number = '', force = false, key, policy }
     let error = null;
     // Avoid spending the no-balance quota on every CI in-progress transition.
     if (!snapshot.quality || snapshot.quality.status !== 'completed') {
-      error = 'Waiting for the exact-head Quality run before using the free-model quota.';
+      error = 'Waiting for the exact-head Quality run before reviewing changes.';
     } else {
       try {
         const context = await buildContext(api, snapshot, policy);
@@ -619,7 +619,7 @@ async function main() {
     await reviewAll(api, { number: process.env.REVIEW_PR_NUMBER ?? '', force: process.env.GITHUB_EVENT_NAME === 'workflow_dispatch', key: process.env.OPENROUTER_API_KEY, policy });
   } else if (process.argv[2] === 'owner-review') {
     const candidate = await selectOwnerReviewedMerge(api, { number: Number(process.env.REVIEW_PR_NUMBER), head: process.env.EXPECTED_HEAD });
-    console.log(`Owner-reviewed PR #${candidate.pr_number}: exact-head approval and current merged-result Quality verified. Free-model consensus was not claimed.`);
+    console.log(`Owner-reviewed PR #${candidate.pr_number}: exact-head approval and current merged-result Quality verified. Explicit owner review selected.`);
   } else if (process.argv[2] === 'merge') {
     const number = Number(process.env.REVIEW_PR_NUMBER);
     const merged = await publishMerge(api, { number, head: process.env.EXPECTED_HEAD, base: process.env.EXPECTED_BASE, merge: process.env.VALIDATED_MERGE });

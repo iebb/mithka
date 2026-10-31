@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,13 @@ import {
   buildContext, askModel, report, reviewAll, publishMerge, verifyTestedResult,
   reviewOrchestrationCheckIds, selectOwnerReviewedMerge,
 } from './pr-review.mjs';
+
+// Production helpers write Actions command files. Fixtures must never inherit
+// the real runner's summary or publish fake eligibility as real step outputs.
+const actionsFiles = mkdtempSync(join(tmpdir(), 'mithka-review-actions-test-'));
+process.env.GITHUB_STEP_SUMMARY = join(actionsFiles, 'summary.md');
+process.env.GITHUB_OUTPUT = join(actionsFiles, 'output');
+after(() => rmSync(actionsFiles, { recursive: true, force: true }));
 
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -478,6 +485,7 @@ test('reports are recommendations, do not ping users and cannot leak registered 
   assert.ok(!text.includes('@iebb'));
   assert.ok(!text.includes('<script>'));
   assert.ok(!text.includes('sk-or-v1-testsecret'));
+  assert.ok(!text.includes('example/free-model:free'));
   assert.equal(redact('a github_pat_testsecret b'), 'a [REDACTED_GITHUB_TOKEN] b');
 });
 
