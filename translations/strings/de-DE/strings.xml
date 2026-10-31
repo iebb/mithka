@@ -1368,6 +1368,7 @@
     <string name="composerRecordingTrimEnd">Ende des Zuschnitts</string>
     <string name="composerVoiceCaptionPlaceholder">Beschriftung hinzufügen…</string>
     <string name="composerAttachmentWaiting">Sende oder entferne zuerst den Anhang oben.</string>
+    <string name="composerCaptionTooLong">Diese Beschriftung überschreitet die Telegram-Grenze von {value1} Zeichen.</string>
     <string name="composerDesktopVoiceRelease">Zum Senden loslassen · Esc zum Abbrechen</string>
     <string name="composerImage">Bild</string>
     <string name="composerImagePreview">[Bild]</string>

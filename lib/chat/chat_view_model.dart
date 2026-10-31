@@ -479,6 +479,10 @@ class _DraftMention {
   final int userId;
 }
 
+/// TDLib's `message_caption_length_max` without Premium, used when the option
+/// cannot be read.
+const defaultMessageCaptionLengthLimit = 1024;
+
 class ChatViewModel extends ChangeNotifier {
   static const int _maximumAiReplyContextMessages = 64;
   static const int _maximumAiReplySearchCharacters = 160;
@@ -2324,6 +2328,20 @@ class ChatViewModel extends ChangeNotifier {
       if (limit != null && limit > 0) return limit;
     } catch (_) {}
     return defaultMessageQuoteLengthLimit;
+  }
+
+  /// TDLib's longest caption for this account (Premium raises it), in
+  /// Unicode characters.
+  Future<int> messageCaptionLengthLimit() async {
+    try {
+      final option = await _client.query({
+        '@type': 'getOption',
+        'name': 'message_caption_length_max',
+      });
+      final limit = option.integer('value');
+      if (limit != null && limit > 0) return limit;
+    } catch (_) {}
+    return defaultMessageCaptionLengthLimit;
   }
 
   List<Map<String, dynamic>> _mentionEntitiesFor(

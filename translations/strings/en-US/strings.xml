@@ -1368,6 +1368,7 @@
     <string name="composerRecordingTrimEnd">Trim end</string>
     <string name="composerVoiceCaptionPlaceholder">Add a caption…</string>
     <string name="composerAttachmentWaiting">Send or remove the attachment above first.</string>
+    <string name="composerCaptionTooLong">This caption exceeds Telegram's {value1}-character limit.</string>
     <string name="composerDesktopVoiceRelease">Release to send · Esc to cancel</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>

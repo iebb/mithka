@@ -1368,6 +1368,7 @@
     <string name="composerRecordingTrimEnd">Fin del recorte</string>
     <string name="composerVoiceCaptionPlaceholder">Añade un comentario…</string>
     <string name="composerAttachmentWaiting">Envía o quita primero el adjunto de arriba.</string>
+    <string name="composerCaptionTooLong">Este comentario supera el límite de {value1} caracteres de Telegram.</string>
     <string name="composerDesktopVoiceRelease">Suelta para enviar · Esc para cancelar</string>
     <string name="composerImage">Imagen</string>
     <string name="composerImagePreview">[Imagen]</string>

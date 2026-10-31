@@ -2332,9 +2332,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
       if (_voiceDisposed || !mounted) return;
       if (!cancelled && duration >= 1 && url == null) _showRecordingError();
-      _elapsed = 0;
-      _recLevels.clear();
-      _recTick.value = (elapsed: 0.0, levels: const <double>[]);
+      _resetRecordingMeter();
       return;
     }
     if (!mounted || _voiceDisposed) return;
@@ -2353,6 +2351,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       // and the recording waits above the field until it is sent or deleted.
       if (_composerAttachmentWaiting) {
         await _deleteTempFile(url);
+        if (_voiceDisposed || !mounted) return;
+        _resetRecordingMeter();
         return;
       }
       _voiceDraft = ComposerVoiceDraft(
@@ -2360,6 +2360,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         duration: duration,
         levels: levels,
       );
+      // The draft holds its own copy; the next recording starts from zero.
+      _resetRecordingMeter();
       _setPanel(_Panel.none);
     }
   }
@@ -2449,6 +2451,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     final draft = _voiceDraft;
     if (draft == null || draft.sending) return;
     final target = vm;
+    if (!_canSendVoiceNotes) {
+      // Voice messages stopped being allowed here (a restriction error or a
+      // permission change): a retry says so on the card instead of nothing.
+      unawaited(draft.pause());
+      draft.markFailed();
+      setState(() {});
+      return;
+    }
     draft.sending = true;
     setState(() {});
     unawaited(draft.pause());
@@ -2464,11 +2474,14 @@ class _ChatInputBarState extends State<ChatInputBar>
           return false;
         }
         final (caption, entities) = _controller.toFormatted();
-        if (telegramMessageLengthTier(caption) ==
-            TelegramMessageLengthTier.exceeded) {
+        final captionLimit = await target.messageCaptionLengthLimit();
+        if (!mounted || !_voiceDraftIsCurrent(draft, target)) return false;
+        if (telegramUtf8CharacterCount(caption.trim()) > captionLimit) {
           showToast(
             context,
-            AppStringKeys.composerMessageExceedsRichTextLimit.l10n(context),
+            AppStrings.t(AppStringKeys.composerCaptionTooLong, {
+              'value1': '$captionLimit',
+            }),
           );
           return false;
         }
@@ -2521,6 +2534,12 @@ class _ChatInputBarState extends State<ChatInputBar>
       _controller.clear();
       widget.onMessageSent();
     }
+  }
+
+  void _resetRecordingMeter() {
+    _elapsed = 0;
+    _recLevels.clear();
+    _recTick.value = (elapsed: 0.0, levels: const <double>[]);
   }
 
   void _clearVoicePresses() {
@@ -3359,6 +3378,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Future<void> _showTextSendOptions() async {
+    // The options apply to what waited when they were opened: a chat switch,
+    // or a voice draft sent, deleted or recorded meanwhile, drops them.
+    final target = vm;
+    final draft = _voiceDraft;
     MessageSendConfiguration? configuration;
     if (_usesNativeDesktopComposer(context)) {
       _hideDesktopPopovers();
@@ -3381,20 +3404,20 @@ class _ChatInputBarState extends State<ChatInputBar>
         _desktopSendOptionsMenu = null;
       }
     } else {
-      if (_voiceDraft?.sending ?? false) return;
+      if (draft?.sending ?? false) return;
       configuration = await showMessageSendOptionsSheet(
         context,
-        allowWhenOnline: widget.vm.canSendWhenOnline,
+        allowWhenOnline: target.canSendWhenOnline,
         // Telegram takes View Once and self-destructing voice messages only
         // in one-on-one chats with a person.
-        voiceOptions:
-            _voiceDraft != null && widget.vm.canSendSelfDestructingMedia,
-        effects: widget.vm.availableMessageEffects,
+        voiceOptions: draft != null && target.canSendSelfDestructingMedia,
+        effects: target.availableMessageEffects,
         onOpenScheduledMessages: _openScheduledMessages,
       );
     }
-    if (!mounted || configuration == null) return;
-    if (_voiceDraft != null && vm.editingMessage == null) {
+    if (!mounted || configuration == null || !identical(target, vm)) return;
+    if (!identical(draft, _voiceDraft)) return;
+    if (draft != null && vm.editingMessage == null) {
       await _sendVoiceDraft(sendConfiguration: configuration);
       return;
     }
@@ -3510,6 +3533,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Future<void> _handlePaste([ContextMenuButtonItem? pasteItem]) async {
+    // The field is read-only while a voice draft sends, and the text it
+    // holds is cleared once the send lands.
+    bool voiceDraftSending() => _voiceDraft?.sending ?? false;
+    if (voiceDraftSending()) return;
     if (vm.editingMessage == null) {
       if (_usesNativeDesktopComposer(context)) {
         if (await _queueDesktopClipboardImages()) return;
@@ -3528,6 +3555,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
 
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || voiceDraftSending()) return;
     final text = clipboard?.text;
     if (text != null && text.isNotEmpty) {
       _controller.insertText(text);
@@ -7720,9 +7748,11 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     if (result.attachments.isNotEmpty) {
       _hideDesktopPopovers(rebuild: false);
+      // Through _setPanel, so a recording in the voice panel is cancelled
+      // rather than left running behind the pictures.
+      _setPanel(_Panel.none);
       setState(() {
         _pendingClipboardAttachments.addAll(result.attachments);
-        _panel = _Panel.none;
         _replyKeyboardVisible = false;
         _quickReplyContextVisible = false;
       });

@@ -1361,6 +1361,7 @@ abstract final class AppStringKeys {
   static const composerVoiceCaptionPlaceholder =
       'composerVoiceCaptionPlaceholder';
   static const composerAttachmentWaiting = 'composerAttachmentWaiting';
+  static const composerCaptionTooLong = 'composerCaptionTooLong';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';

@@ -116,6 +116,22 @@ class ComposerVoiceDraft extends ChangeNotifier {
   FlutterSoundPlayer? _player;
   Future<void>? _opening;
   StreamSubscription<PlaybackDisposition>? _progress;
+
+  /// Stops playback at a trimmed end, which the progress stream would only
+  /// notice up to one interval late.
+  Timer? _endTimer;
+
+  /// Bumped by every play request, pause, stop and send, so a play request
+  /// still waiting on the player can tell it has been overtaken.
+  int _playRequest = 0;
+
+  /// Time since [_position] was last true, to place a pause between the
+  /// player's progress updates.
+  final Stopwatch _positionClock = Stopwatch();
+
+  /// A fresh start is on its way to the kept start; the player's progress
+  /// from before the seek is ignored.
+  bool _seekingToStart = false;
   bool _playing = false;
   bool _started = false;
   Duration _position = Duration.zero;
@@ -144,7 +160,11 @@ class ComposerVoiceDraft extends ChangeNotifier {
   set sending(bool value) {
     if (_sending == value) return;
     _sending = value;
-    if (value) _failed = false;
+    if (value) {
+      _failed = false;
+      _playRequest++;
+      _cancelEndStop();
+    }
     _notify();
   }
 
@@ -169,11 +189,13 @@ class ComposerVoiceDraft extends ChangeNotifier {
   Duration _at(double seconds) =>
       Duration(milliseconds: (seconds * 1000).round());
 
+  /// The open player, opening it on first use. A failed open forgets the
+  /// player, so the next Play tries a fresh one.
   Future<FlutterSoundPlayer?> _ensurePlayer() async {
     final existing = _player;
     if (existing != null) {
       await _opening;
-      return _disposed ? null : existing;
+      return _disposed || !identical(_player, existing) ? null : existing;
     }
     final player = _playerFactory();
     _player = player;
@@ -183,60 +205,81 @@ class ComposerVoiceDraft extends ChangeNotifier {
       _progress = player.onProgress?.listen(_onProgress);
     }();
     _opening = opening;
-    await opening;
+    try {
+      await opening;
+    } catch (_) {
+      // dispose() closes a player it already let go of.
+      if (identical(_player, player)) {
+        _player = null;
+        _opening = null;
+        final progress = _progress;
+        _progress = null;
+        unawaited(progress?.cancel());
+        unawaited(_closePlayer(player, null));
+      }
+      rethrow;
+    }
     return _disposed ? null : player;
   }
 
   void _onProgress(PlaybackDisposition event) {
-    if (_disposed || !_playing) return;
+    if (_disposed || !_playing || _seekingToStart) return;
     if (event.position >= _at(_trimEnd)) {
       unawaited(stopPlayback());
       return;
     }
     _position = event.position;
+    _positionClock
+      ..reset()
+      ..start();
     _notify();
   }
 
   Future<void> togglePlayback() async {
     if (_disposed || _sending) return;
     clearFailure();
+    if (_playing) {
+      await pause();
+      return;
+    }
+    final request = ++_playRequest;
+    bool current() => !_disposed && !_sending && request == _playRequest;
+    _playing = true;
+    _notify();
+    FlutterSoundPlayer? player;
     try {
-      final player = await _ensurePlayer();
-      if (player == null) return;
-      if (player.isPlaying) {
-        _playing = false;
-        _notify();
-        await player.pausePlayer();
-        return;
-      }
+      player = await _ensurePlayer();
+      if (player == null || !current()) return;
       if (player.isPaused) {
         if (_position < _at(_trimStart) || _position >= _at(_trimEnd)) {
           _position = _at(_trimStart);
           await player.seekToPlayer(_position);
+          if (!current()) return;
         }
-        _playing = true;
         _started = true;
         _notify();
         await player.resumePlayer();
+      } else {
+        _started = true;
+        _position = _at(_trimStart);
+        _notify();
+        await _startAtTrimStart(player);
+      }
+      if (!current()) {
+        // Paused, stopped or sent while the player was starting.
+        await _quietStalePlayback(player);
         return;
       }
-      _playing = true;
-      _started = true;
-      _position = _at(_trimStart);
-      _notify();
-      await player.startPlayer(
-        fromURI: path,
-        codec: Codec.defaultCodec,
-        whenFinished: () {
-          _playing = false;
-          _started = false;
-          _position = _at(_trimStart);
-          _notify();
-        },
-      );
-      if (_trimStart > 0) await player.seekToPlayer(_at(_trimStart));
+      _positionClock
+        ..reset()
+        ..start();
+      _scheduleEndStop();
     } catch (error) {
       debugPrint('Voice draft playback failed: $error');
+      if (request != _playRequest) {
+        if (player != null) await _quietStalePlayback(player);
+        return;
+      }
       _playing = false;
       _started = false;
       _position = _at(_trimStart);
@@ -244,12 +287,102 @@ class ComposerVoiceDraft extends ChangeNotifier {
     }
   }
 
-  /// Pauses playback where it is, keeping the playhead.
+  /// Starts the file at the kept start. The player cannot start mid-file,
+  /// so it is muted until the seek lands rather than playing the cut part.
+  Future<void> _startAtTrimStart(FlutterSoundPlayer player) async {
+    final seek = _trimStart > 0 ? _at(_trimStart) : null;
+    if (seek != null) {
+      _seekingToStart = true;
+      await _setVolume(player, 0);
+    }
+    try {
+      await player.startPlayer(
+        fromURI: path,
+        codec: Codec.defaultCodec,
+        whenFinished: () {
+          _cancelEndStop();
+          _positionClock
+            ..stop()
+            ..reset();
+          _playing = false;
+          _started = false;
+          _position = _at(_trimStart);
+          _notify();
+        },
+      );
+      if (seek != null) {
+        // Again once playing, in case the volume did not carry into start.
+        await _setVolume(player, 0);
+        await player.seekToPlayer(seek);
+      }
+    } finally {
+      if (seek != null) {
+        _seekingToStart = false;
+        await _setVolume(player, 1);
+      }
+    }
+  }
+
+  static Future<void> _setVolume(
+    FlutterSoundPlayer player,
+    double volume,
+  ) async {
+    try {
+      await player.setVolume(volume);
+    } catch (_) {}
+  }
+
+  /// A play request was overtaken after it reached the player. Nothing else
+  /// wants audio now, so the player follows the pause or stop that won.
+  Future<void> _quietStalePlayback(FlutterSoundPlayer player) async {
+    if (_disposed || _playing) return;
+    try {
+      if (!_started) {
+        if (player.isPlaying || player.isPaused) await player.stopPlayer();
+      } else if (player.isPlaying) {
+        await player.pausePlayer();
+      }
+    } catch (_) {}
+  }
+
+  /// Stops at a trimmed end on time. An untrimmed end is the file's own,
+  /// where the player finishes by itself.
+  void _scheduleEndStop() {
+    _cancelEndStop();
+    if (_trimEnd >= duration - 0.01) return;
+    final remaining = _at(_trimEnd) - _position;
+    final request = _playRequest;
+    _endTimer = Timer(remaining.isNegative ? Duration.zero : remaining, () {
+      _endTimer = null;
+      if (_playing && request == _playRequest) unawaited(stopPlayback());
+    });
+  }
+
+  void _cancelEndStop() {
+    _endTimer?.cancel();
+    _endTimer = null;
+  }
+
+  /// Pauses playback where it is, keeping the playhead. A Play still waiting
+  /// on the player is called off.
   Future<void> pause() async {
-    final player = _player;
-    if (!_playing || player == null) return;
+    _playRequest++;
+    _cancelEndStop();
+    if (!_playing) return;
     _playing = false;
+    if (_positionClock.isRunning) {
+      // Where the audio is now, not at the last progress update, so a
+      // resume times the trimmed end from the right place.
+      final now = _position + _positionClock.elapsed;
+      final end = _at(_trimEnd);
+      _position = now > end ? end : now;
+    }
+    _positionClock
+      ..stop()
+      ..reset();
     _notify();
+    final player = _player;
+    if (player == null) return;
     try {
       if (player.isPlaying) await player.pausePlayer();
     } catch (_) {}
@@ -257,6 +390,11 @@ class ComposerVoiceDraft extends ChangeNotifier {
 
   /// Stops playback and rewinds the playhead to the kept start.
   Future<void> stopPlayback() async {
+    _playRequest++;
+    _cancelEndStop();
+    _positionClock
+      ..stop()
+      ..reset();
     final changed = _playing || _started;
     _playing = false;
     _started = false;
@@ -325,6 +463,8 @@ class ComposerVoiceDraft extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _playing = false;
+    _playRequest++;
+    _cancelEndStop();
     unawaited(_progress?.cancel());
     _progress = null;
     final player = _player;
@@ -549,7 +689,10 @@ class _ComposerVoiceDraftCardState extends State<ComposerVoiceDraftCard> {
           ),
         );
         if (!canTrim) return SizedBox(height: 44, child: waveform);
-        final minimumBars = (bars / duration).ceil().clamp(1, bars);
+        // Clamped in seconds against the other handle, so dragging one never
+        // pushes the other.
+        const minimumKept = ComposerVoiceDraft.minimumKeptSeconds;
+        double secondsAt(int bar) => bar.clamp(0, bars) / bars * duration;
         return SizedBox(
           height: 44,
           child: Stack(
@@ -565,9 +708,7 @@ class _ComposerVoiceDraftCardState extends State<ComposerVoiceDraftCard> {
                   handle: _TrimHandle.start,
                   bar: startBar,
                   onBar: (bar) => draft.setTrim(
-                    bar.clamp(0, math.max(0, endBar - minimumBars)) /
-                        bars *
-                        duration,
+                    math.min(secondsAt(bar), draft.trimEnd - minimumKept),
                     draft.trimEnd,
                   ),
                 ),
@@ -583,9 +724,7 @@ class _ComposerVoiceDraftCardState extends State<ComposerVoiceDraftCard> {
                   bar: endBar,
                   onBar: (bar) => draft.setTrim(
                     draft.trimStart,
-                    bar.clamp(math.min(bars, startBar + minimumBars), bars) /
-                        bars *
-                        duration,
+                    math.max(secondsAt(bar), draft.trimStart + minimumKept),
                   ),
                 ),
               ),
@@ -671,7 +810,7 @@ class _ComposerVoiceDraftCardState extends State<ComposerVoiceDraftCard> {
       child: Transform.translate(
         offset: const Offset(0, -4),
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(58, 0, 12, 6),
+          padding: const EdgeInsetsDirectional.fromSTEB(58, 0, 12, 10),
           child: Text.rich(
             TextSpan(
               children: [

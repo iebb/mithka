@@ -1368,6 +1368,7 @@
     <string name="composerRecordingTrimEnd">Fin du découpage</string>
     <string name="composerVoiceCaptionPlaceholder">Ajouter une légende…</string>
     <string name="composerAttachmentWaiting">Envoyez ou supprimez d’abord la pièce jointe ci-dessus.</string>
+    <string name="composerCaptionTooLong">Cette légende dépasse la limite de {value1} caractères de Telegram.</string>
     <string name="composerDesktopVoiceRelease">Relâchez pour envoyer · Échap pour annuler</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
