@@ -127,9 +127,9 @@ class ComposerVoiceDraft extends ChangeNotifier {
   double get trimEnd => _trimEnd;
   double get keptSeconds => _trimEnd - _trimStart;
 
-  /// Trimming needs two seconds to keep one, and an Ogg/Opus file: the
-  /// trimmer cuts Ogg pages and cannot cut the AAC fallback.
-  bool get canTrim => duration >= 2 && path.toLowerCase().endsWith('.ogg');
+  /// Trimming needs two seconds to keep one, and a file the trimmer can cut:
+  /// Ogg/Opus anywhere, and the AAC recordings on iOS through AVFoundation.
+  bool get canTrim => duration >= 2 && VoiceNoteTrimmer.canTrim(path);
   bool get isTrimmed => _trimStart > 0.01 || _trimEnd < duration - 0.01;
 
   bool get playing => _playing;
@@ -351,7 +351,11 @@ Future<void> deleteExportedVoiceNote(String path) async {
   try {
     final file = File(path);
     if (await file.exists()) await file.delete();
-    await file.parent.delete();
+    // The Ogg trimmer writes into its own `mithka-voice-…` directory; the
+    // iOS export lands straight in the temporary directory, which stays.
+    final parent = file.parent;
+    final name = parent.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    if (name.startsWith('mithka-voice-')) await parent.delete();
   } catch (_) {}
 }
 

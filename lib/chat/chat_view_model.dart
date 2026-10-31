@@ -2693,6 +2693,10 @@ class ChatViewModel extends ChangeNotifier {
   /// Sends one voice note. A non-empty [caption] travels on the same message
   /// (`inputMessageVoiceNote.caption`) and clears the composer draft once
   /// TDLib accepts it, as a sent text would.
+  ///
+  /// With [reportGenericFailure] false, a failure the user can do nothing
+  /// about beyond retrying is left to the caller to show; failures that need
+  /// an action (stars, Premium, privacy, permissions…) are still published.
   Future<bool> sendVoice(
     String path,
     int duration, {
@@ -2701,6 +2705,7 @@ class ChatViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> captionEntities = const [],
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
+    bool reportGenericFailure = true,
   }) async {
     if (!canSendMessages || !canSendVoiceNotes) return false;
     final hasCaption = caption.trim().isNotEmpty;
@@ -2747,12 +2752,13 @@ class ChatViewModel extends ChangeNotifier {
         notifyListeners();
       }
       debugPrint('Failed to send voice note: $error');
-      _publishSendFailure(
-        ChatSendFailure.fromError(
-          error,
-          paidMessageStarCount: paidMessageStarCount,
-        ),
+      final failure = ChatSendFailure.fromError(
+        error,
+        paidMessageStarCount: paidMessageStarCount,
       );
+      if (reportGenericFailure || failure.kind != ChatSendFailureKind.generic) {
+        _publishSendFailure(failure);
+      }
       return false;
     }
   }

@@ -2486,6 +2486,8 @@ class _ChatInputBarState extends State<ChatInputBar>
           caption: caption,
           captionEntities: entities,
           sendConfiguration: sendConfiguration,
+          // The card's own error line reports a plain failure.
+          reportGenericFailure: false,
         );
       }();
     } catch (error) {
