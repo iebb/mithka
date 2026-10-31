@@ -64,6 +64,8 @@ test('bounded evidence is identified and credentials are removed before transmis
       assert.equal(url, 'https://openrouter.ai/api/v1/chat/completions');
       const body = JSON.parse(request.body);
       assert.equal(body.tools, undefined);
+      assert.equal(body.models.at(-1), 'openrouter/free');
+      assert.ok(body.models.every(model => model === 'openrouter/free' || model.endsWith(':free')));
       assert.equal(body.provider.max_price.prompt, 0);
       assert.match(body.messages[0].content, /UNTRUSTED DATA/);
       assert.ok(!body.messages[1].content.includes(key));
@@ -84,6 +86,18 @@ test('malformed, truncated, tool and unverified-price responses cannot become AI
     { english: ['one\ntwo'], chinese: ['一'] }]) assert.throws(() => validateNotes(value));
   await assert.rejects(summarize({}, { key: 'fixture', fetcher: async () => new Response('provider-private-body', { status: 429 }) }), error =>
     error.message.includes('HTTP 429') && !error.message.includes('provider-private-body'));
+});
+
+test('capacity failures retry once while quota failures do not retry', async () => {
+  let calls = 0;
+  assert.deepEqual(await summarize({}, { key: 'fixture', fetcher: async () => ++calls === 1 ? new Response('', { status: 503 }) : reply() }), notes);
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(summarize({}, { key: 'fixture', fetcher: async () => { calls++; return new Response('', { status: 503 }); } }), /HTTP 503/);
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(summarize({}, { key: 'fixture', fetcher: async () => { calls++; return new Response('', { status: 429 }); } }), /HTTP 429/);
+  assert.equal(calls, 1);
 });
 
 test('nightly report contains actual release comparison and never PR recommendations', () => {

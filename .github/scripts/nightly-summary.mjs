@@ -67,13 +67,15 @@ export function validateNotes(notes) {
   return notes;
 }
 
-export async function summarize(evidence, { key, token, fetcher = fetch } = {}) {
+export async function summarize(evidence, { key, token, fetcher = fetch, attempt = 0 } = {}) {
   if (!key) throw new Error('Summary service is not configured');
   const response = await fetcher('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(120_000),
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'openrouter/free', temperature: 0.1, max_tokens: 2048,
+      models: ['dots-studio/dots-3-note-preview:free', 'google/gemma-4-31b-it:free',
+        'nvidia/nemotron-3.5-super-vl:free', 'openrouter/free'],
+      temperature: 0.1, max_tokens: 4096, reasoning: { effort: 'low', exclude: true },
       provider: { max_price: { prompt: 0, completion: 0, request: 0 }, data_collection: 'deny', require_parameters: true },
       response_format: { type: 'json_object' }, usage: { include: true },
       messages: [
@@ -82,7 +84,14 @@ export async function summarize(evidence, { key, token, fetcher = fetch } = {}) 
       ],
     }),
   });
-  if (!response.ok) throw new Error(`Summary service returned HTTP ${response.status}`);
+  if (!response.ok) {
+    // One retry for temporary capacity errors; authentication and quota errors
+    // are surfaced immediately. The provider route and price ceiling stay fixed.
+    if (attempt === 0 && [502, 503, 504].includes(response.status)) {
+      return summarize(evidence, { key, token, fetcher, attempt: 1 });
+    }
+    throw new Error(`Summary service returned HTTP ${response.status}`);
+  }
   const text = await response.text();
   if (text.length > 30_000) throw new Error('Oversized summary response');
   let data, notes;
