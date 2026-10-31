@@ -1,0 +1,24 @@
+group = 'ad.neko.mithka.proxy'
+version = '0.1.0'
+
+// Java only, and no buildscript: the app's Android Gradle Plugin builds it.
+apply plugin: 'com.android.library'
+
+android {
+    namespace = 'ad.neko.mithka.proxy'
+    compileSdk = 36
+    defaultConfig { minSdk = 24 }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.15.0'
+}

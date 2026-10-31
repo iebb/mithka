@@ -1048,6 +1048,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  mithka_proxy:
+    dependency: "direct main"
+    description:
+      path: "packages/mithka_proxy"
+      relative: true
+    source: path
+    version: "0.1.0"
   mobile_scanner:
     dependency: "direct main"
     description:
@@ -1951,4 +1958,4 @@ packages:
     version: "3.1.4"
 sdks:
   dart: ">=3.12.2 <4.0.0"
-  flutter: ">=3.44.0"
+  flutter: ">=3.44.2"

@@ -20,6 +20,7 @@ import geolocator_apple
 import hotkey_manager_macos
 import light_compressor_v2
 import local_auth_darwin
+import mithka_proxy
 import mobile_scanner
 import multi_window_manager
 import package_info_plus
@@ -48,6 +49,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   HotkeyManagerMacosPlugin.register(with: registry.registrar(forPlugin: "HotkeyManagerMacosPlugin"))
   LightCompressorPlugin.register(with: registry.registrar(forPlugin: "LightCompressorPlugin"))
   LocalAuthPlugin.register(with: registry.registrar(forPlugin: "LocalAuthPlugin"))
+  MithkaProxyPlugin.register(with: registry.registrar(forPlugin: "MithkaProxyPlugin"))
   MobileScannerPlugin.register(with: registry.registrar(forPlugin: "MobileScannerPlugin"))
   MultiWindowManagerPlugin.register(with: registry.registrar(forPlugin: "MultiWindowManagerPlugin"))
   FPPPackageInfoPlusPlugin.register(with: registry.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))

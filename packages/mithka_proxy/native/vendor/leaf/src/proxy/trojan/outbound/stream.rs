@@ -1,0 +1,46 @@
+use std::io;
+
+use async_trait::async_trait;
+use bytes::{BufMut, BytesMut};
+use sha2::{Digest, Sha224};
+use tokio::io::AsyncWriteExt;
+
+use crate::{proxy::*, session::*};
+
+pub struct Handler {
+    pub address: String,
+    pub port: u16,
+    pub password: String,
+}
+
+#[async_trait]
+impl OutboundStreamHandler for Handler {
+    fn connect_addr(&self) -> OutboundConnect {
+        OutboundConnect::Proxy(Network::Tcp, self.address.clone(), self.port)
+    }
+
+    async fn handle<'a>(
+        &'a self,
+        sess: &'a Session,
+        lhs: Option<&mut AnyStream>,
+        stream: Option<AnyStream>,
+    ) -> io::Result<AnyStream> {
+        tracing::trace!("handling outbound stream");
+        let mut stream = stream.ok_or_else(|| io::Error::other("invalid input"))?;
+        let mut buf = BytesMut::new();
+        let password = Sha224::digest(self.password.as_bytes());
+        let password = hex::encode(&password[..]);
+        buf.put_slice(password.as_bytes());
+        buf.put_slice(b"\r\n");
+        buf.put_u8(0x01); // tcp
+        sess.destination
+            .write_buf(&mut buf, SocksAddrWireType::PortLast);
+        buf.put_slice(b"\r\n");
+
+        let payload = peek_tcp_one_off(lhs).await;
+        buf.put_slice(&payload);
+        stream.write_all(&buf).await?;
+
+        Ok(Box::new(stream))
+    }
+}

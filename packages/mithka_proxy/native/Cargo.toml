@@ -1,0 +1,31 @@
+[package]
+name = "mithka_proxy"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leaf = { path = "vendor/leaf", default-features = false, features = [
+  "ring-aead", "rustls-tls", "rustls-tls-ring", "config-json",
+  "inbound-socks", "inbound-http", "outbound-shadowsocks", "outbound-trojan",
+  "outbound-vmess", "outbound-vless", "outbound-tls", "outbound-ws", "outbound-chain",
+] }
+tokio = { version = "1", features = ["macros"] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "io-util", "time"] }
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+# Unwinding costs about 640 KB on arm64, but a panic in one connection task
+# then ends that connection instead of the whole app. Panics still abort at
+# the extern "C" boundary.
+panic = "unwind"
+strip = true

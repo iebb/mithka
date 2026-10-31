@@ -1,0 +1,360 @@
+use protobuf::Message;
+
+#[test]
+fn test_config() {
+    let json_str = r#"
+    {
+        "api": {
+            "address": "127.0.0.1",
+            "port": 9991
+        },
+        "log": {
+            "level": "trace",
+            "output": "leaf.log"
+        },
+        "dns": {
+            "servers": [
+                "8.8.8.8",
+                "8.8.4.4"
+            ],
+            "hosts": {
+                "example.com": [
+                    "192.168.0.1",
+                    "192.168.0.2"
+                ]
+            }
+        },
+        "inbounds": [
+            {
+                "tag": "socks_in",
+                "address": "127.0.0.1",
+                "port": 1086,
+                "protocol": "socks"
+            }
+        ],
+        "outbounds": [
+            {
+                "protocol": "direct",
+                "tag": "direct_out"
+            }
+        ],
+        "router": {
+            "domainResolve": true,
+            "rules": [
+                {
+                    "ip": [
+                        "8.8.8.8",
+                        "8.8.4.4"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "portRange": [
+                        "22-22",
+                        "1024-65535"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "domain": [
+                        "www.google.com"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "domainSuffix": [
+                        "google.com"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "domainKeyword": [
+                        "google"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "external": [
+                        "site:cn"
+                    ],
+                    "target": "direct_out"
+                },
+                {
+                    "external": [
+                        "mmdb:cn"
+                    ],
+                    "target": "direct_out"
+                }
+            ]
+        }
+    }
+    "#;
+
+    assert!(crate::config::json::json_from_string(json_str).is_ok());
+}
+
+#[test]
+fn test_invalid_config() {
+    // Missing protocol
+    let json_str = r#"
+    {
+        "inbounds": [
+            {
+                "tag": "socks_in",
+                "address": "127.0.0.1",
+                "port": 1086
+            }
+        ]
+    }
+    "#;
+    assert!(crate::config::json::json_from_string(json_str).is_err());
+
+    // Invalid port
+    let json_str = r#"
+    {
+        "inbounds": [
+            {
+                "tag": "socks_in",
+                "address": "127.0.0.1",
+                "port": 70000,
+                "protocol": "socks"
+            }
+        ]
+    }
+    "#;
+    assert!(crate::config::json::json_from_string(json_str).is_err());
+}
+
+#[test]
+fn test_dns_config() {
+    let json_str = r#"
+    {
+        "dns": {
+            "servers": ["1.1.1.1"],
+            "hosts": {
+                "google.com": ["127.0.0.1"]
+            }
+        }
+    }
+    "#;
+    let config = crate::config::json::json_from_string(json_str).unwrap();
+    let dns = config.dns.as_ref().unwrap();
+    assert_eq!(dns.servers.as_ref().unwrap().len(), 1);
+    assert_eq!(dns.servers.as_ref().unwrap()[0], "1.1.1.1");
+}
+
+#[test]
+fn test_env_config_sets_process_env() {
+    let key = "LEAF_JSON_ENV_TEST_KEY";
+    std::env::remove_var(key);
+    let json_str = r#"
+    {
+        "env": {
+            "LEAF_JSON_ENV_TEST_KEY": "json-env-value"
+        }
+    }
+    "#;
+    let _ = crate::config::json::json_from_string(json_str).unwrap();
+    assert_eq!(std::env::var(key).unwrap(), "json-env-value");
+    std::env::remove_var(key);
+}
+
+#[test]
+fn test_tls_outbound_ech_config_mapping() {
+    let json_str = r#"
+    {
+        "outbounds": [
+            {
+                "protocol": "tls",
+                "tag": "tls_out",
+                "settings": {
+                    "serverName": "example.com",
+                    "ech": true,
+                    "echConfigList": "test-ech-config-list"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let config = crate::config::json::from_string(json_str).unwrap();
+    let outbound =
+        crate::config::TlsOutboundSettings::parse_from_bytes(&config.outbounds[0].settings)
+            .unwrap();
+    assert!(outbound.ech);
+    assert_eq!(outbound.ech_config_list, "test-ech-config-list");
+}
+
+#[test]
+fn test_tls_outbound_ech_config_mapping_aliases() {
+    let json_str = r#"
+    {
+        "outbounds": [
+            {
+                "protocol": "tls",
+                "tag": "tls_out",
+                "settings": {
+                    "server_name": "example.com",
+                    "ech": true,
+                    "ech_config_list": "alias-ech-config-list"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let config = crate::config::json::from_string(json_str).unwrap();
+    let outbound =
+        crate::config::TlsOutboundSettings::parse_from_bytes(&config.outbounds[0].settings)
+            .unwrap();
+    assert!(outbound.ech);
+    assert_eq!(outbound.ech_config_list, "alias-ech-config-list");
+}
+
+#[test]
+fn test_tls_inbound_ech_validation() {
+    let json_str = r#"
+    {
+        "inbounds": [
+            {
+                "tag": "tls_in",
+                "protocol": "tls",
+                "address": "127.0.0.1",
+                "port": 1443,
+                "settings": {
+                    "certificate": "cert.pem",
+                    "certificateKey": "key.pem",
+                    "echConfig": "only-config"
+                }
+            }
+        ]
+    }
+    "#;
+
+    assert!(crate::config::json::from_string(json_str).is_err());
+}
+
+#[test]
+fn test_tls_inbound_ech_unsupported() {
+    let json_str = r#"
+    {
+        "inbounds": [
+            {
+                "tag": "tls_in",
+                "protocol": "tls",
+                "address": "127.0.0.1",
+                "port": 1443,
+                "settings": {
+                    "certificate": "cert.pem",
+                    "certificateKey": "key.pem",
+                    "echConfig": "AQID",
+                    "echKey": "BAUG"
+                }
+            }
+        ]
+    }
+    "#;
+    let err = crate::config::json::from_string(json_str).unwrap_err();
+    assert!(err.to_string().contains("inbound ECH is not supported yet"));
+}
+
+#[test]
+fn test_tls_outbound_ech_validation() {
+    let json_str = r#"
+    {
+        "outbounds": [
+            {
+                "protocol": "tls",
+                "tag": "tls_out",
+                "settings": {
+                    "serverName": "example.com",
+                    "echConfigList": "   "
+                }
+            }
+        ]
+    }
+    "#;
+
+    assert!(crate::config::json::from_string(json_str).is_err());
+}
+
+#[test]
+fn test_tls_ech_fallback_mapping() {
+    let json_str = r#"
+    {
+        "dns": {
+            "servers": ["1.1.1.1"]
+        },
+        "outbounds": [
+            {
+                "protocol": "tls",
+                "tag": "tls_out",
+                "settings": {
+                    "serverName": "example.com",
+                    "ech": true,
+                    "echConfigList": "AQI="
+                }
+            }
+        ]
+    }
+    "#;
+
+    let config = crate::config::json::from_string(json_str).unwrap();
+    let outbound =
+        crate::config::TlsOutboundSettings::parse_from_bytes(&config.outbounds[0].settings)
+            .unwrap();
+    assert!(outbound.ech);
+    assert_eq!(outbound.ech_config_list, "AQI=");
+}
+
+#[test]
+fn test_tls_ech_disable_dns_lookup_mapping() {
+    let json_str = r#"
+    {
+        "outbounds": [
+            {
+                "protocol": "tls",
+                "tag": "tls_out",
+                "settings": {
+                    "ech": true,
+                    "echDisableDnsLookup": true,
+                    "echConfigList": "AQI="
+                }
+            }
+        ]
+    }
+    "#;
+    let config = crate::config::json::from_string(json_str).unwrap();
+    let outbound =
+        crate::config::TlsOutboundSettings::parse_from_bytes(&config.outbounds[0].settings)
+            .unwrap();
+    assert!(outbound.ech);
+    assert!(outbound.ech_disable_dns_lookup);
+    assert_eq!(outbound.ech_config_list, "AQI=");
+}
+
+#[test]
+fn test_shadowsocks_inbound_default_method_mapping() {
+    let json_str = r#"
+    {
+        "inbounds": [
+            {
+                "tag": "ss_in",
+                "protocol": "shadowsocks",
+                "address": "127.0.0.1",
+                "port": 3001,
+                "settings": {
+                    "password": "password"
+                }
+            }
+        ]
+    }
+    "#;
+
+    let config = crate::config::json::from_string(json_str).unwrap();
+    let inbound =
+        crate::config::ShadowsocksInboundSettings::parse_from_bytes(&config.inbounds[0].settings)
+            .unwrap();
+    assert_eq!(inbound.method, "chacha20-ietf-poly1305");
+    assert_eq!(inbound.password, "password");
+}

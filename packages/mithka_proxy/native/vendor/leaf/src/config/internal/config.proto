@@ -1,0 +1,329 @@
+// Every time you make changes to this file, run `make proto-gen` to re-generate protobuf files.
+
+syntax = "proto3";
+
+message Dns {
+	message Ips {
+		repeated string values = 1;
+	}
+
+	repeated string servers = 1;
+	map<string, Ips> hosts = 3;
+}
+
+message Log {
+	enum Level {
+		INFO = 0;
+		TRACE = 1;
+		DEBUG = 2;
+		WARN = 3;
+		ERROR = 4;
+		NONE = 5;
+	}
+
+	enum Output {
+		CONSOLE = 0;
+		FILE = 1;
+	}
+
+	enum Format {
+		FULL = 0;
+		COMPACT = 1;
+	}
+
+	Level level = 1;
+	Output output = 2;
+	string output_file = 3;
+	Format format = 4;
+}
+
+message TunInboundSettings {
+	int32 fd = 1;
+	bool auto = 9;
+	string name = 2;
+	string address = 3;
+	string gateway = 4;
+	string netmask = 5;
+	int32 mtu = 6;
+	repeated string fake_dns_exclude = 7;
+	repeated string fake_dns_include = 8;
+	string tun2socks = 10;
+	optional string wintun = 11;
+	repeated string dns_servers = 12;
+}
+
+message CatInboundSettings {
+	string network = 1;
+	string address = 2;
+	uint32 port = 3;
+}
+
+message SocksInboundSettings {
+	string username = 1;
+	string password = 2;
+}
+
+message ShadowsocksInboundSettings {
+	string method = 1;
+	string password = 2;
+}
+
+message TrojanInboundSettings {
+	repeated string passwords = 1;
+}
+
+message WebSocketInboundSettings {
+	string path = 1;
+}
+
+message AMuxInboundSettings {
+	repeated string actors = 1;
+}
+
+message NfInboundSettings {
+  string driver_name = 1;
+	string nfapi = 2;
+	repeated string fake_dns_exclude = 3;
+	repeated string fake_dns_include = 4;
+}
+
+message QuicInboundSettings {
+	string certificate = 1;
+	string certificate_key = 2;
+	repeated string alpn = 3;
+}
+
+message TlsInboundSettings {
+	string certificate = 1;
+	string certificate_key = 2;
+	string ech_config = 3;
+	string ech_key = 4;
+}
+
+message ChainInboundSettings {
+	repeated string actors = 1;
+}
+
+message MptpInboundSettings {
+}
+
+message HcInboundSettings {
+	string path = 1;
+	string request = 2;
+	string response = 3;
+}
+
+message Inbound {
+	string tag = 1;
+	string protocol = 2; // TODO use enum
+	string address = 3;
+	uint32 port = 4;
+	bytes settings = 5;
+}
+
+message RedirectOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+}
+
+message SocksOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+	string username = 3;
+	string password = 4;
+}
+
+message ShadowsocksOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+	string method = 3; // TODO use enum
+	string password = 4;
+	optional string prefix = 5;
+}
+
+message ObfsOutboundSettings {
+	string method = 1; // TODO use enum
+	string host = 2;
+	string path = 3;
+}
+
+message TrojanOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+	string password = 3;
+}
+
+message TlsOutboundSettings {
+	string server_name = 1;
+	repeated string alpn = 2;
+	string certificate = 3;
+	bool insecure = 4;
+	string certificate_key = 5;
+	string ech_config_list = 6;
+	bool ech = 7;
+	bool ech_disable_dns_lookup = 8;
+}
+
+message WebSocketOutboundSettings {
+	string path = 1;
+	map<string, string> headers = 2;
+}
+
+message TryAllOutboundSettings {
+	repeated string actors = 1;
+	uint32 delay_base = 2;
+}
+
+message StaticOutboundSettings {
+	repeated string actors = 1;
+	string method = 2;
+}
+
+message AMuxOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+	repeated string actors = 3;
+	uint32 max_accepts = 4;
+	uint32 concurrency = 5;
+	uint64 max_recv_bytes = 6;
+	uint64 max_lifetime = 7;
+}
+
+message QuicOutboundSettings {
+	string address = 1;
+	uint32 port = 2;
+	string server_name = 3;
+	string certificate = 4;
+	repeated string alpn = 5;
+	string certificate_key = 6;
+}
+
+message VMessOutboundSettings {
+    string address = 1;
+    uint32 port = 2;
+    string uuid = 3;
+    string security = 4;
+}
+
+message VlessOutboundSettings {
+    string flow = 4;
+    string address = 1;
+    uint32 port = 2;
+    string uuid = 3;
+}
+
+message RealityOutboundSettings {
+    string server_name = 1;
+    string public_key = 2;
+    string short_id = 3;
+}
+
+message ChainOutboundSettings {
+	repeated string actors = 1;
+}
+
+message MptpOutboundSettings {
+	repeated string actors = 1;
+	string address = 2;
+	uint32 port = 3;
+}
+
+message FailOverOutboundSettings {
+  // A list of outbound tags.
+	repeated string actors = 1;
+  // The connect timeout value for the outbounds, in seconds. Some outbounds don't
+  // need to "connect", those outbounds have zero connect time. Default 4.
+	uint32 fail_timeout = 2;
+  // Enable health check, to use other health check options, this must be true. Default
+  // true.
+	bool health_check = 3;
+  // Health check frequency, in seconds.
+	uint32 check_interval = 4;
+  // Use the next outbound if the current one failed, e.g. it's timeout. Default true.
+	bool failover = 5;
+	bool fallback_cache = 6;
+	uint32 cache_size = 7;
+	uint32 cache_timeout = 8;
+  // The outbound to be used when all actors are unavailable.
+	optional string last_resort = 9;
+  // Timeout for health check request, in seconds. Default is 6.
+	uint32 health_check_timeout = 10;
+  // Put a random delay from (0..health_check_delay] before each health check, in
+  // milliseconds. Default is 200.
+	uint32 health_check_delay = 11;
+  // Health check would stop running if no incoming requests in this period, it's
+  // considered the outbound is inactive, in seconds. Default is 900.
+	uint32 health_check_active = 12;
+  // Specify a list of preferred outbounds, these outbounds would have higher priority
+  // if they are in good health.
+	repeated string health_check_prefers = 13;
+  // Health check would run on start if this is true, by default health check would
+  // start to run when the first request comes in. Default is false.
+	bool health_check_on_start = 14;
+  // Hold incomming connections, wait for the initial health check to be done.
+  // Default false.
+	bool health_check_wait = 15;
+  // Total number of health check requests per outbound, the RTT to be used to sort
+  // the outbounds is the average of all successful attempts. Default 1.
+	uint32 health_check_attempts = 16;
+  // The percentage of successful health check requests which to consider an outbound
+  // is available, must be a value between [0, 100], if the result is lower than this
+  // percentage, the outbound's RTT would be set to a timeout value, thus marks the
+  // outbound as unavailable. Default 50.
+	uint32 health_check_success_percentage = 17;
+}
+
+message SelectOutboundSettings {
+	repeated string actors = 1;
+}
+
+message PluginOutboundSettings {
+	string path = 1;
+	string args = 2;
+}
+
+message Outbound {
+	string tag = 1;
+	string protocol = 2; // TODO use enum
+	bytes settings = 4;
+}
+
+message Router {
+	message Rule {
+		message Domain {
+			enum Type {
+				PLAIN = 0;
+				DOMAIN = 1;
+				FULL = 2;
+			}
+
+			Type type = 1;
+			string value = 2;
+		}
+
+		message Mmdb {
+			string file = 1;
+			string country_code = 2;
+		}
+
+		string target_tag = 1;
+		repeated Domain domains = 2;
+		repeated string ip_cidrs = 3;
+		repeated Mmdb mmdbs = 4;
+		repeated string port_ranges = 5;
+		repeated string networks = 6;
+		repeated string inbound_tags = 7;
+		repeated string process_names = 8;
+	}
+
+	repeated Rule rules = 1;
+	bool domain_resolve = 2;
+}
+
+message Config {
+	Log log = 1;
+	repeated Inbound inbounds = 2;
+	repeated Outbound outbounds = 3;
+	Router router = 4;
+	Dns dns = 5;
+}

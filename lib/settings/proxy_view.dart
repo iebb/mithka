@@ -7,7 +7,8 @@
 //  brand checkmark; every row carries its own availability chip), a 测试全部
 //  action that probes each saved proxy, a 删除不可用的代理 action once a probe
 //  has failed, and an 添加代理 row that opens a full-page custom editor.
-//  SOCKS5 / HTTP / MTProto. No Material dialogs.
+//  SOCKS5 / HTTP / MTProto, plus Shadowsocks / Trojan / VLESS / VMess where
+//  the bundled engine runs (AppProxyService). No Material dialogs.
 //
 //  Reached from the sidebar AND from the login screen's own 代理 shortcut, so
 //  the client behind it may still be opening its database (a fresh add-account
@@ -39,6 +40,8 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import 'app_proxy_service.dart';
+import 'leaf_proxy_profile.dart';
 import 'proxy_config.dart';
 import 'proxy_status.dart';
 
@@ -94,7 +97,11 @@ final class _TdProxyViewOwner implements ProxyViewOwner {
 
   @override
   Future<Map<String, dynamic>> query(Map<String, dynamic> request) =>
-      _client.queryTo(request, _clientId);
+      AppProxyService.shared.viewQuery(
+        request: request,
+        queryNative: (value) => _client.queryTo(value, _clientId),
+        applyConfig: applyProxyConfig,
+      );
 
   @override
   bool get isCurrent =>
@@ -603,10 +610,13 @@ class _ProxyViewState extends State<ProxyView> {
 
   static String _typeLabel(Map<String, dynamic> proxy) {
     final details = ProxyConfig.tdProxyDetails(proxy);
-    return switch (details.obj('type')?.type) {
+    final type = details.obj('type');
+    return switch (type?.type) {
       'proxyTypeSocks5' => 'SOCKS5',
       'proxyTypeHttp' => 'HTTP',
       'proxyTypeMtproto' => 'MTProto',
+      'mithkaLeafProxy' =>
+        type?.str('label') ?? AppStrings.t(AppStringKeys.proxyTitle),
       _ => AppStrings.t(AppStringKeys.proxyTitle),
     };
   }
@@ -791,8 +801,8 @@ class _ProxyViewState extends State<ProxyView> {
     if (result == null || result.isEmpty) return;
     if (!_isOwnerCurrent(owner, ownerGeneration)) return;
 
-    final config = ProxyConfig.fromTelegramUrl(result);
-    if (config == null) {
+    final parsed = ProxyConfig.fromTelegramUrl(result);
+    if (parsed == null) {
       if (mounted) {
         showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));
       }
@@ -800,6 +810,8 @@ class _ProxyViewState extends State<ProxyView> {
     }
 
     try {
+      final config = await ProxyConfig.withSavedIdentity(parsed);
+      if (!_isOwnerCurrent(owner, ownerGeneration)) return;
       await owner.applyProxyConfig(config);
       await ProxyConfig.save(config);
       unawaited(_load());
@@ -906,31 +918,91 @@ class ProxyEditView extends StatefulWidget {
 }
 
 class _ProxyEditViewState extends State<ProxyEditView> {
-  String _type = 'socks5'; // socks5 | http | mtproto
+  /// socks5 | http | mtproto, or one of [LeafProxyProfile.protocols].
+  String _type = 'socks5';
   final _server = TextEditingController();
   final _port = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _secret = TextEditingController();
+  final _name = TextEditingController();
+  final _uuid = TextEditingController();
+  final _serverName = TextEditingController();
+  final _webSocketPath = TextEditingController(text: '/');
+  final _webSocketHost = TextEditingController();
+  String _cipher = LeafProxyProfile.ciphers.first;
+  String _security = LeafProxyProfile.vmessSecurities.first;
+  bool _tls = false;
+  bool _webSocket = false;
+  bool _vision = false;
+  final int _profileId = LeafProxyProfile.newId();
   bool _saving = false;
+
+  List<TextEditingController> get _controllers => [
+    _server,
+    _port,
+    _username,
+    _password,
+    _secret,
+    _name,
+    _uuid,
+    _serverName,
+    _webSocketPath,
+    _webSocketHost,
+  ];
 
   @override
   void initState() {
     super.initState();
-    for (final ctl in [_server, _port, _username, _password, _secret]) {
+    for (final ctl in _controllers) {
       ctl.addListener(() => setState(() {}));
     }
   }
 
   @override
   void dispose() {
-    for (final ctl in [_server, _port, _username, _password, _secret]) {
+    for (final ctl in _controllers) {
       ctl.dispose();
     }
     super.dispose();
   }
 
+  bool get _encrypted => LeafProxyProfile.protocols.contains(_type);
+
+  /// Trojan always runs over TLS; Shadowsocks never does.
+  bool get _tlsOn => _type == 'trojan' || (_type != 'ss' && _tls);
+  bool get _webSocketOn => _type != 'ss' && _webSocket;
+  bool get _visionAvailable => _type == 'vless' && _tlsOn && !_webSocketOn;
+
+  LeafProxyProfile get _profile => LeafProxyProfile(
+    id: _profileId,
+    protocol: _type,
+    server: _server.text.trim(),
+    port: int.tryParse(_port.text.trim()) ?? 0,
+    name: _name.text.trim(),
+    password: _type == 'ss' || _type == 'trojan' ? _password.text.trim() : '',
+    uuid: _type == 'vless' || _type == 'vmess' ? _uuid.text.trim() : '',
+    cipher: _cipher,
+    security: _security,
+    tls: _tlsOn,
+    serverName: _tlsOn ? _serverName.text.trim() : '',
+    webSocket: _webSocketOn,
+    webSocketPath: _webSocketPath.text.trim().isEmpty
+        ? '/'
+        : _webSocketPath.text.trim(),
+    webSocketHost: _webSocketOn ? _webSocketHost.text.trim() : '',
+    vision: _visionAvailable && _vision,
+  );
+
   bool get _valid {
+    if (_encrypted) {
+      try {
+        _profile.validate();
+        return true;
+      } on FormatException {
+        return false;
+      }
+    }
     final server = _server.text.trim();
     final port = int.tryParse(_port.text.trim()) ?? 0;
     if (server.isEmpty || port <= 0) return false;
@@ -938,22 +1010,25 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     return true;
   }
 
-  ProxyConfig get _config => ProxyConfig(
-    configured: true,
-    enabled: true,
-    type: _type,
-    server: _server.text.trim(),
-    port: int.parse(_port.text.trim()),
-    username: _username.text.trim(),
-    password: _password.text.trim(),
-    secret: _secret.text.trim(),
-  );
+  ProxyConfig get _config => _encrypted
+      ? ProxyConfig.encrypted(_profile)
+      : ProxyConfig(
+          configured: true,
+          enabled: true,
+          type: _type,
+          server: _server.text.trim(),
+          port: int.parse(_port.text.trim()),
+          username: _username.text.trim(),
+          password: _password.text.trim(),
+          secret: _secret.text.trim(),
+        );
 
   Future<void> _save() async {
     if (!_valid || _saving) return;
     setState(() => _saving = true);
-    final config = _config;
     try {
+      // Saving the same encrypted proxy twice selects the saved one.
+      final config = await ProxyConfig.withSavedIdentity(_config);
       if (widget.allowOfflineSave) {
         // The login page can advance to code/password entry immediately. Wait
         // for the proxy to reach the active TDLib client before leaving it.
@@ -1009,6 +1084,12 @@ class _ProxyEditViewState extends State<ProxyEditView> {
           _typeSelector(),
           const SizedBox(height: AppSpacing.xl),
           _card([
+            if (_encrypted)
+              _field(
+                _name,
+                AppStrings.t(AppStringKeys.proxyName),
+                AppStrings.t(AppStringKeys.proxyOptional),
+              ),
             _field(
               _server,
               AppStrings.t(AppStringKeys.proxyServer),
@@ -1022,7 +1103,9 @@ class _ProxyEditViewState extends State<ProxyEditView> {
             ),
           ]),
           const SizedBox(height: AppSpacing.xl),
-          if (mtproto)
+          if (_encrypted)
+            ..._encryptedSections()
+          else if (mtproto)
             _card([
               _field(
                 _secret,
@@ -1049,11 +1132,132 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     );
   }
 
+  /// Credentials, then TLS, then the WebSocket transport, in the order the
+  /// connection is layered. Each control exists only where its protocol
+  /// supports it, so an impossible combination cannot be entered.
+  List<Widget> _encryptedSections() {
+    final usesPassword = _type == 'ss' || _type == 'trojan';
+    return [
+      _card([
+        if (usesPassword)
+          _field(
+            _password,
+            AppStrings.t(AppStringKeys.proxyPassword),
+            AppStrings.t(AppStringKeys.proxyRequired),
+            secure: true,
+          )
+        else
+          _field(
+            _uuid,
+            AppStrings.t(AppStringKeys.proxyUuid),
+            AppStrings.t(AppStringKeys.proxyRequired),
+          ),
+        if (_type == 'ss')
+          _choiceRow(
+            key: 'proxy-cipher',
+            title: AppStrings.t(AppStringKeys.proxyCipher),
+            values: LeafProxyProfile.ciphers,
+            selected: _cipher,
+            onSelected: (value) => setState(() => _cipher = value),
+          ),
+        if (_type == 'vmess')
+          _choiceRow(
+            key: 'proxy-security',
+            title: AppStrings.t(AppStringKeys.proxySecurity),
+            values: LeafProxyProfile.vmessSecurities,
+            selected: _security,
+            onSelected: (value) => setState(() => _security = value),
+          ),
+      ]),
+      if (_type != 'ss') ...[
+        const SizedBox(height: AppSpacing.xl),
+        _card([
+          if (_type != 'trojan')
+            SettingsSwitchRow(
+              key: const ValueKey('proxy-tls'),
+              title: AppStrings.t(AppStringKeys.proxyTls),
+              value: _tls,
+              onChanged: (value) => setState(() => _tls = value),
+            ),
+          if (_tlsOn)
+            _field(
+              _serverName,
+              AppStrings.t(AppStringKeys.proxyServerName),
+              AppStrings.t(AppStringKeys.proxyOptional),
+            ),
+          if (_visionAvailable)
+            SettingsSwitchRow(
+              key: const ValueKey('proxy-vision'),
+              title: AppStrings.t(AppStringKeys.proxyVision),
+              value: _vision,
+              onChanged: (value) => setState(() => _vision = value),
+            ),
+        ]),
+        const SizedBox(height: AppSpacing.xl),
+        _card([
+          SettingsSwitchRow(
+            key: const ValueKey('proxy-websocket'),
+            title: AppStrings.t(AppStringKeys.proxyWebSocket),
+            value: _webSocket,
+            onChanged: (value) => setState(() => _webSocket = value),
+          ),
+          if (_webSocketOn) ...[
+            _field(
+              _webSocketPath,
+              AppStrings.t(AppStringKeys.proxyWebSocketPath),
+              '/',
+            ),
+            _field(
+              _webSocketHost,
+              AppStrings.t(AppStringKeys.proxyWebSocketHost),
+              AppStrings.t(AppStringKeys.proxyOptional),
+            ),
+          ],
+        ]),
+      ],
+      SettingsNote(text: AppStrings.t(AppStringKeys.proxyEncryptedNote)),
+    ];
+  }
+
+  Widget _choiceRow({
+    required String key,
+    required String title,
+    required List<String> values,
+    required String selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    return SettingsSelectionRow<String>(
+      key: ValueKey('$key-selector'),
+      title: title,
+      value: selected,
+      menuTitle: title,
+      menuKey: ValueKey('$key-menu'),
+      options: [
+        for (final value in values)
+          SettingsSelectionOption<String>(
+            id: '$key-$value',
+            value: value,
+            label: value,
+          ),
+      ],
+      isSelected: (value) => value == selected,
+      onSelected: onSelected,
+    );
+  }
+
   Widget _typeSelector() {
-    const types = [
+    final types = [
       ('socks5', 'SOCKS5'),
       ('http', 'HTTP'),
       ('mtproto', 'MTProto'),
+      // Only where the bundled engine runs; elsewhere the editor offers
+      // exactly what TDLib supports itself.
+      if (ProxyConfig.encryptedProxiesSupported) ...[
+        ('ss', 'Shadowsocks'),
+        ('trojan', 'Trojan'),
+        ('vless', 'VLESS'),
+        ('vmess', 'VMess'),
+      ],
     ];
     final selectedLabel = types.firstWhere((entry) => entry.$1 == _type).$2;
     return SettingsCard.rows(

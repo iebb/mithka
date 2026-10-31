@@ -87,6 +87,13 @@ Future<void> openLink(
   final link = normalizeTelegramLink(url);
   final isTelegram = link != null;
   if (!isTelegram) {
+    // Shadowsocks, Trojan, VLESS and VMess share links are not Telegram
+    // links, but they are proxies and get the same confirmation.
+    final encrypted = ProxyConfig.fromTelegramUrl(url);
+    if (encrypted?.leaf != null) {
+      if (context.mounted) await _addProxyFromLink(context, encrypted!);
+      return;
+    }
     await _openBrowserLink(context, url);
     return;
   }
@@ -779,6 +786,8 @@ Future<void> _addProxyFromLink(BuildContext context, ProxyConfig config) async {
   );
   if (!ok || !context.mounted) return;
   try {
+    // A link already saved selects that proxy instead of listing it twice.
+    config = await ProxyConfig.withSavedIdentity(config);
     await TdClient.shared.applyProxyConfig(config);
     await ProxyConfig.save(config);
     ProxyStatusController.shared.proxiesChanged();

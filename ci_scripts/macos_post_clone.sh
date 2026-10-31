@@ -87,6 +87,9 @@ fi
 flutter --version
 ensure_cocoapods
 
+# --- Rust (packages/mithka_proxy's build hook runs cargo during xcodebuild) --
+sh "$REPO/scripts/ensure-rust.sh" aarch64-apple-darwin x86_64-apple-darwin
+
 : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID as a secret Xcode Cloud environment variable}"
 : "${TELEGRAM_API_HASH:?set TELEGRAM_API_HASH as a secret Xcode Cloud environment variable}"
 python3 - <<'PY'

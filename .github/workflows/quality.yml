@@ -139,13 +139,19 @@ jobs:
         run: python3 tool/optimize_app_artwork.py --check
 
       - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
+        run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver packages/mithka_proxy/lib packages/mithka_proxy/hook
 
       - name: Analyze
         run: flutter analyze
 
       - name: Run unit and widget tests
         run: flutter test --concurrency=4
+
+      - name: Test the embedded Leaf engine
+        run: |
+          sh scripts/ensure-rust.sh
+          cargo test --locked --manifest-path packages/mithka_proxy/native/Cargo.toml
+          python3 packages/mithka_proxy/tool/update_licenses.py --check
 
       - name: Verify guarded self-build features against every define state
         run: |

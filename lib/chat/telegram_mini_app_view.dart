@@ -33,6 +33,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'bot_platform_service.dart';
+import 'browser_proxy_notice.dart';
 import 'chat_picker_view.dart';
 import 'custom_emoji.dart';
 import 'link_handler.dart';
@@ -724,6 +725,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
   final MiniAppMotionController _motion = MiniAppMotionController();
   var _progress = 0;
   var _pageReady = false;
+  var _proxyNotice = BrowserProxyNotice.none;
   var _backButtonVisible = false;
   var _settingsButtonVisible = false;
   var _needClosingConfirmation = false;
@@ -783,8 +785,19 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
     _controller = _buildController();
     final initialUri = Uri.tryParse(widget.launch.url);
     if (_expectedOrigin != null && initialUri != null) {
-      unawaited(_controller.loadRequest(initialUri));
+      unawaited(_loadInitialPage(initialUri));
     }
+  }
+
+  /// The first request waits for the proxy route, so it never leaves directly
+  /// while an encrypted proxy is still starting.
+  Future<void> _loadInitialPage(Uri uri) async {
+    final notice = await awaitBrowserProxyRoute();
+    if (!mounted) return;
+    if (notice != BrowserProxyNotice.none) {
+      setState(() => _proxyNotice = notice);
+    }
+    await _controller.loadRequest(uri);
   }
 
   @override
@@ -2148,6 +2161,7 @@ class _TelegramMiniAppViewState extends State<TelegramMiniAppView>
                 ),
               ),
             ),
+          BrowserProxyNoticeBar(notice: _proxyNotice),
           Expanded(child: WebViewWidget(controller: _controller)),
           if (buttonLayout != null)
             SafeArea(

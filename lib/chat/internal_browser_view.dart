@@ -9,6 +9,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import 'browser_proxy_notice.dart';
 import 'link_browser.dart';
 
 class InternalBrowserView extends StatefulWidget {
@@ -32,6 +33,7 @@ class _InternalBrowserViewState extends State<InternalBrowserView> {
   var _canGoBack = false;
   var _canGoForward = false;
   var _navigationRevision = 0;
+  var _proxyNotice = BrowserProxyNotice.none;
 
   @override
   void initState() {
@@ -86,7 +88,18 @@ class _InternalBrowserViewState extends State<InternalBrowserView> {
       unawaited(android.setAllowContentAccess(false));
       unawaited(android.setMixedContentMode(MixedContentMode.neverAllow));
     }
-    unawaited(_controller.loadRequest(widget.initialUri));
+    unawaited(_loadInitialPage());
+  }
+
+  /// The first request waits for the proxy route, so it never leaves directly
+  /// while an encrypted proxy is still starting.
+  Future<void> _loadInitialPage() async {
+    final notice = await awaitBrowserProxyRoute();
+    if (!mounted) return;
+    if (notice != BrowserProxyNotice.none) {
+      setState(() => _proxyNotice = notice);
+    }
+    await _controller.loadRequest(widget.initialUri);
   }
 
   void _recordUrl(String? value) {
@@ -253,6 +266,7 @@ class _InternalBrowserViewState extends State<InternalBrowserView> {
                 ),
               ),
             ),
+            BrowserProxyNoticeBar(notice: _proxyNotice),
             Expanded(child: WebViewWidget(controller: _controller)),
           ],
         ),

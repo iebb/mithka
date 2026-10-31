@@ -1,0 +1,296 @@
+use std::fs;
+use std::io;
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use futures::TryFutureExt;
+use rustls::pki_types::CertificateDer;
+use rustls_pemfile::certs;
+use tokio::sync::RwLock;
+use tokio::time::{timeout, Duration};
+use tracing::{debug, trace, Instrument};
+
+use crate::{app::SyncDnsClient, proxy::*, session::Session};
+
+use super::QuicProxyStream;
+
+struct Manager {
+    address: String,
+    port: u16,
+    server_name: Option<String>,
+    dns_client: SyncDnsClient,
+    client_config: quinn::ClientConfig,
+    connections: RwLock<Vec<quinn::Connection>>,
+}
+
+impl Manager {
+    pub fn new(
+        address: String,
+        port: u16,
+        server_name: Option<String>,
+        alpns: Vec<String>,
+        certificate: Option<String>,
+        certificate_key: Option<String>,
+        dns_client: SyncDnsClient,
+    ) -> Self {
+        let mut roots = rustls::RootCertStore::empty();
+        if let Some(cert_path) = certificate.as_ref() {
+            if cert_path.contains("-----BEGIN") {
+                let mut reader = io::BufReader::new(cert_path.as_bytes());
+                for cert in certs(&mut reader) {
+                    roots.add(cert.unwrap()).unwrap();
+                }
+            } else {
+                match fs::read(cert_path) {
+                    Ok(cert) => {
+                        match Path::new(&cert_path).extension().map(|ext| ext.to_str()) {
+                            Some(Some("der")) => {
+                                roots.add(CertificateDer::from(cert)).unwrap(); // FIXME
+                            }
+                            _ => {
+                                let mut reader = io::BufReader::new(&*cert);
+                                for cert in certs(&mut reader) {
+                                    roots.add(cert.unwrap()).unwrap();
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        panic!("read certificate {} failed: {}", cert_path, e);
+                    }
+                }
+            }
+        } else {
+            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        }
+
+        #[cfg(feature = "rustls-tls-aws-lc")]
+        let provider = rustls::crypto::aws_lc_rs::default_provider().into();
+        #[cfg(not(feature = "rustls-tls-aws-lc"))]
+        let provider = rustls::crypto::ring::default_provider().into();
+
+        let builder = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(roots);
+
+        let mut client_crypto = if let Some(_certificate) = certificate {
+            if let Some(_certificate_key) = certificate_key {
+                // FIXME support client auth
+                builder.with_no_client_auth()
+            } else {
+                builder.with_no_client_auth()
+            }
+        } else {
+            builder.with_no_client_auth()
+        };
+        for alpn in alpns {
+            client_crypto.alpn_protocols.push(alpn.as_bytes().to_vec());
+        }
+
+        let mut client_config = quinn::ClientConfig::new(Arc::new(
+            quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto).unwrap(),
+        ));
+        let mut transport_config = quinn::TransportConfig::default();
+        transport_config.max_concurrent_bidi_streams(quinn::VarInt::from_u32(
+            *crate::option::QUIC_MAX_CONCURRENT_BIDI_STREAMS,
+        ));
+        transport_config.max_idle_timeout(Some(quinn::IdleTimeout::from(quinn::VarInt::from_u32(
+            *crate::option::QUIC_MAX_IDLE_TIMEOUT_MS,
+        ))));
+        transport_config.keep_alive_interval(Some(Duration::from_millis(
+            *crate::option::QUIC_KEEP_ALIVE_INTERVAL_MS,
+        )));
+        transport_config
+            .congestion_controller_factory(Arc::new(quinn::congestion::BbrConfig::default()));
+        client_config.transport_config(Arc::new(transport_config));
+
+        Manager {
+            address,
+            port,
+            server_name,
+            dns_client,
+            client_config,
+            connections: RwLock::new(Vec::new()),
+        }
+    }
+}
+
+impl Manager {
+    pub async fn new_stream(
+        &self,
+    ) -> Result<QuicProxyStream<quinn::RecvStream, quinn::SendStream>> {
+        let dial_timeout = Duration::from_secs(*crate::option::OUTBOUND_DIAL_TIMEOUT);
+        let start = std::time::Instant::now();
+        loop {
+            let conn = {
+                let mut conns = self.connections.write().await;
+                if conns.is_empty() {
+                    None
+                } else {
+                    Some(conns.swap_remove(0))
+                }
+            };
+
+            let Some(conn) = conn else {
+                break;
+            };
+
+            match timeout(dial_timeout, conn.open_bi()).await {
+                Ok(Ok((send, recv))) => {
+                    let rtt = conn.rtt();
+                    let mut conns = self.connections.write().await;
+                    conns.insert(0, conn);
+                    trace!(
+                        "opened stream on existing connection (rtt {} ms) in {} ms",
+                        rtt.as_millis(),
+                        start.elapsed().as_millis(),
+                    );
+                    return Ok(QuicProxyStream { recv, send });
+                }
+                Ok(Err(e)) => {
+                    debug!("open stream failed: {}", e);
+                }
+                Err(_) => {
+                    debug!("open stream timed out");
+                }
+            }
+        }
+
+        // FIXME A better indicator.
+        let socket = self
+            .new_udp_socket(&crate::option::UNSPECIFIED_BIND_ADDR)
+            .instrument(tracing::Span::current())
+            .await?;
+        let mut endpoint = quinn::Endpoint::new(
+            quinn::EndpointConfig::default(),
+            None,
+            socket.into_std()?,
+            Arc::new(quinn::TokioRuntime),
+        )?;
+        endpoint.set_default_client_config(self.client_config.clone());
+        let ips = {
+            self.dns_client
+                .read()
+                .await
+                .direct_lookup(&self.address)
+                .map_err(|e| io::Error::other(format!("lookup {} failed: {}", &self.address, e)))
+                .instrument(tracing::Span::current())
+                .await?
+        };
+        if ips.is_empty() {
+            return Err(anyhow!("could not resolve to any address",));
+        }
+        let server_name = self.server_name.as_ref().unwrap_or(&self.address);
+        let mut last_err: Option<anyhow::Error> = None;
+        for ip in ips {
+            let connect_addr = SocketAddr::new(ip, self.port);
+            let connecting = match endpoint.connect(connect_addr, server_name) {
+                Ok(c) => c,
+                Err(e) => {
+                    last_err = Some(e.into());
+                    continue;
+                }
+            };
+            let conn = match timeout(dial_timeout, connecting).await {
+                Ok(Ok(c)) => c,
+                Ok(Err(e)) => {
+                    last_err = Some(e.into());
+                    continue;
+                }
+                Err(_) => {
+                    last_err = Some(anyhow!("connect quic timed out"));
+                    continue;
+                }
+            };
+            let (send, recv) = match timeout(dial_timeout, conn.open_bi()).await {
+                Ok(Ok(x)) => x,
+                Ok(Err(e)) => {
+                    last_err = Some(e.into());
+                    continue;
+                }
+                Err(_) => {
+                    last_err = Some(anyhow!("open quic stream timed out"));
+                    continue;
+                }
+            };
+
+            let mut conns = self.connections.write().await;
+            if conns.len() >= 4 {
+                conns.swap_remove(0);
+            }
+            conns.push(conn);
+
+            trace!("opened quic stream on new connection",);
+
+            return Ok(QuicProxyStream { recv, send });
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow!("connect quic failed")))
+    }
+}
+
+impl UdpConnector for Manager {}
+
+pub struct Handler {
+    manager: Manager,
+}
+
+impl Handler {
+    pub fn new(
+        address: String,
+        port: u16,
+        server_name: Option<String>,
+        alpns: Vec<String>,
+        certificate: Option<String>,
+        certificate_key: Option<String>,
+        dns_client: SyncDnsClient,
+    ) -> Self {
+        Self {
+            manager: Manager::new(
+                address,
+                port,
+                server_name,
+                alpns,
+                certificate,
+                certificate_key,
+                dns_client,
+            ),
+        }
+    }
+
+    pub async fn new_stream(
+        &self,
+    ) -> io::Result<QuicProxyStream<quinn::RecvStream, quinn::SendStream>> {
+        self.manager
+            .new_stream()
+            .await
+            .map_err(|e| io::Error::other(format!("new quic stream failed: {}", e)))
+    }
+}
+
+impl UdpConnector for Handler {}
+
+#[async_trait]
+impl OutboundStreamHandler for Handler {
+    fn connect_addr(&self) -> OutboundConnect {
+        OutboundConnect::Unknown
+    }
+
+    async fn handle<'a>(
+        &'a self,
+        _sess: &'a Session,
+        _lhs: Option<&mut AnyStream>,
+        _stream: Option<AnyStream>,
+    ) -> io::Result<AnyStream> {
+        tracing::trace!("handling outbound stream");
+        Ok(Box::new(
+            self.new_stream()
+                .instrument(tracing::Span::current())
+                .await?,
+        ))
+    }
+}

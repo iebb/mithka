@@ -259,6 +259,9 @@ fi
 flutter --version
 ensure_cocoapods
 
+# --- Rust (packages/mithka_proxy's build hook runs cargo during xcodebuild) --
+sh "$REPO/scripts/ensure-rust.sh" aarch64-apple-ios
+
 # --- Telegram credentials → lib/config/secrets.dart ------------------------
 : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID in the Xcode Cloud workflow environment}"
 : "${TELEGRAM_API_HASH:?set TELEGRAM_API_HASH in the Xcode Cloud workflow environment}"

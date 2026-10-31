@@ -76,6 +76,7 @@ import 'security/local_app_lock_controller.dart';
 import 'security/local_app_lock_views.dart';
 import 'settings/ai_settings_controller.dart';
 import 'settings/app_icon_controller.dart';
+import 'settings/app_proxy_service.dart';
 import 'settings/auto_download_media_controller.dart';
 import 'settings/blocked_user_service.dart';
 import 'settings/business_service.dart';
@@ -113,10 +114,20 @@ Future<void> _preloadLocaleCatalogue([SharedPreferences? prefs]) {
   return AppStrings.ensureLoaded(locale);
 }
 
+/// Desktop child windows run their own engines in this process. Their Dart
+/// HTTP follows the primary engine's encrypted-proxy route; they never own a
+/// tunnel themselves.
+void _followPrimaryProxyRoute() {
+  AppProxyService.shared
+    ..markSecondaryEngine()
+    ..install();
+}
+
 Future<void> main(List<String> arguments) async {
   if (supportsDesktopVideoWindows) {
     final videoArguments = await FVideoDesktopWindows.initialize(arguments);
     if (videoArguments != null) {
+      _followPrimaryProxyRoute();
       _initializeVideoBackend(installGlobalLogHandler: false);
       await _preloadLocaleCatalogue();
       await initializeVideoWindowTelemetry();
@@ -126,6 +137,7 @@ Future<void> main(List<String> arguments) async {
     final miniAppArguments =
         DesktopMiniAppWindowArguments.tryParseLaunchArguments(arguments);
     if (miniAppArguments != null) {
+      _followPrimaryProxyRoute();
       configureAppImageCache();
       final launch = await DesktopMiniAppWindowService.instance
           .configureChildProxy(miniAppArguments);
@@ -140,6 +152,7 @@ Future<void> main(List<String> arguments) async {
     final imageArguments =
         DesktopImagePreviewWindowArguments.tryParseLaunchArguments(arguments);
     if (imageArguments != null) {
+      _followPrimaryProxyRoute();
       configureAppImageCache();
       await _preloadLocaleCatalogue();
       runApp(DesktopImagePreviewWindowApp(arguments: imageArguments));
@@ -148,6 +161,7 @@ Future<void> main(List<String> arguments) async {
     final utilityArguments =
         DesktopUtilityWindowArguments.tryParseLaunchArguments(arguments);
     if (utilityArguments != null) {
+      _followPrimaryProxyRoute();
       configureAppImageCache();
       _initializeVideoBackend(installGlobalLogHandler: false);
       await DesktopUtilityWindowService.instance.configureChildProxy(
@@ -168,6 +182,7 @@ Future<void> main(List<String> arguments) async {
       arguments,
     );
     if (chatArguments != null) {
+      _followPrimaryProxyRoute();
       configureAppImageCache();
       _initializeVideoBackend(installGlobalLogHandler: false);
       await DesktopChatWindowService.instance.configureChildProxy(
@@ -215,6 +230,9 @@ Future<void> _bootstrapAndRunApp() async {
     debugPrint('Application exit coordination unavailable at startup: $error');
   }
   GoogleFonts.config.allowRuntimeFetching = true;
+  // Before anything opens a connection: Dart HTTP follows the foreground
+  // account's encrypted proxy, and resumes re-check its tunnels.
+  AppProxyService.shared.install();
   // Bring TDLib up first: session restore is the longest serial chain in a
   // launch, and nothing below depends on it — the widget tree attaches to
   // AuthManager's stream whenever it is ready.

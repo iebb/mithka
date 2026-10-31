@@ -28,6 +28,8 @@ dependencies:
 
   # FFI bindings to tdjson (td_create_client_id / td_send / td_receive / td_execute).
   ffi: ^2.1.3
+  mithka_proxy:
+    path: packages/mithka_proxy
 
   # Chinese day-period date formatting.
   intl: 0.20.2

@@ -33,6 +33,7 @@ import '../bot_api/bot_api_endpoint_config.dart';
 import '../bot_api/bot_api_td_backend.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
+import '../settings/app_proxy_service.dart';
 import '../settings/proxy_config.dart';
 import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
@@ -446,6 +447,9 @@ class TdClient {
     }
     const proxyClientId = 1;
     _proxyTransport = transport;
+    // Encrypted tunnels belong to the primary engine; this window only reads
+    // its route.
+    AppProxyService.shared.markSecondaryEngine();
     _activeSlot = transport.accountSlot;
     _activeClientId = proxyClientId;
     _slots = [transport.accountSlot];
@@ -1185,6 +1189,7 @@ class TdClient {
     _latestConnectionStateByClient.remove(oldClientId);
     _latestCommunitiesByClient.remove(oldClientId);
     _proxyAppliedClients.remove(oldClientId);
+    unawaited(AppProxyService.shared.releaseClient(oldClientId));
     await deleteSlotData(slot);
 
     _ensureAcceptingNewClients();
@@ -1733,10 +1738,15 @@ class TdClient {
     _activeSlot = slot;
     _activeClientId = cid;
     _persist();
+    Future<void>? applying;
     if (!_botApiBackendForClient.containsKey(cid)) {
-      _applySavedProxyToClientOnce(cid);
+      applying = _applySavedProxyToClientOnce(cid);
     }
-    if (changed) _activeSlotChanges.add(slot);
+    if (changed) {
+      _activeSlotChanges.add(slot);
+      // The in-app browser follows the foreground account's route.
+      unawaited(AppProxyService.shared.followForeground(cid, applying));
+    }
   }
 
   /// Discards an account slot: closes its TDLib client and forgets it, so it
@@ -1878,6 +1888,7 @@ class TdClient {
       _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
       _proxyAppliedClients.remove(cid);
+      unawaited(AppProxyService.shared.releaseClient(cid));
       return true;
     }
     final existingWaiter = _clientClosedWaiters[cid];
@@ -1909,6 +1920,7 @@ class TdClient {
       _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
       _proxyAppliedClients.remove(cid);
+      unawaited(AppProxyService.shared.releaseClient(cid));
       if (kDebugMode) unawaited(_persistDebugLiveClientIds());
     }
     if (didClose) _unconfirmedSlotForClient.remove(cid);
@@ -2124,6 +2136,38 @@ class TdClient {
     _bindings.send(clientId, jsonEncode(quickAckTdlibOptionRequest()));
     if (clientId == _activeClientId) {
       _applySavedProxyToClientOnce(clientId);
+    } else {
+      unawaited(_restoreManagedProxy(clientId));
+    }
+  }
+
+  /// A background account whose TDLib database still enables an encrypted
+  /// proxy row points at a loopback port from an earlier launch. Restarts that
+  /// profile's tunnel so the account keeps its own route. A row whose profile
+  /// is gone stays as it is: unreachable, never silently direct.
+  Future<void> _restoreManagedProxy(int clientId) async {
+    try {
+      final profiles = await ProxyConfig.loadLeafProfiles();
+      if (profiles.isEmpty) return;
+      final proxies = await queryTo({
+        '@type': 'getProxies',
+      }, clientId).timeout(const Duration(seconds: 30));
+      final row = (proxies.objects('proxies') ?? const <Map<String, dynamic>>[])
+          .where(
+            (row) =>
+                row.boolean('is_enabled') == true &&
+                AppProxyService.isManagedRow(row),
+          )
+          .firstOrNull;
+      if (row == null) return;
+      final id = AppProxyService.managedProfileId(row);
+      final profile = profiles.where((p) => p.id == id).firstOrNull;
+      if (profile == null) return;
+      // Not marked as applied: becoming the foreground account still applies
+      // the saved proxy, as it does for every other account.
+      await _applyProxyConfigToClient(ProxyConfig.encrypted(profile), clientId);
+    } catch (error) {
+      debugPrint('🌐 [Mithka] encrypted proxy restore failed: $error');
     }
   }
 
@@ -2176,13 +2220,18 @@ class TdClient {
     await _applyProxyConfigToClient(config, clientId);
   }
 
-  void _applySavedProxyToClientOnce(int clientId) {
-    if (!_proxyAppliedClients.add(clientId)) return;
-    unawaited(_applySavedProxyToClient(clientId));
+  Future<void>? _applySavedProxyToClientOnce(int clientId) {
+    if (!_proxyAppliedClients.add(clientId)) return null;
+    final applying = _applySavedProxyToClient(clientId);
+    unawaited(applying);
+    return applying;
   }
 
   Future<void> _applySavedProxyToClient(int clientId) async {
     final config = await ProxyConfig.load();
+    // A desktop window shares the primary engine's TDLib clients, and that
+    // engine already applied the saved route, tunnel included.
+    if (_proxyTransport != null && config.leaf != null) return;
     await _applyProxyConfigToClient(config, clientId);
   }
 
@@ -2191,6 +2240,19 @@ class TdClient {
     int clientId,
   ) async {
     if (!config.configured) return;
+    await AppProxyService.shared.apply(
+      config: config,
+      clientId: clientId,
+      applyNative: (native) =>
+          _applyNativeProxyConfigToClient(native, clientId),
+      isForeground: () => _activeClientId == clientId,
+    );
+  }
+
+  Future<void> _applyNativeProxyConfigToClient(
+    ProxyConfig config,
+    int clientId,
+  ) async {
     if (!config.isUsable) {
       try {
         await queryTo({
@@ -2207,14 +2269,23 @@ class TdClient {
       final proxies = await queryTo({
         '@type': 'getProxies',
       }, clientId).timeout(const Duration(seconds: 8));
+      final rows = proxies.objects('proxies') ?? const <Map<String, dynamic>>[];
       Map<String, dynamic>? existing;
-      for (final proxy
-          in proxies.objects('proxies') ?? const <Map<String, dynamic>>[]) {
+      for (final proxy in rows) {
         if (config.matchesTdProxy(proxy)) {
           existing = proxy;
           break;
         }
       }
+      // Encrypted-proxy rows name a loopback port of one tunnel run. Rows of
+      // earlier runs are removed, but only once the new row is enabled, so
+      // the account never falls back to a direct connection in between.
+      final stale = [
+        for (final proxy in rows)
+          if (!identical(proxy, existing) &&
+              AppProxyService.isManagedRow(proxy))
+            proxy.integer('id'),
+      ].nonNulls.toList();
       final added = existing == null
           ? await queryTo(
               config.addProxyRequest,
@@ -2227,6 +2298,14 @@ class TdClient {
           '@type': 'enableProxy',
           'proxy_id': id,
         }, clientId).timeout(const Duration(seconds: 8));
+        for (final staleId in stale) {
+          unawaited(
+            queryTo({
+              '@type': 'removeProxy',
+              'proxy_id': staleId,
+            }, clientId).then<void>((_) {}, onError: (Object _) {}),
+          );
+        }
         unawaited(
           queryTo({'@type': 'pingProxy', 'proxy_id': id}, clientId)
               .then((result) {

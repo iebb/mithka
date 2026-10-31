@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'app_proxy_service.dart';
 
 /// What a proxy indicator paints.
 ///
@@ -196,17 +197,37 @@ class ProxyReading {
 /// Reduces a `getProxies` answer to [ProxyReading]s, dropping every credential
 /// on the way. Null means the read failed, which callers must not mistake for
 /// an account without proxies.
+///
+/// Encrypted proxies reach TDLib as loopback rows: a disabled one is a
+/// leftover of an earlier tunnel run, and the enabled one reads as the
+/// profile's own endpoint.
 List<ProxyReading>? proxyReadingsFrom(Map<String, dynamic>? response) {
   final raw = response?.objects('proxies');
   if (raw == null) return null;
-  return [
-    for (final entry in raw)
+  final readings = <ProxyReading>[];
+  for (final entry in raw) {
+    final enabled = entry.boolean('is_enabled') ?? false;
+    if (AppProxyService.isManagedRow(entry)) {
+      if (!enabled) continue;
+      final profile = AppProxyService.shared.profileFor(entry);
+      readings.add(
+        ProxyReading(
+          isEnabled: true,
+          server: profile?.server ?? '',
+          port: profile?.port ?? 0,
+        ),
+      );
+      continue;
+    }
+    readings.add(
       ProxyReading(
-        isEnabled: entry.boolean('is_enabled') ?? false,
+        isEnabled: enabled,
         server: entry.obj('proxy')?.str('server') ?? '',
         port: entry.obj('proxy')?.integer('port') ?? 0,
       ),
-  ];
+    );
+  }
+  return readings;
 }
 
 /// Reads one TDLib answer on behalf of a specific account slot.

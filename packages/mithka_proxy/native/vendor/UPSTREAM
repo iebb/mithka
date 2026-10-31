@@ -1,0 +1,23 @@
+Leaf
+https://github.com/eycorsican/leaf
+Commit: 5e8d94759ce983eb8ac226c315024b55ff2bb7b0
+License: Apache-2.0 (LEAF-LICENSE)
+
+The leaf/ directory is the upstream leaf crate, with these Mithka changes:
+- Disable the bindgen/protobuf build script. Commit protobuf output and declare
+  the two platform log FFI calls directly, avoiding libclang/protoc requirements.
+- Exclude Android log paths from non-Android Apple builds.
+- Permit system DNS without changing device DNS or routing.
+- Expose embedded startup with pre-bound loopback TCP listeners and a ready
+  callback. Listener failure ends that runtime; no UDP listeners are started.
+- Support plain VLESS and the xtls-rprx-vision flow independently. Add streaming
+  VLESS response/Vision parsing, a shared per-session read transition, and a
+  TLS adapter that preserves record boundaries and avoids plaintext read-ahead.
+- Compile-time feature gates support the selected protocols without pulling in
+  unrelated protocols, TUN, API servers or a second cryptographic backend.
+- Fix HTTP ingress header boundaries, bounded parsing, EOF handling, partial
+  read buffers and CONNECT requests with pipelined tunnel bytes.
+
+All original source files retain their upstream licensing. Root src/ and tests/
+belong to Mithka's embedding package. Unsupported upstream features remain as
+source for provenance but are not enabled in Mithka's Cargo.toml.

@@ -14,6 +14,7 @@ import '../components/ui_components.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
+import 'browser_proxy_notice.dart';
 import 'telegram_payment_service.dart';
 import 'telegram_webview_security.dart';
 
@@ -833,6 +834,7 @@ class _TelegramPaymentWebViewState extends State<TelegramPaymentWebView> {
   late final String _bridgeNonce;
   bool _loading = true;
   bool _bridgeAuthorized = false;
+  BrowserProxyNotice _proxyNotice = BrowserProxyNotice.none;
 
   @override
   void initState() {
@@ -886,10 +888,21 @@ class _TelegramPaymentWebViewState extends State<TelegramPaymentWebView> {
         },
       );
     if (_expectedOrigin != null && uri != null) {
-      unawaited(_controller.loadRequest(uri));
+      unawaited(_loadInitialPage(uri));
     } else {
       _loading = false;
     }
+  }
+
+  /// The first request waits for the proxy route, so it never leaves directly
+  /// while an encrypted proxy is still starting.
+  Future<void> _loadInitialPage(Uri uri) async {
+    final notice = await awaitBrowserProxyRoute();
+    if (!mounted) return;
+    if (notice != BrowserProxyNotice.none) {
+      setState(() => _proxyNotice = notice);
+    }
+    await _controller.loadRequest(uri);
   }
 
   Future<void> _handlePaymentMessage(JavaScriptMessage message) async {
@@ -926,6 +939,7 @@ class _TelegramPaymentWebViewState extends State<TelegramPaymentWebView> {
             onBack: () => Navigator.of(context).pop(),
             trailing: _loading ? const _PaymentSpinner(size: 18) : null,
           ),
+          BrowserProxyNoticeBar(notice: _proxyNotice),
           Expanded(child: WebViewWidget(controller: _controller)),
         ],
       ),
