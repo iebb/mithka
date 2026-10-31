@@ -9,6 +9,7 @@ const SHA = /^[a-f0-9]{40}$/;
 const TAG = /^v\d+\.\d+\.\d+(?:-nightly\.\d+\.[a-f0-9]+)?$/;
 const ROOT = `https://github.com/${REPO}`;
 const LIMIT = 60_000;
+class SummaryUnavailable extends Error {}
 const PATHS = ['.', ':(exclude).github/**', ':(exclude)test/**',
   ':(exclude)integration_test/**', ':(exclude)assets/l10n/**',
   ':(exclude)pubspec.lock', ':(exclude)**/.env*', ':(exclude).env*',
@@ -68,13 +69,13 @@ export function validateNotes(notes) {
 }
 
 export async function summarize(evidence, { key, token, fetcher = fetch, attempt = 0 } = {}) {
-  if (!key) throw new Error('Summary service is not configured');
+  if (!key) throw new SummaryUnavailable('Summary service is not configured');
   const response = await fetcher('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(120_000),
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       models: ['dots-studio/dots-3-note-preview:free', 'google/gemma-4-31b-it:free', 'openrouter/free'],
-      temperature: 0.1, max_tokens: 4096, reasoning: { effort: 'low', exclude: true },
+      temperature: 0.1, max_tokens: 8192, reasoning: { effort: 'low', exclude: true },
       provider: { max_price: { prompt: 0, completion: 0, request: 0 }, data_collection: 'deny', require_parameters: true },
       response_format: { type: 'json_object' }, usage: { include: true },
       messages: [
@@ -89,19 +90,29 @@ export async function summarize(evidence, { key, token, fetcher = fetch, attempt
     if (attempt === 0 && [502, 503, 504].includes(response.status)) {
       return summarize(evidence, { key, token, fetcher, attempt: 1 });
     }
-    throw new Error(`Summary service returned HTTP ${response.status}`);
+    throw new SummaryUnavailable(`Summary service returned HTTP ${response.status}`);
   }
   const text = await response.text();
-  if (text.length > 30_000) throw new Error('Oversized summary response');
+  if (text.length > 60_000) throw new SummaryUnavailable('Invalid summary response (oversized)');
   let data, notes;
-  try {
-    data = JSON.parse(text);
-    if (data.error || data.choices?.[0]?.finish_reason !== 'stop' ||
-        !(data.model === 'openrouter/free' || String(data.model).endsWith(':free')) || data.usage?.cost !== 0) {
-      throw new Error();
-    }
-    notes = validateNotes(JSON.parse(data.choices[0].message.content));
-  } catch { throw new Error('Invalid summary response'); }
+  try { data = JSON.parse(text); } catch { throw new SummaryUnavailable('Invalid summary response (JSON)'); }
+  if (data.error) throw new SummaryUnavailable('Invalid summary response (inference error)');
+  const choice = data.choices?.[0];
+  if (choice?.finish_reason !== 'stop') {
+    const reason = ['length', 'content_filter', 'tool_calls', 'error'].includes(choice?.finish_reason) ? choice.finish_reason : 'missing';
+    throw new SummaryUnavailable(`Invalid summary response (${reason})`);
+  }
+  // Some providers return the canonical model ID without the routing suffix.
+  // Accept only known requested IDs, together with explicit zero usage cost.
+  const canonical = ['dots-studio/dots-3-note-preview', 'google/gemma-4-31b-it'];
+  if (!(data.model === 'openrouter/free' || String(data.model).endsWith(':free') || canonical.includes(data.model))) {
+    throw new SummaryUnavailable('Invalid summary response (unexpected route)');
+  }
+  if (data.usage?.cost !== 0 && data.usage?.cost !== '0') {
+    throw new SummaryUnavailable('Invalid summary response (usage evidence)');
+  }
+  try { notes = validateNotes(JSON.parse(choice.message.content)); }
+  catch { throw new SummaryUnavailable('Invalid summary response (paired English and Chinese items)'); }
   return Object.fromEntries(Object.entries(notes).map(([locale, lines]) => [locale, lines.map(line => redact(line, [key, token]))]));
 }
 
@@ -142,8 +153,7 @@ async function main() {
       status = 'generated';
     } catch (error) {
       // Fixed diagnostics only. Never publish provider bodies or git stderr.
-      status = /^Summary service (?:is not configured|returned HTTP \d{3})$/.test(error.message)
-        ? error.message : 'The service did not return a valid summary';
+      status = error instanceof SummaryUnavailable ? error.message : 'The service did not return a valid summary';
     }
   }
   const summary = renderSummary(range, notes, status, {

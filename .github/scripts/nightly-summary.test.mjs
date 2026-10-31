@@ -101,6 +101,13 @@ test('capacity failures retry once while quota failures do not retry', async () 
   assert.equal(calls, 1);
 });
 
+test('canonical response IDs still require attested zero usage cost', async () => {
+  for (const cost of [0, '0']) {
+    assert.deepEqual(await summarize({}, { key: 'fixture', fetcher: async () => reply({ model: 'dots-studio/dots-3-note-preview', usage: { cost } }) }), notes);
+  }
+  await assert.rejects(summarize({}, { key: 'fixture', fetcher: async () => reply({ model: 'dots-studio/dots-3-note-preview', usage: { cost: 1 } }) }), /usage evidence/);
+});
+
 test('nightly report contains actual release comparison and never PR recommendations', () => {
   const range = { base: BASE, target: TARGET, tag: 'v1.8.8', compare: `https://github.com/iebb/mithka/compare/v1.8.8...${TARGET}` };
   const generated = renderSummary(range, notes, 'generated', { version: '1.9.4+296' });
