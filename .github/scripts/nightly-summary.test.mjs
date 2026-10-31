@@ -65,6 +65,7 @@ test('bounded evidence is identified and credentials are removed before transmis
       const body = JSON.parse(request.body);
       assert.equal(body.tools, undefined);
       assert.equal(body.models.at(-1), 'openrouter/free');
+      assert.ok(body.models.length <= 3);
       assert.ok(body.models.every(model => model === 'openrouter/free' || model.endsWith(':free')));
       assert.equal(body.provider.max_price.prompt, 0);
       assert.match(body.messages[0].content, /UNTRUSTED DATA/);

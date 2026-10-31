@@ -73,8 +73,7 @@ export async function summarize(evidence, { key, token, fetcher = fetch, attempt
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(120_000),
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      models: ['dots-studio/dots-3-note-preview:free', 'google/gemma-4-31b-it:free',
-        'nvidia/nemotron-3.5-super-vl:free', 'openrouter/free'],
+      models: ['dots-studio/dots-3-note-preview:free', 'google/gemma-4-31b-it:free', 'openrouter/free'],
       temperature: 0.1, max_tokens: 4096, reasoning: { effort: 'low', exclude: true },
       provider: { max_price: { prompt: 0, completion: 0, request: 0 }, data_collection: 'deny', require_parameters: true },
       response_format: { type: 'json_object' }, usage: { include: true },
