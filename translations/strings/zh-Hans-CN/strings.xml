@@ -1357,6 +1357,11 @@
     <string name="composerRecordingSendFailed">发送失败，录音已保留，可重试或丢弃。</string>
     <string name="composerRecordingStop">停止录音</string>
     <string name="composerRecordingResume">继续录音</string>
+    <string name="composerRecordingTrimStart">修剪起点</string>
+    <string name="composerRecordingTrimEnd">修剪终点</string>
+    <string name="composerVoiceCaptionPlaceholder">添加说明…</string>
+    <string name="composerAttachmentWaiting">请先发送或移除上方的附件。</string>
+    <string name="composerCaptionTooLong">说明超出 {value1} 字符上限。</string>
     <string name="composerDesktopVoiceRelease">松开发送 · 按 Esc 取消</string>
     <string name="composerImage">图片</string>
     <string name="composerImagePreview">[图片]</string>
@@ -3825,7 +3830,6 @@
     <string name="videoPlayerWaitingForFile">等待视频文件</string>
     <string name="videoTrimFailed">未能生成裁剪后的视频。</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">发送前查看录音。发送选项包括静默传送、调度、效果和一次性查看。</string>
     <string name="voiceNotePreviewVoiceMessage">语音消息</string>
     <string name="mediaSpoilerReveal">剧透内容，点击显示</string>
     <string name="downloadsTasks">下载任务</string>
@@ -3842,4 +3846,8 @@
     <string name="downloadsRetainedUnavailable">无法访问保留的文件，请重试。</string>
     <string name="downloadsNoRetained">暂无保留的文件。文件或视频下载完成后，点击盾牌按钮即可保留。</string>
     <string name="composerMediaPicker">表情符号、贴纸和 GIF</string>
+    <string name="appearanceSimpleMode">简洁模式</string>
+    <string name="appearanceSimpleModeDescription">精简聊天界面，不改动原有外观设置。</string>
+    <string name="composerMoreActions">更多操作</string>
+    <string name="composerShowKeyboard">显示键盘</string>
 </resources>

@@ -1364,6 +1364,11 @@
     <string name="composerRecordingSendFailed">Send failed. Recording kept — retry or discard.</string>
     <string name="composerRecordingStop">Stop recording</string>
     <string name="composerRecordingResume">Resume recording</string>
+    <string name="composerRecordingTrimStart">Trim start</string>
+    <string name="composerRecordingTrimEnd">Trim end</string>
+    <string name="composerVoiceCaptionPlaceholder">Add a caption…</string>
+    <string name="composerAttachmentWaiting">Send or remove the attachment above first.</string>
+    <string name="composerCaptionTooLong">This caption exceeds the {value1}-character limit.</string>
     <string name="composerDesktopVoiceRelease">Release to send · Esc to cancel</string>
     <string name="composerImage">Image</string>
     <string name="composerImagePreview">[Image]</string>
@@ -3836,7 +3841,6 @@
     <string name="videoPlayerWaitingForFile">Waiting for video file</string>
     <string name="videoTrimFailed">The trimmed video was not created.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">Review the recording before sending. Send options include silent delivery, scheduling, effects and view-once.</string>
     <string name="voiceNotePreviewVoiceMessage">Voice message</string>
     <string name="mediaSpoilerReveal">Spoiler. Tap to reveal</string>
     <string name="downloadsTasks">Download tasks</string>
@@ -3853,4 +3857,8 @@
     <string name="downloadsRetainedUnavailable">Cannot access retained files. Please retry.</string>
     <string name="downloadsNoRetained">No retained files yet. After a file or video finishes downloading, use its shield button to keep it.</string>
     <string name="composerMediaPicker">Emoji, stickers and GIFs</string>
+    <string name="appearanceSimpleMode">Simple mode</string>
+    <string name="appearanceSimpleModeDescription">Simplify the chat layout without changing your appearance settings.</string>
+    <string name="composerMoreActions">More actions</string>
+    <string name="composerShowKeyboard">Show keyboard</string>
 </resources>

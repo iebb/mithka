@@ -73,10 +73,15 @@ void main() {
   testWidgets('the calendar resolves the picked day and hands it over', (
     tester,
   ) async {
-    final now = DateTime.now();
-    final pickedDay = DateTime(now.year, now.month, 9);
+    final pickedDay = _pickableNinth();
     final msgTime =
-        DateTime(now.year, now.month, 9, 12).millisecondsSinceEpoch ~/ 1000;
+        DateTime(
+          pickedDay.year,
+          pickedDay.month,
+          9,
+          12,
+        ).millisecondsSinceEpoch ~/
+        1000;
     handler = (request) async => switch (request['@type']) {
       'getChatMessageByDate' => _message(1200, date: msgTime),
       'getChatHistory' => {
@@ -96,6 +101,7 @@ void main() {
 
     // Pick a specific day in the owned grid — the 9th, inside the allowed
     // range (the picker dims days after today).
+    await _showMonthOf(tester, pickedDay);
     await tester.tap(find.text('9'));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('appDatePickerConfirm')));
@@ -162,9 +168,15 @@ void main() {
   testWidgets('a failed history walk toasts a failure, not an empty day', (
     tester,
   ) async {
-    final now = DateTime.now();
+    final pickedDay = _pickableNinth();
     final msgTime =
-        DateTime(now.year, now.month, 9, 12).millisecondsSinceEpoch ~/ 1000;
+        DateTime(
+          pickedDay.year,
+          pickedDay.month,
+          9,
+          12,
+        ).millisecondsSinceEpoch ~/
+        1000;
     handler = (request) async => switch (request['@type']) {
       'getChatMessageByDate' => _message(1200, date: msgTime),
       'getChatHistory' => throw TdError(<String, dynamic>{
@@ -181,6 +193,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('chatSearchDateJump')));
     await tester.pumpAndSettle();
+    await _showMonthOf(tester, pickedDay);
     await tester.tap(find.text('9'));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('appDatePickerConfirm')));
@@ -1189,4 +1202,21 @@ Widget _harness(
       ),
     ),
   );
+}
+
+/// The most recent 9th the picker accepts. It dims days after today, so before
+/// the 9th of this month the 9th comes from the previous month.
+DateTime _pickableNinth() {
+  final now = DateTime.now();
+  return now.day >= 9
+      ? DateTime(now.year, now.month, 9)
+      : DateTime(now.year, now.month - 1, 9);
+}
+
+/// Pages the picker, which opens on the current month, back to [day]'s month.
+Future<void> _showMonthOf(WidgetTester tester, DateTime day) async {
+  final now = DateTime.now();
+  if (day.year == now.year && day.month == now.month) return;
+  await tester.tap(find.byKey(const ValueKey('appDatePickerPrevMonth')));
+  await tester.pumpAndSettle();
 }

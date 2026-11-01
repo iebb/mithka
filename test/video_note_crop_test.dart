@@ -18,6 +18,15 @@ void main() {
         .setMockMethodCallHandler(channel, handler);
   }
 
+  // Deletion is real file I/O, so a fixed number of event-queue turns can lose
+  // the race on a busy runner. Wait for it instead, within a bound.
+  Future<void> settleDeletion(File file) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (file.existsSync() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
@@ -128,7 +137,7 @@ void main() {
         // The platform finishes long after cleanup returned: the deletion is
         // attached to this completion, not to the wait that gave up.
         pending.complete(lateFile.path);
-        await pumpEventQueue();
+        await settleDeletion(lateFile);
         expect(
           lateFile.existsSync(),
           isFalse,
@@ -176,8 +185,7 @@ void main() {
         expect(keep.existsSync(), isTrue);
 
         pending.complete(temp.path);
-        await pumpEventQueue();
-        await pumpEventQueue();
+        await settleDeletion(temp);
         expect(
           temp.existsSync(),
           isFalse,
@@ -204,7 +212,7 @@ void main() {
         );
         // The caller never accepted: the service still owns the file.
         await VideoNoteCropService.abandonInFlight();
-        await pumpEventQueue();
+        await settleDeletion(file);
         expect(file.existsSync(), isFalse);
       },
     );
@@ -232,7 +240,7 @@ void main() {
       final path = await VideoNoteCropService.crop('${dir.path}/recording.mov');
       VideoNoteCropService.accept('${dir.path}/nothing-here.mp4');
       await VideoNoteCropService.abandonInFlight();
-      await pumpEventQueue();
+      await settleDeletion(file);
       expect(path, isNotNull);
       expect(file.existsSync(), isFalse);
     });
@@ -246,7 +254,7 @@ void main() {
       final second = await VideoNoteCropService.crop('${dir.path}/second.mov');
       VideoNoteCropService.accept(first!);
       await VideoNoteCropService.abandonInFlight();
-      await pumpEventQueue();
+      await settleDeletion(abandonedFile);
       expect(acceptedFile.existsSync(), isTrue);
       expect(
         abandonedFile.existsSync(),
@@ -287,7 +295,7 @@ void main() {
         // never gets there because its route was disposed first.
         liveTicket.accept(live.path);
         await dyingTicket.abandon(timeout: Duration.zero);
-        await pumpEventQueue();
+        await settleDeletion(dying);
 
         expect(
           dying.existsSync(),
@@ -452,7 +460,7 @@ void main() {
         // The recorder was disposed in the gap after crop() returned but
         // before the handoff: no accept happened, so cleanup reclaims it.
         await VideoNoteCropService.abandonInFlight();
-        await pumpEventQueue();
+        await settleDeletion(cropped);
         expect(cropped.existsSync(), isFalse);
       },
     );
@@ -484,7 +492,7 @@ void main() {
         expect(accepted, isTrue);
         // The recorder's own ticket takes over and reclaims its own crop.
         await ticket!.abandon(timeout: Duration.zero);
-        await pumpEventQueue();
+        await settleDeletion(cropped);
         expect(
           cropped.existsSync(),
           isFalse,

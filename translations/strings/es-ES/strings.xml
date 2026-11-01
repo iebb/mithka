@@ -1364,6 +1364,11 @@
     <string name="composerRecordingSendFailed">Error de envío. Grabación conservada — reintenta o descarta.</string>
     <string name="composerRecordingStop">Detener grabación</string>
     <string name="composerRecordingResume">Reanudar grabación</string>
+    <string name="composerRecordingTrimStart">Inicio del recorte</string>
+    <string name="composerRecordingTrimEnd">Fin del recorte</string>
+    <string name="composerVoiceCaptionPlaceholder">Añade un comentario…</string>
+    <string name="composerAttachmentWaiting">Envía o quita primero el adjunto de arriba.</string>
+    <string name="composerCaptionTooLong">Este comentario supera el límite de {value1} caracteres.</string>
     <string name="composerDesktopVoiceRelease">Suelta para enviar · Esc para cancelar</string>
     <string name="composerImage">Imagen</string>
     <string name="composerImagePreview">[Imagen]</string>
@@ -3836,7 +3841,6 @@
     <string name="videoPlayerWaitingForFile">Esperando el archivo de vídeo</string>
     <string name="videoTrimFailed">No se creó el vídeo recortado.</string>
     <string name="vipBadgeLabel">VIP</string>
-    <string name="voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude">Revise la grabación antes de enviarla. Las opciones de envío incluyen entrega silenciosa, programación, efectos y visualización única.</string>
     <string name="voiceNotePreviewVoiceMessage">Mensaje de voz</string>
     <string name="mediaSpoilerReveal">Spoiler. Toca para mostrar</string>
     <string name="downloadsTasks">Tareas de descarga</string>
@@ -3853,4 +3857,8 @@
     <string name="downloadsRetainedUnavailable">No se puede acceder a los archivos conservados. Inténtalo de nuevo.</string>
     <string name="downloadsNoRetained">Aún no hay archivos conservados. Cuando termine la descarga de un archivo o vídeo, usa el botón del escudo para conservarlo.</string>
     <string name="composerMediaPicker">Emojis, stickers y GIF</string>
+    <string name="appearanceSimpleMode">Modo sencillo</string>
+    <string name="appearanceSimpleModeDescription">Simplifica la interfaz del chat sin cambiar tus ajustes de apariencia.</string>
+    <string name="composerMoreActions">Más acciones</string>
+    <string name="composerShowKeyboard">Mostrar teclado</string>
 </resources>

@@ -108,6 +108,7 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
   MessageSendConfiguration initial = const MessageSendConfiguration(),
   bool allowWhenOnline = false,
   bool mediaOptions = false,
+  bool voiceOptions = false,
   List<AvailableMessageEffect> effects = const [],
   VoidCallback? onOpenScheduledMessages,
 }) {
@@ -128,6 +129,7 @@ Future<MessageSendConfiguration?> showMessageSendOptionsSheet(
         initial: initial,
         allowWhenOnline: allowWhenOnline,
         mediaOptions: mediaOptions,
+        voiceOptions: voiceOptions,
         effects: effects,
         onSubmit: (value) => Navigator.of(sheetContext).pop(value),
         onOpenScheduledMessages: onOpenScheduledMessages == null
@@ -282,6 +284,7 @@ class _MessageSendOptionsSheet extends StatefulWidget {
     required this.initial,
     required this.allowWhenOnline,
     required this.mediaOptions,
+    this.voiceOptions = false,
     required this.effects,
     required this.onSubmit,
     this.onOpenScheduledMessages,
@@ -293,6 +296,11 @@ class _MessageSendOptionsSheet extends StatefulWidget {
   final MessageSendConfiguration initial;
   final bool allowWhenOnline;
   final bool mediaOptions;
+
+  /// Adds a voice-message section with View Once and the self-destruct timer.
+  /// It never offers caption-above-media or the spoiler, which a voice note
+  /// cannot carry.
+  final bool voiceOptions;
   final List<AvailableMessageEffect> effects;
   final ValueChanged<MessageSendConfiguration> onSubmit;
   final VoidCallback? onOpenScheduledMessages;
@@ -304,6 +312,19 @@ class _MessageSendOptionsSheet extends StatefulWidget {
 
 class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
   late MessageSendConfiguration _value = widget.initial;
+
+  /// Whether the options above the pinned Send button need scrolling; the
+  /// footer then draws a hairline so the cut-off reads as intentional.
+  bool _optionsOverflow = false;
+
+  bool _onOptionsMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth != 0) return false;
+    final overflow = notification.metrics.maxScrollExtent > 0;
+    if (overflow != _optionsOverflow) {
+      setState(() => _optionsOverflow = overflow);
+    }
+    return false;
+  }
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -376,264 +397,287 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      // Send stays pinned at the bottom; everything above it scrolls when the
+      // options outgrow the sheet (voice or photo options, Repeat).
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onOptionsMetrics,
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!widget.centeredModal && !widget.contextMenu)
-              Center(
-                child: Container(
-                  key: const ValueKey('messageSendOptionsDragHandle'),
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: colors.textTertiary.withValues(alpha: 0.34),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-            _title(AppStringKeys.messageSendOptionsTitle.l10n(context)),
-            _toggle(
-              icon: HeroAppIcons.bellSlash,
-              title: AppStrings.t(AppStringKeys.messageSendOptionsSendSilently),
-              value: _value.disableNotification,
-              onChanged: (value) => setState(
-                () => _value = _value.copyWith(disableNotification: value),
-              ),
-            ),
-            _section(
-              AppStringKeys.messageSendOptionsDeliveryTime.l10n(context),
-            ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _choice(
-                  AppStringKeys.messageSendOptionsNow.l10n(context),
-                  !_value.hasScheduling,
-                  () => setState(
-                    () => _value = _value.copyWith(
-                      clearScheduleAt: true,
-                      sendWhenOnline: false,
-                      repeatPeriod: 0,
-                    ),
-                  ),
-                ),
-                _choice(
-                  AppStringKeys.messageSendOptionsInOneHour.l10n(context),
-                  false,
-                  () => _schedulePreset(const Duration(hours: 1)),
-                ),
-                _choice(
-                  AppStringKeys.messageSendOptionsTomorrow.l10n(context),
-                  false,
-                  () => _schedulePreset(const Duration(days: 1)),
-                ),
-                _choice(
-                  _value.scheduleAt == null
-                      ? AppStringKeys.messageSendOptionsChooseDate.l10n(context)
-                      : _formatDate(context, _value.scheduleAt!),
-                  _value.scheduleAt != null,
-                  _pickDate,
-                ),
-                if (widget.allowWhenOnline)
-                  _choice(
-                    AppStringKeys.messageSendOptionsWhenOnline.l10n(context),
-                    _value.sendWhenOnline,
-                    () => setState(
-                      () => _value = _value.copyWith(
-                        clearScheduleAt: true,
-                        sendWhenOnline: true,
-                        repeatPeriod: 0,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            if (_value.scheduleAt != null) ...[
-              _section(AppStringKeys.messageSendOptionsRepeat.l10n(context)),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final item in const <(int, String)>[
-                    (0, AppStringKeys.messageSendOptionsOnce),
-                    (86400, AppStringKeys.messageSendOptionsDaily),
-                    (604800, AppStringKeys.messageSendOptionsWeekly),
-                    (2592000, AppStringKeys.messageSendOptionsMonthly),
-                  ])
-                    _choice(
-                      item.$2.l10n(context),
-                      _value.repeatPeriod == item.$1,
-                      () => setState(
-                        () => _value = _value.copyWith(repeatPeriod: item.$1),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-            if (widget.mediaOptions) ...[
-              _section(AppStringKeys.messageSendOptionsMedia.l10n(context)),
-              _toggle(
-                icon: HeroAppIcons.alignTop,
-                title: AppStrings.t(
-                  AppStringKeys.messageSendOptionsCaptionAboveMedia,
-                ),
-                value: _value.showCaptionAboveMedia,
-                onChanged: (value) => setState(
-                  () => _value = _value.copyWith(showCaptionAboveMedia: value),
-                ),
-              ),
-              _toggle(
-                icon: HeroAppIcons.eyeSlash,
-                title: AppStrings.t(
-                  AppStringKeys.messageSendOptionsHideWithSpoiler,
-                ),
-                value: _value.hasSpoiler,
-                onChanged: (value) =>
-                    setState(() => _value = _value.copyWith(hasSpoiler: value)),
-              ),
-              _toggle(
-                icon: HeroAppIcons.eye,
-                title: AppStrings.t(AppStringKeys.messageSendOptionsViewOnce),
-                value: _value.viewOnce,
-                onChanged: (value) => setState(
-                  () => _value = _value.copyWith(
-                    viewOnce: value,
-                    selfDestructSeconds: 0,
-                  ),
-                ),
-              ),
-              if (!_value.viewOnce) ...[
-                _section(
-                  AppStringKeys.messageSendOptionsSelfDestruct.l10n(context),
-                ),
-                Wrap(
-                  spacing: 8,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final item in <(int, String)>[
-                      (0, AppStringKeys.messageSendOptionsOff.l10n(context)),
-                      for (final seconds in const [3, 10, 30, 60])
-                        (
-                          seconds,
-                          context.l10n.t(
-                            AppStringKeys.messageSendOptionsSeconds,
-                            {'value1': seconds},
-                          ),
-                        ),
-                    ])
-                      _choice(
-                        item.$2,
-                        _value.selfDestructSeconds == item.$1,
-                        () => setState(
-                          () => _value = _value.copyWith(
-                            selfDestructSeconds: item.$1,
+                    if (!widget.centeredModal && !widget.contextMenu)
+                      Center(
+                        child: Container(
+                          key: const ValueKey('messageSendOptionsDragHandle'),
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: colors.textTertiary.withValues(alpha: 0.34),
+                            borderRadius: BorderRadius.circular(999),
                           ),
                         ),
                       ),
+                    _title(AppStringKeys.messageSendOptionsTitle.l10n(context)),
+                    _toggle(
+                      icon: HeroAppIcons.bellSlash,
+                      title: AppStrings.t(
+                        AppStringKeys.messageSendOptionsSendSilently,
+                      ),
+                      value: _value.disableNotification,
+                      onChanged: (value) => setState(
+                        () => _value = _value.copyWith(
+                          disableNotification: value,
+                        ),
+                      ),
+                    ),
+                    _section(
+                      AppStringKeys.messageSendOptionsDeliveryTime.l10n(
+                        context,
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _choice(
+                          AppStringKeys.messageSendOptionsNow.l10n(context),
+                          !_value.hasScheduling,
+                          () => setState(
+                            () => _value = _value.copyWith(
+                              clearScheduleAt: true,
+                              sendWhenOnline: false,
+                              repeatPeriod: 0,
+                            ),
+                          ),
+                        ),
+                        _choice(
+                          AppStringKeys.messageSendOptionsInOneHour.l10n(
+                            context,
+                          ),
+                          false,
+                          () => _schedulePreset(const Duration(hours: 1)),
+                        ),
+                        _choice(
+                          AppStringKeys.messageSendOptionsTomorrow.l10n(
+                            context,
+                          ),
+                          false,
+                          () => _schedulePreset(const Duration(days: 1)),
+                        ),
+                        _choice(
+                          _value.scheduleAt == null
+                              ? AppStringKeys.messageSendOptionsChooseDate.l10n(
+                                  context,
+                                )
+                              : _formatDate(context, _value.scheduleAt!),
+                          _value.scheduleAt != null,
+                          _pickDate,
+                        ),
+                        if (widget.allowWhenOnline)
+                          _choice(
+                            AppStringKeys.messageSendOptionsWhenOnline.l10n(
+                              context,
+                            ),
+                            _value.sendWhenOnline,
+                            () => setState(
+                              () => _value = _value.copyWith(
+                                clearScheduleAt: true,
+                                sendWhenOnline: true,
+                                repeatPeriod: 0,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (_value.scheduleAt != null) ...[
+                      _section(
+                        AppStringKeys.messageSendOptionsRepeat.l10n(context),
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final item in const <(int, String)>[
+                            (0, AppStringKeys.messageSendOptionsOnce),
+                            (86400, AppStringKeys.messageSendOptionsDaily),
+                            (604800, AppStringKeys.messageSendOptionsWeekly),
+                            (2592000, AppStringKeys.messageSendOptionsMonthly),
+                          ])
+                            _choice(
+                              item.$2.l10n(context),
+                              _value.repeatPeriod == item.$1,
+                              () => setState(
+                                () => _value = _value.copyWith(
+                                  repeatPeriod: item.$1,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (widget.mediaOptions) ...[
+                      _section(
+                        AppStringKeys.messageSendOptionsMedia.l10n(context),
+                      ),
+                      _toggle(
+                        icon: HeroAppIcons.alignTop,
+                        title: AppStrings.t(
+                          AppStringKeys.messageSendOptionsCaptionAboveMedia,
+                        ),
+                        value: _value.showCaptionAboveMedia,
+                        onChanged: (value) => setState(
+                          () => _value = _value.copyWith(
+                            showCaptionAboveMedia: value,
+                          ),
+                        ),
+                      ),
+                      _toggle(
+                        icon: HeroAppIcons.eyeSlash,
+                        title: AppStrings.t(
+                          AppStringKeys.messageSendOptionsHideWithSpoiler,
+                        ),
+                        value: _value.hasSpoiler,
+                        onChanged: (value) => setState(
+                          () => _value = _value.copyWith(hasSpoiler: value),
+                        ),
+                      ),
+                      ..._selfDestructOptions(),
+                    ] else if (widget.voiceOptions) ...[
+                      _section(
+                        AppStringKeys.voiceNotePreviewVoiceMessage.l10n(
+                          context,
+                        ),
+                      ),
+                      ..._selfDestructOptions(),
+                    ],
+                    if (widget.effects.isNotEmpty) ...[
+                      _section(
+                        AppStringKeys.messageSendOptionsMessageEffect.l10n(
+                          context,
+                        ),
+                      ),
+                      SizedBox(
+                        height: 50,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: widget.effects.length + 1,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final effect = index == 0
+                                ? null
+                                : widget.effects[index - 1];
+                            final selected =
+                                _value.effectId == (effect?.id ?? 0);
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => setState(
+                                () => _value = _value.copyWith(
+                                  effectId: effect?.id ?? 0,
+                                ),
+                              ),
+                              child: Container(
+                                width: 50,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? AppTheme.brand.withValues(alpha: 0.14)
+                                      : colors.card,
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.card,
+                                  ),
+                                  border: Border.all(
+                                    color: selected
+                                        ? AppTheme.brand
+                                        : colors.divider,
+                                  ),
+                                ),
+                                child: effect == null
+                                    ? AppIcon(
+                                        HeroAppIcons.xmark,
+                                        size: 18,
+                                        color: colors.textSecondary,
+                                      )
+                                    : Text(
+                                        effect.emoji.isEmpty
+                                            ? '✨'
+                                            : effect.emoji,
+                                        style: const TextStyle(fontSize: 23),
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    if (widget.onOpenScheduledMessages != null) ...[
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          widget.onOpenScheduledMessages?.call();
+                        },
+                        child: Container(
+                          height: 48,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: colors.card,
+                            borderRadius: BorderRadius.circular(AppRadius.card),
+                          ),
+                          child: Text(
+                            AppStrings.t(
+                              AppStringKeys.messageSendOptionsScheduledMessages,
+                            ),
+                            style: TextStyle(
+                              color: AppTheme.brand,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-              ],
-            ],
-            if (widget.effects.isNotEmpty) ...[
-              _section(
-                AppStringKeys.messageSendOptionsMessageEffect.l10n(context),
               ),
-              SizedBox(
-                height: 50,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: widget.effects.length + 1,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final effect = index == 0
-                        ? null
-                        : widget.effects[index - 1];
-                    final selected = _value.effectId == (effect?.id ?? 0);
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(
-                        () =>
-                            _value = _value.copyWith(effectId: effect?.id ?? 0),
-                      ),
-                      child: Container(
-                        width: 50,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? AppTheme.brand.withValues(alpha: 0.14)
-                              : colors.card,
-                          borderRadius: BorderRadius.circular(AppRadius.card),
-                          border: Border.all(
-                            color: selected ? AppTheme.brand : colors.divider,
-                          ),
-                        ),
-                        child: effect == null
-                            ? AppIcon(
-                                HeroAppIcons.xmark,
-                                size: 18,
-                                color: colors.textSecondary,
-                              )
-                            : Text(
-                                effect.emoji.isEmpty ? '✨' : effect.emoji,
-                                style: const TextStyle(fontSize: 23),
-                              ),
-                      ),
-                    );
-                  },
-                ),
+            ),
+            DecoratedBox(
+              key: const ValueKey('messageSendOptionsFooter'),
+              decoration: BoxDecoration(
+                border: _optionsOverflow
+                    ? Border(top: BorderSide(color: colors.divider))
+                    : null,
               ),
-            ],
-            if (widget.onOpenScheduledMessages != null) ...[
-              const SizedBox(height: 10),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  widget.onOpenScheduledMessages?.call();
-                },
-                child: Container(
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colors.card,
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                  ),
-                  child: Text(
-                    AppStrings.t(
-                      AppStringKeys.messageSendOptionsScheduledMessages,
-                    ),
-                    style: TextStyle(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+                child: GestureDetector(
+                  key: const ValueKey('messageSendOptionsConfirm'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.onSubmit(_value),
+                  child: Container(
+                    height: 50,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
                       color: AppTheme.brand,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            GestureDetector(
-              key: const ValueKey('messageSendOptionsConfirm'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSubmit(_value),
-              child: Container(
-                height: 50,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppTheme.brand,
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                ),
-                child: Text(
-                  (_value.hasScheduling
-                          ? AppStringKeys.messageSendOptionsSchedule
-                          : AppStringKeys.composerSend)
-                      .l10n(context),
-                  style: const TextStyle(
-                    color: Color(0xFFFFFFFF),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    child: Text(
+                      (_value.hasScheduling
+                              ? AppStringKeys.messageSendOptionsSchedule
+                              : AppStringKeys.composerSend)
+                          .l10n(context),
+                      style: const TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -655,6 +699,43 @@ class _MessageSendOptionsSheetState extends State<_MessageSendOptionsSheet> {
       ),
     ),
   );
+
+  /// View Once, then the self-destruct timer while View Once is off.
+  List<Widget> _selfDestructOptions() => [
+    _toggle(
+      icon: HeroAppIcons.eye,
+      title: AppStrings.t(AppStringKeys.messageSendOptionsViewOnce),
+      value: _value.viewOnce,
+      onChanged: (value) => setState(
+        () => _value = _value.copyWith(viewOnce: value, selfDestructSeconds: 0),
+      ),
+    ),
+    if (!_value.viewOnce) ...[
+      _section(AppStringKeys.messageSendOptionsSelfDestruct.l10n(context)),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final item in <(int, String)>[
+            (0, AppStringKeys.messageSendOptionsOff.l10n(context)),
+            for (final seconds in const [3, 10, 30, 60])
+              (
+                seconds,
+                context.l10n.t(AppStringKeys.messageSendOptionsSeconds, {
+                  'value1': seconds,
+                }),
+              ),
+          ])
+            _choice(
+              item.$2,
+              _value.selfDestructSeconds == item.$1,
+              () => setState(
+                () => _value = _value.copyWith(selfDestructSeconds: item.$1),
+              ),
+            ),
+        ],
+      ),
+    ],
+  ];
 
   Widget _section(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(4, 14, 4, 7),

@@ -580,6 +580,9 @@ abstract final class AppStringKeys {
   static const appearanceChatListFolderSwipeSwitching =
       'appearanceChatListFolderSwipeSwitching';
   static const appearanceChatView = 'appearanceChatView';
+  static const appearanceSimpleMode = 'appearanceSimpleMode';
+  static const appearanceSimpleModeDescription =
+      'appearanceSimpleModeDescription';
   static const appearanceMessageBubbles = 'appearanceMessageBubbles';
   static const appearanceShowMessageBubbles = 'appearanceShowMessageBubbles';
   static const appearanceShowMessageBubblesDescription =
@@ -1356,6 +1359,12 @@ abstract final class AppStringKeys {
   static const composerRecordingSendFailed = 'composerRecordingSendFailed';
   static const composerRecordingStop = 'composerRecordingStop';
   static const composerRecordingResume = 'composerRecordingResume';
+  static const composerRecordingTrimStart = 'composerRecordingTrimStart';
+  static const composerRecordingTrimEnd = 'composerRecordingTrimEnd';
+  static const composerVoiceCaptionPlaceholder =
+      'composerVoiceCaptionPlaceholder';
+  static const composerAttachmentWaiting = 'composerAttachmentWaiting';
+  static const composerCaptionTooLong = 'composerCaptionTooLong';
   static const composerImage = 'composerImage';
   static const composerImagePreview = 'composerImagePreview';
   static const composerScreenshot = 'composerScreenshot';
@@ -1379,6 +1388,8 @@ abstract final class AppStringKeys {
   static const composerOpenAttachmentFailed = 'composerOpenAttachmentFailed';
   static const composerOpenMenu = 'composerOpenMenu';
   static const composerCloseMenu = 'composerCloseMenu';
+  static const composerMoreActions = 'composerMoreActions';
+  static const composerShowKeyboard = 'composerShowKeyboard';
   static const composerPaidMessageCost = 'composerPaidMessageCost';
   static const composerPastedImageReadFailed = 'composerPastedImageReadFailed';
   static const composerPoll = 'composerPoll';
@@ -4373,8 +4384,6 @@ abstract final class AppStringKeys {
       'videoNoteRecorderCancelRecording';
   static const videoNoteRecorderCloseCamera = 'videoNoteRecorderCloseCamera';
   static const videoNoteRecorderSwitchCamera = 'videoNoteRecorderSwitchCamera';
-  static const voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude =
-      'voiceNotePreviewReviewTheRecordingBeforeSendingSendOptionsInclude';
   static const voiceNotePreviewVoiceMessage = 'voiceNotePreviewVoiceMessage';
   static const accountSecurityANewCodeWasSent =
       'accountSecurityANewCodeWasSent';

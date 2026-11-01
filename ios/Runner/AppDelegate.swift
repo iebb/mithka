@@ -509,6 +509,30 @@ enum VideoNoteExportError: Error, Sendable {
           endMs: endMs.int64Value,
           result: result
         )
+      case "trimAudio":
+        guard
+          let path = arguments?["path"] as? String,
+          let startMs = arguments?["startMs"] as? NSNumber,
+          let endMs = arguments?["endMs"] as? NSNumber,
+          !path.isEmpty,
+          startMs.int64Value >= 0,
+          endMs.int64Value > startMs.int64Value
+        else {
+          result(
+            FlutterError(
+              code: "invalid_arguments",
+              message: "A valid voice trim range is required",
+              details: nil
+            )
+          )
+          return
+        }
+        self?.trimAudio(
+          path: path,
+          startMs: startMs.int64Value,
+          endMs: endMs.int64Value,
+          result: result
+        )
       case "cropVideoNote":
         guard let path = arguments?["path"] as? String, !path.isEmpty else {
           result(
@@ -991,6 +1015,67 @@ enum VideoNoteExportError: Error, Sendable {
             FlutterError(
               code: "video_trim_failed",
               message: exporter.error?.localizedDescription ?? "The video export failed",
+              details: nil
+            )
+          )
+        }
+      }
+    }
+  }
+
+  /// Cuts a recorded voice note (AAC in `.m4a`, or the `.aac` ADTS fallback)
+  /// to `startMs`..<`endMs` and returns the path of a new `.m4a` file in the
+  /// temporary directory.
+  private func trimAudio(
+    path: String,
+    startMs: Int64,
+    endMs: Int64,
+    result: @escaping FlutterResult
+  ) {
+    let inputURL = URL(fileURLWithPath: path)
+    guard FileManager.default.fileExists(atPath: inputURL.path) else {
+      result(
+        FlutterError(
+          code: "voice_trim_failed",
+          message: "The source recording is unavailable",
+          details: nil
+        )
+      )
+      return
+    }
+    let outputURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mithka-voice-trim-\(UUID().uuidString)")
+      .appendingPathExtension("m4a")
+    let asset = AVURLAsset(url: inputURL)
+    guard
+      let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A),
+      exporter.supportedFileTypes.contains(.m4a)
+    else {
+      result(
+        FlutterError(
+          code: "voice_trim_failed",
+          message: "This recording cannot be exported",
+          details: nil
+        )
+      )
+      return
+    }
+    exporter.outputURL = outputURL
+    exporter.outputFileType = .m4a
+    let start = CMTime(value: startMs, timescale: 1000)
+    let duration = CMTime(value: endMs - startMs, timescale: 1000)
+    exporter.timeRange = CMTimeRange(start: start, duration: duration)
+    exporter.exportAsynchronously {
+      DispatchQueue.main.async {
+        switch exporter.status {
+        case .completed:
+          result(outputURL.path)
+        default:
+          try? FileManager.default.removeItem(at: outputURL)
+          result(
+            FlutterError(
+              code: "voice_trim_failed",
+              message: exporter.error?.localizedDescription ?? "The voice export failed",
               details: nil
             )
           )

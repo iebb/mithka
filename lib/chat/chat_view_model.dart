@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../channels/topic_list_actions.dart';
 import '../config/build_flags.dart';
@@ -479,6 +480,10 @@ class _DraftMention {
   final int userId;
 }
 
+/// TDLib's `message_caption_length_max` without Premium, used when the option
+/// cannot be read.
+const defaultMessageCaptionLengthLimit = 1024;
+
 class ChatViewModel extends ChangeNotifier {
   static const int _maximumAiReplyContextMessages = 64;
   static const int _maximumAiReplySearchCharacters = 160;
@@ -736,6 +741,13 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> pinnedMessages = const [];
   int pinnedMessageIndex = 0;
   bool pinnedDismissed = false;
+
+  /// The pinned ids the bar was closed over, remembered on this device for
+  /// this account and chat (and topic); null while the bar is not closed.
+  Set<int>? _pinnedDismissedIds;
+  Future<void>? _pinnedDismissalLoad;
+  String? _pinnedDismissalKey;
+  bool _pinnedDismissalChanged = false;
 
   // Membership / send permission. Defaults assume a normal, joined, sendable
   // chat; refined in _loadChatHeader once the chat type + member status load.
@@ -998,6 +1010,15 @@ class ChatViewModel extends ChangeNotifier {
   bool get canUseSpeechRecognition =>
       aiCapabilities?.transcriptionSupported == true;
   bool get canSendWhenOnline => !isGroup && !peerIsBot;
+
+  /// The chat is the account's own Saved Messages.
+  bool get isSavedMessages => peerUserId != null && peerUserId == meId;
+
+  /// Telegram accepts View Once and self-destructing media only in one-on-one
+  /// chats with another person: not groups, channels, bots, Saved Messages or
+  /// secret chats, which have their own message timer.
+  bool get canSendSelfDestructingMedia =>
+      canSendWhenOnline && !isSavedMessages && !isSecretChat;
   bool get showBotApiPrivacyWarning =>
       isBotApiAccount &&
       isGroup &&
@@ -2317,6 +2338,20 @@ class ChatViewModel extends ChangeNotifier {
     return defaultMessageQuoteLengthLimit;
   }
 
+  /// TDLib's longest caption for this account (Premium raises it), in
+  /// Unicode characters.
+  Future<int> messageCaptionLengthLimit() async {
+    try {
+      final option = await _client.query({
+        '@type': 'getOption',
+        'name': 'message_caption_length_max',
+      });
+      final limit = option.integer('value');
+      if (limit != null && limit > 0) return limit;
+    } catch (_) {}
+    return defaultMessageCaptionLengthLimit;
+  }
+
   List<Map<String, dynamic>> _mentionEntitiesFor(
     String text,
     List<Map<String, dynamic>> existing,
@@ -2681,14 +2716,32 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  /// Sends one voice note. A non-empty [caption] travels on the same message
+  /// (`inputMessageVoiceNote.caption`) and clears the composer draft once
+  /// TDLib accepts it, as a sent text would.
+  ///
+  /// With [reportGenericFailure] false, a failure the user can do nothing
+  /// about beyond retrying is left to the caller to show; failures that need
+  /// an action (stars, Premium, privacy, permissions…) are still published.
   Future<bool> sendVoice(
     String path,
     int duration, {
     String waveform = '',
+    String caption = '',
+    List<Map<String, dynamic>> captionEntities = const [],
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),
+    bool reportGenericFailure = true,
   }) async {
     if (!canSendMessages || !canSendVoiceNotes) return false;
+    final hasCaption = caption.trim().isNotEmpty;
+    final spaced = hasCaption
+        ? _spacedOutgoing(caption, captionEntities)
+        : (text: '', entities: const <Map<String, dynamic>>[]);
+    final allEntities = [
+      ...spaced.entities,
+      if (hasCaption) ..._mentionEntitiesFor(spaced.text, spaced.entities),
+    ];
     try {
       final stamped = _withReplyAnchor(
         _withPaidMessageOptions({
@@ -2702,12 +2755,22 @@ class ChatViewModel extends ChangeNotifier {
               'duration': duration,
               'waveform': waveform,
             },
+            if (hasCaption)
+              'caption': {
+                '@type': 'formattedText',
+                'text': spaced.text,
+                if (allEntities.isNotEmpty) 'entities': allEntities,
+              },
             'self_destruct_type': ?sendConfiguration.selfDestructType,
           },
         }, sendConfiguration: sendConfiguration),
       );
       await _client.query(stamped.request);
       _consumeReplyAnchorIfCurrent(stamped.revision);
+      if (hasCaption) {
+        _clearDraft();
+        notifyListeners();
+      }
       return true;
     } catch (error) {
       if (_isVoiceMessageRestrictionError(error)) {
@@ -2715,12 +2778,13 @@ class ChatViewModel extends ChangeNotifier {
         notifyListeners();
       }
       debugPrint('Failed to send voice note: $error');
-      _publishSendFailure(
-        ChatSendFailure.fromError(
-          error,
-          paidMessageStarCount: paidMessageStarCount,
-        ),
+      final failure = ChatSendFailure.fromError(
+        error,
+        paidMessageStarCount: paidMessageStarCount,
       );
+      if (reportGenericFailure || failure.kind != ChatSendFailureKind.generic) {
+        _publishSendFailure(failure);
+      }
       return false;
     }
   }
@@ -5377,6 +5441,8 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadPinnedMessage() async {
+    // Read alongside the search so a closed bar never flashes open on reopen.
+    final dismissal = _ensurePinnedDismissalLoaded();
     try {
       final res = await _queryHistory({
         '@type': 'searchChatMessages',
@@ -5393,30 +5459,105 @@ class ChatViewModel extends ChangeNotifier {
           .map(TDParse.message)
           .whereType<ChatMessage>()
           .toList();
+      await dismissal;
       _applyPinnedMessages(parsed);
     } catch (_) {}
   }
 
   /// Re-runs the pinned search after a pin/unpin update: the bar must reflect
-  /// both new pins and unpins, including the list becoming empty.
+  /// both new pins and unpins, including the list becoming empty. A closed bar
+  /// stays closed unless the update brought a pin it was not closed over.
   Future<void> _reloadPinnedMessages() async {
-    pinnedDismissed = false;
     await _loadPinnedMessage();
   }
 
   void _applyPinnedMessages(List<ChatMessage> parsed) {
     if (parsed.isEmpty) {
-      if (pinnedMessage == null) return;
+      final hadPinned = pinnedMessage != null;
       pinnedMessages = const [];
       pinnedMessageIndex = 0;
       pinnedMessage = null;
-      notifyListeners();
+      _applyPinnedDismissal();
+      if (hadPinned) notifyListeners();
       return;
     }
     pinnedMessages = parsed;
     pinnedMessageIndex = pinnedMessageIndex.clamp(0, parsed.length - 1);
     pinnedMessage = parsed[pinnedMessageIndex];
+    _applyPinnedDismissal();
     notifyListeners();
+  }
+
+  static const _pinnedDismissalPrefix = 'mithka.pinnedBarDismissal.v1.user';
+
+  /// Reads the stored dismissal once per view model. Never throws: without an
+  /// account id or preferences the dismissal only lives in memory.
+  Future<void> _ensurePinnedDismissalLoaded() =>
+      _pinnedDismissalLoad ??= _readPinnedDismissal();
+
+  Future<void> _readPinnedDismissal() async {
+    try {
+      // Chat ids are account-scoped and slots are reused, so the record is
+      // keyed by the stable user id of the account that owns this pane. The
+      // pinned search is topic-scoped in a topic transcript, and so is this.
+      final me = await _client.queryTo({'@type': 'getMe'}, _accountClientId);
+      final userId = me.int64('id');
+      if (userId == null || userId <= 0) return;
+      final prefs = await SharedPreferences.getInstance();
+      final topic = isForumTopicTranscript ? '.topic.$forumTopicId' : '';
+      final key = '$_pinnedDismissalPrefix.$userId.chat.$chatId$topic';
+      _pinnedDismissalKey = key;
+      // A change made meanwhile is newer than the record and is written next.
+      if (_pinnedDismissalChanged) return;
+      final stored = prefs.getStringList(key);
+      if (stored == null) return;
+      _pinnedDismissedIds = stored.map(int.tryParse).whereType<int>().toSet();
+    } catch (_) {}
+  }
+
+  void _setPinnedDismissal(Set<int>? ids) {
+    _pinnedDismissedIds = ids;
+    _pinnedDismissalChanged = true;
+    unawaited(_writePinnedDismissal());
+  }
+
+  Future<void> _writePinnedDismissal() async {
+    await _ensurePinnedDismissalLoaded();
+    final key = _pinnedDismissalKey;
+    if (key == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Read after the awaits: overlapping writes all store the latest state.
+      final ids = _pinnedDismissedIds;
+      if (ids == null) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setStringList(key, [for (final id in ids) '$id']);
+      }
+    } catch (_) {}
+  }
+
+  /// Re-applies a closed bar to [pinnedMessages]: it stays closed while every
+  /// pinned id was already pinned when it was closed. A pin it was not closed
+  /// over drops the record and shows the bar again; an empty list prunes the
+  /// record, since any later pin is new anyway.
+  void _applyPinnedDismissal() {
+    final dismissed = _pinnedDismissedIds;
+    if (dismissed == null) {
+      pinnedDismissed = false;
+      return;
+    }
+    if (pinnedMessages.isNotEmpty &&
+        pinnedMessages.every((m) => dismissed.contains(m.id))) {
+      pinnedDismissed = true;
+      // Forget unpinned ids, so pinning one of them again counts as new.
+      if (dismissed.length > pinnedMessages.length) {
+        _setPinnedDismissal({for (final m in pinnedMessages) m.id});
+      }
+      return;
+    }
+    pinnedDismissed = false;
+    _setPinnedDismissal(null);
   }
 
   bool get hasPreviousPinnedMessage => pinnedMessageIndex > 0;
@@ -5442,6 +5583,11 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void dismissPinned() {
+    final current = pinnedMessage;
+    _setPinnedDismissal({
+      for (final m in pinnedMessages) m.id,
+      if (current != null) current.id,
+    });
     pinnedDismissed = true;
     notifyListeners();
   }
@@ -5460,7 +5606,9 @@ class ChatViewModel extends ChangeNotifier {
       ...pinnedMessages.where((m) => m.id != message.id),
     ];
     pinnedMessageIndex = 0;
+    // A pin made here is new by definition, so the bar shows again.
     pinnedDismissed = false;
+    _setPinnedDismissal(null);
     notifyListeners();
   }
 
@@ -5475,7 +5623,7 @@ class ChatViewModel extends ChangeNotifier {
     if (pinnedMessages.isEmpty) {
       pinnedMessage = null;
       pinnedMessageIndex = 0;
-      pinnedDismissed = false;
+      _applyPinnedDismissal();
       notifyListeners();
       return;
     }
@@ -5491,7 +5639,8 @@ class ChatViewModel extends ChangeNotifier {
       );
     }
     pinnedMessage = pinnedMessages[pinnedMessageIndex];
-    pinnedDismissed = false;
+    // Unpinning never reopens a closed bar.
+    _applyPinnedDismissal();
     notifyListeners();
   }
 
@@ -7977,7 +8126,7 @@ class ChatViewModel extends ChangeNotifier {
       pinnedMessage = pinnedMessages.isEmpty
           ? null
           : pinnedMessages[pinnedMessageIndex];
-      pinnedDismissed = pinnedMessage == null ? false : pinnedDismissed;
+      _applyPinnedDismissal();
     }
     notifyListeners();
   }

@@ -8189,12 +8189,13 @@ class _ChatViewState extends State<ChatView> {
   // ChatInputBar subscribes to the view model itself, so the parent's
   // notification-driven rebuilds only re-run its build for nothing. Every other
   // constructor argument is either the (final) view model or a method tear-off,
-  // so these four flags are the whole input set.
+  // so these five flags are the whole input set.
   Widget? _composerBarCache;
   bool _composerBarRequestInitialFocus = false;
   bool _composerBarEnterToSend = false;
   bool _composerBarQuickRepliesEnabled = false;
   bool _composerBarShowCallAction = false;
+  bool _composerBarSimpleMode = false;
 
   Widget _chatInputBar() {
     final themeController = context.watch<ThemeController>();
@@ -8202,24 +8203,28 @@ class _ChatViewState extends State<ChatView> {
     final enterToSend = themeController.enterToSend;
     final quickRepliesEnabled = themeController.quickRepliesEnabled;
     final showCallAction = !_usesWideGroupHeader;
+    final simpleMode = themeController.simpleMode;
     final cached = _composerBarCache;
     if (cached != null &&
         _composerBarRequestInitialFocus == requestInitialFocus &&
         _composerBarEnterToSend == enterToSend &&
         _composerBarQuickRepliesEnabled == quickRepliesEnabled &&
-        _composerBarShowCallAction == showCallAction) {
+        _composerBarShowCallAction == showCallAction &&
+        _composerBarSimpleMode == simpleMode) {
       return cached;
     }
     _composerBarRequestInitialFocus = requestInitialFocus;
     _composerBarEnterToSend = enterToSend;
     _composerBarQuickRepliesEnabled = quickRepliesEnabled;
     _composerBarShowCallAction = showCallAction;
+    _composerBarSimpleMode = simpleMode;
     return _composerBarCache = ChatInputBar(
       vm: _vm,
       requestInitialFocus: requestInitialFocus,
       enterToSend: enterToSend,
       quickRepliesEnabled: quickRepliesEnabled,
       showCallAction: showCallAction,
+      simpleMode: simpleMode,
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
@@ -10887,6 +10892,7 @@ class _ChatViewState extends State<ChatView> {
         isGroup: _vm.isGroup,
         meName: _vm.meName,
         mePhoto: _vm.mePhoto,
+        meId: _vm.meId,
         hasCustomChatTheme: _hasCustomChatTheme,
         showCommentAttachment: chatTranscriptAllowsCommentAttachment(
           isChannel: _vm.isChannel,

@@ -5,6 +5,7 @@ set -eu
 # Only the optional +build suffix is removed; Apple build numbers are assigned
 # separately. The optional branch argument remains accepted for existing callers
 # but must never change the patch or select a different marketing train.
+# See Versioning in AGENTS.md: TestFlight shows the exact daily version.
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
   echo "usage: $0 <X.Y.Z[+build]> [branch]" >&2

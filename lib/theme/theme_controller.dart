@@ -1172,6 +1172,7 @@ class ThemeController extends ChangeNotifier {
     _autoRevealRestrictedMedia =
         _prefs.getBool(_autoRevealRestrictedMediaKey) ?? false;
     _liquidGlassBottomBar = _prefs.getBool(_liquidGlassBottomBarKey) ?? false;
+    _simpleMode = _prefs.getBool(_simpleModeKey) ?? false;
     _showChannelsTab = _prefs.getBool(_showChannelsTabKey) ?? false;
     _showContactsTab = _prefs.getBool(_showContactsTabKey) ?? true;
     _showMomentsTab = _prefs.getBool(_showMomentsTabKey) ?? true;
@@ -1283,6 +1284,7 @@ class ThemeController extends ChangeNotifier {
   static const _hideBlockedUserMessagesKey = 'hideBlockedUserMessages';
   static const _autoRevealRestrictedMediaKey = 'autoRevealRestrictedMedia';
   static const _liquidGlassBottomBarKey = 'liquidGlassBottomBar';
+  static const _simpleModeKey = 'simpleMode';
   static const _showChannelsTabKey = 'showChannelsTab';
   static const _showContactsTabKey = 'showContactsTab';
   static const _showMomentsTabKey = 'showMomentsTab';
@@ -1378,6 +1380,7 @@ class ThemeController extends ChangeNotifier {
   bool _hideBlockedUserMessages = false;
   bool _autoRevealRestrictedMedia = false;
   bool _liquidGlassBottomBar = false;
+  bool _simpleMode = false;
   bool _showChannelsTab = false;
   bool _showContactsTab = true;
   bool _showMomentsTab = true;
@@ -1866,6 +1869,10 @@ class ThemeController extends ChangeNotifier {
   /// the server still enforces.
   bool get autoRevealRestrictedMedia => _autoRevealRestrictedMedia;
   bool get liquidGlassBottomBar => _liquidGlassBottomBar;
+
+  /// Collapses the phone composer to one row and moves its tools into the
+  /// More panel. Local presentation pref only; never rewrites other settings.
+  bool get simpleMode => _simpleMode;
   bool get showChannelsTab => _showChannelsTab;
   bool get showContactsTab => _showContactsTab;
   bool get showMomentsTab => _showMomentsTab;
@@ -2913,6 +2920,13 @@ class ThemeController extends ChangeNotifier {
     if (_liquidGlassBottomBar == value) return;
     _liquidGlassBottomBar = value;
     _prefs.setBool(_liquidGlassBottomBarKey, value);
+    notifyListeners();
+  }
+
+  set simpleMode(bool value) {
+    if (_simpleMode == value) return;
+    _simpleMode = value;
+    _prefs.setBool(_simpleModeKey, value);
     notifyListeners();
   }
 

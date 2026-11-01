@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:heroicons_flutter/heroicons_flutter.dart';
@@ -220,6 +221,79 @@ class _AppArrowUpToLineIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AppArrowUpToLineIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+/// Owned keyboard glyph: the "show keyboard" state of a composer control
+/// whose panel is docked in the keyboard's place.
+///
+/// Heroicons has no keyboard symbol. This outline is drawn on the set's
+/// 24-unit grid with its 1.5-unit round stroke, so it sits beside the
+/// Heroicons outline glyphs at the same visual weight.
+class AppKeyboardIcon extends StatelessWidget {
+  const AppKeyboardIcon({super.key, this.size = 24, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor =
+        color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _AppKeyboardIconPainter(color: resolvedColor),
+      ),
+    );
+  }
+}
+
+class _AppKeyboardIconPainter extends CustomPainter {
+  const _AppKeyboardIconPainter({required this.color});
+
+  final Color color;
+
+  static const double _grid = 24;
+  static const double _stroke = 1.5;
+  static const _body = Rect.fromLTWH(2.25, 5.25, 19.5, 13.5);
+  static const _bodyRadius = Radius.circular(2.25);
+
+  /// Two rows of keys, each a zero-length round-capped stroke.
+  static const _keys = <Offset>[
+    Offset(6, 9),
+    Offset(9.33, 9),
+    Offset(12.67, 9),
+    Offset(16, 9),
+    Offset(5.5, 12),
+    Offset(7.67, 12),
+    Offset(11, 12),
+    Offset(14.33, 12),
+    Offset(17.67, 12),
+  ];
+  static const _spaceStart = Offset(8.25, 15.25);
+  static const _spaceEnd = Offset(15.75, 15.25);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final extent = size.shortestSide;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.save();
+    canvas.translate((size.width - extent) / 2, (size.height - extent) / 2);
+    canvas.scale(extent / _grid);
+    canvas.drawRRect(RRect.fromRectAndRadius(_body, _bodyRadius), paint);
+    canvas.drawPoints(ui.PointMode.points, _keys, paint);
+    canvas.drawLine(_spaceStart, _spaceEnd, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_AppKeyboardIconPainter oldDelegate) =>
       oldDelegate.color != color;
 }
 

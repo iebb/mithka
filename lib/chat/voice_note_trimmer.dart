@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
+
 class TrimmedVoiceNote {
   const TrimmedVoiceNote({required this.path, required this.durationSeconds});
 
@@ -22,13 +24,30 @@ class _OggPage {
   bool get isAudio => granule > 0;
 }
 
-/// Losslessly trims the Opus/Ogg voice notes produced by the recorder.
+/// Trims the voice notes produced by the recorder.
 ///
-/// Opus packets are retained at Ogg page boundaries. The final page granule is
-/// shortened to make the end point sample-accurate; the start point is rounded
-/// down to the preceding page boundary, which is normally 20-60 ms.
+/// Opus/Ogg recordings are trimmed losslessly in Dart: Opus packets are
+/// retained at Ogg page boundaries. The final page granule is shortened to
+/// make the end point sample-accurate; the start point is rounded down to the
+/// preceding page boundary, which is normally 20-60 ms.
+///
+/// On iOS, where the recorder writes AAC (`.m4a`, or `.aac` ADTS), any other
+/// recording is cut by AVFoundation through the `mithka/media_editor`
+/// channel's `trimAudio` and comes back as a new `.m4a` file.
 abstract final class VoiceNoteTrimmer {
   static const _sampleRate = 48000;
+  static const _channel = MethodChannel('mithka/media_editor');
+
+  /// Whether a recording at [path] is an Ogg/Opus file, going by its name.
+  static bool isOggPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.ogg') ||
+        lower.endsWith('.oga') ||
+        lower.endsWith('.opus');
+  }
+
+  /// Whether [trim] can cut a recording at [path] on this platform.
+  static bool canTrim(String path) => isOggPath(path) || Platform.isIOS;
 
   static Future<TrimmedVoiceNote> trim({
     required String inputPath,
@@ -38,7 +57,69 @@ abstract final class VoiceNoteTrimmer {
     if (startSeconds < 0 || endSeconds <= startSeconds) {
       throw const FormatException('The voice-note trim range is invalid.');
     }
-    final data = await File(inputPath).readAsBytes();
+    final file = File(inputPath);
+    if (Platform.isIOS && !await _hasOggSignature(file)) {
+      return _trimNatively(
+        inputPath: inputPath,
+        startSeconds: startSeconds,
+        endSeconds: endSeconds,
+      );
+    }
+    return _trimOgg(
+      await file.readAsBytes(),
+      startSeconds: startSeconds,
+      endSeconds: endSeconds,
+    );
+  }
+
+  /// An Ogg stream starts with the `OggS` capture pattern.
+  static Future<bool> _hasOggSignature(File file) async {
+    final handle = await file.open();
+    try {
+      final head = await handle.read(4);
+      return head.length == 4 &&
+          head[0] == 0x4f &&
+          head[1] == 0x67 &&
+          head[2] == 0x67 &&
+          head[3] == 0x53;
+    } finally {
+      await handle.close();
+    }
+  }
+
+  static Future<TrimmedVoiceNote> _trimNatively({
+    required String inputPath,
+    required double startSeconds,
+    required double endSeconds,
+  }) async {
+    final startMs = (startSeconds * 1000).round();
+    final endMs = (endSeconds * 1000).round();
+    if (endMs <= startMs) {
+      throw const FormatException('The voice-note trim range is invalid.');
+    }
+    final output = await _channel.invokeMethod<String>('trimAudio', {
+      'path': inputPath,
+      'startMs': startMs,
+      'endMs': endMs,
+    });
+    if (output == null || output.isEmpty) {
+      throw PlatformException(
+        code: 'voice_trim_failed',
+        message: 'The voice-note export returned no file.',
+      );
+    }
+    final seconds = (endSeconds - startSeconds).round();
+    return TrimmedVoiceNote(
+      path: output,
+      durationSeconds: seconds < 1 ? 1 : seconds,
+    );
+  }
+
+  static Future<TrimmedVoiceNote> _trimOgg(
+    Uint8List data, {
+    required double startSeconds,
+    required double endSeconds,
+  }) async {
     final pages = _parsePages(data);
     final audioIndexes = <int>[
       for (var index = 0; index < pages.length; index++)

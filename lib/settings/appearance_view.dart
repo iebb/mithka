@@ -166,6 +166,17 @@ class AppearanceView extends StatelessWidget {
           // Message Bubbles used to sit alone in an unlabelled card;
           // it belongs with the rest of what a conversation looks like.
           _card(context, [
+            // Simple mode only reshapes the phone composer; the desktop
+            // composer never changes, so the switch would do nothing there.
+            if (!isDesktopTargetPlatform(Theme.of(context).platform))
+              SettingsSwitchRow(
+                key: const ValueKey('settings-simple-mode'),
+                title: AppStringKeys.appearanceSimpleMode,
+                subtitle: AppStringKeys.appearanceSimpleModeDescription,
+                value: theme.simpleMode,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.comment),
+                onChanged: (value) => theme.simpleMode = value,
+              ),
             _chatViewNavigationRow(context),
             KeyedSubtree(
               key: const ValueKey('appearance-message-bubbles-row'),

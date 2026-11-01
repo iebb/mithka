@@ -1,7 +1,10 @@
 name: 🌙 Sync Nightly
 
-# Merge master into nightly once per day. Every sync that incorporates new
-# master commits increments the app's patch version once. Master is
+# Merge master into nightly once per day. The first sync of a new minor ships
+# master's exact X.Y.0; every later sync that incorporates new master commits
+# increments the app's patch version once (see Versioning in AGENTS.md). The
+# Friday store release dispatches this workflow right after it moves master to
+# the next minor, so that X.Y.0 goes out the same day. Master is
 # authoritative for the nightly tree; only pubspec.yaml receives a generated
 # nightly version. A generated GITHUB_TOKEN push doesn't trigger other
 # workflows, so a changed sync explicitly dispatches every build that a push to
@@ -14,6 +17,11 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      summary_only:
+        description: Compare published releases and summarize current nightly without syncing or dispatching builds
+        type: boolean
+        default: false
 
 concurrency:
   group: sync-nightly
@@ -26,14 +34,17 @@ permissions:
 jobs:
   quality:
     name: Required quality gate
+    if: inputs.summary_only != true
     uses: ./.github/workflows/quality.yml
 
   sync:
     name: Sync master to nightly
     needs: quality
+    if: inputs.summary_only != true
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.sync.outputs.changed }}
+      nightly_commit: ${{ steps.sync.outputs.nightly_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,7 +70,10 @@ jobs:
           if git ls-remote --exit-code --heads origin nightly >/dev/null 2>&1; then
             git fetch origin nightly
             if git merge-base --is-ancestor origin/master origin/nightly; then
-              echo "changed=false" >> "$GITHUB_OUTPUT"
+              {
+                echo "changed=false"
+                echo "nightly_commit=$(git rev-parse origin/nightly)"
+              } >> "$GITHUB_OUTPUT"
               echo "nightly already contains the current master"
               exit 0
             fi
@@ -108,7 +122,15 @@ jobs:
             exit 1
           fi
 
-          if [ "$master_major" = "$previous_major" ] && \
+          # A new minor on master (X.Y.0 after a store release) ships as that
+          # exact X.Y.0 first: the immediate update. Every later sync with new
+          # master commits raises the patch, X.Y.1, X.Y.2, and so on.
+          if [ "$master_major" -gt "$previous_major" ] || {
+            [ "$master_major" = "$previous_major" ] && \
+              [ "$master_minor" -gt "$previous_minor" ]
+          }; then
+            nightly_patch="$master_patch"
+          elif [ "$master_major" = "$previous_major" ] && \
             [ "$master_minor" = "$previous_minor" ] && \
             [ "$previous_patch" -ge "$master_patch" ]; then
             nightly_patch=$((previous_patch + 1))
@@ -148,8 +170,11 @@ jobs:
           git diff --check --cached
           git commit -m "chore: sync nightly $nightly_version"
           git push origin HEAD:nightly
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "nightly_version=$nightly_version" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed=true"
+            echo "nightly_commit=$(git rev-parse HEAD)"
+            echo "nightly_version=$nightly_version"
+          } >> "$GITHUB_OUTPUT"
           echo "nightly now contains master at app version $nightly_raw; Android version code $android_version_code"
 
       - name: Dispatch nightly releases
@@ -161,3 +186,57 @@ jobs:
           gh workflow run google-play.yml --ref nightly
           gh workflow run ios-testflight.yml --ref nightly
           gh workflow run macos-testflight.yml --ref nightly
+
+  release-summary:
+    name: Summarize changes since the previous release
+    needs: [quality, sync]
+    if: >-
+      always() && github.repository == 'iebb/mithka' && github.ref == 'refs/heads/master' &&
+      (inputs.summary_only == true || (needs.quality.result == 'success' && needs.sync.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # Execute trusted master code. The nightly source is read only as data.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test release-summary and Actions-output boundaries
+        run: |
+          node --test .github/scripts/nightly-summary.test.mjs
+          python3 -m unittest discover -s test/scripts -p 'pr_review_output_test.py' -v
+      - name: Resolve the exact nightly source
+        id: source
+        env:
+          SYNC_COMMIT: ${{ needs.sync.outputs.nightly_commit }}
+          SUMMARY_ONLY: ${{ inputs.summary_only }}
+        run: |
+          set -euo pipefail
+          target="$SYNC_COMMIT"
+          if [ "$SUMMARY_ONLY" = true ]; then
+            git fetch --no-tags origin nightly
+            target="$(git rev-parse FETCH_HEAD)"
+          fi
+          [[ "$target" =~ ^[a-f0-9]{40}$ ]]
+          git cat-file -e "$target^{commit}"
+          raw_version="$(git show "$target:pubspec.yaml" | awk '/^version:/ { print $2; exit }')"
+          [[ "$raw_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]
+          echo "commit=$target" >> "$GITHUB_OUTPUT"
+          echo "version=$raw_version" >> "$GITHUB_OUTPUT"
+      - name: Write the release comparison summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NIGHTLY_SUMMARY_COMMIT: ${{ steps.source.outputs.commit }}
+          NIGHTLY_VERSION: ${{ steps.source.outputs.version }}
+          NIGHTLY_CHANGED: ${{ inputs.summary_only == true && 'true' || needs.sync.outputs.changed }}
+        run: node .github/scripts/nightly-summary.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nightly-release-summary
+          path: nightly-summary/
+          if-no-files-found: error
+          retention-days: 30
