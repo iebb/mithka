@@ -45,6 +45,9 @@ cp -a "$bundle/." "$appdir/usr/bin/"
 # while allowing linuxdeploy to collect plugin and dlopen dependencies in lib.
 mv "$appdir/usr/bin/lib" "$appdir/usr/lib"
 ln -s ../lib "$appdir/usr/bin/lib"
+# Drop unused plugins (including package:jni's libjvm-linked library) and
+# strip symbols before linuxdeploy follows their dependencies.
+python3 "$repository_root/scripts/prune-desktop-bundle.py" linux "$appdir/usr/bin"
 # MDK ships this optional decoder on arm64, but its librockchip_mpp dependency
 # belongs to Rockchip board images. Generic desktop AppImages use MDK's FFmpeg
 # fallback instead; the original portable tarball retains the optional plugin.
@@ -84,6 +87,10 @@ export LD_LIBRARY_PATH="$appdir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   --custom-apprun "$repository_root/linux/appimage/AppRun" --output appimage
 test -s "$output"
 chmod 0755 "$output"
+if find "$appdir" -name 'libjvm.so*' -print | grep -q .; then
+  echo 'The AppImage must not bundle a JVM; package:jni is Android-only' >&2
+  exit 1
+fi
 
 # Exercise the produced runtime without requiring FUSE on the CI runner.
 mkdir "$work/check"

@@ -559,11 +559,20 @@ jobs:
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" `
             --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
 
+      - name: Prune Windows release bundle
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          python="$(command -v python3 || command -v python)"
+          "$python" scripts/prune-desktop-bundle.py windows \
+            "build/windows/${{ matrix.architecture }}/runner/Release"
+
       - name: Package Linux release
         if: matrix.platform == 'linux'
         run: |
           bundle="build/linux/${{ matrix.architecture }}/release/bundle"
           install -m 0755 native-libs/libtdjson.so "$bundle/lib/libtdjson.so"
+          python3 scripts/prune-desktop-bundle.py linux "$bundle"
           nm -D "$bundle/lib/libtdjson.so" | grep ' td_create_client_id$'
           if ldd "$bundle/lib/libtdjson.so" | grep -q 'not found'; then
             ldd "$bundle/lib/libtdjson.so" >&2
@@ -601,7 +610,10 @@ jobs:
             otool -L "$frameworks/libtdjson.dylib" >&2
             exit 1
           fi
+          python3 scripts/prune-desktop-bundle.py macos "$app"
           codesign --force --sign - "$frameworks/libtdjson.dylib"
+          # Pruning removed optional MDK plugins, so reseal the framework.
+          codesign --force --sign - "$frameworks/mdk.framework"
           codesign --force --sign - \
             --entitlements macos/Runner/Release.entitlements "$app"
           codesign --verify --deep --strict "$app"

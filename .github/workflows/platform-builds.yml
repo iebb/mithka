@@ -227,3 +227,10 @@ jobs:
           if (-not (Test-Path 'build/windows/${{ matrix.architecture }}/runner/Release/mithka.exe')) {
             throw 'Expected Windows release executable is missing'
           }
+      - name: Prune Windows release bundle
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          python="$(command -v python3 || command -v python)"
+          "$python" scripts/prune-desktop-bundle.py windows \
+            'build/windows/${{ matrix.architecture }}/runner/Release'
