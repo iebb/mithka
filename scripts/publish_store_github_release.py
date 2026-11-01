@@ -18,7 +18,8 @@ SUFFIXES = (
     "windows-arm64.zip",
     "windows-x64-setup.exe",
     "windows-arm64-setup.exe",
-    "macos-universal.zip",
+    "macos-arm64.zip",
+    "macos-x64.zip",
     "linux-x64.tar.gz",
     "linux-arm64.tar.gz",
     "linux-x64.AppImage",
@@ -119,7 +120,8 @@ def verify_build(run, jobs, artifacts, source, controller, version):
             for platform in (
                 "windows-x64",
                 "windows-arm64",
-                "macos-universal",
+                "macos-arm64",
+                "macos-x64",
                 "linux-x64",
                 "linux-arm64",
             )
@@ -130,12 +132,12 @@ def verify_build(run, jobs, artifacts, source, controller, version):
         f"appimage-linux-arm64-{date}",
     }
     if (
-        len(names) != 11
+        len(names) != 12
         or set(names) != expected
         or any(a.get("expired") for a in artifacts)
     ):
         raise Error(
-            "original run does not have exactly the eleven live package artifacts"
+            "original run does not have exactly the twelve live package artifacts"
         )
     return date
 
@@ -255,7 +257,7 @@ def publish(plan, run_id, directory, publication_run_id):
     if {p.name for p in paths} != expected or any(
         not p.is_file() or p.is_symlink() for p in paths
     ):
-        raise Error("downloaded files do not match the eleven verified packages")
+        raise Error("downloaded files do not match the twelve verified packages")
     files = {
         p.name: {
             "size": p.stat().st_size,
@@ -376,7 +378,7 @@ def publish(plan, run_id, directory, publication_run_id):
         raise Error("release was not published as stable")
     verify_assets(release, files)
     verify_source(plan["source_sha"], command("git", "rev-parse", "HEAD"))
-    print(f"Published {tag}: eleven verified packages from {plan['source_sha']}.")
+    print(f"Published {tag}: twelve verified packages from {plan['source_sha']}.")
 
 
 def main():

@@ -617,9 +617,16 @@ jobs:
           codesign --force --sign - \
             --entitlements macos/Runner/Release.entitlements "$app"
           codesign --verify --deep --strict "$app"
-          mkdir -p dist
-          ditto -c -k --keepParent "$app" \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-universal.zip"
+          # The universal build stays the source of truth; each download is a
+          # single-architecture copy, which is roughly half the size.
+          mkdir -p dist thin
+          for pair in arm64:arm64 x86_64:x64; do
+            arch="${pair%%:*}"
+            label="${pair##*:}"
+            scripts/thin-macos-app.sh "$app" "$arch" "thin/$label/Mithka.app"
+            ditto -c -k --keepParent "thin/$label/Mithka.app" \
+              "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-$label.zip"
+          done
 
       - name: Package Windows release
         if: matrix.platform == 'windows'
@@ -672,10 +679,27 @@ jobs:
           }
 
       - name: Upload desktop artifact
+        if: matrix.platform != 'macos'
         uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
+      - name: Upload macOS arm64 artifact
+        if: matrix.platform == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-macos-arm64-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-arm64.zip
+          if-no-files-found: error
+
+      - name: Upload macOS x64 artifact
+        if: matrix.platform == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-macos-x64-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-x64.zip
           if-no-files-found: error
 
       - name: Upload Windows installer artifact
@@ -737,7 +761,8 @@ jobs:
             '*-windows-arm64.zip' \
             '*-windows-x64-setup.exe' \
             '*-windows-arm64-setup.exe' \
-            '*-macos-universal.zip' \
+            '*-macos-arm64.zip' \
+            '*-macos-x64.zip' \
             '*-linux-x64.tar.gz' \
             '*-linux-arm64.tar.gz' \
             '*-linux-x64.AppImage' \

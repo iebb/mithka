@@ -216,6 +216,12 @@ jobs:
         run: |
           flutter build macos --release --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
           test -f build/macos/Build/Products/Release/Mithka.app/Contents/MacOS/Mithka
+          # Release packages ship one architecture per download; prove both thin.
+          for arch in arm64 x86_64; do
+            scripts/thin-macos-app.sh \
+              build/macos/Build/Products/Release/Mithka.app "$arch" \
+              "$RUNNER_TEMP/thin-$arch/Mithka.app"
+          done
       - name: Build Windows release
         if: matrix.platform == 'windows'
         shell: pwsh
