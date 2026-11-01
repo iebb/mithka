@@ -616,15 +616,22 @@ def submit(plan):
     )
 
 
-def record_marker(tag, source_sha, metadata):
+def record_marker(tag, source_sha, metadata, branch="master"):
+    # `branch` is the published branch the source is on: master for store
+    # snapshots, nightly for a nightly Play beta, whose synced commit is never
+    # an ancestor of master.
     if not SHA.fullmatch(source_sha):
         raise Error("marker requires a full source SHA")
-    command("git", "fetch", "origin", "master", "--tags")
+    if branch not in {"master", "nightly"}:
+        raise Error("marker branch must be master or nightly")
+    command("git", "fetch", "origin", branch, "--tags")
     if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
         target = command("git", "rev-parse", f"{tag}^{{commit}}")
-        # Legacy markers point directly to the built source. New markers use
-        # current master as their Git ref; their annotation binds the source.
-        if target == source_sha:
+        # Legacy markers, all on master, point directly to the built source.
+        # New markers use the current head of their branch as their Git ref and
+        # their annotation binds the source. A nightly marker's ref is usually
+        # the source itself, so it is always checked through its annotation.
+        if target == source_sha and branch == "master":
             return
         if command("git", "cat-file", "-t", f"refs/tags/{tag}") != "tag":
             raise Error("marker must be annotated")
@@ -637,15 +644,15 @@ def record_marker(tag, source_sha, metadata):
             raise Error("immutable marker belongs to a different publication")
         command("git", "merge-base", "--is-ancestor", source_sha, target)
         return
-    target = command("git", "rev-parse", "origin/master")
+    target = command("git", "rev-parse", f"origin/{branch}")
     command("git", "merge-base", "--is-ancestor", source_sha, target)
     message = json.dumps(
         dict(metadata, source_sha=source_sha, marker_commit=target), sort_keys=True
     )
     command("git", "tag", "-a", tag, target, "-m", message)
-    command("git", "fetch", "origin", "master")
-    if command("git", "rev-parse", "origin/master") != target:
-        raise Error("master advanced before marker publication; resume safely")
+    command("git", "fetch", "origin", branch)
+    if command("git", "rev-parse", f"origin/{branch}") != target:
+        raise Error(f"{branch} advanced before marker publication; resume safely")
     command("git", "push", "origin", tag)
 
 
@@ -653,6 +660,9 @@ def record_play_marker(source_sha, code, run_id):
     if not str(code).isdigit() or not 1 <= int(code) <= 2100000000:
         raise Error("invalid Play marker code")
     verify_play_publication(run_id, source_sha)
+    # A nightly beta builds the synced nightly commit; every other Play
+    # publication (a store-v tag or a master dispatch) builds a master commit.
+    nightly = api(f"actions/runs/{run_id}")["head_branch"] == "nightly"
     record_marker(
         f"play-version-code-{code}",
         source_sha,
@@ -662,6 +672,7 @@ def record_play_marker(source_sha, code, run_id):
             "android_version_code": int(code),
             "publication_run_id": str(run_id),
         },
+        branch="nightly" if nightly else "master",
     )
 
 
