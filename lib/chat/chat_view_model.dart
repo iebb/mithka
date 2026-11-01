@@ -5550,6 +5550,10 @@ class ChatViewModel extends ChangeNotifier {
     if (pinnedMessages.isNotEmpty &&
         pinnedMessages.every((m) => dismissed.contains(m.id))) {
       pinnedDismissed = true;
+      // Forget unpinned ids, so pinning one of them again counts as new.
+      if (dismissed.length > pinnedMessages.length) {
+        _setPinnedDismissal({for (final m in pinnedMessages) m.id});
+      }
       return;
     }
     pinnedDismissed = false;
