@@ -5881,7 +5881,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   /// The phone input row, or the desktop editor row when [desktop].
   ///
   /// With [simple] it is simple mode's single row: the Mic cell leads, and
-  /// the Emoji and More cells and the Send button trail the field.
+  /// the Emoji and More cells and the Send button trail the field. In a bot
+  /// chat the bot's menu cell takes the Mic's place, and voice opens from
+  /// the More panel instead.
   Widget _inputRow(
     _ReplyKeyboard? replyKeyboard, {
     required AiSettingsController? aiSettings,
@@ -5913,7 +5915,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       _desktopComposerCanvasHeight,
       viewportHeight: MediaQuery.sizeOf(context).height,
     );
-    Widget rowFor({required bool showMic}) => Padding(
+    final simpleBot = simple && vm.peerIsBot;
+    Widget rowFor({required bool showLeadingCell}) => Padding(
       key: desktop ? const ValueKey('desktopComposerInput') : null,
       padding: desktop
           ? const EdgeInsets.fromLTRB(18, 2, 18, 12)
@@ -5933,7 +5936,10 @@ class _ChatInputBarState extends State<ChatInputBar>
                 : null,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (simple) _simpleMicSlot(visible: showMic, editing: editing),
+              if (simpleBot)
+                _simpleBotMenuSlot(visible: showLeadingCell, editing: editing)
+              else if (simple)
+                _simpleMicSlot(visible: showLeadingCell, editing: editing),
               // Desktop utility actions live in the toolbar so the editor
               // keeps the entire composer width.
               if (!desktop &&
@@ -5942,6 +5948,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 _replyKeyboardMiniAppAction(replyKeyboard, webAppButton),
                 const SizedBox(width: 8),
               ] else if (!desktop &&
+                  !simpleBot &&
                   !editing &&
                   (vm.peerIsBot || _guestQueries.isNotEmpty)) ...[
                 Semantics(
@@ -6300,6 +6307,7 @@ class _ChatInputBarState extends State<ChatInputBar>
               if (simple)
                 _simpleTrailingCells(
                   editing: editing,
+                  voiceInMore: simpleBot,
                   send: hasText
                       ? _phoneSendButton(
                           editing: editing,
@@ -6326,19 +6334,21 @@ class _ChatInputBarState extends State<ChatInputBar>
         ],
       ),
     );
-    if (!simple) return rowFor(showMic: false);
+    if (!simple) return rowFor(showLeadingCell: false);
     final leadingActionWidth = webAppButton != null && replyKeyboard != null
         ? _replyKeyboardMiniAppActionMaxWidth + AppSpacing.md
-        : !editing && (vm.peerIsBot || _guestQueries.isNotEmpty)
+        : !simpleBot && !editing && (vm.peerIsBot || _guestQueries.isNotEmpty)
         ? AppMetric.hitTarget + AppSpacing.md
         : 0.0;
     return LayoutBuilder(
       builder: (_, constraints) => rowFor(
-        showMic: _simpleComposerShowsMic(
-          width: constraints.maxWidth,
-          hasText: hasText,
-          leadingActionWidth: leadingActionWidth,
-        ),
+        showLeadingCell:
+            (simpleBot || _canSendVoiceNotes) &&
+            _simpleComposerFitsLeadingCell(
+              width: constraints.maxWidth,
+              hasText: hasText,
+              leadingActionWidth: leadingActionWidth,
+            ),
       ),
     );
   }
@@ -7449,15 +7459,15 @@ class _ChatInputBarState extends State<ChatInputBar>
   /// Scale a simple-mode control grows from as it appears or swaps glyphs.
   static const double _simpleComposerEnterScale = 0.85;
 
-  /// The narrow rule: while there is something to send, the Mic cell gives
-  /// its room to the field once the typing field would fall under
-  /// [AppMetric.simpleComposerNarrowField]. The empty row never drops it.
-  bool _simpleComposerShowsMic({
+  /// The narrow rule: while there is something to send, the leading cell
+  /// (the Mic, or a bot chat's menu cell) gives its room to the field once the
+  /// typing field would fall under [AppMetric.simpleComposerNarrowField]. The
+  /// empty row never drops it.
+  bool _simpleComposerFitsLeadingCell({
     required double width,
     required bool hasText,
     required double leadingActionWidth,
   }) {
-    if (!_canSendVoiceNotes) return false;
     if (!hasText) return true;
     final typingField =
         width -
@@ -7469,11 +7479,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     return typingField >= AppMetric.simpleComposerNarrowField;
   }
 
-  /// The simple row's leading slot: the Mic cell and its gap to the field or,
+  /// The simple row's leading slot: [cell] and its gap to the field or,
   /// without the cell, the extra inset that keeps the field 12pt from the
   /// edge. The narrow rule collapses and restores it in place.
-  Widget _simpleMicSlot({required bool visible, required bool editing}) {
-    final voiceOpen = !editing && _panel == _Panel.voice;
+  Widget _simpleLeadingSlot({required bool visible, required Widget cell}) {
     return AnimatedSize(
       duration: AppMotion.duration(context, AppMotion.swap),
       curve: Curves.easeOutCubic,
@@ -7482,31 +7491,7 @@ class _ChatInputBarState extends State<ChatInputBar>
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _simpleComposerCell(
-                  key: const ValueKey('composerSimpleVoiceButton'),
-                  semanticLabel:
-                      (voiceOpen
-                              ? AppStringKeys.composerShowKeyboard
-                              : AppStringKeys.voiceNotePreviewVoiceMessage)
-                          .l10n(context),
-                  open: voiceOpen,
-                  enabled: !editing,
-                  onTap: voiceOpen
-                      ? _showKeyboardFromSimplePanel
-                      : _openSimpleVoicePanel,
-                  glyph: (color) => voiceOpen
-                      ? AppKeyboardIcon(
-                          key: const ValueKey('composerSimpleKeyboardGlyph'),
-                          size: AppIconSize.simpleComposer,
-                          color: color,
-                        )
-                      : AppIcon(
-                          HeroAppIcons.microphone,
-                          key: const ValueKey('composerSimpleVoiceGlyph'),
-                          size: AppIconSize.simpleComposer,
-                          color: color,
-                        ),
-                ),
+                cell,
                 const SizedBox(width: AppSpacing.xxs),
               ],
             )
@@ -7514,14 +7499,83 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  /// The Mic cell in the leading slot.
+  Widget _simpleMicSlot({required bool visible, required bool editing}) {
+    final voiceOpen = !editing && _panel == _Panel.voice;
+    return _simpleLeadingSlot(
+      visible: visible,
+      cell: _simpleComposerCell(
+        key: const ValueKey('composerSimpleVoiceButton'),
+        semanticLabel:
+            (voiceOpen
+                    ? AppStringKeys.composerShowKeyboard
+                    : AppStringKeys.voiceNotePreviewVoiceMessage)
+                .l10n(context),
+        open: voiceOpen,
+        enabled: !editing,
+        onTap: voiceOpen ? _showKeyboardFromSimplePanel : _openSimpleVoicePanel,
+        glyph: (color) => voiceOpen
+            ? AppKeyboardIcon(
+                key: const ValueKey('composerSimpleKeyboardGlyph'),
+                size: AppIconSize.simpleComposer,
+                color: color,
+              )
+            : AppIcon(
+                HeroAppIcons.microphone,
+                key: const ValueKey('composerSimpleVoiceGlyph'),
+                size: AppIconSize.simpleComposer,
+                color: color,
+              ),
+      ),
+    );
+  }
+
+  /// A bot chat's menu cell in the leading slot, where other chats have the
+  /// Mic: a slash for the command sheet, or a globe when the bot's menu
+  /// button is a Mini App. Tap and long press do what the bot button does.
+  Widget _simpleBotMenuSlot({required bool visible, required bool editing}) {
+    final menu = vm.botMenu;
+    final opensMiniApp = menu?.isWebApp ?? false;
+    return _simpleLeadingSlot(
+      visible: visible,
+      cell: _simpleComposerCell(
+        key: const ValueKey('composerSimpleBotMenuButton'),
+        semanticLabel: opensMiniApp && menu!.text.trim().isNotEmpty
+            ? menu.actionTitle
+            : AppStringKeys.chatInputBarOpenBotMenu.l10n(context),
+        open: false,
+        enabled: !editing,
+        onTap: _showBotMenu,
+        onLongPress: () => _showBotMenu(forceMenu: true),
+        glyph: (color) => AppIcon(
+          opensMiniApp ? HeroAppIcons.globe : HeroAppIcons.slash,
+          key: ValueKey(
+            opensMiniApp
+                ? 'composerSimpleBotMiniAppGlyph'
+                : 'composerSimpleBotCommandsGlyph',
+          ),
+          size: AppIconSize.simpleComposer,
+          color: color,
+        ),
+      ),
+    );
+  }
+
   /// Emoji and More, always present, then [send] in its own slot while there
   /// is something to send. The group resizes as Send comes and goes, so the
-  /// field's trailing edge moves instead of jumping.
-  Widget _simpleTrailingCells({required bool editing, required Widget? send}) {
+  /// field's trailing edge moves instead of jumping. With [voiceInMore] the
+  /// voice panel opens from More, so while it is docked More carries its
+  /// keyboard glyph, as the Mic cell does elsewhere.
+  Widget _simpleTrailingCells({
+    required bool editing,
+    required Widget? send,
+    bool voiceInMore = false,
+  }) {
     final reduceMotion = AppMotion.isReduced(context);
     final mediaOpen =
         !editing && (_panel == _Panel.emoji || _panel == _Panel.sticker);
     final moreOpen = !editing && _panel == _Panel.function;
+    final voiceOpen = voiceInMore && !editing && _panel == _Panel.voice;
     return AnimatedSize(
       duration: AppMotion.duration(context, AppMotion.swap),
       curve: Curves.easeOutCubic,
@@ -7559,21 +7613,33 @@ class _ChatInputBarState extends State<ChatInputBar>
           _simpleComposerCell(
             key: const ValueKey('composerSimpleMoreButton'),
             semanticLabel:
-                (moreOpen
+                (voiceOpen
+                        ? AppStringKeys.composerShowKeyboard
+                        : moreOpen
                         ? AppStringKeys.composerCloseMenu
                         : AppStringKeys.composerMoreActions)
                     .l10n(context),
-            open: moreOpen,
+            open: moreOpen || voiceOpen,
             enabled: !editing,
-            onTap: _toggleSimpleMorePanel,
-            glyph: (color) => AppIcon(
-              moreOpen ? HeroAppIcons.circleXmark : HeroAppIcons.circlePlus,
-              key: ValueKey(
-                moreOpen ? 'composerSimpleClose' : 'composerSimpleMore',
-              ),
-              size: AppIconSize.simpleComposer,
-              color: color,
-            ),
+            onTap: voiceOpen
+                ? _showKeyboardFromSimplePanel
+                : _toggleSimpleMorePanel,
+            glyph: (color) => voiceOpen
+                ? AppKeyboardIcon(
+                    key: const ValueKey('composerSimpleKeyboardGlyph'),
+                    size: AppIconSize.simpleComposer,
+                    color: color,
+                  )
+                : AppIcon(
+                    moreOpen
+                        ? HeroAppIcons.circleXmark
+                        : HeroAppIcons.circlePlus,
+                    key: ValueKey(
+                      moreOpen ? 'composerSimpleClose' : 'composerSimpleMore',
+                    ),
+                    size: AppIconSize.simpleComposer,
+                    color: color,
+                  ),
           ),
           if (send != null)
             TweenAnimationBuilder<double>(
@@ -7608,15 +7674,17 @@ class _ChatInputBarState extends State<ChatInputBar>
     required bool enabled,
     required VoidCallback onTap,
     required Widget Function(Color color) glyph,
+    VoidCallback? onLongPress,
   }) {
     final c = context.colors;
     final reduceMotion = AppMotion.isReduced(context);
-    return AppInteractiveSurface(
+    final cell = AppInteractiveSurface(
       key: key,
       semanticLabel: semanticLabel,
       selected: open,
       enabled: enabled,
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(AppRadius.control),
       child: SizedBox.square(
         dimension: AppMetric.simpleComposerCell,
@@ -7643,6 +7711,9 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
       ),
     );
+    if (onLongPress == null) return cell;
+    // The long press as an action screen readers can reach.
+    return Semantics(onLongPress: enabled ? onLongPress : null, child: cell);
   }
 
   /// A simple-mode cell's keyboard glyph: closes its docked panel and brings
@@ -8721,6 +8792,13 @@ class _ChatInputBarState extends State<ChatInputBar>
       (HeroAppIcons.image, AppStringKeys.composerImage, _pickPhotos),
       if (widget.phoneStripForTesting || composerShowsCameraIcon())
         (HeroAppIcons.camera, AppStringKeys.composerCamera, _takePhoto),
+      // A bot chat's leading cell is its menu button, so voice opens here.
+      if (vm.peerIsBot && _canSendVoiceNotes)
+        (
+          HeroAppIcons.microphone,
+          AppStringKeys.voiceNotePreviewVoiceMessage,
+          _openSimpleVoicePanel,
+        ),
       if (widget.showCallAction && !Platform.isMacOS)
         (
           HeroAppIcons.phone,

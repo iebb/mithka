@@ -483,6 +483,9 @@ class HeroAppIcons {
   static const share = AppIconData(HeroiconsOutline.share);
   static const server = AppIconData(HeroiconsOutline.serverStack);
   static const shieldHalved = AppIconData(HeroiconsOutline.shieldCheck);
+
+  /// A command bot's menu button: opens the sheet of its slash commands.
+  static const slash = AppIconData(HeroiconsOutline.slash);
   static const solidBell = AppIconData(HeroiconsSolid.bell);
   static const solidCircle = AppIconData(HeroiconsSolid.stopCircle);
   static const solidCircleNotch = AppIconData(HeroiconsSolid.arrowPath);
