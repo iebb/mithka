@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../channels/topic_list_actions.dart';
 import '../config/build_flags.dart';
@@ -740,6 +741,13 @@ class ChatViewModel extends ChangeNotifier {
   List<ChatMessage> pinnedMessages = const [];
   int pinnedMessageIndex = 0;
   bool pinnedDismissed = false;
+
+  /// The pinned ids the bar was closed over, remembered on this device for
+  /// this account and chat (and topic); null while the bar is not closed.
+  Set<int>? _pinnedDismissedIds;
+  Future<void>? _pinnedDismissalLoad;
+  String? _pinnedDismissalKey;
+  bool _pinnedDismissalChanged = false;
 
   // Membership / send permission. Defaults assume a normal, joined, sendable
   // chat; refined in _loadChatHeader once the chat type + member status load.
@@ -5433,6 +5441,8 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadPinnedMessage() async {
+    // Read alongside the search so a closed bar never flashes open on reopen.
+    final dismissal = _ensurePinnedDismissalLoaded();
     try {
       final res = await _queryHistory({
         '@type': 'searchChatMessages',
@@ -5449,30 +5459,101 @@ class ChatViewModel extends ChangeNotifier {
           .map(TDParse.message)
           .whereType<ChatMessage>()
           .toList();
+      await dismissal;
       _applyPinnedMessages(parsed);
     } catch (_) {}
   }
 
   /// Re-runs the pinned search after a pin/unpin update: the bar must reflect
-  /// both new pins and unpins, including the list becoming empty.
+  /// both new pins and unpins, including the list becoming empty. A closed bar
+  /// stays closed unless the update brought a pin it was not closed over.
   Future<void> _reloadPinnedMessages() async {
-    pinnedDismissed = false;
     await _loadPinnedMessage();
   }
 
   void _applyPinnedMessages(List<ChatMessage> parsed) {
     if (parsed.isEmpty) {
-      if (pinnedMessage == null) return;
+      final hadPinned = pinnedMessage != null;
       pinnedMessages = const [];
       pinnedMessageIndex = 0;
       pinnedMessage = null;
-      notifyListeners();
+      _applyPinnedDismissal();
+      if (hadPinned) notifyListeners();
       return;
     }
     pinnedMessages = parsed;
     pinnedMessageIndex = pinnedMessageIndex.clamp(0, parsed.length - 1);
     pinnedMessage = parsed[pinnedMessageIndex];
+    _applyPinnedDismissal();
     notifyListeners();
+  }
+
+  static const _pinnedDismissalPrefix = 'mithka.pinnedBarDismissal.v1.user';
+
+  /// Reads the stored dismissal once per view model. Never throws: without an
+  /// account id or preferences the dismissal only lives in memory.
+  Future<void> _ensurePinnedDismissalLoaded() =>
+      _pinnedDismissalLoad ??= _readPinnedDismissal();
+
+  Future<void> _readPinnedDismissal() async {
+    try {
+      // Chat ids are account-scoped and slots are reused, so the record is
+      // keyed by the stable user id of the account that owns this pane. The
+      // pinned search is topic-scoped in a topic transcript, and so is this.
+      final me = await _client.queryTo({'@type': 'getMe'}, _accountClientId);
+      final userId = me.int64('id');
+      if (userId == null || userId <= 0) return;
+      final prefs = await SharedPreferences.getInstance();
+      final topic = isForumTopicTranscript ? '.topic.$forumTopicId' : '';
+      final key = '$_pinnedDismissalPrefix.$userId.chat.$chatId$topic';
+      _pinnedDismissalKey = key;
+      // A change made meanwhile is newer than the record and is written next.
+      if (_pinnedDismissalChanged) return;
+      final stored = prefs.getStringList(key);
+      if (stored == null) return;
+      _pinnedDismissedIds = stored.map(int.tryParse).whereType<int>().toSet();
+    } catch (_) {}
+  }
+
+  void _setPinnedDismissal(Set<int>? ids) {
+    _pinnedDismissedIds = ids;
+    _pinnedDismissalChanged = true;
+    unawaited(_writePinnedDismissal());
+  }
+
+  Future<void> _writePinnedDismissal() async {
+    await _ensurePinnedDismissalLoaded();
+    final key = _pinnedDismissalKey;
+    if (key == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Read after the awaits: overlapping writes all store the latest state.
+      final ids = _pinnedDismissedIds;
+      if (ids == null) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setStringList(key, [for (final id in ids) '$id']);
+      }
+    } catch (_) {}
+  }
+
+  /// Re-applies a closed bar to [pinnedMessages]: it stays closed while every
+  /// pinned id was already pinned when it was closed. A pin it was not closed
+  /// over drops the record and shows the bar again; an empty list prunes the
+  /// record, since any later pin is new anyway.
+  void _applyPinnedDismissal() {
+    final dismissed = _pinnedDismissedIds;
+    if (dismissed == null) {
+      pinnedDismissed = false;
+      return;
+    }
+    if (pinnedMessages.isNotEmpty &&
+        pinnedMessages.every((m) => dismissed.contains(m.id))) {
+      pinnedDismissed = true;
+      return;
+    }
+    pinnedDismissed = false;
+    _setPinnedDismissal(null);
   }
 
   bool get hasPreviousPinnedMessage => pinnedMessageIndex > 0;
@@ -5498,6 +5579,11 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   void dismissPinned() {
+    final current = pinnedMessage;
+    _setPinnedDismissal({
+      for (final m in pinnedMessages) m.id,
+      if (current != null) current.id,
+    });
     pinnedDismissed = true;
     notifyListeners();
   }
@@ -5516,7 +5602,9 @@ class ChatViewModel extends ChangeNotifier {
       ...pinnedMessages.where((m) => m.id != message.id),
     ];
     pinnedMessageIndex = 0;
+    // A pin made here is new by definition, so the bar shows again.
     pinnedDismissed = false;
+    _setPinnedDismissal(null);
     notifyListeners();
   }
 
@@ -5531,7 +5619,7 @@ class ChatViewModel extends ChangeNotifier {
     if (pinnedMessages.isEmpty) {
       pinnedMessage = null;
       pinnedMessageIndex = 0;
-      pinnedDismissed = false;
+      _applyPinnedDismissal();
       notifyListeners();
       return;
     }
@@ -5547,7 +5635,8 @@ class ChatViewModel extends ChangeNotifier {
       );
     }
     pinnedMessage = pinnedMessages[pinnedMessageIndex];
-    pinnedDismissed = false;
+    // Unpinning never reopens a closed bar.
+    _applyPinnedDismissal();
     notifyListeners();
   }
 
@@ -8033,7 +8122,7 @@ class ChatViewModel extends ChangeNotifier {
       pinnedMessage = pinnedMessages.isEmpty
           ? null
           : pinnedMessages[pinnedMessageIndex];
-      pinnedDismissed = pinnedMessage == null ? false : pinnedDismissed;
+      _applyPinnedDismissal();
     }
     notifyListeners();
   }
