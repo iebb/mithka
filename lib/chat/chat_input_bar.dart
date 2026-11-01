@@ -508,6 +508,7 @@ class ChatInputBar extends StatefulWidget {
     this.enterToSend = false,
     this.quickRepliesEnabled = true,
     this.showCallAction = true,
+    this.simpleMode = false,
     this.onBotTopicCreated,
     this.quickReplyLoader,
     this.quickReplySender,
@@ -538,6 +539,12 @@ class ChatInputBar extends StatefulWidget {
   final bool enterToSend;
   final bool quickRepliesEnabled;
   final bool showCallAction;
+
+  /// Simple mode (简洁模式): the phone composer collapses to one row (Mic ·
+  /// field · Emoji · More, plus Send while there is something to send) and
+  /// the strip's other tools move into the More panel. The native desktop
+  /// composer ignores it.
+  final bool simpleMode;
   final ValueChanged<int>? onBotTopicCreated;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
@@ -601,6 +608,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   final _controller = EmojiTextEditingController();
   final _focus = FocusNode();
   final _panelSearch = TextEditingController();
+
+  /// Simple mode's More panel. It never keeps an offset, so the panel always
+  /// opens scrolled to the top.
+  final _simpleMorePanelScroll = ScrollController(keepScrollOffset: false);
   final List<OutgoingAttachment> _pendingClipboardAttachments = [];
   final _desktopActionOwner = Object();
   DesktopHotkeyRegistration? _desktopScreenshotHotkeyRegistration;
@@ -1512,6 +1523,15 @@ class _ChatInputBarState extends State<ChatInputBar>
       _adoptQuickReplyCache(rebuild: false);
       unawaited(_loadQuickReplies(userInitiated: false));
     }
+    if (!oldWidget.simpleMode && widget.simpleMode && _panel == _Panel.format) {
+      // Simple mode has no format button to close the docked format panel;
+      // formatting stays in the selection menu.
+      _panel = _Panel.none;
+      _formatRange = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onPanelGeometryChanged?.call();
+      });
+    }
   }
 
   bool _isDesktopComposerVisible() {
@@ -1568,6 +1588,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _panelSearch
       ..removeListener(_queuePanelSearch)
       ..dispose();
+    _simpleMorePanelScroll.dispose();
     _focus.dispose();
     _recTimer?.cancel();
     _recProgress?.cancel();
@@ -3810,6 +3831,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
     final mediaPanelVisible =
         _panel == _Panel.emoji || _panel == _Panel.sticker;
+    final simpleComposer = !desktopComposer && widget.simpleMode;
     final panelSurfaceVisible =
         editingMessage == null &&
         !mediaPanelVisible &&
@@ -3858,6 +3880,15 @@ class _ChatInputBarState extends State<ChatInputBar>
                     ),
                   if (replyKeyboardPanelVisible)
                     _replyKeyboardPanel(replyKeyboard),
+                ] else if (simpleComposer) ...[
+                  // One row replaces the input row and the icon strip.
+                  _inputRow(
+                    replyKeyboard,
+                    aiSettings: aiSettings,
+                    simple: true,
+                  ),
+                  if (replyKeyboardPanelVisible)
+                    _replyKeyboardPanel(replyKeyboard),
                 ] else ...[
                   _inputRow(replyKeyboard, aiSettings: aiSettings),
                   if (replyKeyboardPanelVisible)
@@ -3868,7 +3899,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 if (editingMessage == null &&
                     !desktopComposer &&
                     _panel == _Panel.function)
-                  _functionPanel(),
+                  simpleComposer ? _simpleMorePanel() : _functionPanel(),
                 if (editingMessage == null &&
                     !desktopComposer &&
                     _panel == _Panel.format)
@@ -5847,10 +5878,15 @@ class _ChatInputBarState extends State<ChatInputBar>
     return math.max(lineHeight, availableHeight * .35);
   }
 
+  /// The phone input row, or the desktop editor row when [desktop].
+  ///
+  /// With [simple] it is simple mode's single row: the Mic cell leads, and
+  /// the Emoji and More cells and the Send button trail the field.
   Widget _inputRow(
     _ReplyKeyboard? replyKeyboard, {
     required AiSettingsController? aiSettings,
     bool desktop = false,
+    bool simple = false,
   }) {
     final c = context.colors;
     final editing = vm.editingMessage != null;
@@ -5877,10 +5913,15 @@ class _ChatInputBarState extends State<ChatInputBar>
       _desktopComposerCanvasHeight,
       viewportHeight: MediaQuery.sizeOf(context).height,
     );
-    return Padding(
+    Widget rowFor({required bool showMic}) => Padding(
       key: desktop ? const ValueKey('desktopComposerInput') : null,
       padding: desktop
           ? const EdgeInsets.fromLTRB(18, 2, 18, 12)
+          : simple
+          ? const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs,
+              vertical: AppMetric.simpleComposerBarInset,
+            )
           : const EdgeInsets.only(left: 12, right: 12, top: 8, bottom: 6),
       child: Stack(
         key: desktop ? const ValueKey('desktopComposerInputStack') : null,
@@ -5892,6 +5933,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 : null,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              if (simple) _simpleMicSlot(visible: showMic, editing: editing),
               // Desktop utility actions live in the toolbar so the editor
               // keeps the entire composer width.
               if (!desktop &&
@@ -5949,7 +5991,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                             : BoxDecoration(
                                 color: c.searchFill,
                                 borderRadius: BorderRadius.circular(
-                                  AppRadius.lg,
+                                  simple ? AppRadius.control : AppRadius.lg,
                                 ),
                               ),
                         padding: desktop
@@ -6255,136 +6297,21 @@ class _ChatInputBarState extends State<ChatInputBar>
                   ],
                 ),
               ),
-              if (hasText && !desktop) ...[
+              if (simple)
+                _simpleTrailingCells(
+                  editing: editing,
+                  send: hasText
+                      ? _phoneSendButton(
+                          editing: editing,
+                          sendingVoiceDraft: sendingVoiceDraft,
+                        )
+                      : null,
+                )
+              else if (hasText && !desktop) ...[
                 const SizedBox(width: 8),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!editing &&
-                        !desktop &&
-                        vm.canUseAiComposition &&
-                        _aiDraftEligible) ...[
-                      Semantics(
-                        button: true,
-                        label: AppStringKeys.telegramAiEditorTelegramAIEditor
-                            .l10n(context),
-                        child: GestureDetector(
-                          key: const ValueKey('composerAiPrefixButton'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => unawaited(_openTelegramAiEditor()),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: AppTheme.brand.withValues(alpha: 0.10),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.brand.withValues(alpha: 0.34),
-                                width: 0.75,
-                              ),
-                            ),
-                            child: AppIcon(
-                              HeroAppIcons.palette,
-                              key: const ValueKey('composerAiStyleIcon'),
-                              size: 19,
-                              color: AppTheme.brand,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                    Semantics(
-                      // The long press as an action VoiceOver can reach.
-                      customSemanticsActions:
-                          _aiReplyWorkingTargetId != null ||
-                              editing ||
-                              sendingVoiceDraft
-                          ? null
-                          : {
-                              CustomSemanticsAction(
-                                label: AppStringKeys.messageSendOptionsTitle
-                                    .l10n(context),
-                              ): () =>
-                                  unawaited(_showTextSendOptions()),
-                            },
-                      child: AppInteractiveSurface(
-                        key: const ValueKey('composerSendButton'),
-                        semanticLabel:
-                            (editing
-                                    ? AppStringKeys.messageActionEdit
-                                    : AppStringKeys.composerSend)
-                                .l10n(context),
-                        enabled: _aiReplyWorkingTargetId == null,
-                        onTap: () => unawaited(_sendCurrentText()),
-                        onLongPress:
-                            _aiReplyWorkingTargetId != null ||
-                                editing ||
-                                sendingVoiceDraft
-                            ? null
-                            : () => unawaited(_showTextSendOptions()),
-                        borderRadius: BorderRadius.circular(24),
-                        child: SizedBox(
-                          width: vm.requiresPaidMessage ? 58 : 44,
-                          height: 44,
-                          child: Center(
-                            child: Container(
-                              width: vm.requiresPaidMessage ? 58 : 36,
-                              height: 36,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: _aiReplyWorkingTargetId != null
-                                    ? AppTheme.brand.withValues(alpha: 0.42)
-                                    : editing
-                                    ? AppTheme.cloverGreen
-                                    : AppTheme.brand,
-                                shape: BoxShape.circle,
-                              ),
-                              child: editing
-                                  ? const AppIcon(
-                                      HeroAppIcons.check,
-                                      size: 18,
-                                      color: Colors.white,
-                                    )
-                                  : sendingVoiceDraft
-                                  ? AppActivityIndicator(
-                                      size: 16,
-                                      color: c.onAccent,
-                                    )
-                                  : vm.requiresPaidMessage
-                                  ? Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const AppIcon(
-                                          HeroAppIcons.solidStar,
-                                          size: 14,
-                                          color: Colors.white,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          'x${vm.paidMessageStarCount}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : const AppIcon(
-                                      HeroAppIcons.solidPaperPlane,
-                                      size: 17,
-                                      color: Colors.white,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                _phoneSendButton(
+                  editing: editing,
+                  sendingVoiceDraft: sendingVoiceDraft,
                 ),
               ],
             ],
@@ -6399,7 +6326,151 @@ class _ChatInputBarState extends State<ChatInputBar>
         ],
       ),
     );
+    if (!simple) return rowFor(showMic: false);
+    final leadingActionWidth = webAppButton != null && replyKeyboard != null
+        ? _replyKeyboardMiniAppActionMaxWidth + AppSpacing.md
+        : !editing && (vm.peerIsBot || _guestQueries.isNotEmpty)
+        ? AppMetric.hitTarget + AppSpacing.md
+        : 0.0;
+    return LayoutBuilder(
+      builder: (_, constraints) => rowFor(
+        showMic: _simpleComposerShowsMic(
+          width: constraints.maxWidth,
+          hasText: hasText,
+          leadingActionWidth: leadingActionWidth,
+        ),
+      ),
+    );
   }
+
+  /// The phone Send button, with the AI-style prefix stacked above it when
+  /// the draft is eligible. Shared unchanged by the standard and simple rows.
+  Widget _phoneSendButton({
+    required bool editing,
+    required bool sendingVoiceDraft,
+  }) {
+    final c = context.colors;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!editing && vm.canUseAiComposition && _aiDraftEligible) ...[
+          Semantics(
+            button: true,
+            label: AppStringKeys.telegramAiEditorTelegramAIEditor.l10n(context),
+            child: GestureDetector(
+              key: const ValueKey('composerAiPrefixButton'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => unawaited(_openTelegramAiEditor()),
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.brand.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppTheme.brand.withValues(alpha: 0.34),
+                    width: 0.75,
+                  ),
+                ),
+                child: AppIcon(
+                  HeroAppIcons.palette,
+                  key: const ValueKey('composerAiStyleIcon'),
+                  size: 19,
+                  color: AppTheme.brand,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        Semantics(
+          // The long press as an action VoiceOver can reach.
+          customSemanticsActions:
+              _aiReplyWorkingTargetId != null || editing || sendingVoiceDraft
+              ? null
+              : {
+                  CustomSemanticsAction(
+                    label: AppStringKeys.messageSendOptionsTitle.l10n(context),
+                  ): () =>
+                      unawaited(_showTextSendOptions()),
+                },
+          child: AppInteractiveSurface(
+            key: const ValueKey('composerSendButton'),
+            semanticLabel:
+                (editing
+                        ? AppStringKeys.messageActionEdit
+                        : AppStringKeys.composerSend)
+                    .l10n(context),
+            enabled: _aiReplyWorkingTargetId == null,
+            onTap: () => unawaited(_sendCurrentText()),
+            onLongPress:
+                _aiReplyWorkingTargetId != null || editing || sendingVoiceDraft
+                ? null
+                : () => unawaited(_showTextSendOptions()),
+            borderRadius: BorderRadius.circular(24),
+            child: SizedBox(
+              width: _phoneSendSlotWidth,
+              height: 44,
+              child: Center(
+                child: Container(
+                  width: vm.requiresPaidMessage ? 58 : 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _aiReplyWorkingTargetId != null
+                        ? AppTheme.brand.withValues(alpha: 0.42)
+                        : editing
+                        ? AppTheme.cloverGreen
+                        : AppTheme.brand,
+                    shape: BoxShape.circle,
+                  ),
+                  child: editing
+                      ? const AppIcon(
+                          HeroAppIcons.check,
+                          size: 18,
+                          color: Colors.white,
+                        )
+                      : sendingVoiceDraft
+                      ? AppActivityIndicator(size: 16, color: c.onAccent)
+                      : vm.requiresPaidMessage
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const AppIcon(
+                              HeroAppIcons.solidStar,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'x${vm.paidMessageStarCount}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const AppIcon(
+                          HeroAppIcons.solidPaperPlane,
+                          size: 17,
+                          color: Colors.white,
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Width of the phone Send button's slot: wider for a paid message, whose
+  /// button also shows the price.
+  double get _phoneSendSlotWidth => vm.requiresPaidMessage ? 58 : 44;
 
   bool _usesNativeDesktopComposer(BuildContext context) {
     if (kIsWeb) return false;
@@ -6802,6 +6873,8 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  static const double _replyKeyboardMiniAppActionMaxWidth = 156;
+
   Widget _replyKeyboardMiniAppAction(
     _ReplyKeyboard keyboard,
     MessageButton button,
@@ -6816,7 +6889,9 @@ class _ChatInputBarState extends State<ChatInputBar>
         onTap: () => unawaited(_openReplyKeyboardWebApp(keyboard, button)),
         onLongPress: () => _showBotMenu(forceMenu: true),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 156),
+          constraints: const BoxConstraints(
+            maxWidth: _replyKeyboardMiniAppActionMaxWidth,
+          ),
           child: Container(
             height: 38,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -7367,6 +7442,231 @@ class _ChatInputBarState extends State<ChatInputBar>
         leadingDistribution: TextLeadingDistribution.even,
       ),
     );
+  }
+
+  // MARK: - Simple mode row
+
+  /// Scale a simple-mode control grows from as it appears or swaps glyphs.
+  static const double _simpleComposerEnterScale = 0.85;
+
+  /// The narrow rule: while there is something to send, the Mic cell gives
+  /// its room to the field once the typing field would fall under
+  /// [AppMetric.simpleComposerNarrowField]. The empty row never drops it.
+  bool _simpleComposerShowsMic({
+    required double width,
+    required bool hasText,
+    required double leadingActionWidth,
+  }) {
+    if (!_canSendVoiceNotes) return false;
+    if (!hasText) return true;
+    final typingField =
+        width -
+        2 * AppSpacing.xs -
+        2 * AppSpacing.xxs -
+        3 * AppMetric.simpleComposerCell -
+        _phoneSendSlotWidth -
+        leadingActionWidth;
+    return typingField >= AppMetric.simpleComposerNarrowField;
+  }
+
+  /// The simple row's leading slot: the Mic cell and its gap to the field or,
+  /// without the cell, the extra inset that keeps the field 12pt from the
+  /// edge. The narrow rule collapses and restores it in place.
+  Widget _simpleMicSlot({required bool visible, required bool editing}) {
+    final voiceOpen = !editing && _panel == _Panel.voice;
+    return AnimatedSize(
+      duration: AppMotion.duration(context, AppMotion.swap),
+      curve: Curves.easeOutCubic,
+      alignment: AlignmentDirectional.bottomEnd,
+      child: visible
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _simpleComposerCell(
+                  key: const ValueKey('composerSimpleVoiceButton'),
+                  semanticLabel:
+                      (voiceOpen
+                              ? AppStringKeys.composerShowKeyboard
+                              : AppStringKeys.voiceNotePreviewVoiceMessage)
+                          .l10n(context),
+                  open: voiceOpen,
+                  enabled: !editing,
+                  onTap: voiceOpen
+                      ? _showKeyboardFromSimplePanel
+                      : _openSimpleVoicePanel,
+                  glyph: (color) => voiceOpen
+                      ? AppKeyboardIcon(
+                          key: const ValueKey('composerSimpleKeyboardGlyph'),
+                          size: AppIconSize.simpleComposer,
+                          color: color,
+                        )
+                      : AppIcon(
+                          HeroAppIcons.microphone,
+                          key: const ValueKey('composerSimpleVoiceGlyph'),
+                          size: AppIconSize.simpleComposer,
+                          color: color,
+                        ),
+                ),
+                const SizedBox(width: AppSpacing.xxs),
+              ],
+            )
+          : const SizedBox(width: AppSpacing.lg - AppSpacing.xs),
+    );
+  }
+
+  /// Emoji and More, always present, then [send] in its own slot while there
+  /// is something to send. The group resizes as Send comes and goes, so the
+  /// field's trailing edge moves instead of jumping.
+  Widget _simpleTrailingCells({required bool editing, required Widget? send}) {
+    final reduceMotion = AppMotion.isReduced(context);
+    final mediaOpen =
+        !editing && (_panel == _Panel.emoji || _panel == _Panel.sticker);
+    final moreOpen = !editing && _panel == _Panel.function;
+    return AnimatedSize(
+      duration: AppMotion.duration(context, AppMotion.swap),
+      curve: Curves.easeOutCubic,
+      alignment: AlignmentDirectional.bottomStart,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const SizedBox(width: AppSpacing.xxs),
+          _simpleComposerCell(
+            key: const ValueKey('composerSimpleEmojiButton'),
+            semanticLabel:
+                (mediaOpen
+                        ? AppStringKeys.composerShowKeyboard
+                        : AppStringKeys.composerEmoji)
+                    .l10n(context),
+            open: mediaOpen,
+            enabled: !editing,
+            onTap: mediaOpen
+                ? _showKeyboardFromSimplePanel
+                : _openSimpleMediaPanel,
+            glyph: (color) => mediaOpen
+                ? AppKeyboardIcon(
+                    key: const ValueKey('composerSimpleKeyboardGlyph'),
+                    size: AppIconSize.simpleComposer,
+                    color: color,
+                  )
+                : AppIcon(
+                    HeroAppIcons.faceSmile,
+                    key: const ValueKey('composerSimpleEmojiGlyph'),
+                    size: AppIconSize.simpleComposer,
+                    color: color,
+                  ),
+          ),
+          _simpleComposerCell(
+            key: const ValueKey('composerSimpleMoreButton'),
+            semanticLabel:
+                (moreOpen
+                        ? AppStringKeys.composerCloseMenu
+                        : AppStringKeys.composerMoreActions)
+                    .l10n(context),
+            open: moreOpen,
+            enabled: !editing,
+            onTap: _toggleSimpleMorePanel,
+            glyph: (color) => AppIcon(
+              moreOpen ? HeroAppIcons.circleXmark : HeroAppIcons.circlePlus,
+              key: ValueKey(
+                moreOpen ? 'composerSimpleClose' : 'composerSimpleMore',
+              ),
+              size: AppIconSize.simpleComposer,
+              color: color,
+            ),
+          ),
+          if (send != null)
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: 1),
+              duration: AppMotion.swap,
+              curve: Curves.easeOutCubic,
+              builder: (_, progress, child) => Opacity(
+                opacity: progress,
+                child: reduceMotion
+                    ? child
+                    : Transform.scale(
+                        scale:
+                            _simpleComposerEnterScale +
+                            (1 - _simpleComposerEnterScale) * progress,
+                        child: child,
+                      ),
+              ),
+              child: send,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// One square cell of the simple row. Its glyph is the cell's state cue:
+  /// while the cell's panel is docked the glyph swaps (to the keyboard, or to
+  /// a close mark) and the cell reports itself selected.
+  Widget _simpleComposerCell({
+    required Key key,
+    required String semanticLabel,
+    required bool open,
+    required bool enabled,
+    required VoidCallback onTap,
+    required Widget Function(Color color) glyph,
+  }) {
+    final c = context.colors;
+    final reduceMotion = AppMotion.isReduced(context);
+    return AppInteractiveSurface(
+      key: key,
+      semanticLabel: semanticLabel,
+      selected: open,
+      enabled: enabled,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      child: SizedBox.square(
+        dimension: AppMetric.simpleComposerCell,
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: AppMotion.swap,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeOutCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: reduceMotion
+                  ? child
+                  : ScaleTransition(
+                      scale: Tween<double>(
+                        begin: _simpleComposerEnterScale,
+                        end: 1,
+                      ).animate(animation),
+                      child: child,
+                    ),
+            ),
+            // Editing has no docked panels, so the cells rest while it lasts.
+            child: glyph(enabled ? c.textPrimary : c.textTertiary),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A simple-mode cell's keyboard glyph: closes its docked panel and brings
+  /// the keyboard back to the same draft.
+  void _showKeyboardFromSimplePanel() {
+    _setPanel(_Panel.none);
+    _focus.requestFocus();
+  }
+
+  // The simple row stays visible above the bot reply keyboard, so opening a
+  // panel from it folds that keyboard away: only one panel is ever docked.
+  void _openSimpleVoicePanel() {
+    _replyKeyboardVisible = false;
+    _toggleVoice();
+  }
+
+  void _openSimpleMediaPanel() {
+    _replyKeyboardVisible = false;
+    _toggleMediaPanel();
+  }
+
+  void _toggleSimpleMorePanel() {
+    if (_panel != _Panel.function) _replyKeyboardVisible = false;
+    _toggle(_Panel.function);
   }
 
   // MARK: - Media pickers
@@ -8408,6 +8708,191 @@ class _ChatInputBarState extends State<ChatInputBar>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Simple mode's More panel: the strip's tools and the function panel's in
+  /// one vertically scrolling grid, with no paging. Every row is as tall as
+  /// its tallest label, so long translations and large text wrap instead of
+  /// truncating; at extreme text sizes the grid becomes a one-column list.
+  Widget _simpleMorePanel() {
+    final items = <(AppIconData, String, VoidCallback)>[
+      (HeroAppIcons.image, AppStringKeys.composerImage, _pickPhotos),
+      if (widget.phoneStripForTesting || composerShowsCameraIcon())
+        (HeroAppIcons.camera, AppStringKeys.composerCamera, _takePhoto),
+      if (widget.showCallAction && !Platform.isMacOS)
+        (
+          HeroAppIcons.phone,
+          vm.isGroup
+              ? AppStringKeys.composerGroupVoiceCall
+              : AppStringKeys.composerVoiceCall,
+          () => widget.onStartCall(false),
+        ),
+      if (!Platform.isMacOS)
+        (
+          HeroAppIcons.locationDot,
+          AppStringKeys.composerLocation,
+          _sendLocation,
+        ),
+      (HeroAppIcons.folder, AppStringKeys.topicPostContentFile, _pickFile),
+      (HeroAppIcons.idBadge, AppStringKeys.composerContact, _sendContact),
+      if (!vm.isDirectMessagesGroup)
+        (HeroAppIcons.grip, AppStringKeys.composerPoll, _createPoll),
+      (
+        HeroAppIcons.clock,
+        AppStringKeys.messageSendOptionsScheduledMessages,
+        _openScheduledMessages,
+      ),
+      (HeroAppIcons.music, AppStringKeys.composerAudio, _pickAudio),
+      (
+        HeroAppIcons.penToSquare,
+        AppStringKeys.composerRichText,
+        _openRichTextComposer,
+      ),
+      if (!vm.isDirectMessagesGroup)
+        (
+          HeroAppIcons.listCheck,
+          AppStringKeys.composerChecklist,
+          _createChecklist,
+        ),
+      if (vm.isDirectMessagesGroup && !vm.isAdministeredDirectMessagesGroup)
+        (
+          HeroAppIcons.penToSquare,
+          AppStringKeys.suggestedPostComposerTitle,
+          _createSuggestedPost,
+        ),
+    ];
+    final c = context.colors;
+    final labelStyle = AppTextStyle.footnote(c.textPrimary).copyWith(
+      height:
+          AppMetric.simpleComposerPanelLabelLineHeight / AppTextSize.footnote,
+    );
+    final textScale =
+        MediaQuery.textScalerOf(context).scale(AppTextSize.footnote) /
+        AppTextSize.footnote;
+    final screenSize = MediaQuery.sizeOf(context);
+    // Large text grows the panel up to its share of the screen; the standard
+    // height stays the floor, so a short landscape screen keeps it too.
+    final panelHeight = math.max(
+      AppMetric.simpleComposerPanelHeight,
+      math.min(
+        AppMetric.simpleComposerPanelHeight * textScale,
+        screenSize.height * AppMetric.simpleComposerPanelMaxScreenFraction,
+      ),
+    );
+    return Container(
+      key: const ValueKey('composerSimpleMorePanel'),
+      width: double.infinity,
+      height: panelHeight,
+      color: _composerDockedSurfaceColor,
+      child: LayoutBuilder(
+        builder: (_, constraints) {
+          final width = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : screenSize.width;
+          final columns =
+              ((width - 2 * AppSpacing.lg) /
+                      (AppMetric.simpleComposerPanelCellMinWidth * textScale))
+                  .floor()
+                  .clamp(1, AppMetric.simpleComposerPanelMaxColumns);
+          return Scrollbar(
+            controller: _simpleMorePanelScroll,
+            child: SingleChildScrollView(
+              controller: _simpleMorePanelScroll,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.xxl,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (
+                    var start = 0;
+                    start < items.length;
+                    start += columns
+                  ) ...[
+                    if (start > 0) const SizedBox(height: AppSpacing.lg),
+                    if (columns == 1)
+                      _simpleMorePanelItem(
+                        items[start],
+                        labelStyle: labelStyle,
+                        listRow: true,
+                      )
+                    else
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var column = 0; column < columns; column++)
+                            Expanded(
+                              child: start + column < items.length
+                                  ? _simpleMorePanelItem(
+                                      items[start + column],
+                                      labelStyle: labelStyle,
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                        ],
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// One More-panel tool: a bare line glyph over its full label, or, as a
+  /// [listRow], the glyph leading a left-aligned label.
+  Widget _simpleMorePanelItem(
+    (AppIconData, String, VoidCallback) item, {
+    required TextStyle labelStyle,
+    bool listRow = false,
+  }) {
+    final (icon, labelKey, action) = item;
+    final label = labelKey.l10n(context);
+    final glyph = SizedBox.square(
+      dimension: AppMetric.simpleComposerCell,
+      child: Center(
+        child: AppIcon(
+          icon,
+          size: AppIconSize.simpleComposerPanel,
+          color: context.colors.textPrimary,
+        ),
+      ),
+    );
+    return AppInteractiveSurface(
+      semanticLabel: label,
+      onTap: () {
+        _setPanel(_Panel.none);
+        action();
+      },
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        child: listRow
+            ? ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minHeight: AppMetric.simpleComposerPanelListRowHeight,
+                ),
+                child: Row(
+                  children: [
+                    glyph,
+                    const SizedBox(width: AppSpacing.lg),
+                    Expanded(child: Text(label, style: labelStyle)),
+                  ],
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  glyph,
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(label, textAlign: TextAlign.center, style: labelStyle),
+                ],
+              ),
       ),
     );
   }

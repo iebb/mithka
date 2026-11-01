@@ -15,6 +15,10 @@ import 'app_theme.dart';
 abstract final class AppMotion {
   static const Duration instant = Duration.zero;
   static const Duration quick = Duration(milliseconds: 140);
+
+  /// A control trading one state for another in place: a glyph swapping for
+  /// another, or a button sliding into a row beside its siblings.
+  static const Duration swap = Duration(milliseconds: 150);
   static const Duration responsive = Duration(milliseconds: 190);
   static const Duration deliberate = Duration(milliseconds: 280);
   static const Duration route = Duration(milliseconds: 300);

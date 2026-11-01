@@ -3846,4 +3846,8 @@
     <string name="downloadsRetainedUnavailable">보관된 파일에 접근할 수 없습니다. 다시 시도하세요.</string>
     <string name="downloadsNoRetained">보관된 파일이 없습니다. 파일이나 동영상 다운로드가 완료되면 방패 버튼을 눌러 보관하세요.</string>
     <string name="composerMediaPicker">이모티콘, 스티커 및 GIF</string>
+    <string name="appearanceSimpleMode">심플 모드</string>
+    <string name="appearanceSimpleModeDescription">외관 설정을 유지하면서 채팅 화면을 간결하게 표시해요.</string>
+    <string name="composerMoreActions">더 많은 작업</string>
+    <string name="composerShowKeyboard">키보드 표시</string>
 </resources>

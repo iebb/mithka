@@ -580,6 +580,9 @@ abstract final class AppStringKeys {
   static const appearanceChatListFolderSwipeSwitching =
       'appearanceChatListFolderSwipeSwitching';
   static const appearanceChatView = 'appearanceChatView';
+  static const appearanceSimpleMode = 'appearanceSimpleMode';
+  static const appearanceSimpleModeDescription =
+      'appearanceSimpleModeDescription';
   static const appearanceMessageBubbles = 'appearanceMessageBubbles';
   static const appearanceShowMessageBubbles = 'appearanceShowMessageBubbles';
   static const appearanceShowMessageBubblesDescription =
@@ -1385,6 +1388,8 @@ abstract final class AppStringKeys {
   static const composerOpenAttachmentFailed = 'composerOpenAttachmentFailed';
   static const composerOpenMenu = 'composerOpenMenu';
   static const composerCloseMenu = 'composerCloseMenu';
+  static const composerMoreActions = 'composerMoreActions';
+  static const composerShowKeyboard = 'composerShowKeyboard';
   static const composerPaidMessageCost = 'composerPaidMessageCost';
   static const composerPastedImageReadFailed = 'composerPastedImageReadFailed';
   static const composerPoll = 'composerPoll';

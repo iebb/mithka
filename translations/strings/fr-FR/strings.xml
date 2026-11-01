@@ -3857,4 +3857,8 @@
     <string name="downloadsRetainedUnavailable">Impossible d’accéder aux fichiers conservés. Réessayez.</string>
     <string name="downloadsNoRetained">Aucun fichier conservé. Une fois le téléchargement d’un fichier ou d’une vidéo terminé, utilisez son bouton bouclier pour le conserver.</string>
     <string name="composerMediaPicker">Emoji, stickers et GIF</string>
+    <string name="appearanceSimpleMode">Mode épuré</string>
+    <string name="appearanceSimpleModeDescription">Simplifiez l’interface de discussion sans modifier vos réglages d’apparence.</string>
+    <string name="composerMoreActions">Autres actions</string>
+    <string name="composerShowKeyboard">Afficher le clavier</string>
 </resources>

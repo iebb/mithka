@@ -3857,4 +3857,8 @@
     <string name="downloadsRetainedUnavailable">Cannot access retained files. Please retry.</string>
     <string name="downloadsNoRetained">No retained files yet. After a file or video finishes downloading, use its shield button to keep it.</string>
     <string name="composerMediaPicker">Emoji, stickers and GIFs</string>
+    <string name="appearanceSimpleMode">Simple mode</string>
+    <string name="appearanceSimpleModeDescription">Simplify the chat layout without changing your appearance settings.</string>
+    <string name="composerMoreActions">More actions</string>
+    <string name="composerShowKeyboard">Show keyboard</string>
 </resources>

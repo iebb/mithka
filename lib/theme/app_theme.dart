@@ -290,6 +290,10 @@ abstract final class AppIconSize {
   static const double toolbar = 24;
   static const double add = 25;
   static const double chevron = 17;
+
+  /// Simple-mode composer glyphs: the row's cells, and the More panel's items.
+  static const double simpleComposer = 26;
+  static const double simpleComposerPanel = 28;
 }
 
 abstract final class AppMetric {
@@ -417,6 +421,25 @@ abstract final class AppMetric {
   static const double composerPublishButtonHeight = 38;
   static const double composerFormatButtonWidth = 32;
   static const double composerFormatButtonHeight = 28;
+
+  // Simple-mode phone composer (简洁模式): one row of square cells around the
+  // field, and the More panel that gathers the rest of the tools.
+  static const double simpleComposerCell = 44;
+  static const double simpleComposerBarInset = 7;
+
+  /// Below this typing-field width the row drops its Mic cell while there is
+  /// something to send, so the field keeps room for a few words.
+  static const double simpleComposerNarrowField = 150;
+  static const double simpleComposerPanelHeight = 248;
+
+  /// Large text grows the More panel up to this share of the screen height.
+  static const double simpleComposerPanelMaxScreenFraction = 0.45;
+
+  /// Narrowest More-panel column at 100% text; it scales with the label.
+  static const double simpleComposerPanelCellMinWidth = 84;
+  static const int simpleComposerPanelMaxColumns = 8;
+  static const double simpleComposerPanelListRowHeight = 52;
+  static const double simpleComposerPanelLabelLineHeight = 16;
   static const double mediaTile = 92;
   static const double overlayCloseButton = 22;
 }

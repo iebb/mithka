@@ -3857,4 +3857,8 @@
     <string name="downloadsRetainedUnavailable">No se puede acceder a los archivos conservados. Inténtalo de nuevo.</string>
     <string name="downloadsNoRetained">Aún no hay archivos conservados. Cuando termine la descarga de un archivo o vídeo, usa el botón del escudo para conservarlo.</string>
     <string name="composerMediaPicker">Emojis, stickers y GIF</string>
+    <string name="appearanceSimpleMode">Modo sencillo</string>
+    <string name="appearanceSimpleModeDescription">Simplifica la interfaz del chat sin cambiar tus ajustes de apariencia.</string>
+    <string name="composerMoreActions">Más acciones</string>
+    <string name="composerShowKeyboard">Mostrar teclado</string>
 </resources>

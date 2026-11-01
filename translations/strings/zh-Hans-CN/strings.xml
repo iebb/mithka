@@ -3846,4 +3846,8 @@
     <string name="downloadsRetainedUnavailable">无法访问保留的文件，请重试。</string>
     <string name="downloadsNoRetained">暂无保留的文件。文件或视频下载完成后，点击盾牌按钮即可保留。</string>
     <string name="composerMediaPicker">表情符号、贴纸和 GIF</string>
+    <string name="appearanceSimpleMode">简洁模式</string>
+    <string name="appearanceSimpleModeDescription">精简聊天界面，不改动原有外观设置。</string>
+    <string name="composerMoreActions">更多操作</string>
+    <string name="composerShowKeyboard">显示键盘</string>
 </resources>

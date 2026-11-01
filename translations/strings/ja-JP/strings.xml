@@ -3846,4 +3846,8 @@
     <string name="downloadsRetainedUnavailable">保持したファイルにアクセスできません。再試行してください。</string>
     <string name="downloadsNoRetained">保持したファイルはありません。ファイルや動画のダウンロード完了後、盾のボタンで保持できます。</string>
     <string name="composerMediaPicker">絵文字・ステッカー・GIF</string>
+    <string name="appearanceSimpleMode">シンプルモード</string>
+    <string name="appearanceSimpleModeDescription">外観の設定を変えずに、チャット画面をすっきりさせます。</string>
+    <string name="composerMoreActions">その他の操作</string>
+    <string name="composerShowKeyboard">キーボードを表示</string>
 </resources>
