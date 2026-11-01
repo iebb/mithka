@@ -518,7 +518,9 @@ Future<void> _dispatchInternalLinkType(
       }
     case 'internalLinkTypeProxy':
       final proxy = type.obj('proxy');
-      if (proxy != null && context.mounted) {
+      if (proxy != null &&
+          ProxyConfig.isSupportedTdProxy(proxy) &&
+          context.mounted) {
         await _addProxyFromLink(context, ProxyConfig.fromTdProxy(proxy));
       } else if (context.mounted) {
         showToast(context, AppStrings.t(AppStringKeys.proxyAddFailed));

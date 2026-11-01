@@ -15,17 +15,12 @@ Map<String, dynamic> communityFullInfoRequest(int communityId) => {
   'community_id': communityId,
 };
 
-/// Linked-chat entries from a getCommunityFullInfo response. Upstream TDLib
-/// (since tdlib/td 4c04264789a8) answers with communityFullInfo.chats; the
-/// retired Mithka patch answered with mithkaCommunityPeerCatalog.peers, so
-/// both shapes are read while pinned native libraries catch up. Either way
-/// every entry carries chat_id and can_view_history.
+/// Linked-chat entries from a getCommunityFullInfo response
+/// (communityFullInfo.chats). Every entry carries chat_id and
+/// can_view_history.
 List<Map<String, dynamic>> communityCatalogEntries(
   Map<String, dynamic> response,
-) =>
-    response.objects('chats') ??
-    response.objects('peers') ??
-    const <Map<String, dynamic>>[];
+) => response.objects('chats') ?? const <Map<String, dynamic>>[];
 
 class CommunitySummary {
   CommunitySummary({

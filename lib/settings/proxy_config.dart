@@ -86,6 +86,15 @@ class ProxyConfig {
     return proxy.obj('proxy') ?? proxy;
   }
 
+  /// Whether this client can run the TDLib proxy. TDLib also has
+  /// proxyTypeWeb, which needs a relay web view hosted by the app. Mithka
+  /// has no such web view, so a web proxy must never be read as SOCKS5.
+  static bool isSupportedTdProxy(Map<String, dynamic> proxy) =>
+      switch (tdProxyDetails(proxy).obj('type')?.type) {
+        'proxyTypeSocks5' || 'proxyTypeHttp' || 'proxyTypeMtproto' => true,
+        _ => false,
+      };
+
   bool matchesTdProxy(Map<String, dynamic> proxy) {
     final details = tdProxyDetails(proxy);
     if ((details.str('server') ?? '') != server.trim()) return false;

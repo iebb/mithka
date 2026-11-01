@@ -3,32 +3,32 @@
     "tdjson-android-arm64-v8a.zip": {
       "members": {
         "arm64-v8a/libtdjson.so": {
-          "sha256": "0eb71cdab7e7b00e6d075057a35bcb46bcf05a54f8d7d6a3fe89e875090e28e9",
-          "size": 38990632
+          "sha256": "5646bca16d04391943652188a1d110681476f35ccedb333a9c3d3693180154cb",
+          "size": 32764936
         }
       },
-      "sha256": "c65d7d54632c7f5fb7315fca269f62d79722d221eb87dd4ef064b98b688a37c8",
-      "size": 13523508
+      "sha256": "f8c455726bea5c899311af7cec48c43b507fa138955d030b13eabb7100d457fb",
+      "size": 12356525
     },
     "tdjson-android-armeabi-v7a.zip": {
       "members": {
         "armeabi-v7a/libtdjson.so": {
-          "sha256": "5379cc1f2c9345106f0b569712d9a2829ad07e741ad6f60864787ffa8cbd9592",
-          "size": 25578328
+          "sha256": "16901c8c41bb801428a8844c1638b0bc7f64f80e9a8f657de6162216eaa0f0f2",
+          "size": 24073800
         }
       },
-      "sha256": "e8aadae8da0db5044d63299aa960cdff84c66968aad05b9bd0237fcb15fba82c",
-      "size": 12282478
+      "sha256": "5b3dc1410e2f9c454966205153d0bc8df7a28c060a15de0ca811339f8afd5fe3",
+      "size": 12149378
     },
     "tdjson-android-x86_64.zip": {
       "members": {
         "x86_64/libtdjson.so": {
-          "sha256": "f164f37ddf46e81747d3f81f35b3729fcfed0f85c6f0641f30ec40e1fef80359",
-          "size": 39346904
+          "sha256": "43e63ed9e5366d3398a3995db84c9b7ac0816b2e5f3eaaca4366d2826aedebc1",
+          "size": 34312984
         }
       },
-      "sha256": "4be2d5d5dfbea02ba805bae6cc330e2a5afbdf129ef4bd97b21deefae24a3d81",
-      "size": 13703198
+      "sha256": "15c19611d3a2c50f8885b2ea1bcb16a5cf47b2ca00bc2bcb77e1693b5078d5b1",
+      "size": 12633382
     },
     "tdjson-ios.xcframework.zip": {
       "members": {
@@ -41,7 +41,7 @@
           "size": 11106
         },
         "tdjson.xcframework/ios-arm64-simulator/tdjson.framework/Info.plist": {
-          "sha256": "a6e212e7167070ecc7fbeaae6e793dda99444dc2a3647b9c71dff2018a79a24e",
+          "sha256": "ed5c023cbb386a9d2515990d5ecf86aa45b18694c2d29c6376248f9d6a5a1256",
           "size": 596
         },
         "tdjson.xcframework/ios-arm64-simulator/tdjson.framework/Modules/module.modulemap": {
@@ -49,15 +49,15 @@
           "size": 92
         },
         "tdjson.xcframework/ios-arm64-simulator/tdjson.framework/tdjson": {
-          "sha256": "809d94ba480b000a92aa2dcf65de2b922e266de742f2fe2a7e9026935df18828",
-          "size": 25669256
+          "sha256": "6ba01251d00e9e53d3dbe05df8148d84bbbe99ad68a80b310663393cf58190f2",
+          "size": 26550168
         },
         "tdjson.xcframework/ios-arm64/tdjson.framework/Headers/tdjson.h": {
           "sha256": "a1f1240cdf80a51be6a460402ab19f72dbaba7c31e86ff4e66c389a734d08688",
           "size": 11106
         },
         "tdjson.xcframework/ios-arm64/tdjson.framework/Info.plist": {
-          "sha256": "a6e212e7167070ecc7fbeaae6e793dda99444dc2a3647b9c71dff2018a79a24e",
+          "sha256": "ed5c023cbb386a9d2515990d5ecf86aa45b18694c2d29c6376248f9d6a5a1256",
           "size": 596
         },
         "tdjson.xcframework/ios-arm64/tdjson.framework/Modules/module.modulemap": {
@@ -65,70 +65,70 @@
           "size": 92
         },
         "tdjson.xcframework/ios-arm64/tdjson.framework/tdjson": {
-          "sha256": "1bcaaa2d95600c66741c9eca21bd59f66cc16ebc378a50e30e1f6339edd423d6",
-          "size": 25470200
+          "sha256": "0908ecbea3d4c472b2e2c6cf00dad8f3ef1cdebc675b324bd21f24301b8f13cc",
+          "size": 26360696
         }
       },
-      "sha256": "1ae54712dc1a49788873ceb043567b14618430273d14f99db0bdbd395157b7a3",
-      "size": 18484780
+      "sha256": "40341e31506e8fe1896d8b25fc6ba908b495202cbaa0d3ca3b91b0aac340c46e",
+      "size": 19072063
     },
     "tdjson-linux-arm64.zip": {
       "members": {
         "libtdjson.so": {
-          "sha256": "2730fda63772599899653658708bd94dd868d6adafd097bd6d3b0b5526a162ad",
-          "size": 50798496
+          "sha256": "2acfce90fc061fa82dd3fa750aa5782922fbe5a5203fb5d0b5932db12e9d6339",
+          "size": 52722016
         }
       },
-      "sha256": "daf67a3a9995414295f4ab4770eaa04e1147b6f50c9c0cd0ff145e7b1c35fc8a",
-      "size": 16218368
+      "sha256": "f825f89a6645f7bee38f3e1d026ef847ee29024908c778da475392e7b0f95096",
+      "size": 16809638
     },
     "tdjson-linux-x64.zip": {
       "members": {
         "libtdjson.so": {
-          "sha256": "d8caafb1d7450d4aa0151c08c97db32695162cd17b1fba8187d83c7e6da3db63",
-          "size": 48436328
+          "sha256": "a2c0d7c3efea2224ccd253c31bb5904c2e873ade84e2493888ba5a9670f88372",
+          "size": 50261040
         }
       },
-      "sha256": "1e3a3d0571486f67beeb29f63d1efc5fec09e37475aa567923b4db2958aec71f",
-      "size": 16235522
+      "sha256": "685efabd159f4be9796c28696901ba7bdbb3807b1140cc5f5cebe60bfa624b67",
+      "size": 16810421
     },
     "tdjson-macos-universal.zip": {
       "members": {
         "libtdjson.dylib": {
-          "sha256": "b240342ad070174fac2022cce8170083a9d34a9e16300b0f517ff6374263bd1d",
-          "size": 57436352
+          "sha256": "32d5b132c814013001932f85b0d186f8c42f1ed356ac61dcd0b74648440ac8fe",
+          "size": 59234768
         }
       },
-      "sha256": "2b386ea26ddbc847efc4a9577cf8b552ab02e376c34e7ca0dad0823f9373880d",
-      "size": 21792143
+      "sha256": "3d300efe34d566e013b3b010cfa03e037be00902ecec697d5171e0ed9e79f1ae",
+      "size": 22415791
     },
     "tdjson-windows-arm64.zip": {
       "members": {
         "tdjson.dll": {
-          "sha256": "8d371af9f91075ec8eef2f1bc0aea5c5e31495970ac9097aa3ebe0f48c264532",
-          "size": 34116608
+          "sha256": "0a179fbd7b2f4fa70c26037337af188618123ee0694745bb59c441fa45572bc4",
+          "size": 36130304
         }
       },
-      "sha256": "f1d70451a38890a4f7e761c688ea271dd4ff1eb39969b164ffc1db6aab9c7654",
-      "size": 12756411
+      "sha256": "78e20d3e6956123138e8927f1b1ec0e38f4e48e91e505b88f32d0f64f7d50b52",
+      "size": 13199887
     },
     "tdjson-windows-x64.zip": {
       "members": {
         "tdjson.dll": {
-          "sha256": "4b7ff60df9bab88a1ce7f7fe2ad67f15126e9207618c4f5cc3c5614b7c8acbcf",
-          "size": 32697344
+          "sha256": "eeceb0232341082ee646289bce1c2ae182301855c212e3812d30aad32bded1c0",
+          "size": 33591296
         }
       },
-      "sha256": "631956311bbe3ccf8959ba4af6a53d05a2ec7a66672bb69edc10cb82efbcac31",
-      "size": 12776280
+      "sha256": "6d2dacbf9749448da18169ea1ba4c07b40c3aa0ee6a1c8df10d88dd44811bcad",
+      "size": 13088314
     }
   },
-  "build_definition_sha256": "ee1031cb4ac6cdf832dc757391269d74851eb3f3ac89fb56fb72702abe6264ba",
-  "mithka_tdjson_sha": "fb217c3c586565c8bc5d3d0d6c59051046d5fbf6",
-  "patchset_sha256": "1204b30fae0074335a9be8f895111b0b7ac054232716e567cdced3d11a5ffef5",
-  "release_tag": "tdlib-1.8.67-d1085f9cebc5-mithka-1204b30fae00-build-ee1031cb4ac6-v2",
+  "build_definition_sha256": "01ecb54fc96eafe6cccd6d56c53e123f93881dc01b31e860090d7f894795908a",
+  "mithka_tdjson_sha": "8edcba71a24f51563296d1f39227e4dae41a139d",
+  "patchset_sha256": "7ca8cea0ca4124216d8a2799a6382928b29ab1bf379dfef35c91c794cf34e44a",
+  "release_tag": "tdlib-1.8.69-4c6377aa7386-mithka-7ca8cea0ca41-build-01ecb54fc96e-v2",
   "schema_version": 2,
-  "tdlib_version": "1.8.67",
+  "tdlib_version": "1.8.69",
   "upstream_repository": "tdlib/td",
-  "upstream_sha": "d1085f9cebc5a62379991ae1652673954f229c1f"
+  "upstream_sha": "4c6377aa7386c39217878a9a56d581922ad37ca4"
 }

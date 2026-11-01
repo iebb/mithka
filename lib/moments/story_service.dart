@@ -82,7 +82,7 @@ class StoryAreaPositionDraft {
   );
 
   Map<String, dynamic> toTdJson() => {
-    '@type': 'storyAreaPosition',
+    '@type': 'areaPosition',
     'x_percentage': xPercentage,
     'y_percentage': yPercentage,
     'width_percentage': widthPercentage,

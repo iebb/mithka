@@ -311,7 +311,7 @@ class MusicPlaylistService {
   /// A waiter bound to one TDLib client: returns the first folder snapshot
   /// that differs from [cached], or whatever is cached once [timeout] elapses.
   ///
-  /// The pinned TDLib 1.8.67 exposes no request that lists folders, so the
+  /// The pinned TDLib 1.8.69 exposes no request that lists folders, so the
   /// pushed update is the only source. This mirrors the wait the country
   /// blocker already performs for its own `_Blocked` folder.
   ///
