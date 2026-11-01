@@ -3205,6 +3205,30 @@ abstract final class AppStringKeys {
   static const giftStatusFromGiveaway = 'giftStatusFromGiveaway';
   static const giftStatusUnclaimed = 'giftStatusUnclaimed';
 
+  /// "[Transfer] {value1}": a Gram transfer's preview; `{value1}` is
+  /// `GramAmount.format` of the absolute amount.
+  static const tdMessageTransferValue1 = 'tdMessageTransferValue1';
+  static const transferFooterGram = 'transferFooterGram';
+
+  /// Shown on the envelope when the transfer has no comment; never sent.
+  static const transferDefaultBlessing = 'transferDefaultBlessing';
+  static const transferStatusReceived = 'transferStatusReceived';
+  static const transferStatusSent = 'transferStatusSent';
+  static const transferStatusSending = 'transferStatusSending';
+  static const transferStatusFailed = 'transferStatusFailed';
+  static const transferStatusFailedRetry = 'transferStatusFailedRetry';
+  static const transferEncryptedComment = 'transferEncryptedComment';
+  static const transferCardHint = 'transferCardHint';
+  static const transferDetailFromValue1 = 'transferDetailFromValue1';
+  static const transferDetailToValue1 = 'transferDetailToValue1';
+  static const transferSheetFrom = 'transferSheetFrom';
+  static const transferSheetTo = 'transferSheetTo';
+  static const transferSheetDate = 'transferSheetDate';
+  static const transferNetworkFee = 'transferNetworkFee';
+  static const transferNetworkFeeFree = 'transferNetworkFeeFree';
+  static const transferSheetTransactionId = 'transferSheetTransactionId';
+  static const transferSheetViewInExplorer = 'transferSheetViewInExplorer';
+
   /// Counted (`AppStrings.plural`): `{count}` Stars.
   static const giftStarsCount = 'giftStarsCount';
 

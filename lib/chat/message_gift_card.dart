@@ -25,6 +25,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'animated_sticker_view.dart';
 import 'gift_tint.dart';
+import 'message_card_footer.dart';
 import 'telegram_rich_text.dart';
 import 'video_sticker_view.dart';
 
@@ -70,7 +71,6 @@ class _MessageGiftCardState extends State<MessageGiftCard> {
   static const double _sticker = 64;
   static const double _maxStickerScale = 1.25;
   static const double _ringToSticker = 1.625;
-  static const double _footerHeight = 24;
   static const double _titleLineHeight = 22;
   static const double _secondLineHeight = 19;
   static const int _secondLineMaxLines = 3;
@@ -201,36 +201,11 @@ class _MessageGiftCardState extends State<MessageGiftCard> {
           ],
         ),
       );
-      final footer = ColoredBox(
-        color: c.card,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: _footerHeight * scale),
-          child: Padding(
-            padding: const EdgeInsets.only(
-              left: AppSpacing.lg,
-              right: AppSpacing.md,
-            ),
-            child: Row(
-              children: [
-                AppIcon(
-                  HeroAppIcons.gift,
-                  size: scaler.scale(AppIconSize.sm),
-                  color: c.textSecondary,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    footerWord,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyle.caption(c.textSecondary),
-                  ),
-                ),
-                ?widget.meta,
-              ],
-            ),
-          ),
-        ),
+      final footer = MessageCardFooter(
+        label: footerWord,
+        scale: scale,
+        glyph: HeroAppIcons.gift,
+        meta: widget.meta,
       );
       return SizedBox(
         width: width,

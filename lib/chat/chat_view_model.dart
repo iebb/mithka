@@ -6469,8 +6469,11 @@ class ChatViewModel extends ChangeNotifier {
           return;
         }
         // A gift's state (converted, upgraded, refunded, an offer's answer)
-        // changes in place; re-read it so `ChatMessage.gift` stays current.
-        if (TDParse.isGiftContent(content.type)) {
+        // changes in place, and so does a transfer's transaction once it is
+        // sent; re-read them so `ChatMessage.gift` / `.gramTransfer` stay
+        // current.
+        if (TDParse.isGiftContent(content.type) ||
+            content.type == MessageGramTransfer.contentType) {
           unawaited(_refreshMessage(messageId));
         }
         _replaceText(

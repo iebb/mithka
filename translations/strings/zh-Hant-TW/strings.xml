@@ -3883,6 +3883,25 @@
     <string name="giftStatusFromGiveaway">來自抽獎</string>
     <string name="giftStatusUnclaimed">無人領取的獎品</string>
     <string name="giftCardHint">查看禮物詳情</string>
+    <string name="tdMessageTransferValue1">[轉帳] {value1}</string>
+    <string name="transferFooterGram">Gram 轉帳</string>
+    <string name="transferDefaultBlessing">恭喜發財，大吉大利</string>
+    <string name="transferStatusReceived">已存入錢包</string>
+    <string name="transferStatusSent">已轉出</string>
+    <string name="transferStatusSending">轉帳中…</string>
+    <string name="transferStatusFailed">轉帳失敗</string>
+    <string name="transferStatusFailedRetry">轉帳失敗，點按重試</string>
+    <string name="transferEncryptedComment">加密留言</string>
+    <string name="transferCardHint">查看轉帳詳情</string>
+    <string name="transferDetailFromValue1">來自 {value1} 的轉帳</string>
+    <string name="transferDetailToValue1">轉給 {value1}</string>
+    <string name="transferSheetFrom">付款人</string>
+    <string name="transferSheetTo">收款人</string>
+    <string name="transferSheetDate">時間</string>
+    <string name="transferNetworkFee">網路手續費</string>
+    <string name="transferNetworkFeeFree">免費</string>
+    <string name="transferSheetTransactionId">交易 ID</string>
+    <string name="transferSheetViewInExplorer">在區塊鏈瀏覽器中查看</string>
     <plurals name="giftStarsCount">
         <item quantity="other">{count} 顆星星</item>
     </plurals>

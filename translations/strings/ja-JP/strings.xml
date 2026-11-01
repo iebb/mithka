@@ -3883,6 +3883,25 @@
     <string name="giftStatusFromGiveaway">抽選の賞品</string>
     <string name="giftStatusUnclaimed">未受け取りの賞品</string>
     <string name="giftCardHint">ギフトの詳細を表示</string>
+    <string name="tdMessageTransferValue1">[送金] {value1}</string>
+    <string name="transferFooterGram">Gram 送金</string>
+    <string name="transferDefaultBlessing">ほんの気持ちです</string>
+    <string name="transferStatusReceived">ウォレットに入金済み</string>
+    <string name="transferStatusSent">送金済み</string>
+    <string name="transferStatusSending">送金中…</string>
+    <string name="transferStatusFailed">送金できませんでした</string>
+    <string name="transferStatusFailedRetry">送金できませんでした。タップして再試行</string>
+    <string name="transferEncryptedComment">暗号化されたメッセージ</string>
+    <string name="transferCardHint">送金の詳細を表示</string>
+    <string name="transferDetailFromValue1">{value1} さんからの送金</string>
+    <string name="transferDetailToValue1">{value1} さんへの送金</string>
+    <string name="transferSheetFrom">送金元</string>
+    <string name="transferSheetTo">送金先</string>
+    <string name="transferSheetDate">日時</string>
+    <string name="transferNetworkFee">ネットワーク手数料</string>
+    <string name="transferNetworkFeeFree">無料</string>
+    <string name="transferSheetTransactionId">取引 ID</string>
+    <string name="transferSheetViewInExplorer">ブロックチェーンエクスプローラーで見る</string>
     <plurals name="giftStarsCount">
         <item quantity="other">{count} スター</item>
     </plurals>

@@ -15,8 +15,10 @@ import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import 'json_helpers.dart';
 import 'message_gift.dart';
+import 'message_gram_transfer.dart';
 
 export 'message_gift.dart';
+export 'message_gram_transfer.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
@@ -748,6 +750,7 @@ class ChatMessage {
     this.checklist,
     this.story,
     this.gift,
+    this.gramTransfer,
     this.suggestedPostInfo,
     this.summaryCard,
     this.summaryLanguageCode = '',
@@ -868,6 +871,9 @@ class ChatMessage {
   /// Every gift content type (regular, upgraded, refunded, purchase offer,
   /// Premium, Stars, Gram); see [TDParse.giftContentTypes].
   MessageGift? gift;
+
+  /// A Gram transfer (`messageTonWalletTransfer`).
+  MessageGramTransfer? gramTransfer;
   MessageSuggestedPostInfo? suggestedPostInfo;
   MessageSummaryCard? summaryCard;
 
@@ -1020,6 +1026,7 @@ class ChatMessage {
         checklist != null ||
         story != null ||
         gift != null ||
+        gramTransfer != null ||
         summaryCard != null ||
         linkPreview != null ||
         richBlocks.isNotEmpty;
@@ -1697,6 +1704,7 @@ abstract final class TDParse {
 
     final media = mediaAttachment(content);
     final gift = giftAttachment(message, content);
+    final gramTransfer = MessageGramTransfer.parse(message, content);
 
     // 转发: forward_info.origin identifies the original author.
     final forwardInfo = message.obj('forward_info');
@@ -1835,6 +1843,7 @@ abstract final class TDParse {
         checklist: checklistAttachment(content),
         story: storyAttachment(content),
         gift: gift,
+        gramTransfer: gramTransfer,
         suggestedPostInfo: suggestedPostInfo(
           message.obj('suggested_post_info'),
         ),
@@ -4300,6 +4309,8 @@ abstract final class TDParse {
       case 'messageUpgradedGiftPurchaseOffer':
       case 'messageUpgradedGiftPurchaseOfferRejected':
         return AppStrings.t(AppStringKeys.tdMessageGift);
+      case MessageGramTransfer.contentType:
+        return MessageGramTransfer.previewText(content);
       case 'messageSuggestedPostInfo':
       case 'messageSuggestedPostApproved':
       case 'messageSuggestedPostApprovalFailed':

@@ -13,12 +13,12 @@ import 'package:flutter/semantics.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
-import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import 'details_card.dart';
 import 'gift_tint.dart';
 import 'message_gift_card.dart';
 import 'telegram_rich_text.dart';
@@ -336,25 +336,25 @@ class _GiftDetailsState extends State<_GiftDetails> {
     final statuses = gift.statusTexts();
     final rows = <Widget>[
       if (gift.isSenderHidden)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.giftSheetFrom.l10n(context),
           value: _plainValue(AppStringKeys.giftSheetAnonymous.l10n(context)),
           semanticValue: AppStringKeys.giftSheetAnonymous.l10n(context),
         )
       else if (from != null)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.giftSheetFrom.l10n(context),
           value: _partyValue(from),
           semanticValue: from.name,
         ),
       if (to != null)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.giftSheetTo.l10n(context),
           value: _partyValue(to),
           semanticValue: to.name,
         ),
       if (gift.hasNote)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.giftSheetNote.l10n(context),
           value: (align) => SelectionArea(
             child: TelegramRichText(
@@ -367,20 +367,19 @@ class _GiftDetailsState extends State<_GiftDetails> {
           semanticValue: gift.note,
         ),
       if (value != null)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.giftSheetValue.l10n(context),
           value: _plainValue(value),
           semanticValue: value,
         ),
       if (statuses.isNotEmpty)
-        _GiftRow(
+        DetailsRow(
           label: AppStringKeys.linkHandlerDetailStatus.l10n(context),
           value: _plainValue(statuses.join(' · ')),
           semanticValue: statuses.join(' · '),
         ),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
-    final c = context.colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.xxl,
@@ -388,131 +387,12 @@ class _GiftDetailsState extends State<_GiftDetails> {
         AppSpacing.xxl,
         0,
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var index = 0; index < rows.length; index++) ...[
-              if (index > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: AppSpacing.xxl),
-                  child: Divider(height: 1, color: c.divider),
-                ),
-              rows[index],
-            ],
-          ],
-        ),
-      ),
+      child: DetailsCard(rows: rows),
     );
   }
 
-  static _GiftRowValue _plainValue(String text) =>
-      (align) => Builder(
-        builder: (context) => Text(
-          text,
-          textAlign: align,
-          style: AppTextStyle.body(context.colors.textPrimary),
-        ),
-      );
+  static DetailsRowValue _plainValue(String text) => DetailsRow.textValue(text);
 
-  static _GiftRowValue _partyValue(_GiftParty party) =>
-      (align) => Builder(
-        builder: (context) => Row(
-          mainAxisAlignment: align == TextAlign.end
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
-          children: [
-            PhotoAvatar(
-              title: party.name,
-              photo: party.photo,
-              size: _GiftRow.avatarSize,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Flexible(
-              child: Text(
-                party.name,
-                textAlign: align,
-                style: AppTextStyle.body(context.colors.textPrimary),
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-/// Builds a row's value for the alignment its layout calls for.
-typedef _GiftRowValue = Widget Function(TextAlign align);
-
-/// One label / value row. The value sits right-aligned beside a 96pt label
-/// column; when the label would not fit there, or text is scaled to 130 % or
-/// more, the label moves above the value instead of being cut.
-class _GiftRow extends StatelessWidget {
-  const _GiftRow({
-    required this.label,
-    required this.value,
-    required this.semanticValue,
-  });
-
-  final String label;
-  final _GiftRowValue value;
-  final String semanticValue;
-
-  static const double avatarSize = 22;
-  static const double _labelWidth = 96;
-  static const double _labelGap = 10;
-  static const double _verticalPadding = 13;
-  static const double _stackedTextScale = 1.3;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final scaler = MediaQuery.textScalerOf(context);
-    final labelStyle = AppTextStyle.body(c.textSecondary);
-    final painter = TextPainter(
-      text: TextSpan(text: label, style: labelStyle),
-      textDirection: Directionality.of(context),
-      textScaler: scaler,
-      maxLines: 1,
-    )..layout();
-    final stacked =
-        painter.width > _labelWidth || scaler.scale(1) >= _stackedTextScale;
-    painter.dispose();
-    final Widget content = stacked
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(label, style: AppTextStyle.footnote(c.textSecondary)),
-              const SizedBox(height: AppSpacing.xxs),
-              value(TextAlign.start),
-            ],
-          )
-        : Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: _labelWidth,
-                child: Text(label, style: labelStyle),
-              ),
-              const SizedBox(width: _labelGap),
-              Expanded(child: value(TextAlign.end)),
-            ],
-          );
-    return Semantics(
-      container: true,
-      label: '$label, $semanticValue',
-      excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xxl,
-          vertical: _verticalPadding,
-        ),
-        child: content,
-      ),
-    );
-  }
+  static DetailsRowValue _partyValue(_GiftParty party) =>
+      DetailsRow.partyValue(party.name, party.photo);
 }

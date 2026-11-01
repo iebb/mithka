@@ -3883,6 +3883,25 @@
     <string name="giftStatusFromGiveaway">추첨 경품</string>
     <string name="giftStatusUnclaimed">수령되지 않은 경품</string>
     <string name="giftCardHint">선물 상세 정보 보기</string>
+    <string name="tdMessageTransferValue1">[송금] {value1}</string>
+    <string name="transferFooterGram">Gram 송금</string>
+    <string name="transferDefaultBlessing">마음을 담아 보내요</string>
+    <string name="transferStatusReceived">지갑에 입금됨</string>
+    <string name="transferStatusSent">송금 완료</string>
+    <string name="transferStatusSending">송금 중…</string>
+    <string name="transferStatusFailed">송금 실패</string>
+    <string name="transferStatusFailedRetry">송금하지 못했어요. 탭하여 다시 시도</string>
+    <string name="transferEncryptedComment">암호화된 메시지</string>
+    <string name="transferCardHint">송금 상세 정보 보기</string>
+    <string name="transferDetailFromValue1">{value1}님이 보낸 송금</string>
+    <string name="transferDetailToValue1">{value1}님에게 보낸 송금</string>
+    <string name="transferSheetFrom">보낸 사람</string>
+    <string name="transferSheetTo">받는 사람</string>
+    <string name="transferSheetDate">날짜</string>
+    <string name="transferNetworkFee">네트워크 수수료</string>
+    <string name="transferNetworkFeeFree">무료</string>
+    <string name="transferSheetTransactionId">거래 ID</string>
+    <string name="transferSheetViewInExplorer">블록체인 탐색기에서 보기</string>
     <plurals name="giftStarsCount">
         <item quantity="other">스타 {count}개</item>
     </plurals>

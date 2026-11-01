@@ -51,6 +51,7 @@ import 'desktop_message_quote_source.dart';
 import 'desktop_message_text_selection.dart';
 import 'file_detail_view.dart';
 import 'gift_details_sheet.dart';
+import 'gram_transfer_sheet.dart';
 import 'inline_video_autoplay.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
@@ -60,6 +61,7 @@ import 'media_spoiler.dart';
 import 'message_action_menu.dart';
 import 'message_direction.dart';
 import 'message_gift_card.dart';
+import 'message_gram_envelope.dart';
 import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
 import 'message_swipe_reply.dart';
@@ -1455,6 +1457,30 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         outgoing,
       );
     }
+    if (message.gramTransfer case final transfer?) {
+      final state = transfer.state(
+        messageOutgoing: outgoing,
+        isSending: message.isSending,
+      );
+      final sender = _gramTransferSender(transfer, outgoing);
+      body = MessageGramEnvelope(
+        key: ValueKey('messageGramEnvelope-${message.id}'),
+        transfer: transfer,
+        state: state,
+        sender: sender,
+        maxWidth: _bubbleMaxWidth(),
+        borderRadius: _messageBorderRadius(9),
+        // A failed transfer shows no delivery mark.
+        meta: state == GramTransferState.failed
+            ? null
+            : _giftFooterMeta(outgoing),
+        onTap: () => _openGramTransfer(transfer, state, outgoing, sender),
+      );
+      return _withCommentsOnly(
+        _withFloatingMeta(body, outgoing, meta: false),
+        outgoing,
+      );
+    }
     if (message.summaryCard != null) {
       body = MessageSummaryCardContent(
         card: message.summaryCard!,
@@ -1828,9 +1854,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     );
   }
 
-  /// The gift card's delivery mark: the floating meta's glyphs, drawn inside
-  /// the card's white footer in tertiary ink in both directions. A read tick
-  /// stays green. Null when the message shows no meta.
+  /// The delivery mark of the gift card and the transfer envelope: the
+  /// floating meta's glyphs, drawn inside the card's white footer in tertiary
+  /// ink in both directions. A read tick stays green. Null when the message
+  /// shows no meta.
   Widget? _giftFooterMeta(bool outgoing) {
     if (!message.isEdited && !outgoing) return null;
     final ink = _colors.textTertiary;
@@ -1860,6 +1887,63 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     }
     unawaited(
       showGiftDetailsSheet(context, gift: gift, incomingToMe: incomingToMe),
+    );
+  }
+
+  /// The current user, as the transfer sheet names them.
+  GramTransferParty _gramTransferMe() => GramTransferParty(
+    name: AppStringKeys.chatMeLabel.l10n(context),
+    photo: widget.bubble.mePhoto,
+    avatarTitle: widget.bubble.meName.l10n(context),
+  );
+
+  /// The transfer's sender from what the bubble already shows (the current
+  /// user, or this message's own sender), else from the user cache. Null
+  /// when they still have to be looked up, or are not a Telegram user.
+  GramTransferParty? _gramTransferSender(
+    MessageGramTransfer transfer,
+    bool outgoing,
+  ) {
+    final userId = transfer.senderUserId;
+    if (userId == 0) return null;
+    final bubble = widget.bubble;
+    if (userId == bubble.meId) return _gramTransferMe();
+    if (!message.senderIsChat && message.senderId == userId) {
+      if (outgoing) return _gramTransferMe();
+      return bubble.isGroup
+          ? GramTransferParty(
+              name: message.senderName ?? bubble.peerTitle,
+              photo: message.senderPhoto,
+            )
+          : GramTransferParty(name: bubble.peerTitle, photo: bubble.peerPhoto);
+    }
+    return GramTransferParty.cached(userId);
+  }
+
+  void _openGramTransfer(
+    MessageGramTransfer transfer,
+    GramTransferState state,
+    bool outgoing,
+    GramTransferParty? sender,
+  ) {
+    final bubble = widget.bubble;
+    unawaited(
+      showGramTransferSheet(
+        context,
+        transfer: transfer,
+        state: state,
+        outgoing: transfer.isOutgoing(messageOutgoing: outgoing),
+        date: message.date,
+        me: _gramTransferMe(),
+        sender: sender,
+        // In a private chat the other side is the chat's peer.
+        chatPeer: bubble.isGroup
+            ? null
+            : GramTransferParty(
+                name: bubble.peerTitle,
+                photo: bubble.peerPhoto,
+              ),
+      ),
     );
   }
 

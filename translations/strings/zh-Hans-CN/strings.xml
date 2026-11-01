@@ -3883,6 +3883,25 @@
     <string name="giftStatusFromGiveaway">来自抽奖</string>
     <string name="giftStatusUnclaimed">无人领取的奖品</string>
     <string name="giftCardHint">查看礼物详情</string>
+    <string name="tdMessageTransferValue1">[转账] {value1}</string>
+    <string name="transferFooterGram">Gram 转账</string>
+    <string name="transferDefaultBlessing">恭喜发财，大吉大利</string>
+    <string name="transferStatusReceived">已存入钱包</string>
+    <string name="transferStatusSent">已转出</string>
+    <string name="transferStatusSending">转账中…</string>
+    <string name="transferStatusFailed">转账失败</string>
+    <string name="transferStatusFailedRetry">转账失败，点按重试</string>
+    <string name="transferEncryptedComment">加密留言</string>
+    <string name="transferCardHint">查看转账详情</string>
+    <string name="transferDetailFromValue1">来自 {value1} 的转账</string>
+    <string name="transferDetailToValue1">转给 {value1}</string>
+    <string name="transferSheetFrom">付款人</string>
+    <string name="transferSheetTo">收款人</string>
+    <string name="transferSheetDate">时间</string>
+    <string name="transferNetworkFee">网络手续费</string>
+    <string name="transferNetworkFeeFree">免费</string>
+    <string name="transferSheetTransactionId">交易 ID</string>
+    <string name="transferSheetViewInExplorer">在区块链浏览器中查看</string>
     <plurals name="giftStarsCount">
         <item quantity="other">{count} 颗星星</item>
     </plurals>
