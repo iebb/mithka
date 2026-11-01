@@ -496,6 +496,13 @@ abstract final class AppTheme {
   static final Color onlineDot = _hex(0x1AC81A);
   static final Color cloverGreen = _hex(0x2DBE60);
 
+  /// A read message's delivery ring.
+  static const Color readMark = Color(0xFF34C759);
+
+  /// [readMark] on a light card footer (the gift card's, the transfer
+  /// envelope's): 4.4:1 on white, where [readMark] is 2.2:1.
+  static const Color readMarkOnLightCard = Color(0xFF248A3D);
+
   // MARK: Gram transfers (constant, the same in light and dark: money keeps
   // one colour and does not follow the theme accent)
 

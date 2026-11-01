@@ -227,35 +227,42 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
         ? widget.onRetry
         : null;
 
-    final close = Positioned(
+    // White at 18 % over the header, made opaque so the button keeps its
+    // look where the details card scrolls under it.
+    Widget close(GramEnvelopeColors colors) => Positioned(
       top: _closeTop - closeInset,
       right: AppSpacing.xxl - closeInset,
-      child: Semantics(
-        container: true,
-        sortKey: const OrdinalSortKey(1),
-        button: true,
-        label: AppStringKeys.musicPlayerClose.l10n(context),
-        onTap: () => Navigator.of(context).maybePop(),
-        excludeSemantics: true,
-        child: GestureDetector(
-          key: const ValueKey('gramTransferSheetClose'),
-          behavior: HitTestBehavior.opaque,
+      child: ScrollPinned(
+        child: Semantics(
+          container: true,
+          sortKey: const OrdinalSortKey(1),
+          button: true,
+          label: AppStringKeys.musicPlayerClose.l10n(context),
           onTap: () => Navigator.of(context).maybePop(),
-          child: SizedBox.square(
-            dimension: _closeHitSize,
-            child: Center(
-              child: Container(
-                width: _closeSize,
-                height: _closeSize,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: _closeAlpha),
-                  shape: BoxShape.circle,
-                ),
-                child: const AppIcon(
-                  HeroAppIcons.xmark,
-                  size: AppIconSize.md,
-                  color: Colors.white,
+          excludeSemantics: true,
+          child: GestureDetector(
+            key: const ValueKey('gramTransferSheetClose'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: SizedBox.square(
+              dimension: _closeHitSize,
+              child: Center(
+                child: Container(
+                  width: _closeSize,
+                  height: _closeSize,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Color.alphaBlend(
+                      Colors.white.withValues(alpha: _closeAlpha),
+                      colors.body,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const AppIcon(
+                    HeroAppIcons.xmark,
+                    size: AppIconSize.md,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -268,8 +275,9 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
       muted: widget.state.isMuted,
       builder: (context, colors) => Stack(
         children: [
-          // The close button scrolls with the content so it shares a
-          // semantics parent with the title and can follow it in focus order.
+          // The close button is laid out with the content so it shares a
+          // semantics parent with the title and follows it in focus order;
+          // ScrollPinned keeps it in place while the content scrolls under it.
           SingleChildScrollView(
             child: Stack(
               children: [
@@ -328,7 +336,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                     SizedBox(height: AppSpacing.xxl + bottomInset),
                   ],
                 ),
-                close,
+                close(colors),
               ],
             ),
           ),

@@ -25,10 +25,17 @@ import 'telegram_rich_text.dart';
 
 /// Opens the gift sheet for [gift]. [incomingToMe] picks the same title the
 /// card shows.
+///
+/// [meId] is the account's user id; the current user is named "Me" in the
+/// From and To rows, with [mePhoto] and [meName] (which picks the avatar's
+/// initials and colour).
 Future<void> showGiftDetailsSheet(
   BuildContext context, {
   required MessageGift gift,
   required bool incomingToMe,
+  int? meId,
+  TdFileRef? mePhoto,
+  String? meName,
 }) {
   final c = context.colors;
   return showAppModalSheet<void>(
@@ -43,7 +50,13 @@ Future<void> showGiftDetailsSheet(
       maxHeight:
           MediaQuery.sizeOf(context).height * GiftDetailsSheet.maxHeightFactor,
     ),
-    builder: (_) => GiftDetailsSheet(gift: gift, incomingToMe: incomingToMe),
+    builder: (_) => GiftDetailsSheet(
+      gift: gift,
+      incomingToMe: incomingToMe,
+      meId: meId,
+      mePhoto: mePhoto,
+      meName: meName,
+    ),
   );
 }
 
@@ -52,10 +65,16 @@ class GiftDetailsSheet extends StatelessWidget {
     super.key,
     required this.gift,
     required this.incomingToMe,
+    this.meId,
+    this.mePhoto,
+    this.meName,
   });
 
   final MessageGift gift;
   final bool incomingToMe;
+  final int? meId;
+  final TdFileRef? mePhoto;
+  final String? meName;
 
   static const double maxHeightFactor = 0.9;
   static const double _washHeight = 230;
@@ -88,32 +107,34 @@ class GiftDetailsSheet extends StatelessWidget {
     final close = Positioned(
       top: _closeTop - closeInset,
       right: AppSpacing.xxl - closeInset,
-      child: Semantics(
-        container: true,
-        sortKey: const OrdinalSortKey(1),
-        button: true,
-        label: AppStringKeys.musicPlayerClose.l10n(context),
-        onTap: () => Navigator.of(context).maybePop(),
-        excludeSemantics: true,
-        child: GestureDetector(
-          key: const ValueKey('giftDetailsClose'),
-          behavior: HitTestBehavior.opaque,
+      child: ScrollPinned(
+        child: Semantics(
+          container: true,
+          sortKey: const OrdinalSortKey(1),
+          button: true,
+          label: AppStringKeys.musicPlayerClose.l10n(context),
           onTap: () => Navigator.of(context).maybePop(),
-          child: SizedBox.square(
-            dimension: _closeHitSize,
-            child: Center(
-              child: Container(
-                width: _closeSize,
-                height: _closeSize,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: c.card,
-                  shape: BoxShape.circle,
-                ),
-                child: AppIcon(
-                  HeroAppIcons.xmark,
-                  size: AppIconSize.md,
-                  color: c.textSecondary,
+          excludeSemantics: true,
+          child: GestureDetector(
+            key: const ValueKey('giftDetailsClose'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: SizedBox.square(
+              dimension: _closeHitSize,
+              child: Center(
+                child: Container(
+                  width: _closeSize,
+                  height: _closeSize,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.card,
+                    shape: BoxShape.circle,
+                  ),
+                  child: AppIcon(
+                    HeroAppIcons.xmark,
+                    size: AppIconSize.md,
+                    color: c.textSecondary,
+                  ),
                 ),
               ),
             ),
@@ -126,8 +147,9 @@ class GiftDetailsSheet extends StatelessWidget {
       accountSlot: slot,
       builder: (context, palette, probe) => Stack(
         children: [
-          // The close button scrolls with the content so it shares a
-          // semantics parent with the title and can follow it in focus order.
+          // The close button is laid out with the content so it shares a
+          // semantics parent with the title and follows it in focus order;
+          // ScrollPinned keeps it in place while the content scrolls under it.
           SingleChildScrollView(
             child: Stack(
               children: [
@@ -214,7 +236,13 @@ class GiftDetailsSheet extends StatelessWidget {
                       Semantics(
                         container: true,
                         sortKey: const OrdinalSortKey(2),
-                        child: _GiftDetails(gift: gift),
+                        child: _GiftDetails(
+                          gift: gift,
+                          incomingToMe: incomingToMe,
+                          meId: meId,
+                          mePhoto: mePhoto,
+                          meName: meName,
+                        ),
                       ),
                     ],
                   ),
@@ -245,20 +273,34 @@ class GiftDetailsSheet extends StatelessWidget {
   }
 }
 
-/// Someone named on the sheet: a user or a chat, resolved from TDLib.
+/// Someone named on the sheet: a user or a chat, resolved from TDLib, or
+/// the current user. [avatarTitle] picks the avatar's initials and colour.
 class _GiftParty {
-  const _GiftParty(this.name, this.photo);
+  const _GiftParty(this.name, this.photo, {String? avatarTitle})
+    : avatarTitle = avatarTitle ?? name;
 
   final String name;
   final TdFileRef? photo;
+  final String avatarTitle;
 }
 
-/// The details card. From and To appear once their names arrive; a row whose
-/// data is missing is left out, and with no rows at all the card is too.
+/// The details card. The current user is "Me" at once; other parties appear
+/// once their names arrive. A row whose data is missing is left out, and
+/// with no rows at all the card is too.
 class _GiftDetails extends StatefulWidget {
-  const _GiftDetails({required this.gift});
+  const _GiftDetails({
+    required this.gift,
+    required this.incomingToMe,
+    this.meId,
+    this.mePhoto,
+    this.meName,
+  });
 
   final MessageGift gift;
+  final bool incomingToMe;
+  final int? meId;
+  final TdFileRef? mePhoto;
+  final String? meName;
 
   @override
   State<_GiftDetails> createState() => _GiftDetailsState();
@@ -267,12 +309,25 @@ class _GiftDetails extends StatefulWidget {
 class _GiftDetailsState extends State<_GiftDetails> {
   _GiftParty? _from;
   _GiftParty? _to;
+  late final bool _fromIsMe;
+  late final bool _toIsMe;
+
+  bool _namesMe(int? userId) =>
+      userId != null && userId != 0 && userId == widget.meId;
 
   @override
   void initState() {
     super.initState();
     final gift = widget.gift;
-    if (!gift.isSenderHidden) {
+    _fromIsMe = !gift.isSenderHidden && _namesMe(gift.senderUserId);
+    // The rule the title follows, and the receiver TDLib leaves unnamed.
+    final receiverUnnamed =
+        (gift.receiverUserId ?? 0) == 0 && gift.receiverChatId == null;
+    _toIsMe =
+        widget.incomingToMe ||
+        _namesMe(gift.receiverUserId) ||
+        (gift.receiverIsCurrentUser && receiverUnnamed);
+    if (!gift.isSenderHidden && !_fromIsMe) {
       unawaited(
         _resolve(
           userId: gift.senderUserId,
@@ -280,32 +335,27 @@ class _GiftDetailsState extends State<_GiftDetails> {
         ).then((party) => _apply(() => _from = party)),
       );
     }
-    unawaited(
-      _resolve(
-        userId: gift.receiverUserId,
-        chatId: gift.receiverChatId,
-        isMe: gift.receiverIsCurrentUser,
-      ).then((party) => _apply(() => _to = party)),
-    );
+    if (!_toIsMe) {
+      unawaited(
+        _resolve(
+          userId: gift.receiverUserId,
+          chatId: gift.receiverChatId,
+        ).then((party) => _apply(() => _to = party)),
+      );
+    }
   }
 
   void _apply(VoidCallback change) {
     if (mounted) setState(change);
   }
 
-  static Future<_GiftParty?> _resolve({
-    int? userId,
-    int? chatId,
-    bool isMe = false,
-  }) async {
+  static Future<_GiftParty?> _resolve({int? userId, int? chatId}) async {
     try {
-      final namesUser = userId != null && userId != 0;
-      if (namesUser || (isMe && chatId == null)) {
-        final user = await TdClient.shared.query(
-          namesUser
-              ? {'@type': 'getUser', 'user_id': userId}
-              : {'@type': 'getMe'},
-        );
+      if (userId != null && userId != 0) {
+        final user = await TdClient.shared.query({
+          '@type': 'getUser',
+          'user_id': userId,
+        });
         if (user.type != 'user') return null;
         final name = TDParse.userName(user);
         if (name.trim().isEmpty) return null;
@@ -330,8 +380,15 @@ class _GiftDetailsState extends State<_GiftDetails> {
   @override
   Widget build(BuildContext context) {
     final gift = widget.gift;
-    final from = _from;
-    final to = _to;
+    final me = _fromIsMe || _toIsMe
+        ? _GiftParty(
+            AppStringKeys.chatMeLabel.l10n(context),
+            widget.mePhoto,
+            avatarTitle: widget.meName,
+          )
+        : null;
+    final from = _fromIsMe ? me : _from;
+    final to = _toIsMe ? me : _to;
     final value = gift.valueText();
     final statuses = gift.statusTexts();
     final rows = <Widget>[
@@ -356,12 +413,11 @@ class _GiftDetailsState extends State<_GiftDetails> {
       if (gift.hasNote)
         DetailsRow(
           label: AppStringKeys.giftSheetNote.l10n(context),
-          value: (align) => SelectionArea(
+          value: SelectionArea(
             child: TelegramRichText(
               text: gift.note,
               entities: gift.noteEntities,
               style: AppTextStyle.body(context.colors.textPrimary),
-              textAlign: align,
             ),
           ),
           semanticValue: gift.note,
@@ -391,8 +447,11 @@ class _GiftDetailsState extends State<_GiftDetails> {
     );
   }
 
-  static DetailsRowValue _plainValue(String text) => DetailsRow.textValue(text);
+  static Widget _plainValue(String text) => DetailsRow.textValue(text);
 
-  static DetailsRowValue _partyValue(_GiftParty party) =>
-      DetailsRow.partyValue(party.name, party.photo);
+  static Widget _partyValue(_GiftParty party) => DetailsRow.partyValue(
+    party.name,
+    party.photo,
+    avatarTitle: party.avatarTitle,
+  );
 }

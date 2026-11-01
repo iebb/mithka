@@ -463,6 +463,27 @@ class _GiftStill extends StatefulWidget {
   State<_GiftStill> createState() => _GiftStillState();
 }
 
+/// Still paths resolved this session, most recently used last, keyed by
+/// account slot and file id (TDLib file ids are per account). A card built
+/// again for a gift seen before (scrolled back to, or the sheet opening)
+/// paints its still on the first frame instead of the glyph.
+final Map<String, String> _knownStillPaths = <String, String>{};
+const int _knownStillCapacity = 256;
+
+String? _knownStillPath(String key) {
+  final path = _knownStillPaths.remove(key);
+  if (path != null) _knownStillPaths[key] = path;
+  return path;
+}
+
+void _rememberStillPath(String key, String path) {
+  _knownStillPaths.remove(key);
+  _knownStillPaths[key] = path;
+  if (_knownStillPaths.length > _knownStillCapacity) {
+    _knownStillPaths.remove(_knownStillPaths.keys.first);
+  }
+}
+
 class _GiftStillState extends State<_GiftStill> {
   File? _file;
   int? _loadedId;
@@ -486,11 +507,17 @@ class _GiftStillState extends State<_GiftStill> {
     if (_loadedId == ref.id && _loadedSlot == slot) return;
     _loadedId = ref.id;
     _loadedSlot = slot;
-    _file = null;
+    final key = '$slot:${ref.id}';
+    final known =
+        _knownStillPath(key) ??
+        TdFileCenter.shared.cachedPath(ref, accountSlot: slot);
+    _file = known == null ? null : File(known);
     unawaited(
       TdFileCenter.shared.pathFor(ref, accountSlot: slot).then((path) {
         if (!mounted || path == null) return;
         if (_loadedId != ref.id || _loadedSlot != slot) return;
+        _rememberStillPath(key, path);
+        if (_file?.path == path) return;
         setState(() => _file = File(path));
       }),
     );

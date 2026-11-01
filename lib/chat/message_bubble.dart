@@ -1836,7 +1836,11 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   /// The in-flight spinner is the only delivery state that needs a ticker, so
   /// the settled tick gets a plain painter instead of an AnimationController
   /// per outgoing bubble.
-  Widget _deliveryTick({Color? sentColor, Color? pendingColor}) {
+  Widget _deliveryTick({
+    Color? sentColor,
+    Color? pendingColor,
+    Color readColor = AppTheme.readMark,
+  }) {
     if (message.isSending && !message.isSendAcknowledged) {
       return _MessageDeliveryIndicator(
         pendingColor: pendingColor ?? _outgoingTextColor,
@@ -1848,19 +1852,20 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
       // The tick is ink on the bubble like the text is, so it follows the same
       // colour. Hardcoding white lost it entirely on a light outgoing fill.
       color: widget.bubble.isRead
-          ? const Color(0xFF34C759)
+          ? readColor
           : (sentColor ?? _outgoingTextColor),
       size: 10,
     );
   }
 
   /// The delivery mark of the gift card and the transfer envelope: the
-  /// floating meta's glyphs, drawn inside the card's white footer in tertiary
-  /// ink in both directions. A read tick stays green. Null when the message
-  /// shows no meta.
+  /// floating meta's glyphs, drawn inside the card's footer in secondary ink
+  /// in both directions. A read tick stays green, a darker green on a light
+  /// footer. Null when the message shows no meta.
   Widget? _giftFooterMeta(bool outgoing) {
     if (!message.isEdited && !outgoing) return null;
-    final ink = _colors.textTertiary;
+    final ink = _colors.textSecondary;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return IgnorePointer(
       child: message.isEdited
           ? AppIcon(
@@ -1869,7 +1874,13 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
               size: 10,
               color: ink,
             )
-          : _deliveryTick(sentColor: ink, pendingColor: ink),
+          : _deliveryTick(
+              sentColor: ink,
+              pendingColor: ink,
+              readColor: dark
+                  ? AppTheme.readMark
+                  : AppTheme.readMarkOnLightCard,
+            ),
     );
   }
 
@@ -1885,8 +1896,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
       );
       return;
     }
+    final bubble = widget.bubble;
     unawaited(
-      showGiftDetailsSheet(context, gift: gift, incomingToMe: incomingToMe),
+      showGiftDetailsSheet(
+        context,
+        gift: gift,
+        incomingToMe: incomingToMe,
+        meId: bubble.meId,
+        mePhoto: bubble.mePhoto,
+        meName: bubble.meName.l10n(context),
+      ),
     );
   }
 
