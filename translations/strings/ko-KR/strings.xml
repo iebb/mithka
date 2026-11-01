@@ -1237,6 +1237,7 @@
     <string name="chatUserTyping">{value1}님이 입력 중…</string>
     <string name="chatUsersJoinedGroup">{value1}{value2}님이 그룹 채팅에 참여했습니다</string>
     <string name="chatVideoPlaceholder">[동영상]</string>
+    <string name="chatViewAsMoments">소식으로 보기</string>
     <string name="chatWallpaperApply">배경화면 적용</string>
     <string name="chatWallpaperApplyForBoth">양쪽에 적용</string>
     <string name="chatWallpaperApplyForMe">나에게만 적용</string>

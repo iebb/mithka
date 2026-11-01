@@ -49,6 +49,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../media/media_metadata.dart';
+import '../moments/moments_view.dart' show ChannelMomentsView;
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
 import '../platform/desktop_clipboard_images.dart';
@@ -8590,6 +8591,13 @@ class _ChatViewState extends State<ChatView> {
                       icon: HeroAppIcons.magnifyingGlass,
                       onTap: _openSearch,
                     ),
+                  if (_canViewAsMoments)
+                    _ChatHeaderAction(
+                      key: const ValueKey('chatHeaderViewAsMoments'),
+                      label: AppStringKeys.chatViewAsMoments.l10n(context),
+                      icon: HeroAppIcons.newspaper,
+                      onTap: () => unawaited(_openChannelMoments()),
+                    ),
                   if (wideGroupHeader)
                     WideGroupChatHeaderActions(
                       onStartCall: (isVideo) => unawaited(_startCall(isVideo)),
@@ -8661,6 +8669,34 @@ class _ChatViewState extends State<ChatView> {
   /// field that can only ever report nothing.
   bool get _canSearchMessages =>
       !_vm.isPeerRestricted && (_vm.isMember || _vm.messages.isNotEmpty);
+
+  /// A broadcast channel's posts also read as a Moments feed. The join screen
+  /// and a restricted channel have no posts to show there.
+  bool get _canViewAsMoments =>
+      _vm.isChannel && _vm.forumTopicId == null && _canSearchMessages;
+
+  Future<void> _openChannelMoments() async {
+    ChatSummary? channel;
+    try {
+      channel = TDParse.chat(
+        await TdClient.shared.queryForSlot({
+          '@type': 'getChat',
+          'chat_id': _vm.chatId,
+        }, _vm.accountSlot),
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    if (channel == null) {
+      showToast(context, AppStringKeys.topicPostContentActionFailed);
+      return;
+    }
+    final feedChannel = channel;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChannelMomentsView(channel: feedChannel),
+      ),
+    );
+  }
 
   bool get _usesWideGroupHeader {
     return wideGroupHeaderActionsEnabled(

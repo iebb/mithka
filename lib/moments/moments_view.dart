@@ -157,6 +157,142 @@ Map<String, dynamic> channelPostCommentsRequest({
   'limit': limit,
 };
 
+/// One walk through a channel's history for the Moments feed.
+@visibleForTesting
+class ChannelHistoryLoad {
+  const ChannelHistoryLoad({
+    required this.messages,
+    required this.reachedStart,
+    required this.reconnected,
+    this.oldestMessageId,
+    this.oldestDate,
+  });
+
+  /// Every message the walk read below its starting cursor, service
+  /// messages included; the feed filters those itself.
+  final List<ChatMessage> messages;
+
+  /// A page held nothing older than its cursor: the channel's first message
+  /// has been read.
+  final bool reachedStart;
+
+  /// A walk from the newest message met the history loaded before it, so
+  /// nothing between the two was skipped.
+  final bool reconnected;
+
+  /// The lowest message id read, and that message's date. Everything newer
+  /// than it, back to the cursor, is in [messages].
+  final int? oldestMessageId;
+  final int? oldestDate;
+}
+
+typedef ChannelHistoryQuery =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
+
+/// Pages a channel's history backwards from [fromMessageId] (0 = newest).
+///
+/// TDLib chooses how many messages a `getChatHistory` page carries, and the
+/// first page of a channel it has not cached yet usually holds only the last
+/// message. Reading one page per channel left a channel's earlier posts —
+/// an album an hour older than its latest text, say — out of the feed. The
+/// walk keeps paging until [wanted] messages arrived, the channel's start was
+/// reached, or [maxPages] pages were read. With [knownNewestMessageId] (a
+/// refresh of a channel already in the feed) it instead pages until it meets
+/// that loaded history again.
+///
+/// `from_message_id` is inclusive, so a page repeats its cursor; only ids
+/// below it count. A first-page failure is rethrown; a later one keeps what
+/// already arrived.
+@visibleForTesting
+Future<ChannelHistoryLoad> loadChannelHistory({
+  required ChannelHistoryQuery query,
+  required int chatId,
+  required int fromMessageId,
+  required int wanted,
+  int? knownNewestMessageId,
+  int maxPages = 5,
+  bool Function()? cancelled,
+}) async {
+  final messages = <ChatMessage>[];
+  var cursor = fromMessageId;
+  var reachedStart = false;
+  var reconnected = false;
+  int? oldestId;
+  int? oldestDate;
+  for (var page = 0; page < maxPages; page++) {
+    final Map<String, dynamic> response;
+    try {
+      response = await query({
+        '@type': 'getChatHistory',
+        'chat_id': chatId,
+        'from_message_id': cursor,
+        'offset': 0,
+        'limit': wanted,
+        'only_local': false,
+      });
+    } catch (_) {
+      if (page == 0) rethrow;
+      break;
+    }
+    if (cancelled?.call() == true) break;
+    var advanced = false;
+    for (final raw
+        in response.objects('messages') ?? const <Map<String, dynamic>>[]) {
+      final id = raw.int64('id');
+      if (id == null || (cursor != 0 && id >= cursor)) continue;
+      advanced = true;
+      if (oldestId == null || id < oldestId) {
+        oldestId = id;
+        oldestDate = raw.integer('date') ?? oldestDate;
+      }
+      final message = TDParse.message(raw);
+      if (message != null) messages.add(message);
+    }
+    if (!advanced) {
+      reachedStart = true;
+      break;
+    }
+    cursor = oldestId!;
+    if (knownNewestMessageId != null) {
+      if (cursor <= knownNewestMessageId) {
+        reconnected = true;
+        break;
+      }
+    } else if (messages.length >= wanted) {
+      break;
+    }
+  }
+  return ChannelHistoryLoad(
+    messages: messages,
+    reachedStart: reachedStart,
+    reconnected: reconnected,
+    oldestMessageId: oldestId,
+    oldestDate: oldestDate,
+  );
+}
+
+/// The date the merged feed is complete after: every post newer than it is
+/// loaded.
+///
+/// Each channel has been read back to its own boundary. Below the newest of
+/// those, a channel that still has unread history may own posts that sort
+/// between the ones already loaded, so rendering them would show a gap that
+/// later fills in above the reader. Channels whose start was reached impose
+/// no boundary. The boundary second itself is not complete: an album shares
+/// one date, and a page can end inside it.
+@visibleForTesting
+int channelFeedCompleteSince(
+  Map<int, int> loadedSinceByChannel,
+  Set<int> exhaustedChannels,
+) {
+  var since = 0;
+  for (final entry in loadedSinceByChannel.entries) {
+    if (exhaustedChannels.contains(entry.key)) continue;
+    if (entry.value > since) since = entry.value;
+  }
+  return since;
+}
+
 class _MomentsFeedScrollAnchor {
   const _MomentsFeedScrollAnchor({required this.key, required this.leading});
 
@@ -172,19 +308,26 @@ class _MomentsHistorySnapshot {
     this.offset,
     this.nonMutedOnly,
     this.postableChannels,
+    this.completeSince,
   );
 
   final List<ChannelPost> posts;
   final double offset;
   final bool nonMutedOnly;
   final List<ChatSummary> postableChannels;
+
+  /// The retained posts are every loaded post newer than this date, so each
+  /// restored channel is complete back to it.
+  final int completeSince;
 }
 
 String _channelMomentsScrollKey({
   required int accountSlot,
   required bool isRootTab,
   required List<ChatSummary> initialChannels,
+  ChatSummary? channel,
 }) {
+  if (channel != null) return '$accountSlot:channel:${channel.id}';
   final ids = initialChannels.map((channel) => channel.id).toList()..sort();
   return '$accountSlot:$isRootTab:${ids.join(',')}';
 }
@@ -782,6 +925,7 @@ class ChannelMomentsView extends StatefulWidget {
     this.isRootTab = false,
     this.title = AppStringKeys.tabMoments,
     this.initialChannels = const [],
+    this.channel,
     this.onOpenDetail,
     this.historyStorage,
   });
@@ -789,6 +933,10 @@ class ChannelMomentsView extends StatefulWidget {
   final bool isRootTab;
   final String title;
   final List<ChatSummary> initialChannels;
+
+  /// Shows only this channel — its whole history as one feed — instead of
+  /// merging every joined channel. [title] and [initialChannels] are unused.
+  final ChatSummary? channel;
   final ValueChanged<Widget>? onOpenDetail;
   final PageStorageBucket? historyStorage;
 
@@ -809,8 +957,13 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   StreamSubscription? _tdSub;
   Timer? _refreshTimer;
   Timer? _metadataHydrationTimer;
+  Timer? _windowHydrationTimer;
   final Map<int, List<ChannelPost>> _postsByChannel = {};
   final Map<int, int> _oldestMessageByChannel = {};
+
+  /// Per channel, the date of the oldest message read; see
+  /// [channelFeedCompleteSince].
+  final Map<int, int> _loadedSinceByChannel = {};
   final Set<int> _loadingChannels = {};
   final Set<int> _exhaustedChannels = {};
   final Set<String> _loadingLikeNames = {};
@@ -833,9 +986,18 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   bool _refreshingLatest = false;
   bool _nonMutedOnly = false;
   int _feedLoadGeneration = 0;
+  int _lastBuiltPostIndex = 0;
+  int _hydratedWindowStart = 0;
+  int _hydratedWindowEnd = 0;
   static const _perChannelPageSize = 30;
   static const _metadataHydrationLimit = 60;
   static const _feedLimit = 500;
+  static const _olderChannelsPerRound = 4;
+
+  ChatSummary? get _scopedChannel => widget.channel;
+
+  /// One channel's own feed has no cap: it is that channel's whole history.
+  int? get _postLimit => _scopedChannel == null ? _feedLimit : null;
 
   @override
   void initState() {
@@ -844,8 +1006,12 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       accountSlot: TdClient.shared.activeSlot,
       isRootTab: widget.isRootTab,
       initialChannels: widget.initialChannels,
+      channel: _scopedChannel,
     );
-    _pendingScrollOffset = _channelMomentsScrollOffsets[_scrollSessionKey];
+    // A channel's own feed opens at its newest post, like its chat does.
+    _pendingScrollOffset = _scopedChannel == null
+        ? _channelMomentsScrollOffsets[_scrollSessionKey]
+        : null;
     final saved = widget.historyStorage?.readState(
       context,
       identifier: _scrollSessionKey,
@@ -858,6 +1024,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           (id) => math.min(id, post.message.id),
           ifAbsent: () => post.message.id,
         );
+        _loadedSinceByChannel[post.channel.id] = saved.completeSince;
       }
       _nonMutedOnly = saved.nonMutedOnly;
       _postableChannels = saved.postableChannels;
@@ -865,7 +1032,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _pendingScrollOffset = null;
     }
     _scroll = ScrollController(initialScrollOffset: _lastScrollOffset);
-    _model.addListener(_onModel);
+    // A single channel needs no chat list; loading one would only invalidate
+    // and reload this feed every time any chat moved.
+    if (_scopedChannel == null) _model.addListener(_onModel);
     _scroll.addListener(_onScroll);
     _tdSub = TdClient.shared
         .updatesOfAny(const [
@@ -879,9 +1048,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           'updateChatRemovedFromList',
         ])
         .listen(_handleTdUpdate);
-    _model.onAppear();
+    if (_scopedChannel == null) _model.onAppear();
     _loadMe();
-    if (widget.initialChannels.isNotEmpty) {
+    if (widget.initialChannels.isNotEmpty || _scopedChannel != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (saved is _MomentsHistorySnapshot) {
@@ -904,10 +1073,24 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     }
     // Retain exactly the rendered feed, including every member of its albums.
     // Capping raw messages at 500 would truncate a 500-post album-heavy feed.
+    final rendered = _posts;
     final retainedIds = {
-      for (final post in _posts)
+      for (final post in rendered)
         for (final message in post.messages) (post.channel.id, message.id),
     };
+    var completeSince = channelFeedCompleteSince(
+      _loadedSinceByChannel,
+      _exhaustedChannels,
+    );
+    final limit = _postLimit;
+    if (limit != null && rendered.length >= limit) {
+      // The cap cut the feed inside its complete range: only posts newer
+      // than the last rendered one are all retained.
+      completeSince = math.max(
+        completeSince,
+        rendered.last.messages.map((message) => message.date).reduce(math.min),
+      );
+    }
     final retained = _postsByChannel.values
         .expand((posts) => posts)
         .where(
@@ -921,6 +1104,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _lastScrollOffset,
         _nonMutedOnly,
         List.of(_postableChannels),
+        completeSince,
       ),
       identifier: _scrollSessionKey,
     );
@@ -931,6 +1115,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _tdSub?.cancel();
     _refreshTimer?.cancel();
     _metadataHydrationTimer?.cancel();
+    _windowHydrationTimer?.cancel();
     _replyController.dispose();
     _replyFocus.dispose();
     super.dispose();
@@ -960,10 +1145,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         _scheduleScrollRestore();
         return;
       }
-      if (pending > position.maxScrollExtent &&
-          _channels.any(
-            (channel) => !_exhaustedChannels.contains(channel.id),
-          )) {
+      if (pending > position.maxScrollExtent && _canLoadOlder) {
         _loadChannelPosts(loadOlder: true);
         _scheduleScrollRestore();
         return;
@@ -1064,9 +1246,10 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         if (_joinedChannelCache.remove(chatId) == null) return;
         _invalidateChannels();
         _exhaustedChannels.remove(chatId);
+        _invalidateFeed();
         if (update.type == 'updateChatRemovedFromList') {
           _postsByChannel.remove(chatId);
-          _invalidateFeed();
+          _loadedSinceByChannel.remove(chatId);
           if (mounted) setState(() {});
         }
     }
@@ -1219,6 +1402,8 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   List<ChatSummary> get _channels {
     final cached = _channelsCache;
     if (cached != null) return cached;
+    final scoped = _scopedChannel;
+    if (scoped != null) return _channelsCache = [scoped];
     final byId = <int, ChatSummary>{};
     for (final chat in widget.initialChannels) {
       if (chat.kind == ChatKind.channel &&
@@ -1252,9 +1437,43 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   List<ChannelPost> get _posts {
     final cached = _postsCache;
     if (cached != null) return cached;
-    final posts = _postsByChannel.values.expand((items) => items).toList()
-      ..sort((a, b) => b.message.date.compareTo(a.message.date));
-    return _postsCache = _groupPostAlbums(posts).take(_feedLimit).toList();
+    final completeSince = channelFeedCompleteSince(
+      _loadedSinceByChannel,
+      _exhaustedChannels,
+    );
+    final posts =
+        _postsByChannel.values
+            .expand((items) => items)
+            .where((post) => post.message.date > completeSince)
+            .toList()
+          ..sort((a, b) => b.message.date.compareTo(a.message.date));
+    final grouped = _groupPostAlbums(posts);
+    final limit = _postLimit;
+    return _postsCache = limit == null ? grouped : grouped.take(limit).toList();
+  }
+
+  /// Whether paging older history can still extend the rendered feed.
+  bool get _canLoadOlder {
+    final limit = _postLimit;
+    if (limit != null && _posts.length >= limit) return false;
+    return _channels.any((channel) => !_exhaustedChannels.contains(channel.id));
+  }
+
+  /// The channels whose read history ends nearest to now. They hold the
+  /// feed's completeness boundary up, so paging them is what extends it;
+  /// paging every channel at each scroll end fetched history the feed could
+  /// not show yet.
+  Set<int> _channelsBoundingFeed() {
+    final open =
+        _loadedSinceByChannel.entries
+            .where(
+              (entry) =>
+                  !_exhaustedChannels.contains(entry.key) &&
+                  !_loadingChannels.contains(entry.key),
+            )
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+    return {for (final entry in open.take(_olderChannelsPerRound)) entry.key};
   }
 
   GlobalKey _postKey(ChannelPost post) {
@@ -1365,8 +1584,11 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _loadingPosts = false;
       return;
     }
+    if (loadOlder && !_canLoadOlder) return;
     final channels = allChannels;
     final generation = _feedLoadGeneration;
+    final olderTargets = loadOlder ? _channelsBoundingFeed() : const <int>{};
+    final loads = <Future<bool>>[];
     for (final channel in channels) {
       if (!await _isJoinedChannel(channel)) continue;
       final hasLoaded = _postsByChannel.containsKey(channel.id);
@@ -1375,8 +1597,15 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           (hasLoaded && !loadOlder)) {
         continue;
       }
+      // Older pages go only to the channels holding the boundary up. One
+      // whose last read failed has no boundary yet and is retried.
+      if (hasLoaded &&
+          _loadedSinceByChannel.containsKey(channel.id) &&
+          !olderTargets.contains(channel.id)) {
+        continue;
+      }
       _loadingChannels.add(channel.id);
-      unawaited(
+      loads.add(
         _loadPostsForChannel(
           channel,
           fromMessageId: loadOlder
@@ -1386,6 +1615,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
         ),
       );
     }
+    if (loads.isNotEmpty) {
+      unawaited(_continueAfterLoads(loads, generation));
+    }
     // Near the bottom of the feed the scroll listener calls this on every
     // tick; only a changed spinner state is worth a rebuild.
     final loading = _loadingChannels.isNotEmpty;
@@ -1394,7 +1626,28 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     if (mounted) setState(() {});
   }
 
+  /// A round that moved the completeness boundary can still leave the end of
+  /// the feed on screen — one busy channel holds the boundary just above the
+  /// last rendered post. No scroll event follows then, so keep paging while
+  /// the end is in reach.
+  Future<void> _continueAfterLoads(
+    List<Future<bool>> loads,
+    int generation,
+  ) async {
+    final progressed = (await Future.wait(loads)).any((moved) => moved);
+    if (!progressed || !mounted || generation != _feedLoadGeneration) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      if (_pendingScrollOffset != null) return; // the restore pages itself
+      if (_scroll.position.extentAfter < 600) {
+        _loadChannelPosts(loadOlder: true);
+      }
+    });
+  }
+
   Future<bool> _isJoinedChannel(ChatSummary channel) async {
+    // A channel's own feed reads whatever its chat can show, joined or not.
+    if (_scopedChannel != null) return true;
     final cached = _joinedChannelCache[channel.id];
     if (cached != null) return cached;
     final joined = await isJoinedGroupOrChannelChat(channel.id);
@@ -1403,53 +1656,91 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _invalidateChannels();
     if (!joined) {
       _postsByChannel.remove(channel.id);
-      _invalidateFeed();
       _oldestMessageByChannel.remove(channel.id);
+      _loadedSinceByChannel.remove(channel.id);
       _exhaustedChannels.add(channel.id);
+      _invalidateFeed();
       if (mounted) setState(() {});
     }
     return joined;
   }
 
-  Future<void> _loadPostsForChannel(
+  /// Reads one round of [channel]'s history into the feed and reports whether
+  /// the feed can now show more than before.
+  ///
+  /// [fromMessageId] 0 reads from the newest message: the first read of a
+  /// channel, or a refresh that pages down until it meets the loaded posts.
+  Future<bool> _loadPostsForChannel(
     ChatSummary channel, {
     required int fromMessageId,
     int? generation,
     bool notify = true,
   }) async {
     final accountSlot = TdClient.shared.activeSlot;
+    bool isCurrent() =>
+        mounted && (generation == null || generation == _feedLoadGeneration);
+    final known = _postsByChannel[channel.id];
+    final knownNewest = fromMessageId == 0 && known != null && known.isNotEmpty
+        ? known.map((post) => post.message.id).reduce(math.max)
+        : null;
     try {
-      final response = await TdClient.shared.queryForSlot({
-        '@type': 'getChatHistory',
-        'chat_id': channel.id,
-        'from_message_id': fromMessageId,
-        'offset': 0,
-        'limit': _perChannelPageSize,
-        'only_local': false,
-      }, accountSlot);
-      final messages =
-          (response.objects('messages') ?? const <Map<String, dynamic>>[])
-              .map(TDParse.message)
-              .whereType<ChatMessage>()
-              .where((message) => !message.isService)
-              .map(
-                (message) => ChannelPost(
-                  channel: channel,
-                  message: message,
-                  accountSlot: accountSlot,
-                ),
-              )
-              .toList();
-      if (generation != null && generation != _feedLoadGeneration) return;
-      if (messages.isEmpty) {
-        _exhaustedChannels.add(channel.id);
+      final load = await loadChannelHistory(
+        query: (request) => TdClient.shared.queryForSlot(request, accountSlot),
+        chatId: channel.id,
+        fromMessageId: fromMessageId,
+        wanted: _perChannelPageSize,
+        knownNewestMessageId: knownNewest,
+        cancelled: () => !isCurrent(),
+      );
+      if (!isCurrent()) return false;
+      final previousSince = channelFeedCompleteSince(
+        _loadedSinceByChannel,
+        _exhaustedChannels,
+      );
+      final knownIds = {for (final post in known ?? const []) post.message.id};
+      final posts = load.messages
+          .where((message) => !message.isService)
+          .map(
+            (message) => ChannelPost(
+              channel: channel,
+              message: message,
+              accountSlot: accountSlot,
+            ),
+          )
+          .toList();
+      final added = posts.any((post) => !knownIds.contains(post.message.id));
+      _appendPosts(channel.id, posts);
+      final oldestId = load.oldestMessageId;
+      final oldestDate = load.oldestDate;
+      if (oldestId != null && oldestDate != null) {
+        // A refresh that ran out of pages before meeting the loaded posts
+        // left a gap below it. Move the boundary up to what this walk read;
+        // the next older read starts there and fills the gap.
+        final gap =
+            knownNewest != null && !load.reconnected && !load.reachedStart;
+        final previousId = _oldestMessageByChannel[channel.id];
+        final previousDate = _loadedSinceByChannel[channel.id];
+        _oldestMessageByChannel[channel.id] = gap || previousId == null
+            ? oldestId
+            : math.min(previousId, oldestId);
+        _loadedSinceByChannel[channel.id] = gap || previousDate == null
+            ? oldestDate
+            : math.min(previousDate, oldestDate);
+      } else {
+        // An empty channel still has a boundary: it has nothing to wait for.
+        _loadedSinceByChannel.putIfAbsent(channel.id, () => 0);
       }
-      _appendPosts(channel.id, messages);
+      if (load.reachedStart) _exhaustedChannels.add(channel.id);
+      _invalidateFeed();
       _schedulePostMetadataHydration();
+      return added ||
+          channelFeedCompleteSince(_loadedSinceByChannel, _exhaustedChannels) !=
+              previousSince;
     } catch (_) {
-      if (generation != null && generation != _feedLoadGeneration) return;
+      if (!isCurrent()) return false;
       _postsByChannel.putIfAbsent(channel.id, () => const []);
       _invalidateFeed();
+      return false;
     } finally {
       if (generation == null || generation == _feedLoadGeneration) {
         _loadingChannels.remove(channel.id);
@@ -1469,6 +1760,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       _postsByChannel.clear();
       _invalidateFeed();
       _oldestMessageByChannel.clear();
+      _loadedSinceByChannel.clear();
       _exhaustedChannels.clear();
       _loadingChannels.clear();
       _postableSignature = '';
@@ -1490,14 +1782,47 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _metadataHydrationTimer?.cancel();
     _metadataHydrationTimer = Timer(const Duration(milliseconds: 220), () {
       if (!mounted) return;
-      final posts = _posts.take(_metadataHydrationLimit).toList();
-      _loadAuthors(posts);
-      _loadForwardAttributions(posts);
-      _loadReplyQuotes(posts);
-      _loadLikeNames(posts);
-      _loadThreadTargets(posts);
-      _loadComments(posts);
+      _hydratePosts([
+        ..._posts.take(_metadataHydrationLimit),
+        ..._takeHydrationWindow(),
+      ]);
     });
+  }
+
+  /// Rows past the head hydrate as they are built: a window around the first
+  /// row built outside the previous window. A channel's own feed is read far
+  /// deeper than the head.
+  void _noteBuiltPost(int index) {
+    if (index < _metadataHydrationLimit ||
+        (index >= _hydratedWindowStart && index < _hydratedWindowEnd)) {
+      return;
+    }
+    _lastBuiltPostIndex = index;
+    _windowHydrationTimer?.cancel();
+    _windowHydrationTimer = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) _hydratePosts(_takeHydrationWindow());
+    });
+  }
+
+  List<ChannelPost> _takeHydrationWindow() {
+    final feed = _posts;
+    _hydratedWindowStart = math.max(
+      _metadataHydrationLimit,
+      _lastBuiltPostIndex - 30,
+    );
+    _hydratedWindowEnd = math.min(feed.length, _lastBuiltPostIndex + 20);
+    if (_hydratedWindowStart >= _hydratedWindowEnd) return const [];
+    return feed.sublist(_hydratedWindowStart, _hydratedWindowEnd);
+  }
+
+  void _hydratePosts(List<ChannelPost> posts) {
+    if (posts.isEmpty) return;
+    _loadAuthors(posts);
+    _loadForwardAttributions(posts);
+    _loadReplyQuotes(posts);
+    _loadLikeNames(posts);
+    _loadThreadTargets(posts);
+    _loadComments(posts);
   }
 
   void _loadReplyQuotes(List<ChannelPost> posts) {
@@ -1764,11 +2089,6 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       ..sort((a, b) => b.message.date.compareTo(a.message.date));
     _postsByChannel[channelId] = merged;
     _invalidateFeed();
-    if (merged.isNotEmpty) {
-      _oldestMessageByChannel[channelId] = merged
-          .map((post) => post.message.id)
-          .reduce((a, b) => a < b ? a : b);
-    }
   }
 
   void _loadLikeNames(List<ChannelPost> posts) {
@@ -2067,6 +2387,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     for (final channel in _postableChannels) {
       _exhaustedChannels.remove(channel.id);
       _oldestMessageByChannel.remove(channel.id);
+      _loadedSinceByChannel.remove(channel.id);
       _postsByChannel.remove(channel.id);
     }
     _invalidateFeed();
@@ -2074,7 +2395,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   }
 
   Color _profileHeaderColor(BuildContext context) {
-    final colorId = _meProfileAccentColorId >= 0
+    final colorId = _scopedChannel != null
+        ? -1
+        : _meProfileAccentColorId >= 0
         ? _meProfileAccentColorId
         : _meAccentColorId;
     if (colorId >= 0 && colorId < kAccentColors.length) {
@@ -2092,31 +2415,35 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     final c = context.colors;
     final posts = _posts;
     final useDesktopLayout = isDesktopTargetPlatform();
+    final scoped = _scopedChannel;
     return Material(
       color: c.groupedBackground,
       child: Column(
         children: [
           NavHeader(
-            title: widget.title.l10n(context),
+            title: scoped?.title ?? widget.title.l10n(context),
             onBack: widget.isRootTab ? null : () => Navigator.of(context).pop(),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _toggleNonMutedOnly,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
-                    child: Icon(
-                      _nonMutedOnly
-                          ? HeroAppIcons.solidBell.data
-                          : HeroAppIcons.bellSlash.data,
-                      size: 24,
-                      color: _nonMutedOnly ? AppTheme.brand : c.textPrimary,
+                // Muting filters which channels merge; one channel has none.
+                if (scoped == null) ...[
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggleNonMutedOnly,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
+                      child: Icon(
+                        _nonMutedOnly
+                            ? HeroAppIcons.solidBell.data
+                            : HeroAppIcons.bellSlash.data,
+                        size: 24,
+                        color: _nonMutedOnly ? AppTheme.brand : c.textPrimary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.lg),
+                  const SizedBox(width: AppSpacing.lg),
+                ],
                 GestureDetector(
                   key: const ValueKey('moments-refresh-latest'),
                   behavior: HitTestBehavior.opaque,
@@ -2165,9 +2492,11 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
       findChildIndexCallback: (key) => _feedIndexByKey[key],
       itemBuilder: (context, i) {
         if (i == 0) {
+          // A channel's own feed is headed by the channel, like a profile.
+          final scoped = _scopedChannel;
           final composer = _MomentsComposerHeader(
-            meName: _meName,
-            mePhoto: _mePhoto,
+            name: scoped?.title ?? _meName,
+            photo: scoped == null ? _mePhoto : scoped.photo,
             backgroundColor: _profileHeaderColor(context),
             canCompose: _postableChannels.isNotEmpty,
             onCompose: _openNewPostComposer,
@@ -2182,6 +2511,7 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           return useDesktopLayout ? _desktopFeedCard(empty) : empty;
         }
         final post = posts[i - 1];
+        _noteBuiltPost(i - 1);
         // Listening to the post's own revision keeps metadata hydration from
         // rebuilding (and re-laying out the rich text of) every other row.
         final row = ValueListenableBuilder<int>(
@@ -2387,15 +2717,15 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
 
 class _MomentsComposerHeader extends StatelessWidget {
   const _MomentsComposerHeader({
-    required this.meName,
-    this.mePhoto,
+    required this.name,
+    this.photo,
     required this.backgroundColor,
     required this.canCompose,
     required this.onCompose,
   });
 
-  final String meName;
-  final TdFileRef? mePhoto;
+  final String name;
+  final TdFileRef? photo;
   final Color backgroundColor;
   final bool canCompose;
   final VoidCallback onCompose;
@@ -2412,7 +2742,7 @@ class _MomentsComposerHeader extends StatelessWidget {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: mePhoto == null
+                  child: photo == null
                       ? ColoredBox(color: backgroundColor)
                       : Stack(
                           fit: StackFit.expand,
@@ -2422,7 +2752,7 @@ class _MomentsComposerHeader extends StatelessWidget {
                                 sigmaX: 28,
                                 sigmaY: 28,
                               ),
-                              child: TDImage(photo: mePhoto, cornerRadius: 0),
+                              child: TDImage(photo: photo, cornerRadius: 0),
                             ),
                             ColoredBox(
                               color: Colors.black.withValues(alpha: 0.18),
@@ -2437,7 +2767,7 @@ class _MomentsComposerHeader extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      PhotoAvatar(title: meName, photo: mePhoto, size: 74),
+                      PhotoAvatar(title: name, photo: photo, size: 74),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Padding(
@@ -2447,7 +2777,7 @@ class _MomentsComposerHeader extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                meName,
+                                name,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(

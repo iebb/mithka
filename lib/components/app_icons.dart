@@ -454,6 +454,7 @@ class HeroAppIcons {
   static const moon = AppIconData(HeroiconsOutline.moon);
   static const music = AppIconData(HeroiconsOutline.musicalNote);
   static const networkWired = AppIconData(HeroiconsOutline.serverStack);
+  static const newspaper = AppIconData(HeroiconsOutline.newspaper);
   static const objectGroup = AppIconData(HeroiconsOutline.square3Stack3d);
   static const palette = AppIconData(HeroiconsOutline.swatch);
   static const paperPlane = AppIconData(HeroiconsOutline.paperAirplane);
