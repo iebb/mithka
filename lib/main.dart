@@ -51,6 +51,7 @@ import 'call/call_manager.dart';
 import 'call/call_overlay_host.dart';
 import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
+import 'chat/gift_tint.dart';
 import 'chat/group_remark_controller.dart';
 import 'chat/link_preview_fixer.dart';
 import 'chat/music_player_controller.dart';
@@ -262,6 +263,7 @@ Future<void> _bootstrapAndRunApp() async {
   }
   unawaited(SensitiveContentController.shared.initialize());
   MusicPlayerController.shared.initialize(prefs);
+  GiftTintCache.shared.initialize(prefs);
   // Telegram §1.4 exception: the deleted/edited message mirror exists only in
   // opted-in self-builds — with the flag off nothing is subscribed, read or
   // written, and old saved state stays inert.

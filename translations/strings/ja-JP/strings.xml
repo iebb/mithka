@@ -3857,8 +3857,8 @@
     <string name="giftCardTitlePremiumReceived">Telegram Premium が届きました</string>
     <string name="giftCardTitleStarsSent">スターを贈りました</string>
     <string name="giftCardTitleStarsReceived">スターが届きました</string>
-    <string name="giftCardTitleTonSent">TON を贈りました</string>
-    <string name="giftCardTitleTonReceived">TON が届きました</string>
+    <string name="giftCardTitleGramSent">Gram を贈りました</string>
+    <string name="giftCardTitleGramReceived">Gram が届きました</string>
     <string name="giftCardTitlePremiumCode">Telegram Premium ギフトコード</string>
     <string name="giftCardTitleGiveawayStars">抽選で当たったスター</string>
     <string name="giftCardTitleUpgraded">ギフトをアップグレードしました</string>
@@ -3871,7 +3871,7 @@
     <string name="giftOfferPending">返事待ち</string>
     <string name="giftOfferAccepted">オファーは承諾されました</string>
     <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
-    <string name="giftTonAmount">{value1} TON</string>
+    <string name="gramAmount">{value1} GRAM</string>
     <string name="giftSheetFrom">贈り主</string>
     <string name="giftSheetTo">受取人</string>
     <string name="giftSheetNote">メッセージ</string>

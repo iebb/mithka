@@ -3868,8 +3868,8 @@
     <string name="giftCardTitlePremiumReceived">Te regaló Telegram Premium</string>
     <string name="giftCardTitleStarsSent">Estrellas enviadas</string>
     <string name="giftCardTitleStarsReceived">Te envió estrellas</string>
-    <string name="giftCardTitleTonSent">TON enviados</string>
-    <string name="giftCardTitleTonReceived">Te envió TON</string>
+    <string name="giftCardTitleGramSent">Gram enviados</string>
+    <string name="giftCardTitleGramReceived">Te envió Gram</string>
     <string name="giftCardTitlePremiumCode">Código de regalo de Telegram Premium</string>
     <string name="giftCardTitleGiveawayStars">Estrellas de un sorteo</string>
     <string name="giftCardTitleUpgraded">Regalo mejorado</string>
@@ -3882,7 +3882,7 @@
     <string name="giftOfferPending">Esperando respuesta</string>
     <string name="giftOfferAccepted">Oferta aceptada</string>
     <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
-    <string name="giftTonAmount">{value1} TON</string>
+    <string name="gramAmount">{value1} GRAM</string>
     <string name="giftSheetFrom">De</string>
     <string name="giftSheetTo">Para</string>
     <string name="giftSheetNote">Mensaje</string>

@@ -50,6 +50,7 @@ import 'custom_emoji.dart';
 import 'desktop_message_quote_source.dart';
 import 'desktop_message_text_selection.dart';
 import 'file_detail_view.dart';
+import 'gift_details_sheet.dart';
 import 'inline_video_autoplay.dart';
 import 'link_handler.dart';
 import 'location_detail_view.dart';
@@ -58,6 +59,7 @@ import 'media_preview_geometry.dart';
 import 'media_spoiler.dart';
 import 'message_action_menu.dart';
 import 'message_direction.dart';
+import 'message_gift_card.dart';
 import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
 import 'message_swipe_reply.dart';
@@ -1434,6 +1436,25 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
       );
       return _withCommentsOnly(_withFloatingMeta(body, outgoing), outgoing);
     }
+    if (message.gift case final gift?) {
+      final incomingToMe = gift.isIncomingToMe(
+        outgoing: outgoing,
+        meId: widget.bubble.meId,
+      );
+      body = MessageGiftCard(
+        key: ValueKey('messageGiftCard-${message.id}'),
+        gift: gift,
+        incomingToMe: incomingToMe,
+        maxWidth: _bubbleMaxWidth(),
+        borderRadius: _messageBorderRadius(9),
+        meta: _giftFooterMeta(outgoing),
+        onTap: () => _openGift(gift, incomingToMe),
+      );
+      return _withCommentsOnly(
+        _withFloatingMeta(body, outgoing, meta: false),
+        outgoing,
+      );
+    }
     if (message.summaryCard != null) {
       body = MessageSummaryCardContent(
         card: message.summaryCard!,
@@ -1701,9 +1722,12 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     return message.linkPreview;
   }
 
-  Widget _withFloatingMeta(Widget child, bool outgoing) {
+  /// [meta] false leaves the delivery mark out, for content that draws it
+  /// itself; the compact reply count still floats over it.
+  Widget _withFloatingMeta(Widget child, bool outgoing, {bool meta = true}) {
     final showReplies = _showsCompactReplyCount;
-    final show = message.isEdited || outgoing || showReplies;
+    final showMeta = meta && (message.isEdited || outgoing);
+    final show = showMeta || showReplies;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
@@ -1732,9 +1756,8 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
                       ? null
                       : () => widget.bubble.onOpenComments?.call(message),
                 ),
-              if (showReplies && (message.isEdited || outgoing))
-                const SizedBox(width: 4),
-              if (message.isEdited || outgoing) _floatingMeta(outgoing),
+              if (showReplies && showMeta) const SizedBox(width: 4),
+              if (showMeta) _floatingMeta(outgoing),
             ],
           ),
         ),
@@ -1787,10 +1810,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   /// The in-flight spinner is the only delivery state that needs a ticker, so
   /// the settled tick gets a plain painter instead of an AnimationController
   /// per outgoing bubble.
-  Widget _deliveryTick({Color? sentColor}) {
+  Widget _deliveryTick({Color? sentColor, Color? pendingColor}) {
     if (message.isSending && !message.isSendAcknowledged) {
       return _MessageDeliveryIndicator(
-        pendingColor: _outgoingTextColor,
+        pendingColor: pendingColor ?? _outgoingTextColor,
         size: 10,
       );
     }
@@ -1802,6 +1825,41 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           ? const Color(0xFF34C759)
           : (sentColor ?? _outgoingTextColor),
       size: 10,
+    );
+  }
+
+  /// The gift card's delivery mark: the floating meta's glyphs, drawn inside
+  /// the card's white footer in tertiary ink in both directions. A read tick
+  /// stays green. Null when the message shows no meta.
+  Widget? _giftFooterMeta(bool outgoing) {
+    if (!message.isEdited && !outgoing) return null;
+    final ink = _colors.textTertiary;
+    return IgnorePointer(
+      child: message.isEdited
+          ? AppIcon(
+              HeroAppIcons.penToSquare,
+              key: const ValueKey('messageDeliveryEdited'),
+              size: 10,
+              color: ink,
+            )
+          : _deliveryTick(sentColor: ink, pendingColor: ink),
+    );
+  }
+
+  /// An upgraded gift opens its existing page; every other gift opens the
+  /// read-only gift sheet.
+  void _openGift(MessageGift gift, bool incomingToMe) {
+    if (gift.opensUpgradedGiftPage) {
+      unawaited(
+        openInternalLinkType(context, {
+          '@type': 'internalLinkTypeUpgradedGift',
+          'name': gift.upgradedName,
+        }),
+      );
+      return;
+    }
+    unawaited(
+      showGiftDetailsSheet(context, gift: gift, incomingToMe: incomingToMe),
     );
   }
 

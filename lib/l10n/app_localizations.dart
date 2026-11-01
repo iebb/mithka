@@ -3175,8 +3175,8 @@ abstract final class AppStringKeys {
   static const giftCardTitlePremiumReceived = 'giftCardTitlePremiumReceived';
   static const giftCardTitleStarsSent = 'giftCardTitleStarsSent';
   static const giftCardTitleStarsReceived = 'giftCardTitleStarsReceived';
-  static const giftCardTitleTonSent = 'giftCardTitleTonSent';
-  static const giftCardTitleTonReceived = 'giftCardTitleTonReceived';
+  static const giftCardTitleGramSent = 'giftCardTitleGramSent';
+  static const giftCardTitleGramReceived = 'giftCardTitleGramReceived';
   static const giftCardTitlePremiumCode = 'giftCardTitlePremiumCode';
   static const giftCardTitleGiveawayStars = 'giftCardTitleGiveawayStars';
   static const giftCardTitleUpgraded = 'giftCardTitleUpgraded';
@@ -3190,7 +3190,10 @@ abstract final class AppStringKeys {
   static const giftOfferPending = 'giftOfferPending';
   static const giftOfferAccepted = 'giftOfferAccepted';
   static const giftUpgradedNameNumber = 'giftUpgradedNameNumber';
-  static const giftTonAmount = 'giftTonAmount';
+
+  /// "{value1} GRAM": a Gram amount; build it with `GramAmount.format`.
+  static const gramAmount = 'gramAmount';
+
   static const giftSheetFrom = 'giftSheetFrom';
   static const giftSheetTo = 'giftSheetTo';
   static const giftSheetNote = 'giftSheetNote';

@@ -2,12 +2,12 @@
 //  message_gift.dart
 //
 //  The gift carried by a Telegram gift message (regular, upgraded, refunded,
-//  purchase offer, Premium, Stars, TON), parsed by `TDParse.giftAttachment`,
+//  purchase offer, Premium, Stars, Gram), parsed by `TDParse.giftAttachment`,
 //  plus the pure copy rules the gift card and gift sheet render with.
 //
 
-import 'package:intl/intl.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/l10n/gram_amount.dart';
 
 import 'td_models.dart';
 
@@ -47,7 +47,7 @@ enum MessageGiftKind {
 
   /// `messageGiftedGrams` (TDLib's current name), or the older
   /// `messageGiftedTon`.
-  ton,
+  gram,
 }
 
 /// TDLib `UpgradedGiftOrigin`: how an upgraded gift reached its owner.
@@ -104,6 +104,8 @@ class MessageGiftSticker {
     this.fileId,
     this.setId,
     this.emoji = '',
+    this.uniqueId = '',
+    this.hasStaticThumbnail = false,
   });
 
   /// What a static image view shows: the full file for a static (WebP)
@@ -123,6 +125,14 @@ class MessageGiftSticker {
   final int? fileId;
   final int? setId;
   final String emoji;
+
+  /// The sticker file's `remote.unique_id`: the same for every copy of the
+  /// sticker, across chats and accounts. Empty when TDLib omitted it.
+  final String uniqueId;
+
+  /// Whether [thumbnail] is a decodable still (WebP, JPEG or PNG) rather than
+  /// a TGS / WebM animation.
+  final bool hasStaticThumbnail;
 
   bool get isAnimated => animated != null || video != null;
 
@@ -166,7 +176,7 @@ class MessageGift {
     this.noteEntities = const [],
     this.sticker,
     this.starCount = 0,
-    this.tonNanotons = 0,
+    this.gramUnits = 0,
     this.premiumMonthCount = 0,
     this.premiumDayCount = 0,
     this.sellStarCount = 0,
@@ -186,8 +196,6 @@ class MessageGift {
     this.isUnclaimed = false,
     this.offerExpirationDate = 0,
   });
-
-  static const nanotonsPerTon = 1000000000;
 
   final MessageGiftKind kind;
 
@@ -211,7 +219,7 @@ class MessageGift {
   final int? receiverChatId;
 
   /// TDLib says the current user is the receiver without naming them:
-  /// Premium / Stars / TON gifts report `receiver_user_id` 0 when incoming,
+  /// Premium / Stars / Gram gifts report `receiver_user_id` 0 when incoming,
   /// and Premium codes and giveaway prizes are always for the current user.
   final bool receiverIsCurrentUser;
 
@@ -227,16 +235,16 @@ class MessageGift {
   final List<MessageTextEntity> noteEntities;
 
   /// `gift.sticker` (regular / refunded), `gift.model.sticker` (upgraded and
-  /// purchase offers) or the content's `sticker` (Premium, Stars, TON).
+  /// purchase offers) or the content's `sticker` (Premium, Stars, Gram).
   final MessageGiftSticker? sticker;
 
   /// Stars: the regular gift's price, the gifted or won Stars, or a resale /
   /// offer price in Stars.
   final int starCount;
 
-  /// TON in nanotons (10^-9 TON): gifted TON, or a resale / offer price in
-  /// TON (TDLib's `gram_cent_count` is converted).
-  final int tonNanotons;
+  /// Gram in smallest units (10^-9 Gram, see [GramAmount]): gifted Gram, or
+  /// a resale / offer price in Gram (TDLib's `gram_cent_count` is converted).
+  final int gramUnits;
 
   /// Premium duration; `premiumMonthCount` is 0 when it isn't whole months.
   final int premiumMonthCount;
@@ -334,10 +342,10 @@ class MessageGift {
             : AppStringKeys.giftCardTitleStarsSent;
       case MessageGiftKind.giveawayStars:
         return AppStringKeys.giftCardTitleGiveawayStars;
-      case MessageGiftKind.ton:
+      case MessageGiftKind.gram:
         return isIncomingToMe
-            ? AppStringKeys.giftCardTitleTonReceived
-            : AppStringKeys.giftCardTitleTonSent;
+            ? AppStringKeys.giftCardTitleGramReceived
+            : AppStringKeys.giftCardTitleGramSent;
     }
   }
 
@@ -347,7 +355,7 @@ class MessageGift {
 
   /// The card's optional second line, first rule that applies: the note;
   /// an upgraded gift's name and number; the Premium duration; the Stars or
-  /// TON amount; a purchase offer's state. Null when none applies (a plain
+  /// Gram amount; a purchase offer's state. Null when none applies (a plain
   /// gift without a note). Never a price for gifts and offers.
   MessageGiftLine? secondLine({String? localeKey}) {
     if (hasNote) {
@@ -370,9 +378,9 @@ class MessageGift {
         text = starCount > 0
             ? starsText(starCount, localeKey: localeKey)
             : null;
-      case MessageGiftKind.ton:
-        text = tonNanotons > 0
-            ? tonText(tonNanotons, localeKey: localeKey)
+      case MessageGiftKind.gram:
+        text = gramUnits > 0
+            ? GramAmount.format(gramUnits, localeKey: localeKey)
             : null;
       case MessageGiftKind.purchaseOffer:
         text = switch (offerState) {
@@ -427,7 +435,7 @@ class MessageGift {
   }
 
   /// The sheet's Value row: Stars, the Premium duration with the product
-  /// name, the TON amount, or an offer / resale price. Null when unknown.
+  /// name, the Gram amount, or an offer / resale price. Null when unknown.
   String? valueText({String? localeKey}) {
     if (kind == MessageGiftKind.premium ||
         kind == MessageGiftKind.premiumCode) {
@@ -448,7 +456,9 @@ class MessageGift {
       return null;
     }
     if (starCount > 0) return starsText(starCount, localeKey: localeKey);
-    if (tonNanotons > 0) return tonText(tonNanotons, localeKey: localeKey);
+    if (gramUnits > 0) {
+      return GramAmount.format(gramUnits, localeKey: localeKey);
+    }
     return null;
   }
 
@@ -472,43 +482,6 @@ class MessageGift {
   /// "50 Stars" in the given or current app locale.
   static String starsText(int count, {String? localeKey}) =>
       _plural(AppStringKeys.giftStarsCount, count, localeKey);
-
-  /// "0.5 TON" from nanotons, in the given or current app locale.
-  static String tonText(int nanotons, {String? localeKey}) => _t(
-    AppStringKeys.giftTonAmount,
-    localeKey,
-    {'value1': formatTonAmount(nanotons, localeKey: localeKey)},
-  );
-
-  /// Nanotons as a TON number: the locale's decimal separator, trailing
-  /// zeros trimmed, no grouping (500000000 -> "0.5", 2000000000 -> "2";
-  /// "0,5" in German, French and Spanish).
-  static String formatTonAmount(int nanotons, {String? localeKey}) {
-    final magnitude = nanotons.abs();
-    final whole = magnitude ~/ nanotonsPerTon;
-    final fraction = (magnitude % nanotonsPerTon)
-        .toString()
-        .padLeft(9, '0')
-        .replaceFirst(_trailingZeros, '');
-    final sign = nanotons < 0 ? '-' : '';
-    if (fraction.isEmpty) return '$sign$whole';
-    final separator = _decimalSeparator(
-      localeKey ?? AppStrings.currentLocaleKey,
-    );
-    return '$sign$whole$separator$fraction';
-  }
-
-  static final _trailingZeros = RegExp(r'0+$');
-
-  static String _decimalSeparator(String localeKey) {
-    final intlLocale = switch (localeKey) {
-      'zhHans' => 'zh',
-      'zhHant' => 'zh_TW',
-      _ => localeKey,
-    };
-    final locale = NumberFormat.localeExists(intlLocale) ? intlLocale : 'en';
-    return NumberFormat.decimalPattern(locale).symbols.DECIMAL_SEP;
-  }
 
   static String _t(
     String key,

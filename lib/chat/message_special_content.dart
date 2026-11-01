@@ -608,7 +608,6 @@ class MessageSummaryCardContent extends StatelessWidget {
     MessageSummaryKind.invoice => HeroAppIcons.file,
     MessageSummaryKind.giveaway => HeroAppIcons.star,
     MessageSummaryKind.paidMedia => HeroAppIcons.lock,
-    MessageSummaryKind.gift => HeroAppIcons.solidStar,
     MessageSummaryKind.suggestedPost => HeroAppIcons.penToSquare,
   };
 

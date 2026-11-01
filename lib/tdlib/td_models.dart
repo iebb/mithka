@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/l10n/gram_amount.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import 'json_helpers.dart';
@@ -865,7 +866,7 @@ class ChatMessage {
   MessageStoryReference? story;
 
   /// Every gift content type (regular, upgraded, refunded, purchase offer,
-  /// Premium, Stars, TON); see [TDParse.giftContentTypes].
+  /// Premium, Stars, Gram); see [TDParse.giftContentTypes].
   MessageGift? gift;
   MessageSuggestedPostInfo? suggestedPostInfo;
   MessageSummaryCard? summaryCard;
@@ -1493,14 +1494,7 @@ class MessageSuggestedPostInfo {
   final bool canBeDeclined;
 }
 
-enum MessageSummaryKind {
-  game,
-  invoice,
-  giveaway,
-  paidMedia,
-  gift,
-  suggestedPost,
-}
+enum MessageSummaryKind { game, invoice, giveaway, paidMedia, suggestedPost }
 
 class MessageSummaryCard {
   const MessageSummaryCard({
@@ -1844,7 +1838,7 @@ abstract final class TDParse {
         suggestedPostInfo: suggestedPostInfo(
           message.obj('suggested_post_info'),
         ),
-        summaryCard: summaryCard(message, content, gift: gift),
+        summaryCard: summaryCard(content),
         summaryLanguageCode: message.str('summary_language_code') ?? '',
         replyToMessageId: isContentRestricted ? null : replyToMessageId,
         replyToChatId: isContentRestricted ? null : replyToChatId,
@@ -3612,7 +3606,7 @@ abstract final class TDParse {
   static bool isGiftContent(String? type) => giftContentTypes.contains(type);
 
   /// Parses every gift content type. [message] supplies the direction and
-  /// the message sender, which TDLib omits from Premium / Stars / TON gifts
+  /// the message sender, which TDLib omits from Premium / Stars / Gram gifts
   /// the current user sent.
   static MessageGift? giftAttachment(
     Map<String, dynamic> message,
@@ -3632,7 +3626,7 @@ abstract final class TDParse {
       'messagePremiumGiftCode' => MessageGiftKind.premiumCode,
       'messageGiftedStars' => MessageGiftKind.stars,
       'messageGiveawayPrizeStars' => MessageGiftKind.giveawayStars,
-      'messageGiftedGrams' || 'messageGiftedTon' => MessageGiftKind.ton,
+      'messageGiftedGrams' || 'messageGiftedTon' => MessageGiftKind.gram,
       _ => null,
     };
     if (type == null || kind == null) return null;
@@ -3681,7 +3675,7 @@ abstract final class TDParse {
                 : gift?.obj('sticker'),
           ),
           starCount: price?.stars ?? gift?.int64('star_count') ?? 0,
-          tonNanotons: price?.nanotons ?? 0,
+          gramUnits: price?.gramUnits ?? 0,
           sellStarCount: content.int64('sell_star_count') ?? 0,
           prepaidUpgradeStarCount:
               content.int64('prepaid_upgrade_star_count') ?? 0,
@@ -3707,7 +3701,7 @@ abstract final class TDParse {
         );
       case MessageGiftKind.premium:
       case MessageGiftKind.stars:
-      case MessageGiftKind.ton:
+      case MessageGiftKind.gram:
         // gifter_user_id is 0 when the gift is anonymous or outgoing, and
         // receiver_user_id is 0 when it is incoming (i.e. to the current user).
         final gifter = content.int64('gifter_user_id') ?? 0;
@@ -3730,7 +3724,7 @@ abstract final class TDParse {
           starCount: kind == MessageGiftKind.stars
               ? content.int64('star_count') ?? 0
               : 0,
-          tonNanotons: kind == MessageGiftKind.ton
+          gramUnits: kind == MessageGiftKind.gram
               ? content.int64('gram_amount') ?? content.int64('ton_amount') ?? 0
               : 0,
           premiumMonthCount: kind == MessageGiftKind.premium
@@ -3809,20 +3803,20 @@ abstract final class TDParse {
     _ => MessageGiftOrigin.unknown,
   };
 
-  /// TDLib `GiftResalePrice`; a TON price arrives in hundredths of a TON.
-  static ({int stars, int nanotons})? _giftResalePrice(
+  /// TDLib `GiftResalePrice`; a Gram price arrives in hundredths of a Gram.
+  static ({int stars, int gramUnits})? _giftResalePrice(
     Map<String, dynamic>? price,
   ) {
     return switch (price?.type) {
       'giftResalePriceStar' => (
         stars: price?.int64('star_count') ?? 0,
-        nanotons: 0,
+        gramUnits: 0,
       ),
       'giftResalePriceGram' => (
         stars: 0,
-        nanotons:
+        gramUnits:
             (price?.int64('gram_cent_count') ?? 0) *
-            (MessageGift.nanotonsPerTon ~/ 100),
+            (GramAmount.unitsPerGram ~/ 100),
       ),
       _ => null,
     };
@@ -3837,12 +3831,20 @@ abstract final class TDParse {
   static MessageGiftSticker? _giftSticker(Map<String, dynamic>? sticker) {
     if (sticker == null) return null;
     final media = _messageStickerMedia(sticker);
+    final thumbnail = sticker.obj('thumbnail');
     return MessageGiftSticker(
       image: media.image,
       thumbnail: fileRef(
-        sticker.obj('thumbnail')?.obj('file'),
+        thumbnail?.obj('file'),
         miniThumb: decodeMiniThumb(sticker.obj('minithumbnail')),
       ),
+      hasStaticThumbnail: switch (thumbnail?.obj('format')?.type) {
+        'thumbnailFormatWebp' ||
+        'thumbnailFormatJpeg' ||
+        'thumbnailFormatPng' => true,
+        _ => false,
+      },
+      uniqueId: sticker.obj('sticker')?.obj('remote')?.str('unique_id') ?? '',
       animated: media.animated,
       video: media.videoSticker,
       width: media.width,
@@ -3887,16 +3889,8 @@ abstract final class TDParse {
     );
   }
 
-  static MessageSummaryCard? summaryCard(
-    Map<String, dynamic> message,
-    Map<String, dynamic>? content, {
-    MessageGift? gift,
-  }) {
+  static MessageSummaryCard? summaryCard(Map<String, dynamic>? content) {
     if (content == null) return null;
-    if (isGiftContent(content.type)) {
-      final parsed = gift ?? giftAttachment(message, content);
-      return parsed == null ? null : _giftSummaryCard(parsed);
-    }
     switch (content.type) {
       case 'messageGame':
         final game = content.obj('game');
@@ -4022,30 +4016,6 @@ abstract final class TDParse {
         );
     }
     return null;
-  }
-
-  /// The interim gift look, until the gift card replaces it: the generic
-  /// summary card with localized value text.
-  static MessageSummaryCard _giftSummaryCard(MessageGift gift) {
-    final image = gift.sticker?.placeholder;
-    if (gift.isUpgradedGift) {
-      return MessageSummaryCard(
-        kind: MessageSummaryKind.gift,
-        title: gift.upgradedTitle.isNotEmpty
-            ? gift.upgradedTitle
-            : AppStrings.t(AppStringKeys.tdMessageGift),
-        subtitle: gift.upgradedName,
-        detail: gift.upgradedNumber > 0 ? '#${gift.upgradedNumber}' : '',
-        image: image,
-      );
-    }
-    return MessageSummaryCard(
-      kind: MessageSummaryKind.gift,
-      title: AppStrings.t(AppStringKeys.tdMessageGift),
-      subtitle: gift.note,
-      detail: gift.valueText() ?? '',
-      image: image,
-    );
   }
 
   static String suggestedPostPriceLabel(SuggestedPostPrice price) =>

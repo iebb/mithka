@@ -3857,8 +3857,8 @@
     <string name="giftCardTitlePremiumReceived">送你 Telegram Premium</string>
     <string name="giftCardTitleStarsSent">送出星星</string>
     <string name="giftCardTitleStarsReceived">送你星星</string>
-    <string name="giftCardTitleTonSent">送出 TON</string>
-    <string name="giftCardTitleTonReceived">送你 TON</string>
+    <string name="giftCardTitleGramSent">送出 Gram</string>
+    <string name="giftCardTitleGramReceived">送你 Gram</string>
     <string name="giftCardTitlePremiumCode">Telegram Premium 礼品码</string>
     <string name="giftCardTitleGiveawayStars">抽奖获得的星星</string>
     <string name="giftCardTitleUpgraded">升级了礼物</string>
@@ -3871,7 +3871,7 @@
     <string name="giftOfferPending">等待回复</string>
     <string name="giftOfferAccepted">求购已接受</string>
     <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
-    <string name="giftTonAmount">{value1} TON</string>
+    <string name="gramAmount">{value1} GRAM</string>
     <string name="giftSheetFrom">赠送人</string>
     <string name="giftSheetTo">接收人</string>
     <string name="giftSheetNote">留言</string>
