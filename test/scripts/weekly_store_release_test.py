@@ -154,6 +154,11 @@ class WeeklyReleaseTest(unittest.TestCase):
             ),
             patch.object(
                 RELEASE,
+                "request_immediate_update",
+                side_effect=lambda: events.append("immediate"),
+            ),
+            patch.object(
+                RELEASE,
                 "publish_github_release",
                 side_effect=lambda _plan: events.append("github"),
             ),
@@ -164,7 +169,9 @@ class WeeklyReleaseTest(unittest.TestCase):
             ),
         ):
             self.assertEqual(RELEASE.main(), 0)
-        self.assertEqual(events, ["stores", "development", "github", "complete"])
+        self.assertEqual(
+            events, ["stores", "development", "immediate", "github", "complete"]
+        )
 
     def test_post_bump_quality_is_requested_only_when_missing(self):
         with patch.object(

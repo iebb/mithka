@@ -1,7 +1,10 @@
 name: 🌙 Sync Nightly
 
-# Merge master into nightly once per day. Every sync that incorporates new
-# master commits increments the app's patch version once. Master is
+# Merge master into nightly once per day. The first sync of a new minor ships
+# master's exact X.Y.0; every later sync that incorporates new master commits
+# increments the app's patch version once (see Versioning in AGENTS.md). The
+# Friday store release dispatches this workflow right after it moves master to
+# the next minor, so that X.Y.0 goes out the same day. Master is
 # authoritative for the nightly tree; only pubspec.yaml receives a generated
 # nightly version. A generated GITHUB_TOKEN push doesn't trigger other
 # workflows, so a changed sync explicitly dispatches every build that a push to
@@ -119,7 +122,15 @@ jobs:
             exit 1
           fi
 
-          if [ "$master_major" = "$previous_major" ] && \
+          # A new minor on master (X.Y.0 after a store release) ships as that
+          # exact X.Y.0 first: the immediate update. Every later sync with new
+          # master commits raises the patch, X.Y.1, X.Y.2, and so on.
+          if [ "$master_major" -gt "$previous_major" ] || {
+            [ "$master_major" = "$previous_major" ] && \
+              [ "$master_minor" -gt "$previous_minor" ]
+          }; then
+            nightly_patch="$master_patch"
+          elif [ "$master_major" = "$previous_major" ] && \
             [ "$master_minor" = "$previous_minor" ] && \
             [ "$previous_patch" -ge "$master_patch" ]; then
             nightly_patch=$((previous_patch + 1))

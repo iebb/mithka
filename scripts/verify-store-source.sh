@@ -19,8 +19,7 @@ case "${GITHUB_REF:-}" in
       echo 'Store snapshot tags require an exact-source manual dispatch.' >&2
       exit 1
     fi
-    version="$(sh scripts/apple_marketing_version.sh \
-      "$(awk '/^version:/ { print $2; exit }' pubspec.yaml)" "${GITHUB_REF#refs/tags/}")"
+    version="$(sh scripts/apple_marketing_version.sh "$(awk '/^version:/ { print $2; exit }' pubspec.yaml)")"
     if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[1-9][0-9]*$ ]] || [ "$GITHUB_REF" != "refs/tags/store-v$version" ]; then
       echo 'Store tag and normal nonzero patch version must match.' >&2
       exit 1

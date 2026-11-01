@@ -750,6 +750,14 @@ def advance_development_version(
     )
 
 
+def request_immediate_update():
+    # A new minor's X.Y.0 goes to TestFlight and the Play beta the same day as
+    # an immediate update instead of waiting for the next daily sync. The sync
+    # shares this job's lock, so it starts once this release finishes, and it
+    # does nothing when nightly already holds master.
+    api("actions/workflows/sync-nightly.yml/dispatches", {"ref": "master", "inputs": {}})
+
+
 def github_release(tag):
     result = subprocess.run(
         ["gh", "api", f"repos/{REPO}/releases/tags/{tag}"],
@@ -1018,6 +1026,7 @@ def main():
     if args.operation == "release":
         submit(plan)
         advance_development_version(plan)
+        request_immediate_update()
         publish_github_release(plan)
         record_completion(plan)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

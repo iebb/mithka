@@ -4,6 +4,15 @@
 - Do not use Material, Cupertino, or built-in Material/Cupertino icon sets in the app. Use the project's `AppIcon`, `HeroAppIcons`, and owned image assets instead.
 - Describe and implement designs through concrete properties such as dimensions, spacing, corner radius, color, border, shadow, typography, and motion. Do not use another product as design shorthand.
 
+## Versioning
+
+- `master` always carries the next minor at patch 0 in `pubspec.yaml` (for example `1.10.0`).
+- When master moves to a new minor, that exact `X.Y.0` goes to TestFlight and the Google Play beta the same day as an immediate update; it does not wait for the daily run. The Friday store release dispatches `.github/workflows/sync-nightly.yml` right after it advances master, and the first sync of a new minor stamps nightly with master's exact `X.Y.0`.
+- From the next day on, each daily build with new master changes raises the patch once: `X.Y.1`, `X.Y.2`, and so on. A day without new master commits produces no build. TestFlight and Google Play show that exact version; never rewrite the patch to `.0`. `scripts/apple_marketing_version.sh` keeps the exact `X.Y.Z` on every branch and tag.
+- A store release submits the exact version of the build it ships: a nonzero patch above every version already used on that minor, built from its `store-vX.Y.Z` tag. Afterwards master moves to `X.(Y+1).0` and the immediate-update rule applies again.
+- The Apple build number is always the Git commit height (`scripts/apple_ci_build_number.sh`). Android keeps its own always-increasing version code in `android/version-code.txt`, because Google Play rejects a code that goes down.
+- Releases run only through the owner's existing workflows: the daily build (`sync-nightly.yml`, 00:00 UTC = 09:00 Tokyo) and the Friday 09:00 Tokyo store release (`weekly-store-release.yml`). A one-off run, rerun, or dispatch happens only when the owner asks.
+
 ## Contributions and agentic PR review
 
 - Hard rule: within a repository, use one open PR for one feature, fix, or improvement. Search existing open and recently closed PRs before opening one; update the existing PR and branch for revisions, tests, documentation, and CI instead of opening parallel, replacement, or stacked PRs for the same work. Independently useful changes may have separate PRs; overlapping files alone do not make changes duplicates. Keep work in another repository in that repository's own PR. Consolidate existing same-topic submissions into one canonical PR before merging, preserving every intended change and review finding before closing superseded PRs.
