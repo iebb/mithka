@@ -3851,4 +3851,51 @@
     <string name="appearanceSimpleModeDescription">外観の設定を変えずに、チャット画面をすっきりさせます。</string>
     <string name="composerMoreActions">その他の操作</string>
     <string name="composerShowKeyboard">キーボードを表示</string>
+    <string name="giftCardTitleSent">ギフトを贈りました</string>
+    <string name="giftCardTitleReceived">ギフトが届きました</string>
+    <string name="giftCardTitlePremiumSent">Telegram Premium を贈りました</string>
+    <string name="giftCardTitlePremiumReceived">Telegram Premium が届きました</string>
+    <string name="giftCardTitleStarsSent">スターを贈りました</string>
+    <string name="giftCardTitleStarsReceived">スターが届きました</string>
+    <string name="giftCardTitleTonSent">TON を贈りました</string>
+    <string name="giftCardTitleTonReceived">TON が届きました</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium ギフトコード</string>
+    <string name="giftCardTitleGiveawayStars">抽選で当たったスター</string>
+    <string name="giftCardTitleUpgraded">ギフトをアップグレードしました</string>
+    <string name="giftCardTitleBought">ギフトを購入しました</string>
+    <string name="giftCardTitleCrafted">ギフトを合成しました</string>
+    <string name="giftCardTitleRefunded">ギフトは返金されました</string>
+    <string name="giftCardTitleOffer">ギフトの購入オファー</string>
+    <string name="giftCardTitleOfferDeclined">オファーは辞退されました</string>
+    <string name="giftCardTitleOfferExpired">オファーの期限が切れました</string>
+    <string name="giftOfferPending">返事待ち</string>
+    <string name="giftOfferAccepted">オファーは承諾されました</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="giftTonAmount">{value1} TON</string>
+    <string name="giftSheetFrom">贈り主</string>
+    <string name="giftSheetTo">受取人</string>
+    <string name="giftSheetNote">メッセージ</string>
+    <string name="giftSheetValue">価値</string>
+    <string name="giftSheetAnonymous">匿名</string>
+    <string name="giftStatusRefunded">返金済み</string>
+    <string name="giftStatusConverted">スターに交換済み</string>
+    <string name="giftStatusUpgraded">アップグレード済み</string>
+    <string name="giftStatusFromGiveaway">抽選の賞品</string>
+    <string name="giftStatusUnclaimed">未受け取りの賞品</string>
+    <string name="giftCardHint">ギフトの詳細を表示</string>
+    <plurals name="giftStarsCount">
+        <item quantity="other">{count} スター</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="other">Telegram Premium {count}か月</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="other">Telegram Premium {count}日間</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="other">{count}か月</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="other">{count}日間</item>
+    </plurals>
 </resources>

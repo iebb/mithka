@@ -3169,6 +3169,49 @@ abstract final class AppStringKeys {
   static const tdMessageGift = 'tdMessageGift';
   static const tdMessageGif = 'tdMessageGif';
   static const tdMessageGiveaway = 'tdMessageGiveaway';
+  static const giftCardTitleSent = 'giftCardTitleSent';
+  static const giftCardTitleReceived = 'giftCardTitleReceived';
+  static const giftCardTitlePremiumSent = 'giftCardTitlePremiumSent';
+  static const giftCardTitlePremiumReceived = 'giftCardTitlePremiumReceived';
+  static const giftCardTitleStarsSent = 'giftCardTitleStarsSent';
+  static const giftCardTitleStarsReceived = 'giftCardTitleStarsReceived';
+  static const giftCardTitleTonSent = 'giftCardTitleTonSent';
+  static const giftCardTitleTonReceived = 'giftCardTitleTonReceived';
+  static const giftCardTitlePremiumCode = 'giftCardTitlePremiumCode';
+  static const giftCardTitleGiveawayStars = 'giftCardTitleGiveawayStars';
+  static const giftCardTitleUpgraded = 'giftCardTitleUpgraded';
+  static const giftCardTitleBought = 'giftCardTitleBought';
+  static const giftCardTitleCrafted = 'giftCardTitleCrafted';
+  static const giftCardTitleRefunded = 'giftCardTitleRefunded';
+  static const giftCardTitleOffer = 'giftCardTitleOffer';
+  static const giftCardTitleOfferDeclined = 'giftCardTitleOfferDeclined';
+  static const giftCardTitleOfferExpired = 'giftCardTitleOfferExpired';
+  static const giftCardHint = 'giftCardHint';
+  static const giftOfferPending = 'giftOfferPending';
+  static const giftOfferAccepted = 'giftOfferAccepted';
+  static const giftUpgradedNameNumber = 'giftUpgradedNameNumber';
+  static const giftTonAmount = 'giftTonAmount';
+  static const giftSheetFrom = 'giftSheetFrom';
+  static const giftSheetTo = 'giftSheetTo';
+  static const giftSheetNote = 'giftSheetNote';
+  static const giftSheetValue = 'giftSheetValue';
+  static const giftSheetAnonymous = 'giftSheetAnonymous';
+  static const giftStatusRefunded = 'giftStatusRefunded';
+  static const giftStatusConverted = 'giftStatusConverted';
+  static const giftStatusUpgraded = 'giftStatusUpgraded';
+  static const giftStatusFromGiveaway = 'giftStatusFromGiveaway';
+  static const giftStatusUnclaimed = 'giftStatusUnclaimed';
+
+  /// Counted (`AppStrings.plural`): `{count}` Stars.
+  static const giftStarsCount = 'giftStarsCount';
+
+  /// Counted: a Telegram Premium duration with the product name (sheet).
+  static const giftPremiumMonths = 'giftPremiumMonths';
+  static const giftPremiumDays = 'giftPremiumDays';
+
+  /// Counted: the bare duration (card second line; the title names Premium).
+  static const giftDurationMonths = 'giftDurationMonths';
+  static const giftDurationDays = 'giftDurationDays';
   static const tdMessageGroupCreated = 'tdMessageGroupCreated';
   static const tdMessageGroupNameChanged = 'tdMessageGroupNameChanged';
   static const tdMessageGroupPhotoDeleted = 'tdMessageGroupPhotoDeleted';
@@ -5261,6 +5304,10 @@ abstract final class AppStrings {
   ]) {
     return pluralForLocale(_currentLocaleKey, key, count, placeholders);
   }
+
+  /// The app locale key (`en`, `zhHans`, …) that [t] and [plural] resolve
+  /// against, for helpers that must format numbers for the same locale.
+  static String get currentLocaleKey => _currentLocaleKey;
 
   static String get _currentLocaleKey {
     final tag = Intl.getCurrentLocale();

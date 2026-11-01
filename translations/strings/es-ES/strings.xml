@@ -3862,4 +3862,56 @@
     <string name="appearanceSimpleModeDescription">Simplifica la interfaz del chat sin cambiar tus ajustes de apariencia.</string>
     <string name="composerMoreActions">Más acciones</string>
     <string name="composerShowKeyboard">Mostrar teclado</string>
+    <string name="giftCardTitleSent">Regalo enviado</string>
+    <string name="giftCardTitleReceived">Te envió un regalo</string>
+    <string name="giftCardTitlePremiumSent">Telegram Premium enviado</string>
+    <string name="giftCardTitlePremiumReceived">Te regaló Telegram Premium</string>
+    <string name="giftCardTitleStarsSent">Estrellas enviadas</string>
+    <string name="giftCardTitleStarsReceived">Te envió estrellas</string>
+    <string name="giftCardTitleTonSent">TON enviados</string>
+    <string name="giftCardTitleTonReceived">Te envió TON</string>
+    <string name="giftCardTitlePremiumCode">Código de regalo de Telegram Premium</string>
+    <string name="giftCardTitleGiveawayStars">Estrellas de un sorteo</string>
+    <string name="giftCardTitleUpgraded">Regalo mejorado</string>
+    <string name="giftCardTitleBought">Regalo comprado</string>
+    <string name="giftCardTitleCrafted">Regalo creado</string>
+    <string name="giftCardTitleRefunded">Regalo reembolsado</string>
+    <string name="giftCardTitleOffer">Oferta de compra de un regalo</string>
+    <string name="giftCardTitleOfferDeclined">Oferta rechazada</string>
+    <string name="giftCardTitleOfferExpired">Oferta caducada</string>
+    <string name="giftOfferPending">Esperando respuesta</string>
+    <string name="giftOfferAccepted">Oferta aceptada</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="giftTonAmount">{value1} TON</string>
+    <string name="giftSheetFrom">De</string>
+    <string name="giftSheetTo">Para</string>
+    <string name="giftSheetNote">Mensaje</string>
+    <string name="giftSheetValue">Valor</string>
+    <string name="giftSheetAnonymous">Anónimo</string>
+    <string name="giftStatusRefunded">Reembolsado</string>
+    <string name="giftStatusConverted">Convertido en estrellas</string>
+    <string name="giftStatusUpgraded">Mejorado</string>
+    <string name="giftStatusFromGiveaway">De un sorteo</string>
+    <string name="giftStatusUnclaimed">Premio sin reclamar</string>
+    <string name="giftCardHint">Muestra los detalles del regalo</string>
+    <plurals name="giftStarsCount">
+        <item quantity="one">{count} estrella</item>
+        <item quantity="other">{count} estrellas</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="one">{count} mes de Telegram Premium</item>
+        <item quantity="other">{count} meses de Telegram Premium</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="one">{count} día de Telegram Premium</item>
+        <item quantity="other">{count} días de Telegram Premium</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="one">{count} mes</item>
+        <item quantity="other">{count} meses</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="one">{count} día</item>
+        <item quantity="other">{count} días</item>
+    </plurals>
 </resources>

@@ -6468,6 +6468,11 @@ class ChatViewModel extends ChangeNotifier {
           unawaited(_refreshMessage(messageId));
           return;
         }
+        // A gift's state (converted, upgraded, refunded, an offer's answer)
+        // changes in place; re-read it so `ChatMessage.gift` stays current.
+        if (TDParse.isGiftContent(content.type)) {
+          unawaited(_refreshMessage(messageId));
+        }
         _replaceText(
           messageId,
           // Chat-list previews deliberately synthesize labels such as

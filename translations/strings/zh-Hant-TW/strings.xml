@@ -3851,4 +3851,51 @@
     <string name="appearanceSimpleModeDescription">精簡聊天介面，不更動原有外觀設定。</string>
     <string name="composerMoreActions">更多操作</string>
     <string name="composerShowKeyboard">顯示鍵盤</string>
+    <string name="giftCardTitleSent">送出一份禮物</string>
+    <string name="giftCardTitleReceived">送你一份禮物</string>
+    <string name="giftCardTitlePremiumSent">送出 Telegram Premium</string>
+    <string name="giftCardTitlePremiumReceived">送你 Telegram Premium</string>
+    <string name="giftCardTitleStarsSent">送出星星</string>
+    <string name="giftCardTitleStarsReceived">送你星星</string>
+    <string name="giftCardTitleTonSent">送出 TON</string>
+    <string name="giftCardTitleTonReceived">送你 TON</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium 禮品碼</string>
+    <string name="giftCardTitleGiveawayStars">抽獎獲得的星星</string>
+    <string name="giftCardTitleUpgraded">升級了禮物</string>
+    <string name="giftCardTitleBought">買下一份禮物</string>
+    <string name="giftCardTitleCrafted">合成了一份禮物</string>
+    <string name="giftCardTitleRefunded">禮物已退款</string>
+    <string name="giftCardTitleOffer">求購禮物</string>
+    <string name="giftCardTitleOfferDeclined">求購已被拒絕</string>
+    <string name="giftCardTitleOfferExpired">求購已過期</string>
+    <string name="giftOfferPending">等待回覆</string>
+    <string name="giftOfferAccepted">求購已接受</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="giftTonAmount">{value1} TON</string>
+    <string name="giftSheetFrom">贈送人</string>
+    <string name="giftSheetTo">接收人</string>
+    <string name="giftSheetNote">留言</string>
+    <string name="giftSheetValue">價值</string>
+    <string name="giftSheetAnonymous">匿名</string>
+    <string name="giftStatusRefunded">已退款</string>
+    <string name="giftStatusConverted">已兌換成星星</string>
+    <string name="giftStatusUpgraded">已升級</string>
+    <string name="giftStatusFromGiveaway">來自抽獎</string>
+    <string name="giftStatusUnclaimed">無人領取的獎品</string>
+    <string name="giftCardHint">查看禮物詳情</string>
+    <plurals name="giftStarsCount">
+        <item quantity="other">{count} 顆星星</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="other">{count} 個月 Telegram Premium</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="other">{count} 天 Telegram Premium</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="other">{count} 個月</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="other">{count} 天</item>
+    </plurals>
 </resources>
