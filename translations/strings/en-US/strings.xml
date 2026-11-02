@@ -1243,6 +1243,7 @@
     <string name="chatUserTyping">{value1} is typing…</string>
     <string name="chatUsersJoinedGroup">{value1}{value2} joined the group</string>
     <string name="chatVideoPlaceholder">[Video]</string>
+    <string name="chatViewAsMoments">View as Moments</string>
     <string name="chatWallpaperApply">Apply wallpaper</string>
     <string name="chatWallpaperApplyForBoth">Apply for both</string>
     <string name="chatWallpaperApplyForMe">Apply for me</string>

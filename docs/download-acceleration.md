@@ -2,7 +2,8 @@
 
 Source review: 2026-09-09. Compared with
 [`iyear/tdl` at `70c561c0`](https://github.com/iyear/tdl/tree/70c561c0a6d44d8d7fffdea14988fc4104bc56d2)
-and Mithka's pinned TDLib `1.8.67`, upstream commit `d1085f9c`.
+and Mithka's pinned TDLib `1.8.69`, upstream commit `4c6377aa` (TDLib facts
+rechecked 2026-11-01).
 
 ## How tdl accelerates downloads
 
@@ -45,17 +46,17 @@ Sources:
 - App configuration: `lib/settings/transfer_boost_config.dart`
 - Native bridge: `lib/tdlib/td_client.dart`, `lib/tdlib/td_bindings.dart`
 - Artifact pin: `scripts/tdjson-manifest.json`
-- [Pinned Mithka transfer patch](https://github.com/iebb/mithka-tdjson/blob/fb217c3c586565c8bc5d3d0d6c59051046d5fbf6/patches/mithka-transfer-boost.patch)
-- [TDLib session counts](https://github.com/tdlib/td/blob/d1085f9cebc5a62379991ae1652673954f229c1f/td/telegram/net/NetQueryDispatcher.cpp)
-- [TDLib session balancing](https://github.com/tdlib/td/blob/d1085f9cebc5a62379991ae1652673954f229c1f/td/telegram/net/SessionMultiProxy.cpp)
+- [Pinned Mithka transfer patch](https://github.com/iebb/mithka-tdjson/blob/8edcba71a24f51563296d1f39227e4dae41a139d/patches/mithka-transfer-boost.patch)
+- [TDLib session counts](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/net/NetQueryDispatcher.cpp)
+- [TDLib session balancing](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/net/SessionMultiProxy.cpp)
 
 ## App request contract
 
 Parallelism must happen inside the native downloader. Unlike independent MTProto
 part requests, TDLib's public `downloadFile` calls share one current user-requested
 offset and limit per file. A new request with different bounds cancels earlier
-synchronous requests. See the [API contract](https://github.com/tdlib/td/blob/d1085f9cebc5a62379991ae1652673954f229c1f/td/generate/scheme/td_api.tl)
-and [FileManager implementation](https://github.com/tdlib/td/blob/d1085f9cebc5a62379991ae1652673954f229c1f/td/telegram/files/FileManager.cpp).
+synchronous requests. See the [API contract](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/generate/scheme/td_api.tl)
+and [FileManager implementation](https://github.com/tdlib/td/blob/4c6377aa7386c39217878a9a56d581922ad37ca4/td/telegram/files/FileManager.cpp).
 
 `TdFileCenter` therefore follows these rules:
 

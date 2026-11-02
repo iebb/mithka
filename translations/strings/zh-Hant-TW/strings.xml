@@ -1237,6 +1237,7 @@
     <string name="chatUserTyping">{value1} 正在輸入…</string>
     <string name="chatUsersJoinedGroup">{value1}{value2}加入了群組</string>
     <string name="chatVideoPlaceholder">[影片]</string>
+    <string name="chatViewAsMoments">以動態檢視</string>
     <string name="chatWallpaperApply">套用桌布</string>
     <string name="chatWallpaperApplyForBoth">為雙方套用</string>
     <string name="chatWallpaperApplyForMe">僅為我套用</string>

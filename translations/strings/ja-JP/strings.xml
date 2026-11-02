@@ -1237,6 +1237,7 @@
     <string name="chatUserTyping">{value1} が入力中…</string>
     <string name="chatUsersJoinedGroup">{value1}{value2}がグループに参加しました</string>
     <string name="chatVideoPlaceholder">[動画]</string>
+    <string name="chatViewAsMoments">投稿として表示</string>
     <string name="chatWallpaperApply">壁紙を適用</string>
     <string name="chatWallpaperApplyForBoth">両方に適用</string>
     <string name="chatWallpaperApplyForMe">自分だけに適用</string>

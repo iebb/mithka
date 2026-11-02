@@ -1244,6 +1244,7 @@ abstract final class AppStringKeys {
   static const chatUsersJoinedGroup = 'chatUsersJoinedGroup';
   static const chatUserTyping = 'chatUserTyping';
   static const chatVideoPlaceholder = 'chatVideoPlaceholder';
+  static const chatViewAsMoments = 'chatViewAsMoments';
   static const chatWallpaperApply = 'chatWallpaperApply';
   static const chatWallpaperApplyForBoth = 'chatWallpaperApplyForBoth';
   static const chatWallpaperApplyForMe = 'chatWallpaperApplyForMe';

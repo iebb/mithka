@@ -454,6 +454,7 @@ class HeroAppIcons {
   static const moon = AppIconData(HeroiconsOutline.moon);
   static const music = AppIconData(HeroiconsOutline.musicalNote);
   static const networkWired = AppIconData(HeroiconsOutline.serverStack);
+  static const newspaper = AppIconData(HeroiconsOutline.newspaper);
   static const objectGroup = AppIconData(HeroiconsOutline.square3Stack3d);
   static const palette = AppIconData(HeroiconsOutline.swatch);
   static const paperPlane = AppIconData(HeroiconsOutline.paperAirplane);
@@ -483,6 +484,9 @@ class HeroAppIcons {
   static const share = AppIconData(HeroiconsOutline.share);
   static const server = AppIconData(HeroiconsOutline.serverStack);
   static const shieldHalved = AppIconData(HeroiconsOutline.shieldCheck);
+
+  /// A command bot's menu button: opens the sheet of its slash commands.
+  static const slash = AppIconData(HeroiconsOutline.slash);
   static const solidBell = AppIconData(HeroiconsSolid.bell);
   static const solidCircle = AppIconData(HeroiconsSolid.stopCircle);
   static const solidCircleNotch = AppIconData(HeroiconsSolid.arrowPath);

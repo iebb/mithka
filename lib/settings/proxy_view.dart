@@ -161,7 +161,7 @@ class _ProxyViewState extends State<ProxyView> {
   /// False until a getProxies read actually answered. The list lives inside
   /// the TDLib client, and a client still opening its database — the fresh
   /// slot behind the login screen's add-account flow — cannot answer yet:
-  /// TDLib 1.8.67 queues a pre-parameters read with no reply at all, so
+  /// TDLib 1.8.69 queues a pre-parameters read with no reply at all, so
   /// "no answer" must never render as "no proxy".
   bool _clientReady = false;
   int _loadGeneration = 0;
@@ -325,6 +325,7 @@ class _ProxyViewState extends State<ProxyView> {
   Future<void> _enable(Map<String, dynamic> proxy) async {
     final owner = _owner;
     if (owner == null || !owner.isCurrent) return;
+    if (!ProxyConfig.isSupportedTdProxy(proxy)) return;
     final ownerGeneration = _ownerGeneration;
     final id = proxy.integer('id') ?? 0;
     try {
