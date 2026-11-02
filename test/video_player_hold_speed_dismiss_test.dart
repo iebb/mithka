@@ -5,6 +5,7 @@ import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/video_player_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -631,6 +632,106 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }
     });
+
+    testWidgets('a rejected held write queues one restore and settles it', (
+      tester,
+    ) async {
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = await pumpPlayer(tester, fileId: 923);
+      try {
+        // The held write rejects; the restore behind it succeeds.
+        platform.rejectPlaybackSpeeds.add(2.0);
+        final hold = await tester.startGesture(const Offset(195, 420));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
+        await tester.pump();
+
+        await flushNative(tester);
+        // The failure ended the hold and queued exactly one restore; the
+        // restore went through the wire and settled.
+        expect(
+          platform.playbackSpeeds.first,
+          2.0,
+          reason: 'the held write was issued (and rejected)',
+        );
+        expect(platform.playbackSpeeds.where((r) => r == 1.0), hasLength(1));
+        expect(platform.nativeRates, [1.0]);
+        // No write is stranded: nothing pending, and the badge is gone.
+        expect(platform.playbackSpeeds.where((r) => r == 2.0), hasLength(1));
+        expect(find.text('2x'), findsNothing);
+        expect(videoPlayerBaseSpeedForTesting, 1.0);
+        // A later write still works: the pump is not dead after the failure.
+        // The first press is still down; lift it first — the failure ended the
+        // hold state internally, but the surface gesture must complete too.
+        await hold.up();
+        await tester.pump();
+        platform.playbackSpeeds.clear();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        final secondHold = await tester.startGesture(const Offset(195, 420));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
+        await tester.pump();
+        await flushNative(tester);
+        expect(
+          platform.playbackSpeeds,
+          isNotEmpty,
+          reason: 'a fresh hold still reaches the wire',
+        );
+        expect(find.text('2x'), findsOneWidget);
+        await secondHold.up();
+        await flushNative(tester);
+        expect(
+          platform.nativeRates.last,
+          1.0,
+          reason: 'the fresh hold restores normally after the failure',
+        );
+        await settle(tester);
+      } finally {
+        platform.playbackSpeedBarriers.clear();
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('a rejected restore gives up bounded, without a retry loop', (
+      tester,
+    ) async {
+      final previousPlatform = VideoPlayerPlatform.instance;
+      final platform = await pumpPlayer(tester, fileId: 924);
+      try {
+        // Both the held write and its restore reject.
+        platform.rejectPlaybackSpeeds.add(2.0);
+        platform.rejectPlaybackSpeeds.add(1.0);
+        final hold = await tester.startGesture(const Offset(195, 420));
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 60));
+        await tester.pump();
+
+        await flushNative(tester);
+        // Held write rejected once, restore attempted once and rejected in
+        // turn — the bound stops the loop there. No third write is issued.
+        expect(
+          platform.playbackSpeeds.where((r) => r == 2.0),
+          hasLength(1),
+          reason: 'the held rate was issued exactly once',
+        );
+        expect(
+          platform.playbackSpeeds.where((r) => r == 1.0),
+          hasLength(1),
+          reason: 'the restore was attempted exactly once, then gave up',
+        );
+        expect(find.text('2x'), findsNothing);
+        // The remembered/displayed base keeps the intended rate, not the
+        // held one.
+        expect(videoPlayerBaseSpeedForTesting, 1.0);
+        expect(tester.takeException(), isNull);
+        await hold.up();
+        await settle(tester);
+      } finally {
+        platform.playbackSpeedBarriers.clear();
+        VideoPlayerPlatform.instance = previousPlatform;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
   });
 
   group('edge swipe leaves the player', () {
@@ -1073,6 +1174,11 @@ class _FakeVideoPlatform extends VideoPlayerPlatform {
   /// request with [blockPlaybackSpeed].
   bool holdPlaybackSpeed = false;
 
+  /// Rates whose requests must REJECT instead of settling, appended when the
+  /// write is issued (so the rejection reaches the awaiting pump). Each entry
+  /// rejects exactly one request, in issue order.
+  final rejectPlaybackSpeeds = <double>[];
+
   /// Queues one completion for the next request for [rate] and returns the
   /// completer the test releases. The player does not see the request finish
   /// until then, and the native rate only moves when it does.
@@ -1176,6 +1282,9 @@ class _FakeVideoPlatform extends VideoPlayerPlatform {
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {
     playbackSpeeds.add(speed);
+    if (rejectPlaybackSpeeds.remove(speed)) {
+      throw PlatformException(code: 'VIDEO_SPEED_WRITE_FAILED');
+    }
     Completer<void>? barrier;
     final queue = playbackSpeedBarriers[speed];
     if (holdPlaybackSpeed && queue != null) {

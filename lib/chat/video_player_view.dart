@@ -568,6 +568,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   bool _heldSpeedWriteInFlight = false;
   bool _heldSpeedDisposed = false;
 
+  /// How many consecutive native rate writes may fail before the pump stops
+  /// trying to reconcile the player and leaves the remembered base alone.
+  /// The first failure still queues the restore once (the rate the wire
+  /// carried may never have landed), but a restore that fails in turn gives
+  /// up instead of looping: the next ordinary speed change re-arms the pump.
+  static const _heldSpeedMaxConsecutiveFailures = 2;
+  int _heldSpeedConsecutiveFailures = 0;
+
   /// The pointer that owns the active hold. A second finger landing, lifting
   /// or being cancelled must not end the first one's hold, so the pinch
   /// listener's pointer up/cancel only ends the hold when this pointer does.
@@ -3928,11 +3936,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         if (rate == null) break;
         try {
           await controller.setPlaybackSpeed(rate);
+          _heldSpeedConsecutiveFailures = 0;
         } catch (_) {
           // A route that closes mid-hold owns a released controller; the
-          // hold is over either way.
-          if (mounted) _stopHeldSpeed();
-          return;
+          // hold is over either way. While the widget still lives, the
+          // failed write cannot leave a queued restore stranded behind a
+          // pump that already returned: drop the failed rate, queue the
+          // restore exactly once when this failure was a held rate, and let
+          // the loop's tail (or a later ordinary speed change) carry it.
+          // A failing restore gives up after the bound: no retry loop, and
+          // the remembered/displayed base keeps the last rate the UI meant.
+          if (!mounted) return;
+          _heldSpeedActive = false;
+          _heldSpeedPointer = null;
+          if (mounted) setState(() {});
+          _heldSpeedConsecutiveFailures++;
+          final restore = _heldSpeedBaseRate;
+          if (_heldSpeedConsecutiveFailures >=
+              _heldSpeedMaxConsecutiveFailures) {
+            _heldSpeedDesiredRate = null;
+            return;
+          }
+          _heldSpeedDesiredRate = restore;
+          continue;
         }
         if (_heldSpeedDisposed || !mounted) return;
         // Nothing newer is waiting: the write that just settled is the rate
