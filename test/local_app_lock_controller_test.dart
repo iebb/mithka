@@ -257,6 +257,7 @@ void main() {
         privacyShieldApply: (visible) async {},
         hashRounds: 4,
         platformSupportsBiometrics: true,
+        hostNeverSupportsSecureStorage: true,
       );
       addTearDown(controller.dispose);
 
@@ -274,6 +275,64 @@ void main() {
       expect(controller.storageUnavailable, isFalse);
     },
   );
+
+  test(
+    'a fresh controller on an ordinary host fails closed on a missing plugin',
+    () async {
+      // A restart on a supported host whose plugin disappears: the FIRST
+      // credential read throws MissingPluginException with nothing known
+      // yet. That is uncertain state, not proof nothing was persisted — a
+      // previously protected installation must keep its gate.
+      final controller = LocalAppLockController(
+        secureRead: (key) => throw MissingPluginException(),
+        secureWrite: (key, value) => throw MissingPluginException(),
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: false,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+
+      expect(controller.initialized, isTrue);
+      expect(
+        controller.storageUnavailable,
+        isTrue,
+        reason: 'an uncertain host must fail closed, not unlock',
+      );
+      expect(controller.locked, isTrue);
+      expect(controller.enabled, isFalse);
+    },
+  );
+
+  test('an uncertain host fails closed through reload as well', () async {
+    // Same boundary on the reload path: initialize ran against a store
+    // that answered nothing, and the plugin is gone by the desktop sync.
+    var storageGone = false;
+    final controller = LocalAppLockController(
+      secureRead: (key) async {
+        if (storageGone) throw MissingPluginException();
+        return null;
+      },
+      secureWrite: (key, value) async {},
+      privacyShieldApply: (visible) async {},
+      hashRounds: 4,
+      platformSupportsBiometrics: false,
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    expect(controller.locked, isFalse);
+
+    storageGone = true;
+    await controller.reloadFromStorage();
+
+    expect(
+      controller.storageUnavailable,
+      isTrue,
+      reason: 'the vanished plugin on an ordinary host is a failure',
+    );
+    expect(controller.locked, isTrue);
+  });
 
   test(
     'a known lock that loses secure storage mid-read fails closed',

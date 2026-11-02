@@ -65,7 +65,10 @@ class LocalAppLockController extends ChangeNotifier {
     this.hashRounds = _defaultHashRounds,
     bool? platformSupportsBiometrics,
     AppLockNow? now,
-  }) : _secureRead = secureRead ?? _defaultSecureRead,
+    bool? hostNeverSupportsSecureStorage,
+  }) : _hostNeverSupportsSecureStorage =
+           hostNeverSupportsSecureStorage ?? isOhos,
+       _secureRead = secureRead ?? _defaultSecureRead,
        _secureWrite = secureWrite ?? _defaultSecureWrite,
        _biometricProbe = biometricProbe ?? _defaultBiometricProbe,
        _biometricAuthenticate =
@@ -86,6 +89,14 @@ class LocalAppLockController extends ChangeNotifier {
   static const _storage = FlutterSecureStorage();
 
   final AppLockSecureRead _secureRead;
+
+  /// Whether the running host is positively identified as a platform that
+  /// ships no secure-storage implementation (HarmonyOS today). Only such a
+  /// host may answer a `MissingPluginException` with "no lock configured":
+  /// everywhere else a missing plugin while nothing is known is uncertain
+  /// state — the secure read failing is not evidence that nothing was ever
+  /// persisted — and the controller fails closed.
+  final bool _hostNeverSupportsSecureStorage;
   final AppLockSecureWrite _secureWrite;
   final AppLockBiometricProbe _biometricProbe;
   final AppLockBiometricAuthenticate _biometricAuthenticate;
@@ -177,9 +188,12 @@ class LocalAppLockController extends ChangeNotifier {
       if (_missingStorageKnownLock) {
         debugPrint('Local app lock storage vanished with a known lock: $error');
         _failClosedForStorageError();
-      } else {
+      } else if (_hostNeverSupportsSecureStorage) {
         debugPrint('Local app lock secure storage is not implemented: $error');
         _resetForMissingSecureStorage();
+      } else {
+        debugPrint('Local app lock storage vanished: $error');
+        _failClosedForStorageError();
       }
     } catch (error) {
       debugPrint('Local app lock could not read secure storage: $error');
@@ -237,11 +251,14 @@ class LocalAppLockController extends ChangeNotifier {
         // install, so the protection fails closed.
         debugPrint('Local app lock storage vanished during reload: $error');
         _failClosedForStorageError();
-      } else {
-        // Nothing was ever stored on this host: the safe first-install
-        // answer still applies.
+      } else if (_hostNeverSupportsSecureStorage) {
+        // Nothing was ever stored on this positively-unsupported host: the
+        // safe first-install answer still applies.
         debugPrint('Local app lock secure storage is not implemented: $error');
         _resetForMissingSecureStorage();
+      } else {
+        debugPrint('Local app lock storage vanished during reload: $error');
+        _failClosedForStorageError();
       }
     } catch (error) {
       debugPrint('Local app lock could not reload secure storage: $error');

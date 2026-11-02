@@ -25,6 +25,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/country_flag.dart';
 import '../components/ui_components.dart';
+import '../platform/adaptive_platform.dart';
 import '../platform/ohos_support.dart';
 import '../profile/profile_proxy_button.dart';
 import '../settings/account_backup_view.dart';
