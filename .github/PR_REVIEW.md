@@ -6,7 +6,10 @@ and release schedules are not changed by this workflow.
 
 Nightly synchronization and PR review are separate workflows. Nightly's only
 AI task compares its exact source with the previous published release and writes
-release notes. It makes no PR recommendations or merge decisions. Controller
+release notes. The package release runs no model; it publishes those notes only
+when the sync recorded them for its exact source commit, otherwise it says no
+summary was recorded and links the full changelog. Nightly makes no PR
+recommendations or merge decisions. Controller
 unit tests use private temporary Actions command files, so example reviews and
 fake eligibility outputs cannot appear in any real workflow summary or output.
 

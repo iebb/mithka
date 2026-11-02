@@ -116,7 +116,7 @@ export async function summarize(evidence, { key, token, fetcher = fetch, attempt
   return Object.fromEntries(Object.entries(notes).map(([locale, lines]) => [locale, lines.map(line => redact(line, [key, token]))]));
 }
 
-const display = value => String(value).replace(/@/g, '@\u200b').replace(/[\\`*_[\]<>]/g, '\\$&');
+export const display = value => String(value).replace(/@/g, '@\u200b').replace(/[\\`*_[\]<>]/g, '\\$&');
 export function renderSummary(range, notes, status, { version = '', changed = true, truncated = false } = {}) {
   const lines = ['## Nightly release summary', '',
     `Version: **${display(version || 'nightly')}**`,
@@ -162,6 +162,8 @@ async function main() {
   mkdirSync('nightly-summary', { recursive: true });
   writeFileSync('nightly-summary/summary.md', summary);
   writeFileSync('nightly-summary/provenance.json', JSON.stringify({ ...range, status, truncated }, null, 2) + '\n');
+  // The package release publishes these exact validated notes; it runs no inference itself.
+  if (notes) writeFileSync('nightly-summary/notes.json', JSON.stringify(notes, null, 2) + '\n');
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   console.log(status === 'generated' ? 'Release comparison summary generated.' : 'Release comparison recorded; see the job summary.');
 }

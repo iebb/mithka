@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { releaseRange, changeEvidence, summarize, renderSummary, validateNotes } from './nightly-summary.mjs';
+import { verifiedSummary, renderReleaseNotes, findSummary } from './release-notes.mjs';
 
 const BASE = 'a'.repeat(40), TARGET = 'b'.repeat(40);
 const notes = { english: ['Improved photo loading.'], chinese: ['改进照片加载。'] };
@@ -126,4 +127,53 @@ test('summary-only dispatch cannot sync or start package and store builds', () =
   const summary = workflow.split('\n  release-summary:\n')[1];
   assert.match(summary, /permissions:\n      contents: read/);
   assert.ok(!/gh workflow run|git push|pr-review\.mjs/.test(summary));
+});
+
+test('package releases publish only the sync summary recorded for their exact commit', async () => {
+  const provenance = { base: BASE, target: TARGET, tag: 'v1.8.8', status: 'generated', truncated: true };
+  assert.deepEqual(verifiedSummary(provenance, notes, TARGET), { tag: 'v1.8.8', notes });
+  assert.equal(verifiedSummary(provenance, notes, BASE), null);
+  assert.equal(verifiedSummary({ ...provenance, status: 'Summary service returned HTTP 429' }, notes, TARGET), null);
+  assert.equal(verifiedSummary({ ...provenance, tag: '--evil' }, notes, TARGET), null);
+  assert.equal(verifiedSummary(provenance, { english: ['x'], chinese: [] }, TARGET), null);
+
+  const runs = [
+    { id: 9, head_branch: 'feature', event: 'workflow_dispatch', status: 'completed', repository: { full_name: 'iebb/mithka' } },
+    { id: 8, head_branch: 'master', event: 'pull_request', status: 'completed', repository: { full_name: 'iebb/mithka' } },
+    { id: 7, head_branch: 'master', event: 'schedule', status: 'completed', repository: { full_name: 'iebb/mithka' } },
+    { id: 6, head_branch: 'master', event: 'schedule', status: 'completed', repository: { full_name: 'iebb/mithka' } },
+  ];
+  const artifacts = { 7: { ...provenance, target: BASE }, 6: provenance };
+  const downloaded = [];
+  const run = args => {
+    if (args[0] === 'api') return JSON.stringify({ workflow_runs: runs });
+    const id = Number(args[2]); downloaded.push(id);
+    const dir = args[args.indexOf('-D') + 1];
+    writeFileSync(join(dir, 'provenance.json'), JSON.stringify(artifacts[id]));
+    writeFileSync(join(dir, 'notes.json'), JSON.stringify(notes));
+    return '';
+  };
+  assert.deepEqual(await findSummary(TARGET, { run, sleep: async () => {} }), { tag: 'v1.8.8', notes });
+  assert.deepEqual(downloaded, [7, 6]);
+
+  let waits = 0;
+  const pending = args => args[0] === 'api'
+    ? JSON.stringify({ workflow_runs: [{ ...runs[2], status: 'in_progress' }] }) : '';
+  assert.equal(await findSummary(TARGET, { run: pending, attempts: 3, sleep: async () => { waits++; } }), null);
+  assert.equal(waits, 2);
+
+  const options = { releaseTag: 'v1.9.0-nightly.20261102.bbbbbbb', target: TARGET,
+    compareLabel: 'fallback', compareUrl: 'https://github.com/iebb/mithka/commits/fallback' };
+  const body = renderReleaseNotes({ tag: 'v1.8.8', notes: { english: ['Uses @team_a.'], chinese: ['改进。'] } }, options);
+  assert.match(body, /^## Changes\n### English\n- Uses @\u200bteam\\_a\.\n\n### 中文\n- 改进。\n/);
+  assert.match(body, /\*\*Full changelog:\*\* \[v1\.8\.8\.\.\.v1\.9\.0-nightly\.20261102\.bbbbbbb]\(https:\/\/github\.com\/iebb\/mithka\/compare\/v1\.8\.8\.\.\.v1\.9\.0-nightly/);
+  const fallback = renderReleaseNotes(null, options);
+  assert.match(fallback, /No release summary was recorded/);
+  assert.match(fallback, /\[fallback]\(https:\/\/github\.com\/iebb\/mithka\/commits\/fallback\)/);
+  assert.ok(!/Maintenance and reliability/.test(fallback));
+
+  const workflow = readFileSync(new URL('../workflows/release.yml', import.meta.url), 'utf8');
+  assert.ok(!/copilot/i.test(workflow));
+  assert.match(workflow, /node \.github\/scripts\/release-notes\.mjs/);
+  assert.match(readFileSync(new URL('./nightly-summary.mjs', import.meta.url), 'utf8'), /nightly-summary\/notes\.json/);
 });

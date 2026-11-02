@@ -41,7 +41,8 @@ concurrency:
 
 permissions:
   contents: write
-  copilot-requests: write
+  # Reads the nightly sync's release-summary artifact for the release body.
+  actions: read
 
 env:
   FLUTTER_VERSION: '3.44.2'
@@ -761,19 +762,15 @@ jobs:
           git tag -a "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Mithka $RELEASE_TAG"
           git push origin "refs/tags/$RELEASE_TAG"
 
-      - name: Set up Node.js for Copilot CLI
+      - name: Set up Node.js for release notes
         if: needs.prepare.outputs.prerelease == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      - name: Install Copilot CLI
-        if: needs.prepare.outputs.prerelease == 'true'
-        run: npm install --global @github/copilot
-
       - name: Generate release notes
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -789,7 +786,7 @@ jobs:
           PY
             exit 0
           fi
-          : > change-summary.md
+          : > release-notes.md
           if [ "$PRERELEASE" = "true" ]; then
             previous_tag="$(
               git tag --list 'v*-nightly.*' --sort=-creatordate \
@@ -798,93 +795,17 @@ jobs:
             )"
             if [ -n "$previous_tag" ] && \
               git merge-base --is-ancestor "$previous_tag" "$GITHUB_SHA"; then
-              change_range="$previous_tag..$GITHUB_SHA"
               compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
               compare_label="$previous_tag...$RELEASE_TAG"
             else
-              change_range="$GITHUB_SHA^1..$GITHUB_SHA"
               compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
               compare_label="$RELEASE_TAG commits"
             fi
 
-            git log --reverse --no-merges --max-count=100 \
-              --format='Commit: %H%nSubject: %s%nDetails: %b' \
-              --stat=100,80 "$change_range" -- . \
-              ':(exclude).github/**' \
-              ':(exclude)test/**' \
-              ':(exclude)integration_test/**' \
-              ':(exclude)ios/RunnerTests/**' \
-              | awk '!/^Subject: chore: sync nightly /' \
-              > changes.txt
-
-            {
-              echo "## Changes"
-              echo "### English"
-              echo "- Maintenance and reliability improvements; see the full changelog for details."
-              echo
-              echo "### 中文"
-              echo "- 维护和可靠性改进；详细内容请参阅完整变更记录。"
-            } > change-summary.md
-
-            summary_prompt="$(
-              jq -nr --rawfile changes changes.txt '
-                "Write concise bilingual release notes for app users using only facts in the supplied git history. " +
-                "Return only one JSON object with exactly two properties: english and chinese. " +
-                "Each property must be an array containing 1 to 6 paired strings in the same order, with each Chinese item a faithful Simplified Chinese translation of the corresponding English item. " +
-                "Combine related commits and make every item a distinct user-visible change. Focus on features, fixes, reliability, privacy, and performance. " +
-                "Do not invent or repeat changes. Omit tests, implementation details, commit hashes, generated version bumps, and CI-only changes. " +
-                "If there are no user-visible changes, use one maintenance and reliability item in each language. " +
-                "Do not include Markdown, headings, bullet markers, commit hashes, or URLs in the array values.\n\nGit history:\n" +
-                $changes
-              '
-            )"
-
-            if model_content="$(
-              copilot -p "$summary_prompt" \
-                --silent \
-                --model=auto \
-                --no-ask-user \
-                --no-auto-update \
-                --no-remote \
-                --disable-builtin-mcps \
-                --deny-tool='memory,read,shell,url,write'
-            )" && printf '%s\n' "$model_content" | \
-              jq -er '
-                select(
-                    (.english | type) == "array" and
-                    (.chinese | type) == "array" and
-                    (.english | length) >= 1 and
-                    (.english | length) <= 6 and
-                    (.english | length) == (.chinese | length) and
-                    all(.english[]; type == "string" and length > 0) and
-                    all(.chinese[]; type == "string" and length > 0)
-                  )
-              ' > model-notes.json; then
-              {
-                echo "## Changes"
-                echo "### English"
-                jq -r '.english[] | "- " + .' model-notes.json
-                echo
-                echo "### 中文"
-                jq -r '.chinese[] | "- " + .' model-notes.json
-              } > change-summary.md
-              echo "Generated bilingual nightly release notes with GitHub Copilot"
-            else
-              echo "GitHub Copilot unavailable or returned invalid notes; using paired bilingual fallback release notes" >&2
-            fi
-          fi
-
-          : > release-notes.md
-          if [ -s change-summary.md ]; then
-            cat change-summary.md >> release-notes.md
-            echo >> release-notes.md
-          fi
-
-          if [ "$PRERELEASE" = "true" ]; then
-            {
-              echo
-              echo "**Full changelog:** [$compare_label]($compare_url)"
-            } >> release-notes.md
+            # The only AI step is the nightly sync's release comparison summary;
+            # publish its notes when they were recorded for this exact commit.
+            COMPARE_LABEL="$compare_label" COMPARE_URL="$compare_url" \
+              node .github/scripts/release-notes.mjs
           fi
 
       - name: Remove old Mithka package assets
@@ -996,6 +917,8 @@ jobs:
                   line = line[3:]
               elif line.startswith("- "):
                   line = f"• {line[2:]}"
+              # Telegram receives plain text; drop the release body's Markdown escapes.
+              line = re.sub(r"\\([\\`*_\[\]<>])", r"\1", line)
               line = re.sub(r"\[([^]]+)]\([^)]+\)", r"\1", line)
               line = line.replace("**", "").replace("`", "")
               summary_lines.append(line)
