@@ -2067,10 +2067,12 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (_voiceDisposed || !mounted) return;
       if (!status.isGranted) {
         // The open panel explains the denial inline and offers Settings; it
-        // never opens system Settings without the user's press.
+        // never opens system Settings without the user's press. `restricted`
+        // is a system-wide microphone lock the app cannot prompt through, so
+        // it takes the same settings route as a permanently denied answer.
         if (_showsMobileVoicePanel) {
           _setVoiceInlineError(
-            status.isPermanentlyDenied
+            status.isPermanentlyDenied || status.isRestricted
                 ? _VoiceInlineError.microphoneSettings
                 : _VoiceInlineError.microphoneRequired,
           );
@@ -2078,12 +2080,18 @@ class _ChatInputBarState extends State<ChatInputBar>
           showToast(
             context,
             AppStrings.t(
-              status.isPermanentlyDenied
+              status.isPermanentlyDenied || status.isRestricted
                   ? AppStringKeys.composerMicrophonePermissionSettings
                   : AppStringKeys.composerMicrophonePermissionRequired,
             ),
           );
         }
+        widget.onRecordingIssueForTesting?.call('permission', status);
+        // Any refusal answers this opening. A `request()` on an already-refused
+        // permission never shows a sheet, so pressing again would only repeat
+        // the same notice; reopening the panel or returning from Settings is
+        // the retry.
+        _recorderPreparationFailure ??= _ReportedCaptureFailure(status.name);
         return;
       }
       recorder =
@@ -2134,36 +2142,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     try {
       await session.releaseAfterCapture();
     } catch (_) {}
-  }
-
-  /// Tells the user why the microphone is unavailable, in terms they can act on.
-  ///
-  /// `restricted` is not the same refusal as `permanentlyDenied`: on iOS it is a
-  /// system-wide microphone lock (Screen Time, MDM, or the OS microphone switch)
-  /// that the app cannot prompt through, and it used to end in the "permission
-  /// required" toast with no route to fix it.
-  void _reportMicrophonePermission(PermissionStatus status) {
-    widget.onRecordingIssueForTesting?.call('permission', status);
-    if (!mounted || _voiceDisposed) return;
-    final restricted = status.isRestricted;
-    showToast(
-      context,
-      AppStrings.t(
-        restricted
-            ? AppStringKeys.composerMicrophonePermissionRestricted
-            : status.isPermanentlyDenied
-            ? AppStringKeys.composerMicrophonePermissionSettings
-            : AppStringKeys.composerMicrophonePermissionRequired,
-      ),
-    );
-    if (status.isPermanentlyDenied || restricted) {
-      unawaited(_openMicrophoneSettings());
-    }
-    // Any refusal answers this opening. A `request()` on an already-refused
-    // permission never shows a sheet, so pressing again would only repeat the
-    // same toast; the retries are reopening the panel, returning from Settings,
-    // or granting the permission while the app was away.
-    _recorderPreparationFailure ??= _ReportedCaptureFailure(status.name);
   }
 
   Future<void> _openMicrophoneSettings() async {
@@ -2272,7 +2250,13 @@ class _ChatInputBarState extends State<ChatInputBar>
             .catchError((Object error) {
               // A preparation that failed while the panel opened was reported
               // then; every press in the same opening would otherwise repeat it.
-              if (error is _ReportedCaptureFailure) return;
+              if (error is _ReportedCaptureFailure) {
+                // The press cleared the inline row; a permission refusal in
+                // this opening still has to stay visible, so re-arm it from
+                // the remembered failure instead of leaving "hold to talk".
+                _rearmReportedCaptureFailure(error.cause);
+                return;
+              }
               _showRecordingError(error: error, stage: 'begin');
             })
             .whenComplete(() {
@@ -2323,6 +2307,32 @@ class _ChatInputBarState extends State<ChatInputBar>
   void _clearVoiceInlineError() {
     if (_voiceInlineError == _VoiceInlineError.none) return;
     setState(() => _voiceInlineError = _VoiceInlineError.none);
+  }
+
+  /// Re-shows the inline row for a failure that was already reported while the
+  /// panel opened, after a press cleared the row. `PermissionStatus` names map
+  /// to their settings/required variants; anything else is the generic failure.
+  void _rearmReportedCaptureFailure(Object cause) {
+    if (!mounted || _voiceDisposed || !_showsMobileVoicePanel) return;
+    // The stored failure may be a bare status name or the wrapper
+    // `_ReportedCaptureFailure` re-thrown by `_prepareRecorder`.
+    var detail = cause;
+    while (detail is _ReportedCaptureFailure) {
+      detail = detail.cause;
+    }
+    final name = detail is PermissionStatus
+        ? detail.name
+        : detail is String
+        ? detail
+        : null;
+    setState(() {
+      _voiceInlineError = switch (name) {
+        'permanentlyDenied' ||
+        'restricted' => _VoiceInlineError.microphoneSettings,
+        'denied' || 'notDetermined' => _VoiceInlineError.microphoneRequired,
+        _ => _VoiceInlineError.failed,
+      };
+    });
   }
 
   Future<void> _startRec() async {

@@ -64,6 +64,14 @@ abstract interface class VoiceRecordingAudioSession {
 class SharedVoiceRecordingAudioSession implements VoiceRecordingAudioSession {
   const SharedVoiceRecordingAudioSession();
 
+  /// Test seam covering the activation step only. Production leaves it null
+  /// and activates through `AudioSession.setActive` (the iOS branch goes to
+  /// the native `com.ryanheise.av_audio_session` channel); tests that need to
+  /// drive a refused or thrown activation through the same decision table set
+  /// it here. The same pattern as `VoicePlayer.audioSessionActivationOverride`.
+  @visibleForTesting
+  static Future<bool> Function()? activationOverrideForTest;
+
   @override
   Future<void> prepareForCapture() async {
     final session = await AudioSession.instance;
@@ -81,8 +89,9 @@ class SharedVoiceRecordingAudioSession implements VoiceRecordingAudioSession {
     // after preparation succeeds. A rollback failure is swallowed (the
     // original failure is the one to report; a half-restored playback config
     // self-heals on the next playback's own configure).
+    final activate = activationOverrideForTest ?? () => session.setActive(true);
     await activateConfiguredSession(
-      activate: () => session.setActive(true),
+      activate: activate,
       restore: () => session.configure(const AudioSessionConfiguration.music()),
     );
   }

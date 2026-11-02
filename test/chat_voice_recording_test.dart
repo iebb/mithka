@@ -643,8 +643,10 @@ void main() {
     );
     await _flushIo(tester);
     expect(
-      find.text('Could not record audio. Check your microphone and try again.'),
-      findsOneWidget,
+      find.textContaining(
+        'Could not record audio. Check your microphone and try again.',
+      ),
+      findsWidgets,
     );
     expect(
       session.released,
@@ -676,8 +678,10 @@ void main() {
     );
     await _flushIo(tester);
     expect(
-      find.text('Could not record audio. Check your microphone and try again.'),
-      findsOneWidget,
+      find.textContaining(
+        'Could not record audio. Check your microphone and try again.',
+      ),
+      findsWidgets,
     );
     expect(issues, ['begin']);
     expect(recorder.codecs, isEmpty, reason: 'No encoder may start without it');
@@ -778,14 +782,20 @@ void main() {
       tester.getCenter(find.byKey(_mobileButton)),
     );
     await _flushIo(tester);
+    // `restricted` is a system-wide lock the app cannot prompt through, so the
+    // inline row offers the settings route instead of the plain "required"
+    // notice — but it opens only on an explicit press, never on its own.
     expect(
-      find.text(
-        'The microphone is blocked system-wide — open settings to allow it',
-      ),
-      findsOneWidget,
-      reason: 'restricted is a system lock, not the app-level "required" toast',
+      find.textContaining('Allow microphone access in system settings'),
+      findsWidgets,
+      reason:
+          'restricted is a system lock, not the app-level "required" notice',
     );
-    expect(openedSettings, isTrue);
+    expect(
+      find.byKey(const ValueKey('mobileVoiceOpenSettings')),
+      findsOneWidget,
+    );
+    expect(openedSettings, isFalse);
     expect(recorder.opens, 0);
     await pointer.up();
     await _flushIo(tester);
