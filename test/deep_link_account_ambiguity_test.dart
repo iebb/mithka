@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/chat_deep_link_controller.dart';
+import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/app/main_tab_view.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
+import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
 import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -161,6 +163,151 @@ void main() {
       isNull,
       reason: 'the replay is consumed by the shell; nothing may linger',
     );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
+
+  testWidgets('the replayed chat is owned by the picked account', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    // Record which client actually answers getChat for the target chat: the
+    // replay must query through the picked account's client, not the shell's
+    // previously active one.
+    final getChatClients = <int>[];
+    client.debugSetQueryRecorder((request, clientId) {
+      if (request['@type'] == 'getChat' && request['chat_id'] == -10042) {
+        getChatClients.add(clientId);
+      }
+    });
+    addTearDown(() => client.debugSetQueryRecorder(null));
+
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(
+      chatId: -10042,
+      title: 'Target chat',
+      messageId: 7 << 20,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('account-picker-dialog')), findsOneWidget);
+
+    await tester.tap(find.byKey(ValueKey('account-picker-row-$slotB')));
+    await tester.pumpAndSettle();
+    // The replay rides a post-frame callback after the account-keyed rebuild.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Production-equivalent ownership: the shell switched the account before
+    // the replay, so the transcript mounted under the picked account's client.
+    expect(accounts.activeSlot, slotB);
+    expect(TdClient.shared.activeSlot, slotB);
+    final betaClient = TdClient.shared.clientId(slotB);
+    expect(betaClient, isNotNull);
+    expect(
+      getChatClients,
+      everyElement(betaClient!),
+      reason: 'the destination transcript must be served by the picked account',
+    );
+    expect(getChatClients, isNotEmpty);
+    // And the rendered destination is the requested chat: a ChatView for the
+    // target id is mounted on the account-keyed shell.
+    final opened = tester.widgetList<ChatView>(find.byType(ChatView));
+    expect(
+      opened.map((view) => view.chatId),
+      contains(-10042),
+      reason: 'the replay must mount the requested transcript, not drop it',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
+
+  testWidgets('an account change while the picker is open drops the replay', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    final getChatClients = <int>[];
+    client.debugSetQueryRecorder((request, clientId) {
+      if (request['@type'] == 'getChat' && request['chat_id'] == -10042) {
+        getChatClients.add(clientId);
+      }
+    });
+    addTearDown(() => client.debugSetQueryRecorder(null));
+
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(
+      chatId: -10042,
+      title: 'Target chat',
+      messageId: 7 << 20,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('account-picker-dialog')), findsOneWidget);
+
+    // The user switches accounts through another surface while the sheet is
+    // still open (drawer, account management — anything but this sheet).
+    accounts.switchTo(slotB, auth);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The stale picker's answer must not replay onto the (now changed) shell:
+    // the picked slot equals the new active slot, so the replay would silently
+    // land, but the request predates the user's own switch. The sheet closes
+    // with the account change and nothing navigates.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(deepLinks.consumePending(), isNull);
+    expect(find.text('Target chat'), findsNothing);
+    expect(
+      getChatClients,
+      isEmpty,
+      reason: 'no transcript may mount for a request the user superseded',
+    );
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 6));
     await tester.pump();
