@@ -109,6 +109,8 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
   static const double _amountGap = 14;
   static const double _amountSize = 36;
   static const double _amountLineHeight = 42;
+  static const double _amountPieceGap = 10;
+  static const double _amountMaxTextScale = 2;
   static const double _statusGap = 6;
   static const double _statusGlyph = 15;
   static const double _statusGlyphGap = 5;
@@ -492,15 +494,33 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                     const SizedBox(height: _blessingGap),
                     blessingText,
                     const SizedBox(height: _amountGap),
-                    Text(
-                      transfer.formattedAmount(),
-                      textAlign: TextAlign.center,
-                      style: AppTextStyle.display(AppTheme.envelopeGold)
-                          .copyWith(
-                            fontSize: _amountSize,
-                            height: _amountLineHeight / _amountSize,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                    // The number and the unit stay whole and only wrap between
+                    // each other; the scale is capped so "GRAM" fits a phone
+                    // width at the largest accessibility size.
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: _amountPieceGap,
+                      children: [
+                        for (final piece in transfer.formattedAmount().split(
+                          ' ',
+                        ))
+                          Text(
+                            piece,
+                            textAlign: TextAlign.center,
+                            textScaler: MediaQuery.textScalerOf(
+                              context,
+                            ).clamp(maxScaleFactor: _amountMaxTextScale),
+                            style: AppTextStyle.display(AppTheme.envelopeGold)
+                                .copyWith(
+                                  fontSize: _amountSize,
+                                  height: _amountLineHeight / _amountSize,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
                           ),
+                      ],
                     ),
                     const SizedBox(height: _statusGap),
                     Text.rich(

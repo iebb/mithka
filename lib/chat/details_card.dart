@@ -103,7 +103,13 @@ class DetailsRow extends StatelessWidget {
     builder: (context) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PhotoAvatar(title: avatarTitle ?? name, photo: photo, size: avatarSize),
+        IgnoreBaseline(
+          child: PhotoAvatar(
+            title: avatarTitle ?? name,
+            photo: photo,
+            size: avatarSize,
+          ),
+        ),
         const SizedBox(width: AppSpacing.md),
         Flexible(
           child: Text(
@@ -312,6 +318,19 @@ class _RenderDetailsRow extends RenderBox
       );
       if (_fitsOneLine(valueSize, baseline)) {
         final line = math.max(valueSize.height, trailingSize.height);
+        final valueTop = (line - valueSize.height) / 2;
+        // The label sits on the value's first baseline, which an emoji or an
+        // avatar can push below the line's middle; whatever lies above the
+        // row's top shifts the whole row down.
+        final labelBaseline = baselineOf(
+          _inlineLabel,
+          const BoxConstraints(maxWidth: DetailsRow._labelWidth),
+          TextBaseline.alphabetic,
+        );
+        final labelTop = baseline == null || labelBaseline == null
+            ? 0.0
+            : valueTop + baseline - labelBaseline;
+        final shift = math.max(0.0, -labelTop);
         final size = constraints.constrain(
           Size(
             bounded
@@ -320,20 +339,20 @@ class _RenderDetailsRow extends RenderBox
                       DetailsRow._labelGap +
                       valueSize.width +
                       trailingExtent,
-            math.max(inlineLabelSize.height, line),
+            math.max(labelTop + inlineLabelSize.height, line) + shift,
           ),
         );
         return _DetailsRowArrangement(
           size: size,
           stacked: false,
-          label: Offset.zero,
+          label: Offset(0, labelTop + shift),
           value: Offset(
             size.width - trailingExtent - valueSize.width,
-            (line - valueSize.height) / 2,
+            valueTop + shift,
           ),
           trailing: Offset(
             size.width - trailingSize.width,
-            (line - trailingSize.height) / 2,
+            (line - trailingSize.height) / 2 + shift,
           ),
         );
       }

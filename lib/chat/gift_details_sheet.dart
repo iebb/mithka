@@ -127,7 +127,12 @@ class GiftDetailsSheet extends StatelessWidget {
                   height: _closeSize,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: c.card,
+                    // Opaque and tinted so it reads over both the sheet
+                    // background and the white details card.
+                    color: Color.alphaBlend(
+                      c.textSecondary.withValues(alpha: 0.14),
+                      c.card,
+                    ),
                     shape: BoxShape.circle,
                   ),
                   child: AppIcon(
