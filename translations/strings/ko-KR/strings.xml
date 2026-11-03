@@ -3885,7 +3885,6 @@
     <string name="giftCardHint">선물 상세 정보 보기</string>
     <string name="tdMessageTransferValue1">[송금] {value1}</string>
     <string name="transferFooterGram">Gram 송금</string>
-    <string name="transferDefaultBlessing">마음을 담아 보내요</string>
     <string name="transferStatusReceived">지갑에 입금됨</string>
     <string name="transferStatusSent">송금 완료</string>
     <string name="transferStatusSending">송금 중…</string>

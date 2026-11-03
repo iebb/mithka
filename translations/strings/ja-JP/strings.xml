@@ -3885,7 +3885,6 @@
     <string name="giftCardHint">ギフトの詳細を表示</string>
     <string name="tdMessageTransferValue1">[送金] {value1}</string>
     <string name="transferFooterGram">Gram 送金</string>
-    <string name="transferDefaultBlessing">ほんの気持ちです</string>
     <string name="transferStatusReceived">ウォレットに入金済み</string>
     <string name="transferStatusSent">送金済み</string>
     <string name="transferStatusSending">送金中…</string>

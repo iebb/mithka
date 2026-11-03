@@ -3885,7 +3885,6 @@
     <string name="giftCardHint">查看礼物详情</string>
     <string name="tdMessageTransferValue1">[转账] {value1}</string>
     <string name="transferFooterGram">Gram 转账</string>
-    <string name="transferDefaultBlessing">恭喜发财，大吉大利</string>
     <string name="transferStatusReceived">已存入钱包</string>
     <string name="transferStatusSent">已转出</string>
     <string name="transferStatusSending">转账中…</string>

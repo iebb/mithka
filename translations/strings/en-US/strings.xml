@@ -3896,7 +3896,6 @@
     <string name="giftCardHint">Shows gift details</string>
     <string name="tdMessageTransferValue1">[Transfer] {value1}</string>
     <string name="transferFooterGram">Gram transfer</string>
-    <string name="transferDefaultBlessing">Best wishes</string>
     <string name="transferStatusReceived">Added to your wallet</string>
     <string name="transferStatusSent">Sent</string>
     <string name="transferStatusSending">Sending…</string>

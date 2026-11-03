@@ -70,13 +70,13 @@ class GramTransferParty {
   }
 }
 
-/// The blessing's text: the comment as written, the default blessing when
-/// there is none, or the encrypted-message label.
-String gramTransferBlessing(BuildContext context, MessageGramTransfer t) =>
+/// The blessing's text: the comment as written, or the encrypted-message
+/// label; null when there is no comment.
+String? gramTransferBlessing(BuildContext context, MessageGramTransfer t) =>
     t.isCommentEncrypted
     ? AppStringKeys.transferEncryptedComment.l10n(context)
     : t.comment.isEmpty
-    ? AppStringKeys.transferDefaultBlessing.l10n(context)
+    ? null
     : t.comment;
 
 /// The envelope's colours between red (0) and muted (1), so a sending

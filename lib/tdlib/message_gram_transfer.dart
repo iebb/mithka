@@ -72,10 +72,12 @@ class MessageGramTransfer {
   bool get hasSender => senderUserId != 0;
   bool get hasTransactionId => transactionId.isNotEmpty;
 
-  /// The money left the current user's wallet. A zero amount, which TDLib
-  /// does not send, follows the message's direction.
-  bool isOutgoing({required bool messageOutgoing}) =>
-      amount < 0 || (amount == 0 && messageOutgoing);
+  /// The money left the current user's wallet. The message's direction
+  /// decides: TDLib has delivered a transfer the current user sent with a
+  /// non-negative [amount] and the recipient as [senderUserId], so neither
+  /// can override it. The amount's sign is the fallback without a message.
+  bool isOutgoing({required bool? messageOutgoing}) =>
+      messageOutgoing ?? amount < 0;
 
   /// See [GramTransferState]. [isSending] is the message's pending state.
   GramTransferState state({

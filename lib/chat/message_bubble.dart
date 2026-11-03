@@ -1930,18 +1930,23 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   );
 
   /// The transfer's sender from what the bubble already shows (the current
-  /// user, or this message's own sender), else from the user cache. Null
-  /// when they still have to be looked up, or are not a Telegram user.
+  /// user for an outgoing transfer, else this message's own sender), else
+  /// from the user cache. Null when they still have to be looked up, or are
+  /// not a Telegram user.
   GramTransferParty? _gramTransferSender(
     MessageGramTransfer transfer,
     bool outgoing,
   ) {
+    if (transfer.isOutgoing(messageOutgoing: outgoing)) {
+      return _gramTransferMe();
+    }
     final userId = transfer.senderUserId;
     if (userId == 0) return null;
     final bubble = widget.bubble;
-    if (userId == bubble.meId) return _gramTransferMe();
-    if (!message.senderIsChat && message.senderId == userId) {
-      if (outgoing) return _gramTransferMe();
+    // An incoming transfer that names the current user as its sender came
+    // from this message's sender.
+    if (userId == bubble.meId ||
+        (!message.senderIsChat && message.senderId == userId)) {
       return bubble.isGroup
           ? GramTransferParty(
               name: message.senderName ?? bubble.peerTitle,
@@ -1967,6 +1972,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         outgoing: transfer.isOutgoing(messageOutgoing: outgoing),
         date: message.date,
         me: _gramTransferMe(),
+        meId: bubble.meId,
         sender: sender,
         // In a private chat the other side is the chat's peer.
         chatPeer: bubble.isGroup

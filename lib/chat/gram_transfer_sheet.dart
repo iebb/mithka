@@ -28,10 +28,11 @@ import 'telegram_rich_text.dart';
 
 /// Opens the detail sheet for [transfer].
 ///
-/// [outgoing] is the transfer's direction; [me] names the current user and
-/// [sender] the seal's person when the bubble knows them. [chatPeer] is the
-/// other side of a private chat: the recipient of an outgoing transfer until
-/// the transaction names one. [onRetry] adds the Retry button to a failed
+/// [outgoing] is the transfer's direction; [me] names the current user, the
+/// sender of every outgoing transfer, and [meId] is their id. [sender] is an
+/// incoming transfer's seal person when the bubble knows them. [chatPeer] is
+/// the other side of a private chat: the recipient of an outgoing transfer
+/// until the transaction names one. [onRetry] adds the Retry button to a failed
 /// transfer; it is null while sending is not available.
 Future<void> showGramTransferSheet(
   BuildContext context, {
@@ -40,6 +41,7 @@ Future<void> showGramTransferSheet(
   required bool outgoing,
   required int date,
   required GramTransferParty me,
+  int? meId,
   GramTransferParty? sender,
   GramTransferParty? chatPeer,
   VoidCallback? onRetry,
@@ -63,6 +65,7 @@ Future<void> showGramTransferSheet(
       outgoing: outgoing,
       date: date,
       me: me,
+      meId: meId,
       sender: sender,
       chatPeer: chatPeer,
       onRetry: onRetry,
@@ -78,6 +81,7 @@ class GramTransferSheet extends StatefulWidget {
     required this.outgoing,
     required this.date,
     required this.me,
+    this.meId,
     this.sender,
     this.chatPeer,
     this.onRetry,
@@ -88,6 +92,7 @@ class GramTransferSheet extends StatefulWidget {
   final bool outgoing;
   final int date;
   final GramTransferParty me;
+  final int? meId;
   final GramTransferParty? sender;
   final GramTransferParty? chatPeer;
   final VoidCallback? onRetry;
@@ -143,10 +148,13 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
   @override
   void initState() {
     super.initState();
-    _sender = widget.sender;
-    if (_sender == null && _transfer.hasSender) {
+    // An outgoing transfer is the current user's; an incoming one is never
+    // theirs, whatever user TDLib names as its sender.
+    _sender = widget.outgoing ? widget.me : widget.sender;
+    final senderId = _transfer.senderUserId;
+    if (_sender == null && _transfer.hasSender && senderId != widget.meId) {
       unawaited(
-        GramTransferParty.fetch(_transfer.senderUserId).then(
+        GramTransferParty.fetch(senderId).then(
           (party) => _apply(() {
             _sender = party;
             _senderLooked = true;
@@ -179,7 +187,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
     if (details == null) return;
     _apply(() => _details = details);
     final peer = details.peerUserId;
-    if (widget.outgoing && peer != 0) {
+    if (widget.outgoing && peer != 0 && peer != widget.meId) {
       final party = await GramTransferParty.fetch(peer);
       if (party != null) _apply(() => _recipient = party);
     }
@@ -384,8 +392,10 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
       fontWeight: AppTextWeight.regular,
       color: AppTheme.envelopeGold,
     );
-    final Widget blessingText;
-    if (transfer.isCommentEncrypted) {
+    final Widget? blessingText;
+    if (blessing == null) {
+      blessingText = null;
+    } else if (transfer.isCommentEncrypted) {
       blessingText = Text.rich(
         TextSpan(
           children: [
@@ -403,12 +413,6 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
             TextSpan(text: blessing),
           ],
         ),
-        style: blessingStyle,
-        textAlign: TextAlign.center,
-      );
-    } else if (transfer.comment.isEmpty) {
-      blessingText = Text(
-        blessing,
         style: blessingStyle,
         textAlign: TextAlign.center,
       );
@@ -459,7 +463,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                 child: GramEnvelopeSeal(
                   size: _seal,
                   colors: colors,
-                  hasUser: transfer.hasSender,
+                  hasUser: widget.outgoing || transfer.hasSender,
                   party: _sender,
                 ),
               ),
@@ -490,8 +494,10 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: _blessingGap),
-                    blessingText,
+                    if (blessingText != null) ...[
+                      const SizedBox(height: _blessingGap),
+                      blessingText,
+                    ],
                     const SizedBox(height: _amountGap),
                     // The number and the unit stay whole and only wrap between
                     // each other; the scale is capped so "GRAM" fits a phone
@@ -591,17 +597,11 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
       );
     }
 
-    final from = widget.outgoing
-        ? partyRow(
-            AppStringKeys.transferSheetFrom.l10n(context),
-            widget.me,
-            true,
-          )
-        : partyRow(
-            AppStringKeys.transferSheetFrom.l10n(context),
-            _sender,
-            _senderLooked,
-          );
+    final from = partyRow(
+      AppStringKeys.transferSheetFrom.l10n(context),
+      _sender,
+      _senderLooked,
+    );
     final to = widget.outgoing
         ? partyRow(
             AppStringKeys.transferSheetTo.l10n(context),

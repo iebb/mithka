@@ -3896,7 +3896,6 @@
     <string name="giftCardHint">Zeigt Details zum Geschenk</string>
     <string name="tdMessageTransferValue1">[Überweisung] {value1}</string>
     <string name="transferFooterGram">Gram-Überweisung</string>
-    <string name="transferDefaultBlessing">Mit den besten Wünschen</string>
     <string name="transferStatusReceived">Deiner Wallet gutgeschrieben</string>
     <string name="transferStatusSent">Gesendet</string>
     <string name="transferStatusSending">Wird gesendet…</string>

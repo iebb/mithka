@@ -3209,9 +3209,6 @@ abstract final class AppStringKeys {
   /// `GramAmount.format` of the absolute amount.
   static const tdMessageTransferValue1 = 'tdMessageTransferValue1';
   static const transferFooterGram = 'transferFooterGram';
-
-  /// Shown on the envelope when the transfer has no comment; never sent.
-  static const transferDefaultBlessing = 'transferDefaultBlessing';
   static const transferStatusReceived = 'transferStatusReceived';
   static const transferStatusSent = 'transferStatusSent';
   static const transferStatusSending = 'transferStatusSending';
