@@ -357,13 +357,13 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
       blessingText = Text.rich(
         TextSpan(
           children: [
-            WidgetSpan(
+            const WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
-                padding: const EdgeInsetsDirectional.only(end: AppSpacing.xs),
+                padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
                 child: AppIcon(
                   HeroAppIcons.lock,
-                  size: _lockGlyph * scale,
+                  size: _lockGlyph,
                   color: AppTheme.envelopeGold,
                 ),
               ),
@@ -408,13 +408,13 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
       TextSpan(
         children: [
           if (failed)
-            WidgetSpan(
+            const WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
-                padding: const EdgeInsetsDirectional.only(end: AppSpacing.xs),
+                padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
                 child: AppIcon(
                   HeroAppIcons.exclamationCircle,
-                  size: _failedGlyph * scale,
+                  size: _failedGlyph,
                   color: Colors.white,
                 ),
               ),

@@ -384,19 +384,18 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
       fontWeight: AppTextWeight.regular,
       color: AppTheme.envelopeGold,
     );
-    final scale = MediaQuery.textScalerOf(context).scale(1);
     final Widget blessingText;
     if (transfer.isCommentEncrypted) {
       blessingText = Text.rich(
         TextSpan(
           children: [
-            WidgetSpan(
+            const WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
-                padding: const EdgeInsetsDirectional.only(end: AppSpacing.xs),
+                padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
                 child: AppIcon(
                   HeroAppIcons.lock,
-                  size: _blessingSize * scale,
+                  size: _blessingSize,
                   color: AppTheme.envelopeGold,
                 ),
               ),
@@ -534,7 +533,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                               ),
                               child: AppIcon(
                                 statusGlyph,
-                                size: _statusGlyph * scale,
+                                size: _statusGlyph,
                                 color: Colors.white,
                               ),
                             ),
