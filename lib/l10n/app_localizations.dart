@@ -2713,6 +2713,7 @@ abstract final class AppStringKeys {
   static const proxyOptional = 'proxyOptional';
   static const proxyPassword = 'proxyPassword';
   static const proxyPort = 'proxyPort';
+  static const proxyPath = 'proxyPath';
   static const proxySecret = 'proxySecret';
   static const proxyServer = 'proxyServer';
   static const proxyStatusConnected = 'proxyStatusConnected';

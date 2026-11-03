@@ -2773,6 +2773,7 @@
     <string name="proxyHostOrIp">ホストまたは IP</string>
     <string name="proxyOptional">任意</string>
     <string name="proxyPassword">パスワード</string>
+    <string name="proxyPath">パス</string>
     <string name="proxyPort">ポート</string>
     <string name="proxySecret">シークレット</string>
     <string name="proxyServer">サーバー</string>

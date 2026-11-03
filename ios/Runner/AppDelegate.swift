@@ -37,6 +37,7 @@ enum VideoNoteExportError: Error, Sendable {
   private var groupCallMediaBridge: TelegramGroupCallMediaBridge?
   private var mediaDropBridge: MediaDropBridge?
   private var telegramPasskeyBridge: TelegramPasskeyBridge?
+  private var webProxyBridge: WebProxyBridge?
   private var premiumAuthPurchaseBridge: PremiumAuthPurchaseBridge?
   private var mithkaProBridge: MithkaProBridge?
   private var nowPlayingBridge: NowPlayingBridge?
@@ -825,6 +826,7 @@ enum VideoNoteExportError: Error, Sendable {
     telegramPasskeyBridge = TelegramPasskeyBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
+    webProxyBridge = WebProxyBridge(messenger: engineBridge.applicationRegistrar.messenger())
     premiumAuthPurchaseBridge = PremiumAuthPurchaseBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )

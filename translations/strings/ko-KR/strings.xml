@@ -2773,6 +2773,7 @@
     <string name="proxyHostOrIp">호스트 또는 IP</string>
     <string name="proxyOptional">선택 사항</string>
     <string name="proxyPassword">비밀번호</string>
+    <string name="proxyPath">경로</string>
     <string name="proxyPort">포트</string>
     <string name="proxySecret">비밀 키</string>
     <string name="proxyServer">서버</string>

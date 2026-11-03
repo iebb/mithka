@@ -50,6 +50,7 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
 class MainActivity : FlutterFragmentActivity() {
+    private var webProxyBridge: WebProxyBridge? = null
     private var callMedia: CallMediaPlugin? = null
     private var telegramPasskeys: TelegramPasskeyPlugin? = null
     private var accountBackup: AccountBackupPlugin? = null
@@ -135,6 +136,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        webProxyBridge = WebProxyBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         registerPlugins(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/fullscreen_system_ui")
             .setMethodCallHandler { call, result ->
@@ -1320,6 +1322,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        webProxyBridge?.dispose()
+        webProxyBridge = null
         translators.values.forEach { it.close() }
         translators.clear()
         if (languageIdentifierDelegate.isInitialized()) {
