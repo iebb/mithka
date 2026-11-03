@@ -6602,14 +6602,8 @@ class _ChatViewState extends State<ChatView> {
     onDismiss: _dismissAutomaticTranslation,
   );
 
-  String _translationSourceText(ChatMessage message) {
-    final parts = [
-      message.text,
-      message.linkPreview?.title ?? '',
-      message.linkPreview?.description ?? '',
-    ].where((p) => p.trim().isNotEmpty);
-    return parts.join('\n');
-  }
+  String _translationSourceText(ChatMessage message) =>
+      automaticTranslationSourceText(message);
 
   String _translationTargetLanguage(TranslationController translation) {
     if (translation.targetLanguageCode != 'auto') {
@@ -11167,7 +11161,9 @@ class _ChatViewState extends State<ChatView> {
       message: target,
       isPinned: _vm.pinnedMessage?.id == target.id,
       allowForwarding: _vm.canForwardContent,
-      allowTranslation: _hasAvailableTranslationOption,
+      allowTranslation:
+          _hasAvailableTranslationOption &&
+          _translationSourceText(target).trim().isNotEmpty,
       allowQuote: _vm.canQuoteText && _actionCanReply == true,
       // A channel post is answered in its linked discussion group, so a
       // channel that has one keeps Reply even when the channel itself takes no

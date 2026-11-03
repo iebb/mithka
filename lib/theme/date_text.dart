@@ -59,4 +59,12 @@ class DateText {
     if (_sameDay(date, now)) return _timeLabel(date);
     return '${_dateLabel(date, now)} ${_timeLabel(date)}';
   }
+
+  /// Date and time with the year, for detail sheets: "2026/10/31 21:41".
+  static String fullLabel(int unix) {
+    if (unix <= 0) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(unix * 1000);
+    return '${date.year}/${_two(date.month)}/${_two(date.day)} '
+        '${_timeLabel(date)}';
+  }
 }

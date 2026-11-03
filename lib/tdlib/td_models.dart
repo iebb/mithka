@@ -10,9 +10,15 @@ import 'dart:convert';
 import 'package:dlibphonenumber/dlibphonenumber.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/l10n/gram_amount.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import 'json_helpers.dart';
+import 'message_gift.dart';
+import 'message_gram_transfer.dart';
+
+export 'message_gift.dart';
+export 'message_gram_transfer.dart';
 
 /// Reference to a downloadable TDLib file (profile photo, thumbnail, …).
 class TdFileRef {
@@ -743,6 +749,8 @@ class ChatMessage {
     this.poll,
     this.checklist,
     this.story,
+    this.gift,
+    this.gramTransfer,
     this.suggestedPostInfo,
     this.summaryCard,
     this.summaryLanguageCode = '',
@@ -859,6 +867,13 @@ class ChatMessage {
   MessagePoll? poll;
   MessageChecklist? checklist;
   MessageStoryReference? story;
+
+  /// Every gift content type (regular, upgraded, refunded, purchase offer,
+  /// Premium, Stars, Gram); see [TDParse.giftContentTypes].
+  MessageGift? gift;
+
+  /// A Gram transfer (`messageTonWalletTransfer`).
+  MessageGramTransfer? gramTransfer;
   MessageSuggestedPostInfo? suggestedPostInfo;
   MessageSummaryCard? summaryCard;
 
@@ -1010,6 +1025,8 @@ class ChatMessage {
         poll != null ||
         checklist != null ||
         story != null ||
+        gift != null ||
+        gramTransfer != null ||
         summaryCard != null ||
         linkPreview != null ||
         richBlocks.isNotEmpty;
@@ -1484,14 +1501,7 @@ class MessageSuggestedPostInfo {
   final bool canBeDeclined;
 }
 
-enum MessageSummaryKind {
-  game,
-  invoice,
-  giveaway,
-  paidMedia,
-  gift,
-  suggestedPost,
-}
+enum MessageSummaryKind { game, invoice, giveaway, paidMedia, suggestedPost }
 
 class MessageSummaryCard {
   const MessageSummaryCard({
@@ -1693,6 +1703,8 @@ abstract final class TDParse {
     }
 
     final media = mediaAttachment(content);
+    final gift = giftAttachment(message, content);
+    final gramTransfer = MessageGramTransfer.parse(message, content);
 
     // 转发: forward_info.origin identifies the original author.
     final forwardInfo = message.obj('forward_info');
@@ -1830,10 +1842,12 @@ abstract final class TDParse {
         poll: pollAttachment(content),
         checklist: checklistAttachment(content),
         story: storyAttachment(content),
+        gift: gift,
+        gramTransfer: gramTransfer,
         suggestedPostInfo: suggestedPostInfo(
           message.obj('suggested_post_info'),
         ),
-        summaryCard: summaryCard(message, content),
+        summaryCard: summaryCard(content),
         summaryLanguageCode: message.str('summary_language_code') ?? '',
         replyToMessageId: isContentRestricted ? null : replyToMessageId,
         replyToChatId: isContentRestricted ? null : replyToChatId,
@@ -3582,6 +3596,274 @@ abstract final class TDParse {
     );
   }
 
+  /// TDLib content types parsed into [ChatMessage.gift].
+  static const giftContentTypes = {
+    'messageGift',
+    'messageUpgradedGift',
+    'messageRefundedGift',
+    'messageRefundedUpgradedGift',
+    'messageUpgradedGiftPurchaseOffer',
+    'messageUpgradedGiftPurchaseOfferRejected',
+    'messageGiftedPremium',
+    'messagePremiumGiftCode',
+    'messageGiftedStars',
+    'messageGiveawayPrizeStars',
+    'messageGiftedGrams',
+    'messageGiftedTon',
+  };
+
+  static bool isGiftContent(String? type) => giftContentTypes.contains(type);
+
+  /// Parses every gift content type. [message] supplies the direction and
+  /// the message sender, which TDLib omits from Premium / Stars / Gram gifts
+  /// the current user sent.
+  static MessageGift? giftAttachment(
+    Map<String, dynamic> message,
+    Map<String, dynamic>? content,
+  ) {
+    if (content == null) return null;
+    final type = content.type;
+    final kind = switch (type) {
+      'messageGift' => MessageGiftKind.regular,
+      'messageUpgradedGift' => MessageGiftKind.upgraded,
+      'messageRefundedGift' => MessageGiftKind.refunded,
+      'messageRefundedUpgradedGift' => MessageGiftKind.refundedUpgraded,
+      'messageUpgradedGiftPurchaseOffer' => MessageGiftKind.purchaseOffer,
+      'messageUpgradedGiftPurchaseOfferRejected' =>
+        MessageGiftKind.purchaseOfferRejected,
+      'messageGiftedPremium' => MessageGiftKind.premium,
+      'messagePremiumGiftCode' => MessageGiftKind.premiumCode,
+      'messageGiftedStars' => MessageGiftKind.stars,
+      'messageGiveawayPrizeStars' => MessageGiftKind.giveawayStars,
+      'messageGiftedGrams' || 'messageGiftedTon' => MessageGiftKind.gram,
+      _ => null,
+    };
+    if (type == null || kind == null) return null;
+    final outgoing = message.boolean('is_outgoing') ?? false;
+    final note = content.obj('text');
+    final noteText = note?.str('text') ?? '';
+
+    switch (kind) {
+      case MessageGiftKind.regular:
+      case MessageGiftKind.upgraded:
+      case MessageGiftKind.refunded:
+      case MessageGiftKind.refundedUpgraded:
+      case MessageGiftKind.purchaseOffer:
+      case MessageGiftKind.purchaseOfferRejected:
+        final gift = content.obj('gift');
+        final upgraded = gift?.type == 'upgradedGift' ? gift : null;
+        final sender = _giftParty(content.obj('sender_id'));
+        final receiver = _giftParty(content.obj('receiver_id'));
+        final rawOrigin = content.obj('origin');
+        final originPrice = _giftResalePrice(rawOrigin?.obj('price'));
+        final offerPrice = _giftResalePrice(content.obj('price'));
+        final price = offerPrice ?? originPrice;
+        final colors = upgraded?.obj('backdrop')?.obj('colors');
+        final hasSenderConcept =
+            kind != MessageGiftKind.purchaseOffer &&
+            kind != MessageGiftKind.purchaseOfferRejected;
+        return MessageGift(
+          kind: kind,
+          contentType: type,
+          origin: _giftOrigin(rawOrigin?.type),
+          offerState: _giftOfferState(kind, content),
+          senderUserId: sender.userId,
+          senderChatId: sender.chatId,
+          receiverUserId: receiver.userId,
+          receiverChatId: receiver.chatId,
+          isSenderHidden:
+              hasSenderConcept &&
+              sender.userId == null &&
+              sender.chatId == null,
+          isPrivate: content.boolean('is_private') ?? false,
+          note: noteText,
+          noteEntities: textEntities(note),
+          sticker: _giftSticker(
+            upgraded != null
+                ? upgraded.obj('model')?.obj('sticker')
+                : gift?.obj('sticker'),
+          ),
+          starCount: price?.stars ?? gift?.int64('star_count') ?? 0,
+          gramUnits: price?.gramUnits ?? 0,
+          sellStarCount: content.int64('sell_star_count') ?? 0,
+          prepaidUpgradeStarCount:
+              content.int64('prepaid_upgrade_star_count') ?? 0,
+          giftId: gift?.int64('id') ?? 0,
+          upgradedName: upgraded?.str('name')?.trim() ?? '',
+          upgradedTitle: upgraded?.str('title')?.trim() ?? '',
+          upgradedNumber: upgraded?.integer('number') ?? 0,
+          backdropColors: colors == null
+              ? null
+              : MessageGiftBackdropColors(
+                  centerColor: _opaqueColor(colors.integer('center_color')),
+                  edgeColor: _opaqueColor(colors.integer('edge_color')),
+                  symbolColor: _opaqueColor(colors.integer('symbol_color')),
+                  textColor: _opaqueColor(colors.integer('text_color')),
+                ),
+          isSaved: content.boolean('is_saved') ?? false,
+          canBeUpgraded: content.boolean('can_be_upgraded') ?? false,
+          wasConverted: content.boolean('was_converted') ?? false,
+          wasUpgraded: content.boolean('was_upgraded') ?? false,
+          wasRefunded: content.boolean('was_refunded') ?? false,
+          wasTransferred: content.boolean('was_transferred') ?? false,
+          offerExpirationDate: content.integer('expiration_date') ?? 0,
+        );
+      case MessageGiftKind.premium:
+      case MessageGiftKind.stars:
+      case MessageGiftKind.gram:
+        // gifter_user_id is 0 when the gift is anonymous or outgoing, and
+        // receiver_user_id is 0 when it is incoming (i.e. to the current user).
+        final gifter = content.int64('gifter_user_id') ?? 0;
+        final receiver = content.int64('receiver_user_id') ?? 0;
+        final messageSender = message.obj('sender_id');
+        final ownUserId = outgoing && messageSender?.type == 'messageSenderUser'
+            ? messageSender?.int64('user_id')
+            : null;
+        final senderUserId = gifter > 0 ? gifter : ownUserId;
+        return MessageGift(
+          kind: kind,
+          contentType: type,
+          senderUserId: senderUserId,
+          receiverUserId: receiver > 0 ? receiver : null,
+          receiverIsCurrentUser: receiver <= 0 && !outgoing,
+          isSenderHidden: senderUserId == null,
+          note: noteText,
+          noteEntities: textEntities(note),
+          sticker: _giftSticker(content.obj('sticker')),
+          starCount: kind == MessageGiftKind.stars
+              ? content.int64('star_count') ?? 0
+              : 0,
+          gramUnits: kind == MessageGiftKind.gram
+              ? content.int64('gram_amount') ?? content.int64('ton_amount') ?? 0
+              : 0,
+          premiumMonthCount: kind == MessageGiftKind.premium
+              ? content.integer('month_count') ?? 0
+              : 0,
+          premiumDayCount: kind == MessageGiftKind.premium
+              ? content.integer('day_count') ?? 0
+              : 0,
+        );
+      case MessageGiftKind.premiumCode:
+        final creator = _giftParty(content.obj('creator_id'));
+        return MessageGift(
+          kind: kind,
+          contentType: type,
+          senderUserId: creator.userId,
+          senderChatId: creator.chatId,
+          receiverIsCurrentUser: true,
+          isSenderHidden: creator.userId == null && creator.chatId == null,
+          note: noteText,
+          noteEntities: textEntities(note),
+          sticker: _giftSticker(content.obj('sticker')),
+          premiumMonthCount: content.integer('month_count') ?? 0,
+          premiumDayCount: content.integer('day_count') ?? 0,
+          isFromGiveaway: content.boolean('is_from_giveaway') ?? false,
+          isUnclaimed: content.boolean('is_unclaimed') ?? false,
+        );
+      case MessageGiftKind.giveawayStars:
+        final boostedChatId = content.int64('boosted_chat_id') ?? 0;
+        return MessageGift(
+          kind: kind,
+          contentType: type,
+          senderChatId: boostedChatId != 0 ? boostedChatId : null,
+          receiverIsCurrentUser: true,
+          sticker: _giftSticker(content.obj('sticker')),
+          starCount: content.int64('star_count') ?? 0,
+          isFromGiveaway: true,
+          isUnclaimed: content.boolean('is_unclaimed') ?? false,
+        );
+    }
+  }
+
+  static ({int? userId, int? chatId}) _giftParty(Map<String, dynamic>? sender) {
+    return switch (sender?.type) {
+      'messageSenderUser' => (userId: sender?.int64('user_id'), chatId: null),
+      'messageSenderChat' => (userId: null, chatId: sender?.int64('chat_id')),
+      _ => (userId: null, chatId: null),
+    };
+  }
+
+  static MessageGiftOfferState? _giftOfferState(
+    MessageGiftKind kind,
+    Map<String, dynamic> content,
+  ) {
+    if (kind == MessageGiftKind.purchaseOfferRejected) {
+      return (content.boolean('was_expired') ?? false)
+          ? MessageGiftOfferState.expired
+          : MessageGiftOfferState.declined;
+    }
+    if (kind != MessageGiftKind.purchaseOffer) return null;
+    return switch (content.obj('state')?.type) {
+      'giftPurchaseOfferStatePending' => MessageGiftOfferState.pending,
+      'giftPurchaseOfferStateAccepted' => MessageGiftOfferState.accepted,
+      'giftPurchaseOfferStateRejected' => MessageGiftOfferState.declined,
+      _ => null,
+    };
+  }
+
+  static MessageGiftOrigin _giftOrigin(String? type) => switch (type) {
+    'upgradedGiftOriginUpgrade' => MessageGiftOrigin.upgrade,
+    'upgradedGiftOriginTransfer' => MessageGiftOrigin.transfer,
+    'upgradedGiftOriginResale' => MessageGiftOrigin.resale,
+    'upgradedGiftOriginBlockchain' => MessageGiftOrigin.blockchain,
+    'upgradedGiftOriginPrepaidUpgrade' => MessageGiftOrigin.prepaidUpgrade,
+    'upgradedGiftOriginOffer' => MessageGiftOrigin.offer,
+    'upgradedGiftOriginCraft' => MessageGiftOrigin.craft,
+    _ => MessageGiftOrigin.unknown,
+  };
+
+  /// TDLib `GiftResalePrice`; a Gram price arrives in hundredths of a Gram.
+  static ({int stars, int gramUnits})? _giftResalePrice(
+    Map<String, dynamic>? price,
+  ) {
+    return switch (price?.type) {
+      'giftResalePriceStar' => (
+        stars: price?.int64('star_count') ?? 0,
+        gramUnits: 0,
+      ),
+      'giftResalePriceGram' => (
+        stars: 0,
+        gramUnits:
+            (price?.int64('gram_cent_count') ?? 0) *
+            (GramAmount.unitsPerGram ~/ 100),
+      ),
+      _ => null,
+    };
+  }
+
+  /// TDLib colours are 24-bit RGB.
+  static int _opaqueColor(int? rgb) => 0xFF000000 | ((rgb ?? 0) & 0xFFFFFF);
+
+  /// The full gift sticker, built like a `messageSticker`: TGS / WebM files
+  /// for the animated players, the thumbnail (with its minithumbnail, as the
+  /// summary card always had) as placeholder.
+  static MessageGiftSticker? _giftSticker(Map<String, dynamic>? sticker) {
+    if (sticker == null) return null;
+    final media = _messageStickerMedia(sticker);
+    final thumbnail = sticker.obj('thumbnail');
+    return MessageGiftSticker(
+      image: media.image,
+      thumbnail: fileRef(
+        thumbnail?.obj('file'),
+        miniThumb: decodeMiniThumb(sticker.obj('minithumbnail')),
+      ),
+      hasStaticThumbnail: switch (thumbnail?.obj('format')?.type) {
+        'thumbnailFormatWebp' ||
+        'thumbnailFormatJpeg' ||
+        'thumbnailFormatPng' => true,
+        _ => false,
+      },
+      uniqueId: sticker.obj('sticker')?.obj('remote')?.str('unique_id') ?? '',
+      animated: media.animated,
+      video: media.videoSticker,
+      width: media.width,
+      height: media.height,
+      fileId: media.stickerFileId,
+      setId: media.stickerSetId,
+      emoji: sticker.str('emoji') ?? '',
+    );
+  }
+
   static SuggestedPostPrice? suggestedPostPrice(Map<String, dynamic>? price) {
     if (price == null) return null;
     return switch (price.type) {
@@ -3616,10 +3898,7 @@ abstract final class TDParse {
     );
   }
 
-  static MessageSummaryCard? summaryCard(
-    Map<String, dynamic> message,
-    Map<String, dynamic>? content,
-  ) {
+  static MessageSummaryCard? summaryCard(Map<String, dynamic>? content) {
     if (content == null) return null;
     switch (content.type) {
       case 'messageGame':
@@ -3700,54 +3979,6 @@ abstract final class TDParse {
               '${content.int64('star_count') ?? 0} Stars · $mediaCount media',
           image: preview.image,
           video: preview.video,
-        );
-      case 'messageGift':
-        final gift = content.obj('gift');
-        return MessageSummaryCard(
-          kind: MessageSummaryKind.gift,
-          title: AppStrings.t(AppStringKeys.tdMessageGift),
-          subtitle: content.obj('text')?.str('text') ?? '',
-          detail: '${gift?.int64('star_count') ?? 0} Telegram Stars',
-          image: _stickerMedia(gift?.obj('sticker')).image,
-        );
-      case 'messageGiftedPremium':
-      case 'messagePremiumGiftCode':
-        return MessageSummaryCard(
-          kind: MessageSummaryKind.gift,
-          title: AppStrings.t(AppStringKeys.tdMessageGift),
-          subtitle: content.obj('text')?.str('text') ?? '',
-          detail: '${content.integer('month_count') ?? 0} months Premium',
-          image: _stickerMedia(content.obj('sticker')).image,
-        );
-      case 'messageGiftedStars':
-      case 'messageGiveawayPrizeStars':
-        return MessageSummaryCard(
-          kind: MessageSummaryKind.gift,
-          title: AppStrings.t(AppStringKeys.tdMessageGift),
-          detail: '${content.int64('star_count') ?? 0} Telegram Stars',
-          image: _stickerMedia(content.obj('sticker')).image,
-        );
-      case 'messageGiftedTon':
-        return MessageSummaryCard(
-          kind: MessageSummaryKind.gift,
-          title: AppStrings.t(AppStringKeys.tdMessageGift),
-          detail: '${content.int64('gram_amount') ?? 0} nanoton',
-          image: _stickerMedia(content.obj('sticker')).image,
-        );
-      case 'messageUpgradedGift':
-      case 'messageRefundedUpgradedGift':
-      case 'messageUpgradedGiftPurchaseOffer':
-      case 'messageUpgradedGiftPurchaseOfferRejected':
-        final gift = content.obj('gift');
-        return MessageSummaryCard(
-          kind: MessageSummaryKind.gift,
-          title:
-              gift?.str('title') ?? AppStrings.t(AppStringKeys.tdMessageGift),
-          subtitle: gift?.str('name') ?? '',
-          detail: gift?.integer('number') == null
-              ? ''
-              : '#${gift?.integer('number')}',
-          image: _stickerMedia(gift?.obj('model')?.obj('sticker')).image,
         );
       case 'messageSuggestedPostApproved':
       case 'messageSuggestedPostApprovalFailed':
@@ -4069,10 +4300,17 @@ abstract final class TDParse {
       case 'messagePremiumGiftCode':
       case 'messageGiftedPremium':
       case 'messageGiftedStars':
+      case 'messageGiftedGrams':
       case 'messageGiftedTon':
+      case 'messageGiveawayPrizeStars':
       case 'messageUpgradedGift':
+      case 'messageRefundedGift':
       case 'messageRefundedUpgradedGift':
+      case 'messageUpgradedGiftPurchaseOffer':
+      case 'messageUpgradedGiftPurchaseOfferRejected':
         return AppStrings.t(AppStringKeys.tdMessageGift);
+      case MessageGramTransfer.contentType:
+        return MessageGramTransfer.previewText(content);
       case 'messageSuggestedPostInfo':
       case 'messageSuggestedPostApproved':
       case 'messageSuggestedPostApprovalFailed':
@@ -4092,7 +4330,7 @@ abstract final class TDParse {
         if (kDebugMode) {
           debugPrint('Unsupported TDLib message content: ${content.type}');
         }
-        return AppStrings.t(AppStringKeys.chatSearchMessageResultLabel);
+        return AppStrings.t(AppStringKeys.tdMessageUnsupportedCurrentVersion);
     }
   }
 
@@ -4132,9 +4370,16 @@ abstract final class TDParse {
         final text = _richMessageText(value)?.text.trim() ?? '';
         if (text.isNotEmpty) return text;
       }
+      // A bare string counts only under these keys; any other string field of
+      // an unknown type (an id, an address) is not text to show.
       for (final key in const ['text', 'caption', 'title', 'description']) {
-        final obj = value.obj(key);
-        final nested = _nestedFormattedText(obj ?? value[key]);
+        final field = value[key];
+        if (field is String) {
+          final text = field.trim();
+          if (text.isNotEmpty && !text.startsWith('message')) return text;
+          continue;
+        }
+        final nested = _nestedFormattedText(field);
         if (nested.isNotEmpty) return nested;
       }
       for (final entry in value.entries) {
@@ -4147,9 +4392,6 @@ abstract final class TDParse {
         final nested = _nestedFormattedText(item);
         if (nested.isNotEmpty) return nested;
       }
-    } else if (value is String) {
-      final text = value.trim();
-      if (text.isNotEmpty && !text.startsWith('message')) return text;
     }
     return '';
   }

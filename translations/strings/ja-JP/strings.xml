@@ -3851,4 +3851,69 @@
     <string name="appearanceSimpleModeDescription">外観の設定を変えずに、チャット画面をすっきりさせます。</string>
     <string name="composerMoreActions">その他の操作</string>
     <string name="composerShowKeyboard">キーボードを表示</string>
+    <string name="giftCardTitleSent">ギフトを贈りました</string>
+    <string name="giftCardTitleReceived">ギフトが届きました</string>
+    <string name="giftCardTitlePremiumSent">Telegram Premium を贈りました</string>
+    <string name="giftCardTitlePremiumReceived">Telegram Premium が届きました</string>
+    <string name="giftCardTitleStarsSent">スターを贈りました</string>
+    <string name="giftCardTitleStarsReceived">スターが届きました</string>
+    <string name="giftCardTitleGramSent">Gram を贈りました</string>
+    <string name="giftCardTitleGramReceived">Gram が届きました</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium ギフトコード</string>
+    <string name="giftCardTitleGiveawayStars">抽選で当たったスター</string>
+    <string name="giftCardTitleUpgraded">ギフトをアップグレードしました</string>
+    <string name="giftCardTitleBought">ギフトを購入しました</string>
+    <string name="giftCardTitleCrafted">ギフトを合成しました</string>
+    <string name="giftCardTitleRefunded">ギフトは返金されました</string>
+    <string name="giftCardTitleOffer">ギフトの購入オファー</string>
+    <string name="giftCardTitleOfferDeclined">オファーは辞退されました</string>
+    <string name="giftCardTitleOfferExpired">オファーの期限が切れました</string>
+    <string name="giftOfferPending">返事待ち</string>
+    <string name="giftOfferAccepted">オファーは承諾されました</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="gramAmount">{value1} GRAM</string>
+    <string name="giftSheetFrom">贈り主</string>
+    <string name="giftSheetTo">受取人</string>
+    <string name="giftSheetNote">メッセージ</string>
+    <string name="giftSheetValue">価値</string>
+    <string name="giftSheetAnonymous">匿名</string>
+    <string name="giftStatusRefunded">返金済み</string>
+    <string name="giftStatusConverted">スターに交換済み</string>
+    <string name="giftStatusUpgraded">アップグレード済み</string>
+    <string name="giftStatusFromGiveaway">抽選の賞品</string>
+    <string name="giftStatusUnclaimed">未受け取りの賞品</string>
+    <string name="giftCardHint">ギフトの詳細を表示</string>
+    <string name="tdMessageTransferValue1">[送金] {value1}</string>
+    <string name="transferFooterGram">Gram 送金</string>
+    <string name="transferStatusReceived">ウォレットに入金済み</string>
+    <string name="transferStatusSent">送金済み</string>
+    <string name="transferStatusSending">送金中…</string>
+    <string name="transferStatusFailed">送金できませんでした</string>
+    <string name="transferStatusFailedRetry">送金できませんでした。タップして再試行</string>
+    <string name="transferEncryptedComment">暗号化されたメッセージ</string>
+    <string name="transferCardHint">送金の詳細を表示</string>
+    <string name="transferDetailFromValue1">{value1} さんからの送金</string>
+    <string name="transferDetailToValue1">{value1} さんへの送金</string>
+    <string name="transferSheetFrom">送金元</string>
+    <string name="transferSheetTo">送金先</string>
+    <string name="transferSheetDate">日時</string>
+    <string name="transferNetworkFee">ネットワーク手数料</string>
+    <string name="transferNetworkFeeFree">無料</string>
+    <string name="transferSheetTransactionId">取引 ID</string>
+    <string name="transferSheetViewInExplorer">ブロックチェーンエクスプローラーで見る</string>
+    <plurals name="giftStarsCount">
+        <item quantity="other">{count} スター</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="other">Telegram Premium {count}か月</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="other">Telegram Premium {count}日間</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="other">{count}か月</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="other">{count}日間</item>
+    </plurals>
 </resources>

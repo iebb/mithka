@@ -496,6 +496,13 @@ abstract final class AppTheme {
   static final Color onlineDot = _hex(0x1AC81A);
   static final Color cloverGreen = _hex(0x2DBE60);
 
+  /// A read message's delivery ring.
+  static const Color readMark = Color(0xFF34C759);
+
+  /// [readMark] on a light card footer (the gift card's, the transfer
+  /// envelope's): 4.4:1 on white, where [readMark] is 2.2:1.
+  static const Color readMarkOnLightCard = Color(0xFF248A3D);
+
   // MARK: Metrics
   static const double rowHeight = AppMetric.listRowHeight;
   static const double avatarSize = AppMetric.avatarSize;
@@ -831,6 +838,49 @@ double contrastRatio(Color a, Color b) {
   final first = a.computeLuminance();
   final second = b.computeLuminance();
   return (math.max(first, second) + 0.05) / (math.min(first, second) + 0.05);
+}
+
+/// The colour with HSL [hue] (degrees) and [saturation] (0–1) whose WCAG
+/// relative luminance is [luminance]: a binary search over HSL lightness.
+///
+/// Every hue lands at the same perceived brightness, which is what keeps a
+/// tint derived from a yellow as calm as one derived from a blue. Channels
+/// stay fractional, so the result is the exact search answer rather than the
+/// nearest 8-bit colour.
+Color atLuminance(double hue, double saturation, double luminance) {
+  var lower = 0.0;
+  var upper = 1.0;
+  for (var step = 0; step < 14; step++) {
+    final lightness = (lower + upper) / 2;
+    if (_hslColor(hue, saturation, lightness).computeLuminance() < luminance) {
+      lower = lightness;
+    } else {
+      upper = lightness;
+    }
+  }
+  return _hslColor(hue, saturation, (lower + upper) / 2);
+}
+
+/// [HSLColor.toColor] rounds to 8-bit channels; this keeps them fractional.
+Color _hslColor(double hue, double saturation, double lightness) {
+  final chroma = (1 - (2 * lightness - 1).abs()) * saturation;
+  final huePrime = (hue % 360) / 60;
+  final secondary = chroma * (1 - (huePrime % 2 - 1).abs());
+  final match = lightness - chroma / 2;
+  final (red, green, blue) = switch (huePrime) {
+    < 1 => (chroma, secondary, 0.0),
+    < 2 => (secondary, chroma, 0.0),
+    < 3 => (0.0, chroma, secondary),
+    < 4 => (0.0, secondary, chroma),
+    < 5 => (secondary, 0.0, chroma),
+    _ => (chroma, 0.0, secondary),
+  };
+  return Color.from(
+    alpha: 1,
+    red: red + match,
+    green: green + match,
+    blue: blue + match,
+  );
 }
 
 /// Returns whichever neutral text color has the stronger WCAG contrast.

@@ -2,6 +2,7 @@ import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 
 String automaticTranslationSourceText(ChatMessage message) {
+  if (!_hasTranslatableText(message)) return '';
   final parts = [
     message.text,
     message.linkPreview?.title ?? '',
@@ -9,6 +10,10 @@ String automaticTranslationSourceText(ChatMessage message) {
   ].where((part) => part.trim().isNotEmpty);
   return parts.join('\n');
 }
+
+/// A Gram transfer's text is its preview line ("[Transfer] 1.5 GRAM"), not
+/// anything its sender wrote, so it is never translated or sampled.
+bool _hasTranslatableText(ChatMessage message) => message.gramTransfer == null;
 
 const _languageDetectionIgnoredEntityTypes = <String>{
   'textEntityTypePre',
@@ -22,6 +27,7 @@ const _languageDetectionIgnoredEntityTypes = <String>{
 };
 
 String automaticTranslationLanguageText(ChatMessage message) {
+  if (!_hasTranslatableText(message)) return '';
   var text = message.text.length > 256
       ? message.text.substring(0, 256)
       : message.text;

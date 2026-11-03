@@ -3851,4 +3851,69 @@
     <string name="appearanceSimpleModeDescription">외관 설정을 유지하면서 채팅 화면을 간결하게 표시해요.</string>
     <string name="composerMoreActions">더 많은 작업</string>
     <string name="composerShowKeyboard">키보드 표시</string>
+    <string name="giftCardTitleSent">선물을 보냈어요</string>
+    <string name="giftCardTitleReceived">선물이 도착했어요</string>
+    <string name="giftCardTitlePremiumSent">Telegram Premium을 보냈어요</string>
+    <string name="giftCardTitlePremiumReceived">Telegram Premium이 도착했어요</string>
+    <string name="giftCardTitleStarsSent">스타를 보냈어요</string>
+    <string name="giftCardTitleStarsReceived">스타가 도착했어요</string>
+    <string name="giftCardTitleGramSent">Gram을 보냈어요</string>
+    <string name="giftCardTitleGramReceived">Gram이 도착했어요</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium 선물 코드</string>
+    <string name="giftCardTitleGiveawayStars">추첨으로 받은 스타</string>
+    <string name="giftCardTitleUpgraded">선물을 업그레이드했어요</string>
+    <string name="giftCardTitleBought">선물을 구매했어요</string>
+    <string name="giftCardTitleCrafted">선물을 만들었어요</string>
+    <string name="giftCardTitleRefunded">선물이 환불됐어요</string>
+    <string name="giftCardTitleOffer">선물 구매 제안</string>
+    <string name="giftCardTitleOfferDeclined">제안이 거절됐어요</string>
+    <string name="giftCardTitleOfferExpired">제안이 만료됐어요</string>
+    <string name="giftOfferPending">답변 대기 중</string>
+    <string name="giftOfferAccepted">제안이 수락됐어요</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="gramAmount">{value1} GRAM</string>
+    <string name="giftSheetFrom">보낸 사람</string>
+    <string name="giftSheetTo">받는 사람</string>
+    <string name="giftSheetNote">메시지</string>
+    <string name="giftSheetValue">가치</string>
+    <string name="giftSheetAnonymous">익명</string>
+    <string name="giftStatusRefunded">환불됨</string>
+    <string name="giftStatusConverted">스타로 교환됨</string>
+    <string name="giftStatusUpgraded">업그레이드됨</string>
+    <string name="giftStatusFromGiveaway">추첨 경품</string>
+    <string name="giftStatusUnclaimed">수령되지 않은 경품</string>
+    <string name="giftCardHint">선물 상세 정보 보기</string>
+    <string name="tdMessageTransferValue1">[송금] {value1}</string>
+    <string name="transferFooterGram">Gram 송금</string>
+    <string name="transferStatusReceived">지갑에 입금됨</string>
+    <string name="transferStatusSent">송금 완료</string>
+    <string name="transferStatusSending">송금 중…</string>
+    <string name="transferStatusFailed">송금 실패</string>
+    <string name="transferStatusFailedRetry">송금하지 못했어요. 탭하여 다시 시도</string>
+    <string name="transferEncryptedComment">암호화된 메시지</string>
+    <string name="transferCardHint">송금 상세 정보 보기</string>
+    <string name="transferDetailFromValue1">{value1}님이 보낸 송금</string>
+    <string name="transferDetailToValue1">{value1}님에게 보낸 송금</string>
+    <string name="transferSheetFrom">보낸 사람</string>
+    <string name="transferSheetTo">받는 사람</string>
+    <string name="transferSheetDate">날짜</string>
+    <string name="transferNetworkFee">네트워크 수수료</string>
+    <string name="transferNetworkFeeFree">무료</string>
+    <string name="transferSheetTransactionId">거래 ID</string>
+    <string name="transferSheetViewInExplorer">블록체인 탐색기에서 보기</string>
+    <plurals name="giftStarsCount">
+        <item quantity="other">스타 {count}개</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="other">Telegram Premium {count}개월</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="other">Telegram Premium {count}일</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="other">{count}개월</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="other">{count}일</item>
+    </plurals>
 </resources>

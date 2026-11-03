@@ -3851,4 +3851,69 @@
     <string name="appearanceSimpleModeDescription">精简聊天界面，不改动原有外观设置。</string>
     <string name="composerMoreActions">更多操作</string>
     <string name="composerShowKeyboard">显示键盘</string>
+    <string name="giftCardTitleSent">送出一份礼物</string>
+    <string name="giftCardTitleReceived">送你一份礼物</string>
+    <string name="giftCardTitlePremiumSent">送出 Telegram Premium</string>
+    <string name="giftCardTitlePremiumReceived">送你 Telegram Premium</string>
+    <string name="giftCardTitleStarsSent">送出星星</string>
+    <string name="giftCardTitleStarsReceived">送你星星</string>
+    <string name="giftCardTitleGramSent">送出 Gram</string>
+    <string name="giftCardTitleGramReceived">送你 Gram</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium 礼品码</string>
+    <string name="giftCardTitleGiveawayStars">抽奖获得的星星</string>
+    <string name="giftCardTitleUpgraded">升级了礼物</string>
+    <string name="giftCardTitleBought">买下一份礼物</string>
+    <string name="giftCardTitleCrafted">合成了一份礼物</string>
+    <string name="giftCardTitleRefunded">礼物已退款</string>
+    <string name="giftCardTitleOffer">求购礼物</string>
+    <string name="giftCardTitleOfferDeclined">求购已被拒绝</string>
+    <string name="giftCardTitleOfferExpired">求购已过期</string>
+    <string name="giftOfferPending">等待回复</string>
+    <string name="giftOfferAccepted">求购已接受</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="gramAmount">{value1} GRAM</string>
+    <string name="giftSheetFrom">赠送人</string>
+    <string name="giftSheetTo">接收人</string>
+    <string name="giftSheetNote">留言</string>
+    <string name="giftSheetValue">价值</string>
+    <string name="giftSheetAnonymous">匿名</string>
+    <string name="giftStatusRefunded">已退款</string>
+    <string name="giftStatusConverted">已兑换成星星</string>
+    <string name="giftStatusUpgraded">已升级</string>
+    <string name="giftStatusFromGiveaway">来自抽奖</string>
+    <string name="giftStatusUnclaimed">无人领取的奖品</string>
+    <string name="giftCardHint">查看礼物详情</string>
+    <string name="tdMessageTransferValue1">[转账] {value1}</string>
+    <string name="transferFooterGram">Gram 转账</string>
+    <string name="transferStatusReceived">已存入钱包</string>
+    <string name="transferStatusSent">已转出</string>
+    <string name="transferStatusSending">转账中…</string>
+    <string name="transferStatusFailed">转账失败</string>
+    <string name="transferStatusFailedRetry">转账失败，点按重试</string>
+    <string name="transferEncryptedComment">加密留言</string>
+    <string name="transferCardHint">查看转账详情</string>
+    <string name="transferDetailFromValue1">来自 {value1} 的转账</string>
+    <string name="transferDetailToValue1">转给 {value1}</string>
+    <string name="transferSheetFrom">付款人</string>
+    <string name="transferSheetTo">收款人</string>
+    <string name="transferSheetDate">时间</string>
+    <string name="transferNetworkFee">网络手续费</string>
+    <string name="transferNetworkFeeFree">免费</string>
+    <string name="transferSheetTransactionId">交易 ID</string>
+    <string name="transferSheetViewInExplorer">在区块链浏览器中查看</string>
+    <plurals name="giftStarsCount">
+        <item quantity="other">{count} 颗星星</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="other">{count} 个月 Telegram Premium</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="other">{count} 天 Telegram Premium</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="other">{count} 个月</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="other">{count} 天</item>
+    </plurals>
 </resources>

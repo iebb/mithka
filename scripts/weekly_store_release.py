@@ -26,6 +26,8 @@ SUBMITTED = {
     "READY_FOR_DISTRIBUTION",
 }
 
+ACTIVE_APPLE_STATES = SUBMITTED - {"READY_FOR_SALE", "READY_FOR_DISTRIBUTION"}
+
 
 class Error(RuntimeError):
     pass
@@ -325,7 +327,30 @@ def validate_release_base(commit):
     wait_run(run, commit, "quality.yml", timeout=3600)
 
 
+def validate_deferral(plan):
+    if plan.get("deferred_apple_platforms", []) not in ([], ["MAC_OS"]):
+        raise Error("only macOS submission may be deferred")
+
+
+def deferred_platforms(plan, state):
+    validate_deferral(plan)
+    # The immutable plan permits postponing macOS only while another version
+    # still holds its review/release slot. A retry rechecks that slot so it can
+    # finish the same snapshot once Apple's existing review has cleared.
+    return [
+        platform
+        for platform in plan.get("deferred_apple_platforms", [])
+        if any(
+            version["platform"] == platform
+            and version["version"] != plan["version"]
+            and version["state"] in ACTIVE_APPLE_STATES
+            for version in state["versions"]
+        )
+    ]
+
+
 def validate_plan(plan, key):
+    validate_deferral(plan)
     version_tuple(plan["version"])
     if not re.fullmatch(re.escape(plan["version"]) + r"\+\d+", plan["raw_version"]):
         raise Error("snapshot raw version does not preserve the normal patch")
@@ -388,9 +413,9 @@ def prepare(key, state, play, apply=False, base_validator=None):
     active = [
         version
         for version in state["versions"]
-        if version["state"] in SUBMITTED - {"READY_FOR_SALE", "READY_FOR_DISTRIBUTION"}
+        if version["state"] in ACTIVE_APPLE_STATES
     ]
-    if active:
+    if any(version.get("platform") != "MAC_OS" for version in active):
         raise Error(
             "an Apple version is already under review or awaiting release; preserve it"
         )
@@ -429,6 +454,7 @@ def prepare(key, state, play, apply=False, base_validator=None):
         "tag": f"store-v{version}",
         "release_tag": f"v{version}",
         "day_tag": day_tag,
+        "deferred_apple_platforms": ["MAC_OS"] if active else [],
     }
     if plan["tag"] in tags or plan["release_tag"] in tags:
         raise Error("selected version already has a release snapshot")
@@ -518,6 +544,11 @@ def exact_builds(state, plan):
 
 
 def submit(plan):
+    deferred = deferred_platforms(plan, asc_state())
+    platforms = [platform for platform in APPLE_WORKFLOWS if platform not in deferred]
+    # Keep both immutable uploads available for a later submission, before
+    # master advances. These workflows do not modify App Store review details
+    # and distribute_testflight remains false. Retries reuse the same uploads.
     uploads = {
         platform: build_run(workflow, plan)
         for platform, workflow in APPLE_WORKFLOWS.items()
@@ -534,7 +565,7 @@ def submit(plan):
             raise Error("Apple processing is incomplete; resume this snapshot later")
         time.sleep(30)
     master = api("git/ref/heads/master")["object"]["sha"]
-    # Validate both listings before any new production publication.
+    # Validate every eligible listing before any new production publication.
     for operation in ("validate", "submit"):
         if operation == "submit":
             previous = runs("google-play.yml", plan["source_sha"])
@@ -561,7 +592,7 @@ def submit(plan):
                 plan["source_sha"], plan["android_version_code"], run["id"]
             )
         # Sequential: the reusable Quality gate is scoped to workflow + ref.
-        for platform in APPLE_WORKFLOWS:
+        for platform in platforms:
             state = asc_state(plan["apple_build_number"])
             existing = [
                 version
@@ -596,7 +627,8 @@ def submit(plan):
             )
             wait_run(run, master, "app-store-submit.yml")
     state = asc_state(plan["apple_build_number"])
-    for platform, build in builds.items():
+    for platform in platforms:
+        build = builds[platform]
         versions = [
             version
             for version in state["versions"]
@@ -610,10 +642,22 @@ def submit(plan):
             raise Error(
                 "final App Store submission state did not match the release snapshot"
             )
+    result = {
+        "apple_platforms_verified": platforms,
+        "apple_platforms_deferred": deferred,
+    }
     print(
-        f"Verified {plan['version']}: Play production committed; iOS and macOS submitted.",
+        f"Verified {plan['version']}: Play production committed; "
+        f"Apple submitted: {', '.join(result['apple_platforms_verified'])}."
+        + (
+            " macOS deferred to preserve its existing review; "
+            "resume this release after that review clears."
+            if deferred
+            else ""
+        ),
         flush=True,
     )
+    return result
 
 
 def record_marker(tag, source_sha, metadata, branch="master"):
@@ -676,20 +720,34 @@ def record_play_marker(source_sha, code, run_id):
     )
 
 
-def record_completion(plan):
-    # Only after actual Play/ASC postconditions pass. The annotation keeps the
-    # immutable built source even when master has advanced since the snapshot.
+def record_completion(plan, result):
+    validate_deferral(plan)
+    verified = result["apple_platforms_verified"]
+    deferred = result["apple_platforms_deferred"]
+    if not (
+        verified == ["IOS", "MAC_OS"] and deferred == []
+        or verified == ["IOS"]
+        and deferred == ["MAC_OS"]
+        and plan.get("deferred_apple_platforms") == deferred
+    ):
+        raise Error(
+            "store completion requires verified platforms or the planned macOS deferral"
+        )
+    # A partial marker never closes the snapshot: release_key keeps selecting
+    # it on existing workflow retries until macOS also passes its postconditions.
+    status = "partial" if deferred else "complete"
     record_marker(
-        f"store-complete-{plan['release_key']}",
+        f"store-{status}-{plan['release_key']}",
         plan["source_sha"],
         {
             "schema_version": 1,
-            "kind": "store_complete",
+            "kind": f"store_{status}",
             "version": plan["version"],
             "android_version_code": plan["android_version_code"],
             "apple_build_number": plan["apple_build_number"],
             "google_play_verified": True,
-            "apple_platforms_verified": ["IOS", "MAC_OS"],
+            "apple_platforms_verified": verified,
+            "apple_platforms_deferred": deferred,
         },
     )
 
@@ -1035,17 +1093,29 @@ def main():
     )
     print(json.dumps(plan, indent=2), flush=True)
     if args.operation == "release":
-        submit(plan)
+        result = submit(plan)
         advance_development_version(plan)
         request_immediate_update()
         publish_github_release(plan)
-        record_completion(plan)
+        record_completion(plan, result)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as output:
             output.write(
                 f"Store {args.operation}: **{plan['version']}** ({plan.get('source_sha', 'not published')}).\n"
             )
+            if args.operation == "release":
+                output.write(
+                    "Play production verified. Apple submitted: "
+                    + ", ".join(result["apple_platforms_verified"])
+                    + ".\n"
+                )
+                if result["apple_platforms_deferred"]:
+                    output.write(
+                        "macOS deferred to preserve its existing review. "
+                        "Release remains unfinished; resume the same release key "
+                        "after that review clears.\n"
+                    )
     return 0
 
 

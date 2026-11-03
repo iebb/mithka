@@ -26,6 +26,7 @@ class TelegramRichText extends StatefulWidget {
     this.underlineLinks = false,
     this.maxLines,
     this.overflow = TextOverflow.clip,
+    this.textAlign = TextAlign.start,
     this.onBotCommandTap,
     this.onHashtagTap,
     this.onMentionTap,
@@ -40,6 +41,7 @@ class TelegramRichText extends StatefulWidget {
   final bool underlineLinks;
   final int? maxLines;
   final TextOverflow overflow;
+  final TextAlign textAlign;
   final ValueChanged<String>? onBotCommandTap;
   final ValueChanged<String>? onHashtagTap;
   final void Function(int userId, String name)? onMentionTap;
@@ -132,6 +134,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: widget.maxLines,
       overflow: widget.overflow,
+      textAlign: widget.textAlign,
       textHeightBehavior: hasCustomEmoji
           ? const TextHeightBehavior(
               applyHeightToFirstAscent: false,
@@ -304,6 +307,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
       underlineLinks: widget.underlineLinks,
       maxLines: widget.maxLines,
       overflow: widget.overflow,
+      textAlign: widget.textAlign,
       onBotCommandTap: widget.onBotCommandTap,
       onHashtagTap: widget.onHashtagTap,
       onMentionTap: widget.onMentionTap,

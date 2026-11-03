@@ -3862,4 +3862,74 @@
     <string name="appearanceSimpleModeDescription">Simplify the chat layout without changing your appearance settings.</string>
     <string name="composerMoreActions">More actions</string>
     <string name="composerShowKeyboard">Show keyboard</string>
+    <string name="giftCardTitleSent">Sent a gift</string>
+    <string name="giftCardTitleReceived">Sent you a gift</string>
+    <string name="giftCardTitlePremiumSent">Sent Telegram Premium</string>
+    <string name="giftCardTitlePremiumReceived">Sent you Telegram Premium</string>
+    <string name="giftCardTitleStarsSent">Sent Stars</string>
+    <string name="giftCardTitleStarsReceived">Sent you Stars</string>
+    <string name="giftCardTitleGramSent">Sent Gram</string>
+    <string name="giftCardTitleGramReceived">Sent you Gram</string>
+    <string name="giftCardTitlePremiumCode">Telegram Premium gift code</string>
+    <string name="giftCardTitleGiveawayStars">Stars from a giveaway</string>
+    <string name="giftCardTitleUpgraded">Upgraded a gift</string>
+    <string name="giftCardTitleBought">Bought a gift</string>
+    <string name="giftCardTitleCrafted">Crafted a gift</string>
+    <string name="giftCardTitleRefunded">Gift refunded</string>
+    <string name="giftCardTitleOffer">Offer to buy a gift</string>
+    <string name="giftCardTitleOfferDeclined">Offer declined</string>
+    <string name="giftCardTitleOfferExpired">Offer expired</string>
+    <string name="giftOfferPending">Waiting for a reply</string>
+    <string name="giftOfferAccepted">Offer accepted</string>
+    <string name="giftUpgradedNameNumber">{value1} #{value2}</string>
+    <string name="gramAmount">{value1} GRAM</string>
+    <string name="giftSheetFrom">From</string>
+    <string name="giftSheetTo">To</string>
+    <string name="giftSheetNote">Message</string>
+    <string name="giftSheetValue">Value</string>
+    <string name="giftSheetAnonymous">Anonymous</string>
+    <string name="giftStatusRefunded">Refunded</string>
+    <string name="giftStatusConverted">Converted to Stars</string>
+    <string name="giftStatusUpgraded">Upgraded</string>
+    <string name="giftStatusFromGiveaway">From a giveaway</string>
+    <string name="giftStatusUnclaimed">Unclaimed prize</string>
+    <string name="giftCardHint">Shows gift details</string>
+    <string name="tdMessageTransferValue1">[Transfer] {value1}</string>
+    <string name="transferFooterGram">Gram transfer</string>
+    <string name="transferStatusReceived">Added to your wallet</string>
+    <string name="transferStatusSent">Sent</string>
+    <string name="transferStatusSending">Sending…</string>
+    <string name="transferStatusFailed">Transfer failed</string>
+    <string name="transferStatusFailedRetry">Couldn’t send. Tap to try again.</string>
+    <string name="transferEncryptedComment">Encrypted message</string>
+    <string name="transferCardHint">Shows transfer details</string>
+    <string name="transferDetailFromValue1">Transfer from {value1}</string>
+    <string name="transferDetailToValue1">Transfer to {value1}</string>
+    <string name="transferSheetFrom">From</string>
+    <string name="transferSheetTo">To</string>
+    <string name="transferSheetDate">Date</string>
+    <string name="transferNetworkFee">Network fee</string>
+    <string name="transferNetworkFeeFree">Free</string>
+    <string name="transferSheetTransactionId">Transaction ID</string>
+    <string name="transferSheetViewInExplorer">View in blockchain explorer</string>
+    <plurals name="giftStarsCount">
+        <item quantity="one">{count} Star</item>
+        <item quantity="other">{count} Stars</item>
+    </plurals>
+    <plurals name="giftPremiumMonths">
+        <item quantity="one">{count} month of Telegram Premium</item>
+        <item quantity="other">{count} months of Telegram Premium</item>
+    </plurals>
+    <plurals name="giftPremiumDays">
+        <item quantity="one">{count} day of Telegram Premium</item>
+        <item quantity="other">{count} days of Telegram Premium</item>
+    </plurals>
+    <plurals name="giftDurationMonths">
+        <item quantity="one">{count} month</item>
+        <item quantity="other">{count} months</item>
+    </plurals>
+    <plurals name="giftDurationDays">
+        <item quantity="one">{count} day</item>
+        <item quantity="other">{count} days</item>
+    </plurals>
 </resources>

@@ -394,11 +394,17 @@ class HeroAppIcons {
   /// the app already uses for machine-driven features.
   static const bot = AppIconData(HeroiconsOutline.cpuChip);
   static const cube = AppIconData(HeroiconsOutline.cubeTransparent);
+  static const documentDuplicate = AppIconData(
+    HeroiconsOutline.documentDuplicate,
+  );
   static const download = AppIconData(HeroiconsOutline.arrowDownTray);
   static const droplet = AppIconData(HeroiconsOutline.beaker);
   static const ellipsis = AppIconData(HeroiconsOutline.ellipsisHorizontal);
   static const ellipsisVertical = AppIconData(
     HeroiconsOutline.ellipsisVertical,
+  );
+  static const exclamationCircle = AppIconData(
+    HeroiconsOutline.exclamationCircle,
   );
   static const expand = AppIconData(HeroiconsOutline.arrowsPointingOut);
   static const eye = AppIconData(HeroiconsOutline.eye);
