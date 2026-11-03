@@ -1,5 +1,7 @@
 import importlib.util
 import argparse
+import copy
+import io
 import json
 import os
 from pathlib import Path
@@ -130,48 +132,63 @@ class WeeklyReleaseTest(unittest.TestCase):
     def test_completion_waits_for_stores_development_bump_and_same_version_github_packages(
         self,
     ):
-        events = []
         plan = {"version": "1.8.8", "source_sha": "a" * 40}
-        with (
-            patch.object(
-                RELEASE.argparse.ArgumentParser,
-                "parse_args",
-                return_value=argparse.Namespace(
-                    operation="release", release_key="2026-10-27"
+        for deferred in ([], ["MAC_OS"]):
+            events = []
+            result = {
+                "apple_platforms_verified": ["IOS"] if deferred else ["IOS", "MAC_OS"],
+                "apple_platforms_deferred": deferred,
+            }
+            with (
+                self.subTest(deferred=deferred),
+                tempfile.TemporaryDirectory() as directory,
+                patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": directory + "/summary"}),
+                patch.object(
+                    RELEASE.argparse.ArgumentParser,
+                    "parse_args",
+                    return_value=argparse.Namespace(
+                        operation="release", release_key="2026-10-27"
+                    ),
                 ),
-            ),
-            patch.object(RELEASE, "assert_context"),
-            patch.object(RELEASE, "play_state", return_value={}),
-            patch.object(RELEASE, "asc_state", return_value={}),
-            patch.object(RELEASE, "prepare", return_value=plan),
-            patch.object(
-                RELEASE, "submit", side_effect=lambda _plan: events.append("stores")
-            ),
-            patch.object(
-                RELEASE,
-                "advance_development_version",
-                side_effect=lambda _plan: events.append("development"),
-            ),
-            patch.object(
-                RELEASE,
-                "request_immediate_update",
-                side_effect=lambda: events.append("immediate"),
-            ),
-            patch.object(
-                RELEASE,
-                "publish_github_release",
-                side_effect=lambda _plan: events.append("github"),
-            ),
-            patch.object(
-                RELEASE,
-                "record_completion",
-                side_effect=lambda _plan: events.append("complete"),
-            ),
-        ):
-            self.assertEqual(RELEASE.main(), 0)
-        self.assertEqual(
-            events, ["stores", "development", "immediate", "github", "complete"]
-        )
+                patch.object(RELEASE, "assert_context"),
+                patch.object(RELEASE, "play_state", return_value={}),
+                patch.object(RELEASE, "asc_state", return_value={}),
+                patch.object(RELEASE, "prepare", return_value=plan),
+                patch.object(
+                    RELEASE, "submit",
+                    side_effect=lambda _plan: events.append("stores") or result,
+                ),
+                patch.object(
+                    RELEASE, "advance_development_version",
+                    side_effect=lambda _plan: events.append("development"),
+                ),
+                patch.object(
+                    RELEASE, "request_immediate_update",
+                    side_effect=lambda: events.append("immediate"),
+                ),
+                patch.object(
+                    RELEASE, "publish_github_release",
+                    side_effect=lambda _plan: events.append("github"),
+                ),
+                patch.object(
+                    RELEASE, "record_completion",
+                    side_effect=lambda _plan, _result: events.append("complete"),
+                ) as complete,
+            ):
+                self.assertEqual(RELEASE.main(), 0)
+                complete.assert_called_once_with(plan, result)
+                self.assertEqual(
+                    events, ["stores", "development", "immediate", "github", "complete"]
+                )
+                summary = Path(directory, "summary").read_text()
+                self.assertIn("Play production verified", summary)
+                if deferred:
+                    self.assertIn("Apple submitted: IOS.", summary)
+                    self.assertIn("macOS deferred", summary)
+                    self.assertIn("Release remains unfinished", summary)
+                else:
+                    self.assertIn("Apple submitted: IOS, MAC_OS.", summary)
+                    self.assertNotIn("deferred", summary)
 
     def test_post_bump_quality_is_requested_only_when_missing(self):
         with patch.object(
@@ -536,6 +553,194 @@ class WeeklyReleaseTest(unittest.TestCase):
                 )
             )
 
+    def test_deferral_is_only_for_a_planned_mac_slot_held_by_another_version(self):
+        plan = {"version": "1.9.6", "deferred_apple_platforms": ["MAC_OS"]}
+        for state in RELEASE.SUBMITTED:
+            with self.subTest(state=state):
+                versions = [
+                    {"platform": "MAC_OS", "version": "1.9.5", "state": state}
+                ]
+                expected = ["MAC_OS"] if state in RELEASE.ACTIVE_APPLE_STATES else []
+                self.assertEqual(
+                    RELEASE.deferred_platforms(plan, {"versions": versions}), expected
+                )
+        for versions in (
+            [],
+            [{"platform": "MAC_OS", "version": "1.9.6", "state": "IN_REVIEW"}],
+            [{"platform": "MAC_OS", "version": "1.9.5", "state": "REJECTED"}],
+            [{"platform": "IOS", "version": "1.9.5", "state": "IN_REVIEW"}],
+        ):
+            self.assertEqual(
+                RELEASE.deferred_platforms(plan, {"versions": versions}), []
+            )
+        for invalid in (
+            ["IOS"], ["MAC_OS", "IOS"], ["MAC_OS", "MAC_OS"], "MAC_OS", None
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(RELEASE.Error):
+                RELEASE.validate_plan(
+                    dict(plan, deferred_apple_platforms=invalid), "2026-10-30"
+                )
+
+    def test_deferred_mac_resumes_without_duplicate_uploads(self):
+        plan = {
+            "version": "1.9.6",
+            "apple_build_number": "1698",
+            "source_sha": "a" * 40,
+            "tag": "store-v1.9.6",
+            "android_version_code": 500,
+            "notes_path": "distribution/app-store/release-notes-1.9.6.json",
+            "deferred_apple_platforms": ["MAC_OS"],
+        }
+        review = {
+            "id": "mac-review",
+            "platform": "MAC_OS",
+            "version": "1.9.5",
+            "build_id": "old-mac",
+            "state": "IN_REVIEW",
+        }
+        original = copy.deepcopy(review)
+        state = {"versions": [review], "builds": []}
+        events = []
+        attempts = {}
+
+        def runs(workflow, _sha):
+            return [attempts[workflow]] if workflow in attempts else []
+
+        def dispatch(workflow, _ref, _sha, inputs):
+            events.append((workflow, inputs.get("operation"), inputs.get("platform")))
+            run = {"id": len(events)}
+            if workflow in RELEASE.APPLE_WORKFLOWS.values():
+                self.assertNotIn(workflow, attempts, "native upload repeated")
+                self.assertEqual(inputs, {
+                    "expected_source_commit": plan["source_sha"],
+                    "distribute_testflight": "false",
+                })
+                platform = next(
+                    p for p, w in RELEASE.APPLE_WORKFLOWS.items() if w == workflow
+                )
+                state["builds"].append({
+                    "id": platform,
+                    "platform": platform,
+                    "marketing_version": plan["version"],
+                    "version": "1698",
+                    "processingState": "VALID",
+                    "expired": False,
+                    "buildAudienceType": "APP_STORE_ELIGIBLE",
+                })
+                attempts[workflow] = run
+            elif workflow == "google-play.yml":
+                self.assertNotIn(workflow, attempts, "Play upload repeated")
+                attempts[workflow] = run
+            elif inputs["operation"] == "submit":
+                state["versions"].append({
+                    "platform": inputs["platform"],
+                    "version": plan["version"],
+                    "build_id": inputs["uploaded_build_id"],
+                    "state": "WAITING_FOR_REVIEW",
+                })
+            return run
+
+        with (
+            patch.object(RELEASE, "wait_run"),
+            patch.object(RELEASE, "asc_state", return_value=state),
+            patch.object(RELEASE, "api", return_value={"object": {"sha": "b" * 40}}),
+            patch.object(RELEASE, "runs", side_effect=runs),
+            patch.object(RELEASE, "dispatch", side_effect=dispatch),
+            patch.object(RELEASE, "play_state"),
+            patch.object(RELEASE, "record_play_marker"),
+            patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            partial = RELEASE.submit(plan)
+            self.assertEqual(partial, {
+                "apple_platforms_verified": ["IOS"],
+                "apple_platforms_deferred": ["MAC_OS"],
+            })
+            self.assertIn("macOS deferred", output.getvalue())
+            self.assertEqual(events, [
+                ("ios-testflight.yml", None, None),
+                ("macos-testflight.yml", None, None),
+                ("app-store-submit.yml", "validate", "IOS"),
+                ("google-play.yml", None, None),
+                ("app-store-submit.yml", "submit", "IOS"),
+            ])
+            self.assertEqual(review, original)
+            events.clear()
+            # Still blocked: retry reuses iOS/Play and touches neither listing.
+            self.assertEqual(RELEASE.submit(plan), partial)
+            self.assertEqual(events, [])
+            self.assertEqual(review, original)
+            # Deferral never waives either build's eligibility or the iOS
+            # submitted-build identity. Both uploads still pass the normal gate.
+            for build in state["builds"]:
+                build["expired"] = True
+                with self.subTest(platform=build["platform"]):
+                    with self.assertRaises(RELEASE.Error):
+                        RELEASE.submit(plan)
+                build["expired"] = False
+            state["versions"][1]["build_id"] = "different-ios-build"
+            with self.assertRaises(RELEASE.Error):
+                RELEASE.submit(plan)
+            state["versions"][1]["build_id"] = "IOS"
+            self.assertEqual(events, [])
+            # Apple clears the old review externally. Only macOS is newly
+            # submitted; all pinned uploads and iOS/Play publications are reused.
+            review["state"] = "READY_FOR_DISTRIBUTION"
+            complete = RELEASE.submit(plan)
+            self.assertEqual(complete, {
+                "apple_platforms_verified": ["IOS", "MAC_OS"],
+                "apple_platforms_deferred": [],
+            })
+            self.assertEqual(events, [
+                ("app-store-submit.yml", "validate", "MAC_OS"),
+                ("app-store-submit.yml", "submit", "MAC_OS"),
+            ])
+            self.assertEqual(review, dict(original, state="READY_FOR_DISTRIBUTION"))
+            events.clear()
+            self.assertEqual(RELEASE.submit(plan), complete)
+            self.assertEqual(events, [])
+
+    def test_completion_never_claims_deferred_mac_as_verified(self):
+        plan = {
+            "version": "1.9.6",
+            "release_key": "2026-10-30",
+            "source_sha": "a" * 40,
+            "apple_build_number": "1698",
+            "android_version_code": 500,
+            "deferred_apple_platforms": ["MAC_OS"],
+        }
+        partial = {
+            "apple_platforms_verified": ["IOS"],
+            "apple_platforms_deferred": ["MAC_OS"],
+        }
+        with patch.object(RELEASE, "record_marker") as marker:
+            RELEASE.record_completion(plan, partial)
+            self.assertEqual(marker.call_args.args[0], "store-partial-2026-10-30")
+            self.assertEqual(
+                marker.call_args.args[2]["apple_platforms_verified"], ["IOS"]
+            )
+            RELEASE.record_completion(plan, {
+                "apple_platforms_verified": ["IOS", "MAC_OS"],
+                "apple_platforms_deferred": [],
+            })
+            self.assertEqual(marker.call_args.args[0], "store-complete-2026-10-30")
+            marker.reset_mock()
+            for verified, deferred in (
+                (["MAC_OS"], ["IOS"]),
+                (["IOS"], []),
+                (["IOS", "MAC_OS"], ["MAC_OS"]),
+            ):
+                with (
+                    self.subTest(verified=verified, deferred=deferred),
+                    self.assertRaises(RELEASE.Error),
+                ):
+                    RELEASE.record_completion(plan, {
+                        "apple_platforms_verified": verified,
+                        "apple_platforms_deferred": deferred,
+                    })
+            with self.assertRaises(RELEASE.Error):
+                RELEASE.record_completion(dict(plan, deferred_apple_platforms=[]), partial)
+            marker.assert_not_called()
+
     def test_snapshot_publication_and_resume_use_real_git_and_immutable_tags(self):
         # Exercise the production allocator against a local bare remote. No
         # signing keys, provider credentials or real repository writes.
@@ -567,12 +772,35 @@ class WeeklyReleaseTest(unittest.TestCase):
                 RELEASE.command("git", "add", ".")
                 RELEASE.command("git", "commit", "-m", "Initial")
                 RELEASE.command("git", "push", "origin", "master", "master:nightly")
-                state = {"versions": [], "trains": [{"version": "1.8.7"}]}
+                state = {
+                    "versions": [{
+                        "id": "existing-mac-review",
+                        "platform": "MAC_OS",
+                        "version": "1.8.5",
+                        "state": "IN_REVIEW",
+                        "build_id": "old-mac-build",
+                    }],
+                    "trains": [{"version": "1.8.7"}],
+                }
                 play = {"highest_version_code": 400}
                 with patch.object(RELEASE.time, "time", return_value=200):
                     planned = RELEASE.prepare("2026-10-30", state, play)
                     self.assertEqual(planned["version"], "1.8.8")
                     self.assertEqual(planned["android_version_code"], 401)
+                    self.assertEqual(planned["deferred_apple_platforms"], ["MAC_OS"])
+                    for platform in ("IOS", "TV_OS"):
+                        with (
+                            self.subTest(platform=platform),
+                            self.assertRaises(RELEASE.Error),
+                        ):
+                            RELEASE.prepare(
+                                "2026-10-30",
+                                {
+                                    "versions": [{"platform": platform, "state": "IN_REVIEW"}],
+                                    "trains": [],
+                                },
+                                play,
+                            )
                     self.assertEqual(
                         RELEASE.command("git", "status", "--porcelain"), ""
                     )
@@ -596,6 +824,12 @@ class WeeklyReleaseTest(unittest.TestCase):
                     )
                     plan = RELEASE.prepare("2026-10-30", state, play, apply=True)
                 self.assertEqual(plan["apple_build_number"], "2")
+                self.assertEqual(plan["deferred_apple_platforms"], ["MAC_OS"])
+                annotation = json.loads(RELEASE.command(
+                    "git", "for-each-ref", "--format=%(contents)",
+                    "refs/tags/store-2026-10-30",
+                ))
+                self.assertEqual(annotation["deferred_apple_platforms"], ["MAC_OS"])
                 self.assertEqual(
                     RELEASE.command("git", "rev-parse", "v1.8.8^{commit}"),
                     plan["source_sha"],
@@ -620,6 +854,23 @@ class WeeklyReleaseTest(unittest.TestCase):
                 self.assertEqual(
                     RELEASE.command("git", "rev-list", "--count", "HEAD"), "2"
                 )
+                # A partial release has a durable report but stays pending.
+                RELEASE.record_completion(plan, {
+                    "apple_platforms_verified": ["IOS"],
+                    "apple_platforms_deferred": ["MAC_OS"],
+                })
+                partial = json.loads(RELEASE.command(
+                    "git", "for-each-ref", "--format=%(contents)",
+                    "refs/tags/store-partial-2026-10-30",
+                ))
+                self.assertEqual(partial["kind"], "store_partial")
+                self.assertEqual(partial["apple_platforms_verified"], ["IOS"])
+                self.assertEqual(partial["apple_platforms_deferred"], ["MAC_OS"])
+                self.assertEqual(RELEASE.release_key(
+                    None,
+                    RELEASE.command("git", "tag", "--list").splitlines(),
+                    "2026-11-06",
+                ), "2026-10-30")
                 # The next date cannot conceal an unresolved publication.
                 with self.assertRaises(RELEASE.Error):
                     RELEASE.prepare("2026-10-31", state, play, apply=True)
@@ -627,7 +878,10 @@ class WeeklyReleaseTest(unittest.TestCase):
                 RELEASE.command("git", "add", "controller.txt")
                 RELEASE.command("git", "commit", "-m", "Advance controller")
                 RELEASE.command("git", "push", "origin", "master")
-                RELEASE.record_completion(plan)
+                RELEASE.record_completion(plan, {
+                    "apple_platforms_verified": ["IOS", "MAC_OS"],
+                    "apple_platforms_deferred": [],
+                })
                 self.assertEqual(
                     RELEASE.command(
                         "git",
@@ -672,7 +926,10 @@ class WeeklyReleaseTest(unittest.TestCase):
                     )
                     provider.assert_not_called()
                 # Resume is idempotent and refuses another source identity.
-                RELEASE.record_completion(plan)
+                RELEASE.record_completion(plan, {
+                    "apple_platforms_verified": ["IOS", "MAC_OS"],
+                    "apple_platforms_deferred": [],
+                })
                 with self.assertRaises(RELEASE.Error):
                     RELEASE.record_marker(
                         "store-complete-2026-10-30",
