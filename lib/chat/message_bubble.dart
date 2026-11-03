@@ -1470,10 +1470,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         sender: sender,
         maxWidth: _bubbleMaxWidth(),
         borderRadius: _messageBorderRadius(9),
-        // A failed transfer shows no delivery mark.
-        meta: state == GramTransferState.failed
-            ? null
-            : _giftFooterMeta(outgoing),
+        meta: _gramFooterMeta(outgoing, state),
         onTap: () => _openGramTransfer(transfer, state, outgoing, sender),
       );
       return _withCommentsOnly(
@@ -1858,7 +1855,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     );
   }
 
-  /// The delivery mark of the gift card and the transfer envelope: the
+  /// The delivery mark of the gift card: the
   /// floating meta's glyphs, drawn inside the card's footer in secondary ink
   /// in both directions. A read tick stays green, a darker green on a light
   /// footer. Null when the message shows no meta.
@@ -1880,6 +1877,22 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
               readColor: dark
                   ? AppTheme.readMark
                   : AppTheme.readMarkOnLightCard,
+            ),
+    );
+  }
+
+  /// Transfers show only their outgoing delivery ring, using the coordinated
+  /// footer palette. A pending transfer keeps its spinner until it is sent.
+  Widget? _gramFooterMeta(bool outgoing, GramTransferState state) {
+    if (!outgoing || state == GramTransferState.failed) return null;
+    final palette = GramTransferCardColors.of(context);
+    return IgnorePointer(
+      child: state == GramTransferState.sending
+          ? _MessageDeliveryIndicator(pendingColor: palette.footerInk, size: 10)
+          : _MessageDeliverySettled(
+              isRead: widget.bubble.isRead,
+              color: widget.bubble.isRead ? palette.readInk : palette.footerInk,
+              size: 10,
             ),
     );
   }

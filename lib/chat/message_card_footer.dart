@@ -18,6 +18,8 @@ class MessageCardFooter extends StatelessWidget {
     required this.scale,
     this.glyph,
     this.meta,
+    this.backgroundColor,
+    this.labelColor,
   });
 
   /// The footer's height at text scale 1; it grows with [scale] up to [maxScale].
@@ -36,16 +38,21 @@ class MessageCardFooter extends StatelessWidget {
   /// The message's delivery tick or edited mark; null when it shows none.
   final Widget? meta;
 
+  /// Optional card-specific palette; gifts retain the shared surface and ink.
+  final Color? backgroundColor;
+  final Color? labelColor;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final glyph = this.glyph;
+    final ink = labelColor ?? c.textSecondary;
     final footerScale = scale < maxScale ? scale : maxScale;
     final textScaler = MediaQuery.textScalerOf(
       context,
     ).clamp(maxScaleFactor: maxScale);
     return ColoredBox(
-      color: c.card,
+      color: backgroundColor ?? c.card,
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: height * footerScale),
         child: Padding(
@@ -59,7 +66,7 @@ class MessageCardFooter extends StatelessWidget {
                 AppIcon(
                   glyph,
                   size: textScaler.scale(AppIconSize.sm),
-                  color: c.textSecondary,
+                  color: ink,
                 ),
                 const SizedBox(width: AppSpacing.xs),
               ],
@@ -69,7 +76,7 @@ class MessageCardFooter extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textScaler: textScaler,
-                  style: AppTextStyle.caption(c.textSecondary),
+                  style: AppTextStyle.caption(ink),
                 ),
               ),
               ?meta,

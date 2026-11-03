@@ -1,14 +1,11 @@
 //
 //  message_gram_envelope.dart
 //
-//  A Gram transfer in the transcript: a portrait red envelope in the sender's
-//  spot. A lighter flap with a curved edge carries a gold seal holding the
-//  sender's avatar; the comment sits in gold as the blessing, one status line
-//  closes the body, and the shared footer strip names it a Gram transfer.
-//  The amount is never on the envelope: the detail sheet shows it.
+//  A compact Gram transfer card in the transcript. The amount leads, with the
+//  actual comment and status beside a transfer symbol. The detail sheet keeps
+//  its shared envelope colours and avatar seal below.
 //
 
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -16,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
+import '../l10n/gram_amount.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -217,7 +215,62 @@ class GramEnvelopeSeal extends StatelessWidget {
   }
 }
 
-/// The in-chat envelope. It draws its own surface instead of the bubble's
+/// The chat card's theme palette. The envelope detail sheet keeps its own
+/// colours; these tokens also let the bubble colour the footer delivery mark.
+class GramTransferCardColors {
+  GramTransferCardColors.of(BuildContext context) {
+    final c = context.colors;
+    body = _whiteContrastSurface(AppTheme.brand);
+    final hsl = HSLColor.fromColor(body);
+    mutedBody = _whiteContrastSurface(
+      hsl.withSaturation(hsl.saturation * 0.35).toColor(),
+    );
+    footer = Color.alphaBlend(AppTheme.brand.withValues(alpha: 0.12), c.card);
+    footerInk = contrastRatio(c.textSecondary, footer) >= 4.5
+        ? c.textSecondary
+        : c.textPrimary;
+    final read = Theme.of(context).brightness == Brightness.dark
+        ? AppTheme.readMark
+        : AppTheme.readMarkOnLightCard;
+    var adjustedRead = read;
+    for (
+      var step = 1;
+      contrastRatio(adjustedRead, footer) < 3 && step <= 10;
+      step++
+    ) {
+      adjustedRead = Color.lerp(read, c.textPrimary, step / 10)!;
+    }
+    readInk = adjustedRead;
+  }
+
+  late final Color body;
+  late final Color mutedBody;
+  late final Color footer;
+  late final Color footerInk;
+  late final Color readInk;
+
+  /// Preserve the chosen hue/saturation and the exact brand where white is
+  /// already readable. Otherwise find the lightest accessible shade.
+  static Color _whiteContrastSurface(Color color) {
+    final opaque = color.withValues(alpha: 1);
+    if (contrastRatio(Colors.white, opaque) >= 4.5) return opaque;
+    final hsl = HSLColor.fromColor(opaque);
+    var lower = 0.0;
+    var upper = hsl.lightness;
+    for (var step = 0; step < 14; step++) {
+      final middle = (lower + upper) / 2;
+      // A little luminance headroom keeps rounded channels above 4.5:1.
+      if (hsl.withLightness(middle).toColor().computeLuminance() <= 0.18) {
+        lower = middle;
+      } else {
+        upper = middle;
+      }
+    }
+    return hsl.withLightness(lower).toColor();
+  }
+}
+
+/// The in-chat transfer card. It draws its own surface instead of the bubble's
 /// and is the same in Standard and Simple mode.
 ///
 /// The whole card is one button: [onTap] opens the detail sheet, except for
@@ -243,8 +296,7 @@ class MessageGramEnvelope extends StatefulWidget {
   /// width only when this is.
   final double maxWidth;
 
-  /// The seal's person when the bubble already knows them; otherwise it is
-  /// looked up from [MessageGramTransfer.senderUserId].
+  /// The sender passed through by existing callers for detail-sheet routing.
   final GramTransferParty? sender;
   final BorderRadius? borderRadius;
 
@@ -260,54 +312,26 @@ class MessageGramEnvelope extends StatefulWidget {
 }
 
 class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
-  static const double _width = 180;
-  static const double _maxScaledWidth = 240;
-  static const double _bodyMinHeight = 184;
-  static const double _flapDepth = 30;
-  static const double _flapCurve = 16;
-  static const double _seal = 40;
-  static const double _maxSealScale = 1.25;
-  static const double _sealGap = 12;
-  static const double _sideInset = 14;
-  static const double _bottomInset = 12;
-  static const double _statusGap = 12;
-  static const double _blessingLineHeight = 21;
+  static const double _width = 240;
+  static const double _maxScaledWidth = 300;
+  static const double _bodyMinHeight = 78;
+  static const double _amountSize = 22;
+  static const double _amountLineHeight = 27;
+  static const double _amountMaxScale = 2;
+  static const double _symbolSize = 40;
+  static const double _symbolMaxScale = 1.25;
+  static const double _symbolGap = 10;
+  static const double _sideInset = 12;
+  static const double _verticalInset = 14;
+  static const double _commentGap = 4;
+  static const double _commentLineHeight = 19;
+  static const int _commentMaxLines = 3;
+  static const double _statusGap = 6;
   static const double _statusLineHeight = 17;
-  static const int _blessingMaxLines = 3;
-  static const double _lockGlyph = 15;
-  static const double _failedGlyph = 14;
+  static const double _lockGlyph = 13;
   static const double _pressedAlpha = 0.10;
 
   bool _pressed = false;
-  GramTransferParty? _fetched;
-  int? _fetchedFor;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolveSender();
-  }
-
-  @override
-  void didUpdateWidget(MessageGramEnvelope oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _resolveSender();
-  }
-
-  /// Looks the sender up when the bubble could not name them.
-  void _resolveSender() {
-    final userId = widget.transfer.senderUserId;
-    if (widget.sender != null || userId == 0 || _fetchedFor == userId) return;
-    _fetchedFor = userId;
-    _fetched = GramTransferParty.cached(userId);
-    if (_fetched != null) return;
-    unawaited(
-      GramTransferParty.fetch(userId).then((party) {
-        if (!mounted || _fetchedFor != userId || party == null) return;
-        setState(() => _fetched = party);
-      }),
-    );
-  }
 
   void _setPressed(bool pressed) {
     if (_pressed != pressed) setState(() => _pressed = pressed);
@@ -315,29 +339,27 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = GramTransferCardColors.of(context);
     final transfer = widget.transfer;
     final state = widget.state;
     final scaler = MediaQuery.textScalerOf(context);
-    final scale = math.max(
-      1.0,
-      scaler.scale(AppTextSize.bodyLarge) / AppTextSize.bodyLarge,
-    );
+    final scale = math.max(1.0, scaler.scale(_amountSize) / _amountSize);
+    final amountScaler = scaler.clamp(maxScaleFactor: _amountMaxScale);
     final width = math.min(
       math.min(_width * scale, _maxScaledWidth),
       widget.maxWidth,
     );
-    final sealScale = math.min(scale, _maxSealScale);
-    final flapDepth = _flapDepth * sealScale;
-    final flapCurve = _flapCurve * sealScale;
-    final sealSize = _seal * sealScale;
-    final sealCentre = flapDepth + flapCurve;
-    final radius =
-        widget.borderRadius ?? BorderRadius.circular(AppRadius.control);
+    final symbolScale = math.min(scale, _symbolMaxScale);
+    final symbolSize = _symbolSize * symbolScale;
+    final radius = widget.borderRadius ?? BorderRadius.circular(9);
     final retries = state == GramTransferState.failed && widget.onRetry != null;
     final onTap = retries ? widget.onRetry : widget.onTap;
-
     final footerWord = AppStringKeys.transferFooterGram.l10n(context);
-    final blessing = gramTransferBlessing(context, transfer);
+    final amount = transfer.formattedAmount();
+    final number = GramAmount.formatNumber(transfer.amount.abs());
+    final comment = transfer.isCommentEncrypted
+        ? AppStringKeys.transferEncryptedComment.l10n(context)
+        : transfer.comment;
     final status = switch (state) {
       GramTransferState.received => AppStringKeys.transferStatusReceived,
       GramTransferState.sent => AppStringKeys.transferStatusSent,
@@ -348,146 +370,148 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
             : AppStringKeys.transferStatusFailed,
     }.l10n(context);
 
-    final blessingStyle = AppTextStyle.bodyLarge(
-      AppTheme.envelopeGold,
-      weight: AppTextWeight.medium,
-    ).copyWith(height: _blessingLineHeight / AppTextSize.bodyLarge);
-    final Widget blessingText;
-    if (transfer.isCommentEncrypted) {
-      blessingText = Text.rich(
-        TextSpan(
-          children: [
-            const WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
-                child: AppIcon(
-                  HeroAppIcons.lock,
-                  size: _lockGlyph,
-                  color: AppTheme.envelopeGold,
+    Widget card(Color bodyColor, Color ink) {
+      final amountStyle = AppTextStyle.display(ink).copyWith(
+        fontSize: _amountSize,
+        height: _amountLineHeight / _amountSize,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+      final commentStyle = AppTextStyle.callout(
+        ink,
+      ).copyWith(height: _commentLineHeight / AppTextSize.callout);
+      final Widget commentText;
+      if (transfer.isCommentEncrypted) {
+        commentText = Text.rich(
+          TextSpan(
+            children: [
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 4),
+                  child: AppIcon(
+                    HeroAppIcons.lock,
+                    // Text.rich scales inline widgets with the comment.
+                    size: _lockGlyph,
+                    color: ink,
+                  ),
                 ),
               ),
-            ),
-            TextSpan(text: blessing),
-          ],
-        ),
-        style: blessingStyle,
-        textAlign: TextAlign.center,
-        maxLines: _blessingMaxLines,
-        overflow: TextOverflow.ellipsis,
-      );
-    } else if (transfer.comment.isEmpty) {
-      blessingText = Text(
-        blessing,
-        style: blessingStyle,
-        textAlign: TextAlign.center,
-        maxLines: _blessingMaxLines,
-        overflow: TextOverflow.ellipsis,
-      );
-    } else {
-      // The card is one button, so a link in the comment opens nothing here;
-      // the sheet's blessing is the one to tap or select.
-      blessingText = IgnorePointer(
-        child: TelegramRichText(
-          text: transfer.comment,
-          style: blessingStyle,
-          linkColor: AppTheme.envelopeGold,
-          underlineLinks: true,
-          textAlign: TextAlign.center,
-          maxLines: _blessingMaxLines,
+              TextSpan(text: comment),
+            ],
+          ),
+          style: commentStyle,
+          maxLines: _commentMaxLines,
           overflow: TextOverflow.ellipsis,
+        );
+      } else {
+        // The whole card opens the detail sheet, including links in a comment.
+        commentText = IgnorePointer(
+          child: TelegramRichText(
+            text: comment,
+            style: commentStyle,
+            linkColor: ink,
+            underlineLinks: true,
+            maxLines: _commentMaxLines,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }
+
+      final symbol = ExcludeSemantics(
+        child: Container(
+          width: symbolSize,
+          height: symbolSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: ink, width: 1.5),
+          ),
+          child: Center(
+            child: AppIcon(
+              state == GramTransferState.failed
+                  ? HeroAppIcons.exclamationCircle
+                  : HeroAppIcons.arrowsRightLeft,
+              size: 22 * symbolScale,
+              color: ink,
+            ),
+          ),
         ),
       );
-    }
-
-    final failed = state == GramTransferState.failed;
-    final statusStyle = AppTextStyle.footnote(
-      failed ? Colors.white : AppTheme.envelopeInk2,
-    ).copyWith(height: _statusLineHeight / AppTextSize.footnote);
-    final statusText = Text.rich(
-      TextSpan(
-        children: [
-          if (failed)
-            const WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
-                child: AppIcon(
-                  HeroAppIcons.exclamationCircle,
-                  size: _failedGlyph,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          TextSpan(text: status),
-        ],
-      ),
-      style: statusStyle,
-      textAlign: TextAlign.center,
-    );
-
-    final party = widget.sender ?? _fetched;
-    Widget card(GramEnvelopeColors colors) {
       final body = DecoratedBox(
         position: DecorationPosition.foreground,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: _pressed ? _pressedAlpha : 0),
         ),
         child: ColoredBox(
-          color: colors.body,
-          child: CustomPaint(
-            painter: _EnvelopeFlapPainter(
-              color: colors.flap,
-              depth: flapDepth,
-              curve: flapCurve,
-            ),
-            child: Stack(
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight:
-                        _bodyMinHeight *
-                        math.min(scale, _maxScaledWidth / _width),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      _sideInset,
-                      sealCentre + sealSize / 2 + _sealGap,
-                      _sideInset,
-                      _bottomInset,
-                    ),
-                    // With min size under the body's minimum height, the
-                    // spare height goes evenly above and below the blessing:
-                    // it sits centred between the seal and the status line.
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox.shrink(),
-                        blessingText,
-                        Padding(
-                          padding: const EdgeInsets.only(top: _statusGap),
-                          child: statusText,
-                        ),
+          color: bodyColor,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _bodyMinHeight),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: _sideInset,
+                vertical: _verticalInset,
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Keep the number whole beside the symbol whenever it fits.
+                  // A long amount gets the full width before digit groups wrap.
+                  final measurementStyle =
+                      AppTextStyle.forSystemBoldTextMeasurement(
+                        DefaultTextStyle.of(context).style.merge(amountStyle),
+                        boldText: MediaQuery.boldTextOf(context),
+                      );
+                  final painter = TextPainter(
+                    text: TextSpan(text: number, style: measurementStyle),
+                    textScaler: amountScaler,
+                    textDirection: Directionality.of(context),
+                  )..layout();
+                  final stacked =
+                      painter.width >
+                      constraints.maxWidth - symbolSize - _symbolGap;
+                  painter.dispose();
+                  final content = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _GramCardAmount(
+                        amount: amount,
+                        number: number,
+                        style: amountStyle,
+                        scaler: amountScaler,
+                      ),
+                      if (comment.isNotEmpty) ...[
+                        const SizedBox(height: _commentGap),
+                        commentText,
                       ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: sealCentre - sealSize / 2,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: GramEnvelopeSeal(
-                      size: sealSize,
-                      colors: colors,
-                      hasUser: transfer.hasSender,
-                      party: party,
-                    ),
-                  ),
-                ),
-              ],
+                      const SizedBox(height: _statusGap),
+                      Text(
+                        status,
+                        style: AppTextStyle.footnote(ink).copyWith(
+                          height: _statusLineHeight / AppTextSize.footnote,
+                        ),
+                      ),
+                    ],
+                  );
+                  if (stacked) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        symbol,
+                        const SizedBox(height: _symbolGap),
+                        content,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      symbol,
+                      const SizedBox(width: _symbolGap),
+                      Expanded(child: content),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -505,6 +529,8 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
                 label: footerWord,
                 scale: scale,
                 meta: widget.meta,
+                backgroundColor: palette.footer,
+                labelColor: palette.footerInk,
               ),
             ],
           ),
@@ -515,7 +541,12 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
     return Semantics(
       container: true,
       button: true,
-      label: [footerWord, blessing, status].join(', '),
+      label: [
+        footerWord,
+        amount,
+        if (comment.isNotEmpty) comment,
+        status,
+      ].join(', '),
       hint: retries
           ? AppStringKeys.transferStatusFailedRetry.l10n(context)
           : AppStringKeys.transferCardHint.l10n(context),
@@ -528,44 +559,77 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
         onTapDown: onTap == null ? null : (_) => _setPressed(true),
         onTapUp: onTap == null ? null : (_) => _setPressed(false),
         onTapCancel: onTap == null ? null : () => _setPressed(false),
-        child: GramEnvelopeColorsBuilder(
-          muted: state.isMuted,
-          builder: (context, colors) => card(colors),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: state.isMuted ? 1 : 0),
+          duration: AppMotion.duration(context, AppMotion.responsive),
+          curve: AppMotion.standard,
+          builder: (context, muted, _) {
+            return card(
+              Color.lerp(palette.body, palette.mutedBody, muted)!,
+              Colors.white,
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// The flap across the envelope's top: straight down [depth] at both sides,
-/// then a curve whose lowest point, [depth] + [curve], is where the seal
-/// sits.
-class _EnvelopeFlapPainter extends CustomPainter {
-  const _EnvelopeFlapPainter({
-    required this.color,
-    required this.depth,
-    required this.curve,
+/// The formatter is shared with the sheet. Number and unit are separate runs,
+/// so GRAM always stays whole even at the largest supported amount scale.
+class _GramCardAmount extends StatelessWidget {
+  const _GramCardAmount({
+    required this.amount,
+    required this.number,
+    required this.style,
+    required this.scaler,
   });
 
-  final Color color;
-  final double depth;
-  final double curve;
+  final String amount;
+  final String number;
+  final TextStyle style;
+  final TextScaler scaler;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final width = size.width;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(width, 0)
-      ..lineTo(width, depth)
-      ..quadraticBezierTo(width / 2, depth + curve * 2, 0, depth)
-      ..close();
-    canvas.drawPath(path, Paint()..color = color);
+  Widget build(BuildContext context) {
+    final numberStart = amount.indexOf(number);
+    final prefix = amount.substring(0, numberStart).trim();
+    final suffix = amount.substring(numberStart + number.length).trim();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(
+            text: number,
+            style: AppTextStyle.forSystemBoldTextMeasurement(
+              DefaultTextStyle.of(context).style.merge(style),
+              boldText: MediaQuery.boldTextOf(context),
+            ),
+          ),
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final wrapGroups = painter.width > constraints.maxWidth;
+        painter.dispose();
+        // Only expose breaks between locale-formatted digit groups after the
+        // number has been given the body's full width. Never split GRAM.
+        final displayedNumber = wrapGroups
+            ? number.replaceAllMapped(
+                RegExp(r'([^0-9]+)(?=[0-9])'),
+                (match) => '${match[0]}\u200b',
+              )
+            : number;
+        return Wrap(
+          spacing: scaler.scale(5),
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (prefix.isNotEmpty)
+              Text(prefix, style: style, textScaler: scaler),
+            Text(displayedNumber, style: style, textScaler: scaler),
+            if (suffix.isNotEmpty)
+              Text(suffix, style: style, textScaler: scaler),
+          ],
+        );
+      },
+    );
   }
-
-  @override
-  bool shouldRepaint(_EnvelopeFlapPainter oldDelegate) =>
-      oldDelegate.color != color ||
-      oldDelegate.depth != depth ||
-      oldDelegate.curve != curve;
 }
