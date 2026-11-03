@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'download_storage.dart';
 
 /// An independent, complete copy. Neither its payload nor its metadata lives
 /// in TDLib's cache. Paths are reconstructed from validated local filenames.
@@ -50,10 +50,10 @@ class RetainedDownloadStore {
   }
 
   static Future<RetainedDownloadStore> _forOwner(int userId) async {
-    final support = await getApplicationSupportDirectory();
+    final root = await DownloadStorage.retainedRoot();
     final owner = sha256.convert(utf8.encode('telegram-user:$userId'));
     return RetainedDownloadStore(
-      Directory('${support.path}/retained-downloads-v1/$owner'),
+      Directory('$root/retained-downloads-v1/$owner'),
     );
   }
 

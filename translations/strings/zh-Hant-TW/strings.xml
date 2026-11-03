@@ -3917,4 +3917,15 @@
     <plurals name="giftDurationDays">
         <item quantity="other">{count} 天</item>
     </plurals>
+    <string name="storageDownloadLocation">下載位置</string>
+    <string name="storageDownloadCacheLocation">下載快取</string>
+    <string name="storageDownloadSaveFolder">檔案儲存資料夾</string>
+    <string name="storageDownloadShared">共用儲存空間</string>
+    <string name="storageDownloadPrivate">應用程式私人儲存空間</string>
+    <string name="storageDownloadRestart">變更將於下次啟動 Mithka 時生效，現有下載會自動移轉。</string>
+    <string name="storageDownloadSaveHint">在下載頁面使用「另存新檔」將檔案複製到這裡。解除安裝 Mithka 後，儲存的副本仍會保留。</string>
+    <string name="storageDownloadMigrationFailed">無法移轉下載檔案，仍在使用原位置。Mithka 將於下次啟動時重試。</string>
+    <string name="storageDownloadLocationFailed">無法存取下載位置</string>
+    <string name="storageDownloadFolderNotSelected">選擇資料夾</string>
+    <string name="storageDownloadCurrent">目前位置：{value1}</string>
 </resources>

@@ -54,6 +54,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var callMedia: CallMediaPlugin? = null
     private var telegramPasskeys: TelegramPasskeyPlugin? = null
     private var accountBackup: AccountBackupPlugin? = null
+    private var downloadStorage: DownloadStoragePlugin? = null
     private var mithkaPro: MithkaProPlugin? = null
     private var nowPlaying: NowPlayingPlugin? = null
     private var mediaDropChannel: MethodChannel? = null
@@ -138,6 +139,10 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         webProxyBridge = WebProxyBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         registerPlugins(flutterEngine)
+        downloadStorage = DownloadStoragePlugin(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mithka/fullscreen_system_ui")
             .setMethodCallHandler { call, result ->
                 if (call.method == "setFullscreen") {
@@ -1322,6 +1327,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        downloadStorage?.dispose()
+        downloadStorage = null
         webProxyBridge?.dispose()
         webProxyBridge = null
         translators.values.forEach { it.close() }

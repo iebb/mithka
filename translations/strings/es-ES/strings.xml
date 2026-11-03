@@ -3933,4 +3933,15 @@
         <item quantity="one">{count} día</item>
         <item quantity="other">{count} días</item>
     </plurals>
+    <string name="storageDownloadLocation">Ubicación de las descargas</string>
+    <string name="storageDownloadCacheLocation">Caché de descargas</string>
+    <string name="storageDownloadSaveFolder">Carpeta de archivos guardados</string>
+    <string name="storageDownloadShared">Almacenamiento compartido</string>
+    <string name="storageDownloadPrivate">Almacenamiento privado de la aplicación</string>
+    <string name="storageDownloadRestart">Los cambios se aplicarán al volver a iniciar Mithka. Las descargas existentes se trasladarán automáticamente.</string>
+    <string name="storageDownloadSaveHint">Usa Guardar como en Descargas para copiar un archivo aquí. Las copias se conservan después de desinstalar Mithka.</string>
+    <string name="storageDownloadMigrationFailed">No se pudieron mover las descargas. Se sigue usando la ubicación original; Mithka lo volverá a intentar al iniciarse.</string>
+    <string name="storageDownloadLocationFailed">No se pudo acceder a la ubicación de las descargas</string>
+    <string name="storageDownloadFolderNotSelected">Elegir una carpeta</string>
+    <string name="storageDownloadCurrent">Ubicación actual: {value1}</string>
 </resources>

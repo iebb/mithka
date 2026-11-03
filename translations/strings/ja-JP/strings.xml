@@ -3917,4 +3917,15 @@
     <plurals name="giftDurationDays">
         <item quantity="other">{count}日間</item>
     </plurals>
+    <string name="storageDownloadLocation">ダウンロード先</string>
+    <string name="storageDownloadCacheLocation">ダウンロードキャッシュ</string>
+    <string name="storageDownloadSaveFolder">ファイルの保存先フォルダ</string>
+    <string name="storageDownloadShared">共有ストレージ</string>
+    <string name="storageDownloadPrivate">アプリ専用の内部ストレージ</string>
+    <string name="storageDownloadRestart">変更は Mithka の次回起動時に反映されます。既存のダウンロードは自動で移行されます。</string>
+    <string name="storageDownloadSaveHint">ダウンロード画面の「名前を付けて保存」でファイルをここにコピーできます。保存したコピーは Mithka のアンインストール後も残ります。</string>
+    <string name="storageDownloadMigrationFailed">ダウンロードを移行できませんでした。元の保存先を使用し、次回起動時に再試行します。</string>
+    <string name="storageDownloadLocationFailed">ダウンロード先にアクセスできませんでした</string>
+    <string name="storageDownloadFolderNotSelected">フォルダを選択</string>
+    <string name="storageDownloadCurrent">現在の保存先：{value1}</string>
 </resources>

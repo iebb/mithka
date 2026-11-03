@@ -3933,4 +3933,15 @@
         <item quantity="one">{count} day</item>
         <item quantity="other">{count} days</item>
     </plurals>
+    <string name="storageDownloadLocation">Download location</string>
+    <string name="storageDownloadCacheLocation">Download cache</string>
+    <string name="storageDownloadSaveFolder">Saved files folder</string>
+    <string name="storageDownloadShared">Shared storage</string>
+    <string name="storageDownloadPrivate">Private app storage</string>
+    <string name="storageDownloadRestart">Changes take effect next time Mithka starts. Existing downloads move automatically.</string>
+    <string name="storageDownloadSaveHint">Use Save As in Downloads to copy a file here. Saved copies remain after uninstalling Mithka.</string>
+    <string name="storageDownloadMigrationFailed">Downloads could not be moved. The original location is still in use; Mithka will retry on the next launch.</string>
+    <string name="storageDownloadLocationFailed">Could not access the download location</string>
+    <string name="storageDownloadFolderNotSelected">Choose a folder</string>
+    <string name="storageDownloadCurrent">Current location: {value1}</string>
 </resources>
