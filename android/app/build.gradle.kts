@@ -121,6 +121,7 @@ flutter {
 }
 
 dependencies {
+    implementation("androidx.webkit:webkit:1.14.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // FlutterFragmentActivity and the local_auth launch theme require AppCompat.
     implementation("androidx.appcompat:appcompat:1.8.0")

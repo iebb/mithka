@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,7 @@ class ProxyConfig {
     this.username = '',
     this.password = '',
     this.secret = '',
+    this.path = '',
   });
 
   final bool configured;
@@ -27,11 +30,13 @@ class ProxyConfig {
   final String username;
   final String password;
   final String secret;
+  final String path;
 
   static const _enabledKey = 'mithka.proxy.enabled';
   static const _typeKey = 'mithka.proxy.type';
   static const _serverKey = 'mithka.proxy.server';
   static const _portKey = 'mithka.proxy.port';
+  static const _pathKey = 'mithka.proxy.path';
   static const _usernameKey = 'mithka.proxy.username';
   static const _passwordKey = 'mithka.proxy.password';
   static const _secretKey = 'mithka.proxy.secret';
@@ -46,11 +51,43 @@ class ProxyConfig {
   @visibleForTesting
   static ProxySecureWrite? debugSecureWrite;
 
-  bool get isUsable => enabled && server.trim().isNotEmpty && port > 0;
+  bool get isUsable =>
+      enabled &&
+      server.trim().isNotEmpty &&
+      port > 0 &&
+      port <= 65535 &&
+      (type != 'web' || isValidWebProxy(server, port, path, secret));
+
+  static bool isValidWebProxy(
+    String server,
+    int port,
+    String path,
+    String secret,
+  ) {
+    final host = server.toLowerCase();
+    final labels = host.split('.');
+    return port == 443 &&
+        host.length <= 253 &&
+        labels.length >= 2 &&
+        labels.every(
+          (label) =>
+              label.isNotEmpty &&
+              label.length <= 63 &&
+              RegExp(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$').hasMatch(label),
+        ) &&
+        !RegExp(r'^(?:[0-9]+|0x[0-9a-f]*)$').hasMatch(labels.last) &&
+        path.length <= 128 &&
+        (path.isEmpty ||
+            RegExp(
+              r'^[A-Za-z0-9][A-Za-z0-9_-]*(?:/[A-Za-z0-9][A-Za-z0-9_-]*)*$',
+            ).hasMatch(path)) &&
+        RegExp(r'^(?:dd)?[0-9a-f]{32}$').hasMatch(secret.toLowerCase());
+  }
 
   String get label => switch (type) {
     'http' => 'HTTP',
     'mtproto' => 'MTProto',
+    'web' => 'Web',
     _ => 'SOCKS5',
   };
 
@@ -62,6 +99,7 @@ class ProxyConfig {
       'http_only': false,
     },
     'mtproto' => {'@type': 'proxyTypeMtproto', 'secret': secret},
+    'web' => {'@type': 'proxyTypeWeb', 'path': path, 'secret': secret},
     _ => {
       '@type': 'proxyTypeSocks5',
       'username': username,
@@ -86,12 +124,18 @@ class ProxyConfig {
     return proxy.obj('proxy') ?? proxy;
   }
 
-  /// Whether this client can run the TDLib proxy. TDLib also has
-  /// proxyTypeWeb, which needs a relay web view hosted by the app. Mithka
-  /// has no such web view, so a web proxy must never be read as SOCKS5.
+  static bool get supportsWebProxy =>
+      !kIsWeb &&
+      const [
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.macOS,
+      ].contains(defaultTargetPlatform);
+
   static bool isSupportedTdProxy(Map<String, dynamic> proxy) =>
       switch (tdProxyDetails(proxy).obj('type')?.type) {
         'proxyTypeSocks5' || 'proxyTypeHttp' || 'proxyTypeMtproto' => true,
+        'proxyTypeWeb' => supportsWebProxy,
         _ => false,
       };
 
@@ -108,6 +152,10 @@ class ProxyConfig {
       'mtproto' =>
         tdType?.type == 'proxyTypeMtproto' &&
             (tdType?.str('secret') ?? '') == secret,
+      'web' =>
+        tdType?.type == 'proxyTypeWeb' &&
+            (tdType?.str('secret') ?? '') == secret &&
+            (tdType?.str('path') ?? '') == path,
       _ =>
         tdType?.type == 'proxyTypeSocks5' &&
             (tdType?.str('username') ?? '') == username &&
@@ -121,6 +169,7 @@ class ProxyConfig {
     final kind = switch (type?.type) {
       'proxyTypeHttp' => 'http',
       'proxyTypeMtproto' => 'mtproto',
+      'proxyTypeWeb' => 'web',
       _ => 'socks5',
     };
     return ProxyConfig(
@@ -132,6 +181,7 @@ class ProxyConfig {
       username: type?.str('username') ?? '',
       password: type?.str('password') ?? '',
       secret: type?.str('secret') ?? '',
+      path: type?.str('path') ?? '',
     );
   }
 
@@ -150,6 +200,7 @@ class ProxyConfig {
       kind = switch (tgTarget) {
         'socks' => 'socks5',
         'proxy' => 'mtproto',
+        'webproxy' => 'web',
         _ => null,
       };
     } else {
@@ -168,12 +219,37 @@ class ProxyConfig {
       kind = switch (first) {
         'socks' => 'socks5',
         'proxy' => 'mtproto',
+        'webproxy' => 'web',
         _ => null,
       };
     }
     if (kind == null) return null;
 
     final params = uri.queryParameters;
+    if (kind == 'web') {
+      var address = (params['server'] ?? '').trim();
+      if (address.toLowerCase().startsWith('https://')) {
+        address = address.substring(8);
+      }
+      final slash = address.indexOf('/');
+      var host = (slash < 0 ? address : address.substring(0, slash))
+          .toLowerCase();
+      if (host.endsWith('.')) host = host.substring(0, host.length - 1);
+      final path = slash < 0 ? '' : address.substring(slash + 1);
+      final secret = _webLinkSecret(params['secret'] ?? '', path.isNotEmpty);
+      if (secret == null || !isValidWebProxy(host, 443, path, secret)) {
+        return null;
+      }
+      return ProxyConfig(
+        configured: true,
+        enabled: true,
+        type: 'web',
+        server: host,
+        port: 443,
+        path: path,
+        secret: secret,
+      );
+    }
     final server = (params['server'] ?? '').trim();
     final port = int.tryParse((params['port'] ?? '').trim()) ?? 0;
     if (server.isEmpty || port <= 0 || port > 65535) return null;
@@ -193,6 +269,28 @@ class ProxyConfig {
       password: password,
       secret: secret,
     );
+  }
+
+  static String? _webLinkSecret(String value, bool hasPath) {
+    final hexSecret = value.toLowerCase();
+    final valid = RegExp(r'^(?:dd)?[0-9a-f]{32}$');
+    String hex(List<int> bytes) =>
+        bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    List<int>? bytes;
+    try {
+      bytes = base64Url.decode(base64Url.normalize(value));
+      final canonical = base64Url.encode(bytes).replaceAll('=', '');
+      if (canonical == value && bytes.length >= 17 && bytes.first == 0x70) {
+        final marked = hex(bytes.sublist(1));
+        if (valid.hasMatch(marked)) return marked;
+      }
+    } on FormatException {
+      // Hex secrets are also accepted when there is no relay path.
+    }
+    if (hasPath) return null;
+    if (valid.hasMatch(hexSecret)) return hexSecret;
+    final decoded = bytes == null ? '' : hex(bytes);
+    return valid.hasMatch(decoded) ? decoded : null;
   }
 
   static Future<ProxyConfig> load({
@@ -226,6 +324,7 @@ class ProxyConfig {
       username: prefs.getString(_usernameKey) ?? '',
       password: password,
       secret: secret,
+      path: prefs.getString(_pathKey) ?? '',
     );
   }
 
@@ -268,6 +367,7 @@ class ProxyConfig {
     await prefs.setString(_typeKey, config.type);
     await prefs.setString(_serverKey, config.server.trim());
     await prefs.setInt(_portKey, config.port);
+    await prefs.setString(_pathKey, config.path);
     await prefs.setString(_usernameKey, config.username);
     await prefs.remove(_passwordKey);
     await prefs.remove(_secretKey);

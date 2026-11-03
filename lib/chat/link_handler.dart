@@ -776,7 +776,9 @@ Future<void> _addProxyFromLink(BuildContext context, ProxyConfig config) async {
   final ok = await showAppConfirmDialog(
     context,
     title: AppStrings.t(AppStringKeys.proxyAddProxy),
-    message: '${config.label} ${config.server}:${config.port}',
+    message:
+        '${config.label} ${config.server}:${config.port}'
+        '${config.path.isEmpty ? '' : '/${config.path}'}',
     confirmText: AppStrings.t(AppStringKeys.proxyAddProxy),
   );
   if (!ok || !context.mounted) return;

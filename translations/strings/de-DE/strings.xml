@@ -2783,6 +2783,7 @@
     <string name="proxyHostOrIp">Host oder IP</string>
     <string name="proxyOptional">Optional</string>
     <string name="proxyPassword">Passwort</string>
+    <string name="proxyPath">Pfad</string>
     <string name="proxyPort">Port</string>
     <string name="proxySecret">Geheimnis</string>
     <string name="proxyServer">Server</string>

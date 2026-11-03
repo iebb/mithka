@@ -3,6 +3,7 @@ import FlutterMacOS
 import multi_window_manager
 
 class MainFlutterWindow: NSWindow {
+  private var webProxyBridge: WebProxyBridge?
   /// Native RunnerTests are application-hosted so they can exercise the real
   /// AppDelegate and primary window. Starting Flutter here would also start
   /// TDLib, whose native worker threads outlive XCTest's abrupt host teardown
@@ -44,6 +45,7 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    webProxyBridge = WebProxyBridge(messenger: flutterViewController.engine.binaryMessenger)
     MacOSAppIconPlugin.register(
       with: flutterViewController.registrar(forPlugin: "MacOSAppIconPlugin")
     )
