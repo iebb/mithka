@@ -20,8 +20,12 @@ class MessageCardFooter extends StatelessWidget {
     this.meta,
   });
 
-  /// The footer's height at text scale 1; it grows with [scale].
+  /// The footer's height at text scale 1; it grows with [scale] up to [maxScale].
   static const double height = 24;
+
+  /// Keeps the footer label and glyph fitting inside a width-capped card at the
+  /// largest accessibility text sizes.
+  static const double maxScale = 1.6;
 
   final String label;
 
@@ -36,10 +40,14 @@ class MessageCardFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final glyph = this.glyph;
+    final footerScale = scale < maxScale ? scale : maxScale;
+    final textScaler = MediaQuery.textScalerOf(
+      context,
+    ).clamp(maxScaleFactor: maxScale);
     return ColoredBox(
       color: c.card,
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: height * scale),
+        constraints: BoxConstraints(minHeight: height * footerScale),
         child: Padding(
           padding: const EdgeInsets.only(
             left: AppSpacing.lg,
@@ -50,7 +58,7 @@ class MessageCardFooter extends StatelessWidget {
               if (glyph != null) ...[
                 AppIcon(
                   glyph,
-                  size: MediaQuery.textScalerOf(context).scale(AppIconSize.sm),
+                  size: textScaler.scale(AppIconSize.sm),
                   color: c.textSecondary,
                 ),
                 const SizedBox(width: AppSpacing.xs),
@@ -60,6 +68,7 @@ class MessageCardFooter extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textScaler: textScaler,
                   style: AppTextStyle.caption(c.textSecondary),
                 ),
               ),

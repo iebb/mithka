@@ -445,7 +445,9 @@ class _MessageGramEnvelopeState extends State<MessageGramEnvelope> {
               children: [
                 ConstrainedBox(
                   constraints: BoxConstraints(
-                    minHeight: _bodyMinHeight * scale,
+                    minHeight:
+                        _bodyMinHeight *
+                        math.min(scale, _maxScaledWidth / _width),
                   ),
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
