@@ -4330,7 +4330,7 @@ abstract final class TDParse {
         if (kDebugMode) {
           debugPrint('Unsupported TDLib message content: ${content.type}');
         }
-        return AppStrings.t(AppStringKeys.chatSearchMessageResultLabel);
+        return AppStrings.t(AppStringKeys.tdMessageUnsupportedCurrentVersion);
     }
   }
 
@@ -4370,9 +4370,16 @@ abstract final class TDParse {
         final text = _richMessageText(value)?.text.trim() ?? '';
         if (text.isNotEmpty) return text;
       }
+      // A bare string counts only under these keys; any other string field of
+      // an unknown type (an id, an address) is not text to show.
       for (final key in const ['text', 'caption', 'title', 'description']) {
-        final obj = value.obj(key);
-        final nested = _nestedFormattedText(obj ?? value[key]);
+        final field = value[key];
+        if (field is String) {
+          final text = field.trim();
+          if (text.isNotEmpty && !text.startsWith('message')) return text;
+          continue;
+        }
+        final nested = _nestedFormattedText(field);
         if (nested.isNotEmpty) return nested;
       }
       for (final entry in value.entries) {
@@ -4385,9 +4392,6 @@ abstract final class TDParse {
         final nested = _nestedFormattedText(item);
         if (nested.isNotEmpty) return nested;
       }
-    } else if (value is String) {
-      final text = value.trim();
-      if (text.isNotEmpty && !text.startsWith('message')) return text;
     }
     return '';
   }
