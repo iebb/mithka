@@ -2,8 +2,8 @@
 //  message_gram_envelope.dart
 //
 //  A compact Gram transfer card in the transcript. The amount leads, with the
-//  actual comment and status beside a transfer symbol. The detail sheet keeps
-//  its shared envelope colours and avatar seal below.
+//  actual comment and status beside a transfer symbol. The detail sheet
+//  shares its colours.
 //
 
 import 'dart:math' as math;
@@ -12,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
-import '../components/photo_avatar.dart';
 import '../l10n/gram_amount.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -79,144 +78,8 @@ String? gramTransferBlessing(BuildContext context, MessageGramTransfer t) =>
     ? null
     : t.comment;
 
-/// The envelope's colours between red (0) and muted (1), so a sending
-/// envelope can cross-fade to sent.
-class GramEnvelopeColors {
-  const GramEnvelopeColors(this.muted);
-
-  /// 0 for red, 1 for muted.
-  final double muted;
-
-  static const double _mutedSaturation = 0.35;
-
-  Color get body =>
-      Color.lerp(AppTheme.envelopeRed, AppTheme.envelopeMuted, muted)!;
-  Color get flap =>
-      Color.lerp(AppTheme.envelopeFlap, AppTheme.envelopeMutedFlap, muted)!;
-  Gradient get seal => LinearGradient.lerp(
-    AppTheme.envelopeSeal,
-    AppTheme.envelopeMutedSeal,
-    muted,
-  )!;
-
-  /// The avatar's saturation: full on red, 35 % on muted.
-  double get avatarSaturation => 1 - (1 - _mutedSaturation) * muted;
-}
-
-/// Runs [builder] with the colours for [muted], cross-fading over the motion
-/// token's duration when it changes (instantly under Reduce Motion).
-class GramEnvelopeColorsBuilder extends StatelessWidget {
-  const GramEnvelopeColorsBuilder({
-    super.key,
-    required this.muted,
-    required this.builder,
-  });
-
-  final bool muted;
-  final Widget Function(BuildContext context, GramEnvelopeColors colors)
-  builder;
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: muted ? 1 : 0),
-      duration: AppMotion.duration(context, AppMotion.responsive),
-      curve: AppMotion.standard,
-      builder: (context, value, _) =>
-          builder(context, GramEnvelopeColors(value)),
-    );
-  }
-}
-
-/// The gold seal: [party]'s avatar inside a 3pt gold ring. Without a
-/// Telegram sender ([hasUser] false) the inner circle is red with the
-/// transfer glyph; while the sender is still being looked up it is empty.
-class GramEnvelopeSeal extends StatelessWidget {
-  const GramEnvelopeSeal({
-    super.key,
-    required this.size,
-    required this.colors,
-    required this.hasUser,
-    this.party,
-  });
-
-  final double size;
-  final GramEnvelopeColors colors;
-  final bool hasUser;
-  final GramTransferParty? party;
-
-  static const double _ring = 3;
-  static const double _glyphRatio = 0.5;
-  static const double _shadowAlpha = 0.25;
-  static const double _shadowBlur = 2;
-  static const double _shadowOffset = 1;
-
-  /// A saturation matrix over Rec. 709 luminance.
-  static List<double> _saturation(double s) {
-    const r = 0.2126, g = 0.7152, b = 0.0722;
-    final i = 1 - s;
-    return [
-      r * i + s, g * i, b * i, 0, 0, //
-      r * i, g * i + s, b * i, 0, 0, //
-      r * i, g * i, b * i + s, 0, 0, //
-      0, 0, 0, 1, 0, //
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final inner = size - _ring * 2;
-    final party = this.party;
-    Widget content;
-    if (hasUser && party != null) {
-      content = PhotoAvatar(
-        title: party.avatarTitle,
-        photo: party.photo,
-        size: inner,
-      );
-      final saturation = colors.avatarSaturation;
-      if (saturation < 1) {
-        content = ColorFiltered(
-          colorFilter: ColorFilter.matrix(_saturation(saturation)),
-          child: content,
-        );
-      }
-    } else {
-      content = DecoratedBox(
-        decoration: BoxDecoration(color: colors.body, shape: BoxShape.circle),
-        child: hasUser
-            ? const SizedBox.expand()
-            : Center(
-                child: AppIcon(
-                  HeroAppIcons.arrowsRightLeft,
-                  size: size * _glyphRatio,
-                  color: AppTheme.envelopeGold,
-                ),
-              ),
-      );
-    }
-    return Container(
-      width: size,
-      height: size,
-      padding: const EdgeInsets.all(_ring),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: colors.seal,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: _shadowAlpha),
-            blurRadius: _shadowBlur,
-            offset: const Offset(0, _shadowOffset),
-          ),
-        ],
-      ),
-      child: SizedBox.square(dimension: inner, child: content),
-    );
-  }
-}
-
-/// The chat card's theme palette. The envelope detail sheet keeps its own
-/// colours; these tokens also let the bubble colour the footer delivery mark.
+/// The chat card's theme palette, shared by the detail sheet's header; these
+/// tokens also let the bubble colour the footer delivery mark.
 class GramTransferCardColors {
   GramTransferCardColors.of(BuildContext context) {
     final c = context.colors;

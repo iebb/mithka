@@ -503,43 +503,6 @@ abstract final class AppTheme {
   /// envelope's): 4.4:1 on white, where [readMark] is 2.2:1.
   static const Color readMarkOnLightCard = Color(0xFF248A3D);
 
-  // MARK: Gram transfers (constant, the same in light and dark: money keeps
-  // one colour and does not follow the theme accent)
-
-  /// The envelope body and the detail sheet's header; gold text on it is
-  /// 4.6:1 and white 6.2:1.
-  static const Color envelopeRed = Color(0xFFB42C46);
-
-  /// The envelope flap. No text sits on it.
-  static const Color envelopeFlap = Color(0xFFC8314E);
-
-  /// [envelopeRed] for a transfer that is still sending or has failed; same
-  /// luminance, so the gold and white text keep their contrast.
-  static const Color envelopeMuted = Color(0xFF80565E);
-
-  /// [envelopeFlap] for a sending or failed transfer.
-  static const Color envelopeMutedFlap = Color(0xFF8F5F68);
-
-  /// The blessing on the envelope and the amount on the detail sheet.
-  static const Color envelopeGold = Color(0xFFFFD8A8);
-
-  /// White at 85 %: the status line on the envelope and the detail sheet.
-  static const Color envelopeInk2 = Color(0xD9FFFFFF);
-
-  /// The gold ring around the sender's avatar on the envelope's seal.
-  static const LinearGradient envelopeSeal = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Color(0xFFFFE7BD), Color(0xFFF3BF6A)],
-  );
-
-  /// [envelopeSeal] for a sending or failed transfer.
-  static const LinearGradient envelopeMutedSeal = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Color(0xFFE9DCC6), Color(0xFFC9AE86)],
-  );
-
   // MARK: Metrics
   static const double rowHeight = AppMetric.listRowHeight;
   static const double avatarSize = AppMetric.avatarSize;

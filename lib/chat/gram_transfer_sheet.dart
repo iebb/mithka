@@ -1,10 +1,11 @@
 //
 //  gram_transfer_sheet.dart
 //
-//  The read-only sheet a Gram envelope opens: a curved red header with the
-//  seal, who the transfer is from or to, the blessing, the amount and the
-//  status; then a details card, and a link to the blockchain explorer once
-//  the transaction is known. It only shows; nothing is claimed here.
+//  The read-only sheet a Gram transfer card opens: a header in the card's
+//  theme colour with its transfer symbol, who the transfer is from or to, the
+//  comment, the amount and the status; then a details card, and a link to the
+//  blockchain explorer once the transaction is known. It only shows; nothing
+//  is claimed here.
 //
 
 import 'dart:async';
@@ -30,7 +31,7 @@ import 'telegram_rich_text.dart';
 ///
 /// [outgoing] is the transfer's direction; [me] names the current user, the
 /// sender of every outgoing transfer, and [meId] is their id. [sender] is an
-/// incoming transfer's seal person when the bubble knows them. [chatPeer] is
+/// incoming transfer's sender when the bubble knows them. [chatPeer] is
 /// the other side of a private chat: the recipient of an outgoing transfer
 /// until the transaction names one. [onRetry] adds the Retry button to a failed
 /// transfer; it is null while sending is not available.
@@ -104,13 +105,17 @@ class GramTransferSheet extends StatefulWidget {
 }
 
 class _GramTransferSheetState extends State<GramTransferSheet> {
-  static const double _sealTop = 40;
-  static const double _seal = 64;
+  static const double _headerTop = 40;
+  static const double _headerBottom = 28;
+  static const double _headerInset = 32;
+  static const double _symbol = 56;
+  static const double _symbolBorder = 2;
+  static const double _symbolGlyph = 28;
+  static const double _symbolMaxScale = 1.25;
   static const double _titleGap = 12;
-  static const double _titleInset = 32;
-  static const double _blessingGap = 6;
-  static const double _blessingSize = 15;
-  static const double _blessingLineHeight = 20;
+  static const double _commentGap = 6;
+  static const double _commentSize = 15;
+  static const double _commentLineHeight = 20;
   static const double _amountGap = 14;
   static const double _amountSize = 36;
   static const double _amountLineHeight = 42;
@@ -119,8 +124,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
   static const double _statusGap = 6;
   static const double _statusGlyph = 15;
   static const double _statusGlyphGap = 5;
-  static const double _headerBottom = 36;
-  static const double _arc = 28;
+  static const double _statusLineHeight = 19;
   static const double _cardGap = 14;
   static const double _retryGap = 16;
   static const double _handleWidth = 36;
@@ -239,7 +243,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
 
     // White at 18 % over the header, made opaque so the button keeps its
     // look where the details card scrolls under it.
-    Widget close(GramEnvelopeColors colors) => Positioned(
+    Widget close(Color body) => Positioned(
       top: _closeTop - closeInset,
       right: AppSpacing.xxl - closeInset,
       child: ScrollPinned(
@@ -264,7 +268,7 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
                       Colors.white.withValues(alpha: _closeAlpha),
-                      colors.body,
+                      body,
                     ),
                     shape: BoxShape.circle,
                   ),
@@ -281,97 +285,98 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
       ),
     );
 
-    return GramEnvelopeColorsBuilder(
-      muted: widget.state.isMuted,
-      builder: (context, colors) => Stack(
-        children: [
-          // The close button is laid out with the content so it shares a
-          // semantics parent with the title and follows it in focus order;
-          // ScrollPinned keeps it in place while the content scrolls under it.
-          SingleChildScrollView(
-            child: Stack(
-              children: [
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _header(context, colors),
-                    if (rows.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xxl,
-                          _cardGap,
-                          AppSpacing.xxl,
-                          0,
-                        ),
-                        child: Semantics(
-                          container: true,
-                          sortKey: const OrdinalSortKey(2),
-                          child: DetailsCard(rows: rows),
+    // The chat card's colours: a sending or failed transfer is muted.
+    final palette = GramTransferCardColors.of(context);
+    final body = widget.state.isMuted ? palette.mutedBody : palette.body;
+    return Stack(
+      children: [
+        // The close button is laid out with the content so it shares a
+        // semantics parent with the title and follows it in focus order;
+        // ScrollPinned keeps it in place while the content scrolls under it.
+        SingleChildScrollView(
+          child: Stack(
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(context, body),
+                  if (rows.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xxl,
+                        _cardGap,
+                        AppSpacing.xxl,
+                        0,
+                      ),
+                      child: Semantics(
+                        container: true,
+                        sortKey: const OrdinalSortKey(2),
+                        child: DetailsCard(rows: rows),
+                      ),
+                    ),
+                  if (hash != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xxl,
+                        _cardGap,
+                        AppSpacing.xxl,
+                        0,
+                      ),
+                      child: Semantics(
+                        container: true,
+                        sortKey: const OrdinalSortKey(3),
+                        child: _explorerCard(context, hash),
+                      ),
+                    ),
+                  if (retry != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.xxl,
+                        _retryGap,
+                        AppSpacing.xxl,
+                        0,
+                      ),
+                      child: Semantics(
+                        container: true,
+                        sortKey: const OrdinalSortKey(4),
+                        child: _RetryButton(
+                          color: body,
+                          onPressed: () {
+                            Navigator.of(context).maybePop();
+                            retry();
+                          },
                         ),
                       ),
-                    if (hash != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xxl,
-                          _cardGap,
-                          AppSpacing.xxl,
-                          0,
-                        ),
-                        child: Semantics(
-                          container: true,
-                          sortKey: const OrdinalSortKey(3),
-                          child: _explorerCard(context, hash),
-                        ),
-                      ),
-                    if (retry != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xxl,
-                          _retryGap,
-                          AppSpacing.xxl,
-                          0,
-                        ),
-                        child: Semantics(
-                          container: true,
-                          sortKey: const OrdinalSortKey(4),
-                          child: _RetryButton(
-                            onPressed: () {
-                              Navigator.of(context).maybePop();
-                              retry();
-                            },
-                          ),
-                        ),
-                      ),
-                    SizedBox(height: AppSpacing.xxl + bottomInset),
-                  ],
-                ),
-                close(colors),
-              ],
-            ),
+                    ),
+                  SizedBox(height: AppSpacing.xxl + bottomInset),
+                ],
+              ),
+              close(body),
+            ],
           ),
-          if (showsHandle)
-            Positioned(
-              top: _handleTop,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  width: _handleWidth,
-                  height: _handleHeight,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: _handleAlpha),
-                    borderRadius: BorderRadius.circular(_handleHeight / 2),
-                  ),
+        ),
+        if (showsHandle)
+          Positioned(
+            top: _handleTop,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                width: _handleWidth,
+                height: _handleHeight,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: _handleAlpha),
+                  borderRadius: BorderRadius.circular(_handleHeight / 2),
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
-  Widget _header(BuildContext context, GramEnvelopeColors colors) {
+  Widget _header(BuildContext context, Color body) {
     final transfer = _transfer;
     final counterpart = _counterpart;
     final counterpartName =
@@ -385,18 +390,18 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                 : AppStringKeys.transferDetailFromValue1,
             {'value1': counterpartName},
           );
-    final blessing = gramTransferBlessing(context, transfer);
-    const blessingStyle = TextStyle(
-      fontSize: _blessingSize,
-      height: _blessingLineHeight / _blessingSize,
+    final comment = gramTransferBlessing(context, transfer);
+    const commentStyle = TextStyle(
+      fontSize: _commentSize,
+      height: _commentLineHeight / _commentSize,
       fontWeight: AppTextWeight.regular,
-      color: AppTheme.envelopeGold,
+      color: Colors.white,
     );
-    final Widget? blessingText;
-    if (blessing == null) {
-      blessingText = null;
+    final Widget? commentText;
+    if (comment == null) {
+      commentText = null;
     } else if (transfer.isCommentEncrypted) {
-      blessingText = Text.rich(
+      commentText = Text.rich(
         TextSpan(
           children: [
             const WidgetSpan(
@@ -405,23 +410,23 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
                 padding: EdgeInsetsDirectional.only(end: AppSpacing.xs),
                 child: AppIcon(
                   HeroAppIcons.lock,
-                  size: _blessingSize,
-                  color: AppTheme.envelopeGold,
+                  size: _commentSize,
+                  color: Colors.white,
                 ),
               ),
             ),
-            TextSpan(text: blessing),
+            TextSpan(text: comment),
           ],
         ),
-        style: blessingStyle,
+        style: commentStyle,
         textAlign: TextAlign.center,
       );
     } else {
-      blessingText = SelectionArea(
+      commentText = SelectionArea(
         child: TelegramRichText(
           text: transfer.comment,
-          style: blessingStyle,
-          linkColor: AppTheme.envelopeGold,
+          style: commentStyle,
+          linkColor: Colors.white,
           underlineLinks: true,
           textAlign: TextAlign.center,
         ),
@@ -446,13 +451,19 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
         AppStringKeys.transferStatusFailed,
       ),
     };
+    // The card's symbol, larger; it grows with text up to 125 %.
+    final symbolScale = MediaQuery.textScalerOf(
+      context,
+    ).clamp(minScaleFactor: 1, maxScaleFactor: _symbolMaxScale).scale(1);
 
-    return CustomPaint(
-      painter: _HeaderPainter(color: colors.body, arc: _arc),
+    return ColoredBox(
+      color: body,
       child: Padding(
-        padding: const EdgeInsets.only(
-          top: _sealTop,
-          bottom: _headerBottom + _arc,
+        padding: const EdgeInsets.fromLTRB(
+          _headerInset,
+          _headerTop,
+          _headerInset,
+          _headerBottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -460,98 +471,103 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
           children: [
             ExcludeSemantics(
               child: Center(
-                child: GramEnvelopeSeal(
-                  size: _seal,
-                  colors: colors,
-                  hasUser: widget.outgoing || transfer.hasSender,
-                  party: _sender,
+                child: Container(
+                  width: _symbol * symbolScale,
+                  height: _symbol * symbolScale,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: _symbolBorder,
+                    ),
+                  ),
+                  child: Center(
+                    child: AppIcon(
+                      widget.state == GramTransferState.failed
+                          ? HeroAppIcons.exclamationCircle
+                          : HeroAppIcons.arrowsRightLeft,
+                      size: _symbolGlyph * symbolScale,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: _titleGap),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _titleInset),
-              child: Semantics(
-                container: true,
-                header: true,
-                sortKey: const OrdinalSortKey(0),
-                child: Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyle.title(
-                    Colors.white,
-                    weight: AppTextWeight.semibold,
-                  ),
+            Semantics(
+              container: true,
+              header: true,
+              sortKey: const OrdinalSortKey(0),
+              child: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: AppTextStyle.title(
+                  Colors.white,
+                  weight: AppTextWeight.semibold,
                 ),
               ),
             ),
             Semantics(
               container: true,
               sortKey: const OrdinalSortKey(0.5),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: _titleInset),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (blessingText != null) ...[
-                      const SizedBox(height: _blessingGap),
-                      blessingText,
-                    ],
-                    const SizedBox(height: _amountGap),
-                    // The number and the unit stay whole and only wrap between
-                    // each other; the scale is capped so "GRAM" fits a phone
-                    // width at the largest accessibility size.
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: _amountPieceGap,
-                      children: [
-                        for (final piece in transfer.formattedAmount().split(
-                          ' ',
-                        ))
-                          Text(
-                            piece,
-                            textAlign: TextAlign.center,
-                            textScaler: MediaQuery.textScalerOf(
-                              context,
-                            ).clamp(maxScaleFactor: _amountMaxTextScale),
-                            style: AppTextStyle.display(AppTheme.envelopeGold)
-                                .copyWith(
-                                  fontSize: _amountSize,
-                                  height: _amountLineHeight / _amountSize,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (commentText != null) ...[
+                    const SizedBox(height: _commentGap),
+                    commentText,
+                  ],
+                  const SizedBox(height: _amountGap),
+                  // The number and the unit stay whole and only wrap between
+                  // each other; the scale is capped so "GRAM" fits a phone
+                  // width at the largest accessibility size.
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: _amountPieceGap,
+                    children: [
+                      for (final piece in transfer.formattedAmount().split(' '))
+                        Text(
+                          piece,
+                          textAlign: TextAlign.center,
+                          textScaler: MediaQuery.textScalerOf(
+                            context,
+                          ).clamp(maxScaleFactor: _amountMaxTextScale),
+                          style: AppTextStyle.display(Colors.white).copyWith(
+                            fontSize: _amountSize,
+                            height: _amountLineHeight / _amountSize,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: _statusGap),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: Padding(
-                              padding: const EdgeInsetsDirectional.only(
-                                end: _statusGlyphGap,
-                              ),
-                              child: AppIcon(
-                                statusGlyph,
-                                size: _statusGlyph,
-                                color: Colors.white,
-                              ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: _statusGap),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: const EdgeInsetsDirectional.only(
+                              end: _statusGlyphGap,
+                            ),
+                            child: AppIcon(
+                              statusGlyph,
+                              size: _statusGlyph,
+                              color: Colors.white,
                             ),
                           ),
-                          TextSpan(text: statusKey.l10n(context)),
-                        ],
-                      ),
-                      textAlign: TextAlign.center,
-                      style: AppTextStyle.callout(AppTheme.envelopeInk2),
+                        ),
+                        TextSpan(text: statusKey.l10n(context)),
+                      ],
                     ),
-                  ],
-                ),
+                    textAlign: TextAlign.center,
+                    style: AppTextStyle.callout(
+                      Colors.white,
+                    ).copyWith(height: _statusLineHeight / AppTextSize.callout),
+                  ),
+                ],
               ),
             ),
           ],
@@ -698,36 +714,11 @@ class _GramTransferSheetState extends State<GramTransferSheet> {
   }
 }
 
-/// The header's fill: a rectangle down to [arc] above the bottom, closed by a
-/// curve whose lowest point is the bottom edge.
-class _HeaderPainter extends CustomPainter {
-  const _HeaderPainter({required this.color, required this.arc});
+/// The pill, in the header's colour, that sends a failed transfer again.
+class _RetryButton extends StatefulWidget {
+  const _RetryButton({required this.color, required this.onPressed});
 
   final Color color;
-  final double arc;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final width = size.width;
-    final edge = size.height - arc;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(width, 0)
-      ..lineTo(width, edge)
-      ..quadraticBezierTo(width / 2, size.height + arc, 0, edge)
-      ..close();
-    canvas.drawPath(path, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_HeaderPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.arc != arc;
-}
-
-/// The red pill that sends a failed transfer again.
-class _RetryButton extends StatefulWidget {
-  const _RetryButton({required this.onPressed});
-
   final VoidCallback onPressed;
 
   @override
@@ -771,7 +762,7 @@ class _RetryButtonState extends State<_RetryButton> {
             ),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: AppTheme.envelopeRed,
+                color: widget.color,
                 borderRadius: BorderRadius.circular(_height / 2),
               ),
               child: Padding(
