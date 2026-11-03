@@ -660,6 +660,7 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
 
   Widget _monogram() => Text(
     _initial(widget.title),
+    textScaler: TextScaler.noScaling,
     style: TextStyle(
       color: Colors.white,
       fontSize: widget.size * 0.42,
