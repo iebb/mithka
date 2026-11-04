@@ -75,6 +75,7 @@ class BotApiTdBackend {
       _store.close();
       return;
     }
+    _store.relocateMedia(mediaDirectory);
     _migrateLegacyTransportPlaceholders();
     final me = _converter.user(account.bot);
     _preserveObservedUserPhoto(me);

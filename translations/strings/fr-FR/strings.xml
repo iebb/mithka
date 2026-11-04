@@ -2783,6 +2783,7 @@
     <string name="proxyHostOrIp">Hôte ou IP</string>
     <string name="proxyOptional">Facultatif</string>
     <string name="proxyPassword">Mot de passe</string>
+    <string name="proxyPath">Chemin</string>
     <string name="proxyPort">Port</string>
     <string name="proxySecret">Clé secrète</string>
     <string name="proxyServer">Serveur</string>
@@ -3932,4 +3933,15 @@
         <item quantity="one">{count} jour</item>
         <item quantity="other">{count} jours</item>
     </plurals>
+    <string name="storageDownloadLocation">Emplacement des téléchargements</string>
+    <string name="storageDownloadCacheLocation">Cache des téléchargements</string>
+    <string name="storageDownloadSaveFolder">Dossier des fichiers enregistrés</string>
+    <string name="storageDownloadShared">Stockage partagé</string>
+    <string name="storageDownloadPrivate">Stockage privé de l’application</string>
+    <string name="storageDownloadRestart">Les changements prendront effet au prochain démarrage de Mithka. Les téléchargements existants seront déplacés automatiquement.</string>
+    <string name="storageDownloadSaveHint">Utilisez Enregistrer sous dans Téléchargements pour copier un fichier ici. Les copies restent après la désinstallation de Mithka.</string>
+    <string name="storageDownloadMigrationFailed">Impossible de déplacer les téléchargements. L’emplacement d’origine reste utilisé ; Mithka réessaiera au prochain démarrage.</string>
+    <string name="storageDownloadLocationFailed">Impossible d’accéder à l’emplacement des téléchargements</string>
+    <string name="storageDownloadFolderNotSelected">Choisir un dossier</string>
+    <string name="storageDownloadCurrent">Emplacement actuel : {value1}</string>
 </resources>

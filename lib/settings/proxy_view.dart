@@ -7,7 +7,7 @@
 //  brand checkmark; every row carries its own availability chip), a 测试全部
 //  action that probes each saved proxy, a 删除不可用的代理 action once a probe
 //  has failed, and an 添加代理 row that opens a full-page custom editor.
-//  SOCKS5 / HTTP / MTProto. No Material dialogs.
+//  SOCKS5 / HTTP / MTProto / Web.
 //
 //  Reached from the sidebar AND from the login screen's own 代理 shortcut, so
 //  the client behind it may still be opening its database (a fresh add-account
@@ -608,6 +608,7 @@ class _ProxyViewState extends State<ProxyView> {
       'proxyTypeSocks5' => 'SOCKS5',
       'proxyTypeHttp' => 'HTTP',
       'proxyTypeMtproto' => 'MTProto',
+      'proxyTypeWeb' => 'Web',
       _ => AppStrings.t(AppStringKeys.proxyTitle),
     };
   }
@@ -689,8 +690,10 @@ class _ProxyViewState extends State<ProxyView> {
     final server = details.str('server') ?? '';
     final port = details.integer('port') ?? 0;
     final check = _stateFor(proxy);
+    final type = details.obj('type');
+    final path = type?.type == 'proxyTypeWeb' ? type?.str('path') ?? '' : '';
     return SettingsRow(
-      title: '$server:$port',
+      title: '$server:$port${path.isEmpty ? '' : '/$path'}',
       subtitle: _rowSubtitle(proxy, check),
       showChevron: false,
       trailing: Row(
@@ -907,25 +910,26 @@ class ProxyEditView extends StatefulWidget {
 }
 
 class _ProxyEditViewState extends State<ProxyEditView> {
-  String _type = 'socks5'; // socks5 | http | mtproto
+  String _type = 'socks5';
   final _server = TextEditingController();
   final _port = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _secret = TextEditingController();
+  final _path = TextEditingController();
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    for (final ctl in [_server, _port, _username, _password, _secret]) {
+    for (final ctl in [_server, _port, _username, _password, _secret, _path]) {
       ctl.addListener(() => setState(() {}));
     }
   }
 
   @override
   void dispose() {
-    for (final ctl in [_server, _port, _username, _password, _secret]) {
+    for (final ctl in [_server, _port, _username, _password, _secret, _path]) {
       ctl.dispose();
     }
     super.dispose();
@@ -933,8 +937,16 @@ class _ProxyEditViewState extends State<ProxyEditView> {
 
   bool get _valid {
     final server = _server.text.trim();
-    final port = int.tryParse(_port.text.trim()) ?? 0;
-    if (server.isEmpty || port <= 0) return false;
+    final port = _type == 'web' ? 443 : int.tryParse(_port.text.trim()) ?? 0;
+    if (_type == 'web') {
+      return ProxyConfig.isValidWebProxy(
+        server.toLowerCase(),
+        port,
+        _path.text.trim(),
+        _secret.text.trim(),
+      );
+    }
+    if (server.isEmpty || port <= 0 || port > 65535) return false;
     if (_type == 'mtproto') return _secret.text.trim().isNotEmpty;
     return true;
   }
@@ -943,11 +955,16 @@ class _ProxyEditViewState extends State<ProxyEditView> {
     configured: true,
     enabled: true,
     type: _type,
-    server: _server.text.trim(),
-    port: int.parse(_port.text.trim()),
+    server: _type == 'web'
+        ? _server.text.trim().toLowerCase()
+        : _server.text.trim(),
+    port: _type == 'web' ? 443 : int.parse(_port.text.trim()),
     username: _username.text.trim(),
     password: _password.text.trim(),
-    secret: _secret.text.trim(),
+    secret: _type == 'web'
+        ? _secret.text.trim().toLowerCase()
+        : _secret.text.trim(),
+    path: _path.text.trim(),
   );
 
   Future<void> _save() async {
@@ -979,7 +996,8 @@ class _ProxyEditViewState extends State<ProxyEditView> {
 
   @override
   Widget build(BuildContext context) {
-    final mtproto = _type == 'mtproto';
+    final mtproto = _type == 'mtproto' || _type == 'web';
+    final web = _type == 'web';
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.proxyAddProxy),
       onBack: () => Navigator.of(context).pop(),
@@ -1013,14 +1031,27 @@ class _ProxyEditViewState extends State<ProxyEditView> {
             _field(
               _server,
               AppStrings.t(AppStringKeys.proxyServer),
-              AppStrings.t(AppStringKeys.proxyHostOrIp),
+              web ? 'relay.example' : AppStrings.t(AppStringKeys.proxyHostOrIp),
             ),
-            _field(
-              _port,
-              AppStrings.t(AppStringKeys.proxyPort),
-              '0-65535',
-              number: true,
-            ),
+            if (web)
+              SettingsRow(
+                title: AppStrings.t(AppStringKeys.proxyPort),
+                trailing: const Text('443'),
+                showChevron: false,
+              )
+            else
+              _field(
+                _port,
+                AppStrings.t(AppStringKeys.proxyPort),
+                '1-65535',
+                number: true,
+              ),
+            if (web)
+              _field(
+                _path,
+                AppStrings.t(AppStringKeys.proxyPath),
+                AppStrings.t(AppStringKeys.proxyOptional),
+              ),
           ]),
           const SizedBox(height: AppSpacing.xl),
           if (mtproto)
@@ -1051,10 +1082,11 @@ class _ProxyEditViewState extends State<ProxyEditView> {
   }
 
   Widget _typeSelector() {
-    const types = [
+    final types = [
       ('socks5', 'SOCKS5'),
       ('http', 'HTTP'),
       ('mtproto', 'MTProto'),
+      if (ProxyConfig.supportsWebProxy) ('web', 'Web'),
     ];
     final selectedLabel = types.firstWhere((entry) => entry.$1 == _type).$2;
     return SettingsCard.rows(

@@ -2783,6 +2783,7 @@
     <string name="proxyHostOrIp">Host oder IP</string>
     <string name="proxyOptional">Optional</string>
     <string name="proxyPassword">Passwort</string>
+    <string name="proxyPath">Pfad</string>
     <string name="proxyPort">Port</string>
     <string name="proxySecret">Geheimnis</string>
     <string name="proxyServer">Server</string>
@@ -3932,4 +3933,15 @@
         <item quantity="one">{count} Tag</item>
         <item quantity="other">{count} Tage</item>
     </plurals>
+    <string name="storageDownloadLocation">Download-Speicherort</string>
+    <string name="storageDownloadCacheLocation">Download-Cache</string>
+    <string name="storageDownloadSaveFolder">Ordner für gespeicherte Dateien</string>
+    <string name="storageDownloadShared">Gemeinsamer Speicher</string>
+    <string name="storageDownloadPrivate">Privater App-Speicher</string>
+    <string name="storageDownloadRestart">Änderungen werden beim nächsten Start von Mithka wirksam. Vorhandene Downloads werden automatisch verschoben.</string>
+    <string name="storageDownloadSaveHint">Mit Speichern unter in Downloads kannst du Dateien hierher kopieren. Gespeicherte Kopien bleiben nach der Deinstallation von Mithka erhalten.</string>
+    <string name="storageDownloadMigrationFailed">Downloads konnten nicht verschoben werden. Der bisherige Speicherort bleibt aktiv; Mithka versucht es beim nächsten Start erneut.</string>
+    <string name="storageDownloadLocationFailed">Auf den Download-Speicherort konnte nicht zugegriffen werden</string>
+    <string name="storageDownloadFolderNotSelected">Ordner auswählen</string>
+    <string name="storageDownloadCurrent">Aktueller Speicherort: {value1}</string>
 </resources>
