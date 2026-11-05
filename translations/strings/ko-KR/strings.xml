@@ -3659,7 +3659,9 @@
     <string name="topicChatLoading">불러오는 중</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1}명</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="other">{count}명</item>
+    </plurals>
     <string name="topicChatMostRelevant">관련도순</string>
     <string name="topicChatMuteFailed">방해 금지 설정에 실패했습니다</string>
     <string name="topicChatMuteMessagesToggle">메시지 방해 금지</string>

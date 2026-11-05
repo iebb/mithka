@@ -699,9 +699,10 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                 const Spacer(),
                 if (_vm.memberCount > 0)
                   Text(
-                    AppStrings.t(AppStringKeys.topicChatMemberCount, {
-                      'value1': _vm.memberCount,
-                    }),
+                    AppStrings.plural(
+                      AppStringKeys.topicChatMemberCount,
+                      _vm.memberCount,
+                    ),
                     style: TextStyle(fontSize: 14, color: c.textSecondary),
                   ),
                 const SizedBox(width: 6),

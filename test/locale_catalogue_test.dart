@@ -229,6 +229,18 @@ void main() {
       }
     });
 
+    test('the group member count badge is singular for one member', () {
+      String count(String appKey, int value) => AppStrings.pluralForLocale(
+        appKey,
+        AppStringKeys.topicChatMemberCount,
+        value,
+      );
+      expect(count('en', 1), '1 member');
+      expect(count('en', 2), '2 members');
+      expect(count('de', 1), '1 Person');
+      expect(count('zhHans', 1), '1人');
+    });
+
     test('declared plural categories match the runtime rule', () {
       for (final appKey in L10nFixtures.appKeys) {
         final declared = fixtures[appKey].pluralCategories.toSet();

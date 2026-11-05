@@ -3670,7 +3670,10 @@
     <string name="topicChatLoading">Cargando</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1} personas</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="one">{count} persona</item>
+        <item quantity="other">{count} personas</item>
+    </plurals>
     <string name="topicChatMostRelevant">Más relevantes</string>
     <string name="topicChatMuteFailed">No se pudo activar No molestar</string>
     <string name="topicChatMuteMessagesToggle">Silenciar mensajes</string>
