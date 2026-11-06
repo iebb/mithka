@@ -3243,9 +3243,10 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                         ),
                         value: _loadingMembers
                             ? AppStrings.t(AppStringKeys.topicChatLoading)
-                            : AppStrings.t(AppStringKeys.topicChatMemberCount, {
-                                'value1': _memberCount,
-                              }),
+                            : AppStrings.plural(
+                                AppStringKeys.topicChatMemberCount,
+                                _memberCount,
+                              ),
                         onTap: _openMembers,
                       ),
                       _memberStrip(c),

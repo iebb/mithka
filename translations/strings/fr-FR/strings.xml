@@ -3670,7 +3670,10 @@
     <string name="topicChatLoading">Chargement</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1} membres</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="one">{count} membre</item>
+        <item quantity="other">{count} membres</item>
+    </plurals>
     <string name="topicChatMostRelevant">Les plus pertinents</string>
     <string name="topicChatMuteFailed">Échec de l’activation du mode silencieux</string>
     <string name="topicChatMuteMessagesToggle">Messages en sourdine</string>

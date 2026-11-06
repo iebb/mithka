@@ -3659,7 +3659,9 @@
     <string name="topicChatLoading">載入中</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1} 人</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="other">{count} 人</item>
+    </plurals>
     <string name="topicChatMostRelevant">最相關</string>
     <string name="topicChatMuteFailed">設定靜音失敗</string>
     <string name="topicChatMuteMessagesToggle">訊息靜音</string>
