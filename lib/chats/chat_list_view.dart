@@ -3196,7 +3196,7 @@ class _ChatListViewState extends State<ChatListView>
                   (hasPullDownArchiveSlot ? 1 : 0),
               itemBuilder: (context, index) {
                 if (showLeadingControls && index == 0) {
-                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                  return _pinnedSearchPill();
                 }
                 if (hasPullDownArchiveSlot &&
                     index ==
@@ -3219,8 +3219,7 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               children: [
-                if (showLeadingControls)
-                  _archivePullSearchPill(hasPullDownArchiveSlot),
+                if (showLeadingControls) _pinnedSearchPill(),
                 if (hasPullDownArchiveSlot)
                   _pullDownArchiveSlot(
                     rowHeight: rowH,
@@ -3253,7 +3252,7 @@ class _ChatListViewState extends State<ChatListView>
                   (hasFiltered ? 1 : 0),
               itemBuilder: (context, index) {
                 if (showLeadingControls && index == 0) {
-                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                  return _pinnedSearchPill();
                 }
                 final contentIndex = showLeadingControls ? index - 1 : index;
                 if (hasPullDownArchiveSlot && contentIndex == 0) {
@@ -3304,10 +3303,14 @@ class _ChatListViewState extends State<ChatListView>
     return showFolder ? _searchPillExtent : 0;
   }
 
-  Widget _archivePullSearchPill(bool pinDuringArchivePull) {
+  /// The search row leads every chat-list page, so any top overscroll — the
+  /// pull-down archive reveal on the All folder, or plain rubber-banding on a
+  /// folder tab or an empty folder — moves it down with the viewport. The pin
+  /// cancels that travel so the row stays under the folder strip and the rows
+  /// below are what stretch.
+  Widget _pinnedSearchPill() {
     return ChatListTopOverscrollPin(
       controller: _scrollController,
-      enabled: pinDuringArchivePull,
       child: _searchPill(),
     );
   }
