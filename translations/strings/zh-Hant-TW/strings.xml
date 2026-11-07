@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">此裝置</string>
     <string name="accountBackupTitle">帳號備份</string>
     <string name="accountBackupUnavailable">此裝置或發行版本無法使用帳號備份。</string>
-    <string name="accountBackupUserId">使用者 ID：{value1}</string>
+        <string name="accountPickerTitle">選擇帳號</string>
+    <string name="accountPickerMessage">此連結屬於你的某個帳號。請選擇要在哪個帳號中開啟。</string>
+<string name="accountBackupUserId">使用者 ID：{value1}</string>
     <string name="accountSecurityANewCodeWasSent">已發送新代碼。</string>
     <string name="accountSecurityAccountAndContactsWillMove">你的 Telegram 帳號和聯絡人將轉移到新號碼。</string>
     <string name="accountSecurityAccountInactivity">帳號不活動</string>

@@ -279,6 +279,19 @@ class TdClient {
     _clientClosedWaiters.remove(clientId)?.complete();
   }
 
+  /// Observes every request the proxy would answer, with the client id it is
+  /// routed to. Tests use this to assert which account's client actually
+  /// served a screen (production equivalence for account-keyed subtrees).
+  @visibleForTesting
+  void debugSetQueryRecorder(
+    void Function(Map<String, dynamic> request, int clientId)? recorder,
+  ) {
+    _debugQueryRecorder = recorder;
+  }
+
+  void Function(Map<String, dynamic> request, int clientId)?
+  _debugQueryRecorder;
+
   // Lazy: only opened when first used, so demo/simulator builds (no tdjson) can
   // touch the singleton (e.g. read activeSlot) without resolving symbols.
   late final TdBindings _bindings = _debugBindings ?? TdBindings.open();
@@ -2405,10 +2418,9 @@ class TdClient {
     }
     final debugQuery = _debugQueryOverride;
     if (debugQuery != null) {
-      final result = await debugQuery(
-        Map<String, dynamic>.from(request),
-        clientId,
-      );
+      final recorded = Map<String, dynamic>.from(request);
+      _debugQueryRecorder?.call(recorded, clientId);
+      final result = await debugQuery(recorded, clientId);
       if (result.type == 'error') throw TdError(result);
       return result;
     }

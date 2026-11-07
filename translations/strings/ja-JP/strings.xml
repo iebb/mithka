@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">この端末</string>
     <string name="accountBackupTitle">アカウントバックアップ</string>
     <string name="accountBackupUnavailable">このデバイスまたは配布版ではアカウントのバックアップを利用できません。</string>
-    <string name="accountBackupUserId">ユーザー ID: {value1}</string>
+        <string name="accountPickerTitle">アカウントを選択</string>
+    <string name="accountPickerMessage">このリンクはいずれかのアカウント宛てです。開くアカウントを選択してください。</string>
+<string name="accountBackupUserId">ユーザー ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">新しいコードが送信されました。</string>
     <string name="accountSecurityAccountAndContactsWillMove">Telegram アカウントと連絡先が新しい番号に移行します。</string>
     <string name="accountSecurityAccountInactivity">アカウントの非アクティブ性</string>
