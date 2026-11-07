@@ -23,7 +23,6 @@ import 'package:provider/provider.dart';
 
 import '../call/call_elapsed_text.dart';
 import '../components/app_icons.dart';
-import '../components/app_press_ripple.dart';
 import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -62,6 +61,7 @@ import 'message_action_menu.dart';
 import 'message_direction.dart';
 import 'message_gift_card.dart';
 import 'message_gram_envelope.dart';
+import 'message_reaction_chips.dart';
 import 'message_reply_count_badge.dart';
 import 'message_special_content.dart';
 import 'message_swipe_reply.dart';
@@ -1013,7 +1013,12 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
               children: [
                 body,
                 const SizedBox(height: 4),
-                _reactionChips(outgoing),
+                MessageReactionChips(
+                  message: message,
+                  outgoing: outgoing,
+                  onToggle: widget.bubble.onToggleReaction,
+                  onShowUsers: widget.bubble.onShowReactionUsers,
+                ),
               ],
             ),
     );
@@ -1250,83 +1255,6 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     textScaler: TextScaler.noScaling,
     style: TextStyle(fontSize: 10, height: 1.2, color: _colors.textTertiary),
   );
-
-  Widget _reactionChips(bool outgoing) {
-    final c = _colors;
-    return Wrap(
-      spacing: 5,
-      runSpacing: 5,
-      alignment: outgoing ? WrapAlignment.end : WrapAlignment.start,
-      children: [for (final r in message.reactions) _reactionChip(c, r)],
-    );
-  }
-
-  /// The emoji toggles the reaction; the count is a separate target that opens
-  /// the reactors sheet, so a multi-reaction chip no longer hides that list
-  /// behind an undiscoverable long press.
-  Widget _reactionChip(AppColors c, MessageReaction r) {
-    final foreground = r.chosen ? AppTheme.brand : c.textSecondary;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => widget.bubble.onToggleReaction?.call(r),
-      onLongPress: () => widget.bubble.onShowReactionUsers?.call(message, r),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: r.chosen
-              ? AppTheme.brand.withValues(alpha: 0.18)
-              : c.searchFill,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: r.chosen ? Border.all(color: AppTheme.brand) : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            r.customEmojiId != 0
-                ? CustomEmojiView(
-                    id: r.customEmojiId,
-                    size: 16,
-                    color: foreground,
-                  )
-                : Text(r.emoji ?? '', style: const TextStyle(fontSize: 14)),
-            if (r.count > 1) _reactionCountTarget(r, foreground),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _reactionCountTarget(MessageReaction r, Color color) {
-    final count = Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Text('${r.count}', style: TextStyle(fontSize: 12, color: color)),
-    );
-    final onShow = widget.bubble.onShowReactionUsers;
-    // Without a list callback the count stays plain text, so the whole chip
-    // keeps toggling the reaction exactly as before.
-    if (onShow == null) return count;
-    return Semantics(
-      key: ValueKey('reactionCount-${message.id}-${_reactionKey(r)}'),
-      button: true,
-      label: AppStrings.t(AppStringKeys.chatReactionUsersCount, {
-        'value1': r.count,
-      }),
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onShow(message, r),
-        child: AppPressRipple(
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          color: color,
-          child: count,
-        ),
-      ),
-    );
-  }
-
-  String _reactionKey(MessageReaction reaction) => reaction.customEmojiId != 0
-      ? 'custom:${reaction.customEmojiId}'
-      : 'emoji:${reaction.emoji ?? ''}';
 
   Widget _repeatBadge() => GestureDetector(
     key: const ValueKey('messageRepeatBadge'),
