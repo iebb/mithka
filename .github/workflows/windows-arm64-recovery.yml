@@ -137,6 +137,13 @@ jobs:
             --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
           if ($LASTEXITCODE -ne 0) { throw 'Windows arm64 compilation failed' }
 
+      - name: Prune Windows arm64 release bundle
+        shell: bash
+        run: |
+          python="$(command -v python3 || command -v python)"
+          "$python" scripts/prune-desktop-bundle.py windows \
+            build/windows/arm64/runner/Release
+
       - name: Verify and package arm64 binaries
         shell: pwsh
         run: |

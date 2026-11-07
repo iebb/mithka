@@ -103,7 +103,8 @@ void main() {
     );
   });
 
-  test('a manifest without the ohos asset is rejected', () async {
+  test('a canonical manifest without the ohos pin still installs other '
+      'platforms but refuses the ohos asset', () async {
     final fixture = _createFixture(temporaryDirectory);
     final manifestFile = fixture.manifest;
     final manifest =
@@ -112,6 +113,21 @@ void main() {
       'tdjson-ohos-arm64.zip',
     );
     manifestFile.writeAsStringSync(jsonEncode(manifest));
+
+    final linuxDestination = File.fromUri(
+      temporaryDirectory.uri.resolve('installed/linux/libtdjson.so'),
+    );
+    final linuxResult = await _runInstaller(
+      fixture,
+      asset: _linuxAsset,
+      destination: linuxDestination,
+      member: _linuxMember,
+    );
+    expect(linuxResult.exitCode, 0, reason: _processFailure(linuxResult));
+    expect(
+      linuxDestination.readAsBytesSync(),
+      fixture.payloads[_linuxAsset]![_linuxMember],
+    );
 
     final destination = File.fromUri(
       temporaryDirectory.uri.resolve('installed/ohos/libtdjson.so'),
@@ -125,7 +141,10 @@ void main() {
     );
 
     expect(result.exitCode, isNot(0), reason: _processFailure(result));
-    expect(result.stderr, contains('manifest assets'));
+    expect(
+      result.stderr,
+      contains('no pinned entry for tdjson-ohos-arm64.zip'),
+    );
     expect(destination.existsSync(), isFalse);
   });
 

@@ -1726,13 +1726,6 @@ class _LoginViewState extends State<LoginView> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showingPhone)
-          _loginIconButton(
-            icon: HeroAppIcons.qrcode,
-            tooltip: AppStrings.t(AppStringKeys.loginWithQrCode),
-            enabled: !auth.isWorking,
-            onTap: () => _requestQrLogin(auth),
-          ),
         if (showingPhone && _canRestoreAccountBackup)
           _loginIconButton(
             icon: HeroAppIcons.key,

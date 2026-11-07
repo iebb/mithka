@@ -53,12 +53,18 @@ EXPECTED_MEMBERS = {
     "tdjson-linux-arm64.zip": {"libtdjson.so"},
     "tdjson-linux-x64.zip": {"libtdjson.so"},
     "tdjson-macos-universal.zip": {"libtdjson.dylib"},
-    "tdjson-ohos-arm64.zip": {"arm64-v8a/libtdjson.so"},
     "tdjson-windows-arm64.zip": {"tdjson.dll"},
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
 
-ALL_MEMBERS = EXPECTED_MEMBERS
+# Published by a separate mithka-tdjson workflow under its own immutable tag,
+# so a manifest copied from a canonical release legitimately lacks it. Only an
+# install of this asset requires its pin; every other platform keeps working.
+OPTIONAL_MEMBERS = {
+    "tdjson-ohos-arm64.zip": {"arm64-v8a/libtdjson.so"},
+}
+
+ALL_MEMBERS = {**EXPECTED_MEMBERS, **OPTIONAL_MEMBERS}
 
 MANIFEST_KEYS = {
     "schema_version",
@@ -209,8 +215,15 @@ def load_manifest(path):
     )
 
     assets = manifest["assets"]
-    require_exact_keys(assets, set(ALL_MEMBERS), "manifest assets")
+    if not isinstance(assets, dict):
+        raise InstallError("manifest assets must be an object")
+    pinned_optional = set(assets) & set(OPTIONAL_MEMBERS)
+    require_exact_keys(
+        assets, set(EXPECTED_MEMBERS) | pinned_optional, "manifest assets"
+    )
     for asset_name, expected_members in ALL_MEMBERS.items():
+        if asset_name not in assets:
+            continue
         asset = assets[asset_name]
         # Per-asset pinned releases may override the global release_tag (the
         # HarmonyOS asset is published on its own immutable secondary tag).
@@ -616,6 +629,10 @@ def install_tree(archive_path, infos, destination, asset_name, asset):
 
 def run(args):
     manifest = load_manifest(args.manifest)
+    if args.asset not in manifest["assets"]:
+        raise InstallError(
+            f"manifest assets has no pinned entry for {args.asset}"
+        )
     asset = manifest["assets"][args.asset]
 
     if args.member is not None:

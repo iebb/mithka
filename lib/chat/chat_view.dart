@@ -1055,6 +1055,24 @@ void clearChatMemoryCaches() {
   _ChatViewState._sessionScrollSnapshots.clear();
 }
 
+/// Seeds the transcript cache a [ChatView] restores from on open, for tests.
+@visibleForTesting
+void seedChatSessionCacheForTesting({
+  required int accountSlot,
+  required int chatId,
+  int? forumTopicId,
+  required List<ChatMessage> messages,
+  required bool anchoredHistory,
+}) {
+  _ChatViewState._sessionCache.store(
+    accountSlot: accountSlot,
+    chatId: chatId,
+    forumTopicId: forumTopicId,
+    messages: messages,
+    anchoredHistory: anchoredHistory,
+  );
+}
+
 @visibleForTesting
 bool wideGroupHeaderActionsEnabled(
   Size windowSize, {
@@ -5348,6 +5366,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _openImage(ChatMessage message) {
+    final selected = message.image;
     final pairs = _vm.messages
         .where(
           (m) =>
@@ -5356,8 +5375,20 @@ class _ChatViewState extends State<ChatView> {
               canPreviewMediaAlongside(m, message),
         )
         .toList();
+    var start = pairs.indexWhere((m) => m.id == message.id);
+    if (start < 0 && selected != null) {
+      // The tapped photo is not a transcript photo message — e.g. a lone
+      // photo block inside a rich message hands over a synthetic message
+      // whose id matches the rich message instead. Dropping it here used to
+      // fall back to index 0, opening the viewer on an unrelated chat photo
+      // while the tapped image was missing from the gallery entirely.
+      // Insert it at its id position so the gallery order still reads as
+      // chronology, and open on it.
+      final insertion = pairs.indexWhere((m) => m.id > message.id);
+      start = insertion < 0 ? pairs.length : insertion;
+      pairs.insert(start, message);
+    }
     final items = pairs.map((m) => m.image!).toList();
-    final start = pairs.indexWhere((m) => m.id == message.id);
     unawaited(
       openImagePreview(
         context,
@@ -10401,10 +10432,15 @@ class _ChatViewState extends State<ChatView> {
         pivotAndAfter: [],
       );
     }
-    final pivot = resolveTranscriptPivot(
+    final pivot = resolveTranscriptPivot<_TranscriptEntry>(
       currentPivot: _transcriptPivot,
       initialWindowLoaded: _vm.initialLoaded,
-      firstMessageId: _transcriptOrderId(entries.first.first),
+      entries: entries,
+      firstOrderIdOf: (entry) => _transcriptOrderId(entry.first),
+      estimatedExtentOf: _estimatedEntryExtent,
+      viewportExtent: _scroll.hasClients
+          ? _scroll.position.viewportDimension
+          : MediaQuery.sizeOf(context).height,
     );
     if (pivot == null) {
       return TranscriptPivotPartition<_TranscriptEntry>(

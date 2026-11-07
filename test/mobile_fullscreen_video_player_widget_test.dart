@@ -2618,17 +2618,16 @@ void main() {
         tester.view.resetViewPadding();
       });
 
-      const thumbnailChannel = MethodChannel('fc_native_video_thumbnail');
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      final firstThumbnail = Completer<Object?>();
+      // The provider seam, not the plugin channel: the built-in thumbnailer
+      // skips the channel on a Linux host whatever the target override says.
+      final previousThumbnailProvider = FVideoThumbnail.platformProvider;
+      final firstThumbnail = Completer<Uint8List?>();
       var thumbnailRequests = 0;
-      messenger.setMockMethodCallHandler(thumbnailChannel, (call) {
-        expect(call.method, 'saveThumbnailToBytes');
+      FVideoThumbnail.platformProvider = (request) {
         thumbnailRequests++;
         if (thumbnailRequests == 1) return firstThumbnail.future;
-        return Future<Object?>.value(_transparentPixelPng);
-      });
+        return Future<Uint8List?>.value(_transparentPixelPng);
+      };
 
       final previousPlatform = VideoPlayerPlatform.instance;
       final platform = _FakeMobileVideoPlatform();
@@ -2732,7 +2731,7 @@ void main() {
         expect(platform.disposeCalls, 1);
       } finally {
         if (!firstThumbnail.isCompleted) firstThumbnail.complete(null);
-        messenger.setMockMethodCallHandler(thumbnailChannel, null);
+        FVideoThumbnail.platformProvider = previousThumbnailProvider;
         VideoPlayerPlatform.instance = previousPlatform;
         debugDefaultTargetPlatformOverride = null;
       }
