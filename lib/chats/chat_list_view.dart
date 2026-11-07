@@ -211,54 +211,60 @@ class ChatFolderRail extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ChatFolderIcon(
-                        filter.isAll ? 'All' : filter.iconName,
-                        size: 22,
-                        color: Color.lerp(
-                          c.textSecondary,
-                          c.linkBlue,
-                          _highlight(filter),
-                        )!,
+                      // The count floats over the glyph's top-right corner,
+                      // like the app-icon badge above the rail, so the label
+                      // keeps the full rail width.
+                      SizedBox.square(
+                        dimension: 22,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ChatFolderIcon(
+                              filter.isAll ? 'All' : filter.iconName,
+                              size: 22,
+                              color: Color.lerp(
+                                c.textSecondary,
+                                c.linkBlue,
+                                _highlight(filter),
+                              )!,
+                            ),
+                            if (showBadges &&
+                                !filter.isAll &&
+                                filter.unreadChatCount > 0)
+                              Positioned(
+                                key: ValueKey(
+                                  'side-folder-badge-${filter.folderId}',
+                                ),
+                                right: -12,
+                                top: -6,
+                                child: FolderUnreadBadge(
+                                  label: badgeOverflowMode.format(
+                                    filter.unreadChatCount,
+                                  ),
+                                  accent: filter.hasUnmutedUnread,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              filter.title.l10n(context),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 11,
-                                height: 1.15,
-                                fontWeight: _highlight(filter) >= 0.5
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: Color.lerp(
-                                  c.textSecondary,
-                                  c.linkBlue,
-                                  _highlight(filter),
-                                ),
-                              ),
-                            ),
+                      Text(
+                        filter.title.l10n(context),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.15,
+                          fontWeight: _highlight(filter) >= 0.5
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: Color.lerp(
+                            c.textSecondary,
+                            c.linkBlue,
+                            _highlight(filter),
                           ),
-                          if (showBadges &&
-                              !filter.isAll &&
-                              filter.unreadChatCount > 0) ...[
-                            const SizedBox(width: 3),
-                            Flexible(
-                              child: FolderUnreadBadge(
-                                label: badgeOverflowMode.format(
-                                  filter.unreadChatCount,
-                                ),
-                                accent: filter.hasUnmutedUnread,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
                     ],
                   ),

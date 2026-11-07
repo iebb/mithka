@@ -92,10 +92,10 @@ class ChatFolderIcon extends StatelessWidget {
   }
 }
 
-/// Standalone unread pill for folder tabs and rails. Native Telegram places
-/// the folder badge after the tab's content with its own spacing, vertically
-/// centred, never overlaid on it — so the badge reserves layout width of its
-/// own and cannot cover the glyph or the title.
+/// Standalone unread pill for folder tabs and rails. Horizontal tabs place it
+/// after the title with its own spacing, as native Telegram does; the narrow
+/// side rail floats it over the glyph's top-right corner instead so the title
+/// keeps the full rail width.
 class FolderUnreadBadge extends StatelessWidget {
   const FolderUnreadBadge({
     super.key,
