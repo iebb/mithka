@@ -1052,6 +1052,24 @@ void clearChatMemoryCaches() {
   _ChatViewState._sessionScrollSnapshots.clear();
 }
 
+/// Seeds the transcript cache a [ChatView] restores from on open, for tests.
+@visibleForTesting
+void seedChatSessionCacheForTesting({
+  required int accountSlot,
+  required int chatId,
+  int? forumTopicId,
+  required List<ChatMessage> messages,
+  required bool anchoredHistory,
+}) {
+  _ChatViewState._sessionCache.store(
+    accountSlot: accountSlot,
+    chatId: chatId,
+    forumTopicId: forumTopicId,
+    messages: messages,
+    anchoredHistory: anchoredHistory,
+  );
+}
+
 @visibleForTesting
 bool wideGroupHeaderActionsEnabled(
   Size windowSize, {
@@ -10376,10 +10394,15 @@ class _ChatViewState extends State<ChatView> {
         pivotAndAfter: [],
       );
     }
-    final pivot = resolveTranscriptPivot(
+    final pivot = resolveTranscriptPivot<_TranscriptEntry>(
       currentPivot: _transcriptPivot,
       initialWindowLoaded: _vm.initialLoaded,
-      firstMessageId: _transcriptOrderId(entries.first.first),
+      entries: entries,
+      firstOrderIdOf: (entry) => _transcriptOrderId(entry.first),
+      estimatedExtentOf: _estimatedEntryExtent,
+      viewportExtent: _scroll.hasClients
+          ? _scroll.position.viewportDimension
+          : MediaQuery.sizeOf(context).height,
     );
     if (pivot == null) {
       return TranscriptPivotPartition<_TranscriptEntry>(

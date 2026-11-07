@@ -11,14 +11,43 @@ class TranscriptPivot {
 
 /// Keeps an existing pivot, but does not let a provisional seed message create
 /// one before the first complete history window has loaded.
-TranscriptPivot? resolveTranscriptPivot({
+///
+/// The cutoff parks everything older than a newest-side tail in the
+/// before-center sliver. Centering the whole window instead — cutoff at the
+/// oldest loaded message — makes the open-at-bottom jump materialize every row
+/// of the window in a single frame, because a variable-extent SliverList can
+/// only reach a scroll offset by laying out each row before it. A restored
+/// session can carry thousands of cached messages, which blocks the entrance
+/// frame for seconds. A tail of [tailViewports] viewports keeps that first
+/// jump to a couple of screens of rows while upward scrolling still reveals
+/// parked rows lazily, exactly as it reveals older loaded pages.
+TranscriptPivot? resolveTranscriptPivot<Entry>({
   required TranscriptPivot? currentPivot,
   required bool initialWindowLoaded,
-  required int? firstMessageId,
+  required List<Entry> entries,
+  required int Function(Entry entry) firstOrderIdOf,
+  required double Function(Entry entry) estimatedExtentOf,
+  required double viewportExtent,
+  double tailViewports = 2,
+  int minimumTailEntries = 4,
 }) {
   if (currentPivot != null) return currentPivot;
-  if (!initialWindowLoaded || firstMessageId == null) return null;
-  return TranscriptPivot(firstMessageId);
+  if (!initialWindowLoaded || entries.isEmpty) return null;
+  // Accumulate a suffix large enough that the after-center arm is never
+  // "short" (see isLatestTranscriptArmShort): fewer tail entries than that
+  // would trip the parked-short repair, which resets the pivot back to the
+  // oldest message and reintroduces the whole-window materialization.
+  var index = entries.length;
+  var tailEntries = 0;
+  var tailExtent = 0.0;
+  final tailTarget = tailViewports * viewportExtent;
+  while (index > 0 &&
+      (tailEntries < minimumTailEntries || tailExtent < tailTarget)) {
+    index -= 1;
+    tailEntries += 1;
+    tailExtent += estimatedExtentOf(entries[index]);
+  }
+  return TranscriptPivot(firstOrderIdOf(entries[index]));
 }
 
 /// Whether a provisional pending-only cutoff must be replaced now that a
