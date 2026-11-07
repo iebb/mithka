@@ -5345,6 +5345,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _openImage(ChatMessage message) {
+    final selected = message.image;
     final pairs = _vm.messages
         .where(
           (m) =>
@@ -5353,8 +5354,20 @@ class _ChatViewState extends State<ChatView> {
               canPreviewMediaAlongside(m, message),
         )
         .toList();
+    var start = pairs.indexWhere((m) => m.id == message.id);
+    if (start < 0 && selected != null) {
+      // The tapped photo is not a transcript photo message — e.g. a lone
+      // photo block inside a rich message hands over a synthetic message
+      // whose id matches the rich message instead. Dropping it here used to
+      // fall back to index 0, opening the viewer on an unrelated chat photo
+      // while the tapped image was missing from the gallery entirely.
+      // Insert it at its id position so the gallery order still reads as
+      // chronology, and open on it.
+      final insertion = pairs.indexWhere((m) => m.id > message.id);
+      start = insertion < 0 ? pairs.length : insertion;
+      pairs.insert(start, message);
+    }
     final items = pairs.map((m) => m.image!).toList();
-    final start = pairs.indexWhere((m) => m.id == message.id);
     unawaited(
       openImagePreview(
         context,
