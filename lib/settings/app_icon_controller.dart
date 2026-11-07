@@ -778,9 +778,9 @@ bool appIconPickerAvailableForPlatform(
       TargetPlatform.android ||
       TargetPlatform.iOS ||
       TargetPlatform.macOS => true,
-      TargetPlatform.fuchsia ||
-      TargetPlatform.linux ||
-      TargetPlatform.windows => false,
+      // Desktop, fuchsia, and the ohos fork's extra enum value hide the picker
+      // (no native icon changer there) instead of throwing.
+      _ => false,
     };
 
 enum RetainedUnknownIconSource { savedPreference, nativeCurrent }

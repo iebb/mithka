@@ -109,3 +109,7 @@ android/app/src/main/jniLibs/
 /third_party/fvp/android/.cxx/
 /third_party/fvp/android/mdk-sdk/
 /third_party/fvp/android/mdk-sdk-*.7z
+
+# OHOS plugin overlay working copies (scripts/enable-ohos-plugins.sh)
+/pubspec.yaml.ohos-backup
+/pubspec.lock.ohos-backup
