@@ -64,6 +64,19 @@ bool loginHasBackAction({
       configuredAccountCount > 1;
 }
 
+/// Whether the standalone back affordance offers a destination the method
+/// switch does not. On a first run with no configured account, the QR and
+/// bot-token steps are only reachable through that switch, so a back button
+/// that just re-enters the phone form duplicates it.
+bool loginHasDistinctBackDestination({
+  required bool showBotLogin,
+  required bool backToPhoneOnly,
+  required int configuredAccountCount,
+}) {
+  if (showBotLogin) return configuredAccountCount > 1;
+  return !backToPhoneOnly || configuredAccountCount > 1;
+}
+
 /// Maximum width of the compact login lane.
 ///
 /// Phones and short landscape windows keep one bounded column. Roomier
@@ -260,6 +273,17 @@ class _LoginViewState extends State<LoginView> {
     );
     final backToPhoneOnly =
         _showBotLogin || (!_forcePhone && auth.step is AuthWaitQrCode);
+    final configuredAccounts = TdClient.shared.configuredSlots.length;
+    // The system back gesture keeps the wider contract of loginHasBackAction
+    // (it can still abort an add-account in flight); the visible button only
+    // stays where it goes somewhere the method switch cannot.
+    final showsBackButton =
+        canGoBack &&
+        loginHasDistinctBackDestination(
+          showBotLogin: _showBotLogin,
+          backToPhoneOnly: backToPhoneOnly,
+          configuredAccountCount: configuredAccounts,
+        );
     return PopScope(
       // LoginView is the root content, so allowing the platform back action
       // through while the visible back affordance exists exits the app instead
@@ -279,14 +303,14 @@ class _LoginViewState extends State<LoginView> {
           ? _desktopLayout(
               auth,
               accounts,
-              canGoBack: canGoBack,
+              canGoBack: showsBackButton,
               backToPhoneOnly: backToPhoneOnly,
               showingPhone: showingPhone,
             )
           : _laneLayout(
               auth,
               accounts,
-              canGoBack: canGoBack,
+              canGoBack: showsBackButton,
               backToPhoneOnly: backToPhoneOnly,
               showingPhone: showingPhone,
             ),
@@ -1096,6 +1120,9 @@ class _LoginViewState extends State<LoginView> {
     _code.clear();
     _password.clear();
     _stopResendCountdown();
+    // The phone form shows immediately: switching out of a QR or bot step may
+    // reset the underlying client, and that transition must not bounce the
+    // login surface back to the cold-start splash.
     setState(() => _forcePhone = true);
     unawaited(auth.switchToPhoneLogin());
   }
@@ -1958,16 +1985,23 @@ class _LoginViewState extends State<LoginView> {
             ],
           )
         else ...[
-          Align(alignment: Alignment.centerLeft, child: plate),
-          const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _secondaryButton(
-              label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
-              icon: HeroAppIcons.arrowsRotate,
-              enabled: !auth.isWorking,
-              onTap: auth.requestQrLogin,
-              hug: true,
+          // The code and its refresh action are one centered block: the login
+          // lane is the only content on a phone, so a left-aligned plate reads
+          // as drift rather than an aligned form column.
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                plate,
+                const SizedBox(height: AppSpacing.md),
+                _secondaryButton(
+                  label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
+                  icon: HeroAppIcons.arrowsRotate,
+                  enabled: !auth.isWorking,
+                  onTap: auth.requestQrLogin,
+                  hug: true,
+                ),
+              ],
             ),
           ),
         ],
