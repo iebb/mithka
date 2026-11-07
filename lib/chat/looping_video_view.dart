@@ -49,6 +49,7 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
   bool _tickerEnabled = false;
   bool _appIsActive = true;
   bool _loadPending = false;
+  bool _videoHasRenderedFrame = false;
   LoopingMediaPlayerLease? _lease;
   LoopingMediaPlayerWaiter? _leaseWaiter;
   VideoPlayerController? _initializingController;
@@ -223,14 +224,27 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
     }
     _loadPending = false;
     controller.addListener(() {
-      if (!_ownsAttempt(generation, ref, slot) || !controller.value.hasError) {
+      if (!_ownsAttempt(generation, ref, slot)) {
         return;
       }
-      diagnostics.recordFailure(
-        controller.value.errorDescription,
-        stage: VideoFailureStage.playback,
-      );
-      diagnostics.reportTerminal();
+      if (controller.value.hasError) {
+        diagnostics.recordFailure(
+          controller.value.errorDescription,
+          stage: VideoFailureStage.playback,
+        );
+        diagnostics.reportTerminal();
+        return;
+      }
+      if (!_videoHasRenderedFrame &&
+          controller.value.position > Duration.zero) {
+        // The player only reports a position past the start once its decoder
+        // has presented frames. isInitialized alone arrives with parsed
+        // metadata, so a frameless-but-initialized surface — a decoder still
+        // spinning up, or the key-free MDK binary past its expiry on Apple
+        // platforms, which initializes and then delivers no frames — would
+        // otherwise mount an opaque black box over the still thumbnail.
+        setState(() => _videoHasRenderedFrame = true);
+      }
     });
     setState(() => _controller = controller);
   }
@@ -288,6 +302,7 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
 
   void _releasePlayback({bool rebuild = true}) {
     ++_generation;
+    _videoHasRenderedFrame = false;
     _leaseWaiter?.cancel();
     _leaseWaiter = null;
     _loadPending = false;
@@ -349,7 +364,9 @@ class _LoopingVideoViewState extends State<LoopingVideoView>
             fit: widget.fit,
             showProgress: widget.showDownloadProgress,
           ),
-        if (controller != null && controller.value.isInitialized)
+        if (controller != null &&
+            controller.value.isInitialized &&
+            _videoHasRenderedFrame)
           InlineVideoMotionGuard(
             viewType: controller.viewType,
             child: FittedBox(
