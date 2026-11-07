@@ -17,6 +17,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../config/build_flags.dart';
 import '../tdlib/json_helpers.dart';
@@ -30,9 +31,36 @@ class MessageMediaSnapshotter {
   @visibleForTesting
   factory MessageMediaSnapshotter.forTesting() => MessageMediaSnapshotter._();
 
-  /// Directory holding the copies. Resolved lazily; tests inject one.
-  @visibleForTesting
+  /// Directory holding the copies. Resolved lazily from app support behind
+  /// the same compile-time gate; tests inject one.
   Directory? dir;
+
+  /// App-support subdirectory the production snapshotter copies into.
+  static const dirName = 'message-history-media';
+
+  bool _dirResolved = false;
+
+  /// Holds every copy just before the post-copy validation, so tests can
+  /// land an invalidation mid-copy deterministically.
+  @visibleForTesting
+  Future<void> Function()? beforeValidateForTesting;
+
+  /// Resolves the production directory once (from app support, so it follows
+  /// the OS convention the mirror file already uses); an injected [dir] wins
+  /// and never triggers the platform lookup. Failure keeps the snapshotter
+  /// inert — nothing is fetched or copied without a directory.
+  Future<void> ensureDirResolved() async {
+    if (!allowTelegramTosViolations) return;
+    if (_dirResolved) return;
+    _dirResolved = true;
+    if (dir != null) return;
+    try {
+      final support = await getApplicationSupportDirectory();
+      dir = Directory('${support.path}/$dirName');
+    } catch (_) {
+      // Leave dir null: snapshot() then returns null for every file.
+    }
+  }
 
   int _generation = 0;
   final Map<String, int> _scopeEpochs = {};
@@ -90,17 +118,22 @@ class MessageMediaSnapshotter {
     final source = File(sourcePath);
     final generation = _generation;
     final scopeKey = '$accountUserId:$chatId';
-    final scopeEpoch = _scopeEpochs[scopeKey] ?? 0;
+    // Register the scope so deleteAccount can invalidate an in-flight copy
+    // even before any per-chat invalidation ever touched it.
+    final scopeEpoch = _scopeEpochs.putIfAbsent(scopeKey, () => 0);
     try {
-      if (!await source.exists()) return null;
+      await ensureDirResolved();
       final directory = dir;
       if (directory == null) return null;
+      if (!await source.exists()) return null;
       await directory.create(recursive: true);
       final name = _snapshotFileName(accountUserId, chatId, messageId, source);
       final target = File('${directory.path}/$name');
       if (!await target.exists()) {
         await source.copy(target.path);
       }
+      final beforeValidate = beforeValidateForTesting;
+      if (beforeValidate != null) await beforeValidate();
       // Re-check after the await: an invalidation that landed mid-copy must
       // not leave this scope's file behind for the store to reference.
       if (_generation != generation ||
@@ -140,9 +173,18 @@ class MessageMediaSnapshotter {
     );
   }
 
-  /// Removes every snapshot of one account.
+  /// Removes every snapshot of one account. Scope-stamps every (account,
+  /// chat) scope the account owned so in-flight copies for it are
+  /// invalidated — a copy finishing after the removal is deleted instead of
+  /// surviving on disk for an account whose entries are gone, exactly like
+  /// deleteScope does per chat.
   void deleteAccount(int accountUserId) {
     if (!allowTelegramTosViolations) return;
+    for (final scope in _scopeEpochs.keys.toList(growable: false)) {
+      if (scope.startsWith('$accountUserId:')) {
+        _scopeEpochs[scope] = (_scopeEpochs[scope] ?? 0) + 1;
+      }
+    }
     _deleteWhere((name) => name.startsWith('${accountUserId}_'));
   }
 

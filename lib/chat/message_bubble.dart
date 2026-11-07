@@ -1120,7 +1120,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     // timeInSenderHeader, and dropping either wrapper would re-parent the whole
     // bubble and re-inflate every child element (spoilers, inline video, map
     // thumbnails). Hover therefore only ever swaps the Positioned's child.
-    return MouseRegion(
+    final row = MouseRegion(
       onEnter: (_) => _setTimestampHover(true),
       onExit: (_) => _setTimestampHover(false),
       child: Stack(
@@ -1141,6 +1141,25 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             ),
         ],
       ),
+    );
+    return _maybeGhost(row, outgoing);
+  }
+
+  /// Ghost styling for a deleted message's kept copy (Telegram §1.4
+  /// self-build feature): the bubble stays where the message used to be,
+  /// translucent with a small trash badge, media from the mirror's snapshot.
+  Widget _maybeGhost(Widget child, bool outgoing) {
+    if (message.mirrorEntry == null) return child;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: outgoing
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        _GhostDeletedBadge(outgoing: outgoing, onLongPress: _handleLongPress),
+        const SizedBox(height: 3),
+        Opacity(opacity: 0.55, child: child),
+      ],
     );
   }
 
@@ -6855,5 +6874,45 @@ class _RenderQuoteFold extends RenderProxyBox {
       );
       canvas.restore();
     });
+  }
+}
+
+/// The tiny "deleted" badge above a ghost bubble. Tap-through except for the
+/// long-press, which forwards to the bubble's own action menu (the mirror
+/// actions live there).
+class _GhostDeletedBadge extends StatelessWidget {
+  const _GhostDeletedBadge({required this.outgoing, this.onLongPress});
+
+  final bool outgoing;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Align(
+      alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onLongPress: onLongPress,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: c.groupedBackground.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(HeroAppIcons.trash, size: 11, color: c.textTertiary),
+              const SizedBox(width: 4),
+              Text(
+                AppStringKeys.historyDeletedLabel.l10n(context),
+                style: AppTextStyle.footnote(c.textTertiary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -58,6 +58,7 @@ enum MessageAction {
   saveSticker(HeroAppIcons.circlePlus, AppStringKeys.imageEditAdd),
   viewStickerSet(HeroAppIcons.tableCells, AppStringKeys.messageActionSticker),
   viewEdits(HeroAppIcons.clock, AppStringKeys.messageActionViewEdits),
+  removeMirror(HeroAppIcons.trash, AppStringKeys.historyRemoveFromMirrorAction),
   delete(HeroAppIcons.trash, AppStringKeys.chatDelete);
 
   const MessageAction(this.glyph, this.label);
@@ -67,7 +68,8 @@ enum MessageAction {
   bool get isDestructive =>
       this == MessageAction.delete ||
       this == MessageAction.report ||
-      this == MessageAction.block;
+      this == MessageAction.block ||
+      this == MessageAction.removeMirror;
 }
 
 enum MessageActionSource { normal, video }
@@ -565,6 +567,7 @@ class MessageActionMenu extends StatelessWidget {
     }
     if (allowHideSender) result.add(MessageAction.hideSender);
     if (allowViewEdits) result.add(MessageAction.viewEdits);
+    if (message.mirrorEntry != null) result.add(MessageAction.removeMirror);
     result.add(MessageAction.delete);
     return result;
   }

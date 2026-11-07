@@ -48,7 +48,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
-import '../history/message_history_revision_sheet.dart';
+import '../history/message_history_revision_view.dart';
 import '../history/message_history_store.dart';
 import '../media/app_asset_picker.dart';
 import '../media/media_metadata.dart';
@@ -5688,12 +5688,29 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _openMessageEdits(ChatMessage message) async {
-    final entry = MessageHistoryStore.shared.entry(
-      message.chatId ?? _vm.chatId,
-      message.id,
-    );
+    final entry =
+        message.mirrorEntry ??
+        MessageHistoryStore.shared.entry(
+          message.chatId ?? _vm.chatId,
+          message.id,
+        );
     if (entry == null || entry.events.isEmpty) return;
-    await showMessageHistoryRevisionSheet(context, entry);
+    await Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => MessageHistoryRevisionView(entry: entry),
+      ),
+    );
+  }
+
+  /// Drops a ghost bubble's kept copy (Telegram §1.4 mirror action).
+  void _removeMirrorEntry(ChatMessage message) {
+    final entry = message.mirrorEntry;
+    if (entry == null) return;
+    MessageHistoryStore.shared.deleteEntry(entry);
+    showToast(
+      context,
+      AppStringKeys.historyRemovedFromMirrorToast.l10n(context),
+    );
   }
 
   Future<void> _perform(MessageAction action, ChatMessage message) async {
@@ -5710,6 +5727,8 @@ class _ChatViewState extends State<ChatView> {
     switch (action) {
       case MessageAction.viewEdits:
         await _openMessageEdits(message);
+      case MessageAction.removeMirror:
+        _removeMirrorEntry(message);
       case MessageAction.copy:
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
       case MessageAction.copyImage:

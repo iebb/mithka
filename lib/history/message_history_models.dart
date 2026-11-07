@@ -25,6 +25,8 @@ class MessageHistoryEvent {
     required this.oldText,
     required this.newText,
     this.editDate = 0,
+    this.oldKindKey = '',
+    this.oldMediaPath = '',
   });
 
   /// Unix seconds at which mithka observed the change.
@@ -40,11 +42,19 @@ class MessageHistoryEvent {
   /// TDLib's edit_date for the edit that caused the event, 0 if unknown.
   final int editDate;
 
+  /// Content kind and media snapshot of the PREVIOUS revision, captured
+  /// when the edit landed. Older mirror files lack them; they render as
+  /// text-only revisions.
+  final String oldKindKey;
+  final String oldMediaPath;
+
   Map<String, Object?> toJson() => {
     'at': at,
     'old': oldText,
     'new': newText,
     'editDate': editDate,
+    if (oldKindKey.isNotEmpty) 'oldKind': oldKindKey,
+    if (oldMediaPath.isNotEmpty) 'oldMedia': oldMediaPath,
   };
 
   static MessageHistoryEvent? fromJson(Object? json) {
@@ -54,13 +64,43 @@ class MessageHistoryEvent {
     if (at is! int || newText is! String) return null;
     final oldText = json['old'];
     final editDate = json['editDate'];
+    final oldKindKey = json['oldKind'];
+    final oldMediaPath = json['oldMedia'];
     return MessageHistoryEvent(
       at: at,
       oldText: oldText is String ? oldText : null,
       newText: newText,
       editDate: editDate is int ? editDate : 0,
+      oldKindKey: oldKindKey is String ? oldKindKey : '',
+      oldMediaPath: oldMediaPath is String ? oldMediaPath : '',
     );
   }
+
+  MessageHistoryEvent copyWithOldMedia({
+    String? oldKindKey,
+    String? oldMediaPath,
+  }) => MessageHistoryEvent(
+    at: at,
+    oldText: oldText,
+    newText: newText,
+    editDate: editDate,
+    oldKindKey: oldKindKey ?? this.oldKindKey,
+    oldMediaPath: oldMediaPath ?? this.oldMediaPath,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is MessageHistoryEvent &&
+      other.at == at &&
+      other.oldText == oldText &&
+      other.newText == newText &&
+      other.editDate == editDate &&
+      other.oldKindKey == oldKindKey &&
+      other.oldMediaPath == oldMediaPath;
+
+  @override
+  int get hashCode =>
+      Object.hash(at, oldText, newText, editDate, oldKindKey, oldMediaPath);
 }
 
 /// One kept copy of one message, together with its edit trail and the media

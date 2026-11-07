@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_store.dart';
 import 'package:mithka/history/message_history_view.dart';
+import 'package:mithka/history/message_media_snapshot.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -140,6 +141,14 @@ void main() {
       TdClientProxyTransport(
         accountSlot: 0,
         query: (request) async {
+          if (request['@type'] == 'getUser') {
+            return {
+              '@type': 'user',
+              'id': 42,
+              'first_name': 'Ada',
+              'last_name': 'Lovelace',
+            };
+          }
           if (request['@type'] != 'getChat') return {'@type': 'ok'};
           if (account == 0) return {'@type': 'ok'};
           if (account == 42) return oldTitle.future;
@@ -301,6 +310,81 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     expect(store.isChatExcluded(11), isFalse);
+  });
+
+  testWidgets('a photo snapshot renders inline and opens externally', (
+    tester,
+  ) async {
+    final media = MessageMediaSnapshotter.forTesting();
+    media.dir = dir;
+    store.mediaSnapshotter = media;
+    final photo = File('${dir.path}/7001_11_500_m.jpg')
+      ..writeAsBytesSync(List.filled(16, 1));
+    final entry = _entry(
+      11,
+      500,
+      kindKey: 'historyKindPhoto',
+    ).copyWith(mediaPath: photo.path);
+    store.debugSeed([entry]);
+    await _pumpViewer(tester, store);
+
+    await tester.tap(find.text('Chat 11'));
+    await tester.pump();
+    // The snapshot image renders inline once the existence probe lands.
+    await tester.runAsync<void>(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+    expect(find.byKey(ValueKey('history-media-${photo.path}')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a missing snapshot falls back to the kind label', (
+    tester,
+  ) async {
+    final media = MessageMediaSnapshotter.forTesting();
+    media.dir = dir;
+    store.mediaSnapshotter = media;
+    final entry = _entry(11, 501, kindKey: 'historyKindVideo').copyWith(
+      mediaPath: '${dir.path}/7001_11_501_m.mp4', // never written
+    );
+    store.debugSeed([entry]);
+    await _pumpViewer(tester, store);
+
+    await tester.tap(find.text('Chat 11'));
+    await tester.pump();
+    await tester.runAsync<void>(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+    // The existence probe found nothing: the row keeps its kind label and
+    // renders no broken preview.
+    expect(
+      find.byKey(const ValueKey('history-media-placeholder')),
+      findsNothing,
+    );
+    expect(
+      find.text(AppStringKeys.historyKindVideo.l10n(_contextOf(tester))),
+      findsAtLeastNWidgets(1),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('group rows resolve their sender name', (tester) async {
+    // The proxy is one per process (configured by the account-switch test
+    // above); its transport keeps answering getUser, so the viewer resolves
+    // the seeded group entry's sender through it.
+    store.debugSeed([_entry(11, 100, text: 'group message')]);
+    await _pumpViewer(tester, store);
+
+    await tester.tap(find.text('Chat 11'));
+    await tester.pump();
+    await tester.runAsync<void>(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+    expect(find.text('Ada Lovelace'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(

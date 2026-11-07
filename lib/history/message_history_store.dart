@@ -34,6 +34,7 @@ import '../config/build_flags.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'message_history_models.dart';
+import 'message_history_settings.dart';
 import 'message_media_snapshot.dart';
 
 export 'message_history_models.dart';
@@ -241,6 +242,21 @@ class MessageHistoryStore extends ChangeNotifier {
       _activeAccountUserId == null
       ? null
       : _byKey['$_activeAccountUserId:$chatId:$messageId'];
+
+  /// Deleted kept copies of one chat of one account, oldest first — the
+  /// ghost-bubble source. Reads by explicit account id so a chat view of a
+  /// non-active slot (desktop multi-window) still gets its own ghosts.
+  List<MessageHistoryEntry> deletedEntriesFor(int accountUserId, int chatId) {
+    if (!allowTelegramTosViolations) return const [];
+    return List.unmodifiable(
+      _byKey.values.where(
+        (entry) =>
+            entry.accountUserId == accountUserId &&
+            entry.chatId == chatId &&
+            entry.state == MessageHistoryState.deleted,
+      ),
+    );
+  }
 
   int get entryCount => _byKey.length;
 
@@ -571,6 +587,7 @@ class MessageHistoryStore extends ChangeNotifier {
   ) {
     if (!allowTelegramTosViolations) return;
     if (accountUserId == null || message == null) return;
+    final settings = MessageHistorySettings.shared;
     final chatId = message.int64('chat_id');
     // The message object carries its own id in `id` (message_id is the field
     // name on the update wrappers, not on message).
@@ -605,6 +622,11 @@ class MessageHistoryStore extends ChangeNotifier {
       return;
     }
 
+    // Recording a brand-new copy requires the deleted-recording switch; a
+    // known copy is always refreshed so re-arrivals keep existing mirrors
+    // truthful even after the switch was turned off.
+    if (!settings.recordDeleted) return;
+
     final date = message.integer('date') ?? 0;
     final content = message.obj('content');
     _byKey[key] = MessageHistoryEntry(
@@ -638,6 +660,7 @@ class MessageHistoryStore extends ChangeNotifier {
   ) {
     final file = _contentSnapshotFile(message.obj('content'));
     if (file == null) return;
+    if (!_snapshotsEnabledFor(message)) return;
     final key = '$accountUserId:$chatId:$messageId';
     final generation = _generation;
     unawaited(
@@ -692,18 +715,48 @@ class MessageHistoryStore extends ChangeNotifier {
       case 'messageVideo':
       case 'messageAnimation':
       case 'messageDocument':
-      case 'messageAudio':
-      case 'messageVoiceNote':
         return content.obj('animation') ??
             content.obj('video') ??
-            content.obj('document') ??
-            content.obj('voice_note');
+            content.obj('document');
+      case 'messageVoiceNote':
+        // messageVoiceNote nests the file one level deeper: voice_note.voice.
+        final voice = content.obj('voice_note');
+        return voice?.obj('voice');
+      case 'messageAudio':
+        // messageAudio nests the file one level deeper: audio.audio.
+        final audio = content.obj('audio');
+        return audio?.obj('audio');
     }
     return null;
   }
 
+  /// Whether snapshots may be taken for this message's conversation, per
+  /// the snapshot switches and the chat's TDLib type: user/secret chats are
+  /// "private", basic groups/supergroups "groups", channels "channels".
+  /// Unknown or missing types snapshot nothing.
+  static bool _snapshotsEnabledFor(Map<String, dynamic> message) {
+    final settings = MessageHistorySettings.shared;
+    if (!settings.snapshotPrivate &&
+        !settings.snapshotGroups &&
+        !settings.snapshotChannels) {
+      return false;
+    }
+    final chatId = message.int64('chat_id');
+    if (chatId == null) return false;
+    // TDLib chat ids: users are positive; basic groups −1e13.., supergroups
+    // and channels −1e14.. The chat type is not carried on the message, so
+    // the id class decides. Self chat snapshots with "private".
+    if (chatId > 0) return settings.snapshotPrivate;
+    if (chatId > -1000000000000) return settings.snapshotGroups;
+    return settings.snapshotChannels;
+  }
+
   MessageMediaSnapshotter _media() =>
       mediaSnapshotter ?? MessageMediaSnapshotter.shared;
+
+  /// The snapshotter the viewer resolves media paths against (tests read
+  /// the injected one, production the shared instance).
+  MessageMediaSnapshotter get mediaSnapshotterForView => _media();
 
   /// The injected snapshotter (tests); defaults to the shared one.
   @visibleForTesting
@@ -748,6 +801,7 @@ class MessageHistoryStore extends ChangeNotifier {
   /// produces an edit event. Pending dates are owned by the account whose
   /// client observed the edit.
   void _rememberEditDate(int accountUserId, Map<String, dynamic> update) {
+    if (!MessageHistorySettings.shared.recordEdits) return;
     final chatId = update.int64('chat_id');
     final messageId = update.integer('message_id');
     if (chatId == null || messageId == null) return;
@@ -756,6 +810,7 @@ class MessageHistoryStore extends ChangeNotifier {
   }
 
   void _recordContentUpdate(int accountUserId, Map<String, dynamic> update) {
+    if (!MessageHistorySettings.shared.recordEdits) return;
     final chatId = update.int64('chat_id');
     final messageId = update.integer('message_id');
     if (chatId == null || messageId == null) return;
@@ -780,7 +835,12 @@ class MessageHistoryStore extends ChangeNotifier {
       oldText: existing.text,
       newText: newText,
       editDate: editDate,
+      oldKindKey: existing.kindKey,
+      oldMediaPath: existing.mediaPath,
     );
+    // The copyWith writes the NEW text/kind now; the new revision's snapshot
+    // (an edit can swap a photo for a document) is taken below and fills
+    // only when the entry has none for that revision yet.
     _byKey[key] = existing.copyWith(
       text: newText,
       kindKey: newKind,
@@ -788,6 +848,44 @@ class MessageHistoryStore extends ChangeNotifier {
     );
     notifyListeners();
     _schedulePersist();
+    if (newKind != existing.kindKey && newKind.isNotEmpty) {
+      _snapshotEditedMediaOf(accountUserId, chatId, messageId, content, key);
+    }
+  }
+
+  /// Snapshot the media of a just-recorded edit when the file is fully on
+  /// disk. Differently from the arrival snapshot, an edit's snapshot must
+  /// NOT overwrite an existing path: only the first copy of a revision wins.
+  void _snapshotEditedMediaOf(
+    int accountUserId,
+    int chatId,
+    int messageId,
+    Map<String, dynamic>? content,
+    String entryKey,
+  ) {
+    final file = _contentSnapshotFile(content);
+    if (file == null) return;
+    final wrapped = <String, dynamic>{'chat_id': chatId, 'content': content};
+    if (!_snapshotsEnabledFor(wrapped)) return;
+    final generation = _generation;
+    unawaited(
+      _media()
+          .snapshot(
+            file,
+            accountUserId: accountUserId,
+            chatId: chatId,
+            messageId: messageId,
+          )
+          .then((path) {
+            if (path == null) return;
+            if (_disposed || _generation != generation) return;
+            final existing = _byKey[entryKey];
+            if (existing == null || existing.mediaPath.isNotEmpty) return;
+            _byKey[entryKey] = existing.copyWith(mediaPath: path);
+            notifyListeners();
+            _schedulePersist();
+          }),
+    );
   }
 
   /// updateDeleteMessages marks known, still-active entries as deleted.
@@ -798,6 +896,7 @@ class MessageHistoryStore extends ChangeNotifier {
   /// comes back re-activates through [recordIncomingMessage]. Deletions only
   /// ever touch the observing account's copy.
   void _recordDeletedMessages(int accountUserId, Map<String, dynamic> update) {
+    if (!MessageHistorySettings.shared.recordDeleted) return;
     final chatId = update.int64('chat_id');
     if (chatId == null) return;
     final ids = update.int64Array('message_ids') ?? const <int>[];
