@@ -1953,6 +1953,7 @@
     <string name="historyKindVoice">ボイスメッセージ</string>
     <string name="historyNoExcludedChats">除外されたチャットはありません。</string>
     <string name="historyReincludeAction">記録を再開</string>
+    <string name="historyRevisionsTitle">編集履歴</string>
     <string name="historySettingsRow">メッセージ履歴</string>
     <string name="historyTitle">メッセージ履歴</string>
 
@@ -2186,6 +2187,7 @@
     <string name="messageActionSetTodo">ToDo に設定</string>
     <string name="messageActionSticker">ステッカー</string>
     <string name="messageActionTranslate">翻訳</string>
+    <string name="messageActionViewEdits">編集履歴</string>
     <string name="messageActionUnsetTodo">ToDo を解除</string>
     <string name="messageBubbleAISummary">AI概要</string>
     <string name="messageBubbleApply">吹き出しを適用</string>

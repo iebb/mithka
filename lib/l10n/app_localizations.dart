@@ -436,6 +436,7 @@ abstract final class AppStringKeys {
   static const historyKindVoice = 'historyKindVoice';
   static const historyNoExcludedChats = 'historyNoExcludedChats';
   static const historyReincludeAction = 'historyReincludeAction';
+  static const historyRevisionsTitle = 'historyRevisionsTitle';
   static const historySettingsRow = 'historySettingsRow';
   static const historyTitle = 'historyTitle';
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
@@ -2232,6 +2233,7 @@ abstract final class AppStringKeys {
   static const messageActionSetTodo = 'messageActionSetTodo';
   static const messageActionSticker = 'messageActionSticker';
   static const messageActionTranslate = 'messageActionTranslate';
+  static const messageActionViewEdits = 'messageActionViewEdits';
   static const messageActionUnsetTodo = 'messageActionUnsetTodo';
   static const messageBubbleCallCanceled = 'messageBubbleCallCanceled';
   static const messageBubbleCallDeclined = 'messageBubbleCallDeclined';

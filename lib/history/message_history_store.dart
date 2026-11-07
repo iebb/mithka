@@ -33,216 +33,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/build_flags.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'message_history_models.dart';
+import 'message_media_snapshot.dart';
 
-/// What the counterpart did to a mirrored message.
-enum MessageHistoryState {
-  /// The message still exists in the chat.
-  active,
-
-  /// The counterpart deleted the message; the copy is kept here only.
-  deleted,
-}
-
-@immutable
-class MessageHistoryEvent {
-  const MessageHistoryEvent({
-    required this.at,
-    required this.oldText,
-    required this.newText,
-    this.editDate = 0,
-  });
-
-  /// Unix seconds at which mithka observed the change.
-  final int at;
-
-  /// Text before the change, or null when unknown (e.g. the mirror was
-  /// populated by an older build).
-  final String? oldText;
-
-  /// Text after the change.
-  final String newText;
-
-  /// TDLib's edit_date for the edit that caused the event, 0 if unknown.
-  final int editDate;
-
-  Map<String, Object?> toJson() => {
-    'at': at,
-    'old': oldText,
-    'new': newText,
-    'editDate': editDate,
-  };
-
-  static MessageHistoryEvent? fromJson(Object? json) {
-    if (json is! Map) return null;
-    final at = json['at'];
-    final newText = json['new'];
-    if (at is! int || newText is! String) return null;
-    final oldText = json['old'];
-    final editDate = json['editDate'];
-    return MessageHistoryEvent(
-      at: at,
-      oldText: oldText is String ? oldText : null,
-      newText: newText,
-      editDate: editDate is int ? editDate : 0,
-    );
-  }
-}
-
-@immutable
-class MessageHistoryEntry {
-  const MessageHistoryEntry({
-    required this.accountUserId,
-    required this.chatId,
-    required this.messageId,
-    required this.senderId,
-    required this.date,
-    required this.text,
-    required this.kindKey,
-    required this.state,
-    required this.deletedAt,
-    required this.events,
-  });
-
-  /// User id of the account that received the message. Two accounts that see
-  /// the same chat/message ids keep two separate records.
-  final int accountUserId;
-
-  final int chatId;
-  final int messageId;
-
-  /// A user id (positive) or, when the chat itself posted, that chat's id
-  /// (negative). Display names are resolved on view, never stored.
-  final int senderId;
-
-  /// Unix seconds the message was originally sent.
-  final int date;
-
-  /// Latest known text, or the caption for media messages. Empty for media
-  /// without a caption — [kindKey] then names the content.
-  final String text;
-
-  /// [AppStringKeys] suffix of the content kind, e.g. `historyKindPhoto`.
-  /// Empty for a plain text message.
-  final String kindKey;
-
-  final MessageHistoryState state;
-
-  /// Unix seconds at which the deletion was observed, 0 while active.
-  final int deletedAt;
-
-  /// Content changes in observation order (oldest first).
-  final List<MessageHistoryEvent> events;
-
-  bool get isEdited => events.isNotEmpty;
-
-  String get key => '$accountUserId:$chatId:$messageId';
-
-  @override
-  bool operator ==(Object other) =>
-      other is MessageHistoryEntry &&
-      other.accountUserId == accountUserId &&
-      other.chatId == chatId &&
-      other.messageId == messageId &&
-      other.senderId == senderId &&
-      other.date == date &&
-      other.text == text &&
-      other.kindKey == kindKey &&
-      other.state == state &&
-      other.deletedAt == deletedAt &&
-      listEquals(other.events, events);
-
-  @override
-  int get hashCode => Object.hash(
-    accountUserId,
-    chatId,
-    messageId,
-    senderId,
-    date,
-    text,
-    kindKey,
-    state,
-    deletedAt,
-    Object.hashAll(events),
-  );
-
-  MessageHistoryEntry copyWith({
-    int? accountUserId,
-    String? text,
-    String? kindKey,
-    int? senderId,
-    MessageHistoryState? state,
-    int? deletedAt,
-    List<MessageHistoryEvent>? events,
-  }) => MessageHistoryEntry(
-    accountUserId: accountUserId ?? this.accountUserId,
-    chatId: chatId,
-    messageId: messageId,
-    senderId: senderId ?? this.senderId,
-    date: date,
-    text: text ?? this.text,
-    kindKey: kindKey ?? this.kindKey,
-    state: state ?? this.state,
-    deletedAt: deletedAt ?? this.deletedAt,
-    events: events ?? this.events,
-  );
-
-  Map<String, Object?> toJson() => {
-    'account': accountUserId,
-    'chat': chatId,
-    'id': messageId,
-    'sender': senderId,
-    'date': date,
-    'text': text,
-    'kind': kindKey,
-    'state': state.name,
-    'deletedAt': deletedAt,
-    'events': [for (final event in events) event.toJson()],
-  };
-
-  /// Entries without an 'account' field (mirror files from before the
-  /// account identity existed) are dropped on load: an entry whose owning
-  /// account is unknown must never be attributed to whichever account
-  /// happens to be active.
-  static MessageHistoryEntry? fromJson(Object? json) {
-    if (json is! Map) return null;
-    final account = json['account'];
-    final chat = json['chat'];
-    final id = json['id'];
-    final date = json['date'];
-    final text = json['text'];
-    if (account is! int ||
-        chat is! int ||
-        id is! int ||
-        date is! int ||
-        text is! String) {
-      return null;
-    }
-    final sender = json['sender'];
-    final kind = json['kind'];
-    final state = json['state'];
-    final deletedAt = json['deletedAt'];
-    final events = json['events'];
-    return MessageHistoryEntry(
-      accountUserId: account,
-      chatId: chat,
-      messageId: id,
-      senderId: sender is int ? sender : 0,
-      date: date,
-      text: text,
-      kindKey: kind is String ? kind : '',
-      state: state == 'deleted'
-          ? MessageHistoryState.deleted
-          : MessageHistoryState.active,
-      deletedAt: deletedAt is int ? deletedAt : 0,
-      events: events is List
-          ? events
-                .map(MessageHistoryEvent.fromJson)
-                .whereType<MessageHistoryEvent>()
-                .toList()
-          : const [],
-    );
-  }
-}
+export 'message_history_models.dart';
 
 /// Resolves a TDLib client id to the owning account's user id. Production
 /// asks the client itself (getMe) and caches; tests inject the mapping.
@@ -298,6 +92,9 @@ class MessageHistoryStore extends ChangeNotifier {
     'updateMessageEdited',
     'updateMessageContent',
     'updateDeleteMessages',
+    // A chat whose counterpart deleted their account (or the chat) stops
+    // being openable; kept entries then render in the ghost style.
+    'updateChat',
   ];
 
   final Map<String, MessageHistoryEntry> _byKey = {};
@@ -305,6 +102,11 @@ class MessageHistoryStore extends ChangeNotifier {
   /// Excluded chats per owning account; the read/write APIs operate on the
   /// active account's set.
   final Map<int, Set<int>> _excludedChatsByAccount = {};
+
+  /// (account, chat) scopes whose chat TDLib reported gone (deleted account /
+  /// unresolvable chat). Kept entries of a dead chat render in the ghost
+  /// style; not persisted — TDLib re-reports the state on the next sync.
+  final Set<String> _deadChats = {};
 
   /// Pending updateMessageEdited dates, keyed per account. An edit or
   /// deletion observed on one account can never touch another account's
@@ -695,6 +497,8 @@ class MessageHistoryStore extends ChangeNotifier {
       case 'updateMessageContent':
       case 'updateDeleteMessages':
         return update.int64('chat_id');
+      case 'updateChat':
+        return update.obj('chat')?.int64('id');
     }
     return null;
   }
@@ -748,6 +552,8 @@ class MessageHistoryStore extends ChangeNotifier {
         _recordContentUpdate(accountUserId, update);
       case 'updateDeleteMessages':
         _recordDeletedMessages(accountUserId, update);
+      case 'updateChat':
+        _recordChatLiveness(accountUserId, update);
     }
     return Future<void>.value();
   }
@@ -770,6 +576,13 @@ class MessageHistoryStore extends ChangeNotifier {
     // name on the update wrappers, not on message).
     final messageId = message.integer('id');
     if (chatId == null || messageId == null) return;
+    // The mirror keeps what the counterpart could take away: only incoming
+    // messages. The account's own outgoing ones stay Telegram's business.
+    // Saved Messages (chat id == own user id) is incoming from itself and is
+    // still kept, mirroring AyuGram's treatment of the self dialog.
+    final isOutgoing = message.boolean('is_outgoing') ?? false;
+    final isSelfChat = chatId == accountUserId;
+    if (isOutgoing && !isSelfChat) return;
     if (_excludedChatsByAccount[accountUserId]?.contains(chatId) ?? false) {
       return;
     }
@@ -788,6 +601,7 @@ class MessageHistoryStore extends ChangeNotifier {
       _byKey[key] = refreshed;
       notifyListeners();
       _schedulePersist();
+      _snapshotMediaOf(accountUserId, chatId, messageId, message);
       return;
     }
 
@@ -808,6 +622,119 @@ class MessageHistoryStore extends ChangeNotifier {
     _trim();
     notifyListeners();
     _schedulePersist();
+    _snapshotMediaOf(accountUserId, chatId, messageId, message);
+  }
+
+  /// Copies a mirrored message's media file into the mirror's attachment
+  /// directory when it is already fully on disk, then records the path. A
+  /// later snapshot (delete-time copy) only fills an empty path — the first
+  /// copy wins so a snapshot is never taken for content the mirror did not
+  /// see arrive.
+  void _snapshotMediaOf(
+    int accountUserId,
+    int chatId,
+    int messageId,
+    Map<String, dynamic> message,
+  ) {
+    final file = _contentSnapshotFile(message.obj('content'));
+    if (file == null) return;
+    final key = '$accountUserId:$chatId:$messageId';
+    unawaited(
+      _media()
+          .snapshot(
+            file,
+            accountUserId: accountUserId,
+            chatId: chatId,
+            messageId: messageId,
+          )
+          .then((path) {
+            if (path == null) return;
+            final existing = _byKey[key];
+            if (existing == null || existing.mediaPath.isNotEmpty) return;
+            _byKey[key] = existing.copyWith(mediaPath: path);
+            notifyListeners();
+            _schedulePersist();
+          }),
+    );
+  }
+
+  /// The file object worth snapshotting for a content payload: the biggest
+  /// photo size for photos, the document for documents / audio / voice /
+  /// video, null for everything else (stickers animate from server data and
+  /// cached copies rarely survive, exactly like AyuGram's scope).
+  static Map<String, dynamic>? _contentSnapshotFile(
+    Map<String, dynamic>? content,
+  ) {
+    if (content == null) return null;
+    switch (content.type) {
+      case 'messagePhoto':
+        final photo = content.obj('photo');
+        final sizes = photo?.objects('sizes');
+        if (sizes == null || sizes.isEmpty) return null;
+        Map<String, dynamic>? best;
+        var bestArea = -1;
+        for (final size in sizes) {
+          final candidate = size.obj('photo');
+          if (candidate == null) continue;
+          final area =
+              (size.integer('width') ?? 0) * (size.integer('height') ?? 0);
+          if (area > bestArea) {
+            bestArea = area;
+            best = candidate;
+          }
+        }
+        return best;
+      case 'messageVideo':
+      case 'messageAnimation':
+      case 'messageDocument':
+      case 'messageAudio':
+      case 'messageVoiceNote':
+        return content.obj('animation') ??
+            content.obj('video') ??
+            content.obj('document') ??
+            content.obj('voice_note');
+    }
+    return null;
+  }
+
+  MessageMediaSnapshotter _media() =>
+      mediaSnapshotter ?? MessageMediaSnapshotter.shared;
+
+  /// The injected snapshotter (tests); defaults to the shared one.
+  @visibleForTesting
+  MessageMediaSnapshotter? mediaSnapshotter;
+
+  /// updateChat: remembers per (account, chat) whether the chat is still
+  /// openable. A chat the counterpart destroyed (deleted account, gone
+  /// secret chat, or a chat that no longer resolves) marks its kept entries
+  /// with `hasLiveChat false`, the AyuGram AyuDeleted semantics.
+  void _recordChatLiveness(int accountUserId, Map<String, dynamic> update) {
+    final chat = update.obj('chat');
+    if (chat == null) return;
+    final chatId = chat.int64('id');
+    if (chatId == null) return;
+    final gone = switch (chat.obj('type')?.type) {
+      'chatTypeUnknown' => true,
+      _ => false,
+    };
+    if (gone == _deadChats.contains('$accountUserId:$chatId')) return;
+    if (gone) {
+      _deadChats.add('$accountUserId:$chatId');
+    } else {
+      _deadChats.remove('$accountUserId:$chatId');
+    }
+    var changed = false;
+    for (final entry in _byKey.values.toList(growable: false)) {
+      if (entry.accountUserId != accountUserId || entry.chatId != chatId) {
+        continue;
+      }
+      _byKey[entry.key] = entry.copyWith(hasLiveChat: !gone);
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+      _schedulePersist();
+    }
   }
 
   /// updateMessageEdited carries the edit time but not the content; the new
@@ -912,6 +839,7 @@ class MessageHistoryStore extends ChangeNotifier {
       (key, entry) =>
           entry.accountUserId == accountUserId && entry.chatId == chatId,
     );
+    _media().deleteScope(accountUserId, chatId);
     _persistExcludedChats(accountUserId);
     notifyListeners();
     _schedulePersist();
@@ -949,6 +877,7 @@ class MessageHistoryStore extends ChangeNotifier {
       (key, _) => key.startsWith('$accountUserId:$chatId:'),
     );
     _clearedChatAt['$accountUserId:$chatId'] = ++_scopeEpoch;
+    _media().deleteScope(accountUserId, chatId);
     notifyListeners();
     _schedulePersist();
     return keys.length;
@@ -965,6 +894,7 @@ class MessageHistoryStore extends ChangeNotifier {
     _pendingEditDates.clear();
     _generation++;
     _clearedAllAt = ++_scopeEpoch;
+    _media().deleteAll();
     notifyListeners();
     _schedulePersist();
     return removed;
@@ -993,6 +923,7 @@ class MessageHistoryStore extends ChangeNotifier {
     _pendingEditDates.removeWhere(
       (key, _) => key.startsWith('$accountUserId:'),
     );
+    _media().deleteAccount(accountUserId);
     if (_excludedChatsByAccount.remove(accountUserId) != null) changed = true;
     unawaited(_prefs?.remove('$_prefsKeyPrefix$accountUserId'));
     _removedAccountAt[accountUserId] = ++_scopeEpoch;
@@ -1004,6 +935,17 @@ class MessageHistoryStore extends ChangeNotifier {
     if (changed) {
       _schedulePersist();
     }
+  }
+
+  /// Removes one kept entry (viewer row delete); also drops its snapshot.
+  void deleteEntry(MessageHistoryEntry entry) {
+    if (!allowTelegramTosViolations) return;
+    if (_byKey.remove(entry.key) == null) return;
+    if (entry.mediaPath.isNotEmpty) {
+      _media().deleteFile(entry.mediaPath);
+    }
+    notifyListeners();
+    _schedulePersist();
   }
 
   void _persistExcludedChats(int accountUserId) {

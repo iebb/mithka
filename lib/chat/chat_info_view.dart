@@ -25,6 +25,8 @@ import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_view.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
@@ -1146,6 +1148,24 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           height: 52,
           leadingInset: 14,
         ),
+        // Telegram §1.4 feature: the kept-message mirror ships only in
+        // opted-in self-builds; this row is the per-chat entry.
+        if (allowTelegramTosViolations) ...[
+          const InsetDivider(leadingInset: 14),
+          SettingsRow(
+            key: const ValueKey('chatInfoKeptMessages'),
+            title: AppStrings.t(AppStringKeys.historyTitle),
+            leading: const SettingsLeadingIcon(icon: HeroAppIcons.clock),
+            onTap: () => Navigator.of(context).push(
+              AppPageRoute<void>(
+                pageBuilder: (_, _, _) =>
+                    MessageHistoryView(chatId: widget.chatId),
+              ),
+            ),
+            height: 52,
+            leadingInset: 14,
+          ),
+        ],
       ],
     );
   }
