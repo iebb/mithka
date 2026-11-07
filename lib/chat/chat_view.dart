@@ -47,6 +47,9 @@ import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_revision_sheet.dart';
+import '../history/message_history_store.dart';
 import '../media/app_asset_picker.dart';
 import '../media/media_metadata.dart';
 import '../moments/moments_view.dart' show ChannelMomentsView;
@@ -5673,6 +5676,26 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Whether the mirror holds an edit trail for this message (compile-time
+  /// gated): the long-press menu then offers the revision sheet.
+  bool _actionTargetHasEdits(ChatMessage message) {
+    if (!allowTelegramTosViolations) return false;
+    final entry = MessageHistoryStore.shared.entry(
+      message.chatId ?? _vm.chatId,
+      message.id,
+    );
+    return entry != null && entry.events.isNotEmpty;
+  }
+
+  Future<void> _openMessageEdits(ChatMessage message) async {
+    final entry = MessageHistoryStore.shared.entry(
+      message.chatId ?? _vm.chatId,
+      message.id,
+    );
+    if (entry == null || entry.events.isEmpty) return;
+    await showMessageHistoryRevisionSheet(context, entry);
+  }
+
   Future<void> _perform(MessageAction action, ChatMessage message) async {
     final selectedQuote = _actionQuote;
     final canReplyInCurrentChat =
@@ -5685,6 +5708,8 @@ class _ChatViewState extends State<ChatView> {
       _actionSource = MessageActionSource.normal;
     });
     switch (action) {
+      case MessageAction.viewEdits:
+        await _openMessageEdits(message);
       case MessageAction.copy:
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
       case MessageAction.copyImage:
@@ -11263,6 +11288,7 @@ class _ChatViewState extends State<ChatView> {
       allowHideSender: _canHideSender(target),
       allowCopyMessageLink:
           !target.isCall && _actionMessageLinkAvailable == true,
+      allowViewEdits: _actionTargetHasEdits(target),
       source: _actionSource,
       showingOriginalTranslation: _showOriginalTranslationMessageIds.contains(
         target.id,

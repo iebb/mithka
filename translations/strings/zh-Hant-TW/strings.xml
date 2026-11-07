@@ -1953,6 +1953,7 @@
     <string name="historyKindVoice">語音訊息</string>
     <string name="historyNoExcludedChats">沒有排除任何聊天。</string>
     <string name="historyReincludeAction">恢復記錄</string>
+    <string name="historyRevisionsTitle">編輯歷史</string>
     <string name="historySettingsRow">訊息歷史</string>
     <string name="historyTitle">訊息歷史</string>
 
@@ -2186,6 +2187,7 @@
     <string name="messageActionSetTodo">置頂</string>
     <string name="messageActionSticker">貼圖</string>
     <string name="messageActionTranslate">翻譯</string>
+    <string name="messageActionViewEdits">編輯歷史</string>
     <string name="messageActionUnsetTodo">取消置頂</string>
     <string name="messageBubbleAISummary">AI 摘要</string>
     <string name="messageBubbleApply">套用氣泡</string>

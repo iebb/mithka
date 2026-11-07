@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_store.dart';
+import 'package:mithka/history/message_media_snapshot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _enabled = allowTelegramTosViolations;
@@ -1295,5 +1296,132 @@ void main() {
     expect(revived.entry(77, 700)!.text, 'chat 77');
     revived.debugSetActiveAccount(_accountA);
     expect(revived.entries, isEmpty);
+  });
+
+  test('outgoing messages are not mirrored', () async {
+    await start();
+    emitAs(_clientA, 'updateNewMessage', {
+      'message': {..._message(11, 300), 'is_outgoing': true},
+    });
+    await pump();
+    expect(store.entry(11, 300), isNull);
+  });
+
+  test('saved messages (self chat) mirror even when outgoing', () async {
+    await start();
+    // chat id == own user id: the self dialog is incoming from itself.
+    emitAs(_clientA, 'updateNewMessage', {
+      'message': {
+        ..._message(_accountA, 301, text: 'note to self'),
+        'is_outgoing': true,
+      },
+    });
+    await pump();
+    expect(store.entry(_accountA, 301)?.text, 'note to self');
+  });
+
+  test('a chat TDLib reports gone marks its entries ghost', () async {
+    await start();
+    emitAs(_clientA, 'updateNewMessage', {'message': _message(11, 100)});
+    await pump();
+    expect(store.entry(11, 100)?.hasLiveChat, isTrue);
+    emitAs(_clientA, 'updateChat', {
+      'chat': {
+        '@type': 'chat',
+        'id': '11',
+        'type': {'@type': 'chatTypeUnknown'},
+      },
+    });
+    await pump();
+    expect(store.entry(11, 100)?.hasLiveChat, isFalse);
+  });
+
+  test(
+    'a media file fully on disk is snapshotted into the mirror dir',
+    () async {
+      final media = MessageMediaSnapshotter.forTesting();
+      media.dir = dir;
+      store.mediaSnapshotter = media;
+      final source = File('${dir.path}/tdlib-cache-photo.jpg')
+        ..writeAsBytesSync(List.filled(8, 7));
+      await start();
+      emitAs(_clientA, 'updateNewMessage', {
+        'message': {
+          ..._message(11, 400),
+          'content': {
+            '@type': 'messagePhoto',
+            'photo': {
+              '@type': 'photo',
+              'sizes': [
+                {
+                  '@type': 'photoSize',
+                  'width': 100,
+                  'height': 50,
+                  'photo': {
+                    '@type': 'file',
+                    'id': 5,
+                    'local': {
+                      '@type': 'localFile',
+                      'path': source.path,
+                      'is_downloading_completed': true,
+                      'is_active_downloading': false,
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      });
+      await pump();
+      await pump();
+      await pump();
+      final entry = store.entry(11, 400)!;
+      expect(entry.kindKey, 'historyKindPhoto');
+      expect(entry.mediaPath, isNotEmpty);
+      expect(File(entry.mediaPath).existsSync(), isTrue);
+      // clearing the chat deletes the snapshot file too
+      store.debugSetActiveAccount(_accountA);
+      store.clearChat(11);
+      expect(File(entry.mediaPath).existsSync(), isFalse);
+    },
+  );
+
+  test('a partially downloaded media file is not snapshotted', () async {
+    final media = MessageMediaSnapshotter.forTesting();
+    media.dir = dir;
+    store.mediaSnapshotter = media;
+    await start();
+    emitAs(_clientA, 'updateNewMessage', {
+      'message': {
+        ..._message(11, 401),
+        'content': {
+          '@type': 'messagePhoto',
+          'photo': {
+            '@type': 'photo',
+            'sizes': [
+              {
+                '@type': 'photoSize',
+                'width': 100,
+                'height': 50,
+                'photo': {
+                  '@type': 'file',
+                  'id': 6,
+                  'local': {
+                    '@type': 'localFile',
+                    'path': '/nonexistent/partial.jpg',
+                    'is_downloading_completed': false,
+                    'is_active_downloading': true,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    await pump();
+    await pump();
+    expect(store.entry(11, 401)?.mediaPath, isEmpty);
   });
 }

@@ -57,6 +57,7 @@ enum MessageAction {
   save(HeroAppIcons.solidStar, AppStringKeys.messageActionFavorite),
   saveSticker(HeroAppIcons.circlePlus, AppStringKeys.imageEditAdd),
   viewStickerSet(HeroAppIcons.tableCells, AppStringKeys.messageActionSticker),
+  viewEdits(HeroAppIcons.clock, AppStringKeys.messageActionViewEdits),
   delete(HeroAppIcons.trash, AppStringKeys.chatDelete);
 
   const MessageAction(this.glyph, this.label);
@@ -324,6 +325,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowSuggestedPostOffer = false,
     this.allowHideSender = false,
     this.allowCopyMessageLink = false,
+    this.allowViewEdits = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -346,6 +348,10 @@ class MessageActionMenu extends StatelessWidget {
 
   /// Offer [MessageAction.copyMessageLink] (server-verified availability).
   final bool allowCopyMessageLink;
+
+  /// Offer [MessageAction.viewEdits]: a kept edit trail exists for this
+  /// message in the local mirror (compile-time gated feature).
+  final bool allowViewEdits;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
@@ -558,6 +564,7 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.viewStickerSet);
     }
     if (allowHideSender) result.add(MessageAction.hideSender);
+    if (allowViewEdits) result.add(MessageAction.viewEdits);
     result.add(MessageAction.delete);
     return result;
   }

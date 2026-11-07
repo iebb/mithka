@@ -1953,6 +1953,7 @@
     <string name="historyKindVoice">음성 메시지</string>
     <string name="historyNoExcludedChats">제외된 채팅이 없습니다.</string>
     <string name="historyReincludeAction">기록 재개</string>
+    <string name="historyRevisionsTitle">편집 기록</string>
     <string name="historySettingsRow">메시지 기록</string>
     <string name="historyTitle">메시지 기록</string>
 
@@ -2186,6 +2187,7 @@
     <string name="messageActionSetTodo">할 일로 설정</string>
     <string name="messageActionSticker">스티커</string>
     <string name="messageActionTranslate">번역</string>
+    <string name="messageActionViewEdits">편집 기록</string>
     <string name="messageActionUnsetTodo">할 일 해제</string>
     <string name="messageBubbleAISummary">AI 요약</string>
     <string name="messageBubbleApply">말풍선 적용</string>

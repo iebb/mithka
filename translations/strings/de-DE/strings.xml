@@ -1960,6 +1960,7 @@
     <string name="historyKindVoice">Sprachnachricht</string>
     <string name="historyNoExcludedChats">Keine Chats ausgeschlossen.</string>
     <string name="historyReincludeAction">Aufnehmen</string>
+    <string name="historyRevisionsTitle">Bearbeitungsverlauf</string>
     <string name="historySettingsRow">Nachrichtenverlauf</string>
     <string name="historyTitle">Nachrichtenverlauf</string>
 
@@ -2193,6 +2194,7 @@
     <string name="messageActionSetTodo">Als Aufgabe markieren</string>
     <string name="messageActionSticker">Sticker</string>
     <string name="messageActionTranslate">Übersetzen</string>
+    <string name="messageActionViewEdits">Bearbeitungsverlauf</string>
     <string name="messageActionUnsetTodo">Aufgabe entfernen</string>
     <string name="messageBubbleAISummary">KI-Zusammenfassung</string>
     <string name="messageBubbleApply">Blase anwenden</string>

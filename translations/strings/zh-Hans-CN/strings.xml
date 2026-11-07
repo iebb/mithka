@@ -1953,6 +1953,7 @@
     <string name="historyKindVoice">语音消息</string>
     <string name="historyNoExcludedChats">没有排除任何聊天。</string>
     <string name="historyReincludeAction">恢复记录</string>
+    <string name="historyRevisionsTitle">编辑历史</string>
     <string name="historySettingsRow">消息历史</string>
     <string name="historyTitle">消息历史</string>
 
@@ -2186,6 +2187,7 @@
     <string name="messageActionSetTodo">置顶</string>
     <string name="messageActionSticker">表情包</string>
     <string name="messageActionTranslate">翻译</string>
+    <string name="messageActionViewEdits">编辑历史</string>
     <string name="messageActionUnsetTodo">取消置顶</string>
     <string name="messageBubbleAISummary" xml:space="preserve">AI 摘要&#10;</string>
     <string name="messageBubbleApply">应用气泡</string>

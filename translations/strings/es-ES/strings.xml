@@ -1960,6 +1960,7 @@
     <string name="historyKindVoice">Mensaje de voz</string>
     <string name="historyNoExcludedChats">No hay chats excluidos.</string>
     <string name="historyReincludeAction">Incluir</string>
+    <string name="historyRevisionsTitle">Historial de ediciones</string>
     <string name="historySettingsRow">Historial de mensajes</string>
     <string name="historyTitle">Historial de mensajes</string>
 
@@ -2193,6 +2194,7 @@
     <string name="messageActionSetTodo">Marcar como tarea</string>
     <string name="messageActionSticker">Sticker</string>
     <string name="messageActionTranslate">Traducir</string>
+    <string name="messageActionViewEdits">Historial de ediciones</string>
     <string name="messageActionUnsetTodo">Quitar de tareas</string>
     <string name="messageBubbleAISummary">Resumen con IA</string>
     <string name="messageBubbleApply">Aplicar burbuja</string>

@@ -210,21 +210,18 @@ void main() {
     expect(find.text('kept two'), findsNothing);
   });
 
-  testWidgets('deleted rows carry the Deleted label when the grace passed', (
+  testWidgets('deleted entries render inside the chat with the ghost style', (
     tester,
   ) async {
     store.debugSeed([
       _entry(11, 100, text: 'gone', deleted: true, deletedAt: 1600000000),
-      _entry(11, 101, text: 'fresh', deleted: true),
+      _entry(11, 101, text: 'fresh'),
     ]);
     await _pumpViewer(tester, store);
 
-    // deletedAt 1600000000 is ancient, so its row says Deleted; the
-    // just-arrived 101 stays quiet during the grace window.
-    expect(
-      find.text(AppStringKeys.historyDeletedLabel.l10n(_contextOf(tester))),
-      findsOneWidget,
-    );
+    // The chat list previews the deletion; the entries render inside the chat.
+    await tester.tap(find.text('Chat 11'));
+    await tester.pump();
     expect(find.text('gone'), findsOneWidget);
     expect(find.text('fresh'), findsOneWidget);
   });
@@ -238,6 +235,8 @@ void main() {
     );
     store.debugSeed([entry]);
     await _pumpViewer(tester, store);
+    await tester.tap(find.text('Chat 11'));
+    await tester.pump();
 
     expect(find.text('v3'), findsOneWidget);
     expect(

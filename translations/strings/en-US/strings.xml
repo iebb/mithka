@@ -1960,6 +1960,7 @@
     <string name="historyKindVoice">Voice message</string>
     <string name="historyNoExcludedChats">No chats are excluded.</string>
     <string name="historyReincludeAction">Include</string>
+    <string name="historyRevisionsTitle">Edit history</string>
     <string name="historySettingsRow">Message History</string>
     <string name="historyTitle">Message History</string>
 
@@ -2193,6 +2194,7 @@
     <string name="messageActionSetTodo">Pin</string>
     <string name="messageActionSticker">Sticker</string>
     <string name="messageActionTranslate">Translate</string>
+    <string name="messageActionViewEdits">Edit history</string>
     <string name="messageActionUnsetTodo">Unpin</string>
     <string name="messageBubbleAISummary">AI Summary</string>
     <string name="messageBubbleApply">Apply bubble</string>

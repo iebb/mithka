@@ -1,11 +1,13 @@
 //
 //  message_history_view.dart
 //
-//  The local message-history viewer: every mirrored copy of what this
-//  account received, including messages the counterpart deleted or edited
-//  afterwards. Filter by one chat, clear a single chat or everything, and
-//  exclude chats from recording. Opened from Advanced settings behind the
-//  compile-time [allowTelegramTosViolations] gate.
+//  The local message-history viewer: every kept copy of what this account
+//  received, including messages the counterpart deleted or edited
+//  afterwards. Entries are grouped per chat; opening a chat shows its kept
+//  messages newest-first with edit trails and media snapshots. Deleted
+//  entries render translucent (the AyuGram ghost style). Opened from
+//  Advanced settings behind the compile-time [allowTelegramTosViolations]
+//  gate.
 //
 
 import 'dart:async';
@@ -14,7 +16,6 @@ import 'package:flutter/widgets.dart';
 
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
-import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
@@ -23,12 +24,8 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import 'message_history_entry_view.dart';
 import 'message_history_store.dart';
-
-/// The mirror marks a message deleted the moment the update arrives, so
-/// freshly deleted rows would otherwise flicker while TDLib confirms the
-/// removal. This keeps the 'Deleted' label off rows younger than this.
-const _deletedGrace = Duration(seconds: 5);
 
 class MessageHistoryView extends StatefulWidget {
   const MessageHistoryView({super.key, this.chatId, this.store});
@@ -156,60 +153,143 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   @override
   Widget build(BuildContext context) {
     if (!allowTelegramTosViolations) return const SizedBox.shrink();
-    final all = _store.entries;
-    final visible = _chatId == null
-        ? all.reversed.toList()
-        : all.reversed.where((entry) => entry.chatId == _chatId).toList();
     final chatId = _chatId;
-
     return SettingsPageScaffold(
-      title: AppStringKeys.historyTitle.l10n(context),
+      title: chatId == null
+          ? AppStringKeys.historyTitle.l10n(context)
+          : _chatLabel(chatId),
       onBack: () => Navigator.of(context).pop(),
       trailingIcon: HeroAppIcons.trash,
       // Unfiltered: the header clears everything. Filtered: it clears the
       // chat in view, which is the narrower clear the user is looking at.
-      onTrailing: visible.isEmpty
+      onTrailing: _store.entries.isEmpty
           ? null
           : chatId == null
           ? _confirmClearAll
           : () => unawaited(_confirmClearChat(chatId)),
-      child: SettingsListView(
-        children: [
+      child: chatId == null
+          ? _buildChatList(context)
+          : _buildChatEntries(context, chatId),
+    );
+  }
+
+  /// The chat list: one row per chat with kept copies, plus the exclusion
+  /// entry point.
+  Widget _buildChatList(BuildContext context) {
+    final entries = _store.entries;
+    // Newest kept copy per chat drives the row order and the preview line.
+    final latestByChat = <int, MessageHistoryEntry>{};
+    final counts = <int, int>{};
+    for (final entry in entries) {
+      final latest = latestByChat[entry.chatId];
+      if (latest == null || entry.date > latest.date) {
+        latestByChat[entry.chatId] = entry;
+      }
+      counts[entry.chatId] = (counts[entry.chatId] ?? 0) + 1;
+    }
+    final chats = latestByChat.keys.toList()
+      ..sort((a, b) => latestByChat[b]!.date.compareTo(latestByChat[a]!.date));
+    return SettingsListView(
+      children: [
+        SettingsCard.rows(
+          rows: [
+            // Excluded chats stay recorded nowhere, so the filter needs a
+            // manual re-entry point for them.
+            SettingsRow(
+              title: AppStringKeys.historyExcludedTitle.l10n(context),
+              value: '${_store.excludedChats.length}',
+              leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
+              onTap: _openExcludedChats,
+            ),
+          ],
+        ),
+        if (chats.isEmpty)
+          const SettingsNote(
+            key: ValueKey('history-view-empty'),
+            text: AppStringKeys.historyEmpty,
+          )
+        else
           SettingsCard.rows(
             rows: [
-              // Excluded chats stay recorded nowhere, so the filter needs a
-              // manual re-entry point for them.
-              SettingsRow(
-                title: AppStringKeys.historyExcludedTitle.l10n(context),
-                value: '${_store.excludedChats.length}',
-                leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
-                onTap: _openExcludedChats,
-              ),
+              for (final chatId in chats)
+                SettingsRow(
+                  key: ValueKey('history-chat-$chatId'),
+                  title: _chatLabel(chatId),
+                  subtitle: _chatRowPreview(latestByChat[chatId]!),
+                  value: '${counts[chatId]}',
+                  leading: _ChatLeading(
+                    label: _chatLabel(chatId),
+                    dead: latestByChat[chatId]!.hasLiveChat
+                        ? false
+                        : latestByChat.entries.any(
+                            (e) => e.key == chatId && !e.value.hasLiveChat,
+                          ),
+                  ),
+                  onTap: () => setState(() => _chatId = chatId),
+                ),
             ],
           ),
-          if (visible.isEmpty)
-            const SettingsNote(
-              key: ValueKey('history-view-empty'),
-              text: AppStringKeys.historyEmpty,
-            )
-          else ...[
-            SettingsCard.rows(
-              rows: [
-                for (final entry in visible)
-                  _HistoryEntryRow(
-                    key: ValueKey('history-${entry.key}'),
-                    entry: entry,
-                    chatLabel: _chatLabel(entry.chatId),
-                    onOpenChat: () => setState(() => _chatId = entry.chatId),
-                  ),
-              ],
-            ),
-            if (chatId != null)
-              const SettingsNote(text: AppStringKeys.historyFilteredNote),
-          ],
-        ],
-      ),
+      ],
     );
+  }
+
+  String _chatRowPreview(MessageHistoryEntry entry) {
+    final parts = <String>[
+      if (entry.state == MessageHistoryState.deleted)
+        AppStringKeys.historyDeletedLabel.l10n(context),
+      if (entry.isEdited) AppStringKeys.historyEditedLabel.l10n(context),
+    ];
+    final body = entry.text.trim().isNotEmpty
+        ? entry.text.trim()
+        : _kindLabel(context, entry.kindKey);
+    return parts.isEmpty ? body : '${parts.join(' · ')} · $body';
+  }
+
+  /// The kept messages of one chat, newest first, with edit trails. Each row
+  /// can be deleted individually.
+  Widget _buildChatEntries(BuildContext context, int chatId) {
+    final entries = _store.entriesFor(chatId).reversed.toList();
+    return SettingsListView(
+      children: [
+        if (entries.isEmpty)
+          const SettingsNote(text: AppStringKeys.historyEmpty)
+        else ...[
+          for (final entry in entries)
+            MessageHistoryEntryView(
+              key: ValueKey('history-${entry.key}'),
+              entry: entry,
+              chatTitle: _chatLabel(chatId),
+              showChatTitle: false,
+              trailing: _EntryDeleteButton(
+                onDelete: () => _store.deleteEntry(entry),
+              ),
+            ),
+          const SettingsNote(text: AppStringKeys.historyFilteredNote),
+        ],
+      ],
+    );
+  }
+
+  String _kindLabel(BuildContext context, String kindKey) =>
+      kindKey.isEmpty ? '' : _kindKeyToLabel(context, kindKey);
+
+  String _kindKeyToLabel(BuildContext context, String suffix) {
+    final key = switch (suffix) {
+      'historyKindPhoto' => AppStringKeys.historyKindPhoto,
+      'historyKindVideo' => AppStringKeys.historyKindVideo,
+      'historyKindVideoNote' => AppStringKeys.historyKindVideoNote,
+      'historyKindVoice' => AppStringKeys.historyKindVoice,
+      'historyKindAnimation' => AppStringKeys.historyKindAnimation,
+      'historyKindSticker' => AppStringKeys.historyKindSticker,
+      'historyKindDocument' => AppStringKeys.historyKindDocument,
+      'historyKindAudio' => AppStringKeys.historyKindAudio,
+      'historyKindPoll' => AppStringKeys.historyKindPoll,
+      'historyKindLocation' => AppStringKeys.historyKindLocation,
+      'historyKindContact' => AppStringKeys.historyKindContact,
+      'historyKindDice' => AppStringKeys.historyKindDice,
+      _ => AppStringKeys.historyKindUnknown,
+    };
+    return key.l10n(context);
   }
 
   void _openExcludedChats() {
@@ -224,142 +304,57 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   }
 }
 
-class _HistoryEntryRow extends StatelessWidget {
-  const _HistoryEntryRow({
-    super.key,
-    required this.entry,
-    required this.chatLabel,
-    required this.onOpenChat,
-  });
+/// Small circular chat avatar stand-in with the initial, tinted down for
+/// chats whose counterpart is gone.
+class _ChatLeading extends StatelessWidget {
+  const _ChatLeading({required this.label, required this.dead});
 
-  final MessageHistoryEntry entry;
-  final String chatLabel;
-  final VoidCallback onOpenChat;
+  final String label;
+  final bool dead;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final deleted = entry.state == MessageHistoryState.deleted;
-    // Keep the Deleted label off rows whose updateDeleteMessages only just
-    // landed; the chat transcript usually catches up within a moment.
-    // deletedAt 0 means the deletion was observed this very second.
-    final deletedAgeSeconds = entry.deletedAt <= 0
-        ? 0
-        : DateTime.now().millisecondsSinceEpoch ~/ 1000 - entry.deletedAt;
-    final freshlyDeleted =
-        deleted && deletedAgeSeconds < _deletedGrace.inSeconds;
-    final kindSuffix = entry.kindKey;
-    final kindText = kindSuffix.isEmpty
-        ? ''
-        : AppStrings.t(_kindKey(suffix: kindSuffix));
-    final statusParts = <String>[
-      if (deleted && !freshlyDeleted)
-        AppStringKeys.historyDeletedLabel.l10n(context),
-      if (entry.isEdited) AppStringKeys.historyEditedLabel.l10n(context),
-      if (kindText.isNotEmpty) kindText,
-    ];
-
-    return AppInteractiveSurface(
-      onTap: onOpenChat,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                if (deleted && !freshlyDeleted) ...[
-                  AppIcon(
-                    HeroAppIcons.trash,
-                    size: AppIconSize.sm,
-                    color: c.textSecondary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                ],
-                Expanded(
-                  child: Text(
-                    chatLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyle.footnote(c.textSecondary),
-                  ),
-                ),
-                Text(
-                  _formatTime(entry.date),
-                  style: AppTextStyle.footnote(c.textTertiary),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              entry.text.isEmpty
-                  ? _emptyTextFallback(kindSuffix, context)
-                  : entry.text,
-              maxLines: 6,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  AppTextStyle.body(
-                    deleted && !freshlyDeleted
-                        ? c.textSecondary
-                        : c.textPrimary,
-                  ).copyWith(
-                    fontStyle: deleted && !freshlyDeleted
-                        ? FontStyle.italic
-                        : FontStyle.normal,
-                  ),
-            ),
-            if (statusParts.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                statusParts.join(' · '),
-                style: AppTextStyle.footnote(c.textTertiary),
-              ),
-            ],
-            for (final event in entry.events) ...[
-              const SizedBox(height: 2),
-              Text(
-                AppStrings.t(AppStringKeys.historyEditEvent, {
-                  'value1': _formatTime(event.at),
-                  'value2': event.newText.isEmpty
-                      ? _emptyTextFallback(kindSuffix, context)
-                      : event.newText,
-                }),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyle.footnote(c.textTertiary),
-              ),
-            ],
-          ],
-        ),
+    final initial = label.trim().isEmpty ? '·' : _firstGlyph(label.trim());
+    return Container(
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: dead ? c.groupedBackground : c.card,
+        border: Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Text(
+        initial,
+        maxLines: 1,
+        style: AppTextStyle.footnote(
+          dead ? c.textTertiary : c.textSecondary,
+        ).copyWith(fontWeight: FontWeight.w600),
       ),
     );
   }
+}
 
-  String _emptyTextFallback(String kindSuffix, BuildContext context) =>
-      kindSuffix.isEmpty
-      ? AppStringKeys.historyKindUnknown.l10n(context)
-      : AppStrings.t(_kindKey(suffix: kindSuffix));
+class _EntryDeleteButton extends StatelessWidget {
+  const _EntryDeleteButton({required this.onDelete});
 
-  String _kindKey({required String suffix}) => switch (suffix) {
-    'historyKindPhoto' => AppStringKeys.historyKindPhoto,
-    'historyKindVideo' => AppStringKeys.historyKindVideo,
-    'historyKindVideoNote' => AppStringKeys.historyKindVideoNote,
-    'historyKindVoice' => AppStringKeys.historyKindVoice,
-    'historyKindAnimation' => AppStringKeys.historyKindAnimation,
-    'historyKindSticker' => AppStringKeys.historyKindSticker,
-    'historyKindDocument' => AppStringKeys.historyKindDocument,
-    'historyKindAudio' => AppStringKeys.historyKindAudio,
-    'historyKindPoll' => AppStringKeys.historyKindPoll,
-    'historyKindLocation' => AppStringKeys.historyKindLocation,
-    'historyKindContact' => AppStringKeys.historyKindContact,
-    'historyKindDice' => AppStringKeys.historyKindDice,
-    _ => AppStringKeys.historyKindUnknown,
-  };
+  final VoidCallback onDelete;
 
-  String _formatTime(int unixSeconds) {
-    final t = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000).toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onDelete,
+      child: SizedBox(
+        width: 30,
+        height: 30,
+        child: Center(
+          child: AppIcon(HeroAppIcons.trash, size: 15, color: c.textTertiary),
+        ),
+      ),
+    );
   }
 }
 
@@ -409,4 +404,10 @@ class MessageHistoryExcludedChatsView extends StatelessWidget {
       ),
     );
   }
+}
+
+String _firstGlyph(String text) {
+  final runes = text.runes;
+  if (runes.isEmpty) return '·';
+  return String.fromCharCode(runes.first);
 }
