@@ -18,6 +18,7 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
@@ -318,6 +319,16 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                 AppStrings.t(AppStringKeys.ghostModeTitle),
                 '',
                 () => _open(const GhostModeSettingsView()),
+              ),
+            // Compile-time gated local premium (Telegram §1.4): unlocks the
+            // client-side premium surfaces for THIS account only; default off.
+            if (allowTelegramTosViolations)
+              _SwitchRow(
+                HeroAppIcons.solidStar,
+                AppStrings.t(AppStringKeys.localPremiumTitle),
+                LocalPremium.shared.enabled,
+                LocalPremium.shared.setEnabled,
+                subtitle: AppStringKeys.localPremiumNote,
               ),
           ]),
           _group(AppStrings.t(AppStringKeys.privacyDangerZone), [

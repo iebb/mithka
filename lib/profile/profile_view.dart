@@ -33,6 +33,7 @@ import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/local_premium.dart';
 import '../settings/proxy_status.dart';
 import '../settings/proxy_view.dart';
 import '../settings/settings_view.dart';
@@ -79,7 +80,9 @@ class ProfileViewModel extends ChangeNotifier {
       username: usernames.isEmpty ? null : usernames.first,
       photo: TDParse.smallPhoto(me.obj('profile_photo')),
       emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
-      isPremium: me.boolean('is_premium') ?? false,
+      isPremium: LocalPremium.shared.premiumForMe(
+        me.boolean('is_premium') ?? false,
+      ),
     );
     notifyListeners();
   }

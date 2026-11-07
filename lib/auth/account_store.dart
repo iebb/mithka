@@ -17,6 +17,7 @@ import '../chat/emoji_store.dart';
 import '../config/build_flags.dart';
 import '../history/message_history_store.dart';
 import '../notifications/notification_preferences.dart';
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -239,8 +240,20 @@ class AccountStore extends ChangeNotifier {
     return null;
   }
 
-  /// Whether the active account has Telegram Premium, as last seen.
-  bool get activeIsPremium => activeSummary?.isPremium ?? false;
+  /// The summary recorded for a specific slot, when one exists.
+  AccountSummary? summaryForSlot(int slot) {
+    for (final summary in _summaries) {
+      if (summary.slot == slot) return summary;
+    }
+    return null;
+  }
+
+  /// Whether the active account has Telegram Premium, as last seen. The
+  /// self-build local-premium switch (Telegram §1.4) short-circuits this to
+  /// true for our own account when enabled; every consumer reads through
+  /// here so the override applies in one place.
+  bool get activeIsPremium =>
+      LocalPremium.shared.premiumForMe(activeSummary?.isPremium ?? false);
 
   int? get activeUserId => activeSummary?.userId;
 
@@ -419,7 +432,9 @@ class AccountStore extends ChangeNotifier {
         phone: phone,
         avatarPath: avatarFileId == null ? null : cachedAvatar,
         emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
-        isPremium: me.boolean('is_premium') ?? false,
+        isPremium: LocalPremium.shared.premiumForMe(
+          me.boolean('is_premium') ?? false,
+        ),
         isBotApi: botApiAccount != null,
         botApiEndpoint: botApiAccount?.endpoint,
       ),
