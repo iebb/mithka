@@ -14,6 +14,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../chat/file_opener.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
@@ -26,6 +27,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'message_history_entry_view.dart';
 import 'message_history_store.dart';
+import 'message_media_snapshot.dart';
 
 class MessageHistoryView extends StatefulWidget {
   const MessageHistoryView({super.key, this.chatId, this.store});
@@ -47,6 +49,8 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   bool _resolvingTitles = false;
   int? _titleAccountUserId;
   int _titleResolutionGeneration = 0;
+  Map<int, String> _senderNames = const {};
+  bool _resolvingSenders = false;
 
   @override
   void initState() {
@@ -57,7 +61,9 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
     _titleAccountUserId = _store.activeAccountUserId;
     _store.addListener(_onStore);
     unawaited(_store.ensureLoaded());
+    unawaited(MessageMediaSnapshotter.shared.ensureDirResolved());
     _maybeResolveChatTitles();
+    _maybeResolveSenderNames();
   }
 
   @override
@@ -115,6 +121,64 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   String _chatLabel(int chatId) =>
       _chatTitles[chatId] ??
       AppStrings.t(AppStringKeys.historyChatLabel, {'value1': '$chatId'});
+
+  /// Resolves display names for the senders of the entries in view. Group
+  /// rows carry no chat title, so the sender line is the only attribution;
+  /// failures keep the "User {id}" fallback.
+  void _maybeResolveSenderNames() {
+    if (_resolvingSenders) return;
+    final wanted = {
+      for (final entry in _store.entries)
+        if (entry.senderId != 0) entry.senderId,
+    };
+    if (_senderNames.keys.toSet().containsAll(wanted)) return;
+    _resolvingSenders = true;
+    unawaited(_resolveSenderNames(wanted, _titleResolutionGeneration));
+  }
+
+  Future<void> _resolveSenderNames(Set<int> senderIds, int generation) async {
+    final clientId = TdClient.shared.activeClientId;
+    final resolved = <int, String>{};
+    for (final senderId in senderIds) {
+      if (!mounted || generation != _titleResolutionGeneration) return;
+      try {
+        final user = await TdClient.shared.queryTo({
+          '@type': 'getUser',
+          'user_id': senderId,
+        }, clientId);
+        final name = _userDisplayName(user);
+        if (name.isNotEmpty) resolved[senderId] = name;
+      } catch (_) {
+        try {
+          final chat = await TdClient.shared.queryTo({
+            '@type': 'getChat',
+            'chat_id': senderId,
+          }, clientId);
+          final title = chat.str('title');
+          if (title != null && title.isNotEmpty) resolved[senderId] = title;
+        } catch (_) {
+          // Fall through to the localized "User {id}" label.
+        }
+      }
+    }
+    if (!mounted || generation != _titleResolutionGeneration) return;
+    if (resolved.isNotEmpty) {
+      setState(() => _senderNames = {..._senderNames, ...resolved});
+    }
+    _resolvingSenders = false;
+  }
+
+  String _userDisplayName(Map<String, dynamic> user) {
+    final first = user.str('first_name') ?? '';
+    final last = user.str('last_name') ?? '';
+    final joined = '$first $last'.trim();
+    if (joined.isNotEmpty) return joined;
+    return user.str('username') ?? user.str('phone_number') ?? '';
+  }
+
+  String _senderLabel(int senderId) =>
+      _senderNames[senderId] ??
+      AppStrings.t(AppStringKeys.historySenderLabel, {'value1': '$senderId'});
 
   Future<void> _confirmClearAll() async {
     final confirmed = await showAppConfirmDialog(
@@ -260,6 +324,11 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
               entry: entry,
               chatTitle: _chatLabel(chatId),
               showChatTitle: false,
+              senderName: entry.senderId == 0
+                  ? null
+                  : _senderLabel(entry.senderId),
+              mediaDir: _store.mediaSnapshotterForView,
+              onOpenMedia: _openMediaExternally,
               trailing: _EntryDeleteButton(
                 onDelete: () => _store.deleteEntry(entry),
               ),
@@ -301,6 +370,12 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
         ),
       ),
     );
+  }
+
+  /// Hands a media snapshot to the OS viewer through the shared
+  /// file-opening helper; the mirror itself only renders photo thumbnails.
+  void _openMediaExternally(String path) {
+    openDownloadedFile(context, path);
   }
 }
 

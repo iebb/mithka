@@ -1955,7 +1955,8 @@
     <string name="historyReincludeAction">恢復記錄</string>
     <string name="historyRevisionsTitle">編輯歷史</string>
     <string name="historySettingsRow">訊息歷史</string>
-    <string name="historyTitle">訊息歷史</string>
+        <string name="historySenderLabel">使用者 {value1}</string>
+<string name="historyTitle">訊息歷史</string>
 
     <string name="imageEditAdd">新增</string>
     <string name="imageEditAddText">新增文字</string>

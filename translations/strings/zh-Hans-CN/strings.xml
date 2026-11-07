@@ -1955,7 +1955,8 @@
     <string name="historyReincludeAction">恢复记录</string>
     <string name="historyRevisionsTitle">编辑历史</string>
     <string name="historySettingsRow">消息历史</string>
-    <string name="historyTitle">消息历史</string>
+        <string name="historySenderLabel">用户 {value1}</string>
+<string name="historyTitle">消息历史</string>
 
     <string name="imageEditAdd">添加</string>
     <string name="imageEditAddText">添加文字</string>

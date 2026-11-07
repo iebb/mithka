@@ -1962,7 +1962,8 @@
     <string name="historyReincludeAction">Aufnehmen</string>
     <string name="historyRevisionsTitle">Bearbeitungsverlauf</string>
     <string name="historySettingsRow">Nachrichtenverlauf</string>
-    <string name="historyTitle">Nachrichtenverlauf</string>
+        <string name="historySenderLabel">Benutzer {value1}</string>
+<string name="historyTitle">Nachrichtenverlauf</string>
 
     <string name="imageEditAdd">Hinzufügen</string>
     <string name="imageEditAddText">Text hinzufügen</string>

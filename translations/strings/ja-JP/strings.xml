@@ -1955,7 +1955,8 @@
     <string name="historyReincludeAction">記録を再開</string>
     <string name="historyRevisionsTitle">編集履歴</string>
     <string name="historySettingsRow">メッセージ履歴</string>
-    <string name="historyTitle">メッセージ履歴</string>
+        <string name="historySenderLabel">ユーザー {value1}</string>
+<string name="historyTitle">メッセージ履歴</string>
 
     <string name="imageEditAdd">追加</string>
     <string name="imageEditAddText">テキストを追加</string>

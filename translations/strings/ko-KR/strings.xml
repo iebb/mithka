@@ -1955,7 +1955,8 @@
     <string name="historyReincludeAction">기록 재개</string>
     <string name="historyRevisionsTitle">편집 기록</string>
     <string name="historySettingsRow">메시지 기록</string>
-    <string name="historyTitle">메시지 기록</string>
+        <string name="historySenderLabel">사용자 {value1}</string>
+<string name="historyTitle">메시지 기록</string>
 
     <string name="imageEditAdd">추가</string>
     <string name="imageEditAddText">텍스트 추가</string>

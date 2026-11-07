@@ -1962,7 +1962,8 @@
     <string name="historyReincludeAction">Inclure</string>
     <string name="historyRevisionsTitle">Historique des modifications</string>
     <string name="historySettingsRow">Historique des messages</string>
-    <string name="historyTitle">Historique des messages</string>
+        <string name="historySenderLabel">Utilisateur {value1}</string>
+<string name="historyTitle">Historique des messages</string>
 
     <string name="imageEditAdd">Ajouter</string>
     <string name="imageEditAddText">Ajouter du texte</string>

@@ -8,6 +8,8 @@
 //  exists only in opted-in self-builds.
 //
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -28,6 +30,7 @@ class MessageHistoryEntryView extends StatelessWidget {
     this.showChatTitle = true,
     this.senderName,
     this.mediaDir,
+    this.onOpenMedia,
     this.trailing,
   });
 
@@ -43,8 +46,15 @@ class MessageHistoryEntryView extends StatelessWidget {
   /// Resolved sender display name, when known.
   final String? senderName;
 
-  /// Directory holding the media snapshots; null disables preview loading.
+  /// Directory holding the media snapshots; supplied by the caller when
+  /// previews should resolve snapshot paths (the viewer owns the snapshotter
+  /// wiring). Null keeps media-only rows on their kind label.
   final MessageMediaSnapshotter? mediaDir;
+
+  /// Opens the snapshot file in the system viewer (photos/videos/audio —
+  /// whatever the OS can play); a kind label stays the fallback when the
+  /// file is gone.
+  final void Function(String path)? onOpenMedia;
 
   /// Optional trailing widget in the header line (e.g. a delete button).
   final Widget? trailing;
@@ -56,7 +66,9 @@ class MessageHistoryEntryView extends StatelessWidget {
     final deleted =
         entry.state == MessageHistoryState.deleted || !entry.hasLiveChat;
     final senderLine = senderName ?? '';
-    final kindLabel = entry.kindLabel();
+    final kindLabel = entry.kindKey.isEmpty
+        ? ''
+        : _localizedKindLabel(context, entry.kindKey);
     return AppInteractiveSurface(
       onLongPress: () => _copyEntry(context, entry),
       child: Container(
@@ -154,10 +166,54 @@ class MessageHistoryEntryView extends StatelessWidget {
   ) {
     final c = context.colors;
     final text = entry.text.trim();
-    if (text.isNotEmpty) {
+    final media = _snapshotPath(entry);
+    if (text.isNotEmpty && media == null) {
       return Text(text, style: AppTextStyle.body(c.textPrimary));
     }
+    if (media != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: _MediaSnapshotView(
+          path: media,
+          kindKey: entry.kindKey,
+          kindLabel: kindLabel,
+          onTap: onOpenMedia == null ? null : () => onOpenMedia!(media),
+        ),
+      );
+    }
     return Text(kindLabel, style: AppTextStyle.body(c.textSecondary));
+  }
+
+  /// The snapshot path recorded on the entry, validated against the current
+  /// snapshot directory so a stale path (file wiped, directory moved) renders
+  /// the kind label instead of a broken preview.
+  String? _snapshotPath(MessageHistoryEntry entry) {
+    if (entry.mediaPath.isEmpty) return null;
+    final directory = mediaDir?.dir?.path;
+    if (directory == null) return null;
+    if (!entry.mediaPath.startsWith('$directory/')) return null;
+    return entry.mediaPath;
+  }
+
+  /// Localized kind name for a stored kind suffix; unknown kinds keep the
+  /// generic label instead of leaking the raw key.
+  static String _localizedKindLabel(BuildContext context, String suffix) {
+    final key = switch (suffix) {
+      'historyKindPhoto' => AppStringKeys.historyKindPhoto,
+      'historyKindVideo' => AppStringKeys.historyKindVideo,
+      'historyKindVideoNote' => AppStringKeys.historyKindVideoNote,
+      'historyKindVoice' => AppStringKeys.historyKindVoice,
+      'historyKindAnimation' => AppStringKeys.historyKindAnimation,
+      'historyKindSticker' => AppStringKeys.historyKindSticker,
+      'historyKindDocument' => AppStringKeys.historyKindDocument,
+      'historyKindAudio' => AppStringKeys.historyKindAudio,
+      'historyKindPoll' => AppStringKeys.historyKindPoll,
+      'historyKindLocation' => AppStringKeys.historyKindLocation,
+      'historyKindContact' => AppStringKeys.historyKindContact,
+      'historyKindDice' => AppStringKeys.historyKindDice,
+      _ => AppStringKeys.historyKindUnknown,
+    };
+    return AppStrings.t(key).isEmpty ? suffix : key.l10n(context);
   }
 
   Future<void> _copyEntry(BuildContext context, MessageHistoryEntry entry) {
@@ -175,4 +231,95 @@ String _formatDateTime(int unixSeconds) {
   final t = DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000).toLocal();
   String two(int v) => v.toString().padLeft(2, '0');
   return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+}
+
+/// Renders a media snapshot: images inline (cached, aspect-preserved), other
+/// kinds as a tappable file row with the kind's icon; both fall back to the
+/// kind label when the file is missing. [onTap] opens the file externally.
+class _MediaSnapshotView extends StatefulWidget {
+  const _MediaSnapshotView({
+    required this.path,
+    required this.kindKey,
+    required this.kindLabel,
+    this.onTap,
+  });
+
+  final String path;
+  final String kindKey;
+  final String kindLabel;
+  final VoidCallback? onTap;
+
+  @override
+  State<_MediaSnapshotView> createState() => _MediaSnapshotViewState();
+}
+
+class _MediaSnapshotViewState extends State<_MediaSnapshotView> {
+  bool? _exists;
+
+  @override
+  void initState() {
+    super.initState();
+    // Plain test() bodies may await real IO; widget tests drive this widget
+    // through runAsync-free pumps, so resolve asynchronously and rebuild.
+    File(widget.path).exists().then((exists) {
+      if (mounted) setState(() => _exists = exists);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    if (_exists == false) {
+      return Text(widget.kindLabel, style: AppTextStyle.body(c.textSecondary));
+    }
+    final isImage = switch (widget.kindKey) {
+      'historyKindPhoto' => true,
+      _ => false,
+    };
+    final body = isImage
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.file(
+              File(widget.path),
+              key: ValueKey('history-media-${widget.path}'),
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => Text(
+                widget.kindLabel,
+                style: AppTextStyle.body(c.textSecondary),
+              ),
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(
+                _kindIcon(widget.kindKey),
+                size: 15,
+                color: c.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  widget.kindLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.body(c.textSecondary),
+                ),
+              ),
+            ],
+          );
+    final onTap = widget.onTap;
+    if (onTap == null) return body;
+    return GestureDetector(onTap: onTap, child: body);
+  }
+
+  static AppIconData _kindIcon(String kindKey) => switch (kindKey) {
+    'historyKindVideo' ||
+    'historyKindVideoNote' ||
+    'historyKindAnimation' => HeroAppIcons.video,
+    'historyKindVoice' => HeroAppIcons.microphone,
+    'historyKindAudio' => HeroAppIcons.music,
+    'historyKindDocument' => HeroAppIcons.file,
+    _ => HeroAppIcons.image,
+  };
 }

@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_store.dart';
@@ -104,6 +105,31 @@ Map<String, dynamic> _message(
   'content': {
     '@type': 'messageText',
     'text': {'@type': 'formattedText', 'text': text},
+  },
+};
+
+/// A captionless photo content whose single size is fully on disk.
+Map<String, dynamic> _photoContent(String path, {required int id}) => {
+  '@type': 'messagePhoto',
+  'photo': {
+    '@type': 'photo',
+    'sizes': [
+      {
+        '@type': 'photoSize',
+        'width': 100,
+        'height': 50,
+        'photo': {
+          '@type': 'file',
+          'id': id,
+          'local': {
+            '@type': 'localFile',
+            'path': path,
+            'is_downloading_completed': true,
+            'is_active_downloading': false,
+          },
+        },
+      },
+    ],
   },
 };
 
@@ -1387,6 +1413,151 @@ void main() {
       store.debugSetActiveAccount(_accountA);
       store.clearChat(11);
       expect(File(entry.mediaPath).existsSync(), isFalse);
+    },
+  );
+
+  test('a messageAudio file is snapshotted too', () async {
+    final media = MessageMediaSnapshotter.forTesting();
+    media.dir = dir;
+    store.mediaSnapshotter = media;
+    final source = File('${dir.path}/tdlib-cache-song.mp3')
+      ..writeAsBytesSync(List.filled(8, 3));
+    await start();
+    emitAs(_clientA, 'updateNewMessage', {
+      'message': {
+        ..._message(11, 402),
+        'content': {
+          '@type': 'messageAudio',
+          'audio': {
+            '@type': 'audio',
+            'audio': {
+              '@type': 'file',
+              'id': 7,
+              'local': {
+                '@type': 'localFile',
+                'path': source.path,
+                'is_downloading_completed': true,
+                'is_active_downloading': false,
+              },
+            },
+          },
+        },
+      },
+    });
+    for (var i = 0; i < 100; i++) {
+      if ((store.entry(11, 402)?.mediaPath ?? '').isNotEmpty) break;
+      await Future<void>.delayed(Duration.zero);
+    }
+    final entry = store.entry(11, 402)!;
+    expect(entry.kindKey, 'historyKindAudio');
+    expect(entry.mediaPath, isNotEmpty);
+    expect(File(entry.mediaPath).existsSync(), isTrue);
+  });
+
+  test(
+    'a copy finishing after removeAccount leaves no snapshot file behind',
+    () async {
+      final media = MessageMediaSnapshotter.forTesting();
+      media.dir = dir;
+      store.mediaSnapshotter = media;
+      final source = File('${dir.path}/tdlib-cache-voice.oga')
+        ..writeAsBytesSync(List.filled(8, 5));
+      // Hold every copy right before its post-copy validation, so the
+      // account removal lands while the copy is in flight.
+      final copyGate = Completer<void>();
+      media.beforeValidateForTesting = () => copyGate.future;
+      await start();
+      emitAs(_clientA, 'updateNewMessage', {
+        'message': {
+          ..._message(11, 403),
+          'content': {
+            '@type': 'messageVoiceNote',
+            'voice_note': {
+              '@type': 'voiceNote',
+              'voice': {
+                '@type': 'file',
+                'id': 8,
+                'local': {
+                  '@type': 'localFile',
+                  'path': source.path,
+                  'is_downloading_completed': true,
+                  'is_active_downloading': false,
+                },
+              },
+            },
+          },
+        },
+      });
+      // Wait until the copy itself has landed on disk (validation still held).
+      String? copiedPath;
+      for (var i = 0; i < 100; i++) {
+        final files = dir
+            .listSync()
+            .whereType<File>()
+            .map((f) => f.path)
+            .where((p) => p.contains('${_accountA}_11_'))
+            .toList();
+        if (files.isNotEmpty) {
+          copiedPath = files.single;
+          break;
+        }
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(copiedPath, isNotNull, reason: 'the copy never started');
+
+      store.removeAccount(_accountA);
+      copyGate.complete();
+      for (var i = 0; i < 100; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(store.entryCount, 0);
+      expect(
+        File(copiedPath!).existsSync(),
+        isFalse,
+        reason: 'an in-flight copy must be deleted, not left behind',
+      );
+    },
+  );
+
+  test(
+    'the production snapshotter resolves its directory from app support',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final media = MessageMediaSnapshotter.forTesting();
+      store.mediaSnapshotter = media;
+      // Drive the same platform channel production uses; without it the
+      // widget-test binding has no path_provider backend and the resolver
+      // would stay inert (the bug: snapshots only ran in tests).
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const paths = MethodChannel('plugins.flutter.io/path_provider');
+      messenger.setMockMethodCallHandler(paths, (call) async => dir.path);
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(paths, null);
+      });
+      final source = File('${dir.path}/tdlib-cache-pic.jpg')
+        ..writeAsBytesSync(List.filled(4, 9));
+      await start();
+      emitAs(_clientA, 'updateNewMessage', {
+        'message': {
+          ..._message(11, 404),
+          'content': _photoContent(source.path, id: 9),
+        },
+      });
+      for (var i = 0; i < 100; i++) {
+        if (media.dir != null) break;
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(
+        media.dir,
+        isNotNull,
+        reason: 'snapshots must run in production, not only in tests',
+      );
+      for (var i = 0; i < 100; i++) {
+        if ((store.entry(11, 404)?.mediaPath ?? '').isNotEmpty) break;
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(store.entry(11, 404)?.mediaPath, isNotEmpty);
     },
   );
 

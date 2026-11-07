@@ -689,21 +689,28 @@ class MessageHistoryStore extends ChangeNotifier {
           }
         }
         return best;
+      case 'messageAudio':
+        // messageAudio wraps the file in audio.audio.
+        return content.obj('audio')?.obj('audio');
+      case 'messageVoiceNote':
+        // messageVoiceNote wraps the file in voice_note.voice.
+        return content.obj('voice_note')?.obj('voice');
       case 'messageVideo':
       case 'messageAnimation':
       case 'messageDocument':
-      case 'messageAudio':
-      case 'messageVoiceNote':
         return content.obj('animation') ??
             content.obj('video') ??
-            content.obj('document') ??
-            content.obj('voice_note');
+            content.obj('document');
     }
     return null;
   }
 
   MessageMediaSnapshotter _media() =>
       mediaSnapshotter ?? MessageMediaSnapshotter.shared;
+
+  /// The snapshotter the viewer should resolve preview paths against —
+  /// the injected one in tests, the shared one in production.
+  MessageMediaSnapshotter get mediaSnapshotterForView => _media();
 
   /// The injected snapshotter (tests); defaults to the shared one.
   @visibleForTesting

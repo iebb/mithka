@@ -437,6 +437,7 @@ abstract final class AppStringKeys {
   static const historyNoExcludedChats = 'historyNoExcludedChats';
   static const historyReincludeAction = 'historyReincludeAction';
   static const historyRevisionsTitle = 'historyRevisionsTitle';
+  static const historySenderLabel = 'historySenderLabel';
   static const historySettingsRow = 'historySettingsRow';
   static const historyTitle = 'historyTitle';
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
