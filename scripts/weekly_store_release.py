@@ -983,7 +983,8 @@ def verify_github_packages(release, manifest, plan):
         "windows-arm64.zip",
         "windows-x64-setup.exe",
         "windows-arm64-setup.exe",
-        "macos-universal.zip",
+        "macos-arm64.zip",
+        "macos-x64.zip",
         "linux-x64.tar.gz",
         "linux-arm64.tar.gz",
         "linux-x64.AppImage",
@@ -1069,7 +1070,7 @@ def publish_github_release(plan):
         raise Error("GitHub package manifest belongs to another workflow run")
     verify_github_packages(release, manifest, plan)
     print(
-        f"Verified GitHub release {tag}: 11 packages match the store source.",
+        f"Verified GitHub release {tag}: 12 packages match the store source.",
         flush=True,
     )
 
