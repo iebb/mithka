@@ -1373,9 +1373,12 @@ void main() {
           },
         },
       });
-      await pump();
-      await pump();
-      await pump();
+      // The copy runs off the update chain; wait for it deterministically
+      // instead of counting microtask pumps.
+      for (var i = 0; i < 100; i++) {
+        if ((store.entry(11, 400)?.mediaPath ?? '').isNotEmpty) break;
+        await Future<void>.delayed(Duration.zero);
+      }
       final entry = store.entry(11, 400)!;
       expect(entry.kindKey, 'historyKindPhoto');
       expect(entry.mediaPath, isNotEmpty);
@@ -1420,8 +1423,9 @@ void main() {
         },
       },
     });
-    await pump();
-    await pump();
+    for (var i = 0; i < 100; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
     expect(store.entry(11, 401)?.mediaPath, isEmpty);
   });
 }

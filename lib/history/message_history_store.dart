@@ -639,6 +639,7 @@ class MessageHistoryStore extends ChangeNotifier {
     final file = _contentSnapshotFile(message.obj('content'));
     if (file == null) return;
     final key = '$accountUserId:$chatId:$messageId';
+    final generation = _generation;
     unawaited(
       _media()
           .snapshot(
@@ -649,6 +650,10 @@ class MessageHistoryStore extends ChangeNotifier {
           )
           .then((path) {
             if (path == null) return;
+            // The copy raced a global wipe or disposal: the store's state
+            // moved on, so the late path is dropped instead of resurrecting
+            // the entry (and notifyListeners on a disposed store).
+            if (_disposed || _generation != generation) return;
             final existing = _byKey[key];
             if (existing == null || existing.mediaPath.isNotEmpty) return;
             _byKey[key] = existing.copyWith(mediaPath: path);
