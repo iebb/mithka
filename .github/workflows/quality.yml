@@ -118,6 +118,9 @@ jobs:
       - name: Test Firebase release configuration verification
         run: python3 -m unittest discover -s test/scripts -p 'firebase_configuration_test.py' -v
 
+      - name: Test desktop bundle pruning
+        run: python3 -m unittest discover -s test/scripts -p 'prune_desktop_bundle_test.py' -v
+
       - name: Verify Apple MDK preparation through the resolved dependency
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -439,9 +439,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake libavcodec-dev libavformat-dev libavutil-dev \
-            libcurl4-openssl-dev libgtk-3-dev libjpeg-dev liblzma-dev \
-            libkeybinder-3.0-dev libsecret-1-dev libswscale-dev libpulse0 \
+            clang cmake libcurl4-openssl-dev libgtk-3-dev liblzma-dev \
+            libkeybinder-3.0-dev libsecret-1-dev libpulse0 \
             libgirepository1.0-dev librsvg2-dev patchelf \
             desktop-file-utils ninja-build pkg-config xvfb xdotool
 
@@ -559,11 +558,21 @@ jobs:
             --dart-define="CI_BUILD_STAMP=${{ needs.prepare.outputs.build_stamp }}" `
             --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
 
+      - name: Prune Windows release bundle
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          python="$(command -v python3 || command -v python)"
+          "$python" scripts/prune-desktop-bundle.py windows \
+            "build/windows/${{ matrix.architecture }}/runner/Release"
+
       - name: Package Linux release
         if: matrix.platform == 'linux'
         run: |
           bundle="build/linux/${{ matrix.architecture }}/release/bundle"
           install -m 0755 native-libs/libtdjson.so "$bundle/lib/libtdjson.so"
+          python3 scripts/prune-desktop-bundle.py linux "$bundle"
+          scripts/check-linux-no-system-ffmpeg.sh "$bundle"
           nm -D "$bundle/lib/libtdjson.so" | grep ' td_create_client_id$'
           if ldd "$bundle/lib/libtdjson.so" | grep -q 'not found'; then
             ldd "$bundle/lib/libtdjson.so" >&2
@@ -601,13 +610,23 @@ jobs:
             otool -L "$frameworks/libtdjson.dylib" >&2
             exit 1
           fi
+          python3 scripts/prune-desktop-bundle.py macos "$app"
           codesign --force --sign - "$frameworks/libtdjson.dylib"
+          # Pruning removed optional MDK plugins, so reseal the framework.
+          codesign --force --sign - "$frameworks/mdk.framework"
           codesign --force --sign - \
             --entitlements macos/Runner/Release.entitlements "$app"
           codesign --verify --deep --strict "$app"
-          mkdir -p dist
-          ditto -c -k --keepParent "$app" \
-            "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-universal.zip"
+          # The universal build stays the source of truth; each download is a
+          # single-architecture copy, which is roughly half the size.
+          mkdir -p dist thin
+          for pair in arm64:arm64 x86_64:x64; do
+            arch="${pair%%:*}"
+            label="${pair##*:}"
+            scripts/thin-macos-app.sh "$app" "$arch" "thin/$label/Mithka.app"
+            ditto -c -k --keepParent "thin/$label/Mithka.app" \
+              "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-$label.zip"
+          done
 
       - name: Package Windows release
         if: matrix.platform == 'windows'
@@ -660,10 +679,27 @@ jobs:
           }
 
       - name: Upload desktop artifact
+        if: matrix.platform != 'macos'
         uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}-${{ needs.prepare.outputs.release_date }}
           path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-${{ matrix.platform }}-${{ matrix.architecture }}.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
+      - name: Upload macOS arm64 artifact
+        if: matrix.platform == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-macos-arm64-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-arm64.zip
+          if-no-files-found: error
+
+      - name: Upload macOS x64 artifact
+        if: matrix.platform == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-macos-x64-${{ needs.prepare.outputs.release_date }}
+          path: dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-x64.zip
           if-no-files-found: error
 
       - name: Upload Windows installer artifact
@@ -725,7 +761,8 @@ jobs:
             '*-windows-arm64.zip' \
             '*-windows-x64-setup.exe' \
             '*-windows-arm64-setup.exe' \
-            '*-macos-universal.zip' \
+            '*-macos-arm64.zip' \
+            '*-macos-x64.zip' \
             '*-linux-x64.tar.gz' \
             '*-linux-arm64.tar.gz' \
             '*-linux-x64.AppImage' \

@@ -167,9 +167,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            clang cmake libavcodec-dev libavformat-dev libavutil-dev \
-            libcurl4-openssl-dev libgtk-3-dev libjpeg-dev liblzma-dev \
-            libkeybinder-3.0-dev libsecret-1-dev libswscale-dev libpulse0 \
+            clang cmake libcurl4-openssl-dev libgtk-3-dev liblzma-dev \
+            libkeybinder-3.0-dev libsecret-1-dev libpulse0 \
             libgirepository1.0-dev librsvg2-dev patchelf \
             desktop-file-utils ninja-build pkg-config xvfb xdotool
       - name: Prepare credential-free dependencies
@@ -216,6 +215,12 @@ jobs:
         run: |
           flutter build macos --release --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
           test -f build/macos/Build/Products/Release/Mithka.app/Contents/MacOS/Mithka
+          # Release packages ship one architecture per download; prove both thin.
+          for arch in arm64 x86_64; do
+            scripts/thin-macos-app.sh \
+              build/macos/Build/Products/Release/Mithka.app "$arch" \
+              "$RUNNER_TEMP/thin-$arch/Mithka.app"
+          done
       - name: Build Windows release
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -227,3 +232,10 @@ jobs:
           if (-not (Test-Path 'build/windows/${{ matrix.architecture }}/runner/Release/mithka.exe')) {
             throw 'Expected Windows release executable is missing'
           }
+      - name: Prune Windows release bundle
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          python="$(command -v python3 || command -v python)"
+          "$python" scripts/prune-desktop-bundle.py windows \
+            'build/windows/${{ matrix.architecture }}/runner/Release'
