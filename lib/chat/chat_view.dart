@@ -2829,6 +2829,20 @@ class _ChatViewState extends State<ChatView> {
     _scheduleScrollToBottom(animated: false);
   }
 
+  /// The transcript sits above the composer in a forward scroll view, so a
+  /// field that wraps onto more lines shrinks the viewport from the bottom and
+  /// would cover the newest message. Unlike a panel change this keeps a
+  /// pending unread/linked-message jump.
+  void _onComposerInputHeightChanged() {
+    if (_scrollTargetId != null ||
+        !_autoScrollPolicy.shouldFollowComposerPanelChange(
+          wasNearBottom: _isNearBottom(260),
+        )) {
+      return;
+    }
+    _scheduleScrollToBottom(animated: false);
+  }
+
   void _onComposerMediaSendTapped() {
     _cancelSessionScrollAnchorMaintenance();
     _maintainRestoredBottom = false;
@@ -8223,6 +8237,7 @@ class _ChatViewState extends State<ChatView> {
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
+      onInputHeightChanged: _onComposerInputHeightChanged,
       onMediaSendTapped: _onComposerMediaSendTapped,
       onBotTopicCreated: _openTopicTranscript,
     );

@@ -1849,6 +1849,55 @@ void main() {
       expect(aiButton, findsNothing);
     });
 
+    for (final simpleMode in [false, true]) {
+      testWidgets(
+        'reports text field height changes (simpleMode: $simpleMode)',
+        (tester) async {
+          final vm = _FocusTestChatViewModel();
+          addTearDown(vm.dispose);
+          var inputHeightChanges = 0;
+
+          await tester.pumpWidget(
+            MaterialApp(
+              locale: const Locale('en'),
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ChatInputBar(
+                    vm: vm,
+                    onStartCall: (_) {},
+                    onMessageSent: () {},
+                    simpleMode: simpleMode,
+                    onInputHeightChanged: () => inputHeightChanges++,
+                  ),
+                ),
+              ),
+            ),
+          );
+          expect(inputHeightChanges, 0);
+
+          final field = find.byType(TextField).first;
+          await tester.enterText(field, 'a\nb\nc');
+          await tester.pump();
+          await tester.pump();
+          expect(inputHeightChanges, greaterThanOrEqualTo(1));
+
+          // Deleting back to one line reports the shrink too.
+          final grown = inputHeightChanges;
+          await tester.enterText(field, 'a');
+          await tester.pump();
+          await tester.pump();
+          expect(inputHeightChanges, greaterThan(grown));
+        },
+      );
+    }
+
     test('builds awaitable sticker send requests', () {
       final vm = ChatViewModel(chatId: 42, title: 'Test', markReadOnOpen: false)
         ..paidMessageStarCount = 3;

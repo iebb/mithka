@@ -502,6 +502,7 @@ class ChatInputBar extends StatefulWidget {
     required this.onStartCall,
     required this.onMessageSent,
     this.onPanelGeometryChanged,
+    this.onInputHeightChanged,
     this.onMediaSendTapped,
     this.gifPreviewBuilder,
     this.requestInitialFocus = false,
@@ -532,6 +533,9 @@ class ChatInputBar extends StatefulWidget {
   final FutureOr<void> Function(bool isVideo) onStartCall;
   final VoidCallback onMessageSent;
   final VoidCallback? onPanelGeometryChanged;
+
+  /// The text field's own height changed as text wrapped or was removed.
+  final VoidCallback? onInputHeightChanged;
   final VoidCallback? onMediaSendTapped;
   @visibleForTesting
   final Widget Function(GifItem item)? gifPreviewBuilder;
@@ -903,6 +907,16 @@ class _ChatInputBarState extends State<ChatInputBar>
     final saver =
         widget.desktopComposerHeightSaver ?? DesktopComposerHeightStore.save;
     unawaited(saver(_desktopComposerHeightKey, height));
+  }
+
+  /// The touch field grows and shrinks with its text. Report it once the
+  /// frame is laid out so the transcript can follow the resized viewport;
+  /// the desktop editor's height only changes by drag, reported above.
+  void _onInputFieldResized({required bool desktop}) {
+    if (desktop || widget.onInputHeightChanged == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onInputHeightChanged?.call();
+    });
   }
 
   void _handleBotPlatformUpdate(Map<String, dynamic> update) {
@@ -6103,158 +6117,181 @@ class _ChatInputBarState extends State<ChatInputBar>
                                         ),
                                   },
                                   child: ContentSizeScope(
-                                    child: ConstrainedBox(
-                                      constraints: desktop
-                                          ? const BoxConstraints()
-                                          : BoxConstraints(
-                                              maxHeight:
-                                                  _touchTextFieldMaxHeight(),
-                                            ),
-                                      child: TextField(
-                                        controller: _controller,
-                                        focusNode: _focus,
-                                        // The caption is fixed while its
-                                        // voice message is on the way.
-                                        readOnly: sendingVoiceDraft,
-                                        onTap: _handleEmptyInputTap,
-                                        // Submit from editing completion without
-                                        // onSubmitted: Flutter restarts the input
-                                        // connection after a completion action
-                                        // whenever onSubmitted is present, even
-                                        // when onEditingComplete retains focus.
-                                        onEditingComplete: () {
-                                          _controller.clearComposing();
-                                          if (!desktop && widget.enterToSend) {
-                                            unawaited(_sendCurrentText());
-                                          }
-                                        },
-                                        minLines: desktop ? null : 1,
-                                        maxLines: null,
-                                        expands: desktop,
-                                        keyboardType: TextInputType.multiline,
-                                        textInputAction: desktop
-                                            ? TextInputAction.newline
-                                            : widget.enterToSend
-                                            ? TextInputAction.send
-                                            : TextInputAction.newline,
-                                        inputFormatters:
-                                            widget.enterToSend &&
-                                                Theme.of(context).platform ==
-                                                    TargetPlatform.android
-                                            ? [
-                                                _ComposerEnterToSendFormatter(
-                                                  onSend: _scheduleKeyboardSend,
+                                    child: NotificationListener<SizeChangedLayoutNotification>(
+                                      onNotification: (_) {
+                                        _onInputFieldResized(desktop: desktop);
+                                        return true;
+                                      },
+                                      child: SizeChangedLayoutNotifier(
+                                        child: ConstrainedBox(
+                                          constraints: desktop
+                                              ? const BoxConstraints()
+                                              : BoxConstraints(
+                                                  maxHeight:
+                                                      _touchTextFieldMaxHeight(),
                                                 ),
-                                              ]
-                                            : null,
-                                        style: TextStyle(
-                                          fontSize: AppTextSize.messageBody(
-                                            Theme.of(context).platform,
-                                          ),
-                                          color: c.textPrimary,
-                                        ),
-                                        contentInsertionConfiguration: editing
-                                            ? null
-                                            : ContentInsertionConfiguration(
-                                                allowedMimeTypes:
-                                                    _imageMimeTypes,
-                                                onContentInserted:
-                                                    _handleInsertedContent,
+                                          child: TextField(
+                                            controller: _controller,
+                                            focusNode: _focus,
+                                            // The caption is fixed while its
+                                            // voice message is on the way.
+                                            readOnly: sendingVoiceDraft,
+                                            onTap: _handleEmptyInputTap,
+                                            // Submit from editing completion without
+                                            // onSubmitted: Flutter restarts the input
+                                            // connection after a completion action
+                                            // whenever onSubmitted is present, even
+                                            // when onEditingComplete retains focus.
+                                            onEditingComplete: () {
+                                              _controller.clearComposing();
+                                              if (!desktop &&
+                                                  widget.enterToSend) {
+                                                unawaited(_sendCurrentText());
+                                              }
+                                            },
+                                            minLines: desktop ? null : 1,
+                                            maxLines: null,
+                                            expands: desktop,
+                                            keyboardType:
+                                                TextInputType.multiline,
+                                            textInputAction: desktop
+                                                ? TextInputAction.newline
+                                                : widget.enterToSend
+                                                ? TextInputAction.send
+                                                : TextInputAction.newline,
+                                            inputFormatters:
+                                                widget.enterToSend &&
+                                                    Theme.of(
+                                                          context,
+                                                        ).platform ==
+                                                        TargetPlatform.android
+                                                ? [
+                                                    _ComposerEnterToSendFormatter(
+                                                      onSend:
+                                                          _scheduleKeyboardSend,
+                                                    ),
+                                                  ]
+                                                : null,
+                                            style: TextStyle(
+                                              fontSize: AppTextSize.messageBody(
+                                                Theme.of(context).platform,
                                               ),
-                                        contextMenuBuilder:
-                                            (
-                                              BuildContext context,
-                                              EditableTextState
-                                              editableTextState,
-                                            ) {
-                                              ContextMenuButtonItem?
-                                              originalPaste;
-                                              final items =
-                                                  <ContextMenuButtonItem>[];
-                                              for (final item
-                                                  in editableTextState
-                                                      .contextMenuButtonItems) {
-                                                if (item.type ==
-                                                    ContextMenuButtonType
-                                                        .paste) {
-                                                  originalPaste = item;
-                                                } else {
-                                                  items.add(item);
-                                                }
-                                              }
-                                              final paste = ContextMenuButtonItem(
-                                                type:
-                                                    ContextMenuButtonType.paste,
-                                                label:
-                                                    originalPaste?.label ??
-                                                    AppStringKeys
-                                                        .accountBackupLoadSessionPaste
-                                                        .l10n(context),
-                                                onPressed: () => unawaited(
-                                                  _handlePaste(originalPaste),
-                                                ),
-                                              );
-                                              final copyIndex = items
-                                                  .indexWhere(
-                                                    (item) =>
-                                                        item.type ==
-                                                        ContextMenuButtonType
-                                                            .copy,
-                                                  );
-                                              final pasteIndex = copyIndex < 0
-                                                  ? 0
-                                                  : copyIndex + 1;
-                                              items.insert(pasteIndex, paste);
-                                              final selection =
-                                                  _controller.selection;
-                                              if (selection.isValid &&
-                                                  !selection.isCollapsed) {
-                                                items.insert(
-                                                  pasteIndex + 1,
-                                                  ContextMenuButtonItem(
-                                                    label: AppStringKeys
-                                                        .composerFormat
-                                                        .l10n(context),
-                                                    onPressed: () => unawaited(
-                                                      _showComposerFormatMenu(
-                                                        editableTextState,
-                                                      ),
-                                                    ),
+                                              color: c.textPrimary,
+                                            ),
+                                            contentInsertionConfiguration:
+                                                editing
+                                                ? null
+                                                : ContentInsertionConfiguration(
+                                                    allowedMimeTypes:
+                                                        _imageMimeTypes,
+                                                    onContentInserted:
+                                                        _handleInsertedContent,
                                                   ),
-                                                );
-                                              }
-                                              return MediaQuery(
-                                                data: MediaQuery.of(context)
-                                                    .copyWith(
-                                                      textScaler:
-                                                          ContentSizeScope.of(
-                                                            context,
-                                                          ).systemTextScaler,
-                                                    ),
-                                                child:
-                                                    AppTextSelectionToolbar.fromButtonItems(
+                                            contextMenuBuilder:
+                                                (
+                                                  BuildContext context,
+                                                  EditableTextState
+                                                  editableTextState,
+                                                ) {
+                                                  ContextMenuButtonItem?
+                                                  originalPaste;
+                                                  final items =
+                                                      <ContextMenuButtonItem>[];
+                                                  for (final item
+                                                      in editableTextState
+                                                          .contextMenuButtonItems) {
+                                                    if (item.type ==
+                                                        ContextMenuButtonType
+                                                            .paste) {
+                                                      originalPaste = item;
+                                                    } else {
+                                                      items.add(item);
+                                                    }
+                                                  }
+                                                  final paste =
+                                                      ContextMenuButtonItem(
+                                                        type:
+                                                            ContextMenuButtonType
+                                                                .paste,
+                                                        label:
+                                                            originalPaste
+                                                                ?.label ??
+                                                            AppStringKeys
+                                                                .accountBackupLoadSessionPaste
+                                                                .l10n(context),
+                                                        onPressed: () =>
+                                                            unawaited(
+                                                              _handlePaste(
+                                                                originalPaste,
+                                                              ),
+                                                            ),
+                                                      );
+                                                  final copyIndex = items
+                                                      .indexWhere(
+                                                        (item) =>
+                                                            item.type ==
+                                                            ContextMenuButtonType
+                                                                .copy,
+                                                      );
+                                                  final pasteIndex =
+                                                      copyIndex < 0
+                                                      ? 0
+                                                      : copyIndex + 1;
+                                                  items.insert(
+                                                    pasteIndex,
+                                                    paste,
+                                                  );
+                                                  final selection =
+                                                      _controller.selection;
+                                                  if (selection.isValid &&
+                                                      !selection.isCollapsed) {
+                                                    items.insert(
+                                                      pasteIndex + 1,
+                                                      ContextMenuButtonItem(
+                                                        label: AppStringKeys
+                                                            .composerFormat
+                                                            .l10n(context),
+                                                        onPressed: () => unawaited(
+                                                          _showComposerFormatMenu(
+                                                            editableTextState,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                  return MediaQuery(
+                                                    data: MediaQuery.of(context)
+                                                        .copyWith(
+                                                          textScaler:
+                                                              ContentSizeScope.of(
+                                                                context,
+                                                              ).systemTextScaler,
+                                                        ),
+                                                    child: AppTextSelectionToolbar.fromButtonItems(
                                                       context: context,
                                                       anchors: editableTextState
                                                           .contextMenuAnchors,
                                                       items: items,
                                                     ),
-                                              );
-                                            },
-                                        decoration: InputDecoration(
-                                          hintText:
-                                              (voiceDraft != null
-                                                      ? AppStringKeys
-                                                            .composerVoiceCaptionPlaceholder
-                                                      : AppStringKeys
-                                                            .chatMessageInputPlaceholder)
-                                                  .l10n(context),
-                                          border: InputBorder.none,
-                                          isCollapsed: true,
-                                          contentPadding: desktop && hasText
-                                              ? const EdgeInsets.only(
-                                                  bottom: 42,
-                                                )
-                                              : EdgeInsets.zero,
+                                                  );
+                                                },
+                                            decoration: InputDecoration(
+                                              hintText:
+                                                  (voiceDraft != null
+                                                          ? AppStringKeys
+                                                                .composerVoiceCaptionPlaceholder
+                                                          : AppStringKeys
+                                                                .chatMessageInputPlaceholder)
+                                                      .l10n(context),
+                                              border: InputBorder.none,
+                                              isCollapsed: true,
+                                              contentPadding: desktop && hasText
+                                                  ? const EdgeInsets.only(
+                                                      bottom: 42,
+                                                    )
+                                                  : EdgeInsets.zero,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),

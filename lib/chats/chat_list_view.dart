@@ -1661,7 +1661,7 @@ class _ChatListViewState extends State<ChatListView>
       context,
     ).push<String>(MaterialPageRoute(builder: (_) => const QrScannerView()));
     if (!mounted || value == null || value.trim().isEmpty) return;
-    await openLink(context, value);
+    await openLink(context, value, keepTelegramInApp: true);
   }
 
   /// Opens the folder's command sheet.
