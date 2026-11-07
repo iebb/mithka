@@ -435,8 +435,22 @@ abstract final class AppStringKeys {
   static const historyKindVideoNote = 'historyKindVideoNote';
   static const historyKindVoice = 'historyKindVoice';
   static const historyNoExcludedChats = 'historyNoExcludedChats';
+  static const historyRecordDeleted = 'historyRecordDeleted';
+  static const historyRecordEdits = 'historyRecordEdits';
+  static const historyRecordNote = 'historyRecordNote';
+  static const historyRecordSection = 'historyRecordSection';
+  static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
+  static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';
+  static const historyRenderGhosts = 'historyRenderGhosts';
+  static const historyRenderGhostsNote = 'historyRenderGhostsNote';
   static const historyReincludeAction = 'historyReincludeAction';
   static const historyRevisionsTitle = 'historyRevisionsTitle';
+  static const historySnapshotChannels = 'historySnapshotChannels';
+  static const historySnapshotGroups = 'historySnapshotGroups';
+  static const historySnapshotNote = 'historySnapshotNote';
+  static const historySnapshotPrivate = 'historySnapshotPrivate';
+  static const historySnapshotSection = 'historySnapshotSection';
+  static const historySenderLabel = 'historySenderLabel';
   static const historySettingsRow = 'historySettingsRow';
   static const historyTitle = 'historyTitle';
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
@@ -2112,6 +2126,8 @@ abstract final class AppStringKeys {
   static const languageMithkaLanguage = 'languageMithkaLanguage';
   static const languageTitle = 'languageTitle';
   static const linkBrowserAddress = 'linkBrowserAddress';
+  static const localPremiumNote = 'localPremiumNote';
+  static const localPremiumTitle = 'localPremiumTitle';
   static const linkBrowserAskEveryTime = 'linkBrowserAskEveryTime';
   static const linkBrowserAskEveryTimeDescription =
       'linkBrowserAskEveryTimeDescription';

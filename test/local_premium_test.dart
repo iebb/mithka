@@ -16,7 +16,10 @@ void main() {
     expect(LocalPremium.shared.enabled, isFalse);
     // Without the switch the real server value passes through.
     expect(LocalPremium.shared.premiumForMe(true), isTrue);
-    expect(LocalPremium.shared.premiumForMe(false), allowTelegramTosViolations ? isFalse : isTrue);
+    expect(
+      LocalPremium.shared.premiumForMe(false),
+      allowTelegramTosViolations ? isFalse : isTrue,
+    );
   });
 
   test('enabling unlocks the own-account premium answer', () async {
@@ -26,9 +29,14 @@ void main() {
     lp.initialize(prefs);
     lp.setEnabled(true);
     expect(lp.enabled, allowTelegramTosViolations ? isTrue : isFalse);
-    expect(lp.premiumForMe(false), allowTelegramTosViolations ? isTrue : isFalse);
-    expect(prefs.getBool('local_premium.enabled'),
-        allowTelegramTosViolations ? isTrue : isNull);
+    expect(
+      lp.premiumForMe(false),
+      allowTelegramTosViolations ? isTrue : isFalse,
+    );
+    expect(
+      prefs.getBool('local_premium.enabled'),
+      allowTelegramTosViolations ? isTrue : isNull,
+    );
   });
 
   test('toggles notify listeners exactly once per change', () async {

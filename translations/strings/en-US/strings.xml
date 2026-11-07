@@ -1959,9 +1959,23 @@
     <string name="historyKindVideoNote">Video message</string>
     <string name="historyKindVoice">Voice message</string>
     <string name="historyNoExcludedChats">No chats are excluded.</string>
+    <string name="historyRecordDeleted">Keep deleted messages</string>
+    <string name="historyRecordEdits">Keep edit history</string>
+    <string name="historyRecordNote">Both switches default to off; nothing is recorded until you enable them. Kept copies live on this device only and stay until you clear them.</string>
+    <string name="historyRecordSection">Recording</string>
     <string name="historyReincludeAction">Include</string>
+    <string name="historyRemoveFromMirrorAction">Remove from mirror</string>
+    <string name="historyRemovedFromMirrorToast">Removed from the mirror</string>
+    <string name="historyRenderGhosts">Show deleted messages in chat</string>
+    <string name="historyRenderGhostsNote">Deleted messages with a kept copy stay in the transcript as translucent ghosts. Long-press one to copy its text, view its edit history, or remove it from the mirror.</string>
+    <string name="historySenderLabel">User {value1}</string>
     <string name="historyRevisionsTitle">Edit history</string>
     <string name="historySettingsRow">Message History</string>
+    <string name="historySnapshotChannels">Snapshot media in channels</string>
+    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotNote">Media is copied to the mirror only when the file is already fully on disk when the message arrives. Without a snapshot the kept copy shows the content type only.</string>
+    <string name="historySnapshotPrivate">Snapshot media in private chats</string>
+    <string name="historySnapshotSection">Media snapshots</string>
     <string name="historyTitle">Message History</string>
 
     <string name="imageEditAdd">Add</string>
@@ -2080,6 +2094,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">Opening this Telegram link is not supported yet</string>
     <string name="linkHandlerWritingStyle">Writing style</string>
     <string name="listSeparator" xml:space="preserve">, </string>
+    <string name="localPremiumNote">Unlock the client-side premium surfaces for your own account on this device. Server-side limits still apply and nothing is sent to Telegram.</string>
+    <string name="localPremiumTitle">Local Premium</string>
     <string name="locationDetailFetchingLocation">Getting location...</string>
     <string name="locationPickerDragMapToChoose">Drag the map to choose a location</string>
     <string name="loginBackToAccount">Back to {value1}</string>

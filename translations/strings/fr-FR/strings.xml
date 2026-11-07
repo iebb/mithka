@@ -1959,9 +1959,23 @@
     <string name="historyKindVideoNote">Message vidéo</string>
     <string name="historyKindVoice">Message vocal</string>
     <string name="historyNoExcludedChats">Aucune discussion exclue.</string>
+    <string name="historyRecordDeleted">Conserver les messages supprimés</string>
+    <string name="historyRecordEdits">Conserver l'historique des modifications</string>
+    <string name="historyRecordNote">Les deux commutateurs sont désactivés par défaut ; rien n'est enregistré tant que vous ne les activez pas. Les copies conservées restent sur cet appareil jusqu'à leur suppression.</string>
+    <string name="historyRecordSection">Enregistrement</string>
     <string name="historyReincludeAction">Inclure</string>
+    <string name="historyRemoveFromMirrorAction">Retirer du miroir</string>
+    <string name="historyRemovedFromMirrorToast">Retiré du miroir</string>
+    <string name="historyRenderGhosts">Afficher les messages supprimés dans la conversation</string>
+    <string name="historyRenderGhostsNote">Les messages supprimés disposant d'une copie conservée restent dans la conversation comme des fantômes translucides. Appui long pour copier le texte, voir l'historique des modifications ou le retirer du miroir.</string>
+    <string name="historySenderLabel">Utilisateur {value1}</string>
     <string name="historyRevisionsTitle">Historique des modifications</string>
     <string name="historySettingsRow">Historique des messages</string>
+    <string name="historySnapshotChannels">Instantanés multimédias dans les chaînes</string>
+    <string name="historySnapshotGroups">Instantanés multimédias dans les groupes</string>
+    <string name="historySnapshotNote">Un média n'est copié dans le miroir que si le fichier est déjà entièrement sur l'appareil à l'arrivée du message. Sans instantané, la copie conservée n'affiche que le type de contenu.</string>
+    <string name="historySnapshotPrivate">Instantanés multimédias dans les conversations privées</string>
+    <string name="historySnapshotSection">Instantanés multimédias</string>
     <string name="historyTitle">Historique des messages</string>
 
     <string name="imageEditAdd">Ajouter</string>
@@ -2080,6 +2094,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">L’ouverture de ce lien Telegram n’est pas encore prise en charge</string>
     <string name="linkHandlerWritingStyle">Style d'écriture</string>
     <string name="listSeparator" xml:space="preserve">, </string>
+    <string name="localPremiumNote">Déverrouille les surfaces premium côté client pour votre propre compte sur cet appareil. Les limites serveur s'appliquent toujours et rien n'est envoyé à Telegram.</string>
+    <string name="localPremiumTitle">Premium local</string>
     <string name="locationDetailFetchingLocation">Récupération de la position…</string>
     <string name="locationPickerDragMapToChoose">Faites glisser la carte pour choisir une position</string>
     <string name="loginBackToAccount">Retour à {value1}</string>

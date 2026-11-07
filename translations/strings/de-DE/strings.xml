@@ -1959,9 +1959,23 @@
     <string name="historyKindVideoNote">Videonachricht</string>
     <string name="historyKindVoice">Sprachnachricht</string>
     <string name="historyNoExcludedChats">Keine Chats ausgeschlossen.</string>
+    <string name="historyRecordDeleted">Gelöschte Nachrichten aufbewahren</string>
+    <string name="historyRecordEdits">Bearbeitungshistorie aufbewahren</string>
+    <string name="historyRecordNote">Beide Schalter sind standardmäßig aus; es wird nichts aufgezeichnet, bis du sie aktivierst. Aufbewahrte Kopien liegen nur auf diesem Gerät und bleiben, bis du sie löschst.</string>
+    <string name="historyRecordSection">Aufzeichnung</string>
     <string name="historyReincludeAction">Aufnehmen</string>
+    <string name="historyRemoveFromMirrorAction">Aus dem Spiegel entfernen</string>
+    <string name="historyRemovedFromMirrorToast">Aus dem Spiegel entfernt</string>
+    <string name="historyRenderGhosts">Gelöschte Nachrichten im Chat anzeigen</string>
+    <string name="historyRenderGhostsNote">Gelöschte Nachrichten mit aufbewahrter Kopie bleiben als halbtransparente Geister im Chat. Lange drücken zum Kopieren, Anzeigen der Bearbeitungshistorie oder Entfernen aus dem Spiegel.</string>
+    <string name="historySenderLabel">Benutzer {value1}</string>
     <string name="historyRevisionsTitle">Bearbeitungsverlauf</string>
     <string name="historySettingsRow">Nachrichtenverlauf</string>
+    <string name="historySnapshotChannels">Medien in Kanälen sichern</string>
+    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotNote">Medien werden nur in den Spiegel kopiert, wenn die Datei beim Eintreffen der Nachricht bereits vollständig auf dem Gerät liegt. Ohne Snapshot zeigt die Kopie nur den Inhaltstyp.</string>
+    <string name="historySnapshotPrivate">Medien in privaten Chats sichern</string>
+    <string name="historySnapshotSection">Medien-Snapshots</string>
     <string name="historyTitle">Nachrichtenverlauf</string>
 
     <string name="imageEditAdd">Hinzufügen</string>
@@ -2080,6 +2094,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">Dieser Telegram-Link wird derzeit nicht unterstützt</string>
     <string name="linkHandlerWritingStyle">Schreibstil</string>
     <string name="listSeparator" xml:space="preserve">, </string>
+    <string name="localPremiumNote">Schaltet die clientseitigen Premium-Flächen für dein eigenes Konto auf diesem Gerät frei. Serverseitige Limits bleiben bestehen; nichts wird an Telegram gesendet.</string>
+    <string name="localPremiumTitle">Lokales Premium</string>
     <string name="locationDetailFetchingLocation">Standort wird abgerufen…</string>
     <string name="locationPickerDragMapToChoose">Karte ziehen, um Standort auszuwählen</string>
     <string name="loginBackToAccount">Zurück zu {value1}</string>

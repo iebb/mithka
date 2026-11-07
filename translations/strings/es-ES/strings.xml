@@ -1959,9 +1959,23 @@
     <string name="historyKindVideoNote">Mensaje de vídeo</string>
     <string name="historyKindVoice">Mensaje de voz</string>
     <string name="historyNoExcludedChats">No hay chats excluidos.</string>
+    <string name="historyRecordDeleted">Guardar mensajes eliminados</string>
+    <string name="historyRecordEdits">Guardar historial de ediciones</string>
+    <string name="historyRecordNote">Ambos interruptores están desactivados por defecto; no se guarda nada hasta que los actives. Las copias guardadas viven solo en este dispositivo y permanecen hasta que las borres.</string>
+    <string name="historyRecordSection">Grabación</string>
     <string name="historyReincludeAction">Incluir</string>
+    <string name="historyRemoveFromMirrorAction">Quitar del espejo</string>
+    <string name="historyRemovedFromMirrorToast">Eliminado del espejo</string>
+    <string name="historyRenderGhosts">Mostrar mensajes eliminados en el chat</string>
+    <string name="historyRenderGhostsNote">Los mensajes eliminados con copia guardada permanecen en la conversación como fantasmas translúcidos. Mantén pulsado para copiar el texto, ver el historial de ediciones o quitarlo del espejo.</string>
+    <string name="historySenderLabel">Usuario {value1}</string>
     <string name="historyRevisionsTitle">Historial de ediciones</string>
     <string name="historySettingsRow">Historial de mensajes</string>
+    <string name="historySnapshotChannels">Guardar multimedia en canales</string>
+    <string name="historySnapshotGroups">Guardar multimedia en grupos</string>
+    <string name="historySnapshotNote">El multimedia solo se copia al espejo si el archivo ya está completamente en el dispositivo cuando llega el mensaje. Sin instantáneo, la copia guardada muestra solo el tipo de contenido.</string>
+    <string name="historySnapshotPrivate">Guardar multimedia en chats privados</string>
+    <string name="historySnapshotSection">Instantáneos de multimedia</string>
     <string name="historyTitle">Historial de mensajes</string>
 
     <string name="imageEditAdd">Añadir</string>
@@ -2080,6 +2094,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">Aún no se admite abrir este enlace de Telegram</string>
     <string name="linkHandlerWritingStyle">Estilo de escritura</string>
     <string name="listSeparator" xml:space="preserve">, </string>
+    <string name="localPremiumNote">Desbloquea las superficies premium del cliente para tu propia cuenta en este dispositivo. Los límites del servidor se mantienen y no se envía nada a Telegram.</string>
+    <string name="localPremiumTitle">Premium local</string>
     <string name="locationDetailFetchingLocation">Obteniendo ubicación…</string>
     <string name="locationPickerDragMapToChoose">Arrastra el mapa para elegir una ubicación</string>
     <string name="loginBackToAccount">Volver a {value1}</string>

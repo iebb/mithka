@@ -4,16 +4,13 @@
 //  switch (default OFF) and the compile-time feature gate.
 //
 
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/config/build_flags.dart';
-import 'package:mithka/history/message_history_models.dart';
 import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/history/message_history_store.dart';
 import 'package:mithka/tdlib/td_models.dart';
-import 'package:mithka/auth/account_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _enabled = allowTelegramTosViolations;
@@ -58,7 +55,7 @@ void main() {
     store.dispose();
   });
 
-  ChatViewModel _viewModel() => ChatViewModel(
+  ChatViewModel makeViewModel() => ChatViewModel(
     chatId: 11,
     title: 'test',
     markReadOnOpen: false,
@@ -67,7 +64,7 @@ void main() {
 
   test('ghosts stay out while the render switch is off (the default)', () {
     store.debugSeed([_deletedEntry(100)]);
-    final vm = _viewModel();
+    final vm = makeViewModel();
     addTearDown(vm.dispose);
     vm.debugRebuildTranscriptForTesting();
     expect(vm.messages.where((m) => m.mirrorEntry != null), isEmpty);
@@ -75,20 +72,19 @@ void main() {
 
   test('deleted entries fold into the transcript when ghosts are on', () {
     MessageHistorySettings.shared.setRenderGhosts(true);
-    ChatViewModel.accountSummaryProvider =
-        (_) => AccountSummary(
-          slot: 0,
-          userId: _accountUserId,
-          name: 'me',
-          phone: '+1',
-        );
+    ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+      slot: 0,
+      userId: _accountUserId,
+      name: 'me',
+      phone: '+1',
+    );
     store.debugSeed([
       _deletedEntry(100),
       _deletedEntry(300, text: 'later ghost'),
       // A live message's kept copy is NOT a ghost — the bubble renders it.
       _deletedEntry(200).copyWith(state: MessageHistoryState.active),
     ]);
-    final vm = _viewModel();
+    final vm = makeViewModel();
     addTearDown(vm.dispose);
     vm.debugRebuildTranscriptForTesting();
     final ghosts = vm.messages.where((m) => m.mirrorEntry != null).toList();
@@ -102,15 +98,14 @@ void main() {
 
   test('a ghost whose message still loads as live is not duplicated', () {
     MessageHistorySettings.shared.setRenderGhosts(true);
-    ChatViewModel.accountSummaryProvider =
-        (_) => AccountSummary(
-          slot: 0,
-          userId: _accountUserId,
-          name: 'me',
-          phone: '+1',
-        );
+    ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+      slot: 0,
+      userId: _accountUserId,
+      name: 'me',
+      phone: '+1',
+    );
     store.debugSeed([_deletedEntry(100)]);
-    final vm = _viewModel();
+    final vm = makeViewModel();
     addTearDown(vm.dispose);
     vm.debugMergeMessagesForTesting([
       ChatMessage(id: 100, isOutgoing: false, text: 'back', date: 1700000000),
@@ -123,15 +118,14 @@ void main() {
   test('turning the switch off removes the ghosts again', () {
     final settings = MessageHistorySettings.shared;
     settings.setRenderGhosts(true);
-    ChatViewModel.accountSummaryProvider =
-        (_) => AccountSummary(
-          slot: 0,
-          userId: _accountUserId,
-          name: 'me',
-          phone: '+1',
-        );
+    ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+      slot: 0,
+      userId: _accountUserId,
+      name: 'me',
+      phone: '+1',
+    );
     store.debugSeed([_deletedEntry(100)]);
-    final vm = _viewModel();
+    final vm = makeViewModel();
     addTearDown(vm.dispose);
     vm.debugRebuildTranscriptForTesting();
     expect(vm.messages.where((m) => m.mirrorEntry != null), isNotEmpty);
@@ -140,4 +134,3 @@ void main() {
     expect(vm.messages.where((m) => m.mirrorEntry != null), isEmpty);
   });
 }
-

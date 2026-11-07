@@ -1952,9 +1952,23 @@
     <string name="historyKindVideoNote">ビデオメッセージ</string>
     <string name="historyKindVoice">ボイスメッセージ</string>
     <string name="historyNoExcludedChats">除外されたチャットはありません。</string>
+    <string name="historyRecordDeleted">削除されたメッセージを保持</string>
+    <string name="historyRecordEdits">編集履歴を保持</string>
+    <string name="historyRecordNote">両スイッチはデフォルトでオフです。有効にするまで何も記録されません。保持したコピーは本端末にのみ保存され、削除するまで残ります。</string>
+    <string name="historyRecordSection">記録</string>
     <string name="historyReincludeAction">記録を再開</string>
+    <string name="historyRemoveFromMirrorAction">ミラーから削除</string>
+    <string name="historyRemovedFromMirrorToast">ミラーから削除しました</string>
+    <string name="historyRenderGhosts">チャット内に削除されたメッセージを表示</string>
+    <string name="historyRenderGhostsNote">保持コピーのある削除済みメッセージは、半透明のゴーストとしてチャットに残ります。長押しでテキストのコピー、編集履歴の表示、ミラーからの削除ができます。</string>
+    <string name="historySenderLabel">ユーザー {value1}</string>
     <string name="historyRevisionsTitle">編集履歴</string>
     <string name="historySettingsRow">メッセージ履歴</string>
+    <string name="historySnapshotChannels">チャンネルでメディアをスナップショット</string>
+    <string name="historySnapshotGroups">グループでメディアをスナップショット</string>
+    <string name="historySnapshotNote">メッセージ到着時にファイルが完全に端末へ保存済みの場合のみ、メディアはミラーへコピーされます。スナップショットがない保持コピーは種別のみを表示します。</string>
+    <string name="historySnapshotPrivate">プライベートチャットでメディアをスナップショット</string>
+    <string name="historySnapshotSection">メディアスナップショット</string>
     <string name="historyTitle">メッセージ履歴</string>
 
     <string name="imageEditAdd">追加</string>
@@ -2073,6 +2087,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">この Telegram リンクを開くことはまだサポートされていません</string>
     <string name="linkHandlerWritingStyle">文体</string>
     <string name="listSeparator">、</string>
+    <string name="localPremiumNote">この端末上で自分のアカウントのクライアント側プレミアム機能を解放します。サーバー側の制限はそのまま適用され、Telegram へ何も送信しません。</string>
+    <string name="localPremiumTitle">ローカルプレミアム</string>
     <string name="locationDetailFetchingLocation">位置情報を取得中…</string>
     <string name="locationPickerDragMapToChoose">地図をドラッグして位置を選択</string>
     <string name="loginBackToAccount">{value1} に戻る</string>

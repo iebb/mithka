@@ -11,8 +11,8 @@ import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_models.dart';
 import 'package:mithka/history/message_history_revision_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/theme/theme_controller.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -70,10 +70,9 @@ void main() {
   if (!_enabled) return;
 
   testWidgets('revisions render newest first', (tester) async {
-    final entry = _entry(events: [
-      _event(1700000100, 'original'),
-      _event(1700000200, 'middle'),
-    ]);
+    final entry = _entry(
+      events: [_event(1700000100, 'original'), _event(1700000200, 'middle')],
+    );
     await _pump(tester, MessageHistoryRevisionView(entry: entry));
     final texts = tester
         .widgetList<Text>(find.byType(Text))

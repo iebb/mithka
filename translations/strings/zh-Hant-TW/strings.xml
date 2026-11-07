@@ -1952,9 +1952,23 @@
     <string name="historyKindVideoNote">影片訊息</string>
     <string name="historyKindVoice">語音訊息</string>
     <string name="historyNoExcludedChats">沒有排除任何聊天。</string>
+    <string name="historyRecordDeleted">保存已刪除的訊息</string>
+    <string name="historyRecordEdits">保存編輯歷史</string>
+    <string name="historyRecordNote">兩個開關預設關閉，開啟前不記錄任何內容。留存副本只存在本機，清除前一直在。</string>
+    <string name="historyRecordSection">記錄</string>
     <string name="historyReincludeAction">恢復記錄</string>
+    <string name="historyRemoveFromMirrorAction">從鏡像刪除</string>
+    <string name="historyRemovedFromMirrorToast">已從鏡像刪除</string>
+    <string name="historyRenderGhosts">在對話內顯示已刪除訊息</string>
+    <string name="historyRenderGhostsNote">有留存副本的已刪除訊息會以半透明幽靈樣式留在對話裡。長按可複製文字、查看編輯歷史或從鏡像刪除。</string>
+    <string name="historySenderLabel">使用者 {value1}</string>
     <string name="historyRevisionsTitle">編輯歷史</string>
     <string name="historySettingsRow">訊息歷史</string>
+    <string name="historySnapshotChannels">頻道訊息保存媒體快照</string>
+    <string name="historySnapshotGroups">群聊訊息保存媒體快照</string>
+    <string name="historySnapshotNote">只有訊息到達時檔案已完整落盤的媒體才會複製進鏡像。沒有快照的留存副本只顯示類型。</string>
+    <string name="historySnapshotPrivate">私聊訊息保存媒體快照</string>
+    <string name="historySnapshotSection">媒體快照</string>
     <string name="historyTitle">訊息歷史</string>
 
     <string name="imageEditAdd">新增</string>
@@ -2073,6 +2087,8 @@
     <string name="linkHandlerUnsupportedTelegramLink">暫不支援開啟此 Telegram 連結</string>
     <string name="linkHandlerWritingStyle">寫作風格</string>
     <string name="listSeparator">、</string>
+    <string name="localPremiumNote">在本機為自己帳號解鎖用戶端側的大會員介面。伺服器端限制照舊，不會向 Telegram 傳送任何內容。</string>
+    <string name="localPremiumTitle">本地大會員</string>
     <string name="locationDetailFetchingLocation">正在取得位置…</string>
     <string name="locationPickerDragMapToChoose">拖曳地圖選擇位置</string>
     <string name="loginBackToAccount">返回 {value1}</string>
