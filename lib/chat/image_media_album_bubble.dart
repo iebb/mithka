@@ -25,6 +25,7 @@ import 'media_preview_geometry.dart';
 import 'media_spoiler.dart';
 import 'message_action_menu.dart';
 import 'message_direction.dart';
+import 'message_reaction_chips.dart';
 import 'message_reply_count_badge.dart';
 import 'mobile_message_text_selection.dart';
 import 'telegram_rich_text.dart';
@@ -71,6 +72,8 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     this.onEditCaption,
     this.onOpenComments,
     this.onLongPress,
+    this.onToggleReaction,
+    this.onShowReactionUsers,
     this.mobileTextSelectionAreaKey,
     this.onMobileTextSelectionChanged,
     this.onMobileTextSelectionDisposed,
@@ -117,6 +120,13 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     MessageActionSource source,
   )?
   onLongPress;
+
+  /// Toggles a bucket on the album's interaction owner, which carries the
+  /// album's reactions.
+  final void Function(ChatMessage message, MessageReaction reaction)?
+  onToggleReaction;
+  final void Function(ChatMessage message, MessageReaction reaction)?
+  onShowReactionUsers;
   final GlobalKey<SelectionAreaState>? mobileTextSelectionAreaKey;
   final ValueChanged<SelectedContent?>? onMobileTextSelectionChanged;
   final VoidCallback? onMobileTextSelectionDisposed;
@@ -178,14 +188,36 @@ class ImageMediaAlbumBubble extends StatelessWidget {
             math.min(chatWidth * 0.75, telegramDesktopMediaPreviewMaxSide),
           ),
         );
-        final body = outgoing
+        final reactionOwner = selectMediaAlbumInteractionOwner(messages);
+        final media = reactionOwner.reactions.isEmpty
             ? gallery
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: outgoing
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  gallery,
+                  const SizedBox(height: 4),
+                  MessageReactionChips(
+                    message: reactionOwner,
+                    outgoing: outgoing,
+                    onToggle: onToggleReaction == null
+                        ? null
+                        : (reaction) =>
+                              onToggleReaction!(reactionOwner, reaction),
+                    onShowUsers: onShowReactionUsers,
+                  ),
+                ],
+              );
+        final body = outgoing
+            ? media
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (isGroup && first.senderName != null)
                     _senderHeader(context),
-                  gallery,
+                  media,
                 ],
               );
 

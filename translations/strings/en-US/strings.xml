@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">On This Device</string>
     <string name="accountBackupTitle">Account Backup</string>
     <string name="accountBackupUnavailable">Account backup is unavailable on this device or distribution.</string>
-    <string name="accountBackupUserId">User ID: {value1}</string>
+        <string name="accountPickerTitle">Choose an account</string>
+    <string name="accountPickerMessage">This link belongs to one of your accounts. Choose which one to open it in.</string>
+<string name="accountBackupUserId">User ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">A new code was sent.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Your Telegram account and contacts will move to the new number.</string>
     <string name="accountSecurityAccountInactivity">Account Inactivity</string>
@@ -3670,7 +3672,10 @@
     <string name="topicChatLoading">Loading</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1} members</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="one">{count} member</item>
+        <item quantity="other">{count} members</item>
+    </plurals>
     <string name="topicChatMostRelevant">Most Relevant</string>
     <string name="topicChatMuteFailed">Failed to mute notifications</string>
     <string name="topicChatMuteMessagesToggle">Mute Messages</string>
@@ -3790,6 +3795,7 @@
     <string name="videoPlayerPlaying">Playing</string>
     <string name="videoPlayerSeekBackwardTenSeconds">Seek backward 10 seconds</string>
     <string name="videoPlayerSeekForwardTenSeconds">Seek forward 10 seconds</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Hold for faster playback</string>
     <string name="videoPlayerStreamInspector">Stream Inspector</string>
     <string name="videoPlayerVideoNumber">Video {value1}</string>
     <string name="videoPlayerVideoZoom">Video zoom</string>
@@ -3933,4 +3939,15 @@
         <item quantity="one">{count} day</item>
         <item quantity="other">{count} days</item>
     </plurals>
+    <string name="storageDownloadLocation">Download location</string>
+    <string name="storageDownloadCacheLocation">Download cache</string>
+    <string name="storageDownloadSaveFolder">Saved files folder</string>
+    <string name="storageDownloadShared">Shared storage</string>
+    <string name="storageDownloadPrivate">Private app storage</string>
+    <string name="storageDownloadRestart">Changes take effect next time Mithka starts. Existing downloads move automatically.</string>
+    <string name="storageDownloadSaveHint">Use Save As in Downloads to copy a file here. Saved copies remain after uninstalling Mithka.</string>
+    <string name="storageDownloadMigrationFailed">Downloads could not be moved. The original location is still in use; Mithka will retry on the next launch.</string>
+    <string name="storageDownloadLocationFailed">Could not access the download location</string>
+    <string name="storageDownloadFolderNotSelected">Choose a folder</string>
+    <string name="storageDownloadCurrent">Current location: {value1}</string>
 </resources>

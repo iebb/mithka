@@ -550,6 +550,43 @@ class AppFadePageRoute<T> extends PageRouteBuilder<T> {
        );
 }
 
+/// Enter/exit tween pairs for the shared page transition.
+///
+/// Entrances keep the original converging motion. Exits used to replay the
+/// entrance tween in reverse, which terminated at partial opacity (0.92) so
+/// the route was torn down mid-fade with a visible cut. Each exit tween now
+/// runs to completion: the popped page is fully transparent and slid out by
+/// its final frame.
+final Animatable<double> _pageEnterFadeTween = Tween<double>(
+  begin: 0.92,
+  end: 1,
+).chain(CurveTween(curve: AppMotion.standard));
+final Animatable<Offset> _pageEnterSlideTween = Tween<Offset>(
+  begin: const Offset(0.045, 0),
+  end: Offset.zero,
+).chain(CurveTween(curve: AppMotion.standard));
+final Animatable<double> _pageExitFadeTween = Tween<double>(
+  begin: 1,
+  end: 0,
+).chain(CurveTween(curve: AppMotion.standard));
+final Animatable<Offset> _pageExitSlideTween = Tween<Offset>(
+  begin: Offset.zero,
+  end: const Offset(0.045, 0),
+).chain(CurveTween(curve: AppMotion.standard));
+
+final Animatable<double> _dialogEnterFadeTween = Tween<double>(
+  begin: 0.9,
+  end: 1,
+).chain(CurveTween(curve: AppMotion.standard));
+final Animatable<Offset> _dialogEnterSlideTween = Tween<Offset>(
+  begin: const Offset(0, 0.06),
+  end: Offset.zero,
+).chain(CurveTween(curve: AppMotion.standard));
+final Animatable<Offset> _dialogExitSlideTween = Tween<Offset>(
+  begin: Offset.zero,
+  end: const Offset(0, 0.06),
+).chain(CurveTween(curve: AppMotion.standard));
+
 Widget _buildAppPageTransition({
   required BuildContext context,
   required Animation<double> animation,
@@ -562,28 +599,42 @@ Widget _buildAppPageTransition({
   }
   if (AppMotion.isReduced(context)) return child;
 
-  final entering = CurvedAnimation(
-    parent: animation,
-    curve: AppMotion.standard,
-    reverseCurve: AppMotion.accelerate,
-  );
   final covered = CurvedAnimation(
     parent: secondaryAnimation,
     curve: AppMotion.standard,
     reverseCurve: AppMotion.accelerate,
   );
 
+  Widget fadeSlidePair(
+    Animation<double> animation,
+    Animatable<double> fade,
+    Animatable<Offset> slide,
+    Widget child,
+  ) => FadeTransition(
+    opacity: fade.animate(animation),
+    child: SlideTransition(
+      position: slide.animate(animation),
+      transformHitTests: false,
+      child: child,
+    ),
+  );
+
   if (fullscreenDialog) {
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.9, end: 1).animate(entering),
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.06),
-          end: Offset.zero,
-        ).animate(entering),
-        transformHitTests: false,
-        child: child,
+    return DualTransitionBuilder(
+      animation: animation,
+      forwardBuilder: (context, entering, child) => fadeSlidePair(
+        entering,
+        _dialogEnterFadeTween,
+        _dialogEnterSlideTween,
+        child!,
       ),
+      reverseBuilder: (context, exiting, child) => fadeSlidePair(
+        exiting,
+        _pageExitFadeTween,
+        _dialogExitSlideTween,
+        child!,
+      ),
+      child: child,
     );
   }
 
@@ -595,16 +646,21 @@ Widget _buildAppPageTransition({
         end: const Offset(-0.018, 0),
       ).animate(covered),
       transformHitTests: false,
-      child: FadeTransition(
-        opacity: Tween<double>(begin: 0.92, end: 1).animate(entering),
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.045, 0),
-            end: Offset.zero,
-          ).animate(entering),
-          transformHitTests: false,
-          child: child,
+      child: DualTransitionBuilder(
+        animation: animation,
+        forwardBuilder: (context, entering, child) => fadeSlidePair(
+          entering,
+          _pageEnterFadeTween,
+          _pageEnterSlideTween,
+          child!,
         ),
+        reverseBuilder: (context, exiting, child) => fadeSlidePair(
+          exiting,
+          _pageExitFadeTween,
+          _pageExitSlideTween,
+          child!,
+        ),
+        child: child,
       ),
     ),
   );

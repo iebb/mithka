@@ -468,6 +468,21 @@ class BotApiStore {
     );
   }
 
+  /// Saved records contain absolute paths. Rebind them after media storage
+  /// moves, while leaving the history database in private storage.
+  void relocateMedia(String directory) {
+    for (final row in _db.select(
+      "SELECT * FROM files WHERE local_path != ''",
+    )) {
+      final record = _fileFromRow(row);
+      final name = File(record.localPath).uri.pathSegments.last;
+      final destination = File('$directory/$name');
+      if (destination.path != record.localPath && destination.existsSync()) {
+        updateFile(id: record.id, localPath: destination.path);
+      }
+    }
+  }
+
   Map<String, dynamic>? _oneJson(String sql, List<Object?> parameters) {
     final rows = _db.select(sql, parameters);
     if (rows.isEmpty) return null;

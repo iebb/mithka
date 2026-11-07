@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">Sur cet appareil</string>
     <string name="accountBackupTitle">Sauvegarde des comptes</string>
     <string name="accountBackupUnavailable">La sauvegarde des comptes n’est pas disponible sur cet appareil ou cette distribution.</string>
-    <string name="accountBackupUserId">ID utilisateur : {value1}</string>
+        <string name="accountPickerTitle">Choisir un compte</string>
+    <string name="accountPickerMessage">Ce lien appartient à l’un de vos comptes. Choisissez dans lequel l’ouvrir.</string>
+<string name="accountBackupUserId">ID utilisateur : {value1}</string>
     <string name="accountSecurityANewCodeWasSent">Un nouveau code a été envoyé.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Votre compte Telegram et vos contacts seront transférés vers le nouveau numéro.</string>
     <string name="accountSecurityAccountInactivity">Inactivité du compte</string>
@@ -3670,7 +3672,10 @@
     <string name="topicChatLoading">Chargement</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1} membres</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="one">{count} membre</item>
+        <item quantity="other">{count} membres</item>
+    </plurals>
     <string name="topicChatMostRelevant">Les plus pertinents</string>
     <string name="topicChatMuteFailed">Échec de l’activation du mode silencieux</string>
     <string name="topicChatMuteMessagesToggle">Messages en sourdine</string>
@@ -3790,6 +3795,7 @@
     <string name="videoPlayerPlaying">En cours de lecture</string>
     <string name="videoPlayerSeekBackwardTenSeconds">Reculer de 10 secondes</string>
     <string name="videoPlayerSeekForwardTenSeconds">Avancer de 10 secondes</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Maintenir pour accélérer la lecture</string>
     <string name="videoPlayerStreamInspector">Inspecteur du flux</string>
     <string name="videoPlayerVideoNumber">Vidéo {value1}</string>
     <string name="videoPlayerVideoZoom">Zoom vidéo</string>
@@ -3933,4 +3939,15 @@
         <item quantity="one">{count} jour</item>
         <item quantity="other">{count} jours</item>
     </plurals>
+    <string name="storageDownloadLocation">Emplacement des téléchargements</string>
+    <string name="storageDownloadCacheLocation">Cache des téléchargements</string>
+    <string name="storageDownloadSaveFolder">Dossier des fichiers enregistrés</string>
+    <string name="storageDownloadShared">Stockage partagé</string>
+    <string name="storageDownloadPrivate">Stockage privé de l’application</string>
+    <string name="storageDownloadRestart">Les changements prendront effet au prochain démarrage de Mithka. Les téléchargements existants seront déplacés automatiquement.</string>
+    <string name="storageDownloadSaveHint">Utilisez Enregistrer sous dans Téléchargements pour copier un fichier ici. Les copies restent après la désinstallation de Mithka.</string>
+    <string name="storageDownloadMigrationFailed">Impossible de déplacer les téléchargements. L’emplacement d’origine reste utilisé ; Mithka réessaiera au prochain démarrage.</string>
+    <string name="storageDownloadLocationFailed">Impossible d’accéder à l’emplacement des téléchargements</string>
+    <string name="storageDownloadFolderNotSelected">Choisir un dossier</string>
+    <string name="storageDownloadCurrent">Emplacement actuel : {value1}</string>
 </resources>

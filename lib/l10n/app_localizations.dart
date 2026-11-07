@@ -116,6 +116,20 @@ extension AppLocalizationsContext on BuildContext {
 }
 
 abstract final class AppStringKeys {
+  static const storageDownloadLocation = 'storageDownloadLocation';
+  static const storageDownloadCacheLocation = 'storageDownloadCacheLocation';
+  static const storageDownloadSaveFolder = 'storageDownloadSaveFolder';
+  static const storageDownloadShared = 'storageDownloadShared';
+  static const storageDownloadPrivate = 'storageDownloadPrivate';
+  static const storageDownloadRestart = 'storageDownloadRestart';
+  static const storageDownloadSaveHint = 'storageDownloadSaveHint';
+  static const storageDownloadMigrationFailed =
+      'storageDownloadMigrationFailed';
+  static const storageDownloadLocationFailed = 'storageDownloadLocationFailed';
+  static const storageDownloadFolderNotSelected =
+      'storageDownloadFolderNotSelected';
+  static const storageDownloadCurrent = 'storageDownloadCurrent';
+
   static const appIconBackgroundNeutral = 'appIconBackgroundNeutral';
   static const appIconBackgroundPinkPurple = 'appIconBackgroundPinkPurple';
   static const appIconBackgroundTelegramBlue = 'appIconBackgroundTelegramBlue';
@@ -320,6 +334,8 @@ abstract final class AppStringKeys {
   static const accountBackupTitle = 'accountBackupTitle';
   static const accountBackupUnavailable = 'accountBackupUnavailable';
   static const accountBackupUserId = 'accountBackupUserId';
+  static const accountPickerMessage = 'accountPickerMessage';
+  static const accountPickerTitle = 'accountPickerTitle';
   static const appIconAstronaut = 'appIconAstronaut';
   static const appIconCoffee = 'appIconCoffee';
   static const appIconCrown = 'appIconCrown';
@@ -4444,6 +4460,7 @@ abstract final class AppStringKeys {
       'videoPlayerSeekBackwardTenSeconds';
   static const videoPlayerSeekForwardTenSeconds =
       'videoPlayerSeekForwardTenSeconds';
+  static const videoPlayerHoldPlaybackSpeed = 'videoPlayerHoldPlaybackSpeed';
   static const videoPlayerStreamInspector = 'videoPlayerStreamInspector';
   static const videoPlayerVideoNumber = 'videoPlayerVideoNumber';
   static const videoPlayerVideoZoom = 'videoPlayerVideoZoom';

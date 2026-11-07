@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../chat/file_opener.dart';
+import '../chat/media_download_service.dart';
 import '../chat/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -14,6 +16,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import 'android_download_saver.dart';
 import 'data_storage_service.dart';
 import 'retain_download_button.dart';
 import 'retained_downloads_panel.dart';
@@ -517,6 +520,20 @@ class _DownloadsViewState extends State<DownloadsView> {
     );
   }
 
+  Future<void> _saveToFolder(_DownloadItem item) async {
+    final outcome = await AndroidDownloadSaver.save(
+      accountSlot: _accountSlot,
+      chatId: item.chatId,
+      messageId: item.messageId,
+      fileId: item.fileId,
+      name: item.title,
+      mimeType: mimeForFileName(item.title) ?? 'application/octet-stream',
+    );
+    if (!mounted) return;
+    final feedback = MediaDownloadService.feedbackFor(outcome);
+    if (feedback != null) showToast(context, feedback);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -757,6 +774,18 @@ class _DownloadsViewState extends State<DownloadsView> {
                 ),
               ),
               const SizedBox(width: 6),
+              if (Platform.isAndroid && item.completed && item.canRetain)
+                AppInteractiveSurface(
+                  key: ValueKey('download-save-${item.fileId}'),
+                  semanticLabel: AppStrings.t(
+                    AppStringKeys.messageActionSaveAs,
+                  ),
+                  onTap: () => _saveToFolder(item),
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: AppIcon(HeroAppIcons.download, size: 19),
+                  ),
+                ),
               if (item.completed && item.canRetain)
                 RetainDownloadButton(
                   key: ValueKey('download-retain-${item.fileId}'),

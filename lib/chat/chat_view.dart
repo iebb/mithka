@@ -1052,6 +1052,24 @@ void clearChatMemoryCaches() {
   _ChatViewState._sessionScrollSnapshots.clear();
 }
 
+/// Seeds the transcript cache a [ChatView] restores from on open, for tests.
+@visibleForTesting
+void seedChatSessionCacheForTesting({
+  required int accountSlot,
+  required int chatId,
+  int? forumTopicId,
+  required List<ChatMessage> messages,
+  required bool anchoredHistory,
+}) {
+  _ChatViewState._sessionCache.store(
+    accountSlot: accountSlot,
+    chatId: chatId,
+    forumTopicId: forumTopicId,
+    messages: messages,
+    anchoredHistory: anchoredHistory,
+  );
+}
+
 @visibleForTesting
 bool wideGroupHeaderActionsEnabled(
   Size windowSize, {
@@ -1274,6 +1292,9 @@ class _ChatViewState extends State<ChatView> {
   bool _reactionExpanded = false; // full reaction picker vs. quick bar
   String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
   MessageReactionAvailability? _actionReactionAvailability;
+  // The message a reaction from the open menu lands on: the album's
+  // interaction owner when the menu was opened on an album member.
+  int? _actionReactionMessageId;
   int _actionReactionAvailabilityGeneration = 0;
   bool? _actionMessageLinkAvailable;
   bool? _actionCanReply;
@@ -2826,6 +2847,20 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _setScrollTarget(null);
+    _scheduleScrollToBottom(animated: false);
+  }
+
+  /// The transcript sits above the composer in a forward scroll view, so a
+  /// field that wraps onto more lines shrinks the viewport from the bottom and
+  /// would cover the newest message. Unlike a panel change this keeps a
+  /// pending unread/linked-message jump.
+  void _onComposerInputHeightChanged() {
+    if (_scrollTargetId != null ||
+        !_autoScrollPolicy.shouldFollowComposerPanelChange(
+          wasNearBottom: _isNearBottom(260),
+        )) {
+      return;
+    }
     _scheduleScrollToBottom(animated: false);
   }
 
@@ -5328,6 +5363,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _openImage(ChatMessage message) {
+    final selected = message.image;
     final pairs = _vm.messages
         .where(
           (m) =>
@@ -5336,8 +5372,20 @@ class _ChatViewState extends State<ChatView> {
               canPreviewMediaAlongside(m, message),
         )
         .toList();
+    var start = pairs.indexWhere((m) => m.id == message.id);
+    if (start < 0 && selected != null) {
+      // The tapped photo is not a transcript photo message — e.g. a lone
+      // photo block inside a rich message hands over a synthetic message
+      // whose id matches the rich message instead. Dropping it here used to
+      // fall back to index 0, opening the viewer on an unrelated chat photo
+      // while the tapped image was missing from the gallery entirely.
+      // Insert it at its id position so the gallery order still reads as
+      // chronology, and open on it.
+      final insertion = pairs.indexWhere((m) => m.id > message.id);
+      start = insertion < 0 ? pairs.length : insertion;
+      pairs.insert(start, message);
+    }
     final items = pairs.map((m) => m.image!).toList();
-    final start = pairs.indexWhere((m) => m.id == message.id);
     unawaited(
       openImagePreview(
         context,
@@ -8223,6 +8271,7 @@ class _ChatViewState extends State<ChatView> {
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
+      onInputHeightChanged: _onComposerInputHeightChanged,
       onMediaSendTapped: _onComposerMediaSendTapped,
       onBotTopicCreated: _openTopicTranscript,
     );
@@ -10358,10 +10407,15 @@ class _ChatViewState extends State<ChatView> {
         pivotAndAfter: [],
       );
     }
-    final pivot = resolveTranscriptPivot(
+    final pivot = resolveTranscriptPivot<_TranscriptEntry>(
       currentPivot: _transcriptPivot,
       initialWindowLoaded: _vm.initialLoaded,
-      firstMessageId: _transcriptOrderId(entries.first.first),
+      entries: entries,
+      firstOrderIdOf: (entry) => _transcriptOrderId(entry.first),
+      estimatedExtentOf: _estimatedEntryExtent,
+      viewportExtent: _scroll.hasClients
+          ? _scroll.position.viewportDimension
+          : MediaQuery.sizeOf(context).height,
     );
     if (pivot == null) {
       return TranscriptPivotPartition<_TranscriptEntry>(
@@ -10587,8 +10641,10 @@ class _ChatViewState extends State<ChatView> {
     final enableMobileTextSelection =
         !isDesktopTargetPlatform(platform) && !_vm.hasProtectedContent;
     final oldSelectionState = _mobileTextSelectionAreaKey?.currentState;
+    final reactionMessageId = _reactionMessageFor(message).id;
     setState(() {
       _actionTarget = message;
+      _actionReactionMessageId = reactionMessageId;
       // Keep the quote while the menu takes focus and clears Flutter's live
       // selection. Each newly opened menu replaces this snapshot.
       _actionQuote =
@@ -10616,7 +10672,7 @@ class _ChatViewState extends State<ChatView> {
     oldSelectionState?.selectableRegion.clearSelection();
     if (!message.isCall) {
       unawaited(
-        _loadActionReactionAvailability(message.id, reactionGeneration),
+        _loadActionReactionAvailability(reactionMessageId, reactionGeneration),
       );
     }
     unawaited(_loadActionAvailability(message.id, propertiesGeneration));
@@ -10666,11 +10722,29 @@ class _ChatViewState extends State<ChatView> {
           requestGeneration: generation,
           currentGeneration: _actionReactionAvailabilityGeneration,
           messageId: messageId,
-          targetMessageId: _actionTarget?.id,
+          targetMessageId: _actionTarget == null
+              ? null
+              : _actionReactionMessageId,
         )) {
       return;
     }
     setState(() => _actionReactionAvailability = availability);
+  }
+
+  /// An album shows one set of reactions, those of its interaction owner, so
+  /// a reaction picked on any member goes to that owner.
+  ChatMessage _reactionMessageFor(ChatMessage message) {
+    final kind = chatMediaAlbumKind(message);
+    if (message.mediaAlbumId == 0 || kind == null) return message;
+    final album = _vm.messages
+        .where(
+          (m) =>
+              m.mediaAlbumId == message.mediaAlbumId &&
+              chatMediaAlbumKind(m) == kind,
+        )
+        .toList(growable: false);
+    if (album.length < 2) return message;
+    return selectMediaAlbumInteractionOwner(album);
   }
 
   void _clearMobileTextSelectionState() {
@@ -10950,6 +11024,9 @@ class _ChatViewState extends State<ChatView> {
         onEditCaption: (message) => unawaited(_editMessageText(message)),
         onOpenComments: _openMessageComments,
         onLongPress: _showActionMenuForMessage,
+        onToggleReaction: (message, reaction) =>
+            unawaited(_toggleMessageReaction(message, reaction)),
+        onShowReactionUsers: _showReactionUsers,
         onDesktopQuoteChanged: _handleDesktopQuoteChanged,
         mobileTextSelectionAreaKey: mobileSelectionKey,
         onMobileTextSelectionChanged: _handleMobileTextSelectionChanged,
@@ -10971,7 +11048,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _react(String emoji) {
-    final target = _actionTarget;
+    final target = _actionTarget == null
+        ? null
+        : _actionReactionMessageId ?? _actionTarget!.id;
     setState(() {
       _actionTarget = null;
       _actionRect = null;
@@ -10980,7 +11059,7 @@ class _ChatViewState extends State<ChatView> {
       _reactionExpanded = false;
     });
     if (target != null) {
-      unawaited(_sendReaction(() => _vm.addReaction(target.id, emoji)));
+      unawaited(_sendReaction(() => _vm.addReaction(target, emoji)));
     }
   }
 
@@ -10993,7 +11072,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _reactCustom(int customEmojiId) {
-    final target = _actionTarget;
+    final target = _actionTarget == null
+        ? null
+        : _actionReactionMessageId ?? _actionTarget!.id;
     setState(() {
       _actionTarget = null;
       _actionRect = null;
@@ -11003,7 +11084,7 @@ class _ChatViewState extends State<ChatView> {
     });
     if (target != null) {
       unawaited(
-        _sendReaction(() => _vm.addCustomReaction(target.id, customEmojiId)),
+        _sendReaction(() => _vm.addCustomReaction(target, customEmojiId)),
       );
     }
   }

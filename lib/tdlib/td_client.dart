@@ -33,6 +33,7 @@ import '../bot_api/bot_api_endpoint_config.dart';
 import '../bot_api/bot_api_td_backend.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
+import '../settings/download_storage.dart';
 import '../settings/proxy_config.dart';
 import '../settings/transfer_boost_config.dart';
 import 'avatar_animation_index.dart';
@@ -277,6 +278,19 @@ class TdClient {
   void debugCompleteClientClosed(int clientId) {
     _clientClosedWaiters.remove(clientId)?.complete();
   }
+
+  /// Observes every request the proxy would answer, with the client id it is
+  /// routed to. Tests use this to assert which account's client actually
+  /// served a screen (production equivalence for account-keyed subtrees).
+  @visibleForTesting
+  void debugSetQueryRecorder(
+    void Function(Map<String, dynamic> request, int clientId)? recorder,
+  ) {
+    _debugQueryRecorder = recorder;
+  }
+
+  void Function(Map<String, dynamic> request, int clientId)?
+  _debugQueryRecorder;
 
   // Lazy: only opened when first used, so demo/simulator builds (no tdjson) can
   // touch the singleton (e.g. read activeSlot) without resolving symbols.
@@ -558,6 +572,13 @@ class TdClient {
           : 0,
     );
     _supportDir = supportDir.path;
+    if (Platform.isAndroid) {
+      await DownloadStorage.prepare(
+        support: supportDir,
+        prefs: _prefs,
+        availableRoots: await DownloadStorage.locations(),
+      );
+    }
     if (kDebugMode) await _closeStaleDebugClients();
 
     final storedBotApiAccounts = BotApiAccountRegistry.load(_prefs);
@@ -1034,7 +1055,9 @@ class TdClient {
       account: account,
       token: token,
       databasePath: '$directory/history.sqlite3',
-      mediaDirectory: '$directory/files',
+      mediaDirectory: Platform.isAndroid && DownloadStorage.currentRoot != null
+          ? '${DownloadStorage.currentRoot}/bot-api/account-${account.slot}/files'
+          : '$directory/files',
       emit: (update) => _route({...update, '@client_id': clientId}),
     );
   }
@@ -1763,6 +1786,17 @@ class TdClient {
   }
 
   Future<void> _deleteSlotDataNow(int slot) async {
+    final downloadsRoot = DownloadStorage.currentRoot;
+    if (Platform.isAndroid &&
+        downloadsRoot != null &&
+        downloadsRoot != _supportDir) {
+      await _deleteDirectoryIfPresent(
+        Directory(DownloadStorage.filesDirectory(downloadsRoot, slot)),
+      );
+      await _deleteDirectoryIfPresent(
+        Directory('$downloadsRoot/bot-api/account-$slot/files'),
+      );
+    }
     final botApiDirectory = Directory(_botApiDataDirectory(slot));
     if (await botApiDirectory.exists()) {
       await _deleteDirectoryIfPresent(botApiDirectory);
@@ -2102,7 +2136,9 @@ class TdClient {
     if (slot == null) return;
 
     final dbDir = _databaseDirectory(slot);
-    final filesDir = '$dbDir/files';
+    final filesDir = Platform.isAndroid && DownloadStorage.currentRoot != null
+        ? DownloadStorage.filesDirectory(DownloadStorage.currentRoot!, slot)
+        : '$dbDir/files';
     final api = ApiCredentialsConfig.fromPrefs(_prefs);
     final useCustomApi = api.isUsable;
 
@@ -2382,10 +2418,9 @@ class TdClient {
     }
     final debugQuery = _debugQueryOverride;
     if (debugQuery != null) {
-      final result = await debugQuery(
-        Map<String, dynamic>.from(request),
-        clientId,
-      );
+      final recorded = Map<String, dynamic>.from(request);
+      _debugQueryRecorder?.call(recorded, clientId);
+      final result = await debugQuery(recorded, clientId);
       if (result.type == 'error') throw TdError(result);
       return result;
     }

@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">此设备</string>
     <string name="accountBackupTitle">账号备份</string>
     <string name="accountBackupUnavailable">此设备或分发版本不支持账号备份。</string>
-    <string name="accountBackupUserId">用户 ID：{value1}</string>
+        <string name="accountPickerTitle">选择账号</string>
+    <string name="accountPickerMessage">此链接属于你的某个账号。请选择要在哪个账号中打开。</string>
+<string name="accountBackupUserId">用户 ID：{value1}</string>
     <string name="accountSecurityANewCodeWasSent">已发送新代码。</string>
     <string name="accountSecurityAccountAndContactsWillMove">你的 Telegram 账号和联系人将转移到新号码。</string>
     <string name="accountSecurityAccountInactivity">帐户不活动</string>
@@ -3659,7 +3661,9 @@
     <string name="topicChatLoading">加载中</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1}人</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="other">{count}人</item>
+    </plurals>
     <string name="topicChatMostRelevant">最相关</string>
     <string name="topicChatMuteFailed">设置免打扰失败</string>
     <string name="topicChatMuteMessagesToggle">消息免打扰</string>
@@ -3779,6 +3783,7 @@
     <string name="videoPlayerPlaying">正在播放</string>
     <string name="videoPlayerSeekBackwardTenSeconds">后退 10 秒</string>
     <string name="videoPlayerSeekForwardTenSeconds">前进 10 秒</string>
+    <string name="videoPlayerHoldPlaybackSpeed">长按加速播放</string>
     <string name="videoPlayerStreamInspector">流检查器</string>
     <string name="videoPlayerVideoNumber">视频 {value1}</string>
     <string name="videoPlayerVideoZoom">视频缩放</string>
@@ -3917,4 +3922,15 @@
     <plurals name="giftDurationDays">
         <item quantity="other">{count} 天</item>
     </plurals>
+    <string name="storageDownloadLocation">下载位置</string>
+    <string name="storageDownloadCacheLocation">下载缓存</string>
+    <string name="storageDownloadSaveFolder">文件保存文件夹</string>
+    <string name="storageDownloadShared">共享存储</string>
+    <string name="storageDownloadPrivate">应用私有存储</string>
+    <string name="storageDownloadRestart">更改将在下次启动 Mithka 时生效，已有下载会自动迁移。</string>
+    <string name="storageDownloadSaveHint">在下载页面使用「另存为」将文件复制到这里。卸载 Mithka 后，保存的副本仍会保留。</string>
+    <string name="storageDownloadMigrationFailed">无法迁移下载文件，仍在使用原位置。Mithka 将在下次启动时重试。</string>
+    <string name="storageDownloadLocationFailed">无法访问下载位置</string>
+    <string name="storageDownloadFolderNotSelected">选择文件夹</string>
+    <string name="storageDownloadCurrent">当前位置：{value1}</string>
 </resources>

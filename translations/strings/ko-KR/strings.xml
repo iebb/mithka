@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">이 기기</string>
     <string name="accountBackupTitle">계정 백업</string>
     <string name="accountBackupUnavailable">이 기기 또는 배포판에서는 계정 백업을 사용할 수 없습니다.</string>
-    <string name="accountBackupUserId">사용자 ID: {value1}</string>
+        <string name="accountPickerTitle">계정 선택</string>
+    <string name="accountPickerMessage">이 링크는 계정 중 하나에 속합니다. 열 계정을 선택하세요.</string>
+<string name="accountBackupUserId">사용자 ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">새로운 코드가 전송되었습니다.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Telegram 계정과 연락처가 새 번호로 옮겨집니다.</string>
     <string name="accountSecurityAccountInactivity">계정 비활성</string>
@@ -3659,7 +3661,9 @@
     <string name="topicChatLoading">불러오는 중</string>
     <string name="topicChatMarkAllRead">Mark all as read</string>
     <string name="topicChatMarkAllReadFailed">Failed to mark all topics as read</string>
-    <string name="topicChatMemberCount">{value1}명</string>
+    <plurals name="topicChatMemberCount">
+        <item quantity="other">{count}명</item>
+    </plurals>
     <string name="topicChatMostRelevant">관련도순</string>
     <string name="topicChatMuteFailed">방해 금지 설정에 실패했습니다</string>
     <string name="topicChatMuteMessagesToggle">메시지 방해 금지</string>
@@ -3779,6 +3783,7 @@
     <string name="videoPlayerPlaying">재생 중</string>
     <string name="videoPlayerSeekBackwardTenSeconds">10초 뒤로</string>
     <string name="videoPlayerSeekForwardTenSeconds">10초 앞으로</string>
+    <string name="videoPlayerHoldPlaybackSpeed">길게 눌러 빠르게 재생</string>
     <string name="videoPlayerStreamInspector">스트림 검사기</string>
     <string name="videoPlayerVideoNumber">동영상 {value1}</string>
     <string name="videoPlayerVideoZoom">동영상 확대</string>
@@ -3917,4 +3922,15 @@
     <plurals name="giftDurationDays">
         <item quantity="other">{count}일</item>
     </plurals>
+    <string name="storageDownloadLocation">다운로드 위치</string>
+    <string name="storageDownloadCacheLocation">다운로드 캐시</string>
+    <string name="storageDownloadSaveFolder">파일 저장 폴더</string>
+    <string name="storageDownloadShared">공유 저장소</string>
+    <string name="storageDownloadPrivate">앱 전용 내부 저장소</string>
+    <string name="storageDownloadRestart">변경 사항은 Mithka를 다음에 시작할 때 적용됩니다. 기존 다운로드는 자동으로 이동됩니다.</string>
+    <string name="storageDownloadSaveHint">다운로드 화면의 다른 이름으로 저장을 사용하면 여기에 파일을 복사할 수 있습니다. 저장한 사본은 Mithka를 삭제해도 유지됩니다.</string>
+    <string name="storageDownloadMigrationFailed">다운로드를 이동하지 못했습니다. 기존 위치를 계속 사용하며 다음 시작 시 다시 시도합니다.</string>
+    <string name="storageDownloadLocationFailed">다운로드 위치에 접근할 수 없습니다</string>
+    <string name="storageDownloadFolderNotSelected">폴더 선택</string>
+    <string name="storageDownloadCurrent">현재 위치: {value1}</string>
 </resources>
