@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">On This Device</string>
     <string name="accountBackupTitle">Account Backup</string>
     <string name="accountBackupUnavailable">Account backup is unavailable on this device or distribution.</string>
-    <string name="accountBackupUserId">User ID: {value1}</string>
+        <string name="accountPickerTitle">Choose an account</string>
+    <string name="accountPickerMessage">This link belongs to one of your accounts. Choose which one to open it in.</string>
+<string name="accountBackupUserId">User ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">A new code was sent.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Your Telegram account and contacts will move to the new number.</string>
     <string name="accountSecurityAccountInactivity">Account Inactivity</string>
@@ -3793,6 +3795,7 @@
     <string name="videoPlayerPlaying">Playing</string>
     <string name="videoPlayerSeekBackwardTenSeconds">Seek backward 10 seconds</string>
     <string name="videoPlayerSeekForwardTenSeconds">Seek forward 10 seconds</string>
+    <string name="videoPlayerHoldPlaybackSpeed">Hold for faster playback</string>
     <string name="videoPlayerStreamInspector">Stream Inspector</string>
     <string name="videoPlayerVideoNumber">Video {value1}</string>
     <string name="videoPlayerVideoZoom">Video zoom</string>

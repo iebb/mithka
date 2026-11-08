@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">此设备</string>
     <string name="accountBackupTitle">账号备份</string>
     <string name="accountBackupUnavailable">此设备或分发版本不支持账号备份。</string>
-    <string name="accountBackupUserId">用户 ID：{value1}</string>
+        <string name="accountPickerTitle">选择账号</string>
+    <string name="accountPickerMessage">此链接属于你的某个账号。请选择要在哪个账号中打开。</string>
+<string name="accountBackupUserId">用户 ID：{value1}</string>
     <string name="accountSecurityANewCodeWasSent">已发送新代码。</string>
     <string name="accountSecurityAccountAndContactsWillMove">你的 Telegram 账号和联系人将转移到新号码。</string>
     <string name="accountSecurityAccountInactivity">帐户不活动</string>
@@ -3781,6 +3783,7 @@
     <string name="videoPlayerPlaying">正在播放</string>
     <string name="videoPlayerSeekBackwardTenSeconds">后退 10 秒</string>
     <string name="videoPlayerSeekForwardTenSeconds">前进 10 秒</string>
+    <string name="videoPlayerHoldPlaybackSpeed">长按加速播放</string>
     <string name="videoPlayerStreamInspector">流检查器</string>
     <string name="videoPlayerVideoNumber">视频 {value1}</string>
     <string name="videoPlayerVideoZoom">视频缩放</string>

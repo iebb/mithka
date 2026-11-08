@@ -354,6 +354,11 @@ void main() {
         find.text(AppStrings.t(AppStringKeys.loginBotToken)),
         findsNothing,
       );
+      // The method switch is the only QR entrance; no second header icon.
+      expect(
+        find.bySemanticsLabel(AppStrings.t(AppStringKeys.loginWithQrCode)),
+        findsNothing,
+      );
       expect(
         find.text(AppStrings.t(AppStringKeys.loginTelegramAccountTitle)),
         findsOneWidget,

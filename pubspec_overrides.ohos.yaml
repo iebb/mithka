@@ -1,0 +1,41 @@
+# OHOS-only plugin overlay — merged into pubspec.yaml by
+# scripts/enable-ohos-plugins.sh before a HarmonyOS build, and NOT committed
+# into the main pubspec.yaml, because these ports pin `sdk: <3.0.0` on every
+# published version and cannot pass version solving under the stock Dart 3
+# SDK used by CI.
+#
+# After `scripts/enable-ohos-plugins.sh apply`, run `flutter pub get` with the
+# OHOS Flutter fork so these resolve. win32 is widened because file_picker_ohos
+# pins win32 ^4 while package_info_plus 9.x needs win32 ^5; the widened range
+# lets the solver pick one win32 5.x satisfying both (win32 is unused on
+# OHOS, which only needs the file_picker_ohos native module).
+#
+# Still missing on OHOS (no compatible pub.dev port): record (record_ohos
+# targets platform-interface v1, host record 7.x needs v2),
+# flutter_secure_storage (same v1/v2 platform-interface split), camera,
+# mobile_scanner, flutter_sound, photo_manager, flutter_local_notifications,
+# geolocator (geolocator_ohos 0.0.3 passes a nullable timestamp to Position and
+# no longer compiles against geolocator_platform_interface 4.3; the fork's
+# Dart plugin registrant imports any resolved implementation, so it must not
+# even be overridden in).
+#
+# flutter_math_fork has exhaustive TargetPlatform switches that the fork's
+# extra TargetPlatform.ohos breaks; run scripts/patch-ohos-packages.py after
+# apply (and before pub get) to stage the verified, patched copy used here.
+#
+# An override alone never adds a package to the dependency graph, so the fork
+# would resolve the ports below yet never register their native plugins (file
+# picking, package info and permissions failed with MissingPluginException).
+# The script therefore also merges this `dependencies:` section into the
+# pubspec's dependencies; the overrides still pin the versions and bypass their
+# `sdk: <3.0.0` bounds.
+dependencies:
+  package_info_plus_ohos: any
+  permission_handler_ohos: any
+  file_picker_ohos: any
+dependency_overrides:
+  package_info_plus_ohos: 0.0.7
+  permission_handler_ohos: 0.0.8
+  file_picker_ohos: 1.0.1
+  win32: ">=4.1.3 <6.0.0"
+  flutter_math_fork: {path: .ohos-packages/flutter_math_fork}

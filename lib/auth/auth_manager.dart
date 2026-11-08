@@ -495,7 +495,10 @@ class AuthManager extends ChangeNotifier {
           .query({'@type': 'getAuthorizationState'})
           .timeout(const Duration(seconds: 5));
       if (authorizationStateRequiresQrReset(state.type)) {
-        _set(const AuthInitializing());
+        // The login surface is already showing the phone form the user asked
+        // for; the client reset behind it is a reload, not a cold start, so it
+        // must keep the login surface instead of flashing the splash.
+        _set(const AuthReloading());
         await _client.resetActiveQrLogin();
       } else if (!authorizationStateAcceptsPhoneNumber(state.type)) {
         throw StateError(

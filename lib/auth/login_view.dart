@@ -26,6 +26,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/country_flag.dart';
 import '../components/ui_components.dart';
 import '../platform/adaptive_platform.dart';
+import '../platform/ohos_support.dart';
 import '../profile/profile_proxy_button.dart';
 import '../settings/account_backup_view.dart';
 import '../settings/api_credentials_view.dart';
@@ -62,6 +63,19 @@ bool loginHasBackAction({
   return showBotLogin ||
       (beyondPhone && !forcePhone) ||
       configuredAccountCount > 1;
+}
+
+/// Whether the standalone back affordance offers a destination the method
+/// switch does not. On a first run with no configured account, the QR and
+/// bot-token steps are only reachable through that switch, so a back button
+/// that just re-enters the phone form duplicates it.
+bool loginHasDistinctBackDestination({
+  required bool showBotLogin,
+  required bool backToPhoneOnly,
+  required int configuredAccountCount,
+}) {
+  if (showBotLogin) return configuredAccountCount > 1;
+  return !backToPhoneOnly || configuredAccountCount > 1;
 }
 
 /// Maximum width of the compact login lane.
@@ -149,12 +163,19 @@ class _LoginViewState extends State<LoginView> {
   String get _phoneDigits => _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
   Country? get _detectedCountry => Country.match(_phoneDigits);
 
+  /// Whether the restore entry may appear: a mobile form factor AND a native
+  /// account-backup implementation behind it. The icon is only advertised
+  /// once the channel answered, so a mobile host without the channel
+  /// (HarmonyOS today) hides it instead of opening an empty restore sheet.
+  bool get _canRestoreAccountBackup =>
+      isMobilePlatform && (_backupSupported || _restorableBackupCount > 0);
+
   @override
   void initState() {
     super.initState();
     ProxyStatusController.shared.ensureTracking();
     unawaited(_loadBotEndpoint());
-    if (Platform.isIOS || Platform.isAndroid) {
+    if (isMobilePlatform) {
       unawaited(_initializeBackupConsent());
       unawaited(_loadRestorableBackupCount());
     }
@@ -260,6 +281,17 @@ class _LoginViewState extends State<LoginView> {
     );
     final backToPhoneOnly =
         _showBotLogin || (!_forcePhone && auth.step is AuthWaitQrCode);
+    final configuredAccounts = TdClient.shared.configuredSlots.length;
+    // The system back gesture keeps the wider contract of loginHasBackAction
+    // (it can still abort an add-account in flight); the visible button only
+    // stays where it goes somewhere the method switch cannot.
+    final showsBackButton =
+        canGoBack &&
+        loginHasDistinctBackDestination(
+          showBotLogin: _showBotLogin,
+          backToPhoneOnly: backToPhoneOnly,
+          configuredAccountCount: configuredAccounts,
+        );
     return PopScope(
       // LoginView is the root content, so allowing the platform back action
       // through while the visible back affordance exists exits the app instead
@@ -279,14 +311,14 @@ class _LoginViewState extends State<LoginView> {
           ? _desktopLayout(
               auth,
               accounts,
-              canGoBack: canGoBack,
+              canGoBack: showsBackButton,
               backToPhoneOnly: backToPhoneOnly,
               showingPhone: showingPhone,
             )
           : _laneLayout(
               auth,
               accounts,
-              canGoBack: canGoBack,
+              canGoBack: showsBackButton,
               backToPhoneOnly: backToPhoneOnly,
               showingPhone: showingPhone,
             ),
@@ -1096,6 +1128,9 @@ class _LoginViewState extends State<LoginView> {
     _code.clear();
     _password.clear();
     _stopResendCountdown();
+    // The phone form shows immediately: switching out of a QR or bot step may
+    // reset the underlying client, and that transition must not bounce the
+    // login surface back to the cold-start splash.
     setState(() => _forcePhone = true);
     unawaited(auth.switchToPhoneLogin());
   }
@@ -1691,7 +1726,7 @@ class _LoginViewState extends State<LoginView> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showingPhone && (Platform.isIOS || Platform.isAndroid))
+        if (showingPhone && _canRestoreAccountBackup)
           _loginIconButton(
             icon: HeroAppIcons.key,
             tooltip: AppStrings.t(AppStringKeys.accountBackupRestoreAccount),
@@ -1958,16 +1993,23 @@ class _LoginViewState extends State<LoginView> {
             ],
           )
         else ...[
-          Align(alignment: Alignment.centerLeft, child: plate),
-          const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _secondaryButton(
-              label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
-              icon: HeroAppIcons.arrowsRotate,
-              enabled: !auth.isWorking,
-              onTap: auth.requestQrLogin,
-              hug: true,
+          // The code and its refresh action are one centered block: the login
+          // lane is the only content on a phone, so a left-aligned plate reads
+          // as drift rather than an aligned form column.
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                plate,
+                const SizedBox(height: AppSpacing.md),
+                _secondaryButton(
+                  label: AppStrings.t(AppStringKeys.loginRefreshQrCode),
+                  icon: HeroAppIcons.arrowsRotate,
+                  enabled: !auth.isWorking,
+                  onTap: auth.requestQrLogin,
+                  hug: true,
+                ),
+              ],
             ),
           ),
         ],

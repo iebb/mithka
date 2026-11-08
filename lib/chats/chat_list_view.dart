@@ -211,54 +211,60 @@ class ChatFolderRail extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ChatFolderIcon(
-                        filter.isAll ? 'All' : filter.iconName,
-                        size: 22,
-                        color: Color.lerp(
-                          c.textSecondary,
-                          c.linkBlue,
-                          _highlight(filter),
-                        )!,
+                      // The count floats over the glyph's top-right corner,
+                      // like the app-icon badge above the rail, so the label
+                      // keeps the full rail width.
+                      SizedBox.square(
+                        dimension: 22,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ChatFolderIcon(
+                              filter.isAll ? 'All' : filter.iconName,
+                              size: 22,
+                              color: Color.lerp(
+                                c.textSecondary,
+                                c.linkBlue,
+                                _highlight(filter),
+                              )!,
+                            ),
+                            if (showBadges &&
+                                !filter.isAll &&
+                                filter.unreadChatCount > 0)
+                              Positioned(
+                                key: ValueKey(
+                                  'side-folder-badge-${filter.folderId}',
+                                ),
+                                right: -12,
+                                top: -6,
+                                child: FolderUnreadBadge(
+                                  label: badgeOverflowMode.format(
+                                    filter.unreadChatCount,
+                                  ),
+                                  accent: filter.hasUnmutedUnread,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              filter.title.l10n(context),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 11,
-                                height: 1.15,
-                                fontWeight: _highlight(filter) >= 0.5
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: Color.lerp(
-                                  c.textSecondary,
-                                  c.linkBlue,
-                                  _highlight(filter),
-                                ),
-                              ),
-                            ),
+                      Text(
+                        filter.title.l10n(context),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.15,
+                          fontWeight: _highlight(filter) >= 0.5
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: Color.lerp(
+                            c.textSecondary,
+                            c.linkBlue,
+                            _highlight(filter),
                           ),
-                          if (showBadges &&
-                              !filter.isAll &&
-                              filter.unreadChatCount > 0) ...[
-                            const SizedBox(width: 3),
-                            Flexible(
-                              child: FolderUnreadBadge(
-                                label: badgeOverflowMode.format(
-                                  filter.unreadChatCount,
-                                ),
-                                accent: filter.hasUnmutedUnread,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -3190,7 +3196,7 @@ class _ChatListViewState extends State<ChatListView>
                   (hasPullDownArchiveSlot ? 1 : 0),
               itemBuilder: (context, index) {
                 if (showLeadingControls && index == 0) {
-                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                  return _pinnedSearchPill();
                 }
                 if (hasPullDownArchiveSlot &&
                     index ==
@@ -3213,8 +3219,7 @@ class _ChatListViewState extends State<ChatListView>
               ),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               children: [
-                if (showLeadingControls)
-                  _archivePullSearchPill(hasPullDownArchiveSlot),
+                if (showLeadingControls) _pinnedSearchPill(),
                 if (hasPullDownArchiveSlot)
                   _pullDownArchiveSlot(
                     rowHeight: rowH,
@@ -3247,7 +3252,7 @@ class _ChatListViewState extends State<ChatListView>
                   (hasFiltered ? 1 : 0),
               itemBuilder: (context, index) {
                 if (showLeadingControls && index == 0) {
-                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                  return _pinnedSearchPill();
                 }
                 final contentIndex = showLeadingControls ? index - 1 : index;
                 if (hasPullDownArchiveSlot && contentIndex == 0) {
@@ -3298,10 +3303,14 @@ class _ChatListViewState extends State<ChatListView>
     return showFolder ? _searchPillExtent : 0;
   }
 
-  Widget _archivePullSearchPill(bool pinDuringArchivePull) {
+  /// The search row leads every chat-list page, so any top overscroll — the
+  /// pull-down archive reveal on the All folder, or plain rubber-banding on a
+  /// folder tab or an empty folder — moves it down with the viewport. The pin
+  /// cancels that travel so the row stays under the folder strip and the rows
+  /// below are what stretch.
+  Widget _pinnedSearchPill() {
     return ChatListTopOverscrollPin(
       controller: _scrollController,
-      enabled: pinDuringArchivePull,
       child: _searchPill(),
     );
   }

@@ -66,7 +66,9 @@
     <string name="accountBackupStorageOnDevice">この端末</string>
     <string name="accountBackupTitle">アカウントバックアップ</string>
     <string name="accountBackupUnavailable">このデバイスまたは配布版ではアカウントのバックアップを利用できません。</string>
-    <string name="accountBackupUserId">ユーザー ID: {value1}</string>
+        <string name="accountPickerTitle">アカウントを選択</string>
+    <string name="accountPickerMessage">このリンクはいずれかのアカウント宛てです。開くアカウントを選択してください。</string>
+<string name="accountBackupUserId">ユーザー ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">新しいコードが送信されました。</string>
     <string name="accountSecurityAccountAndContactsWillMove">Telegram アカウントと連絡先が新しい番号に移行します。</string>
     <string name="accountSecurityAccountInactivity">アカウントの非アクティブ性</string>
@@ -3781,6 +3783,7 @@
     <string name="videoPlayerPlaying">再生中</string>
     <string name="videoPlayerSeekBackwardTenSeconds">10 秒戻る</string>
     <string name="videoPlayerSeekForwardTenSeconds">10 秒進む</string>
+    <string name="videoPlayerHoldPlaybackSpeed">長押しで高速再生</string>
     <string name="videoPlayerStreamInspector">ストリームインスペクター</string>
     <string name="videoPlayerVideoNumber">動画 {value1}</string>
     <string name="videoPlayerVideoZoom">動画ズーム</string>

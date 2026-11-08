@@ -80,72 +80,62 @@ void main() {
     }
   });
 
-  testWidgets(
-    'holding the right or left video edge repeatedly seeks and stops on release',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(390, 844);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      final previousPlatform = VideoPlayerPlatform.instance;
-      final platform = _FakeMobileVideoPlatform();
-      VideoPlayerPlatform.instance = platform;
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      try {
-        SharedPreferences.setMockInitialValues(const {});
-        final sourcePath = File('pubspec.yaml').absolute.path;
-        await tester.pumpWidget(
-          MaterialApp(
-            locale: const Locale('en'),
-            localizationsDelegates: const [AppLocalizations.delegate],
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: VideoPlayerView(
-              video: TdFileRef(id: 782, localPath: sourcePath),
-              initialPlaying: false,
-              onClose: () {},
-              streamQuery: _completedVideoQuery(sourcePath, fileId: 782),
-            ),
+  testWidgets('holding a video edge raises the rate and stops on release', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final previousPlatform = VideoPlayerPlatform.instance;
+    final platform = _FakeMobileVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      SharedPreferences.setMockInitialValues(const {});
+      final sourcePath = File('pubspec.yaml').absolute.path;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: VideoPlayerView(
+            video: TdFileRef(id: 782, localPath: sourcePath),
+            onClose: () {},
+            streamQuery: _completedVideoQuery(sourcePath, fileId: 782),
           ),
-        );
-        await _pumpUntilPlayerReady(tester);
-        await tester.tapAt(const Offset(360, 400));
-        await tester.pump(const Duration(milliseconds: 400));
+        ),
+      );
+      await _pumpUntilPlayerReady(tester);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
 
-        final forward = await tester.startGesture(const Offset(360, 400));
-        await tester.pump(const Duration(milliseconds: 600));
-        expect(
-          find.byKey(const ValueKey('video-held-seek-indicator')),
-          findsOneWidget,
-        );
-        await tester.pump(const Duration(milliseconds: 1000));
-        expect(
-          platform.seekPositions.last,
-          greaterThanOrEqualTo(const Duration(seconds: 20)),
-        );
-        await forward.up();
-        await tester.pump();
-        expect(
-          find.byKey(const ValueKey('video-held-seek-indicator')),
-          findsNothing,
-        );
-        final countAfterRelease = platform.seekPositions.length;
-        await tester.pump(const Duration(seconds: 1));
-        expect(platform.seekPositions.length, countAfterRelease);
+      final forward = await tester.startGesture(const Offset(360, 400));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('2x'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1000));
+      expect(platform.playbackSpeeds, contains(2.0));
+      await forward.up();
+      await tester.pump();
+      expect(find.text('2x'), findsNothing);
+      final countAfterRelease = platform.playbackSpeeds.length;
+      await tester.pump(const Duration(seconds: 1));
+      expect(platform.playbackSpeeds.length, countAfterRelease);
+      expect(platform.playbackSpeeds.last, 1.0);
 
-        final beforeBackward = platform.seekPositions.last;
-        final backward = await tester.startGesture(const Offset(30, 400));
-        await tester.pump(const Duration(milliseconds: 600));
-        await tester.pump(const Duration(milliseconds: 500));
-        expect(platform.seekPositions.last, lessThan(beforeBackward));
-        await backward.up();
-        await tester.pumpWidget(const SizedBox.shrink());
-        await _pumpUntilDisposed(tester, platform);
-      } finally {
-        VideoPlayerPlatform.instance = previousPlatform;
-        debugDefaultTargetPlatformOverride = null;
-      }
-    },
-  );
+      final backward = await tester.startGesture(const Offset(30, 400));
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(platform.playbackSpeeds.last, 2.0);
+      await backward.up();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpUntilDisposed(tester, platform);
+    } finally {
+      VideoPlayerPlatform.instance = previousPlatform;
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('split video returns to fullscreen through the app navigator', (
     tester,
@@ -2628,17 +2618,16 @@ void main() {
         tester.view.resetViewPadding();
       });
 
-      const thumbnailChannel = MethodChannel('fc_native_video_thumbnail');
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      final firstThumbnail = Completer<Object?>();
+      // The provider seam, not the plugin channel: the built-in thumbnailer
+      // skips the channel on a Linux host whatever the target override says.
+      final previousThumbnailProvider = FVideoThumbnail.platformProvider;
+      final firstThumbnail = Completer<Uint8List?>();
       var thumbnailRequests = 0;
-      messenger.setMockMethodCallHandler(thumbnailChannel, (call) {
-        expect(call.method, 'saveThumbnailToBytes');
+      FVideoThumbnail.platformProvider = (request) {
         thumbnailRequests++;
         if (thumbnailRequests == 1) return firstThumbnail.future;
-        return Future<Object?>.value(_transparentPixelPng);
-      });
+        return Future<Uint8List?>.value(_transparentPixelPng);
+      };
 
       final previousPlatform = VideoPlayerPlatform.instance;
       final platform = _FakeMobileVideoPlatform();
@@ -2742,7 +2731,7 @@ void main() {
         expect(platform.disposeCalls, 1);
       } finally {
         if (!firstThumbnail.isCompleted) firstThumbnail.complete(null);
-        messenger.setMockMethodCallHandler(thumbnailChannel, null);
+        FVideoThumbnail.platformProvider = previousThumbnailProvider;
         VideoPlayerPlatform.instance = previousPlatform;
         debugDefaultTargetPlatformOverride = null;
       }

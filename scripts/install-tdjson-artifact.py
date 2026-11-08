@@ -57,6 +57,15 @@ EXPECTED_MEMBERS = {
     "tdjson-windows-x64.zip": {"tdjson.dll"},
 }
 
+# Published by a separate mithka-tdjson workflow under its own immutable tag,
+# so a manifest copied from a canonical release legitimately lacks it. Only an
+# install of this asset requires its pin; every other platform keeps working.
+OPTIONAL_MEMBERS = {
+    "tdjson-ohos-arm64.zip": {"arm64-v8a/libtdjson.so"},
+}
+
+ALL_MEMBERS = {**EXPECTED_MEMBERS, **OPTIONAL_MEMBERS}
+
 MANIFEST_KEYS = {
     "schema_version",
     "release_tag",
@@ -78,7 +87,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Download, verify, and install a pinned tdjson release asset."
     )
-    parser.add_argument("asset", choices=sorted(EXPECTED_MEMBERS))
+    parser.add_argument("asset", choices=sorted(ALL_MEMBERS))
     parser.add_argument(
         "destination",
         type=Path,
@@ -206,10 +215,37 @@ def load_manifest(path):
     )
 
     assets = manifest["assets"]
-    require_exact_keys(assets, set(EXPECTED_MEMBERS), "manifest assets")
-    for asset_name, expected_members in EXPECTED_MEMBERS.items():
+    if not isinstance(assets, dict):
+        raise InstallError("manifest assets must be an object")
+    pinned_optional = set(assets) & set(OPTIONAL_MEMBERS)
+    require_exact_keys(
+        assets, set(EXPECTED_MEMBERS) | pinned_optional, "manifest assets"
+    )
+    for asset_name, expected_members in ALL_MEMBERS.items():
+        if asset_name not in assets:
+            continue
         asset = assets[asset_name]
-        require_exact_keys(asset, {"sha256", "size", "members"}, asset_name)
+        # Per-asset pinned releases may override the global release_tag (the
+        # HarmonyOS asset is published on its own immutable secondary tag).
+        allowed_keys = {"sha256", "size", "members"}
+        extra = set(asset) - allowed_keys
+        if extra - {"release_tag"}:
+            raise InstallError(
+                f"{asset_name} has unexpected keys: "
+                f"expected {sorted(allowed_keys)} or "
+                f"{sorted(allowed_keys | {'release_tag'})}, got {sorted(asset)}"
+            )
+        if "release_tag" in asset:
+            require_string(
+                asset["release_tag"],
+                f"{asset_name}.release_tag",
+                RELEASE_TAG_PATTERN,
+            )
+        require_exact_keys(
+            asset,
+            allowed_keys | ({"release_tag"} if "release_tag" in asset else set()),
+            asset_name,
+        )
         require_string(asset["sha256"], f"{asset_name}.sha256", SHA256_PATTERN)
         require_positive_int(asset["size"], f"{asset_name}.size")
         members = asset["members"]
@@ -424,6 +460,11 @@ def release_url(release_tag, asset_name):
     )
 
 
+def release_tag_for_asset(manifest, asset_name):
+    asset = manifest["assets"][asset_name]
+    return asset.get("release_tag", manifest["release_tag"])
+
+
 def download(url, destination, expected_size):
     request = urllib.request.Request(
         url, headers={"User-Agent": "Mithka-tdjson-installer/2"}
@@ -588,10 +629,14 @@ def install_tree(archive_path, infos, destination, asset_name, asset):
 
 def run(args):
     manifest = load_manifest(args.manifest)
+    if args.asset not in manifest["assets"]:
+        raise InstallError(
+            f"manifest assets has no pinned entry for {args.asset}"
+        )
     asset = manifest["assets"][args.asset]
 
     if args.member is not None:
-        if args.member not in EXPECTED_MEMBERS[args.asset]:
+        if args.member not in ALL_MEMBERS[args.asset]:
             raise InstallError(
                 f"{args.member} is not a declared member of {args.asset}"
             )
@@ -612,8 +657,9 @@ def run(args):
     with tempfile.TemporaryDirectory(prefix="mithka-tdjson-") as temporary:
         if args.archive is None:
             archive_path = Path(temporary) / args.asset
-            url = release_url(manifest["release_tag"], args.asset)
-            print(f"Downloading {args.asset} from {manifest['release_tag']}")
+            release_tag = release_tag_for_asset(manifest, args.asset)
+            url = release_url(release_tag, args.asset)
+            print(f"Downloading {args.asset} from {release_tag}")
             download(url, archive_path, asset["size"])
         else:
             archive_path = args.archive
