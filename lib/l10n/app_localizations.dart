@@ -204,6 +204,7 @@ abstract final class AppStringKeys {
       'appearancePreviewMessageSample';
   static const appearancePreviewUsersSample = 'appearancePreviewUsersSample';
   static const appearanceShowFolderBadges = 'appearanceShowFolderBadges';
+  static const appearanceHideAllChatsFolder = 'appearanceHideAllChatsFolder';
   static const chatInputResizeMessageInput = 'chatInputResizeMessageInput';
   static const chatMembersRemovedTitle = 'chatMembersRemovedTitle';
   static const chatMembersSubscribersTitleWithCount =

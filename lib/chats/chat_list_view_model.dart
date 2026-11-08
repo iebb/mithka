@@ -211,7 +211,46 @@ class ChatListViewModel extends ChangeNotifier {
     _peekEntries = null;
   }
 
-  List<ChatFilterOption> get filters => _filters;
+  /// The folder choices the tabs, menu, and rail offer. "All" stays in
+  /// [_filters] for internal fallbacks but is left out here when
+  /// [hideAllFilter] is set and at least two real folders remain: with a
+  /// single folder the switcher would disappear and strand the list on it.
+  List<ChatFilterOption> get filters {
+    if (!_hideAllFilter) return _filters;
+    if (!identical(_visibleFiltersSource, _filters)) {
+      _visibleFiltersSource = _filters;
+      final folders = [
+        for (final filter in _filters)
+          if (!filter.isAll) filter,
+      ];
+      _visibleFilters = folders.length < 2 ? _filters : folders;
+    }
+    return _visibleFilters;
+  }
+
+  List<ChatFilterOption>? _visibleFiltersSource;
+  List<ChatFilterOption> _visibleFilters = const [];
+  bool _hideAllFilter = false;
+
+  bool get hideAllFilter => _hideAllFilter;
+
+  /// Only records the preference; it never notifies, so the view may set it
+  /// during build. Call [selectFirstVisibleFilterIfHidden] after the frame to
+  /// move off a hidden "All" selection.
+  set hideAllFilter(bool value) {
+    if (_hideAllFilter == value) return;
+    _hideAllFilter = value;
+    _visibleFiltersSource = null;
+  }
+
+  /// Whether the selected filter is "All" although "All" is not offered.
+  bool get selectionHiddenByFilterPreference =>
+      _selectedFilter.isAll && !filters.first.isAll;
+
+  void selectFirstVisibleFilterIfHidden() {
+    if (selectionHiddenByFilterPreference) selectFilter(filters.first);
+  }
+
   ChatFilterOption get selectedFilter => _selectedFilter;
   bool get isAllFilter => _selectedFilter.isAll;
   bool get isInitialLoading => _initialLoading && _chats.isEmpty;
@@ -534,6 +573,9 @@ class ChatListViewModel extends ChangeNotifier {
       (filter) => filter.folderId == _selectedFilter.folderId,
       orElse: () => _filters.first,
     );
+    if (selectionHiddenByFilterPreference) {
+      selectFilter(filters.first);
+    }
     _refreshFolderUnreadCounts();
     _notifyIfAlive();
   }

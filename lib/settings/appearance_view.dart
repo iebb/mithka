@@ -2178,6 +2178,16 @@ class ChatFolderSettingsView extends StatelessWidget {
                 () => theme.chatFolderDisplayMode = mode,
               ),
           ]),
+          if (theme.chatFolderDisplayMode != ChatFolderDisplayMode.hidden)
+            const AppearanceView()._card(context, [
+              const AppearanceView()._toggleRow(
+                context,
+                HeroAppIcons.eyeSlash.data,
+                AppStrings.t(AppStringKeys.appearanceHideAllChatsFolder),
+                theme.hideAllChatsFolder,
+                (value) => theme.hideAllChatsFolder = value,
+              ),
+            ]),
           const AppearanceView()._label(
             context,
             AppStrings.t(AppStringKeys.appearanceUnreadBadge),
