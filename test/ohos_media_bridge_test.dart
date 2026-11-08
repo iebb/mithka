@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_sound_platform_interface/flutter_sound_player_platform_interface.dart';
 import 'package:flutter_sound_platform_interface/flutter_sound_recorder_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
@@ -247,14 +250,139 @@ void main() {
     expect(OhosFlutterSoundRecorder.decibelsFor(16384), closeTo(-6.02, 0.01));
   });
 
-  test('HarmonyOS installs the bridge behind all three interfaces', () {
+  group('flutter_sound player', () {
+    late FlutterSoundPlayerPlatform previous;
+    setUp(() => previous = FlutterSoundPlayerPlatform.instance);
+    tearDown(() => FlutterSoundPlayerPlatform.instance = previous);
+
+    test('a real FlutterSoundPlayer plays a voice note to the end', () async {
+      var position = 0;
+      var completed = false;
+      native.answers['playerStart'] = (_) => 3000;
+      native.answers['playerProgress'] = (_) => {
+        'position': position,
+        'duration': 3000,
+        'completed': completed,
+      };
+      FlutterSoundPlayerPlatform.instance = OhosFlutterSoundPlayer(
+        bridge: native.bridge,
+        finishPollInterval: const Duration(milliseconds: 10),
+      );
+      final player = FlutterSoundPlayer(logLevel: Level.off);
+      await player.openPlayer();
+      await player.setSubscriptionDuration(const Duration(milliseconds: 10));
+      expect(await player.isDecoderSupported(Codec.opusOGG), isTrue);
+
+      final positions = <Duration>[];
+      final progress = player.onProgress!.listen(
+        (e) => positions.add(e.position),
+      );
+      final finished = Completer<void>();
+      final duration = await player.startPlayer(
+        fromURI: '/tmp/voice.oga',
+        codec: Codec.opusOGG,
+        whenFinished: finished.complete,
+      );
+      expect(duration, const Duration(seconds: 3));
+      expect(player.isPlaying, isTrue);
+      position = 1200;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      // A late sample from before a seek never moves progress backwards.
+      position = 900;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      await player.setSpeed(1.5);
+      await player.setVolume(0.5);
+      await player.pausePlayer();
+      expect(player.isPaused, isTrue);
+      position = 1500;
+      await player.seekToPlayer(const Duration(milliseconds: 500));
+      await player.resumePlayer();
+      expect(player.isPlaying, isTrue);
+      completed = true;
+      await finished.future.timeout(const Duration(seconds: 2));
+      expect(player.isStopped, isTrue);
+      await progress.cancel();
+      await player.closePlayer();
+
+      expect(positions, contains(const Duration(milliseconds: 1200)));
+      expect(positions, isNot(contains(const Duration(milliseconds: 900))));
+      final start = native.calls.firstWhere((c) => c.method == 'playerStart');
+      final id = (start.arguments as Map)['id'];
+      expect(start.arguments, {'id': id, 'path': '/tmp/voice.oga'});
+      expect(
+        native.calls.firstWhere((c) => c.method == 'playerSeek').arguments,
+        {'id': id, 'position': 500},
+      );
+      expect(native.methods.where((m) => m != 'playerProgress'), [
+        'playerStart',
+        'playerSetSpeed',
+        'playerSetVolume',
+        'playerPause',
+        'playerSeek',
+        'playerResume',
+        'playerRelease',
+      ]);
+    });
+
+    test('whenFinished fires without a progress subscription', () async {
+      native.answers['playerStart'] = (_) => 1000;
+      native.answers['playerProgress'] = (_) => {
+        'position': 1000,
+        'duration': 1000,
+        'completed': true,
+      };
+      FlutterSoundPlayerPlatform.instance = OhosFlutterSoundPlayer(
+        bridge: native.bridge,
+        finishPollInterval: const Duration(milliseconds: 10),
+      );
+      final player = FlutterSoundPlayer(logLevel: Level.off);
+      await player.openPlayer();
+      final finished = Completer<void>();
+      await player.startPlayer(
+        fromURI: '/tmp/draft.m4a',
+        whenFinished: finished.complete,
+      );
+      await finished.future.timeout(const Duration(seconds: 2));
+      await player.closePlayer();
+    });
+
+    test('stopping restarts cleanly and a buffer source is refused', () async {
+      native.answers['playerStart'] = (_) => 1000;
+      FlutterSoundPlayerPlatform.instance = OhosFlutterSoundPlayer(
+        bridge: native.bridge,
+        finishPollInterval: const Duration(hours: 1),
+      );
+      final player = FlutterSoundPlayer(logLevel: Level.off);
+      await player.openPlayer();
+      // A stop with nothing loaded must not hang on its completer.
+      await player.stopPlayer();
+      await player.startPlayer(fromURI: '/tmp/a.m4a');
+      await player.startPlayer(fromURI: '/tmp/b.m4a');
+      await expectLater(
+        player.startPlayer(fromDataBuffer: Uint8List(4)),
+        throwsA(anything),
+      );
+      await player.closePlayer();
+      expect(native.methods, [
+        'playerStart',
+        'playerStop',
+        'playerStart',
+        'playerStop',
+        'playerRelease',
+      ]);
+    });
+  });
+
+  test('HarmonyOS installs the bridge behind all four interfaces', () {
     final image = ImagePickerPlatform.instance;
     final permission = PermissionHandlerPlatform.instance;
     final recorder = FlutterSoundRecorderPlatform.instance;
+    final player = FlutterSoundPlayerPlatform.instance;
     addTearDown(() {
       ImagePickerPlatform.instance = image;
       PermissionHandlerPlatform.instance = permission;
       FlutterSoundRecorderPlatform.instance = recorder;
+      FlutterSoundPlayerPlatform.instance = player;
     });
     registerOhosDartPluginFallbacks(onOhos: true);
     expect(ImagePickerPlatform.instance, isA<OhosImagePicker>());
@@ -267,5 +395,6 @@ void main() {
       FlutterSoundRecorderPlatform.instance,
       isA<OhosFlutterSoundRecorder>(),
     );
+    expect(FlutterSoundPlayerPlatform.instance, isA<OhosFlutterSoundPlayer>());
   });
 }

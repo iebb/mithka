@@ -7,16 +7,19 @@
 //  on HarmonyOS, and permission_handler's channel is not served there (its
 //  OHOS port speaks a different API). The app-owned native bridge
 //  (ohos/entry/src/main/ets/mithka/MithkaMediaPlugin.ets) answers one channel
-//  with the system photo picker, the system camera, AVRecorder and the
-//  microphone permission; the classes below plug it in behind the platform
-//  interfaces the app already calls, so the shared code paths stay unchanged.
+//  with the system photo picker, the system camera, AVRecorder, AVPlayer and
+//  the microphone permission; the classes below plug it in behind the
+//  platform interfaces the app already calls, so the shared code paths stay
+//  unchanged.
 //
 
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
+import 'package:flutter_sound/flutter_sound.dart' show PlayerState;
 import 'package:flutter_sound_platform_interface/flutter_sound_platform_interface.dart';
+import 'package:flutter_sound_platform_interface/flutter_sound_player_platform_interface.dart';
 import 'package:flutter_sound_platform_interface/flutter_sound_recorder_platform_interface.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:logger/logger.dart' show Level;
@@ -95,6 +98,55 @@ class OhosMediaBridge {
   /// Frees the recorder, deleting a recording that was never stopped.
   Future<void> recorderRelease() =>
       channel.invokeMethod<void>('recorderRelease');
+
+  /// Plays [path] on player [id] from the start; returns its duration in ms.
+  Future<int> playerStart({required int id, required String path}) async =>
+      (await channel.invokeMethod<num>('playerStart', {
+        'id': id,
+        'path': path,
+      }))?.toInt() ??
+      0;
+
+  Future<void> playerPause(int id) =>
+      channel.invokeMethod<void>('playerPause', {'id': id});
+
+  Future<void> playerResume(int id) =>
+      channel.invokeMethod<void>('playerResume', {'id': id});
+
+  Future<void> playerSeek(int id, int positionMs) => channel.invokeMethod<void>(
+    'playerSeek',
+    {'id': id, 'position': positionMs},
+  );
+
+  Future<void> playerSetVolume(int id, double volume) => channel
+      .invokeMethod<void>('playerSetVolume', {'id': id, 'volume': volume});
+
+  Future<void> playerSetSpeed(int id, double speed) =>
+      channel.invokeMethod<void>('playerSetSpeed', {'id': id, 'speed': speed});
+
+  /// Position and duration in ms, and whether playback reached the end
+  /// (or failed, which ends it just the same).
+  Future<({int position, int duration, bool completed})> playerProgress(
+    int id,
+  ) async {
+    final map = await channel.invokeMapMethod<String, Object?>(
+      'playerProgress',
+      {'id': id},
+    );
+    return (
+      position: (map?['position'] as num?)?.toInt() ?? 0,
+      duration: (map?['duration'] as num?)?.toInt() ?? 0,
+      completed: map?['completed'] == true,
+    );
+  }
+
+  /// Stops player [id], keeping its volume and speed for the next start.
+  Future<void> playerStop(int id) =>
+      channel.invokeMethod<void>('playerStop', {'id': id});
+
+  /// Stops player [id] and frees its native resources.
+  Future<void> playerRelease(int id) =>
+      channel.invokeMethod<void>('playerRelease', {'id': id});
 }
 
 /// Maps the bridge's permission answers onto permission_handler's statuses.
@@ -402,5 +454,290 @@ class OhosFlutterSoundRecorder extends FlutterSoundRecorderPlatform {
     } finally {
       _sampling = false;
     }
+  }
+}
+
+/// flutter_sound's player on HarmonyOS: one AVPlayer per FlutterSoundPlayer,
+/// playing files (AAC/M4A drafts, OGG/Opus voice notes, MP3 and the rest
+/// AVPlayer decodes).
+///
+/// FlutterSoundPlayer waits on the `…Completed` callbacks, so each operation
+/// reports through them before returning. Progress and the end of playback
+/// are polled: every subscription interval while playing (or
+/// [finishPollInterval] when nobody listens to progress), so `whenFinished`
+/// fires even without a progress listener.
+class OhosFlutterSoundPlayer extends FlutterSoundPlayerPlatform {
+  OhosFlutterSoundPlayer({
+    OhosMediaBridge? bridge,
+    this.finishPollInterval = const Duration(milliseconds: 200),
+  }) : _bridge = bridge ?? OhosMediaBridge.instance;
+
+  final OhosMediaBridge _bridge;
+  final Duration finishPollInterval;
+  final _sessions = <FlutterSoundPlayerCallback, _OhosPlayerSession>{};
+  int _nextId = 1;
+
+  static const _decoders = {
+    Codec.defaultCodec,
+    Codec.aacADTS,
+    Codec.aacMP4,
+    Codec.opusOGG,
+    Codec.vorbisOGG,
+    Codec.mp3,
+    Codec.flac,
+    Codec.pcm16WAV,
+    Codec.amrNB,
+    Codec.amrWB,
+  };
+
+  _OhosPlayerSession _session(FlutterSoundPlayerCallback callback) =>
+      _sessions[callback] ??
+      (throw PlatformException(
+        code: 'ohos_media',
+        message: 'player is not open',
+      ));
+
+  int _report(_OhosPlayerSession session) => session.state.index;
+
+  @override
+  Future<void>? setLogLevel(
+    FlutterSoundPlayerCallback callback,
+    Level loglevel,
+  ) => null;
+
+  @override
+  Future<void>? resetPlugin(FlutterSoundPlayerCallback callback) => null;
+
+  @override
+  Future<int> openPlayer(
+    FlutterSoundPlayerCallback callback, {
+    required Level logLevel,
+  }) async {
+    _sessions[callback] ??= _OhosPlayerSession(_nextId++);
+    callback.openPlayerCompleted(PlayerState.isStopped.index, true);
+    return PlayerState.isStopped.index;
+  }
+
+  @override
+  Future<int> closePlayer(FlutterSoundPlayerCallback callback) async {
+    final session = _sessions.remove(callback);
+    if (session != null) {
+      session.stopTicker();
+      await _bridge.playerRelease(session.id);
+    }
+    return PlayerState.isStopped.index;
+  }
+
+  @override
+  Future<int> getPlayerState(FlutterSoundPlayerCallback callback) async =>
+      _report(_session(callback));
+
+  @override
+  Future<Map<String, Duration>> getProgress(
+    FlutterSoundPlayerCallback callback,
+  ) async {
+    final progress = await _bridge.playerProgress(_session(callback).id);
+    return {
+      'progress': Duration(milliseconds: progress.position),
+      'duration': Duration(milliseconds: progress.duration),
+    };
+  }
+
+  @override
+  Future<bool> isDecoderSupported(
+    FlutterSoundPlayerCallback callback, {
+    required Codec codec,
+  }) async => _decoders.contains(codec);
+
+  @override
+  Future<int> setSubscriptionDuration(
+    FlutterSoundPlayerCallback callback, {
+    Duration? duration,
+  }) async {
+    final session = _session(callback);
+    session.subscription = duration == null || duration <= Duration.zero
+        ? null
+        : duration;
+    if (session.state == PlayerState.isPlaying) _startTicker(callback, session);
+    return _report(session);
+  }
+
+  @override
+  Future<int> startPlayer(
+    FlutterSoundPlayerCallback callback, {
+    bool interleaved = true,
+    Codec? codec,
+    Uint8List? fromDataBuffer,
+    String? fromURI,
+    int? numChannels,
+    int? sampleRate,
+    int bufferSize = 8189,
+  }) async {
+    final session = _session(callback);
+    final path = fromURI;
+    if (path == null || path.isEmpty || fromDataBuffer != null) {
+      throw PlatformException(
+        code: 'ohos_media',
+        message: 'HarmonyOS plays files only',
+      );
+    }
+    session.stopTicker();
+    final duration = await _bridge.playerStart(id: session.id, path: path);
+    session
+      ..state = PlayerState.isPlaying
+      ..lastPosition = 0;
+    callback.startPlayerCompleted(_report(session), true, duration);
+    _startTicker(callback, session);
+    return _report(session);
+  }
+
+  @override
+  Future<int> startPlayerFromStream(
+    FlutterSoundPlayerCallback callback, {
+    Codec codec = Codec.pcm16,
+    bool interleaved = true,
+    int numChannels = 1,
+    int sampleRate = 16000,
+    int bufferSize = 8192,
+  }) => throw PlatformException(
+    code: 'ohos_media',
+    message: 'HarmonyOS plays files only',
+  );
+
+  @override
+  Future<int> stopPlayer(FlutterSoundPlayerCallback callback) async {
+    final session = _sessions[callback];
+    if (session == null) {
+      callback.stopPlayerCompleted(PlayerState.isStopped.index, true);
+      return PlayerState.isStopped.index;
+    }
+    session.stopTicker();
+    if (session.state != PlayerState.isStopped) {
+      await _bridge.playerStop(session.id);
+      session.state = PlayerState.isStopped;
+    }
+    callback.stopPlayerCompleted(_report(session), true);
+    return _report(session);
+  }
+
+  @override
+  Future<int> pausePlayer(FlutterSoundPlayerCallback callback) async {
+    final session = _session(callback);
+    if (session.state == PlayerState.isPlaying) {
+      await _bridge.playerPause(session.id);
+      session
+        ..stopTicker()
+        ..state = PlayerState.isPaused;
+    }
+    callback.pausePlayerCompleted(_report(session), true);
+    return _report(session);
+  }
+
+  @override
+  Future<int> resumePlayer(FlutterSoundPlayerCallback callback) async {
+    final session = _session(callback);
+    if (session.state == PlayerState.isPaused) {
+      await _bridge.playerResume(session.id);
+      session.state = PlayerState.isPlaying;
+      _startTicker(callback, session);
+    }
+    callback.resumePlayerCompleted(_report(session), true);
+    return _report(session);
+  }
+
+  @override
+  Future<int> seekToPlayer(
+    FlutterSoundPlayerCallback callback, {
+    Duration? duration,
+  }) async {
+    final session = _session(callback);
+    if (session.state != PlayerState.isStopped) {
+      await _bridge.playerSeek(session.id, duration?.inMilliseconds ?? 0);
+      // FlutterSoundPlayer restarts its monotonic position check on seek.
+      session.lastPosition = 0;
+    }
+    return _report(session);
+  }
+
+  @override
+  Future<int> setVolume(
+    FlutterSoundPlayerCallback callback, {
+    required double volume,
+  }) async {
+    final session = _session(callback);
+    await _bridge.playerSetVolume(session.id, volume);
+    return _report(session);
+  }
+
+  @override
+  Future<int> setSpeed(
+    FlutterSoundPlayerCallback callback, {
+    required double speed,
+  }) async {
+    final session = _session(callback);
+    await _bridge.playerSetSpeed(session.id, speed);
+    return _report(session);
+  }
+
+  void _startTicker(
+    FlutterSoundPlayerCallback callback,
+    _OhosPlayerSession session,
+  ) {
+    session.stopTicker();
+    session.ticker = Timer.periodic(
+      session.subscription ?? finishPollInterval,
+      (_) => _poll(callback, session),
+    );
+  }
+
+  Future<void> _poll(
+    FlutterSoundPlayerCallback callback,
+    _OhosPlayerSession session,
+  ) async {
+    if (session.polling) return;
+    session.polling = true;
+    try {
+      final progress = await _bridge.playerProgress(session.id);
+      final live =
+          identical(_sessions[callback], session) &&
+          session.state == PlayerState.isPlaying &&
+          session.ticker != null;
+      if (!live) return;
+      if (progress.completed) {
+        session
+          ..stopTicker()
+          ..state = PlayerState.isStopped;
+        callback.audioPlayerFinished(PlayerState.isStopped.index);
+        return;
+      }
+      if (session.subscription == null) return;
+      // Progress never runs backwards between seeks.
+      final position = math.max(progress.position, session.lastPosition);
+      session.lastPosition = position;
+      callback.updateProgress(
+        duration: math.max(progress.duration, position),
+        position: position,
+      );
+    } catch (_) {
+      // A missed sample only delays one progress update.
+    } finally {
+      session.polling = false;
+    }
+  }
+}
+
+class _OhosPlayerSession {
+  _OhosPlayerSession(this.id);
+
+  final int id;
+  PlayerState state = PlayerState.isStopped;
+  Duration? subscription;
+  Timer? ticker;
+  bool polling = false;
+  int lastPosition = 0;
+
+  void stopTicker() {
+    ticker?.cancel();
+    ticker = null;
   }
 }

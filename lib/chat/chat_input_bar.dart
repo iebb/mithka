@@ -45,6 +45,7 @@ import '../media/media_metadata.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
 import '../platform/keyboard_modifiers.dart';
+import '../platform/ohos_support.dart';
 import '../settings/ai_settings_controller.dart';
 import '../settings/ai_settings_view.dart';
 import '../settings/apple_pcc_api.dart';
@@ -513,11 +514,12 @@ bool shouldRebuildComposerForVmUpdate({
 /// Whether the attachment strip offers the camera entry beside the image one.
 ///
 /// The camera entry (which opens the in-app camera, and whose capture is sent
-/// as a photo) is rendered on Android and iOS only; a desktop or web composer
-/// shows the screenshot entry instead. Exposed as a pure predicate so a widget
-/// test can pin the strip order on any host without overriding the target
-/// platform.
-bool composerShowsCameraIcon([TargetPlatform? platform]) {
+/// as a photo) is rendered on Android, iOS and HarmonyOS (which captures
+/// through the system camera); a desktop or web composer shows the screenshot
+/// entry instead. Exposed as a pure predicate so a widget test can pin the
+/// strip order on any host without overriding the target platform.
+bool composerShowsCameraIcon([TargetPlatform? platform, bool? onOhos]) {
+  if (platform == null && (onOhos ?? isOhos)) return true;
   final target = platform ?? defaultTargetPlatform;
   return target == TargetPlatform.android || target == TargetPlatform.iOS;
 }
