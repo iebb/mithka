@@ -769,7 +769,8 @@ jobs:
     env:
       FLUTTER_OHOS_REF: '3.44.9+ohos-0.0.1-canary1'
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      # Packages resolve from pub.dev like pubspec.lock and the other jobs;
+      # the pub.flutter-io.cn mirror served archives with wrong content hashes.
       FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
     steps:
       - name: Put the ohos toolchain on PATH
