@@ -13,12 +13,19 @@ mithka 的 HarmonyOS NEXT 宿主工程，由鸿蒙 Flutter fork 的 `flutter cre
 ## 构建
 
 ```sh
-# 1. 安装 TDLib 原生库（每次检出后一次；从未签名，产物为 unsigned HAP）
+# 1. 启用 OHOS 插件覆盖层，并暂存经 pubspec.lock 校验、补上 TargetPlatform.ohos 分支的依赖副本
+bash scripts/enable-ohos-plugins.sh apply
+python3 scripts/patch-ohos-packages.py
+flutter pub get
+
+# 2. 安装 TDLib 原生库（每次检出后一次；从未签名，产物为 unsigned HAP）
 ./scripts/build-hap.sh
 
-# 2. 构建 HAP
+# 3. 构建 HAP
 flutter build hap --target-platform ohos-arm64 --release
 ```
+
+构建结束后用 `bash scripts/enable-ohos-plugins.sh revert` 恢复 pubspec 文件。
 
 产物路径：`ohos/entry/build/default/outputs/default/entry-default-signed.hap`（未配置签名时为 unsigned 产物，CI 直接使用）。
 

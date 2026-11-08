@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/platform/ohos_support.dart';
 
@@ -36,5 +37,12 @@ void main() {
         isMobileOperatingSystemFor(Platform.operatingSystem),
       );
     });
+  });
+
+  test('HarmonyOS selects the method-channel file picker', () {
+    // file_picker registers no Dart implementation for ohos; without this
+    // fallback FilePicker.platform is an uninitialized late field there.
+    registerOhosDartPluginFallbacks(onOhos: true);
+    expect(FilePicker.platform, isA<FilePickerIO>());
   });
 }

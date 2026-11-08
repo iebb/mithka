@@ -67,7 +67,7 @@ void main() {
     () {
       final r = run(['apply']);
       expect(r.code, 0, reason: 'clean apply must succeed\n${r.err}');
-      expect(r.out, contains('merged 5 overrides'));
+      expect(r.out, contains('merged 5 overrides and 3 dependencies'));
 
       final merged = File('${scratch.path}/pubspec.yaml').readAsStringSync();
       expect(merged, isNot(pristinePubspec));
@@ -78,7 +78,26 @@ void main() {
       }
       // The overlay's scalar overrides are appended under the block.
       expect(merged, contains('package_info_plus_ohos: 0.0.7'));
-      expect(merged, contains('geolocator_ohos: 0.0.3'));
+      expect(merged, contains('file_picker_ohos: 1.0.1'));
+      // The blocked ports also become direct dependencies; an override alone
+      // never puts a package in the graph, so its native plugin would never
+      // be registered.
+      final deps = RegExp(
+        r'^dependencies:\n((?:[ \t].*\n|\n)*)',
+        multiLine: true,
+      ).firstMatch(merged)!.group(1)!;
+      for (final port in [
+        'package_info_plus_ohos',
+        'permission_handler_ohos',
+        'file_picker_ohos',
+      ]) {
+        expect(deps, contains('  $port: any\n'), reason: port);
+      }
+      // Its Dart code does not compile against the current geolocator
+      // platform interface, and the fork's registrant imports any resolved
+      // implementation, so it must stay out of the overlay altogether.
+      expect(deps, isNot(contains('geolocator_ohos')));
+      expect(merged, isNot(contains('geolocator_ohos')));
       // Backups hold the exact pre-apply bytes, uncommitted edits included.
       expect(
         File('${scratch.path}/pubspec.yaml.ohos-backup').readAsStringSync(),

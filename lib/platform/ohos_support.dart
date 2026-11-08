@@ -6,6 +6,7 @@
 
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
 /// Whether [operatingSystem] names HarmonyOS.
@@ -21,6 +22,17 @@ bool isOhosFor(String operatingSystem) => operatingSystem == 'ohos';
 /// flutter fork. The fork reports `Platform.operatingSystem == 'ohos'` at
 /// runtime, which stock-compiled code can still observe.
 bool get isOhos => !kIsWeb && isOhosFor(Platform.operatingSystem);
+
+/// Selects Dart plugin implementations the OHOS fork cannot register itself.
+///
+/// file_picker declares a `dartPluginClass` only for its stock platforms, so
+/// on HarmonyOS `FilePicker.platform` would stay uninitialized. Its
+/// method-channel implementation speaks exactly the channel, method names and
+/// arguments that the file_picker_ohos native plugin serves.
+void registerOhosDartPluginFallbacks({bool? onOhos}) {
+  if (!(onOhos ?? isOhos)) return;
+  FilePickerIO.registerWith();
+}
 
 /// Whether [operatingSystem] names a phone/tablet system.
 bool isMobileOperatingSystemFor(String operatingSystem) =>

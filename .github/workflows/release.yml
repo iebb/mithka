@@ -992,6 +992,9 @@ jobs:
         run: |
           if [ -f scripts/enable-ohos-plugins.sh ]; then
             bash scripts/enable-ohos-plugins.sh apply
+            # Stage the lock-verified packages the overlay's path overrides
+            # point at (exhaustive TargetPlatform switches need an ohos case).
+            python3 scripts/patch-ohos-packages.py
             flutter pub get
           else
             echo "scripts/enable-ohos-plugins.sh not present; skipping overlay"

@@ -150,6 +150,14 @@ class LocalAppLockController extends ChangeNotifier {
   static int get pinLength => _pinLength;
   static int get minimumGestureNodes => _minimumGestureNodes;
 
+  /// Whether [error] says the secure-storage implementation is absent rather
+  /// than that a read failed. flutter_secure_storage either has no channel
+  /// handler (MissingPluginException) or rejects an unknown
+  /// `defaultTargetPlatform` before reaching one (UnsupportedError, which is
+  /// what `TargetPlatform.ohos` produces).
+  static bool _isAbsentSecureStorage(Object error) =>
+      error is MissingPluginException || error is UnsupportedError;
+
   Future<void> initialize() async {
     if (_initialized) return;
     _readingStorage = true;
@@ -178,14 +186,17 @@ class LocalAppLockController extends ChangeNotifier {
           await _persist(_stored!);
         }
       }
-    } on MissingPluginException catch (error) {
-      // A mobile OS does not guarantee a secure-storage implementation — a
-      // host without one (HarmonyOS today) never stored a lock, so there is
-      // nothing to protect: stay unlocked instead of failing closed behind a
-      // gate no credential could ever open. But if this pass saw a known
-      // lock (or read one before the plugin vanished), the protection must
-      // be preserved: fail closed instead of resetting the gate.
-      if (_missingStorageKnownLock) {
+    } catch (error) {
+      if (!_isAbsentSecureStorage(error)) {
+        debugPrint('Local app lock could not read secure storage: $error');
+        _failClosedForStorageError();
+      } else if (_missingStorageKnownLock) {
+        // A mobile OS does not guarantee a secure-storage implementation — a
+        // host without one (HarmonyOS today) never stored a lock, so there is
+        // nothing to protect: stay unlocked instead of failing closed behind
+        // a gate no credential could ever open. But if this pass saw a known
+        // lock (or read one before the plugin vanished), the protection must
+        // be preserved: fail closed instead of resetting the gate.
         debugPrint('Local app lock storage vanished with a known lock: $error');
         _failClosedForStorageError();
       } else if (_hostNeverSupportsSecureStorage) {
@@ -195,9 +206,6 @@ class LocalAppLockController extends ChangeNotifier {
         debugPrint('Local app lock storage vanished: $error');
         _failClosedForStorageError();
       }
-    } catch (error) {
-      debugPrint('Local app lock could not read secure storage: $error');
-      _failClosedForStorageError();
     } finally {
       _readingStorage = false;
       _missingStorageKnownLock = false;
@@ -244,8 +252,11 @@ class LocalAppLockController extends ChangeNotifier {
         _locked = true;
         _lockEpoch += 1;
       }
-    } on MissingPluginException catch (error) {
-      if (knownLock) {
+    } catch (error) {
+      if (!_isAbsentSecureStorage(error)) {
+        debugPrint('Local app lock could not reload secure storage: $error');
+        _failClosedForStorageError();
+      } else if (knownLock) {
         // A lock was configured before: a disappearing implementation is a
         // storage failure of a known lock, never the unsupported first
         // install, so the protection fails closed.
@@ -260,9 +271,6 @@ class LocalAppLockController extends ChangeNotifier {
         debugPrint('Local app lock storage vanished during reload: $error');
         _failClosedForStorageError();
       }
-    } catch (error) {
-      debugPrint('Local app lock could not reload secure storage: $error');
-      _failClosedForStorageError();
     } finally {
       _readingStorage = false;
     }

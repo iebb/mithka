@@ -277,6 +277,96 @@ void main() {
   );
 
   test(
+    'HarmonyOS unsupported_platform storage reads as no lock configured',
+    () async {
+      // flutter_secure_storage rejects TargetPlatform.ohos with
+      // UnsupportedError('unsupported_platform') before any channel call.
+      final controller = LocalAppLockController(
+        secureRead: (key) => throw UnsupportedError('unsupported_platform'),
+        secureWrite: (key, value) =>
+            throw UnsupportedError('unsupported_platform'),
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: false,
+        hostNeverSupportsSecureStorage: true,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+      expect(controller.storageUnavailable, isFalse);
+      expect(controller.locked, isFalse);
+      expect(controller.enabled, isFalse);
+
+      await controller.reloadFromStorage();
+      expect(controller.storageUnavailable, isFalse);
+      expect(controller.locked, isFalse);
+    },
+  );
+
+  test(
+    'unsupported_platform storage still fails closed on an ordinary host',
+    () async {
+      final controller = LocalAppLockController(
+        secureRead: (key) => throw UnsupportedError('unsupported_platform'),
+        secureWrite: (key, value) =>
+            throw UnsupportedError('unsupported_platform'),
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: false,
+        hostNeverSupportsSecureStorage: false,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+
+      expect(controller.storageUnavailable, isTrue);
+      expect(controller.locked, isTrue);
+    },
+  );
+
+  test(
+    'a known lock losing storage to unsupported_platform fails closed on HarmonyOS',
+    () async {
+      final stored = <String, String>{};
+      final enroller = LocalAppLockController(
+        secureRead: (key) => Future.value(stored[key]),
+        secureWrite: (key, value) async {
+          if (value == null) {
+            stored.remove(key);
+          } else {
+            stored[key] = value;
+          }
+        },
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: false,
+      );
+      addTearDown(enroller.dispose);
+      await enroller.initialize();
+      await enroller.setCredential(AppLockCredentialType.pin, '1234');
+
+      var credentialReads = 0;
+      final restored = LocalAppLockController(
+        secureRead: (key) {
+          if (credentialReads++ == 0) return Future.value(stored[key]);
+          throw UnsupportedError('unsupported_platform');
+        },
+        secureWrite: (key, value) async {},
+        privacyShieldApply: (visible) async {},
+        hashRounds: 4,
+        platformSupportsBiometrics: false,
+        hostNeverSupportsSecureStorage: true,
+      );
+      addTearDown(restored.dispose);
+
+      await restored.initialize();
+
+      expect(restored.storageUnavailable, isTrue);
+      expect(restored.locked, isTrue);
+    },
+  );
+
+  test(
     'a fresh controller on an ordinary host fails closed on a missing plugin',
     () async {
       // A restart on a supported host whose plugin disappears: the FIRST

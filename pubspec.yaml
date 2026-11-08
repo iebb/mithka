@@ -88,7 +88,7 @@ dependencies:
   f_videoplayer:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.10
+      ref: v0.5.11
       path: packages/f_videoplayer
   # Main-window chrome uses DragToMoveArea on desktop. Keep this direct rather
   # than relying on the video-player package's transitive dependency.
@@ -97,7 +97,7 @@ dependencies:
   f_videoplayer_fvp:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.10
+      ref: v0.5.11
       path: packages/f_videoplayer_fvp
   # Story video preparation: native 60-second segmentation and mobile-friendly
   # re-encoding before TDLib's inputStoryContentVideo upload.
@@ -107,7 +107,7 @@ dependencies:
   f_videoplayer_pip:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.10
+      ref: v0.5.11
       path: packages/f_videoplayer_pip
   flutter_local_notifications: ^22.2.0
   google_fonts: ^8.2.1
@@ -141,10 +141,10 @@ dependencies:
   # desktop, while the OHOS Flutter fork resolves these as the platform
   # implementation when building for HarmonyOS. Regular dependencies (not
   # overrides) so the OHOS solver sees them; harmless elsewhere.
-  # The remaining ports (package_info_plus / permission_handler / file_picker /
-  # geolocator / flutter_secure_storage _ohos) cap their SDK at <3.0.0 and so
-  # cannot resolve under stock Dart 3; they live in pubspec_overrides.ohos.yaml
-  # and are merged in by scripts/enable-ohos-plugins.sh for OHOS builds.
+  # The remaining ports (package_info_plus / permission_handler / file_picker
+  # _ohos) cap their SDK at <3.0.0 and so cannot resolve under stock Dart 3;
+  # they live in pubspec_overrides.ohos.yaml and are merged in by
+  # scripts/enable-ohos-plugins.sh for OHOS builds.
   # NOTE: camera / mobile_scanner / flutter_sound / photo_manager /
   # flutter_local_notifications have no ohos port on pub yet — those
   # capabilities are missing on HarmonyOS for now.
@@ -185,7 +185,7 @@ dependency_overrides:
   fvp:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.10
+      ref: v0.5.11
       path: third_party/fvp
   # Upstream's Linux plugin links the build host's FFmpeg 6, which bloats the
   # bundle and breaks startup without it; this copy drops its Linux platform and
@@ -193,7 +193,7 @@ dependency_overrides:
   fc_native_video_thumbnail:
     git:
       url: https://github.com/iebb/f-videoplayer.git
-      ref: v0.5.10
+      ref: v0.5.11
       path: third_party/fc_native_video_thumbnail
 
 flutter_launcher_icons:

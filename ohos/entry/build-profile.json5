@@ -2,6 +2,15 @@
 {
   "apiType": 'stageMode',
   "buildOption": {
+    "nativeLib": {
+      "debugSymbol": {
+        // libtdjson.so ships byte-identical to the pinned, already-stripped
+        // release so scripts/verify_ohos_hap_payload.py can check it against
+        // scripts/tdjson-manifest.json; every other library is still stripped.
+        "strip": true,
+        "exclude": ["**/libtdjson.so"]
+      }
+    }
   },
   "targets": [
     {

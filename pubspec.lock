@@ -261,29 +261,29 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   f_videoplayer_fvp:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_fvp"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   f_videoplayer_pip:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_pip"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   fake_async:
     dependency: transitive
     description:
@@ -296,8 +296,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "third_party/fc_native_video_thumbnail"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
     version: "3.0.1"
@@ -607,8 +607,8 @@ packages:
     dependency: "direct main"
     description:
       path: "third_party/fvp"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
     version: "0.37.3+fvideo.10"
