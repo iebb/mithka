@@ -84,7 +84,13 @@ def verify_build(run, jobs, artifacts, source, controller, version):
         matches = [job for job in jobs if job["name"] == name]
         if len(matches) != 1 or matches[0].get("conclusion") != "success":
             raise Error(f"package prerequisite did not pass: {name}")
-    failed = [job for job in jobs if job.get("conclusion") == "failure"]
+    # The release job does not need the optional HarmonyOS package.
+    optional = {"Build HarmonyOS hap"}
+    failed = [
+        job
+        for job in jobs
+        if job.get("conclusion") == "failure" and job["name"] not in optional
+    ]
     if len(failed) != 1 or failed[0]["name"] != "Publish GitHub Release":
         raise Error("failure was not confined to GitHub publication")
     failed_steps = [
@@ -92,10 +98,20 @@ def verify_build(run, jobs, artifacts, source, controller, version):
         for step in failed[0].get("steps", [])
         if step.get("conclusion") == "failure"
     ]
-    if failed_steps != ["Publish to GitHub Release"]:
+    # Older release workflows required the optional HarmonyOS package in their
+    # artifact check, so a failed HarmonyOS build failed that step instead. The
+    # twelve required artifacts are verified independently below.
+    ohos_failed = any(
+        job["name"] in optional and job.get("conclusion") == "failure"
+        for job in jobs
+    )
+    allowed_steps = [["Publish to GitHub Release"]]
+    if ohos_failed:
+        allowed_steps.append(["Verify and list artifacts"])
+    if failed_steps not in allowed_steps:
         raise Error("publication failed outside its release API step")
     for job in jobs:
-        if job["name"] in required or job is failed[0]:
+        if job["name"] in required or job["name"] in optional or job is failed[0]:
             continue
         if (
             job["name"].startswith("Required quality gate / Merge snapshot ")
