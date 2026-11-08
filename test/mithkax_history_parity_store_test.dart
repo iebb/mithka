@@ -300,7 +300,7 @@ void main() {
     await emit({
       '@type': 'updateNewMessage',
       '@client_id': _clientA,
-      'message': _message(1201, 1, senderId: 42),
+      'message': _message(1201, 1),
     });
     await emit({
       '@type': 'updateChatReadOutbox',
