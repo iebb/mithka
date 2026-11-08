@@ -168,14 +168,15 @@ class _HistorySwitches extends StatelessWidget {
                     value: settings.snapshotChannels,
                     onChanged: settings.setSnapshotChannels,
                   ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-render-ghosts'),
-                    title: AppStringKeys.historyRenderGhosts.l10n(context),
-                    value: settings.renderGhosts,
-                    onChanged: settings.setRenderGhosts,
-                  ),
                 ],
               ),
+            ),
+            // Display-only: independent of the master recording switch.
+            SettingsSwitchRow(
+              key: const ValueKey('history-render-ghosts'),
+              title: AppStringKeys.historyRenderGhosts.l10n(context),
+              value: settings.renderGhosts,
+              onChanged: settings.setRenderGhosts,
             ),
           ],
         );
