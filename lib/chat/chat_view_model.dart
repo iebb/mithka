@@ -7471,6 +7471,10 @@ class ChatViewModel extends ChangeNotifier {
     if (accountUserId == null) return false;
     final entry = store.entryFor(accountUserId, replyChatId, replyId);
     if (entry == null) return false;
+    // Only the plain fallback preview takes the mirror text — a real quote
+    // (replyToQuote, an explicit quote of part of the original) keeps its
+    // own stored excerpt, which stays more truthful than the whole copy.
+    if (m.replyToQuote != null) return true;
     final body = entry.text.trim().isNotEmpty
         ? entry.text.trim()
         : localizedHistoryKindLabelStub(entry.kindKey);
@@ -7487,10 +7491,29 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
-  /// Kind label without a BuildContext (the viewer localizes on render);
-  /// null text with a media kind keeps a short generic placeholder.
-  static String localizedHistoryKindLabelStub(String kindKey) =>
-      kindKey.isEmpty ? '' : kindKey;
+  /// Localized kind label without a BuildContext (AppStrings reads the
+  /// ambient locale); a media-only kept copy shows this instead of its
+  /// empty text. Falls back to the raw suffix when the key is unknown.
+  static String localizedHistoryKindLabelStub(String kindKey) {
+    if (kindKey.isEmpty) return '';
+    final key = switch (kindKey) {
+      'historyKindPhoto' => AppStringKeys.historyKindPhoto,
+      'historyKindVideo' => AppStringKeys.historyKindVideo,
+      'historyKindVideoNote' => AppStringKeys.historyKindVideoNote,
+      'historyKindVoice' => AppStringKeys.historyKindVoice,
+      'historyKindAnimation' => AppStringKeys.historyKindAnimation,
+      'historyKindSticker' => AppStringKeys.historyKindSticker,
+      'historyKindDocument' => AppStringKeys.historyKindDocument,
+      'historyKindAudio' => AppStringKeys.historyKindAudio,
+      'historyKindPoll' => AppStringKeys.historyKindPoll,
+      'historyKindLocation' => AppStringKeys.historyKindLocation,
+      'historyKindContact' => AppStringKeys.historyKindContact,
+      'historyKindDice' => AppStringKeys.historyKindDice,
+      _ => AppStringKeys.historyKindUnknown,
+    };
+    final label = AppStrings.t(key);
+    return label.isEmpty ? kindKey : label;
+  }
 
   /// Fetches one batch of reply targets and patches every message waiting on it.
   void _resolveReplyTargets(

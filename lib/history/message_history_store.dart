@@ -1205,24 +1205,30 @@ class MessageHistoryStore extends ChangeNotifier {
             final byChat = a.chatId.compareTo(b.chatId);
             return byChat != 0 ? byChat : a.messageId.compareTo(b.messageId);
           });
+    // Snapshot the media paths and exclusions BEFORE awaiting any file IO:
+    // a message arriving mid-export must not change the exported set
+    // half-way through, and a concurrent clear would leave the media map
+    // inconsistent with the entries list.
+    final mediaPaths = {
+      for (final entry in entries)
+        if (entry.mediaPath.isNotEmpty) entry.key: entry.mediaPath,
+    };
+    final excluded = Set<int>.of(
+      _excludedChatsByAccount[accountUserId] ?? const <int>{},
+    );
     final media = <String, String>{};
     final snapshotter = _media();
-    for (final entry in entries) {
-      if (entry.mediaPath.isEmpty) continue;
-      final bytes = await snapshotter.readSnapshotBytes(entry.mediaPath);
+    for (final row in mediaPaths.entries) {
+      final bytes = await snapshotter.readSnapshotBytes(row.value);
       if (bytes == null) continue;
-      media[entry.key] = base64Encode(bytes);
+      media[row.key] = base64Encode(bytes);
     }
     return {
       'format': exportFormat,
       'version': exportVersion,
       'exportedAt': DateTime.now().millisecondsSinceEpoch ~/ 1000,
       'account': accountUserId,
-      'excluded': [
-        for (final chatId
-            in (_excludedChatsByAccount[accountUserId] ?? const <int>{}))
-          chatId,
-      ],
+      'excluded': [for (final chatId in excluded) chatId],
       'entries': [for (final entry in entries) entry.toJson()],
       if (media.isNotEmpty) 'media': media,
     };
@@ -1270,7 +1276,6 @@ class MessageHistoryStore extends ChangeNotifier {
     };
     _excludedChatsByAccount[accountUserId] = excluded;
     _persistExcludedChats(accountUserId);
-    _clearedChatAt['$accountUserId:*'] = ++_scopeEpoch;
     var restored = 0;
     for (final raw in rawEntries) {
       final entry = MessageHistoryEntry.fromJson(raw);
@@ -1287,6 +1292,9 @@ class MessageHistoryStore extends ChangeNotifier {
         if (data is! String) continue;
         final bytes = tryBase64Decode(data);
         if (bytes == null) continue;
+        // Snapshot file names derive from (account, chat, message) — one
+        // file per kept MESSAGE, never per revision: the latest revision's
+        // media wins (the entry rows carry the matching mediaPath).
         final restoredPath = await snapshotter.writeSnapshotBytes(e.key, bytes);
         if (restoredPath != null) {
           final parts = e.key.split(':');

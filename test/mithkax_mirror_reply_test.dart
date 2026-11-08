@@ -9,6 +9,7 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_store.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -117,8 +118,7 @@ void main() {
     addTearDown(vm.dispose);
     vm.debugMergeMessagesForTesting([_reply(101, 100)]);
     final reply = vm.messages.firstWhere((m) => m.id == 101);
-    // No BuildContext here — the stub keeps the raw suffix; the bubble
-    // layer renders it through the localized kind map.
-    expect(reply.replyToPreview, 'historyKindPhoto');
+    // Localized through AppStrings (ambient locale, no BuildContext).
+    expect(reply.replyToPreview, AppStrings.t(AppStringKeys.historyKindPhoto));
   });
 }
