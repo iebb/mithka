@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">Chatlistensuche</string>
     <string name="appearanceShowEditAndReadMarks">Bearbeitet- und Gelesen-Markierungen anzeigen</string>
     <string name="appearanceShowFolderBadges">Ordner-Badges</string>
+    <string name="appearanceHideAllChatsFolder">Ordner „Alle“ ausblenden</string>
     <string name="appearanceShowGroupMemberTitles">Titel von Gruppenmitgliedern anzeigen</string>
     <string name="appearanceShowMessageBubbles">Nachrichtenblasen anzeigen</string>
     <string name="appearanceShowMessageBubblesDescription">Wenn deaktiviert, wird das benutzerdefinierte Blasenbild nicht verwendet und Nachrichten nutzen die Blase deines Themes. Der ausgewählte Stil bleibt erhalten.</string>

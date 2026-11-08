@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">聊天列表搜索</string>
     <string name="appearanceShowEditAndReadMarks">显示编辑和已读标记</string>
     <string name="appearanceShowFolderBadges">文件夹未读徽章</string>
+    <string name="appearanceHideAllChatsFolder">隐藏“全部”文件夹</string>
     <string name="appearanceShowGroupMemberTitles">群成员显示头衔</string>
     <string name="appearanceShowMessageBubbles">显示消息气泡</string>
     <string name="appearanceShowMessageBubblesDescription">关闭后将不使用自定义气泡图片，消息改用主题自带的气泡。已选的样式会保留。</string>

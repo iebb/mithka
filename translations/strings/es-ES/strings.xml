@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">Buscar en chats</string>
     <string name="appearanceShowEditAndReadMarks">Mostrar marcas de edición y lectura</string>
     <string name="appearanceShowFolderBadges">Insignias de carpetas</string>
+    <string name="appearanceHideAllChatsFolder">Ocultar la carpeta «Todo»</string>
     <string name="appearanceShowGroupMemberTitles">Mostrar cargos de miembros del grupo</string>
     <string name="appearanceShowMessageBubbles">Mostrar burbujas de mensajes</string>
     <string name="appearanceShowMessageBubblesDescription">Si se desactiva, no se usa la imagen de burbuja personalizada y los mensajes vuelven a la burbuja de tu tema. Se conserva el estilo elegido.</string>
