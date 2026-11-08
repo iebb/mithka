@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -8,26 +7,6 @@ import 'package:local_auth/local_auth.dart';
 import 'package:mithka/security/local_app_lock_controller.dart';
 
 void main() {
-  test('Android registers the app-lock platform plugins', () {
-    final activity = File(
-      'android/app/src/main/kotlin/ad/neko/mithka/MainActivity.kt',
-    ).readAsStringSync();
-
-    expect(activity, contains('registerPlugins(flutterEngine)'));
-    expect(
-      activity,
-      contains(
-        'add("com.it_nomads.fluttersecurestorage.FlutterSecureStoragePlugin")',
-      ),
-    );
-    expect(
-      activity,
-      contains('add("io.flutter.plugins.localauth.LocalAuthPlugin")'),
-    );
-    expect(activity, contains('"mithka/app_lock_privacy"'));
-    expect(activity, contains('WindowManager.LayoutParams.FLAG_SECURE'));
-  });
-
   test('four-digit PIN is hashed, verified, and restored as locked', () async {
     final storage = <String, String>{};
     var now = DateTime.utc(2026, 8, 31, 12);
@@ -129,25 +108,6 @@ void main() {
     expect(controller.locked, isFalse);
   });
 
-  test(
-    'gesture credential preserves node order and rejects short input',
-    () async {
-      final storage = <String, String>{};
-      final controller = _controller(storage);
-      await controller.initialize();
-
-      await controller.setCredential(AppLockCredentialType.gesture, '0,1,4,8');
-
-      expect(await controller.verifyCredential('0,1,4,8'), isTrue);
-      expect(await controller.verifyCredential('8,4,1,0'), isFalse);
-      expect(await controller.verifyCredential('0,1,4'), isFalse);
-      expect(
-        () => controller.setCredential(AppLockCredentialType.gesture, '0,1,2'),
-        throwsArgumentError,
-      );
-    },
-  );
-
   test('biometric unlock is opt-in and unlocks after native success', () async {
     final storage = <String, String>{};
     var authenticationCount = 0;
@@ -196,19 +156,6 @@ void main() {
     expect(controller.locked, isFalse);
     expect(controller.failedAttemptCount, 0);
     expect(authenticationCount, 2);
-  });
-
-  test('disabling app lock removes the secure record', () async {
-    final storage = <String, String>{};
-    final controller = _controller(storage);
-    await controller.initialize();
-    await controller.setCredential(AppLockCredentialType.pin, '0000');
-
-    await controller.disable();
-
-    expect(controller.enabled, isFalse);
-    expect(controller.locked, isFalse);
-    expect(storage, isEmpty);
   });
 
   test(

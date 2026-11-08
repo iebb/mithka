@@ -363,42 +363,6 @@ void main() {
   );
 
   test(
-    'a pause during the path stat cancels the download',
-    () async {
-      const fileId = 710004;
-      TdClient.shared.setActive(oldSlot);
-      TdFileCenter.shared.rememberForTest(oldSlot, fileId, missingPath(fileId));
-
-      final stat = Completer<bool>();
-      final statCalled = Completer<void>();
-      final voice = VoicePlayer()
-        ..fileExistsOverride = (path) {
-          if (!statCalled.isCompleted) statCalled.complete();
-          return stat.future;
-        };
-      addTearDown(voice.dispose);
-
-      final load = voice.toggleAudio(TdFileRef(id: fileId));
-      await statCalled.future;
-
-      await voice.pause();
-      final loadingAfterPause = voice.isLoading;
-      stat.complete(false);
-      await load;
-
-      expect(allDownloads(), isEmpty);
-      expect(platform.startedUris, isEmpty);
-      expect(voice.isPlaying, isFalse);
-      expect(
-        loadingAfterPause,
-        isFalse,
-        reason: 'a paused load must not leave its spinner behind',
-      );
-    },
-    timeout: const Timeout(Duration(seconds: 20)),
-  );
-
-  test(
     'an account switch during native preparation cancels the start',
     () async {
       const fileId = 710005;

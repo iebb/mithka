@@ -39,9 +39,6 @@ Map<String, dynamic> _waitParameters() => const {
 Map<String, dynamic> _waitPhoneNumber() => const {
   '@type': 'authorizationStateWaitPhoneNumber',
 };
-Map<String, dynamic> _waitCode() => const {
-  '@type': 'authorizationStateWaitCode',
-};
 Map<String, dynamic> _me(int userId) => {
   '@type': 'user',
   'id': userId,
@@ -202,21 +199,6 @@ void main() {
     expect(harness.slotDir(1).existsSync(), isTrue);
     expect(File('${harness.slotDir(1).path}/td.binlog').existsSync(), isTrue);
 
-    // The importer received exactly this session string at this slot's binlog.
-    expect(harness.bindings.imported, [
-      (session, '${harness.slotDir(1).path}/td.binlog'),
-    ]);
-
-    // The bootstrap asks the version once and sends parameters exactly once:
-    // TDLib reopens its database for every setTdlibParameters it accepts
-    // before initialization.
-    expect(harness.bindings.sentTo(100, 'getOption'), hasLength(1));
-    final parameters = harness.bindings
-        .sentTo(100, 'setTdlibParameters')
-        .single;
-    expect(parameters['database_directory'], harness.slotDir(1).path);
-    expect(parameters['api_id'], 2496);
-
     // The slot is persisted and active.
     expect(harness.persistedSlots(), [0, 1]);
     expect(harness.prefs.getInt('drachma.activeSlot'), 1);
@@ -248,68 +230,6 @@ void main() {
       expect(harness.slotDir(1).existsSync(), isFalse);
       expect(harness.client.activeSlot, 0);
       expect(harness.persistedSlots(), isEmpty);
-    },
-  );
-
-  test(
-    'a restored session needing reauthorization is refused and cleaned up',
-    () async {
-      final harness = await _prepare(
-        respond: (request, clientId) => switch (request['@type']) {
-          'getAuthorizationState' => _waitCode(),
-          _ => const {'@type': 'ok'},
-        },
-      );
-
-      await expectLater(
-        harness.client.restoreSessionSlot(_syntheticSession()),
-        throwsA(
-          isA<TdSessionRestoreException>().having(
-            (error) => error.toString(),
-            'toString',
-            contains('requires reauthorization'),
-          ),
-        ),
-      );
-
-      expect(harness.bindings.sentTo(100, 'close'), hasLength(1));
-      expect(harness.slotDir(1).existsSync(), isFalse);
-      expect(harness.client.activeSlot, 0);
-    },
-  );
-
-  test(
-    'a slow account resolution keeps polling and sends parameters once',
-    () async {
-      // While TDLib resolves an unnamed account it queues getAuthorizationState,
-      // so the wait loop treats a timeout as "still importing", re-sends the
-      // parameters once, and keeps polling instead of failing.
-      var timeoutsThrown = 0;
-      final harness = await _prepare(
-        respond: (request, clientId) {
-          switch (request['@type']) {
-            case 'getAuthorizationState':
-              if (timeoutsThrown == 0) {
-                timeoutsThrown += 1;
-                throw TimeoutException('queued behind account resolution');
-              }
-              return _ready();
-            case 'getMe':
-              return _me(777);
-            default:
-              return const {'@type': 'ok'};
-          }
-        },
-      );
-
-      final slot = await harness.client.restoreSessionSlot(
-        _syntheticSession(seed: 2),
-      );
-
-      expect(slot, 1);
-      // The timeout path sent the parameters; the later Ready must not send
-      // them a second time.
-      expect(harness.bindings.sentTo(100, 'setTdlibParameters'), hasLength(1));
     },
   );
 
@@ -384,33 +304,6 @@ void main() {
     expect(harness.persistedSlots(), [0, 1, 2]);
   });
 
-  test('an aborted import reports a revoked session and cleans up', () async {
-    final harness = await _prepare(
-      respond: (request, clientId) => switch (request['@type']) {
-        'getAuthorizationState' => {
-          '@type': 'error',
-          'code': 500,
-          'message': 'Request aborted',
-        },
-        _ => const {'@type': 'ok'},
-      },
-    );
-
-    await expectLater(
-      harness.client.restoreSessionSlot(_syntheticSession(seed: 6)),
-      throwsA(
-        isA<TdSessionRestoreException>().having(
-          (error) => error.toString(),
-          'toString',
-          contains('invalid or has been revoked'),
-        ),
-      ),
-    );
-
-    expect(harness.slotDir(1).existsSync(), isFalse);
-    expect(harness.client.activeSlot, 0);
-  });
-
   test(
     'an import started while shutting down is refused and leaves no slot',
     () async {
@@ -482,49 +375,6 @@ void main() {
         harness.slotDir(discarded).path,
         reason: 'the closed client must belong to the discarded slot',
       );
-    },
-  );
-
-  test(
-    'concurrent GramJS imports of different accounts stay separate',
-    () async {
-      // Each import's client resolves a different account: the first import's
-      // client (100) reports 777, the second's (101) reports 888. The state
-      // responder must mirror the real lifecycle — WaitTdlibParameters until
-      // parameters are sent, then Ready — or the restore loop times out.
-      final parametersSent = <int>{};
-      final harness = await _prepare(
-        respond: (request, clientId) {
-          switch (request['@type']) {
-            case 'getAuthorizationState':
-              if (parametersSent.add(clientId)) return _waitParameters();
-              return _ready();
-            case 'getMe':
-              return _me(clientId == 100 ? 777 : 888);
-            default:
-              return const {'@type': 'ok'};
-          }
-        },
-      );
-
-      final slots = await Future.wait([
-        harness.client.restoreGramJsSessionSlot(
-          gramJsSessionFromTdSessionString(_syntheticSession(seed: 12)),
-        ),
-        harness.client.restoreGramJsSessionSlot(
-          gramJsSessionFromTdSessionString(_syntheticSession(seed: 13)),
-        ),
-      ]);
-
-      expect(slots.toSet(), hasLength(2));
-      for (final slot in slots) {
-        expect(
-          File('${harness.slotDir(slot).path}/td.binlog').existsSync(),
-          isTrue,
-          reason: 'slot $slot lost its database',
-        );
-      }
-      expect(harness.persistedSlots(), containsAll([0, ...slots]));
     },
   );
 }

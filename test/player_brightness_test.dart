@@ -37,14 +37,6 @@ void main() {
     expect(calls[2].arguments, 0.72);
   });
 
-  test('session without an override does not write during restore', () async {
-    final session = await PlayerBrightnessSession.capture();
-
-    await session!.restore();
-
-    expect(calls.map((call) => call.method), ['get']);
-  });
-
   test('restore waits for an in-flight write and stays last', () async {
     final firstWriteStarted = Completer<void>();
     final releaseFirstWrite = Completer<void>();

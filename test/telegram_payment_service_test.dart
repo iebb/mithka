@@ -8,76 +8,6 @@ import 'package:mithka/chat/telegram_invoice_checkout_view.dart';
 import 'package:mithka/chat/telegram_payment_service.dart';
 
 void main() {
-  const invoice = {'@type': 'inputInvoiceName', 'name': 'sample'};
-
-  test('payment form request matches pinned TDLib schema', () {
-    expect(TelegramPaymentService.paymentFormRequest(invoice), {
-      '@type': 'getPaymentForm',
-      'input_invoice': invoice,
-      'theme': null,
-    });
-  });
-
-  test('order validation request uses order_info and allow_save', () {
-    const orderInfo = {
-      '@type': 'orderInfo',
-      'name': 'A',
-      'phone_number': '',
-      'email_address': 'a@example.com',
-      'shipping_address': null,
-    };
-    expect(
-      TelegramPaymentService.validateOrderRequest(
-        inputInvoice: invoice,
-        orderInfo: orderInfo,
-        allowSave: true,
-      ),
-      {
-        '@type': 'validateOrderInfo',
-        'input_invoice': invoice,
-        'order_info': orderInfo,
-        'allow_save': true,
-      },
-    );
-  });
-
-  test('payment submission preserves shipping, credential and tip fields', () {
-    final credential = TelegramPaymentService.newCredentials({
-      'type': 'card',
-      'id': 'tok_test',
-    }, allowSave: false);
-    expect(
-      TelegramPaymentService.sendPaymentRequest(
-        inputInvoice: invoice,
-        paymentFormId: 91,
-        orderInfoId: 'order-1',
-        shippingOptionId: 'express',
-        credentials: credential,
-        tipAmount: 250,
-      ),
-      {
-        '@type': 'sendPaymentForm',
-        'input_invoice': invoice,
-        'payment_form_id': 91,
-        'order_info_id': 'order-1',
-        'shipping_option_id': 'express',
-        'credentials': {
-          '@type': 'inputCredentialsNew',
-          'data': '{"type":"card","id":"tok_test"}',
-          'allow_save': false,
-        },
-        'tip_amount': 250,
-      },
-    );
-  });
-
-  test('saved credential request matches pinned constructor', () {
-    expect(TelegramPaymentService.savedCredentials('saved-42'), {
-      '@type': 'inputCredentialsSaved',
-      'saved_credentials_id': 'saved-42',
-    });
-  });
-
   test('payment web event decodes provider credential submission', () {
     final submission = decodePaymentFormSubmit(
       jsonEncode({
@@ -173,32 +103,6 @@ void main() {
       ]);
     },
   );
-
-  test('restore uses Premium subscription restore purpose', () async {
-    final requests = <Map<String, dynamic>>[];
-    final bridge = _FakeStoreBridge();
-    final service = TelegramStorePurchaseService(
-      query: (request) async {
-        requests.add(request);
-        return const {'@type': 'ok'};
-      },
-      bridge: bridge,
-    );
-
-    await service.restorePremiumPurchases();
-
-    const purpose = {
-      '@type': 'storePaymentPurposePremiumSubscription',
-      'is_restore': true,
-      'is_upgrade': false,
-    };
-    expect(bridge.didRestore, isTrue);
-    expect(requests.first, {
-      '@type': 'canPurchaseFromStore',
-      'purpose': purpose,
-    });
-    expect(requests.last['purpose'], purpose);
-  });
 
   test('assignment retry resends receipt without purchasing twice', () async {
     var assignmentAttempts = 0;

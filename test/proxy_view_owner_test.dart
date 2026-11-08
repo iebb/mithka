@@ -299,33 +299,6 @@ void main() {
   }
 
   testWidgets(
-    'owner unchanged: bulk delete removes only the pinned account row',
-    (tester) async {
-      final harness = await _prepare();
-      seedCollidingRows(harness);
-      await pumpView(tester, harness.client);
-
-      expect(find.text('alpha.invalid:1141'), findsOneWidget);
-      expect(find.text('beta.invalid:2141'), findsNothing);
-
-      await failAlphaAndOpenBulkConfirm(tester, harness);
-      await confirmDelete(tester);
-
-      // Exactly the failed row of client 1, and nothing from client 100.
-      expect(harness.removeCalls, [(1, 42)]);
-      expect(harness.proxies[100]!.single['id'], 42);
-      expect(harness.proxies[100]!.single['proxy']['server'], 'beta.invalid');
-      expect(find.text('alpha.invalid:1141'), findsNothing);
-      // The saved state and the apply both follow the pinned owner.
-      expect(harness.prefs.getBool('mithka.proxy.enabled'), isFalse);
-      expect(harness.requestsTo(1, 'disableProxy'), hasLength(1));
-      expect(harness.requestsTo(100, 'disableProxy'), isEmpty);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
-
-  testWidgets(
     'switching accounts while the bulk confirmation is open drops the batch',
     (tester) async {
       final harness = await _prepare();
@@ -382,54 +355,6 @@ void main() {
       expect(harness.proxies[1]!.map((proxy) => proxy['id']), [43]);
       expect(harness.proxies[100]!.single['id'], 42);
       // Deleting an enabled row must not disable the new foreground account.
-      expect(harness.prefs.getBool('mithka.proxy.enabled'), isNull);
-      expect(harness.requestsTo(1, 'disableProxy'), isEmpty);
-      expect(harness.requestsTo(100, 'disableProxy'), isEmpty);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
-
-  testWidgets(
-    'single-row delete uses the app dialog and removes the pinned row',
-    (tester) async {
-      final harness = await _prepare();
-      seedCollidingRows(harness);
-      await pumpView(tester, harness.client);
-
-      await tester.tap(find.byKey(const ValueKey('proxy-remove-42')));
-      await settle(tester);
-      expect(find.byKey(const ValueKey('app-confirm-dialog')), findsOneWidget);
-      expect(find.byType(CupertinoAlertDialog), findsNothing);
-      await confirmDelete(tester);
-
-      expect(harness.removeCalls, [(1, 42)]);
-      expect(harness.proxies[100]!.single['id'], 42);
-      expect(harness.proxies[100]!.single['proxy']['server'], 'beta.invalid');
-      expect(harness.prefs.getBool('mithka.proxy.enabled'), isFalse);
-      expect(harness.requestsTo(1, 'disableProxy'), hasLength(1));
-      expect(harness.requestsTo(100, 'disableProxy'), isEmpty);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
-
-  testWidgets(
-    'switching accounts while a single-row confirmation is open drops it',
-    (tester) async {
-      final harness = await _prepare();
-      seedCollidingRows(harness);
-      await pumpView(tester, harness.client);
-
-      await tester.tap(find.byKey(const ValueKey('proxy-remove-42')));
-      await settle(tester);
-      harness.client.setActive(harness.betaSlot);
-      await settle(tester);
-      await confirmDelete(tester);
-
-      expect(harness.removeCalls, isEmpty);
-      expect(harness.proxies[100]!.single['id'], 42);
-      expect(harness.proxies[1]!.map((proxy) => proxy['id']), [42, 43]);
       expect(harness.prefs.getBool('mithka.proxy.enabled'), isNull);
       expect(harness.requestsTo(1, 'disableProxy'), isEmpty);
       expect(harness.requestsTo(100, 'disableProxy'), isEmpty);

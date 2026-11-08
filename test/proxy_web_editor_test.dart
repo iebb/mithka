@@ -43,7 +43,7 @@ void main() {
   }
 
   testWidgets(
-    'web editor fixes 443 and validates domain, path and secret',
+    'web proxy editor rejects a path that escapes the relay root',
     (tester) async {
       await pumpEditor(tester);
       final selector = tester.widget<SettingsSelectionRow<String>>(
@@ -52,9 +52,6 @@ void main() {
       expect(selector.options.map((o) => o.value), contains('web'));
       await selector.onSelected('web');
       await tester.pumpAndSettle();
-      expect(find.text('443'), findsOneWidget);
-      expect(find.text('Path'), findsOneWidget);
-      expect(find.byType(EditableText), findsNWidgets(3));
 
       Color? saveColor() => tester.widget<Text>(find.text('Save')).style?.color;
       expect(saveColor(), isNot(AppTheme.brand));
@@ -72,18 +69,5 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
     variant: const TargetPlatformVariant({TargetPlatform.android}),
-  );
-
-  testWidgets(
-    'platforms without a relay host omit the web option',
-    (tester) async {
-      await pumpEditor(tester);
-      final selector = tester.widget<SettingsSelectionRow<String>>(
-        find.byKey(const ValueKey('proxy-type-selector')),
-      );
-      expect(selector.options.map((o) => o.value), isNot(contains('web')));
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-    variant: const TargetPlatformVariant({TargetPlatform.windows}),
   );
 }

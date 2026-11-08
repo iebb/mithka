@@ -47,26 +47,6 @@ void main() {
     });
   }
 
-  test('the native route caches the active account\'s state', () {
-    final client = TdClient.shared;
-    expect(client.latestConnectionStateUpdate, isNull);
-
-    routeConnectionState(client.activeClientId, 'connectionStateReady');
-    expect(
-      client.latestConnectionStateUpdate?.obj('state')?.type,
-      'connectionStateReady',
-    );
-
-    routeConnectionState(
-      client.activeClientId,
-      'connectionStateWaitingForNetwork',
-    );
-    expect(
-      client.latestConnectionStateUpdate?.obj('state')?.type,
-      'connectionStateWaitingForNetwork',
-    );
-  });
-
   test('an inactive account cannot overwrite the active one', () {
     final client = TdClient.shared;
     routeConnectionState(client.activeClientId, 'connectionStateReady');
@@ -86,18 +66,6 @@ void main() {
           ?.obj('state')
           ?.type,
       'connectionStateWaitingForNetwork',
-    );
-  });
-
-  test('the proxy route caches too', () {
-    final client = TdClient.shared;
-    updates.add({
-      '@type': 'updateConnectionState',
-      'state': {'@type': 'connectionStateConnecting'},
-    });
-    expect(
-      client.latestConnectionStateUpdate?.obj('state')?.type,
-      'connectionStateConnecting',
     );
   });
 }

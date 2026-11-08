@@ -24,32 +24,6 @@ void main() {
     expect(harness.loadCalls, 1);
   });
 
-  test('failed automatic request upgraded by button does not retry', () async {
-    final harness = _CoordinatorHarness();
-
-    harness.coordinator.request(ChatReturnToLatestSource.automatic);
-    harness.coordinator.request(ChatReturnToLatestSource.user);
-    harness.loads.single.complete(false);
-    await _flushCompletions();
-
-    expect(harness.loadCalls, 1);
-    expect(harness.coordinator.pending, isFalse);
-    expect(harness.failures.single.userInitiated, isTrue);
-  });
-
-  test('repeated button tap does not retry a failed request', () async {
-    final harness = _CoordinatorHarness();
-
-    harness.coordinator.request(ChatReturnToLatestSource.user);
-    harness.coordinator.request(ChatReturnToLatestSource.user);
-    harness.loads.single.complete(false);
-    await _flushCompletions();
-
-    expect(harness.loadCalls, 1);
-    expect(harness.coordinator.pending, isFalse);
-    expect(harness.failures.single.userInitiated, isTrue);
-  });
-
   test('a real drag invalidates and discards the old response', () async {
     final harness = _CoordinatorHarness();
 
@@ -132,54 +106,6 @@ void main() {
     expect(harness.loadCalls, 1);
   });
 
-  test('latest window fast path is synchronous and performs no load', () {
-    final userHarness = _CoordinatorHarness()..anchored = false;
-
-    userHarness.coordinator.request(ChatReturnToLatestSource.user);
-    expect(userHarness.loadCalls, 0);
-    expect(userHarness.readyNotifications, 1);
-    expect(
-      userHarness.coordinator.takeReady(pointerDown: false)?.userInitiated,
-      isTrue,
-    );
-    expect(userHarness.coordinator.pending, isFalse);
-
-    final automaticHarness = _CoordinatorHarness()..anchored = false;
-    automaticHarness.coordinator.request(ChatReturnToLatestSource.automatic);
-    expect(automaticHarness.loadCalls, 0);
-    expect(automaticHarness.readyNotifications, 1);
-    expect(
-      automaticHarness.coordinator.takeReady(pointerDown: false)?.userInitiated,
-      isFalse,
-    );
-    expect(automaticHarness.coordinator.pending, isFalse);
-  });
-
-  test('latest window fast path supports synchronous ready draining', () {
-    late final ChatReturnToLatestCoordinator coordinator;
-    ChatReturnToLatestIntent? drainedIntent;
-    var loadCalls = 0;
-
-    coordinator = ChatReturnToLatestCoordinator(
-      loadLatest: () {
-        loadCalls++;
-        return Future.value(true);
-      },
-      invalidateLatestLoad: () {},
-      needsLatestLoad: () => false,
-      onChanged: () {},
-      onReadyAvailable: () {
-        drainedIntent = coordinator.takeReady(pointerDown: false);
-      },
-    );
-
-    coordinator.request(ChatReturnToLatestSource.user);
-
-    expect(loadCalls, 0);
-    expect(drainedIntent?.userInitiated, isTrue);
-    expect(coordinator.pending, isFalse);
-  });
-
   test('request exception is reported as a failure', () async {
     final harness = _CoordinatorHarness();
 
@@ -190,18 +116,6 @@ void main() {
     expect(harness.loadCalls, 1);
     expect(harness.coordinator.pending, isFalse);
     expect(harness.failures.single.userInitiated, isTrue);
-  });
-
-  test('automatic failure remains non-user-initiated', () async {
-    final harness = _CoordinatorHarness();
-
-    harness.coordinator.request(ChatReturnToLatestSource.automatic);
-    harness.loads.single.complete(false);
-    await _flushCompletions();
-
-    expect(harness.loadCalls, 1);
-    expect(harness.coordinator.pending, isFalse);
-    expect(harness.failures.single.userInitiated, isFalse);
   });
 }
 

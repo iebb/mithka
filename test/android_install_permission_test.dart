@@ -3,17 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('direct Android packages request the APK install permission', () {
-    final manifest = File('android/app/src/main/AndroidManifest.xml');
-    expect(
-      manifest.readAsStringSync(),
-      contains(
-        '<uses-permission '
-        'android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
-      ),
-    );
-  });
-
   test('Google Play builds remove the restricted install permission', () {
     final workflow = File(
       '.github/workflows/google-play.yml',

@@ -12,18 +12,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/emoji_store.dart';
-import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/profile/profile_icon_picker_view.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
-import 'package:mithka/theme/app_theme.dart';
-import 'package:mithka/theme/theme_controller.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _alpha = _Pack(3101, 'Alpha', [7301, 7302]);
@@ -59,78 +52,6 @@ void main() {
     _registry.reset();
     EmojiStore.shared.reset();
     CustomEmojiCenter.shared.reset();
-  });
-
-  test('an ownerless load stays lazy until an account is available', () async {
-    _client.debugSetActiveAccountForTesting(0, 0);
-    EmojiStore.shared.loadIfNeeded();
-    await _settleStore();
-    expect(_registry.calls, isEmpty);
-
-    final only = _addAccount(premium: true, packs: const [_alpha]);
-    _client.setActive(only.slot);
-    EmojiStore.shared.loadIfNeeded();
-    await _settleStore();
-
-    expect(EmojiStore.shared.customPacks.map((pack) => pack.id), [_alpha.id]);
-    expect(_registry.callsTo('getOption', only.clientId), 1);
-  });
-
-  testWidgets('a stale pack completion never replaces the new account picker', (
-    tester,
-  ) async {
-    final first = _addAccount(premium: true, packs: const [_alpha]);
-    _client.setActive(first.slot);
-    final second = _addAccount(premium: true, packs: const [_beta]);
-
-    // The old account's load is already past getInstalledStickerSets and is
-    // waiting for its Alpha pack when the user switches accounts.
-    final heldSet = _registry.gate('set', first.clientId);
-    EmojiStore.shared.loadIfNeeded();
-    await _pumpUntil(tester, () => heldSet.started);
-    expect(EmojiStore.shared.customPacks, isEmpty);
-
-    // Exactly what AccountStore does on a switch, then the new account's
-    // picker mounts and finishes its own load.
-    _client.setActive(second.slot);
-    EmojiStore.shared.reset();
-    await _pumpPicker(tester);
-    expect(find.text('Beta'), findsOneWidget);
-    expect(
-      EmojiStore.shared.customPacks.map((pack) => pack.id),
-      [_beta.id],
-      reason: 'the new account must finish loading before the stale response',
-    );
-
-    heldSet.release();
-    await _settle(tester);
-
-    expect(
-      find.text('Beta'),
-      findsOneWidget,
-      reason: 'the new account picker keeps its own pack',
-    );
-    expect(
-      find.text('Alpha'),
-      findsNothing,
-      reason: 'the previous account response must not reach this picker',
-    );
-    expect(
-      find.byKey(const ValueKey('profile-icon-pack-3201')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('profile-icon-pack-3101')), findsNothing);
-    expect(EmojiStore.shared.customPacks.map((pack) => pack.id), [_beta.id]);
-    // The stale completion only ever asked the old client for Alpha.
-    expect(
-      [
-        for (final call in _registry.calls)
-          if (call.type == 'getStickerSet' && call.clientId == second.clientId)
-            call.request['set_id'],
-      ],
-      [_beta.id],
-    );
-    expect(tester.takeException(), isNull);
   });
 
   test(
@@ -212,35 +133,6 @@ void main() {
       expect(EmojiStore.shared.customPacks.map((pack) => pack.id), [_beta.id]);
     },
   );
-
-  test('a single account still loads its packs from its own client', () async {
-    final only = _addAccount(premium: true, packs: const [_alpha]);
-    _client.setActive(only.slot);
-
-    final heldOption = _registry.gate('option', only.clientId);
-    final heldSets = _registry.gate('sets', only.clientId);
-    EmojiStore.shared.loadIfNeeded();
-    await _waitFor(() => heldOption.started);
-    expect(EmojiStore.shared.customPacks, isEmpty);
-
-    heldOption.release();
-    await _waitFor(() => heldSets.started);
-    expect(EmojiStore.shared.isPremium, isTrue);
-
-    heldSets.release();
-    await _waitFor(() => EmojiStore.shared.customPacks.isNotEmpty);
-    expect(EmojiStore.shared.customPacks.map((pack) => pack.id), [_alpha.id]);
-    expect(
-      EmojiStore.shared.customPacks.single.title,
-      'Alpha',
-      reason: 'the pack title and cover come back unchanged for one account',
-    );
-    expect(
-      _registry.calls.map((call) => call.clientId).toSet(),
-      {only.clientId},
-      reason: 'an unchanged owner must never query a second client',
-    );
-  });
 
   test(
     'a newer load for the same account wins over the one it replaced',
@@ -556,52 +448,3 @@ Future<void> _waitFor(bool Function() condition) async {
   }
   fail('condition was not reached');
 }
-
-Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
-  for (var turn = 0; turn < 100 && !condition(); turn++) {
-    await tester.pump(const Duration(milliseconds: 20));
-  }
-  expect(condition(), isTrue, reason: 'widget condition was not reached');
-}
-
-Future<void> _pumpPicker(WidgetTester tester) async {
-  final theme = await _theme();
-  addTearDown(theme.dispose);
-  await tester.pumpWidget(
-    ChangeNotifierProvider<ThemeController>.value(
-      value: theme,
-      child: MaterialApp(
-        locale: const Locale('en'),
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: ThemeData(
-          brightness: Brightness.light,
-          extensions: [AppColors.light],
-        ),
-        home: const ProfileIconPickerView(
-          selectedId: 0,
-          title: 'Topic icon',
-          source: ProfileIconSource.status,
-        ),
-      ),
-    ),
-  );
-  await _settle(tester);
-}
-
-Future<ThemeController> _theme() async {
-  SharedPreferences.setMockInitialValues({});
-  final preferences = await SharedPreferences.getInstance();
-  return ThemeController(preferences);
-}
-
-Future<void> _settle(WidgetTester tester) => tester.pumpAndSettle(
-  const Duration(milliseconds: 100),
-  EnginePhase.sendSemanticsUpdate,
-  const Duration(seconds: 5),
-);

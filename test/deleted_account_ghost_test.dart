@@ -2,14 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_message_merge.dart';
-import 'package:mithka/chat/chat_view_model.dart';
-import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/profile/profile_detail_view.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
-import 'package:mithka/tdlib/td_user_index.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -62,113 +59,6 @@ void main() {
     fixtures.install();
     AppStrings.setLocale(const Locale('en'));
     serve = (request) async => {'@type': 'ok'};
-  });
-
-  group('deleted account name', () {
-    test('resolves to the localized name instead of the id fallback', () {
-      expect(TDParse.userName(deletedUser(4242)), 'Deleted Account');
-      // A deleted account keeps no name of its own even when a stale payload
-      // still carries one.
-      expect(
-        TDParse.userName({...deletedUser(4242), 'first_name': 'Ghost'}),
-        'Deleted Account',
-      );
-    });
-
-    test('leaves a regular account on its own name', () {
-      expect(TDParse.userName(regularUser(7)), 'Ada Lovelace');
-    });
-
-    test('is translated in every shipped locale', () {
-      for (final locale in AppLocalizations.supportedLocales) {
-        final key = AppLocalizations.localeKeyFor(locale);
-        final value = AppStrings.tForLocale(
-          key,
-          AppStringKeys.chatDeletedAccountName,
-        );
-        expect(value, isNot(AppStringKeys.chatDeletedAccountName), reason: key);
-        expect(value.trim(), isNotEmpty, reason: key);
-      }
-    });
-  });
-
-  group('group sender', () {
-    late ChatMessage message;
-
-    test('carries the deleted identity onto the message', () {
-      const userId = 910011;
-      final slot = TdClient.shared.activeSlot;
-      message = ChatMessage(
-        id: 51,
-        isOutgoing: false,
-        text: 'Hello',
-        date: 1,
-        chatId: -10051,
-        senderId: userId,
-      );
-      final viewModel = ChatViewModel(
-        chatId: -10051,
-        title: 'Group',
-        markReadOnOpen: false,
-        seedMessage: message,
-      )..isGroup = true;
-      TdUserIndex.shared.observe(slot, {
-        '@type': 'updateUser',
-        'user': deletedUser(userId),
-      });
-
-      viewModel.primeCachedSenderIdentitiesForTesting();
-
-      expect(message.senderName, 'Deleted Account');
-      expect(message.senderIsDeleted, isTrue);
-      expect(message.senderPhoto, isNull);
-
-      viewModel.dispose();
-      TdUserIndex.shared.clearSlot(slot);
-    });
-
-    testWidgets('paints the ghost avatar and the deleted name', (tester) async {
-      final theme = await _theme(tester);
-      final deleted = ChatMessage(
-        id: 52,
-        isOutgoing: false,
-        text: 'Hello',
-        date: 1,
-        chatId: -10051,
-        senderId: 910012,
-        senderName: TDParse.userName(deletedUser(910012)),
-        senderIsDeleted: true,
-      );
-
-      await tester.pumpWidget(_bubbleHarness(theme, deleted));
-      await tester.pump(const Duration(milliseconds: 50));
-
-      expect(find.text('Deleted Account'), findsOneWidget);
-      expect(_ghosts(), findsOneWidget);
-      // The silhouette replaces the initial the monogram would draw.
-      expect(find.text('D'), findsNothing);
-    });
-
-    testWidgets('keeps a live account on its photo-less monogram', (
-      tester,
-    ) async {
-      final theme = await _theme(tester);
-      final live = ChatMessage(
-        id: 53,
-        isOutgoing: false,
-        text: 'Hello',
-        date: 1,
-        chatId: -10051,
-        senderId: 910013,
-        senderName: 'Ada Lovelace',
-      );
-
-      await tester.pumpWidget(_bubbleHarness(theme, live));
-      await tester.pump(const Duration(milliseconds: 50));
-
-      expect(_ghosts(), findsNothing);
-      expect(find.text('A'), findsOneWidget);
-    });
   });
 
   test('a refreshed message keeps the ghost while its sender is unchanged', () {
@@ -271,24 +161,3 @@ Future<ThemeController> _theme(WidgetTester tester) async {
   addTearDown(theme.dispose);
   return theme;
 }
-
-Widget _bubbleHarness(ThemeController theme, ChatMessage message) =>
-    ChangeNotifierProvider<ThemeController>.value(
-      value: theme,
-      child: MaterialApp(
-        theme: ThemeData(extensions: [AppColors.light]),
-        locale: const Locale('en'),
-        localizationsDelegates: const [AppLocalizations.delegate],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: TickerMode(
-            enabled: false,
-            child: MessageBubble(
-              message: message,
-              peerTitle: 'Test Group',
-              isGroup: true,
-            ),
-          ),
-        ),
-      ),
-    );

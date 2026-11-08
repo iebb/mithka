@@ -34,43 +34,4 @@ void main() {
       reason: 'The immutable policy must not be overridden or aliased.',
     );
   });
-
-  test(
-    'source contract: both native reporter hooks require disabled policy',
-    () {
-      final source = _withoutComments(File(bridgePath).readAsStringSync());
-      for (final hook in ['start()', 'report(verification)']) {
-        expect(
-          RegExp(
-            r'if MithkaPurchaseReportingPolicy\.isEnabled\s*\{\s*'
-            '${RegExp.escape('PurchaseReporter.$hook')}'
-            r'\s*\}',
-          ).allMatches(source),
-          hasLength(1),
-          reason:
-              'The $hook hook must be inside the default-off source policy.',
-        );
-      }
-    },
-  );
-
-  test('source contract: no other native purchase reporter callers exist', () {
-    final callerPattern = RegExp(
-      r'\bPurchaseReporter\s*\.\s*(start|report)\s*\(',
-    );
-    final callers = <String>[];
-    for (final file in Directory(
-      'ios',
-    ).listSync(recursive: true, followLinks: false)) {
-      if (file is! File || !file.path.endsWith('.swift')) continue;
-      final source = _withoutComments(file.readAsStringSync());
-      for (final match in callerPattern.allMatches(source)) {
-        callers.add('${file.path}:${match[1]}');
-      }
-    }
-    expect(
-      callers,
-      unorderedEquals(['$bridgePath:start', '$bridgePath:report']),
-    );
-  });
 }

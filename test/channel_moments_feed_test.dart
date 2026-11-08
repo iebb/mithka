@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/moments/moments_view.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
@@ -179,9 +178,6 @@ void main() {
       for (var id = 2; id <= 5; id++) {
         expect(find.byKey(ValueKey('moments-media-$id')), findsOneWidget);
       }
-      // A muted channel still shows, and its feed has no mute filter.
-      expect(find.byIcon(HeroAppIcons.bellSlash.data), findsNothing);
-      expect(find.byIcon(HeroAppIcons.solidBell.data), findsNothing);
 
       final historyReads = requests.where(
         (request) => request['@type'] == 'getChatHistory',

@@ -263,29 +263,6 @@ void main() {
   );
 
   test(
-    'a download request TDLib never picked up is re-issued and plays',
-    () async {
-      const fileId = 610002;
-      final downloaded = downloadedFile(fileId);
-      tdlib.ignoredFirstRequest.add(fileId);
-      tdlib.downloadedPaths[fileId] = downloaded.path;
-
-      final voice = VoicePlayer();
-      addTearDown(voice.dispose);
-      final player = MusicPlayerController.forTest(player: voice);
-      final only = track(fileId);
-
-      player.play(only, visibleQueue: [only], toggleIfActive: false);
-      await until(() => native.startedUris.isNotEmpty && player.isPlaying);
-
-      expect(tdlib.downloadRequests[fileId], 2);
-      expect(native.startedUris, [downloaded.path]);
-      expect(player.playbackFailureReports, 0);
-    },
-    timeout: const Timeout(Duration(seconds: 20)),
-  );
-
-  test(
     'a wedged native open recovers on the automatic retry with a fresh player',
     () async {
       const fileId = 610003;

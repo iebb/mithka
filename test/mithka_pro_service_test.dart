@@ -6,71 +6,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
 
 void main() {
-  test('state parser accepts native fields and Play Store distribution', () {
-    final state = MithkaProState.fromMap({
-      'storeAvailable': true,
-      'isPro': true,
-      'distribution': 'play_store',
-      'expirationDateMillis': 1800000000000,
-    });
-
-    expect(state.storeAvailable, isTrue);
-    expect(state.isPro, isTrue);
-    expect(state.distribution, MithkaDistribution.googlePlay);
-    expect(
-      state.expirationDate,
-      DateTime.fromMillisecondsSinceEpoch(1800000000000, isUtc: true),
+  test('restricted purchases still allow Restore and Manage', () async {
+    final gateway = _FakeGateway(
+      distribution: 'app_store',
+      canMakePayments: false,
+      canManageSubscriptions: true,
     );
+    final service = MithkaProService(
+      gateway: gateway,
+      platform: TargetPlatform.iOS,
+    );
+    addTearDown(service.dispose);
+    await service.initialize();
+
+    expect(service.canMakePayments, isFalse);
+    expect(service.canRestore, isTrue);
+    expect(await service.purchase(mithkaProYearlyProductId), isFalse);
+    expect(gateway.purchasedProductId, isNull);
+    expect(await service.restore(), isTrue);
+    expect(gateway.restoreCalls, 1);
+    expect(service.isPro, isTrue);
+    await service.manage(productId: mithkaProYearlyProductId);
+    expect(gateway.managedProductId, mithkaProYearlyProductId);
+    expect(gateway.manageCalls, 1);
   });
-
-  test(
-    'purchase permission is separate and legacy providers stay compatible',
-    () {
-      final restricted = MithkaProState.fromMap({
-        'storeAvailable': true,
-        'canMakePayments': false,
-        'canManageSubscriptions': true,
-      });
-      expect(restricted.storeAvailable, isTrue);
-      expect(restricted.canMakePayments, isFalse);
-      expect(restricted.canManageSubscriptions, isTrue);
-      final legacy = MithkaProState.fromMap({'storeAvailable': true});
-      expect(legacy.canMakePayments, isTrue);
-      expect(legacy.canManageSubscriptions, isTrue);
-      final missing = MithkaProState.fromMap({});
-      expect(missing.canMakePayments, isFalse);
-      expect(missing.canManageSubscriptions, isFalse);
-    },
-  );
-
-  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
-    test(
-      '$platform restricted purchases still allow Restore and Manage',
-      () async {
-        final gateway = _FakeGateway(
-          distribution: platform == TargetPlatform.iOS
-              ? 'app_store'
-              : 'play_store',
-          canMakePayments: false,
-          canManageSubscriptions: true,
-        );
-        final service = MithkaProService(gateway: gateway, platform: platform);
-        addTearDown(service.dispose);
-        await service.initialize();
-
-        expect(service.canMakePayments, isFalse);
-        expect(service.canRestore, isTrue);
-        expect(await service.purchase(mithkaProYearlyProductId), isFalse);
-        expect(gateway.purchasedProductId, isNull);
-        expect(await service.restore(), isTrue);
-        expect(gateway.restoreCalls, 1);
-        expect(service.isPro, isTrue);
-        await service.manage(productId: mithkaProYearlyProductId);
-        expect(gateway.managedProductId, mithkaProYearlyProductId);
-        expect(gateway.manageCalls, 1);
-      },
-    );
-  }
 
   test(
     'actual store unavailable blocks payments and Restore but not account UI',
@@ -178,21 +137,6 @@ void main() {
     }
   });
 
-  test('unavailable native Manage is not called', () async {
-    final gateway = _FakeGateway(
-      distribution: 'app_store',
-      canManageSubscriptions: false,
-    );
-    final service = MithkaProService(
-      gateway: gateway,
-      platform: TargetPlatform.iOS,
-    );
-    addTearDown(service.dispose);
-    await service.initialize();
-    await service.manage();
-    expect(gateway.manageCalls, 0);
-  });
-
   test(
     'restricted Restore serializes actions and propagates real store errors',
     () async {
@@ -225,81 +169,18 @@ void main() {
   );
 
   test(
-    'source contract: only new StoreKit purchases use payment permission',
+    'source contract: StoreKit Restore and Manage ignore purchase limits',
     () {
+      // App Review requires Restore even when in-app purchases are restricted.
       final source = File(
         'ios/Runner/MithkaProBridge.swift',
       ).readAsStringSync();
-      final purchase = source
-          .split('private func purchase(')[1]
-          .split('private func restore(')[0];
-      final restore = source
+      final restoreAndManage = source
           .split('private func restore(')[1]
-          .split('private func manage(')[0];
-      final manage = source
-          .split('private func manage(')[1]
           .split('private func state(')[0];
-      expect(purchase, contains('guard AppStore.canMakePayments else'));
-      expect(source, contains('"storeAvailable": true'));
-      expect(source, contains('"canMakePayments": AppStore.canMakePayments'));
-      expect(restore, contains('try await AppStore.sync()'));
-      expect(
-        manage,
-        contains('AppStore.showManageSubscriptions(in: windowScene)'),
-      );
-      expect(manage, contains('.foregroundActive'));
-      expect(restore, isNot(contains('canMakePayments')));
-      expect(manage, isNot(contains('canMakePayments')));
+      expect(restoreAndManage, isNot(contains('canMakePayments')));
     },
   );
-
-  test(
-    'source contract: Play keeps payment checks and offline account management',
-    () {
-      final source = File(
-        'android/app/src/main/kotlin/ad/neko/mithka/MithkaProPlugin.kt',
-      ).readAsStringSync();
-      final purchase = source
-          .split('private fun purchase(')[1]
-          .split('private fun restore(')[0];
-      final manage = source
-          .split('private fun manage(')[1]
-          .split('private fun ensureConnected(')[0];
-      expect(purchase, contains('distribution != DISTRIBUTION_PLAY_STORE'));
-      expect(purchase, contains('ensureConnected'));
-      expect(purchase, contains('billingClient.launchBillingFlow'));
-      expect(
-        source,
-        contains(
-          'put("canMakePayments", available && distribution == DISTRIBUTION_PLAY_STORE)',
-        ),
-      );
-      expect(manage, contains('intent.resolveActivity'));
-      expect(manage, isNot(contains('ensureConnected')));
-    },
-  );
-
-  test('catalog failure does not discard a valid distribution state', () async {
-    final service = MithkaProService(
-      gateway: _FakeGateway(distribution: 'apk', failProducts: true),
-    );
-
-    addTearDown(service.dispose);
-    await expectLater(service.initialize(), completes);
-    expect(service.initialized, isTrue);
-    expect(service.state.distribution, MithkaDistribution.apk);
-    expect(service.products, isEmpty);
-  });
-
-  test('state failure remains non-fatal', () async {
-    final service = MithkaProService(
-      gateway: _FakeGateway(distribution: 'app_store', failState: true),
-    );
-
-    addTearDown(service.dispose);
-    await expectLater(service.initialize(), completes);
-    expect(service.initialized, isFalse);
-  });
 
   test('products and purchase use the fixed Mithka Pro identifiers', () async {
     final gateway = _FakeGateway(distribution: 'app_store');

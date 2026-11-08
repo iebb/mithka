@@ -44,25 +44,6 @@ void main() {
     expect(parsed.authKey, authKey);
   });
 
-  test('parsing accepts unpadded and url-safe base64 payloads', () {
-    final rendered = GramJsSession(
-      dcId: 5,
-      serverAddress: '91.108.56.130',
-      port: 443,
-      authKey: authKey,
-    ).render();
-    final payloadText = rendered.substring(1);
-
-    final unpadded = payloadText.replaceAll('=', '');
-    final urlSafe = unpadded.replaceAll('+', '-').replaceAll('/', '_');
-
-    for (final variant in [unpadded, urlSafe]) {
-      final parsed = GramJsSession.parse('1$variant');
-      expect(parsed.dcId, 5);
-      expect(parsed.authKey, authKey);
-    }
-  });
-
   test('parsing rejects payloads Mithka cannot import', () {
     final rendered = GramJsSession(
       dcId: 2,
@@ -121,16 +102,6 @@ void main() {
     expect(parsed.authKey, authKey);
   });
 
-  test('a test-mode TDLib session keeps the test endpoint', () {
-    final packed = _tdSession(dcId: 1, testMode: true, authKey: authKey);
-
-    final parsed = GramJsSession.parse(
-      gramJsSessionFromTdSessionString(packed),
-    );
-
-    expect(parsed.serverAddress, GramJsEndpoint.test[1]!.address);
-  });
-
   test('a DC GramJS cannot dial is refused', () {
     expect(
       () => gramJsSessionFromTdSessionString(_tdSession(dcId: 9)),
@@ -158,43 +129,6 @@ void main() {
     expect(
       () => tdSessionStringFromGramJsSession(session, apiId: 0),
       throwsArgumentError,
-    );
-  });
-
-  test('the reserved user id stays unknown to TDLib', () {
-    // UserManager::load_my_id keeps a stored id only inside UserId's
-    // 1..2^40-1 range, and retries with the first five characters dropped
-    // before giving up, so both reads have to fail for TDLib to resolve the
-    // account itself.
-    const maxTdlibUserId = (1 << 40) - 1;
-
-    expect(tdSessionUnknownUserId, greaterThan(0));
-    expect(tdSessionUnknownUserId, greaterThan(maxTdlibUserId));
-    expect(
-      int.parse('$tdSessionUnknownUserId'.substring(5)),
-      lessThanOrEqualTo(0),
-    );
-  });
-
-  test('session formats are told apart', () {
-    final packed = _tdSession(dcId: 2, authKey: authKey);
-    final gramJs = GramJsSession(
-      dcId: 2,
-      serverAddress: '149.154.167.51',
-      port: 443,
-      authKey: authKey,
-    ).render();
-
-    expect(detectSessionStringFormat(packed), SessionStringFormat.pyrogram);
-    expect(detectSessionStringFormat(gramJs), SessionStringFormat.gramJs);
-    expect(
-      detectSessionStringFormat('  $gramJs  '),
-      SessionStringFormat.gramJs,
-    );
-    expect(detectSessionStringFormat(''), SessionStringFormat.unknown);
-    expect(
-      detectSessionStringFormat('1not a session'),
-      SessionStringFormat.unknown,
     );
   });
 

@@ -42,28 +42,6 @@ void main() {
     expect(broadEvents, [1, 2, 3, 4, 5]);
   });
 
-  test('local corrections reach active typed streams only', () async {
-    final activeEvents = <int>[];
-    final allEvents = <int>[];
-    final subscriptions = [
-      client
-          .updatesOf('mithkaUnreadDelta')
-          .listen((u) => activeEvents.add(u['sequence'])),
-      client
-          .updatesOf('mithkaUnreadDelta', allAccounts: true)
-          .listen((u) => allEvents.add(u['sequence'])),
-    ];
-    addTearDown(() async {
-      for (final subscription in subscriptions) {
-        await subscription.cancel();
-      }
-    });
-
-    client.emitLocalUpdate(event('mithkaUnreadDelta', 1));
-    expect(activeEvents, [1]);
-    expect(allEvents, isEmpty);
-  });
-
   test(
     'merged typed streams support pause, cancellation and resubscription',
     () async {

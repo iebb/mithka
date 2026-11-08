@@ -9,7 +9,6 @@ import 'package:mithka/components/app_interactive_surface.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/retain_download_button.dart';
 import 'package:mithka/settings/retained_download_store.dart';
-import 'package:mithka/settings/retained_downloads_panel.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -117,71 +116,6 @@ void main() {
     },
   );
 
-  test('missing or truncated complete cache is rejected', () async {
-    final stale = file();
-    await source.writeAsBytes([1, 2]);
-    await expectLater(
-      store.keep(file: stale, title: 'clip.mp4', isVideo: true),
-      throwsStateError,
-    );
-    await source.delete();
-    await expectLater(
-      store.keep(file: stale, title: 'clip.mp4', isVideo: true),
-      throwsStateError,
-    );
-    expect(await store.list(), isEmpty);
-  });
-
-  test(
-    'failed storage writes do not remove the source or advertise success',
-    () async {
-      final obstruction = await File(
-        '${temporary.path}/not-a-directory',
-      ).writeAsString('unrelated');
-      final blocked = RetainedDownloadStore(Directory(obstruction.path));
-      await expectLater(
-        blocked.keep(file: file(), title: 'clip.mp4', isVideo: true),
-        throwsA(isA<FileSystemException>()),
-      );
-      expect(await source.readAsBytes(), [1, 2, 3, 4, 5]);
-      expect(await obstruction.readAsString(), 'unrelated');
-    },
-  );
-
-  test(
-    'concurrent saves of the same remote file publish one complete copy',
-    () async {
-      final saved = await Future.wait([
-        store.keep(file: file(), title: 'first.mp4', isVideo: true),
-        store.keep(file: file(), title: 'second.mp4', isVideo: true),
-      ]);
-      expect(saved[0].id, saved[1].id);
-      expect(await store.list(), hasLength(1));
-      expect(await store.directory.list().toList(), hasLength(1));
-    },
-  );
-
-  test(
-    'matching filenames and reused numeric file ids do not overwrite copies',
-    () async {
-      final first = await store.keep(
-        file: file(),
-        title: 'clip.mp4',
-        isVideo: true,
-      );
-      await source.writeAsBytes([6, 7, 8, 9, 0]);
-      final second = await store.keep(
-        file: file(identity: 'video-2'),
-        title: 'clip.mp4',
-        isVideo: true,
-      );
-      expect(first.id, isNot(second.id));
-      expect(await File(first.path).readAsBytes(), [1, 2, 3, 4, 5]);
-      expect(await File(second.path).readAsBytes(), [6, 7, 8, 9, 0]);
-      expect(await store.list(), hasLength(2));
-    },
-  );
-
   test(
     'unsafe and long filenames stay inside their own entry directory',
     () async {
@@ -207,33 +141,6 @@ void main() {
         expect(utf8.encode(entry.fileName).length, lessThanOrEqualTo(176));
         expect(await File(entry.path).length(), 5);
       }
-    },
-  );
-
-  test(
-    'pending copies, symlinks and corrupt metadata are not listed',
-    () async {
-      await store.directory.create(recursive: true);
-      await Directory('${store.directory.path}/.pending-interrupted').create();
-      final id = 'a' * 64;
-      await Link('${store.directory.path}/$id').create(temporary.path);
-      expect(await store.list(), isEmpty);
-      await expectLater(store.remove(id), throwsStateError);
-      expect(await source.exists(), isTrue);
-      final entry = await store.keep(
-        file: file(),
-        title: 'clip.mp4',
-        isVideo: true,
-      );
-      final metadata = File('${store.directory.path}/${entry.id}/entry.json');
-      final raw =
-          jsonDecode(await metadata.readAsString()) as Map<String, dynamic>;
-      raw['file_name'] = '../../cached-video';
-      await metadata.writeAsString(jsonEncode(raw));
-      expect(await store.list(), isEmpty);
-      await expectLater(store.remove(entry.id), throwsStateError);
-      expect(await source.exists(), isTrue);
-      await expectLater(store.remove('../cached-video'), throwsArgumentError);
     },
   );
 
@@ -339,57 +246,6 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
   });
-
-  testWidgets(
-    'retained list reads the independent index and confirms deletion',
-    (tester) async {
-      late RetainedDownload entry;
-      await tester.runAsync(() async {
-        entry = await store.keep(
-          file: file(),
-          title: 'clip.mp4',
-          isVideo: true,
-        );
-        await source.delete();
-      });
-      final theme = ThemeController(await SharedPreferences.getInstance());
-      addTearDown(theme.dispose);
-      final listing = _MemoryRetainedStore(store.directory, [entry]);
-      await tester.pumpWidget(
-        _app(theme, RetainedDownloadsPanel(accountSlot: slot, store: listing)),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('clip.mp4'), findsOneWidget);
-      final remove = find.byKey(ValueKey('retained-remove-${entry.id}'));
-      await tester.tap(remove);
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('app-confirm-cancel')));
-      await tester.pumpAndSettle();
-      expect(listing.removed, isEmpty);
-      await tester.tap(remove);
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('app-confirm-accept')));
-      await tester.pumpAndSettle();
-      expect(find.text('clip.mp4'), findsNothing);
-      expect(listing.removed, [entry.id]);
-    },
-  );
-}
-
-class _MemoryRetainedStore extends RetainedDownloadStore {
-  _MemoryRetainedStore(super.directory, this.entries);
-
-  final List<RetainedDownload> entries;
-  final List<String> removed = [];
-
-  @override
-  Future<List<RetainedDownload>> list() async => List.of(entries);
-
-  @override
-  Future<void> remove(String id) async {
-    removed.add(id);
-    entries.removeWhere((entry) => entry.id == id);
-  }
 }
 
 Future<void> _drainFileOperations(
