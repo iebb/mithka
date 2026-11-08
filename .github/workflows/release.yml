@@ -724,11 +724,20 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
     needs: prepare
     runs-on: ubuntu-latest
+    # Optional until its assembled path is validated: a failure here must not
+    # mark the package run failed, because the release job below and the
+    # store coordinator only require the established platforms.
+    continue-on-error: true
     # The untrusted toolchain container never needs to mutate the repository:
     # it only produces artifacts. Publication credentials stay exclusive to
     # the release job below.
     permissions:
       contents: read
+    # Container jobs otherwise run steps with sh (dash), which rejects the
+    # `set -o pipefail` the steps below rely on.
+    defaults:
+      run:
+        shell: bash
     container:
       # Ships Ubuntu 20.04 with the HarmonyOS SDK (API 22), hvigor, ohpm, and
       # node 18. Its bundled /opt/flutter is an older 3.35.8-ohos fork that
@@ -1193,8 +1202,9 @@ jobs:
               | wc -l \
               | tr -d ' '
           )"
-          if [ "$hap_count" -ne 1 ]; then
-            echo "Expected exactly one ohos hap package, found $hap_count" >&2
+          # The optional build-ohos job may be absent; never accept duplicates.
+          if [ "$hap_count" -gt 1 ]; then
+            echo "Expected at most one ohos hap package, found $hap_count" >&2
             exit 1
           fi
           echo "APKs: $apk_count"

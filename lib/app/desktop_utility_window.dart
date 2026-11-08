@@ -601,7 +601,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
         if (!confirmed || !mounted) return;
       }
       var sentAny = false;
-      if (await TdClient.shared.activeAccountUsesBotApi() ||
+      if (result.sendsAsFormattedText) {
+        // Inline formatting alone travels as an ordinary message (below).
+      } else if (await TdClient.shared.activeAccountUsesBotApi() ||
           await _pickerViewModel.currentUserIsPremium()) {
         for (final segment in result.segments) {
           if (segment.isHtml) {

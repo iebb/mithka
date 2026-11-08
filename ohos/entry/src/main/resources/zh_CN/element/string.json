@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "Mithka"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "Mithka 使用麦克风录制语音消息。"
     }
   ]
 }

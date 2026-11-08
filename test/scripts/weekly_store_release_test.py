@@ -18,6 +18,33 @@ SPEC.loader.exec_module(RELEASE)
 
 
 class WeeklyReleaseTest(unittest.TestCase):
+    def test_only_an_optional_harmonyos_failure_skips_publication_recovery(self):
+        def jobs(ohos, publish):
+            return {
+                "jobs": [
+                    {"name": "Build arm64-v8a APK", "conclusion": "success"},
+                    {"name": "Build HarmonyOS hap", "conclusion": ohos},
+                    {"name": "Publish GitHub Release", "conclusion": publish},
+                ]
+            }
+
+        cases = {
+            ("failure", "success"): True,
+            ("success", "success"): False,
+            ("failure", "failure"): False,
+            ("failure", "skipped"): False,
+        }
+        for (ohos, publish), expected in cases.items():
+            with (
+                self.subTest(ohos=ohos, publish=publish),
+                patch.object(RELEASE, "api", return_value=jobs(ohos, publish)),
+            ):
+                self.assertEqual(RELEASE.optional_package_failure_only(9), expected)
+        required_failed = jobs("failure", "success")
+        required_failed["jobs"][0]["conclusion"] = "failure"
+        with patch.object(RELEASE, "api", return_value=required_failed):
+            self.assertFalse(RELEASE.optional_package_failure_only(9))
+
     def test_package_recovery_reuses_its_recorded_dispatch_and_never_rebuilds(self):
         plan = {"version": "1.8.8", "source_sha": "a" * 40}
         original = {"id": 9}
@@ -256,6 +283,25 @@ class WeeklyReleaseTest(unittest.TestCase):
         with self.assertRaises(RELEASE.Error):
             RELEASE.verify_github_packages(release, manifest, plan)
         release["assets"][0]["digest"] = "sha256:" + "c" * 64
+        hap = {
+            "mithka-1.8.8-20261027-ohos-arm64.hap": {"sha256": "c" * 64, "size": 1}
+        }
+        with_hap = dict(manifest, files={**files, **hap})
+        hap_release = dict(
+            release,
+            assets=release["assets"]
+            + [{"name": next(iter(hap)), "digest": "sha256:" + "c" * 64, "size": 1}],
+        )
+        RELEASE.verify_github_packages(hap_release, with_hap, plan)
+        duplicate = dict(
+            manifest,
+            files={
+                **with_hap["files"],
+                "mithka-1.8.8-20261028-ohos-arm64.hap": {"sha256": "c" * 64, "size": 1},
+            },
+        )
+        with self.assertRaises(RELEASE.Error):
+            RELEASE.verify_github_packages(hap_release, duplicate, plan)
         for changed in [
             dict(manifest, version="1.8.0"),
             dict(manifest, source_sha="b" * 40),
