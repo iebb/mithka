@@ -2123,6 +2123,10 @@ abstract final class AppStringKeys {
   static const keywordBlockerRulesAdded = 'keywordBlockerRulesAdded';
   static const keywordBlockerRulesUpToDate = 'keywordBlockerRulesUpToDate';
   static const keywordBlockerTitle = 'keywordBlockerTitle';
+  static const mithkaxSettingsTitle = 'mithkaxSettingsTitle';
+  static const mithkaxHistorySection = 'mithkaxHistorySection';
+  static const mithkaxGhostSection = 'mithkaxGhostSection';
+  static const mithkaxPremiumSection = 'mithkaxPremiumSection';
   static const languageMithkaLanguage = 'languageMithkaLanguage';
   static const languageTitle = 'languageTitle';
   static const linkBrowserAddress = 'linkBrowserAddress';

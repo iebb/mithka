@@ -2093,6 +2093,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Estrellas de Telegrama</string>
     <string name="linkHandlerUnsupportedTelegramLink">Aún no se admite abrir este enlace de Telegram</string>
     <string name="linkHandlerWritingStyle">Estilo de escritura</string>
+    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxHistorySection">Historial de mensajes</string>
+    <string name="mithkaxGhostSection">Modo fantasma</string>
+    <string name="mithkaxPremiumSection">Premium local</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Desbloquea las superficies premium del cliente para tu propia cuenta en este dispositivo. Los límites del servidor se mantienen y no se envía nada a Telegram.</string>
     <string name="localPremiumTitle">Premium local</string>

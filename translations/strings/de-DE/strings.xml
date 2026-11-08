@@ -2093,6 +2093,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Dieser Telegram-Link wird derzeit nicht unterstützt</string>
     <string name="linkHandlerWritingStyle">Schreibstil</string>
+    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxHistorySection">Nachrichtenverlauf</string>
+    <string name="mithkaxGhostSection">Geistermodus</string>
+    <string name="mithkaxPremiumSection">Lokales Premium</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Schaltet die clientseitigen Premium-Flächen für dein eigenes Konto auf diesem Gerät frei. Serverseitige Limits bleiben bestehen; nichts wird an Telegram gesendet.</string>
     <string name="localPremiumTitle">Lokales Premium</string>

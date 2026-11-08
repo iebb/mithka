@@ -40,6 +40,7 @@ import 'developer_settings_view.dart';
 import 'feature_settings_view.dart';
 import 'general_settings_view.dart';
 import 'language_settings_view.dart';
+import 'mithkax_settings_view.dart';
 import 'notification_settings_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_security_view.dart';
@@ -975,10 +976,27 @@ class _SettingsViewState extends State<SettingsView> {
         searchTerms: const ['backup', 'restore', 'session', 'export', 'import'],
       ),
       _SettingsDestination(
-        id: 'mithka-features',
+        id: 'mithkax-features',
         owner: _SettingsOwner.mithka,
         group: 5,
         order: 0,
+        titleKey: AppStringKeys.mithkaxSettingsTitle,
+        icon: HeroAppIcons.wandMagicSparkles,
+        color: const Color(0xFF7467F0),
+        destination: () => const MithkaXSettingsView(),
+        searchTerms: const [
+          'mithkax',
+          'message history',
+          'ghost mode',
+          'local premium',
+          'deleted messages',
+        ],
+      ),
+      _SettingsDestination(
+        id: 'mithka-features',
+        owner: _SettingsOwner.mithka,
+        group: 5,
+        order: 10,
         titleKey: AppStringKeys.featureTitle,
         icon: HeroAppIcons.grip,
         color: const Color(0xFF3C8CF0),
@@ -995,7 +1013,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-ai',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 10,
+        order: 20,
         titleKey: AppStringKeys.aiSettingsTitle,
         icon: HeroAppIcons.cpuChip,
         color: const Color(0xFF7467F0),
@@ -1013,7 +1031,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-proxy',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 20,
+        order: 30,
         titleKey: AppStringKeys.proxyTitle,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
@@ -1024,7 +1042,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-advanced',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 30,
+        order: 40,
         titleKey: AppStringKeys.advancedTitle,
         icon: HeroAppIcons.objectGroup,
         color: const Color(0xFF16B0A0),
@@ -1042,7 +1060,7 @@ class _SettingsViewState extends State<SettingsView> {
           id: 'mithka-developer',
           owner: _SettingsOwner.mithka,
           group: 5,
-          order: 40,
+          order: 50,
           titleKey: AppStringKeys.developerModeTitle,
           icon: HeroAppIcons.code,
           color: const Color(0xFFFF5A5F),
@@ -1058,7 +1076,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-about',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 50,
+        order: 60,
         titleKey: AppStringKeys.settingsAboutMithka,
         icon: HeroAppIcons.circleInfo,
         color: const Color(0xFF8E8E93),
@@ -1362,6 +1380,7 @@ const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
     titleKey: AppStringKeys.advancedTitle,
     icon: HeroAppIcons.grip,
     destinationIds: [
+      'mithkax-features',
       'mithka-features',
       'mithka-ai',
       'mithka-proxy',

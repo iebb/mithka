@@ -2087,6 +2087,10 @@
     <string name="linkHandlerUnsupportedTelegramLink">この Telegram リンクを開くことはまだサポートされていません</string>
     <string name="linkHandlerWritingStyle">文体</string>
     <string name="listSeparator">、</string>
+    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxHistorySection">メッセージ履歴</string>
+    <string name="mithkaxGhostSection">ゴーストモード</string>
+    <string name="mithkaxPremiumSection">ローカルプレミアム</string>
     <string name="localPremiumNote">この端末上で自分のアカウントのクライアント側プレミアム機能を解放します。サーバー側の制限はそのまま適用され、Telegram へ何も送信しません。</string>
     <string name="localPremiumTitle">ローカルプレミアム</string>
     <string name="locationDetailFetchingLocation">位置情報を取得中…</string>

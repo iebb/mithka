@@ -2093,6 +2093,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Opening this Telegram link is not supported yet</string>
     <string name="linkHandlerWritingStyle">Writing style</string>
+    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxHistorySection">Message history</string>
+    <string name="mithkaxGhostSection">Ghost mode</string>
+    <string name="mithkaxPremiumSection">Local premium</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Unlock the client-side premium surfaces for your own account on this device. Server-side limits still apply and nothing is sent to Telegram.</string>
     <string name="localPremiumTitle">Local Premium</string>

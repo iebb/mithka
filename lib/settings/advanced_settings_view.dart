@@ -5,13 +5,9 @@ import 'package:flutter/material.dart';
 import '../chats/local_pin_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
-import '../config/build_flags.dart';
-import '../history/message_history_settings.dart';
-import '../history/message_history_view.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
-import '../theme/app_motion.dart';
 import 'bot_api_endpoint_view.dart';
 import 'rich_message_relay_config.dart';
 import 'rich_message_relay_view.dart';
@@ -176,67 +172,6 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
               ),
             ],
           ),
-          // Telegram §1.4 exception: the mirror and its viewer ship only in
-          // opted-in self-builds; with the flag off there is no entry point.
-          if (allowTelegramTosViolations) ...[
-            const SettingsSectionHeader(AppStringKeys.historyRecordSection),
-            SettingsCard.rows(
-              rows: [
-                SettingsSwitchRow(
-                  key: const ValueKey('history-record-deleted'),
-                  title: AppStringKeys.historyRecordDeleted.l10n(context),
-                  value: MessageHistorySettings.shared.recordDeleted,
-                  onChanged: MessageHistorySettings.shared.setRecordDeleted,
-                ),
-                SettingsSwitchRow(
-                  key: const ValueKey('history-record-edits'),
-                  title: AppStringKeys.historyRecordEdits.l10n(context),
-                  value: MessageHistorySettings.shared.recordEdits,
-                  onChanged: MessageHistorySettings.shared.setRecordEdits,
-                ),
-                SettingsSwitchRow(
-                  key: const ValueKey('history-render-ghosts'),
-                  title: AppStringKeys.historyRenderGhosts.l10n(context),
-                  value: MessageHistorySettings.shared.renderGhosts,
-                  onChanged: MessageHistorySettings.shared.setRenderGhosts,
-                ),
-              ],
-            ),
-            const SettingsNote(text: AppStringKeys.historyRecordNote),
-            SettingsSection(
-              titleKey: AppStringKeys.historySnapshotSection,
-              rows: [
-                SettingsSwitchRow(
-                  key: const ValueKey('history-snapshot-private'),
-                  title: AppStringKeys.historySnapshotPrivate.l10n(context),
-                  value: MessageHistorySettings.shared.snapshotPrivate,
-                  onChanged: MessageHistorySettings.shared.setSnapshotPrivate,
-                ),
-                SettingsSwitchRow(
-                  key: const ValueKey('history-snapshot-groups'),
-                  title: AppStringKeys.historySnapshotGroups.l10n(context),
-                  value: MessageHistorySettings.shared.snapshotGroups,
-                  onChanged: MessageHistorySettings.shared.setSnapshotGroups,
-                ),
-                SettingsSwitchRow(
-                  key: const ValueKey('history-snapshot-channels'),
-                  title: AppStringKeys.historySnapshotChannels.l10n(context),
-                  value: MessageHistorySettings.shared.snapshotChannels,
-                  onChanged: MessageHistorySettings.shared.setSnapshotChannels,
-                ),
-                SettingsRow(
-                  title: AppStringKeys.historySettingsRow,
-                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.clock),
-                  onTap: () => Navigator.of(context).push(
-                    AppPageRoute<void>(
-                      pageBuilder: (_, _, _) => const MessageHistoryView(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SettingsNote(text: AppStringKeys.historySnapshotNote),
-          ],
         ],
       ),
     );

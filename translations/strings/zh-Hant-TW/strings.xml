@@ -2087,6 +2087,10 @@
     <string name="linkHandlerUnsupportedTelegramLink">暫不支援開啟此 Telegram 連結</string>
     <string name="linkHandlerWritingStyle">寫作風格</string>
     <string name="listSeparator">、</string>
+    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxHistorySection">訊息歷史</string>
+    <string name="mithkaxGhostSection">隱身模式</string>
+    <string name="mithkaxPremiumSection">本機大會員</string>
     <string name="localPremiumNote">在本機為自己帳號解鎖用戶端側的大會員介面。伺服器端限制照舊，不會向 Telegram 傳送任何內容。</string>
     <string name="localPremiumTitle">本地大會員</string>
     <string name="locationDetailFetchingLocation">正在取得位置…</string>
