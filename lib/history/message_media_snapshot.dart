@@ -179,12 +179,19 @@ class MessageMediaSnapshotter {
 
   /// Writes export bytes back as the snapshot of the entry keyed
   /// `<account>:<chat>:<message>`; returns the new path, null on failure.
-  Future<String?> writeSnapshotBytes(String entryKey, List<int> bytes) async {
+  /// The written file is renamed to THIS caller's account prefix, so an
+  /// import under a different account id still lets deleteScope and
+  /// deleteAccount reclaim the file.
+  Future<String?> writeSnapshotBytes(
+    String entryKey,
+    List<int> bytes, {
+    int? accountUserIdOverride,
+  }) async {
     if (!allowTelegramTosViolations) return null;
     try {
       final parts = entryKey.split(':');
       if (parts.length != 3) return null;
-      final accountUserId = int.tryParse(parts[0]);
+      final accountUserId = accountUserIdOverride ?? int.tryParse(parts[0]);
       final chatId = int.tryParse(parts[1]);
       final messageId = int.tryParse(parts[2]);
       if (accountUserId == null || chatId == null || messageId == null) {

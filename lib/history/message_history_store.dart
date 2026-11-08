@@ -787,30 +787,30 @@ class MessageHistoryStore extends ChangeNotifier {
   /// Bot chats the store has seen an updateChat for, keyed per account.
   /// A bot dialog is a private chat, but recording its service messages is
   /// a separate exteraless-style opt-in, so the chat type observed from
-  /// TDLib is cached here — chat ids alone cannot tell a bot from a human.
+  /// TDLib is cached here — chat ids alone cannot tell a bot dialog from a
+  /// human one.
   final Map<String, bool> _botChats = {};
 
-  /// The chat ids whose TDLib type the store has observed, per account —
-  /// the key exists for both bots and plain chats so a cached "not a bot"
-  /// answer survives too.
-  final Set<String> _knownChatTypes = {};
-
   /// Whether the mirror may record [chatId] for [accountUserId] under the
-  /// per-type switches. Consulted with the raw TDLib message (which carries
-  /// enough sender hints to sniff a bot when the chat type is not cached
-  /// yet — updates often arrive before updateChat).
+  /// per-type switches. Bot gating applies to DIALOGS only (a private chat
+  /// with a bot); the raw message carries the sender's is_bot when the
+  /// chat type is not cached yet — updates often arrive before updateChat.
   bool recordsChatType(
     int accountUserId,
     int chatId,
     Map<String, dynamic>? message,
   ) {
     final settings = MessageHistorySettings.shared;
-    final knownType = _knownChatTypes.contains('$accountUserId:$chatId');
-    final isBot =
-        _botChats['$accountUserId:$chatId'] ??
-        (knownType ? false : _sniffBotFromMessage(message));
-    if (isBot) return settings.recordBots;
-    if (chatId > 0) return settings.recordPrivate;
+    // The bot question exists only for DIALOGS: a private chat with a bot.
+    // A bot posting inside a group or channel is still group/channel
+    // content — letting the sender's is_bot flip the chat's gate would drop
+    // the whole conversation the moment one bot posts there.
+    if (chatId > 0) {
+      final isBot =
+          _botChats['$accountUserId:$chatId'] ?? _sniffBotFromMessage(message);
+      if (isBot) return settings.recordBots;
+      return settings.recordPrivate;
+    }
     if (chatId > -1000000000000) return settings.recordGroups;
     return settings.recordChannels;
   }
@@ -839,7 +839,6 @@ class MessageHistoryStore extends ChangeNotifier {
     final isBot = type?.boolean('is_bot') ?? false;
     if (type != null) {
       _botChats[key] = isBot;
-      _knownChatTypes.add(key);
     }
   }
 
@@ -1292,7 +1291,14 @@ class MessageHistoryStore extends ChangeNotifier {
       // must not come back either (they render nowhere and only bloat).
       if (excluded.contains(entry.chatId)) continue;
       _byKey['$accountUserId:${entry.chatId}:${entry.messageId}'] = entry
-          .copyWith(accountUserId: accountUserId);
+          .copyWith(
+            accountUserId: accountUserId,
+            // The row's snapshot path was written under the EXPORTING
+            // account's prefix; the media loop rewrites the file under
+            // THIS account and patches the row below, but only if the row
+            // arrives without a stale path attached.
+            mediaPath: '',
+          );
       restored++;
     }
     final media = document['media'];
@@ -1305,8 +1311,14 @@ class MessageHistoryStore extends ChangeNotifier {
         if (bytes == null) continue;
         // Snapshot file names derive from (account, chat, message) — one
         // file per kept MESSAGE, never per revision: the latest revision's
-        // media wins (the entry rows carry the matching mediaPath).
-        final restoredPath = await snapshotter.writeSnapshotBytes(e.key, bytes);
+        // media wins (the entry rows carry the matching mediaPath). The
+        // file is re-keyed to the IMPORTING account so scope deletions can
+        // reclaim it; the export key still names the row it belongs to.
+        final restoredPath = await snapshotter.writeSnapshotBytes(
+          e.key,
+          bytes,
+          accountUserIdOverride: accountUserId,
+        );
         if (restoredPath != null) {
           final parts = e.key.split(':');
           if (parts.length != 3) continue;
