@@ -46,6 +46,15 @@ class RichTextComposerResult {
   /// caller without a rich send path can deliver the text and drop the blocks.
   final bool hasRichBlocks;
 
+  /// Whether an ordinary formatted message carries this document unchanged:
+  /// text with inline entities only, within the plain message length. Such a
+  /// document is sent inline rather than as a rich message.
+  bool get sendsAsFormattedText =>
+      !hasRichBlocks &&
+      attachments.isEmpty &&
+      text.trim().isNotEmpty &&
+      telegramMessageLengthTier(text) == TelegramMessageLengthTier.standard;
+
   FormattedTextPayload get formattedText =>
       FormattedTextPayload(text, entities);
 }
@@ -1371,29 +1380,18 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
       child: Column(
         children: [
           SizedBox(
-            height: 54,
-            child: Row(
+            height: 56,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Visibility(
-                  visible: widget.showCloseAction,
-                  maintainSize: true,
-                  maintainAnimation: true,
-                  maintainState: true,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _close,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        AppStringKeys.countryPickerCancel.l10n(context),
-                        style: TextStyle(fontSize: 16, color: c.textPrimary),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
+                // The title centres on the sheet, not between the unequal
+                // close and send controls.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 104),
                   child: Text(
                     widget.title.l10n(context),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 17,
@@ -1403,25 +1401,25 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
                     ),
                   ),
                 ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _submit,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      widget.submitText.l10n(context),
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppTheme.brand,
-                        fontWeight: FontWeight.w600,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Visibility(
+                        visible: widget.showCloseAction,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: _headerCloseButton(c),
                       ),
-                    ),
+                      const Spacer(),
+                      _headerSubmitButton(),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          Divider(height: 1, color: c.divider),
           _toolbar(c),
           Expanded(
             child: LayoutBuilder(
@@ -3186,118 +3184,151 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     _RichInlineFormatAction.spoiler,
   ];
 
-  Widget _toolbar(AppColors c) {
-    return Container(
-      decoration: BoxDecoration(
-        color: c.background,
-        border: Border(bottom: BorderSide(color: c.divider)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _inlineFormatBar(c),
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              children: [
-                _actionChip(
-                  c,
-                  'P',
-                  () => unawaited(_insertBlockKind(_RichBlockKind.paragraph)),
-                ),
-                _actionChip(
-                  c,
-                  'H',
-                  () => unawaited(_insertBlockKind(_RichBlockKind.heading)),
-                ),
-                _actionChip(
-                  c,
-                  '•',
-                  () => unawaited(_insertBlockKind(_RichBlockKind.list)),
-                ),
-                _iconButton(
-                  c,
-                  icon: HeroAppIcons.quoteLeft,
-                  label: _RichBlockKind.blockQuotation.labelKey.l10n(context),
-                  onTap: () => unawaited(
-                    _insertBlockKind(_RichBlockKind.blockQuotation),
-                  ),
-                ),
-                _iconButton(
-                  c,
-                  icon: HeroAppIcons.tableCells,
-                  label: AppStringKeys.richTextComposerInsertTable.l10n(
-                    context,
-                  ),
-                  onTap: () =>
-                      unawaited(_insertBlockKind(_RichBlockKind.table)),
-                ),
-                _iconButton(
-                  c,
-                  icon: HeroAppIcons.link,
-                  label: _RichBlockKind.buttonRow.labelKey.l10n(context),
-                  onTap: () =>
-                      unawaited(_insertBlockKind(_RichBlockKind.buttonRow)),
-                ),
-                _actionChip(
-                  c,
-                  '∑',
-                  () => unawaited(
-                    _insertBlockKind(_RichBlockKind.mathematicalExpression),
-                  ),
-                ),
-                _iconButton(
-                  c,
-                  icon: HeroAppIcons.locationPin,
-                  label: _RichBlockKind.map.labelKey.l10n(context),
-                  onTap: () => unawaited(_insertBlockKind(_RichBlockKind.map)),
-                ),
-                _toolbarInsertButton(c),
-              ],
+  /// Blocks one tap away in the toolbar; every other kind sits in the insert
+  /// menu pinned at its right edge.
+  static const _quickBlockKinds = [
+    _RichBlockKind.heading,
+    _RichBlockKind.list,
+    _RichBlockKind.blockQuotation,
+    _RichBlockKind.table,
+  ];
+
+  Widget _headerCloseButton(AppColors c) {
+    return Semantics(
+      button: true,
+      label: AppStringKeys.countryPickerCancel.l10n(context),
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('richTextComposerClose'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _close,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: c.searchFill,
+                shape: BoxShape.circle,
+              ),
+              child: AppIcon(
+                HeroAppIcons.xmark,
+                size: 16,
+                color: c.textPrimary,
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Inline formatting for the current selection. The controller only applies
-  /// formats to a non-collapsed selection, so the buttons stay disabled until
-  /// the user selects text; the selection menu remains the full-featured path.
-  Widget _inlineFormatBar(AppColors c) {
-    final textBlock = _activeTextBlock;
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: textBlock.controller,
-      builder: (context, value, _) {
-        final selection = value.selection;
-        final hasSelection = selection.isValid && !selection.isCollapsed;
-        return SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 3, 12, 3),
-            children: [
-              for (final action in _inlineFormatBarActions)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: _inlineFormatButton(
-                    c,
-                    action: action,
-                    enabled: hasSelection,
-                    selected:
-                        hasSelection &&
-                        textBlock.controller.selectionHasFormat(
-                          action.selectionEntityType,
-                        ),
-                    onTap: () => _applyInlineFormatToActiveBlock(action),
-                  ),
+  Widget _headerSubmitButton() {
+    return Semantics(
+      button: true,
+      label: widget.submitText.l10n(context),
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('richTextComposerSubmit'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _submit,
+        child: SizedBox(
+          height: 44,
+          child: Center(
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.brand,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                widget.submitText.l10n(context),
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  decoration: TextDecoration.none,
                 ),
-            ],
+              ),
+            ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  /// One row: inline formats for the selection, then the common blocks, with
+  /// the full insert menu pinned at the right so it never scrolls away.
+  ///
+  /// The controller only formats a non-collapsed selection, so the inline
+  /// toggles stay dimmed until text is selected.
+  Widget _toolbar(AppColors c) {
+    final textBlock = _activeTextBlock;
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: c.background,
+        border: Border.symmetric(horizontal: BorderSide(color: c.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: textBlock.controller,
+              builder: (context, value, _) {
+                final selection = value.selection;
+                final hasSelection =
+                    selection.isValid && !selection.isCollapsed;
+                return ListView(
+                  key: const ValueKey('richTextComposerToolbar'),
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+                  children: [
+                    for (final action in _inlineFormatBarActions)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: _inlineFormatButton(
+                          c,
+                          action: action,
+                          enabled: hasSelection,
+                          selected:
+                              hasSelection &&
+                              textBlock.controller.selectionHasFormat(
+                                action.selectionEntityType,
+                              ),
+                          onTap: () => _applyInlineFormatToActiveBlock(action),
+                        ),
+                      ),
+                    Center(
+                      child: Container(
+                        width: 1,
+                        height: 20,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        color: c.divider,
+                      ),
+                    ),
+                    for (final kind in _quickBlockKinds)
+                      _iconButton(
+                        c,
+                        key: ValueKey('rich-quick-${kind.name}'),
+                        icon: kind.icon,
+                        label: kind.labelKey.l10n(context),
+                        onTap: () => unawaited(_insertBlockKind(kind)),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          _toolbarInsertButton(c),
+        ],
+      ),
     );
   }
 
@@ -3347,21 +3378,16 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
         onTap: enabled ? onTap : null,
         child: Container(
           width: 34,
-          height: 32,
+          height: 34,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected
                 ? AppTheme.brand.withValues(alpha: 0.14)
-                : c.searchFill,
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(
-              color: selected
-                  ? AppTheme.brand.withValues(alpha: 0.54)
-                  : c.divider,
-            ),
           ),
           child: icon != null
-              ? AppIcon(icon, size: 16, color: foreground)
+              ? AppIcon(icon, size: 18, color: foreground)
               : Text(
                   _inlineFormatMark(action),
                   style: AppTextStyle.caption(foreground).copyWith(
@@ -3401,23 +3427,34 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
 
   Widget _toolbarInsertButton(AppColors c) {
     return Builder(
-      builder: (buttonContext) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          final box = buttonContext.findRenderObject() as RenderBox?;
-          if (box == null) return;
-          final anchor = box.localToGlobal(Offset(box.size.width / 2, 0));
-          unawaited(_showRichBlockInsertMenuAt(anchor));
-        },
-        child: Container(
-          width: 48,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: c.searchFill,
-            borderRadius: BorderRadius.circular(AppRadius.md),
+      builder: (buttonContext) => Semantics(
+        button: true,
+        label: AppStringKeys.richTextComposerInsert.l10n(context),
+        excludeSemantics: true,
+        child: GestureDetector(
+          key: const ValueKey('richTextComposerInsertButton'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            final box = buttonContext.findRenderObject() as RenderBox?;
+            if (box == null) return;
+            final anchor = box.localToGlobal(
+              Offset(box.size.width / 2, box.size.height),
+            );
+            unawaited(_showRichBlockInsertMenuAt(anchor));
+          },
+          child: Container(
+            width: 48,
+            height: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: c.divider)),
+            ),
+            child: AppIcon(
+              HeroAppIcons.circlePlus,
+              size: 24,
+              color: AppTheme.brand,
+            ),
           ),
-          child: AppIcon(HeroAppIcons.ellipsis, size: 23, color: c.textPrimary),
         ),
       ),
     );
@@ -3955,48 +3992,32 @@ class _RichTextComposerViewState extends State<RichTextComposerView> {
     } catch (_) {}
   }
 
-  Widget _actionChip(AppColors c, String label, VoidCallback onTap) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyle.callout(
-            c.textPrimary,
-            weight: AppTextWeight.semibold,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _iconButton(
     AppColors c, {
+    Key? key,
     required AppIconData icon,
     required String label,
     required VoidCallback onTap,
   }) {
-    return Tooltip(
-      message: label,
-      excludeFromSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: GestureDetector(
+          key: key,
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: AppIcon(icon, size: 18, color: c.textSecondary),
           ),
-          child: AppIcon(icon, size: 18, color: c.textPrimary),
         ),
       ),
     );
