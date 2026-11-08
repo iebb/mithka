@@ -316,7 +316,7 @@ void main() {
     final settings = MessageHistorySettings.shared;
     settings.setRecordGroups(true);
     settings.setRecordBots(false);
-    final groupChat = -1009998887770;
+    const groupChat = -1009998887770;
     await emit({
       '@type': 'updateNewMessage',
       '@client_id': _clientA,
