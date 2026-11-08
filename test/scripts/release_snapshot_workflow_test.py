@@ -109,6 +109,7 @@ esac
                 GITHUB_REPOSITORY="iebb/mithka",
                 GITHUB_EVENT_NAME="workflow_dispatch",
                 DESKTOP_TEST_ONLY="false",
+                OHOS_TEST_ONLY="false",
                 GITHUB_OUTPUT=str(root / "output"),
                 RELEASE_TAG="v1.8.8",
                 CALLS=str(root / "calls"),
@@ -165,12 +166,35 @@ esac
             {"GITHUB_REF": "refs/heads/release"},
             {"GITHUB_EVENT_NAME": "push"},
             {"DESKTOP_TEST_ONLY": "true"},
+            {"OHOS_TEST_ONLY": "true"},
         ]:
             code, output, _calls = self.run_program(
                 "Read version from pubspec.yaml", override
             )
             self.assertNotEqual(code, 0)
             self.assertEqual(output, {})
+
+    def test_ohos_test_dispatch_is_a_prerelease_label_only(self):
+        master_dispatch = {
+            "STORE_SOURCE_COMMIT": "",
+            "SOURCE_COMMIT": CONTROLLER,
+            "FAKE_HEAD": CONTROLLER,
+            "OHOS_TEST_ONLY": "true",
+        }
+        code, output, _calls = self.run_program(
+            "Read version from pubspec.yaml", master_dispatch
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(output["release_tag"].startswith("ohos-test-1.8.8-"))
+        self.assertEqual(output["prerelease"], "true")
+        self.assertEqual(output["make_latest"], "false")
+
+        code, output, _calls = self.run_program(
+            "Read version from pubspec.yaml",
+            {**master_dispatch, "DESKTOP_TEST_ONLY": "true"},
+        )
+        self.assertNotEqual(code, 0)
+        self.assertEqual(output, {})
 
     def test_existing_canonical_tag_is_verified_and_never_moved(self):
         code, _output, calls = self.run_program("Create release tag")
