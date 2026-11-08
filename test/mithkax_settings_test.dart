@@ -59,6 +59,13 @@ void main() {
 
   testWidgets('history switches flip on tap', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
+    if (_enabled) {
+      // The master switch gates every record switch now.
+      final master = find.byKey(const ValueKey('history-enable-all'));
+      await tester.scrollUntilVisible(master, 200);
+      await tester.tap(master);
+      await tester.pumpAndSettle();
+    }
     final row = find.byKey(const ValueKey('history-record-deleted'));
     await tester.scrollUntilVisible(row, 200);
     expect(row, findsOneWidget);
@@ -69,6 +76,10 @@ void main() {
       MessageHistorySettings.shared.recordDeleted,
       _enabled ? isTrue : isFalse,
     );
+    if (_enabled) {
+      MessageHistorySettings.shared.setEnableAll(false);
+      MessageHistorySettings.shared.setRecordDeleted(false);
+    }
 
     // The row's knob reflects the new value with no outside rebuild: the
     // rebuilt AppSwitch aligns its handle right when on.
@@ -94,5 +105,59 @@ void main() {
     await tester.tap(row);
     await tester.pumpAndSettle();
     expect(LocalPremium.shared.enabled, _enabled ? isTrue : isFalse);
+  });
+
+  testWidgets('master switch gates the sub-switches visually', (tester) async {
+    await _pump(tester, const MithkaXSettingsView());
+    final master = find.byKey(const ValueKey('history-enable-all'));
+    await tester.scrollUntilVisible(master, 200);
+    expect(master, findsOneWidget);
+
+    if (!_enabled) return;
+    // Sub-switches are dimmed while the master is off.
+    final sub = find.byKey(const ValueKey('history-record-deleted'));
+    await tester.scrollUntilVisible(sub, 200);
+    final opacity = tester.widget<Opacity>(
+      find.ancestor(of: sub, matching: find.byType(Opacity)).first,
+    );
+    expect(opacity.opacity, 0.45);
+
+    await tester.tap(master);
+    await tester.pumpAndSettle();
+    final opacityAfter = tester.widget<Opacity>(
+      find.ancestor(of: sub, matching: find.byType(Opacity)).first,
+    );
+    expect(opacityAfter.opacity, 1.0);
+    MessageHistorySettings.shared.setEnableAll(false);
+  });
+
+  testWidgets('the transfer entry and badge style row exist', (tester) async {
+    await _pump(tester, const MithkaXSettingsView());
+    final transfer = find.byKey(const ValueKey('mithkax-history-transfer'));
+    await tester.scrollUntilVisible(transfer, 300);
+    expect(transfer, findsOneWidget);
+    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
+    await tester.scrollUntilVisible(badge, 300);
+    expect(badge, findsOneWidget);
+  });
+
+  testWidgets('badge style picker updates the settings store', (tester) async {
+    await _pump(tester, const MithkaXSettingsView());
+    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
+    await tester.scrollUntilVisible(badge, 300);
+    if (!_enabled) {
+      expect(badge, findsOneWidget);
+      return;
+    }
+    await tester.tap(badge);
+    await tester.pumpAndSettle();
+    final option = find.byKey(const ValueKey('mithkax-badge-style-text'));
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    expect(
+      MessageHistorySettings.shared.badgeStyle,
+      GhostBadgeStyle.text,
+    );
+    MessageHistorySettings.shared.setBadgeStyle(GhostBadgeStyle.icon);
   });
 }

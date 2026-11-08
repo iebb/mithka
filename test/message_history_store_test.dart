@@ -162,6 +162,7 @@ void main() {
     // The runtime switches default to OFF; this suite exercises the store
     // with recording enabled (individual tests disable what they probe).
     final settings = MessageHistorySettings.shared;
+    settings.setEnableAll(true);
     settings.setRecordDeleted(true);
     settings.setRecordEdits(true);
     settings.setSnapshotPrivate(true);
@@ -179,8 +180,10 @@ void main() {
     await dir.delete(recursive: true);
     // Reset the runtime switches for the next suite (defaults are OFF).
     final settings = MessageHistorySettings.shared;
+    settings.setEnableAll(false);
     settings.setRecordDeleted(false);
     settings.setRecordEdits(false);
+    settings.setRecordReadTimes(false);
     settings.setSnapshotPrivate(false);
     settings.setSnapshotGroups(false);
     settings.setSnapshotChannels(false);

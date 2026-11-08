@@ -26,6 +26,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
+import '../history/message_history_store.dart';
 import '../history/message_history_view.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
@@ -1164,6 +1165,28 @@ class _ChatInfoViewState extends State<ChatInfoView> {
             ),
             height: 52,
             leadingInset: 14,
+          ),
+          // Per-chat recording switch (exclude/re-include without a
+          // unified viewer): off stops recording AND drops this chat's
+          // kept copies, exactly like the viewer's exclude action.
+          const InsetDivider(leadingInset: 14),
+          ListenableBuilder(
+            listenable: MessageHistoryStore.shared,
+            builder: (context, _) {
+              final excluded = MessageHistoryStore.shared.isChatExcluded(
+                widget.chatId,
+              );
+              return SettingsSwitchRow(
+                key: const ValueKey('chatInfoKeepRecording'),
+                title: AppStrings.t(AppStringKeys.chatInfoKeepRecording),
+                value: !excluded,
+                onChanged: (value) => value
+                    ? MessageHistoryStore.shared.includeChat(widget.chatId)
+                    : MessageHistoryStore.shared.excludeChat(widget.chatId),
+                height: 52,
+                leadingInset: 14,
+              );
+            },
           ),
         ],
       ],

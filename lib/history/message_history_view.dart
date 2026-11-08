@@ -3,11 +3,11 @@
 //
 //  The local message-history viewer: every kept copy of what this account
 //  received, including messages the counterpart deleted or edited
-//  afterwards. Entries are grouped per chat; opening a chat shows its kept
-//  messages newest-first with edit trails and media snapshots. Deleted
-//  entries render translucent (the AyuGram ghost style). Opened from
-//  Advanced settings behind the compile-time [allowTelegramTosViolations]
-//  gate.
+//  afterwards. There is NO unified viewer entry any more — the view opens
+//  per chat (chat info row / ghost-bubble actions); opening it without a
+//  chat id falls back to the chat picker so old entry points keep working.
+//  Deleted entries render translucent (the AyuGram ghost style). Telegram
+//  API Terms §1.4 feature, compile-time gated.
 //
 
 import 'dart:async';

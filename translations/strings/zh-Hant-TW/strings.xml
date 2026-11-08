@@ -1004,6 +1004,7 @@
     <string name="chatInfoGroupRemarkHint">新增只有自己可見的名稱</string>
     <string name="chatInfoGroupRemarkLocalOnly">僅儲存在此裝置上。</string>
     <string name="chatInfoGroupVideos">群組影片</string>
+    <string name="chatInfoKeepRecording">記錄訊息歷史</string>
     <string name="chatInfoLeaveGroup">退出群組</string>
     <string name="chatInfoLoadFoldersFailed">無法載入聊天資料夾</string>
     <string name="chatInfoManageChannel">管理頻道</string>
@@ -1926,6 +1927,10 @@
     <string name="hideSenderInThisGroup">僅在此群組</string>
     <string name="hideSenderMessage">僅在此裝置上生效。不會封鎖或檢舉對方，對方也不會收到通知。</string>
     <string name="hideSenderTitle">隱藏 {value1} 的訊息？</string>
+    <string name="historyBadgeStyleBoth">圖示加文字</string>
+    <string name="historyBadgeStyleIcon">僅圖示</string>
+    <string name="historyBadgeStyleText">僅文字</string>
+    <string name="historyBadgeStyleTitle">刪除標記樣式</string>
     <string name="historyChatLabel">聊天 {value1}</string>
     <string name="historyClearAction">清除</string>
     <string name="historyClearAllConfirmTitle">清除所有保留的訊息？</string>
@@ -1935,9 +1940,19 @@
     <string name="historyEditEvent">{value1} 編輯為：{value2}</string>
     <string name="historyEditedLabel">已編輯</string>
     <string name="historyEmpty">尚無保留的訊息。本帳號收到的訊息會鏡像保存在本機，被刪除或被編輯過的內容仍可在此查看。</string>
+    <string name="historyEnableAll">啟用訊息歷史</string>
     <string name="historyExcludedNote">被排除的聊天完全不保留訊息，已有的副本也會被移除。</string>
     <string name="historyExcludedTitle">排除的聊天</string>
+    <string name="historyExportAction">匯出訊息歷史</string>
+    <string name="historyExportSubtitle">含媒體快照，儲存為 JSON 檔案</string>
+    <string name="historyExportedToast">已匯出 %1$s 條</string>
     <string name="historyFilteredNote">只顯示一個聊天。點按任意列可依其聊天篩選；返回可清除篩選。</string>
+    <string name="historyImportAction">匯入訊息歷史</string>
+    <string name="historyImportConfirmMessage">匯入將取代目前帳號的全部訊息歷史</string>
+    <string name="historyImportConfirmTitle">匯入訊息歷史？</string>
+    <string name="historyImportFailedToast">匯入失敗</string>
+    <string name="historyImportSubtitle">從匯出的 JSON 檔案還原</string>
+    <string name="historyImportedToast">已匯入 %1$s 條</string>
     <string name="historyKindAnimation">GIF</string>
     <string name="historyKindAudio">音訊</string>
     <string name="historyKindContact">聯絡人</string>
@@ -1952,9 +1967,15 @@
     <string name="historyKindVideoNote">影片訊息</string>
     <string name="historyKindVoice">語音訊息</string>
     <string name="historyNoExcludedChats">沒有排除任何聊天。</string>
+    <string name="historyReadAtLabel">已讀時間</string>
+    <string name="historyRecordBots">機器人聊天記錄訊息</string>
+    <string name="historyRecordChannels">頻道記錄訊息</string>
     <string name="historyRecordDeleted">保存已刪除的訊息</string>
     <string name="historyRecordEdits">保存編輯歷史</string>
+    <string name="historyRecordGroups">群聊記錄訊息</string>
     <string name="historyRecordNote">兩個開關預設關閉，開啟前不記錄任何內容。留存副本只存在本機，清除前一直在。</string>
+    <string name="historyRecordPrivate">私聊記錄訊息</string>
+    <string name="historyRecordReadTimes">記錄已讀時間</string>
     <string name="historyRecordSection">記錄</string>
     <string name="historyReincludeAction">恢復記錄</string>
     <string name="historyRemoveFromMirrorAction">從鏡像刪除</string>
@@ -1971,6 +1992,8 @@
     <string name="historySnapshotSection">媒體快照</string>
     <string name="historyTitle">訊息歷史</string>
 
+    <string name="historyTransferNote">匯出包含目前帳號的全部保留副本與媒體快照；匯入整庫取代目前帳號的鏡像。</string>
+    <string name="historyTransferTitle">匯出與匯入</string>
     <string name="imageEditAdd">新增</string>
     <string name="imageEditAddText">新增文字</string>
     <string name="imageEditBrush">筆刷</string>

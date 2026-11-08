@@ -7429,6 +7429,12 @@ class ChatViewModel extends ChangeNotifier {
         }
         continue;
       }
+      // Reply-to-deleted → quote (exteraless): when the target is not in
+      // the transcript, the local mirror may still hold a kept copy of the
+      // deleted original; its text fills the reply anchor like a quote.
+      if (_applyMirrorReply(m, rid, rChatId)) {
+        continue;
+      }
       final unresolved = unresolvedByChat.putIfAbsent(
         rChatId,
         () => <int, List<ChatMessage>>{},
@@ -7453,6 +7459,38 @@ class ChatViewModel extends ChangeNotifier {
       }
     }
   }
+
+  /// Fills a reply anchor from the mirror when the quoted message was
+  /// deleted (Telegram §1.4, self-build gated): the kept copy's text,
+  /// sender and date become the quote-style preview. Only used when the
+  /// live transcript does not have the target — a live message always wins.
+  bool _applyMirrorReply(ChatMessage m, int replyId, int replyChatId) {
+    if (!allowTelegramTosViolations) return false;
+    final store = historyStoreOverride ?? MessageHistoryStore.shared;
+    final accountUserId = _accountUserId;
+    if (accountUserId == null) return false;
+    final entry = store.entryFor(accountUserId, replyChatId, replyId);
+    if (entry == null) return false;
+    final body = entry.text.trim().isNotEmpty
+        ? entry.text.trim()
+        : localizedHistoryKindLabelStub(entry.kindKey);
+    m.replyToPreview = body;
+    m.replyToDate = entry.date;
+    if (entry.senderId != 0) {
+      m.replyToSender = _senderCache[entry.senderId]?.name ?? '';
+      if ((m.replyToSender ?? '').isEmpty && entry.senderId > 0) {
+        unawaited(_resolveQuotedSender(m, entry.senderId));
+      }
+    } else {
+      m.replyToSender = isGroup ? '' : peerTitle;
+    }
+    return true;
+  }
+
+  /// Kind label without a BuildContext (the viewer localizes on render);
+  /// null text with a media kind keeps a short generic placeholder.
+  static String localizedHistoryKindLabelStub(String kindKey) =>
+      kindKey.isEmpty ? '' : kindKey;
 
   /// Fetches one batch of reply targets and patches every message waiting on it.
   void _resolveReplyTargets(
@@ -7696,8 +7734,10 @@ class ChatViewModel extends ChangeNotifier {
 
   /// Test seam: merge live messages as the update path would.
   @visibleForTesting
-  void debugMergeMessagesForTesting(List<ChatMessage> incoming) =>
-      _merge(incoming);
+  void debugMergeMessagesForTesting(List<ChatMessage> incoming) {
+    _merge(incoming);
+    _resolveRepliesIfNeeded(incoming);
+  }
 
   /// Test seam: ids currently in `_allMessages` (ghosts never join it).
   @visibleForTesting

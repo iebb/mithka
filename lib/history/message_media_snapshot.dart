@@ -161,6 +161,55 @@ class MessageMediaSnapshotter {
     } catch (_) {}
   }
 
+  /// Reads a snapshot's bytes for export; null when the file is missing,
+  /// unreadable, or lives outside the snapshot directory (a stale path).
+  Future<List<int>?> readSnapshotBytes(String path) async {
+    if (!allowTelegramTosViolations) return null;
+    try {
+      final directory = dir;
+      if (directory == null) return null;
+      if (!path.startsWith('${directory.path}/')) return null;
+      final file = File(path);
+      if (!await file.exists()) return null;
+      return await file.readAsBytes();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Writes export bytes back as the snapshot of the entry keyed
+  /// `<account>:<chat>:<message>`; returns the new path, null on failure.
+  Future<String?> writeSnapshotBytes(String entryKey, List<int> bytes) async {
+    if (!allowTelegramTosViolations) return null;
+    try {
+      final parts = entryKey.split(':');
+      if (parts.length != 3) return null;
+      final accountUserId = int.tryParse(parts[0]);
+      final chatId = int.tryParse(parts[1]);
+      final messageId = int.tryParse(parts[2]);
+      if (accountUserId == null ||
+          chatId == null ||
+          messageId == null) {
+        return null;
+      }
+      await ensureDirResolved();
+      final directory = dir;
+      if (directory == null) return null;
+      await directory.create(recursive: true);
+      final name = _snapshotFileName(
+        accountUserId,
+        chatId,
+        messageId,
+        File('x.bin'),
+      );
+      final target = File('${directory.path}/$name');
+      await target.writeAsBytes(bytes, flush: true);
+      return target.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Removes every snapshot of one (account, chat) scope.
   void deleteScope(int accountUserId, int chatId) {
     if (!allowTelegramTosViolations) return;

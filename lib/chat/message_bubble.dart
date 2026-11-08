@@ -27,6 +27,7 @@ import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../history/message_history_settings.dart';
 import '../media/media_metadata.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/profile_detail_view.dart';
@@ -6889,30 +6890,45 @@ class _GhostDeletedBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Align(
-      alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onLongPress: onLongPress,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: c.groupedBackground.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppIcon(HeroAppIcons.trash, size: 11, color: c.textTertiary),
-              const SizedBox(width: 4),
-              Text(
-                AppStringKeys.historyDeletedLabel.l10n(context),
-                style: AppTextStyle.footnote(c.textTertiary),
+    return ListenableBuilder(
+      listenable: MessageHistorySettings.shared,
+      builder: (context, _) {
+        final style = MessageHistorySettings.shared.badgeStyle;
+        final showIcon = style != GhostBadgeStyle.text;
+        final showText = style != GhostBadgeStyle.icon;
+        return Align(
+          alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: onLongPress,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: c.groupedBackground.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showIcon) ...[
+                    AppIcon(
+                      HeroAppIcons.trash,
+                      size: 11,
+                      color: c.textTertiary,
+                    ),
+                  ],
+                  if (showIcon && showText) const SizedBox(width: 4),
+                  if (showText)
+                    Text(
+                      AppStringKeys.historyDeletedLabel.l10n(context),
+                      style: AppTextStyle.footnote(c.textTertiary),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

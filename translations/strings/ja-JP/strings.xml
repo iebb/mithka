@@ -1004,6 +1004,7 @@
     <string name="chatInfoGroupRemarkHint">自分だけに表示する名前を追加</string>
     <string name="chatInfoGroupRemarkLocalOnly">この端末にのみ保存されます。</string>
     <string name="chatInfoGroupVideos">グループ動画</string>
+    <string name="chatInfoKeepRecording">メッセージ履歴を保持</string>
     <string name="chatInfoLeaveGroup">グループを退出</string>
     <string name="chatInfoLoadFoldersFailed">チャットフォルダを読み込めません</string>
     <string name="chatInfoManageChannel">チャンネルを管理</string>
@@ -1926,6 +1927,10 @@
     <string name="hideSenderInThisGroup">このグループのみ</string>
     <string name="hideSenderMessage">この端末でのみ非表示になります。ブロックや報告はされず、相手に通知もされません。</string>
     <string name="hideSenderTitle">{value1} のメッセージを非表示にしますか？</string>
+    <string name="historyBadgeStyleBoth">アイコンとテキスト</string>
+    <string name="historyBadgeStyleIcon">アイコンのみ</string>
+    <string name="historyBadgeStyleText">テキストのみ</string>
+    <string name="historyBadgeStyleTitle">削除バッジのスタイル</string>
     <string name="historyChatLabel">チャット {value1}</string>
     <string name="historyClearAction">消去</string>
     <string name="historyClearAllConfirmTitle">保存したメッセージをすべて消去しますか？</string>
@@ -1935,9 +1940,19 @@
     <string name="historyEditEvent">{value1} に編集: {value2}</string>
     <string name="historyEditedLabel">編集済み</string>
     <string name="historyEmpty">保存されたメッセージはありません。このアカウントが受信したメッセージはこの端末内にミラーリングされ、削除や編集された内容もここで読めます。</string>
+    <string name="historyEnableAll">メッセージ履歴を有効化</string>
     <string name="historyExcludedNote">除外したチャットのメッセージは一切保存されず、既存のコピーも削除されます。</string>
     <string name="historyExcludedTitle">除外したチャット</string>
+    <string name="historyExportAction">メッセージ履歴をエクスポート</string>
+    <string name="historyExportSubtitle">メディアスナップショット付きの JSON ファイル</string>
+    <string name="historyExportedToast">%1$s 件をエクスポートしました</string>
     <string name="historyFilteredNote">1つのチャットのみ表示しています。行をタップするとそのチャットで絞り込み、戻ると解除されます。</string>
+    <string name="historyImportAction">メッセージ履歴をインポート</string>
+    <string name="historyImportConfirmMessage">インポートするとこのアカウントのメッセージ履歴全体を置き換えます</string>
+    <string name="historyImportConfirmTitle">メッセージ履歴をインポートしますか？</string>
+    <string name="historyImportFailedToast">インポートに失敗しました</string>
+    <string name="historyImportSubtitle">エクスポートした JSON ファイルから復元</string>
+    <string name="historyImportedToast">%1$s 件をインポートしました</string>
     <string name="historyKindAnimation">GIF</string>
     <string name="historyKindAudio">音声</string>
     <string name="historyKindContact">連絡先</string>
@@ -1952,9 +1967,15 @@
     <string name="historyKindVideoNote">ビデオメッセージ</string>
     <string name="historyKindVoice">ボイスメッセージ</string>
     <string name="historyNoExcludedChats">除外されたチャットはありません。</string>
+    <string name="historyReadAtLabel">既読時刻</string>
+    <string name="historyRecordBots">ボットとの対話を記録</string>
+    <string name="historyRecordChannels">チャンネルで記録</string>
     <string name="historyRecordDeleted">削除されたメッセージを保持</string>
     <string name="historyRecordEdits">編集履歴を保持</string>
+    <string name="historyRecordGroups">グループで記録</string>
     <string name="historyRecordNote">両スイッチはデフォルトでオフです。有効にするまで何も記録されません。保持したコピーは本端末にのみ保存され、削除するまで残ります。</string>
+    <string name="historyRecordPrivate">私聊で記録</string>
+    <string name="historyRecordReadTimes">既読時刻を記録</string>
     <string name="historyRecordSection">記録</string>
     <string name="historyReincludeAction">記録を再開</string>
     <string name="historyRemoveFromMirrorAction">ミラーから削除</string>
@@ -1971,6 +1992,8 @@
     <string name="historySnapshotSection">メディアスナップショット</string>
     <string name="historyTitle">メッセージ履歴</string>
 
+    <string name="historyTransferNote">エクスポートはこのアカウントの全保持コピーとメディアスナップショットを含みます。インポートはこのアカウントのミラー全体を置き換えます。</string>
+    <string name="historyTransferTitle">エクスポートとインポート</string>
     <string name="imageEditAdd">追加</string>
     <string name="imageEditAddText">テキストを追加</string>
     <string name="imageEditBrush">ブラシ</string>

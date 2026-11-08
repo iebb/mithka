@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_store.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -275,6 +277,24 @@ class _MessageInfoViewState extends State<MessageInfoView> {
     );
   }
 
+  /// The mirror's Spy-style read stamp for this message (compile-gated):
+  /// shown only when the store actually recorded a read time — a missing
+  /// stamp keeps the stock row, so nothing changes for non-mirrored chats.
+  Widget _mirrorReadAtRow() {
+    if (!allowTelegramTosViolations) return const SizedBox.shrink();
+    final entry = MessageHistoryStore.shared.entry(
+      widget.chatId,
+      widget.message.id,
+    );
+    final readAt = entry?.readAt ?? 0;
+    if (readAt <= 0) return const SizedBox.shrink();
+    return _InfoRow(
+      icon: HeroAppIcons.clock,
+      label: AppStringKeys.historyReadAtLabel,
+      value: DateText.messageDetailLabel(readAt),
+    );
+  }
+
   Widget _deliveryCard() {
     return _InfoCard(
       children: [
@@ -283,6 +303,7 @@ class _MessageInfoViewState extends State<MessageInfoView> {
           label: AppStringKeys.messageInfoRead,
           value: _readStatus(),
         ),
+        _mirrorReadAtRow(),
         _InfoRow(
           icon: HeroAppIcons.eye,
           label: AppStringKeys.messageInfoViews,

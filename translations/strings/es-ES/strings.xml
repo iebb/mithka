@@ -1004,6 +1004,7 @@
     <string name="chatInfoGroupRemarkHint">Añade un nombre visible solo para ti</string>
     <string name="chatInfoGroupRemarkLocalOnly">Se guarda solo en este dispositivo.</string>
     <string name="chatInfoGroupVideos">Videos del grupo</string>
+    <string name="chatInfoKeepRecording">Conservar historial de mensajes</string>
     <string name="chatInfoLeaveGroup">Salir del grupo</string>
     <string name="chatInfoLoadFoldersFailed">No se pudieron cargar las carpetas de chats</string>
     <string name="chatInfoManageChannel">Gestionar el canal</string>
@@ -1933,6 +1934,10 @@
     <string name="hideSenderInThisGroup">En este grupo</string>
     <string name="hideSenderMessage">Solo en este dispositivo. No se bloquea, no se denuncia ni se avisa a la persona.</string>
     <string name="hideSenderTitle">¿Ocultar los mensajes de {value1}?</string>
+    <string name="historyBadgeStyleBoth">Icono y texto</string>
+    <string name="historyBadgeStyleIcon">Solo icono</string>
+    <string name="historyBadgeStyleText">Solo texto</string>
+    <string name="historyBadgeStyleTitle">Estilo de insignia de borrado</string>
     <string name="historyChatLabel">Chat {value1}</string>
     <string name="historyClearAction">Borrar</string>
     <string name="historyClearAllConfirmTitle">¿Borrar todos los mensajes guardados?</string>
@@ -1942,9 +1947,19 @@
     <string name="historyEditEvent">Editado a las {value1}: {value2}</string>
     <string name="historyEditedLabel">Editado</string>
     <string name="historyEmpty">Todavía no hay nada guardado. Los mensajes recibidos se copian solo en este dispositivo para que los borrados o editados sigan siendo legibles.</string>
+    <string name="historyEnableAll">Activar historial de mensajes</string>
     <string name="historyExcludedNote">Los mensajes de los chats excluidos no se guardan en absoluto; las copias existentes se eliminaron.</string>
     <string name="historyExcludedTitle">Chats excluidos</string>
+    <string name="historyExportAction">Exportar historial de mensajes</string>
+    <string name="historyExportSubtitle">Con instantáneas de medios, en un archivo JSON</string>
+    <string name="historyExportedToast">%1$s entradas exportadas</string>
     <string name="historyFilteredNote">Muestra un chat. Toca una fila para filtrar por su chat; vuelve atrás para quitar el filtro.</string>
+    <string name="historyImportAction">Importar historial de mensajes</string>
+    <string name="historyImportConfirmMessage">Importar reemplazará todo el historial de mensajes de esta cuenta</string>
+    <string name="historyImportConfirmTitle">¿Importar el historial de mensajes?</string>
+    <string name="historyImportFailedToast">Error al importar</string>
+    <string name="historyImportSubtitle">Restaurar desde un archivo JSON exportado</string>
+    <string name="historyImportedToast">%1$s entradas importadas</string>
     <string name="historyKindAnimation">GIF</string>
     <string name="historyKindAudio">Audio</string>
     <string name="historyKindContact">Contacto</string>
@@ -1959,9 +1974,15 @@
     <string name="historyKindVideoNote">Mensaje de vídeo</string>
     <string name="historyKindVoice">Mensaje de voz</string>
     <string name="historyNoExcludedChats">No hay chats excluidos.</string>
+    <string name="historyReadAtLabel">Leído el</string>
+    <string name="historyRecordBots">Registrar en chats de bots</string>
+    <string name="historyRecordChannels">Registrar en canales</string>
     <string name="historyRecordDeleted">Guardar mensajes eliminados</string>
     <string name="historyRecordEdits">Guardar historial de ediciones</string>
+    <string name="historyRecordGroups">Registrar en grupos</string>
     <string name="historyRecordNote">Ambos interruptores están desactivados por defecto; no se guarda nada hasta que los actives. Las copias guardadas viven solo en este dispositivo y permanecen hasta que las borres.</string>
+    <string name="historyRecordPrivate">Registrar en chats privados</string>
+    <string name="historyRecordReadTimes">Registrar horas de lectura</string>
     <string name="historyRecordSection">Grabación</string>
     <string name="historyReincludeAction">Incluir</string>
     <string name="historyRemoveFromMirrorAction">Quitar del espejo</string>
@@ -1978,6 +1999,8 @@
     <string name="historySnapshotSection">Instantáneos de multimedia</string>
     <string name="historyTitle">Historial de mensajes</string>
 
+    <string name="historyTransferNote">La exportación cubre todas las copias guardadas e instantáneas de medios de esta cuenta; la importación reemplaza por completo el espejo de esta cuenta.</string>
+    <string name="historyTransferTitle">Exportar e importar</string>
     <string name="imageEditAdd">Añadir</string>
     <string name="imageEditAddText">Añadir texto</string>
     <string name="imageEditBrush">Pincel</string>

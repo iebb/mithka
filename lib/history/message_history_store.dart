@@ -96,6 +96,9 @@ class MessageHistoryStore extends ChangeNotifier {
     // A chat whose counterpart deleted their account (or the chat) stops
     // being openable; kept entries then render in the ghost style.
     'updateChat',
+    // Spy-style read-time capture: the counterpart's outbox read cursor
+    // moving stamps kept outgoing copies with the read time.
+    'updateChatReadOutbox',
   ];
 
   final Map<String, MessageHistoryEntry> _byKey = {};
@@ -242,6 +245,14 @@ class MessageHistoryStore extends ChangeNotifier {
       _activeAccountUserId == null
       ? null
       : _byKey['$_activeAccountUserId:$chatId:$messageId'];
+
+  /// Looks up an entry of an EXPLICIT account — the reply-anchor filler in
+  /// the chat view model knows the owning slot's user id and must not read
+  /// whichever account happens to be active.
+  MessageHistoryEntry? entryFor(int accountUserId, int chatId, int messageId) =>
+      allowTelegramTosViolations
+      ? _byKey['$accountUserId:$chatId:$messageId']
+      : null;
 
   /// Deleted kept copies of one chat of one account, oldest first — the
   /// ghost-bubble source. Reads by explicit account id so a chat view of a
@@ -515,6 +526,8 @@ class MessageHistoryStore extends ChangeNotifier {
         return update.int64('chat_id');
       case 'updateChat':
         return update.obj('chat')?.int64('id');
+      case 'updateChatReadOutbox':
+        return update.int64('chat_id');
     }
     return null;
   }
@@ -570,6 +583,8 @@ class MessageHistoryStore extends ChangeNotifier {
         _recordDeletedMessages(accountUserId, update);
       case 'updateChat':
         _recordChatLiveness(accountUserId, update);
+      case 'updateChatReadOutbox':
+        _recordOutboxRead(accountUserId, update);
     }
     return Future<void>.value();
   }
@@ -622,10 +637,14 @@ class MessageHistoryStore extends ChangeNotifier {
       return;
     }
 
-    // Recording a brand-new copy requires the deleted-recording switch; a
-    // known copy is always refreshed so re-arrivals keep existing mirrors
-    // truthful even after the switch was turned off.
-    if (!settings.recordDeleted) return;
+    // Recording a brand-new copy requires the deleted-recording switch AND
+    // the conversation-type switch of this chat's class; a known copy is
+    // always refreshed so re-arrivals keep existing mirrors truthful even
+    // after the switches were turned off.
+    if (!settings.recordDeleted ||
+        !recordsChatType(accountUserId, chatId, message)) {
+      return;
+    }
 
     final date = message.integer('date') ?? 0;
     final content = message.obj('content');
@@ -754,6 +773,68 @@ class MessageHistoryStore extends ChangeNotifier {
   MessageMediaSnapshotter _media() =>
       mediaSnapshotter ?? MessageMediaSnapshotter.shared;
 
+  // ---------------------------------------------------------------------------
+  // Chat-type gates (bot detection + per-type recording)
+  // ---------------------------------------------------------------------------
+
+  /// Bot chats the store has seen an updateChat for, keyed per account.
+  /// A bot dialog is a private chat, but recording its service messages is
+  /// a separate exteraless-style opt-in, so the chat type observed from
+  /// TDLib is cached here — chat ids alone cannot tell a bot from a human.
+  final Map<String, bool> _botChats = {};
+
+  /// The chat ids whose TDLib type the store has observed, per account —
+  /// the key exists for both bots and plain chats so a cached "not a bot"
+  /// answer survives too.
+  final Set<String> _knownChatTypes = {};
+
+  /// Whether the mirror may record [chatId] for [accountUserId] under the
+  /// per-type switches. Consulted with the raw TDLib message (which carries
+  /// enough sender hints to sniff a bot when the chat type is not cached
+  /// yet — updates often arrive before updateChat).
+  bool recordsChatType(int accountUserId, int chatId, Map<String, dynamic>? message) {
+    final settings = MessageHistorySettings.shared;
+    final knownType = _knownChatTypes.contains('$accountUserId:$chatId');
+    final isBot = _botChats['$accountUserId:$chatId'] ??
+        (knownType ? false : _sniffBotFromMessage(message));
+    if (isBot) return settings.recordBots;
+    if (chatId > 0) return settings.recordPrivate;
+    if (chatId > -1000000000000) return settings.recordGroups;
+    return settings.recordChannels;
+  }
+
+  /// Best-effort bot detection from the message payload itself: a sender
+  /// marked `is_bot`, a reply bot header, or an inline-keyboard markup all
+  /// smell like a bot chat. False for everything else.
+  static bool _sniffBotFromMessage(Map<String, dynamic>? message) {
+    if (message == null) return false;
+    final sender = message.obj('sender_id');
+    if (sender?.type == 'messageSenderUser' &&
+        (sender?.boolean('is_bot') ?? false)) {
+      return true;
+    }
+    if (message.obj('reply_markup') != null) return true;
+    final viaBot = message.int64('via_bot_user_id');
+    if (viaBot != null && viaBot > 0) return true;
+    return false;
+  }
+
+  /// Seeds the chat-type caches from an observed chat object. A user-type
+  /// chat resolves the bot question definitively (`is_bot` on the type);
+  /// other chat types just mark the id as known so the id-class fallback
+  /// applies without further sniffing.
+  void _rememberChatType(int accountUserId, Map<String, dynamic> chat) {
+    final chatId = chat.int64('id');
+    if (chatId == null) return;
+    final key = '$accountUserId:$chatId';
+    final type = chat.obj('type');
+    final isBot = type?.boolean('is_bot') ?? false;
+    if (type != null) {
+      _botChats[key] = isBot;
+      _knownChatTypes.add(key);
+    }
+  }
+
   /// The snapshotter the viewer resolves media paths against (tests read
   /// the injected one, production the shared instance).
   MessageMediaSnapshotter get mediaSnapshotterForView => _media();
@@ -771,6 +852,7 @@ class MessageHistoryStore extends ChangeNotifier {
     if (chat == null) return;
     final chatId = chat.int64('id');
     if (chatId == null) return;
+    _rememberChatType(accountUserId, chat);
     final gone = switch (chat.obj('type')?.type) {
       'chatTypeUnknown' => true,
       _ => false,
@@ -787,6 +869,37 @@ class MessageHistoryStore extends ChangeNotifier {
         continue;
       }
       _byKey[entry.key] = entry.copyWith(hasLiveChat: !gone);
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+      _schedulePersist();
+    }
+  }
+
+  /// Spy-style read-time capture: updateChatReadOutbox moves the
+  /// counterpart's read cursor. Every kept copy of this account whose
+  /// message id is at or below the cursor and not yet stamped gets the
+  /// observed read time — the earliest cursor crossing wins, exactly like
+  /// exteraless's read-time log. Runs for outgoing kept copies (Saved
+  /// Messages) and for kept incoming copies read by the counterpart in
+  /// cross-chat scenarios the id ranges cannot distinguish; the viewer
+  /// only shows the stamp on messages the account sent.
+  void _recordOutboxRead(int accountUserId, Map<String, dynamic> update) {
+    final settings = MessageHistorySettings.shared;
+    if (!settings.recordReadTimes) return;
+    final chatId = update.int64('chat_id');
+    final cursor = update.int64('last_read_outbox_message_id');
+    if (chatId == null || cursor == null || cursor <= 0) return;
+    var changed = false;
+    for (final entry in _byKey.values.toList(growable: false)) {
+      if (entry.accountUserId != accountUserId ||
+          entry.chatId != chatId ||
+          entry.messageId > cursor ||
+          entry.readAt > 0) {
+        continue;
+      }
+      _byKey[entry.key] = entry.copyWith(readAt: DateTime.now().millisecondsSinceEpoch ~/ 1000);
       changed = true;
     }
     if (changed) {
@@ -1058,6 +1171,142 @@ class MessageHistoryStore extends ChangeNotifier {
           in _excludedChatsByAccount[accountUserId] ?? const <int>{})
         '$chatId',
     ]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export / import — the whole mirror as one self-describing JSON file
+  // (exteraless's database export/import, without the binary format).
+  // ---------------------------------------------------------------------------
+
+  static const exportVersion = 1;
+  static const exportFormat = 'mithkax-history';
+
+  /// Serializes the ACTIVE account's kept copies (entries, exclusions and
+  /// the snapshot media as base64) into a portable JSON document. Media
+  /// files are read once here; a missing file contributes nothing rather
+  /// than failing the whole export.
+  Future<Map<String, Object?>> exportAccount() async {
+    final accountUserId = _activeAccountUserId;
+    if (accountUserId == null) {
+      throw StateError('No active account');
+    }
+    final entries = _byKey.values
+        .where((entry) => entry.accountUserId == accountUserId)
+        .toList()
+      ..sort((a, b) {
+        final byChat = a.chatId.compareTo(b.chatId);
+        return byChat != 0 ? byChat : a.messageId.compareTo(b.messageId);
+      });
+    final media = <String, String>{};
+    final snapshotter = _media();
+    for (final entry in entries) {
+      if (entry.mediaPath.isEmpty) continue;
+      final bytes = await snapshotter.readSnapshotBytes(entry.mediaPath);
+      if (bytes == null) continue;
+      media[entry.key] = base64Encode(bytes);
+    }
+    return {
+      'format': exportFormat,
+      'version': exportVersion,
+      'exportedAt': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      'account': accountUserId,
+      'excluded': [
+        for (final chatId
+            in (_excludedChatsByAccount[accountUserId] ?? const <int>{}))
+          chatId,
+      ],
+      'entries': [for (final entry in entries) entry.toJson()],
+      if (media.isNotEmpty) 'media': media,
+    };
+  }
+
+  /// Restores an export into the store: replaces the importing account's
+  /// mirror wholesale. In-flight writes are fenced by the scoped epoch the
+  /// same way clearChat does, so pending updates can never resurrect the
+  /// replaced state. Returns the number of restored entries.
+  Future<int> importAccount(Map<String, Object?> document) async {
+    if (document['format'] != exportFormat) {
+      throw const FormatException('Not a Mithka X history export');
+    }
+    final accountUserId = _activeAccountUserId;
+    if (accountUserId == null) {
+      throw StateError('No active account');
+    }
+    final exportedAccount = document['account'];
+    if (exportedAccount is! int) {
+      throw const FormatException('Export has no account');
+    }
+    final rawEntries = document['entries'];
+    if (rawEntries is! List) {
+      throw const FormatException('Export has no entries');
+    }
+    // Drop the account's current mirror first — an import replaces, not
+    // merges — then restore row by row, re-keyed to THIS account.
+    final keys = [
+      for (final entry in _byKey.values)
+        if (entry.accountUserId == accountUserId) entry.key,
+    ];
+    for (final key in keys) {
+      _byKey.remove(key);
+    }
+    _pendingEditDates.removeWhere(
+      (key, _) => key.startsWith('$accountUserId:'),
+    );
+    _media().deleteAccount(accountUserId);
+    final excluded = <int>{
+      for (final raw in document['excluded'] is List ? document['excluded'] as List : const [])
+        if (raw is int) raw,
+    };
+    _excludedChatsByAccount[accountUserId] = excluded;
+    _persistExcludedChats(accountUserId);
+    _clearedChatAt['$accountUserId:*'] = ++_scopeEpoch;
+    var restored = 0;
+    for (final raw in rawEntries) {
+      final entry = MessageHistoryEntry.fromJson(raw);
+      if (entry == null) continue;
+      _byKey['$accountUserId:${entry.chatId}:${entry.messageId}'] =
+          entry.copyWith(accountUserId: accountUserId);
+      restored++;
+    }
+    final media = document['media'];
+    if (media is Map) {
+      final snapshotter = _media();
+      for (final e in media.entries) {
+        final data = e.value;
+        if (data is! String) continue;
+        final bytes = tryBase64Decode(data);
+        if (bytes == null) continue;
+        final restoredPath = await snapshotter.writeSnapshotBytes(
+          e.key,
+          bytes,
+        );
+        if (restoredPath != null) {
+          final parts = e.key.split(':');
+          if (parts.length != 3) continue;
+          final chatId = int.tryParse(parts[1]);
+          final messageId = int.tryParse(parts[2]);
+          if (chatId == null || messageId == null) continue;
+          final key = '$accountUserId:$chatId:$messageId';
+          final entry = _byKey[key];
+          if (entry != null && entry.mediaPath.isEmpty) {
+            _byKey[key] = entry.copyWith(mediaPath: restoredPath);
+          }
+        }
+      }
+    }
+    _trim();
+    notifyListeners();
+    _schedulePersist();
+    return restored;
+  }
+
+  /// Permissive base64 decode for import payloads.
+  static List<int>? tryBase64Decode(String data) {
+    try {
+      return base64Decode(data);
+    } catch (_) {
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------

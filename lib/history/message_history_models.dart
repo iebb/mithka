@@ -121,6 +121,7 @@ class MessageHistoryEntry {
     required this.events,
     this.mediaPath = '',
     this.hasLiveChat = true,
+    this.readAt = 0,
   });
 
   /// User id of the account that received the message. Two accounts that see
@@ -160,6 +161,13 @@ class MessageHistoryEntry {
   /// kept copy renders in the ghost style because there is no chat to open.
   final bool hasLiveChat;
 
+  /// Unix seconds at which the counterpart READ this outgoing message, 0
+  /// while unread. Only meaningful for the account's own messages, which
+  /// the mirror records only in Saved Messages — so on ordinary kept
+  /// incoming copies this stays 0. Spy-style read-time capture fills it
+  /// for the messages the account sent that the mirror also kept.
+  final int readAt;
+
   bool get isEdited => events.isNotEmpty;
 
   String get key => '$accountUserId:$chatId:$messageId';
@@ -182,6 +190,7 @@ class MessageHistoryEntry {
       other.deletedAt == deletedAt &&
       other.mediaPath == mediaPath &&
       other.hasLiveChat == hasLiveChat &&
+      other.readAt == readAt &&
       listEquals(other.events, events);
 
   @override
@@ -197,6 +206,7 @@ class MessageHistoryEntry {
     deletedAt,
     mediaPath,
     hasLiveChat,
+    readAt,
     Object.hashAll(events),
   );
 
@@ -210,6 +220,7 @@ class MessageHistoryEntry {
     List<MessageHistoryEvent>? events,
     String? mediaPath,
     bool? hasLiveChat,
+    int? readAt,
   }) => MessageHistoryEntry(
     accountUserId: accountUserId ?? this.accountUserId,
     chatId: chatId,
@@ -223,6 +234,7 @@ class MessageHistoryEntry {
     events: events ?? this.events,
     mediaPath: mediaPath ?? this.mediaPath,
     hasLiveChat: hasLiveChat ?? this.hasLiveChat,
+    readAt: readAt ?? this.readAt,
   );
 
   Map<String, Object?> toJson() => {
@@ -238,6 +250,7 @@ class MessageHistoryEntry {
     'events': [for (final event in events) event.toJson()],
     if (mediaPath.isNotEmpty) 'media': mediaPath,
     if (!hasLiveChat) 'noChat': true,
+    if (readAt > 0) 'readAt': readAt,
   };
 
   /// Entries without an 'account' field (mirror files from before the
@@ -265,6 +278,7 @@ class MessageHistoryEntry {
     final events = json['events'];
     final media = json['media'];
     final noChat = json['noChat'];
+    final readAt = json['readAt'];
     return MessageHistoryEntry(
       accountUserId: account,
       chatId: chat,
@@ -285,6 +299,7 @@ class MessageHistoryEntry {
           : const [],
       mediaPath: media is String ? media : '',
       hasLiveChat: noChat is bool ? !noChat : true,
+      readAt: readAt is int ? readAt : 0,
     );
   }
 }

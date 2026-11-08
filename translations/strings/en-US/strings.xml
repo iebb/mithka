@@ -1004,6 +1004,7 @@
     <string name="chatInfoGroupRemarkHint">Add a name visible only to you</string>
     <string name="chatInfoGroupRemarkLocalOnly">Saved only on this device.</string>
     <string name="chatInfoGroupVideos">Group videos</string>
+    <string name="chatInfoKeepRecording">Keep message history</string>
     <string name="chatInfoLeaveGroup">Leave group</string>
     <string name="chatInfoLoadFoldersFailed">Couldn’t load chat folders</string>
     <string name="chatInfoManageChannel">Manage channel</string>
@@ -1933,6 +1934,10 @@
     <string name="hideSenderInThisGroup">In this group</string>
     <string name="hideSenderMessage">Only on this device. They are not blocked, reported or told.</string>
     <string name="hideSenderTitle">Hide messages from {value1}?</string>
+    <string name="historyBadgeStyleBoth">Icon and text</string>
+    <string name="historyBadgeStyleIcon">Icon only</string>
+    <string name="historyBadgeStyleText">Text only</string>
+    <string name="historyBadgeStyleTitle">Deleted badge style</string>
     <string name="historyChatLabel">Chat {value1}</string>
     <string name="historyClearAction">Clear</string>
     <string name="historyClearAllConfirmTitle">Clear all kept messages?</string>
@@ -1942,9 +1947,19 @@
     <string name="historyEditEvent">Edited at {value1}: {value2}</string>
     <string name="historyEditedLabel">Edited</string>
     <string name="historyEmpty">Nothing kept yet. Messages this account receives are mirrored here on this device only, so deleted or edited ones stay readable.</string>
+    <string name="historyEnableAll">Enable message history</string>
     <string name="historyExcludedNote">Messages from excluded chats are not kept at all. Existing copies were removed.</string>
     <string name="historyExcludedTitle">Excluded Chats</string>
+    <string name="historyExportAction">Export message history</string>
+    <string name="historyExportSubtitle">With media snapshots, as a JSON file</string>
+    <string name="historyExportedToast">Exported %1$s entries</string>
     <string name="historyFilteredNote">Showing one chat. Tap a row to filter by its chat; go back to clear the filter.</string>
+    <string name="historyImportAction">Import message history</string>
+    <string name="historyImportConfirmMessage">Importing replaces the entire message history of this account</string>
+    <string name="historyImportConfirmTitle">Import message history?</string>
+    <string name="historyImportFailedToast">Import failed</string>
+    <string name="historyImportSubtitle">Restore from an exported JSON file</string>
+    <string name="historyImportedToast">Imported %1$s entries</string>
     <string name="historyKindAnimation">GIF</string>
     <string name="historyKindAudio">Audio</string>
     <string name="historyKindContact">Contact</string>
@@ -1959,9 +1974,15 @@
     <string name="historyKindVideoNote">Video message</string>
     <string name="historyKindVoice">Voice message</string>
     <string name="historyNoExcludedChats">No chats are excluded.</string>
+    <string name="historyReadAtLabel">Read at</string>
+    <string name="historyRecordBots">Record in bot chats</string>
+    <string name="historyRecordChannels">Record in channels</string>
     <string name="historyRecordDeleted">Keep deleted messages</string>
     <string name="historyRecordEdits">Keep edit history</string>
+    <string name="historyRecordGroups">Record in groups</string>
     <string name="historyRecordNote">Both switches default to off; nothing is recorded until you enable them. Kept copies live on this device only and stay until you clear them.</string>
+    <string name="historyRecordPrivate">Record in private chats</string>
+    <string name="historyRecordReadTimes">Record read times</string>
     <string name="historyRecordSection">Recording</string>
     <string name="historyReincludeAction">Include</string>
     <string name="historyRemoveFromMirrorAction">Remove from mirror</string>
@@ -1978,6 +1999,8 @@
     <string name="historySnapshotSection">Media snapshots</string>
     <string name="historyTitle">Message History</string>
 
+    <string name="historyTransferNote">Export covers every kept copy and media snapshot of this account; import replaces this account’s mirror wholesale.</string>
+    <string name="historyTransferTitle">Export and import</string>
     <string name="imageEditAdd">Add</string>
     <string name="imageEditAddText">Add text</string>
     <string name="imageEditBrush">Brush</string>
