@@ -11,6 +11,8 @@ import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
+import '../platform/ohos_media_bridge.dart';
+import '../platform/ohos_support.dart';
 import '../theme/app_theme.dart';
 
 enum AppAssetPickerType { image, video, imageAndVideo }
@@ -110,6 +112,11 @@ abstract final class AppAssetPicker {
     if (maxAssets <= 0) {
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
+    // photo_manager has no HarmonyOS side; the system photo picker returns
+    // the chosen originals instead of the in-app grid.
+    if (isOhos) {
+      return pickWithOhosSystemPicker(type: type, maxAssets: maxAssets);
+    }
     Future<AppAssetPickerSelection> materializeAll(
       List<AssetEntity> assets,
     ) async {
@@ -194,6 +201,32 @@ abstract final class AppAssetPicker {
       }
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
+  }
+
+  @visibleForTesting
+  static Future<AppAssetPickerSelection> pickWithOhosSystemPicker({
+    required AppAssetPickerType type,
+    required int maxAssets,
+    OhosMediaBridge? bridge,
+  }) async {
+    final files = await (bridge ?? OhosMediaBridge.instance).pickMedia(
+      kind: switch (type) {
+        AppAssetPickerType.image => OhosMediaKind.image,
+        AppAssetPickerType.video => OhosMediaKind.video,
+        AppAssetPickerType.imageAndVideo => OhosMediaKind.imageAndVideo,
+      },
+      maxCount: maxAssets,
+    );
+    return AppAssetPickerSelection(
+      assets: List.unmodifiable([
+        for (final file in files.take(maxAssets))
+          AppPickedAsset(
+            file: file,
+            isAnimatedImage: file.path.toLowerCase().endsWith('.gif'),
+          ),
+      ]),
+      failedCount: 0,
+    );
   }
 
   static Future<List<AssetEntity>?> _pickAssets(

@@ -8,6 +8,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_sound_platform_interface/flutter_sound_recorder_platform_interface.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
+import 'package:permission_handler_platform_interface/permission_handler_platform_interface.dart';
+
+import 'ohos_media_bridge.dart';
 
 /// Whether [operatingSystem] names HarmonyOS.
 ///
@@ -29,9 +34,18 @@ bool get isOhos => !kIsWeb && isOhosFor(Platform.operatingSystem);
 /// on HarmonyOS `FilePicker.platform` would stay uninitialized. Its
 /// method-channel implementation speaks exactly the channel, method names and
 /// arguments that the file_picker_ohos native plugin serves.
+///
+/// image_picker, permission_handler's microphone and flutter_sound's recorder
+/// have no OHOS native side at all; they are answered by the app's own bridge
+/// (see ohos_media_bridge.dart).
 void registerOhosDartPluginFallbacks({bool? onOhos}) {
   if (!(onOhos ?? isOhos)) return;
   FilePickerIO.registerWith();
+  ImagePickerPlatform.instance = OhosImagePicker();
+  PermissionHandlerPlatform.instance = OhosPermissionHandler(
+    fallback: PermissionHandlerPlatform.instance,
+  );
+  FlutterSoundRecorderPlatform.instance = OhosFlutterSoundRecorder();
 }
 
 /// Whether [operatingSystem] names a phone/tablet system.

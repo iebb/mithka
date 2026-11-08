@@ -13,6 +13,8 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../media/app_camera_view.dart';
+import '../platform/ohos_media_bridge.dart';
+import '../platform/ohos_support.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -171,6 +173,13 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
   Future<void> _openCamera() async {
     if (Platform.isMacOS) {
       await _pickGallery();
+      return;
+    }
+    // No in-app camera on HarmonyOS (the camera plugin has no OHOS side): the
+    // system camera captures a photo or a video instead.
+    if (isOhos) {
+      final file = await OhosMediaBridge.instance.capture(allowVideo: true);
+      if (mounted && file != null) await _addPickedFile(file);
       return;
     }
     final result = await Navigator.of(context).push<AppCameraResult>(

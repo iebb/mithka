@@ -43,6 +43,9 @@ dependencies:
   # incomplete (including a mismatched macOS podspec). Keep the last mobile-
   # only release so desktop builds compile and voice notes remain mobile-only.
   flutter_sound: 9.28.0
+  # HarmonyOS plugs its own recorder in behind this interface
+  # (lib/platform/ohos_media_bridge.dart); same release as flutter_sound.
+  flutter_sound_platform_interface: 9.28.0
   logger: ^2.7.0
   # macOS voice messages use AVFoundation through record and send AAC/M4A,
   # which TDLib accepts as a voice-note input alongside OGG/Opus.
@@ -50,9 +53,11 @@ dependencies:
   # 13.x hardcodes Android compileSdk 37, which is not installed in the pinned
   # Flutter/Android toolchain. Keep the newest SDK-36-compatible release.
   permission_handler: ^12.0.3
+  permission_handler_platform_interface: ^4.4.0
 
   # Media pickers for the composer's + panel: photos/camera, documents, location.
   image_picker: ^1.2.3
+  image_picker_platform_interface: ^2.11.1
   camera: ^0.12.0+2
   # 11.x assumes AGP 9 built-in Kotlin is enabled and omits its Kotlin plugin;
   # this project keeps built-in Kotlin disabled for plugins that still apply KGP.
