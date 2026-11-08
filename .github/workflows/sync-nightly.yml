@@ -24,8 +24,11 @@ on:
         default: false
 
 concurrency:
+  # Shared with the store release. Every member must queue: a default
+  # single-slot queue cancels a waiting store release when a sync is requested.
   group: sync-nightly
   cancel-in-progress: false
+  queue: max
 
 permissions:
   actions: write

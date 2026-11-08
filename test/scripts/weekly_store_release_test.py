@@ -4,6 +4,7 @@ import copy
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -987,6 +988,24 @@ class WeeklyReleaseTest(unittest.TestCase):
                     )
             finally:
                 os.chdir(previous)
+
+    def test_every_allocator_lock_member_queues_instead_of_cancelling(self):
+        workflows = SOURCE.parents[1] / ".github/workflows"
+        members = {}
+        for path in sorted(workflows.glob("*.yml")):
+            text = path.read_text()
+            block = re.search(
+                r"^concurrency:\n((?:  .*\n|\s*\n)+)", text, re.M
+            )
+            if block and re.search(r"^\s+group: sync-nightly\s*$", block[1], re.M):
+                members[path.name] = block[1]
+        self.assertEqual(
+            set(members), {"sync-nightly.yml", "weekly-store-release.yml"}
+        )
+        for name, block in members.items():
+            with self.subTest(name):
+                self.assertRegex(block, r"(?m)^\s+cancel-in-progress: false\s*$")
+                self.assertRegex(block, r"(?m)^\s+queue: max\s*$")
 
 
 if __name__ == "__main__":
