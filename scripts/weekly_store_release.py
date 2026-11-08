@@ -976,31 +976,33 @@ def verify_github_packages(release, manifest, plan):
             "GitHub release identity does not match the submitted store snapshot"
         )
     files = manifest.get("files", {})
-    suffixes = [
+    common = [
         "android-arm64-v8a.apk",
         "android-armeabi-v7a.apk",
         "windows-x64.zip",
         "windows-arm64.zip",
         "windows-x64-setup.exe",
         "windows-arm64-setup.exe",
-        "macos-arm64.zip",
-        "macos-x64.zip",
         "linux-x64.tar.gz",
         "linux-arm64.tar.gz",
         "linux-x64.AppImage",
         "linux-arm64.AppImage",
     ]
-    if len(files) != len(suffixes):
+
+    def count(suffix):
+        return sum(
+            name.startswith(f"mithka-{plan['version']}-") and name.endswith(suffix)
+            for name in files
+        )
+
+    # Releases packaged before the macOS download split carry one universal
+    # archive; a resumed store snapshot must still verify against its own set.
+    if not any(
+        len(files) == len(common) + len(macos)
+        and all(count(suffix) == 1 for suffix in common + macos)
+        for macos in (["macos-arm64.zip", "macos-x64.zip"], ["macos-universal.zip"])
+    ):
         raise Error("GitHub release does not contain the complete package set")
-    for suffix in suffixes:
-        if (
-            sum(
-                name.startswith(f"mithka-{plan['version']}-") and name.endswith(suffix)
-                for name in files
-            )
-            != 1
-        ):
-            raise Error(f"GitHub release is missing or duplicates {suffix}")
     remote = {asset["name"]: asset for asset in release["assets"]}
     for name, expected in files.items():
         actual = remote.get(name)
@@ -1070,7 +1072,8 @@ def publish_github_release(plan):
         raise Error("GitHub package manifest belongs to another workflow run")
     verify_github_packages(release, manifest, plan)
     print(
-        f"Verified GitHub release {tag}: 12 packages match the store source.",
+        f"Verified GitHub release {tag}: {len(manifest['files'])} packages match "
+        "the store source.",
         flush=True,
     )
 
