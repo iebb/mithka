@@ -105,7 +105,8 @@ class MessageHistorySettings extends ChangeNotifier {
 
   /// How a ghost bubble's deleted badge renders: the trash icon alone, the
   /// localized "已删除" text alone, or both.
-  GhostBadgeStyle get badgeStyle => isAvailable ? _badgeStyle : GhostBadgeStyle.icon;
+  GhostBadgeStyle get badgeStyle =>
+      isAvailable ? _badgeStyle : GhostBadgeStyle.icon;
 
   /// Media snapshots per conversation class. The classification comes from
   /// the TDLib chat type at record time; a chat whose type is unknown keeps
@@ -138,9 +139,7 @@ class MessageHistorySettings extends ChangeNotifier {
     _snapshotChannels = prefs.getBool(_snapshotChannelsKey) ?? false;
     _recordReadTimes = prefs.getBool(_recordReadTimesKey) ?? false;
     _renderGhosts = prefs.getBool(_renderGhostsKey) ?? false;
-    _badgeStyle = GhostBadgeStyle.fromPrefs(
-      prefs.getString(_badgeStyleKey),
-    );
+    _badgeStyle = GhostBadgeStyle.fromPrefs(prefs.getString(_badgeStyleKey));
     notifyListeners();
   }
 

@@ -792,10 +792,15 @@ class MessageHistoryStore extends ChangeNotifier {
   /// per-type switches. Consulted with the raw TDLib message (which carries
   /// enough sender hints to sniff a bot when the chat type is not cached
   /// yet — updates often arrive before updateChat).
-  bool recordsChatType(int accountUserId, int chatId, Map<String, dynamic>? message) {
+  bool recordsChatType(
+    int accountUserId,
+    int chatId,
+    Map<String, dynamic>? message,
+  ) {
     final settings = MessageHistorySettings.shared;
     final knownType = _knownChatTypes.contains('$accountUserId:$chatId');
-    final isBot = _botChats['$accountUserId:$chatId'] ??
+    final isBot =
+        _botChats['$accountUserId:$chatId'] ??
         (knownType ? false : _sniffBotFromMessage(message));
     if (isBot) return settings.recordBots;
     if (chatId > 0) return settings.recordPrivate;
@@ -899,7 +904,9 @@ class MessageHistoryStore extends ChangeNotifier {
           entry.readAt > 0) {
         continue;
       }
-      _byKey[entry.key] = entry.copyWith(readAt: DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      _byKey[entry.key] = entry.copyWith(
+        readAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
       changed = true;
     }
     if (changed) {
@@ -1190,13 +1197,14 @@ class MessageHistoryStore extends ChangeNotifier {
     if (accountUserId == null) {
       throw StateError('No active account');
     }
-    final entries = _byKey.values
-        .where((entry) => entry.accountUserId == accountUserId)
-        .toList()
-      ..sort((a, b) {
-        final byChat = a.chatId.compareTo(b.chatId);
-        return byChat != 0 ? byChat : a.messageId.compareTo(b.messageId);
-      });
+    final entries =
+        _byKey.values
+            .where((entry) => entry.accountUserId == accountUserId)
+            .toList()
+          ..sort((a, b) {
+            final byChat = a.chatId.compareTo(b.chatId);
+            return byChat != 0 ? byChat : a.messageId.compareTo(b.messageId);
+          });
     final media = <String, String>{};
     final snapshotter = _media();
     for (final entry in entries) {
@@ -1254,7 +1262,10 @@ class MessageHistoryStore extends ChangeNotifier {
     );
     _media().deleteAccount(accountUserId);
     final excluded = <int>{
-      for (final raw in document['excluded'] is List ? document['excluded'] as List : const [])
+      for (final raw
+          in document['excluded'] is List
+              ? document['excluded'] as List
+              : const [])
         if (raw is int) raw,
     };
     _excludedChatsByAccount[accountUserId] = excluded;
@@ -1264,8 +1275,8 @@ class MessageHistoryStore extends ChangeNotifier {
     for (final raw in rawEntries) {
       final entry = MessageHistoryEntry.fromJson(raw);
       if (entry == null) continue;
-      _byKey['$accountUserId:${entry.chatId}:${entry.messageId}'] =
-          entry.copyWith(accountUserId: accountUserId);
+      _byKey['$accountUserId:${entry.chatId}:${entry.messageId}'] = entry
+          .copyWith(accountUserId: accountUserId);
       restored++;
     }
     final media = document['media'];
@@ -1276,10 +1287,7 @@ class MessageHistoryStore extends ChangeNotifier {
         if (data is! String) continue;
         final bytes = tryBase64Decode(data);
         if (bytes == null) continue;
-        final restoredPath = await snapshotter.writeSnapshotBytes(
-          e.key,
-          bytes,
-        );
+        final restoredPath = await snapshotter.writeSnapshotBytes(e.key, bytes);
         if (restoredPath != null) {
           final parts = e.key.split(':');
           if (parts.length != 3) continue;

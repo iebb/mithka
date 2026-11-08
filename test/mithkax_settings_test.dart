@@ -154,10 +154,7 @@ void main() {
     final option = find.byKey(const ValueKey('mithkax-badge-style-text'));
     await tester.tap(option);
     await tester.pumpAndSettle();
-    expect(
-      MessageHistorySettings.shared.badgeStyle,
-      GhostBadgeStyle.text,
-    );
+    expect(MessageHistorySettings.shared.badgeStyle, GhostBadgeStyle.text);
     MessageHistorySettings.shared.setBadgeStyle(GhostBadgeStyle.icon);
   });
 }

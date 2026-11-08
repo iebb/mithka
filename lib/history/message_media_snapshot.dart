@@ -187,9 +187,7 @@ class MessageMediaSnapshotter {
       final accountUserId = int.tryParse(parts[0]);
       final chatId = int.tryParse(parts[1]);
       final messageId = int.tryParse(parts[2]);
-      if (accountUserId == null ||
-          chatId == null ||
-          messageId == null) {
+      if (accountUserId == null || chatId == null || messageId == null) {
         return null;
       }
       await ensureDirResolved();

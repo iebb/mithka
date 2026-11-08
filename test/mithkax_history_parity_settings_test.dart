@@ -85,8 +85,11 @@ void main() {
     expect(s.renderGhosts, isTrue);
     s.setEnableAll(true);
     s.setEnableAll(false);
-    expect(s.renderGhosts, isTrue,
-        reason: 'turning recording off must not hide kept ghosts');
+    expect(
+      s.renderGhosts,
+      isTrue,
+      reason: 'turning recording off must not hide kept ghosts',
+    );
   });
 
   test('badge style persists and reloads', () async {

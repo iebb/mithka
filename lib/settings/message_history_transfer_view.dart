@@ -141,9 +141,7 @@ class _MessageHistoryTransferViewState
       if (document is! Map<String, Object?>) {
         throw const FormatException('Not a Mithka X history export');
       }
-      final restored = await MessageHistoryStore.shared.importAccount(
-        document,
-      );
+      final restored = await MessageHistoryStore.shared.importAccount(document);
       if (!mounted) return;
       showToast(
         context,

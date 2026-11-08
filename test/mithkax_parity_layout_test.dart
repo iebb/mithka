@@ -16,11 +16,7 @@ import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> _pump(
-  WidgetTester tester,
-  Widget home,
-  Size size,
-) async {
+Future<void> _pump(WidgetTester tester, Widget home, Size size) async {
   final prefs = await SharedPreferences.getInstance();
   final theme = ThemeController(prefs);
   addTearDown(theme.dispose);
@@ -63,10 +59,14 @@ void main() {
       tester,
     ) async {
       await _pump(tester, const MessageHistoryTransferView(), size);
-      expect(find.byKey(const ValueKey('history-transfer-export')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('history-transfer-import')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('history-transfer-export')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('history-transfer-import')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -109,8 +109,7 @@ class _ChatRecordingSwitchHost extends StatelessWidget {
         child: ListenableBuilder(
           listenable: MessageHistoryStore.shared,
           builder: (context, _) {
-            final excluded =
-                MessageHistoryStore.shared.isChatExcluded(chatId);
+            final excluded = MessageHistoryStore.shared.isChatExcluded(chatId);
             return Switch(value: !excluded, onChanged: (_) {});
           },
         ),

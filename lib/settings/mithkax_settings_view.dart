@@ -202,18 +202,14 @@ class _BadgeStyleRow extends StatelessWidget {
     );
   }
 
-  String _styleLabel(BuildContext context, GhostBadgeStyle style) =>
-      switch (style) {
-        GhostBadgeStyle.icon => AppStringKeys.historyBadgeStyleIcon.l10n(
-          context,
-        ),
-        GhostBadgeStyle.text => AppStringKeys.historyBadgeStyleText.l10n(
-          context,
-        ),
-        GhostBadgeStyle.both => AppStringKeys.historyBadgeStyleBoth.l10n(
-          context,
-        ),
-      };
+  String _styleLabel(
+    BuildContext context,
+    GhostBadgeStyle style,
+  ) => switch (style) {
+    GhostBadgeStyle.icon => AppStringKeys.historyBadgeStyleIcon.l10n(context),
+    GhostBadgeStyle.text => AppStringKeys.historyBadgeStyleText.l10n(context),
+    GhostBadgeStyle.both => AppStringKeys.historyBadgeStyleBoth.l10n(context),
+  };
 
   Future<void> _pickStyle(
     BuildContext context,

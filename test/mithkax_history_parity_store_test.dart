@@ -44,7 +44,8 @@ Map<String, dynamic> _message(
     'user_id': '42',
     if (isBot) 'is_bot': true,
   },
-  'content': content ??
+  'content':
+      content ??
       {
         '@type': 'messageText',
         'text': {'@type': 'formattedText', 'text': text},
@@ -112,23 +113,25 @@ void main() {
     await pump();
   }
 
-  test('per-type gates: private off drops user chats, groups keep theirs',
-      () async {
-    await start();
-    final settings = MessageHistorySettings.shared;
-    settings.setRecordPrivate(false);
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(501, 1),
-    });
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(-1001234567890, 2),
-    });
-    expect(store.entries.map((e) => e.chatId), [-1001234567890]);
-  });
+  test(
+    'per-type gates: private off drops user chats, groups keep theirs',
+    () async {
+      await start();
+      final settings = MessageHistorySettings.shared;
+      settings.setRecordPrivate(false);
+      await emit({
+        '@type': 'updateNewMessage',
+        '@client_id': _clientA,
+        'message': _message(501, 1),
+      });
+      await emit({
+        '@type': 'updateNewMessage',
+        '@client_id': _clientA,
+        'message': _message(-1001234567890, 2),
+      });
+      expect(store.entries.map((e) => e.chatId), [-1001234567890]);
+    },
+  );
 
   test('bot chats record only with the bot switch on', () async {
     await start();
@@ -201,8 +204,11 @@ void main() {
       'last_read_outbox_message_id': 10,
     });
     expect(store.entry(801, 10)?.readAt, greaterThan(0));
-    expect(store.entry(801, 11)?.readAt, 0,
-        reason: 'beyond the cursor it stays unread');
+    expect(
+      store.entry(801, 11)?.readAt,
+      0,
+      reason: 'beyond the cursor it stays unread',
+    );
 
     // The earliest crossing wins: a later cursor does not restamp.
     final first = store.entry(801, 10)!.readAt;
@@ -216,8 +222,7 @@ void main() {
     expect(store.entry(801, 11)?.readAt, greaterThan(0));
   });
 
-  test('read-time stamps respect the switch and survive persistence',
-      () async {
+  test('read-time stamps respect the switch and survive persistence', () async {
     await start();
     final settings = MessageHistorySettings.shared;
     settings.setRecordReadTimes(false);
@@ -236,9 +241,11 @@ void main() {
 
     settings.setRecordReadTimes(true);
     await store.persistNowForTesting();
-    final raw = jsonDecode(
-      await File('${dir.path}/message-history.json').readAsString(),
-    ) as Map<String, dynamic>;
+    final raw =
+        jsonDecode(
+              await File('${dir.path}/message-history.json').readAsString(),
+            )
+            as Map<String, dynamic>;
     final rows = (raw['entries'] as List)
         .map(MessageHistoryEntry.fromJson)
         .whereType<MessageHistoryEntry>()
@@ -246,27 +253,29 @@ void main() {
     expect(rows.single.readAt, 0);
   });
 
-  test('export/import round-trips entries and replaces the account mirror',
-      () async {
-    await start();
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(1001, 1, text: 'keep me'),
-    });
-    final exported = await store.exportAccount();
-    expect(exported['format'], MessageHistoryStore.exportFormat);
-    expect((exported['entries'] as List).length, 1);
+  test(
+    'export/import round-trips entries and replaces the account mirror',
+    () async {
+      await start();
+      await emit({
+        '@type': 'updateNewMessage',
+        '@client_id': _clientA,
+        'message': _message(1001, 1, text: 'keep me'),
+      });
+      final exported = await store.exportAccount();
+      expect(exported['format'], MessageHistoryStore.exportFormat);
+      expect((exported['entries'] as List).length, 1);
 
-    // Wipe, then import the document back.
-    store.clearAll();
-    expect(store.entries, isEmpty);
-    final restored = await store.importAccount(
-      Map<String, Object?>.from(exported),
-    );
-    expect(restored, 1);
-    expect(store.entry(1001, 1)?.text, 'keep me');
-  });
+      // Wipe, then import the document back.
+      store.clearAll();
+      expect(store.entries, isEmpty);
+      final restored = await store.importAccount(
+        Map<String, Object?>.from(exported),
+      );
+      expect(restored, 1);
+      expect(store.entry(1001, 1)?.text, 'keep me');
+    },
+  );
 
   test('import rejects foreign documents and keeps state intact', () async {
     await start();
