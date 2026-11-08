@@ -32,6 +32,7 @@ Map<String, dynamic> _message(
   int messageId, {
   String text = 'hello',
   bool isBot = false,
+  int senderId = 42,
   Map<String, dynamic>? content,
 }) => {
   '@type': 'message',
@@ -41,7 +42,7 @@ Map<String, dynamic> _message(
   'is_outgoing': false,
   'sender_id': {
     '@type': 'messageSenderUser',
-    'user_id': '42',
+    'user_id': '$senderId',
     if (isBot) 'is_bot': true,
   },
   'content':
@@ -188,12 +189,12 @@ void main() {
     await emit({
       '@type': 'updateNewMessage',
       '@client_id': _clientA,
-      'message': _message(801, 10),
+      'message': _message(801, 10, senderId: _accountA),
     });
     await emit({
       '@type': 'updateNewMessage',
       '@client_id': _clientA,
-      'message': _message(801, 11),
+      'message': _message(801, 11, senderId: _accountA),
     });
     expect(store.entry(801, 10)?.readAt, 0);
 
@@ -289,5 +290,65 @@ void main() {
       throwsA(isA<FormatException>()),
     );
     expect(store.entry(1101, 1)?.text, 'present');
+  });
+
+  test('an incoming kept copy never takes an outbox read stamp', () async {
+    await start();
+    final settings = MessageHistorySettings.shared;
+    settings.setRecordReadTimes(true);
+    // sender 42 is NOT the account — a kept INCOMING copy.
+    await emit({
+      '@type': 'updateNewMessage',
+      '@client_id': _clientA,
+      'message': _message(1201, 1, senderId: 42),
+    });
+    await emit({
+      '@type': 'updateChatReadOutbox',
+      '@client_id': _clientA,
+      'chat_id': '1201',
+      'last_read_outbox_message_id': 5,
+    });
+    expect(store.entry(1201, 1)?.readAt, 0);
+  });
+
+  test('a via-bot human group message does not flip its chat to bot', () async {
+    await start();
+    final settings = MessageHistorySettings.shared;
+    settings.setRecordGroups(true);
+    settings.setRecordBots(false);
+    final groupChat = -1009998887770;
+    await emit({
+      '@type': 'updateNewMessage',
+      '@client_id': _clientA,
+      'message': {
+        ..._message(groupChat, 1),
+        'via_bot_user_id': '123',
+        'reply_markup': {
+          '@type': 'replyMarkupInlineKeyboard',
+          'rows': const [],
+        },
+      },
+    });
+    // Group dim on → recorded: the sniff must not have treated it as a bot.
+    expect(store.entries.map((e) => e.chatId), [groupChat]);
+  });
+
+  test('excluded chats import no rows', () async {
+    await start();
+    await emit({
+      '@type': 'updateNewMessage',
+      '@client_id': _clientA,
+      'message': _message(1301, 1, text: 'x'),
+    });
+    // Hand-craft the document: the row PLUS the exclusion, the way a real
+    // export from a device whose preference changed later would carry both.
+    final exported = await store.exportAccount();
+    store.excludeChat(1301);
+    final document = Map<String, Object?>.from(exported)..['excluded'] = [1301];
+    final restored = await store.importAccount(document);
+    expect(restored, 0);
+    expect(store.entry(1301, 1), isNull);
+    // The exclusion itself imports as the account's preference.
+    expect(store.excludedChats, contains(1301));
   });
 }

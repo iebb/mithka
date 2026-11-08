@@ -288,6 +288,16 @@ class _MessageInfoViewState extends State<MessageInfoView> {
     );
     final readAt = entry?.readAt ?? 0;
     if (readAt <= 0) return const SizedBox.shrink();
+    // The native read row already renders messageReadDateRead; the mirror's
+    // stamp adds information only when it differs (captured for a message
+    // the API no longer dates — deleted, expired).
+    final native = _readDate;
+    if (native?.type == 'messageReadDateRead') {
+      final nativeAt = native?.integer('read_date') ?? 0;
+      if (nativeAt > 0 && (readAt - nativeAt).abs() < 120) {
+        return const SizedBox.shrink();
+      }
+    }
     return _InfoRow(
       icon: HeroAppIcons.clock,
       label: AppStringKeys.historyReadAtLabel,

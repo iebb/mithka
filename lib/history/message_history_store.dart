@@ -749,11 +749,13 @@ class MessageHistoryStore extends ChangeNotifier {
     return null;
   }
 
-  /// Whether snapshots may be taken for this message's conversation, per
-  /// the snapshot switches and the chat's TDLib type: user/secret chats are
-  /// "private", basic groups/supergroups "groups", channels "channels".
-  /// Unknown or missing types snapshot nothing.
-  static bool _snapshotsEnabledFor(Map<String, dynamic> message) {
+  /// Whether snapshots may be taken for this message's conversation. The
+  /// snapshot switches gate by conversation class (user/secret chats are
+  /// "private", basic groups/supergroups "groups", channels "channels"),
+  /// AND the recording gates apply first: a chat whose recording switch is
+  /// off records nothing at all — text or media — and a bot chat snapshots
+  /// only under the bot recording switch.
+  bool _snapshotsEnabledFor(Map<String, dynamic> message, {int? ownerUserId}) {
     final settings = MessageHistorySettings.shared;
     if (!settings.snapshotPrivate &&
         !settings.snapshotGroups &&
@@ -762,6 +764,11 @@ class MessageHistoryStore extends ChangeNotifier {
     }
     final chatId = message.int64('chat_id');
     if (chatId == null) return false;
+    final accountUserId = ownerUserId ?? _activeAccountUserId;
+    if (accountUserId != null &&
+        !recordsChatType(accountUserId, chatId, message)) {
+      return false;
+    }
     // TDLib chat ids: users are positive; basic groups −1e13.., supergroups
     // and channels −1e14.. The chat type is not carried on the message, so
     // the id class decides. Self chat snapshots with "private".
@@ -808,20 +815,16 @@ class MessageHistoryStore extends ChangeNotifier {
     return settings.recordChannels;
   }
 
-  /// Best-effort bot detection from the message payload itself: a sender
-  /// marked `is_bot`, a reply bot header, or an inline-keyboard markup all
-  /// smell like a bot chat. False for everything else.
+  /// Best-effort bot detection from the message payload itself: only a
+  /// sender explicitly marked `is_bot` counts. via_bot and inline keyboards
+  /// do NOT (a human message posted through a bot, or a bot-generated group
+  /// post, would otherwise misclassify a whole human chat as a bot chat —
+  /// and updateChat only re-seeds the truth when it happens to arrive).
   static bool _sniffBotFromMessage(Map<String, dynamic>? message) {
     if (message == null) return false;
     final sender = message.obj('sender_id');
-    if (sender?.type == 'messageSenderUser' &&
-        (sender?.boolean('is_bot') ?? false)) {
-      return true;
-    }
-    if (message.obj('reply_markup') != null) return true;
-    final viaBot = message.int64('via_bot_user_id');
-    if (viaBot != null && viaBot > 0) return true;
-    return false;
+    return sender?.type == 'messageSenderUser' &&
+        (sender?.boolean('is_bot') ?? false);
   }
 
   /// Seeds the chat-type caches from an observed chat object. A user-type
@@ -897,6 +900,7 @@ class MessageHistoryStore extends ChangeNotifier {
     final cursor = update.int64('last_read_outbox_message_id');
     if (chatId == null || cursor == null || cursor <= 0) return;
     var changed = false;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     for (final entry in _byKey.values.toList(growable: false)) {
       if (entry.accountUserId != accountUserId ||
           entry.chatId != chatId ||
@@ -904,9 +908,13 @@ class MessageHistoryStore extends ChangeNotifier {
           entry.readAt > 0) {
         continue;
       }
-      _byKey[entry.key] = entry.copyWith(
-        readAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      );
+      // The cursor is the counterpart reading THIS account's messages; a
+      // kept incoming copy was never part of that outbox (the mirror only
+      // keeps incoming + Saved-Messages self copies — the latter reads the
+      // stamp, the former never does).
+      final isSelfKept = entry.senderId == accountUserId;
+      if (!isSelfKept) continue;
+      _byKey[entry.key] = entry.copyWith(readAt: now);
       changed = true;
     }
     if (changed) {
@@ -986,7 +994,7 @@ class MessageHistoryStore extends ChangeNotifier {
     final file = _contentSnapshotFile(content);
     if (file == null) return;
     final wrapped = <String, dynamic>{'chat_id': chatId, 'content': content};
-    if (!_snapshotsEnabledFor(wrapped)) return;
+    if (!_snapshotsEnabledFor(wrapped, ownerUserId: accountUserId)) return;
     final generation = _generation;
     unawaited(
       _media()
@@ -1280,6 +1288,9 @@ class MessageHistoryStore extends ChangeNotifier {
     for (final raw in rawEntries) {
       final entry = MessageHistoryEntry.fromJson(raw);
       if (entry == null) continue;
+      // An imported exclusion means "no mirror for this chat" — its rows
+      // must not come back either (they render nowhere and only bloat).
+      if (excluded.contains(entry.chatId)) continue;
       _byKey['$accountUserId:${entry.chatId}:${entry.messageId}'] = entry
           .copyWith(accountUserId: accountUserId);
       restored++;
