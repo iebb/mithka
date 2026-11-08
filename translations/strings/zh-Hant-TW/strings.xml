@@ -1993,6 +1993,7 @@
     <string name="historyTitle">訊息歷史</string>
 
     <string name="historyTransferNote">匯出包含目前帳號的全部保留副本與媒體快照；匯入整庫取代目前帳號的鏡像。</string>
+    <string name="historyTransferSection">資料管理</string>
     <string name="historyTransferTitle">匯出與匯入</string>
     <string name="imageEditAdd">新增</string>
     <string name="imageEditAddText">新增文字</string>

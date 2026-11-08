@@ -2000,6 +2000,7 @@
     <string name="historyTitle">Historial de mensajes</string>
 
     <string name="historyTransferNote">La exportación cubre todas las copias guardadas e instantáneas de medios de esta cuenta; la importación reemplaza por completo el espejo de esta cuenta.</string>
+    <string name="historyTransferSection">Gestión de datos</string>
     <string name="historyTransferTitle">Exportar e importar</string>
     <string name="imageEditAdd">Añadir</string>
     <string name="imageEditAddText">Añadir texto</string>

@@ -1993,6 +1993,7 @@
     <string name="historyTitle">메시지 기록</string>
 
     <string name="historyTransferNote">내보내기는 이 계정의 모든 보관 복사본과 미디어 스냅샷을 포함합니다. 가져오기는 이 계정의 미러를 전체 교체합니다.</string>
+    <string name="historyTransferSection">데이터 관리</string>
     <string name="historyTransferTitle">내보내기 및 가져오기</string>
     <string name="imageEditAdd">추가</string>
     <string name="imageEditAddText">텍스트 추가</string>

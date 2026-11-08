@@ -474,6 +474,7 @@ abstract final class AppStringKeys {
   static const historySettingsRow = 'historySettingsRow';
   static const historyTitle = 'historyTitle';
   static const historyTransferNote = 'historyTransferNote';
+  static const historyTransferSection = 'historyTransferSection';
   static const historyTransferTitle = 'historyTransferTitle';
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
   static const apiCredentialsDescription = 'apiCredentialsDescription';

@@ -1993,6 +1993,7 @@
     <string name="historyTitle">メッセージ履歴</string>
 
     <string name="historyTransferNote">エクスポートはこのアカウントの全保持コピーとメディアスナップショットを含みます。インポートはこのアカウントのミラー全体を置き換えます。</string>
+    <string name="historyTransferSection">データ管理</string>
     <string name="historyTransferTitle">エクスポートとインポート</string>
     <string name="imageEditAdd">追加</string>
     <string name="imageEditAddText">テキストを追加</string>

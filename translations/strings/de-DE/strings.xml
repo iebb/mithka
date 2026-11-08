@@ -2000,6 +2000,7 @@
     <string name="historyTitle">Nachrichtenverlauf</string>
 
     <string name="historyTransferNote">Der Export umfasst alle aufbewahrten Kopien und Medien-Snapshots dieses Kontos; der Import ersetzt den Spiegel dieses Kontos vollständig.</string>
+    <string name="historyTransferSection">Datenverwaltung</string>
     <string name="historyTransferTitle">Export und Import</string>
     <string name="imageEditAdd">Hinzufügen</string>
     <string name="imageEditAddText">Text hinzufügen</string>

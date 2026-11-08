@@ -3,8 +3,12 @@
 //
 //  Mithka X 设置中心：本 fork 的自建功能收拢在这一个入口里，主设置列表
 //  只留一行指进来。Telegram API Terms §1.4 的功能在未 opt-in 的构建里
-//  整页不存在。消息历史没有统一的查看入口——浏览按聊天走，导出导入
-//  与删除标记样式在这里配置。
+//  整页不存在。
+//
+//  开关的依赖关系在这里是可见的：总开关熄灭时全部记录开关变暗；「保存
+//  已删除的消息」再管辖范围与快照两组——它们的记录路径都以它为前提。
+//  幽灵渲染是纯显示开关，不受总开关牵连。每个区块都是带标题的
+//  SettingsSection，卡片之间的间距由节标题自带，不再出现贴缝的分隔。
 //
 
 import 'package:flutter/material.dart';
@@ -31,147 +35,96 @@ class MithkaXSettingsView extends StatelessWidget {
     return SettingsPageScaffold(
       title: AppStringKeys.mithkaxSettingsTitle,
       onBack: () => Navigator.of(context).pop(),
-      child: SettingsListView(
+      child: const SettingsListView(
         children: [
-          SettingsSection(
-            titleKey: AppStringKeys.mithkaxHistorySection,
-            rows: [_HistorySwitches()],
-          ),
-          SettingsCard.rows(
-            rows: [
-              SettingsRow(
-                key: const ValueKey('mithkax-history-transfer'),
-                title: AppStringKeys.historyTransferTitle.l10n(context),
-                leading: const SettingsLeadingIcon(icon: HeroAppIcons.share),
-                onTap: () => Navigator.of(context).push(
-                  AppPageRoute<void>(
-                    pageBuilder: (_, _, _) =>
-                        const MessageHistoryTransferView(),
-                  ),
-                ),
-              ),
-              _BadgeStyleRow(),
-            ],
-          ),
-          const SettingsNote(text: AppStringKeys.historyRecordNote),
-          SettingsSection(
-            titleKey: AppStringKeys.mithkaxGhostSection,
-            rows: [
-              SettingsRow(
-                key: const ValueKey('mithkax-ghost-mode'),
-                title: AppStringKeys.ghostModeTitle,
-                leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
-                onTap: () => Navigator.of(context).push(
-                  AppPageRoute<void>(
-                    pageBuilder: (_, _, _) => const GhostModeSettingsView(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SettingsSection(
-            titleKey: AppStringKeys.mithkaxPremiumSection,
-            rows: [_LocalPremiumRow()],
-          ),
-          const SettingsNote(text: AppStringKeys.localPremiumNote),
+          _HistoryCoreSection(),
+          _RecordScopeSection(),
+          _SnapshotSection(),
+          _TransferSection(),
+          SettingsNote(text: AppStringKeys.historyRecordNote),
+          _GhostSection(),
+          _PremiumSection(),
         ],
       ),
     );
   }
 }
 
-/// The mirror's runtime switches, rebuilt by the settings store's own
-/// notifications — without a listener the row reads a stale bool after a
-/// tap and the switch looks dead. Sub-switches that depend on a master
-/// switch render dimmed while it is off (the exteraless visual): they stay
-/// tappable so the user can pre-configure, and the effective value stays
-/// gated in the settings getters.
-class _HistorySwitches extends StatelessWidget {
+/// A switch row plus a dimming wrapper: [active] false dims the row to signal
+/// the dependency chain (still tappable so the user can pre-configure, the
+/// effective gating stays in the settings getters).
+class _GatedSwitch extends StatelessWidget {
+  const _GatedSwitch({
+    required this.switchKey,
+    required this.titleKey,
+    required this.value,
+    required this.onChanged,
+    required this.active,
+  });
+
+  final Key switchKey;
+  final String titleKey;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: active ? 1 : 0.45,
+      child: SettingsSwitchRow(
+        key: switchKey,
+        title: titleKey.l10n(context),
+        value: value,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+/// Master switch and the three record features directly under it: what gets
+/// recorded at all. The ghost render switch is display-only and stays lit
+/// whatever the master says — turning recording off must not hide kept ghosts.
+class _HistoryCoreSection extends StatelessWidget {
+  const _HistoryCoreSection();
+
   @override
   Widget build(BuildContext context) {
     final settings = MessageHistorySettings.shared;
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) {
-        final enabled = settings.enableAll;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        final masterOn = settings.enableAll;
+        return SettingsSection(
+          titleKey: AppStringKeys.mithkaxHistorySection,
+          rows: [
             SettingsSwitchRow(
               key: const ValueKey('history-enable-all'),
               title: AppStringKeys.historyEnableAll.l10n(context),
               value: settings.enableAll,
               onChanged: settings.setEnableAll,
             ),
-            Opacity(
-              opacity: enabled ? 1 : 0.45,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-deleted'),
-                    title: AppStringKeys.historyRecordDeleted.l10n(context),
-                    value: settings.recordDeleted,
-                    onChanged: settings.setRecordDeleted,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-edits'),
-                    title: AppStringKeys.historyRecordEdits.l10n(context),
-                    value: settings.recordEdits,
-                    onChanged: settings.setRecordEdits,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-read-times'),
-                    title: AppStringKeys.historyRecordReadTimes.l10n(context),
-                    value: settings.recordReadTimes,
-                    onChanged: settings.setRecordReadTimes,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-private'),
-                    title: AppStringKeys.historyRecordPrivate.l10n(context),
-                    value: settings.recordPrivate,
-                    onChanged: settings.setRecordPrivate,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-groups'),
-                    title: AppStringKeys.historyRecordGroups.l10n(context),
-                    value: settings.recordGroups,
-                    onChanged: settings.setRecordGroups,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-channels'),
-                    title: AppStringKeys.historyRecordChannels.l10n(context),
-                    value: settings.recordChannels,
-                    onChanged: settings.setRecordChannels,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-record-bots'),
-                    title: AppStringKeys.historyRecordBots.l10n(context),
-                    value: settings.recordBots,
-                    onChanged: settings.setRecordBots,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-snapshot-private'),
-                    title: AppStringKeys.historySnapshotPrivate.l10n(context),
-                    value: settings.snapshotPrivate,
-                    onChanged: settings.setSnapshotPrivate,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-snapshot-groups'),
-                    title: AppStringKeys.historySnapshotGroups.l10n(context),
-                    value: settings.snapshotGroups,
-                    onChanged: settings.setSnapshotGroups,
-                  ),
-                  SettingsSwitchRow(
-                    key: const ValueKey('history-snapshot-channels'),
-                    title: AppStringKeys.historySnapshotChannels.l10n(context),
-                    value: settings.snapshotChannels,
-                    onChanged: settings.setSnapshotChannels,
-                  ),
-                ],
-              ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-deleted'),
+              titleKey: AppStringKeys.historyRecordDeleted,
+              value: settings.recordDeleted,
+              onChanged: settings.setRecordDeleted,
+              active: masterOn,
             ),
-            // Display-only: independent of the master recording switch.
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-edits'),
+              titleKey: AppStringKeys.historyRecordEdits,
+              value: settings.recordEdits,
+              onChanged: settings.setRecordEdits,
+              active: masterOn,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-read-times'),
+              titleKey: AppStringKeys.historyRecordReadTimes,
+              value: settings.recordReadTimes,
+              onChanged: settings.setRecordReadTimes,
+              active: masterOn,
+            ),
             SettingsSwitchRow(
               key: const ValueKey('history-render-ghosts'),
               title: AppStringKeys.historyRenderGhosts.l10n(context),
@@ -181,6 +134,167 @@ class _HistorySwitches extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Per conversation-type recording dims. They narrow the deleted-recording
+/// switch (a type that is off records nothing for its chats), so both the
+/// master switch and the deleted-recording switch must be on for them to
+/// bite; the rows dim when either is off.
+class _RecordScopeSection extends StatelessWidget {
+  const _RecordScopeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = MessageHistorySettings.shared;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final active = settings.enableAll && settings.recordDeleted;
+        return SettingsSection(
+          titleKey: AppStringKeys.historyRecordSection,
+          rows: [
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-private'),
+              titleKey: AppStringKeys.historyRecordPrivate,
+              value: settings.recordPrivate,
+              onChanged: settings.setRecordPrivate,
+              active: active,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-groups'),
+              titleKey: AppStringKeys.historyRecordGroups,
+              value: settings.recordGroups,
+              onChanged: settings.setRecordGroups,
+              active: active,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-channels'),
+              titleKey: AppStringKeys.historyRecordChannels,
+              value: settings.recordChannels,
+              onChanged: settings.setRecordChannels,
+              active: active,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-record-bots'),
+              titleKey: AppStringKeys.historyRecordBots,
+              value: settings.recordBots,
+              onChanged: settings.setRecordBots,
+              active: active,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Media snapshots per conversation class. The snapshot path only runs for
+/// messages the mirror records, so it needs the same chain as the record
+/// dims above.
+class _SnapshotSection extends StatelessWidget {
+  const _SnapshotSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = MessageHistorySettings.shared;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final active = settings.enableAll && settings.recordDeleted;
+        return SettingsSection(
+          titleKey: AppStringKeys.historySnapshotSection,
+          rows: [
+            _GatedSwitch(
+              switchKey: const ValueKey('history-snapshot-private'),
+              titleKey: AppStringKeys.historySnapshotPrivate,
+              value: settings.snapshotPrivate,
+              onChanged: settings.setSnapshotPrivate,
+              active: active,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-snapshot-groups'),
+              titleKey: AppStringKeys.historySnapshotGroups,
+              value: settings.snapshotGroups,
+              onChanged: settings.setSnapshotGroups,
+              active: active,
+            ),
+            _GatedSwitch(
+              switchKey: const ValueKey('history-snapshot-channels'),
+              titleKey: AppStringKeys.historySnapshotChannels,
+              value: settings.snapshotChannels,
+              onChanged: settings.setSnapshotChannels,
+              active: active,
+            ),
+            const SettingsNote(text: AppStringKeys.historySnapshotNote),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Export/import entry plus the deleted-badge style picker — the mirror's
+/// data-management block.
+class _TransferSection extends StatelessWidget {
+  const _TransferSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSection(
+      titleKey: AppStringKeys.historyTransferSection,
+      rows: [
+        SettingsRow(
+          key: const ValueKey('mithkax-history-transfer'),
+          title: AppStringKeys.historyTransferTitle.l10n(context),
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.share),
+          onTap: () => Navigator.of(context).push(
+            AppPageRoute<void>(
+              pageBuilder: (_, _, _) => const MessageHistoryTransferView(),
+            ),
+          ),
+        ),
+        _BadgeStyleRow(),
+      ],
+    );
+  }
+}
+
+/// Ghost-mode navigation (anti-recall style stealth), independent of the
+/// history mirror.
+class _GhostSection extends StatelessWidget {
+  const _GhostSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSection(
+      titleKey: AppStringKeys.mithkaxGhostSection,
+      rows: [
+        SettingsRow(
+          key: const ValueKey('mithkax-ghost-mode'),
+          title: AppStringKeys.ghostModeTitle,
+          leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
+          onTap: () => Navigator.of(context).push(
+            AppPageRoute<void>(
+              pageBuilder: (_, _, _) => const GhostModeSettingsView(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Local premium toggle.
+class _PremiumSection extends StatelessWidget {
+  const _PremiumSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSection(
+      titleKey: AppStringKeys.mithkaxPremiumSection,
+      rows: [_LocalPremiumRow()],
     );
   }
 }

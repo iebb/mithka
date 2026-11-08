@@ -2000,6 +2000,7 @@
     <string name="historyTitle">Historique des messages</string>
 
     <string name="historyTransferNote">L’export couvre toutes les copies conservées et instantanés multimédias de ce compte ; l’import remplace intégralement le miroir de ce compte.</string>
+    <string name="historyTransferSection">Gestion des données</string>
     <string name="historyTransferTitle">Exporter et importer</string>
     <string name="imageEditAdd">Ajouter</string>
     <string name="imageEditAddText">Ajouter du texte</string>
