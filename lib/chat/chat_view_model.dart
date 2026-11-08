@@ -7740,15 +7740,29 @@ class ChatViewModel extends ChangeNotifier {
   ChatMessage _ghostChatMessageFor(
     MessageHistoryEntry entry,
     int? accountUserId,
-  ) => ChatMessage(
-    id: entry.messageId,
-    isOutgoing: accountUserId != null && entry.senderId == accountUserId,
-    text: entry.text,
-    date: entry.date,
-    chatId: chatId,
-    senderId: entry.senderId == 0 ? null : entry.senderId,
-    contentType: 'mithkaGhost',
-  )..mirrorEntry = entry;
+  ) {
+    final senderId = entry.senderId == 0 ? null : entry.senderId;
+    final isOutgoing = accountUserId != null && entry.senderId == accountUserId;
+    return ChatMessage(
+      id: entry.messageId,
+      isOutgoing: isOutgoing,
+      // Media-only kept copies have no text; the localized kind label keeps
+      // the ghost bubble from rendering as an empty shell.
+      text: entry.text.trim().isNotEmpty
+          ? entry.text
+          : localizedHistoryKindLabelStub(entry.kindKey),
+      date: entry.date,
+      chatId: chatId,
+      senderId: senderId,
+      contentType: 'mithkaGhost',
+      // Attribution: a group ghost renders the sender header like any kept
+      // message would; the fold re-runs on every rebuild, so a cached name
+      // lands without waiting for another pass.
+      senderName: isOutgoing
+          ? (meName.trim().isNotEmpty ? meName : null)
+          : _senderCache[senderId]?.name,
+    )..mirrorEntry = entry;
+  }
 
   /// Test seam: run the transcript rebuild (and with it the ghost fold)
   /// without driving TDLib.
@@ -8351,6 +8365,22 @@ class ChatViewModel extends ChangeNotifier {
         m.senderAccentColorId = info.accentColorId;
         m.senderEmojiStatusId = info.emojiStatusId;
         changed = true;
+      }
+    }
+    // Ghost bubbles never join the id/sender indexes (their ids no longer
+    // exist on Telegram's side), so the loop above cannot reach them. Patch
+    // the folded ghosts of the resolved senders directly — otherwise a group
+    // ghost stays unattributed until the next full transcript rebuild.
+    if (allowTelegramTosViolations) {
+      for (final m in messages) {
+        final entry = m.mirrorEntry;
+        if (entry == null) continue;
+        if (!senders.containsKey(entry.senderId)) continue;
+        final name = senders[entry.senderId]!.name;
+        if (m.senderName != name) {
+          m.senderName = name;
+          changed = true;
+        }
       }
     }
     if (changed) _scheduleCoalescedNotify();

@@ -1200,6 +1200,9 @@ class MessageHistoryStore extends ChangeNotifier {
   /// files are read once here; a missing file contributes nothing rather
   /// than failing the whole export.
   Future<Map<String, Object?>> exportAccount() async {
+    if (!allowTelegramTosViolations) {
+      throw StateError('History mirror is not compiled in');
+    }
     final accountUserId = _activeAccountUserId;
     if (accountUserId == null) {
       throw StateError('No active account');
@@ -1246,6 +1249,9 @@ class MessageHistoryStore extends ChangeNotifier {
   /// same way clearChat does, so pending updates can never resurrect the
   /// replaced state. Returns the number of restored entries.
   Future<int> importAccount(Map<String, Object?> document) async {
+    if (!allowTelegramTosViolations) {
+      throw const FormatException('History mirror is not compiled in');
+    }
     if (document['format'] != exportFormat) {
       throw const FormatException('Not a Mithka X history export');
     }

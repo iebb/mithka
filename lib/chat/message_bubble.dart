@@ -1148,7 +1148,9 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
 
   /// Ghost styling for a deleted message's kept copy (Telegram §1.4
   /// self-build feature): the bubble stays where the message used to be,
-  /// translucent with a small trash badge, media from the mirror's snapshot.
+  /// translucent with the deleted marker tucked UNDER the bubble next to the
+  /// meta line, media from the mirror's snapshot. Group ghosts keep the
+  /// sender header so the kept copy stays attributable.
   Widget _maybeGhost(Widget child, bool outgoing) {
     if (message.mirrorEntry == null) return child;
     return Column(
@@ -1157,9 +1159,9 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
       children: [
-        _GhostDeletedBadge(outgoing: outgoing, onLongPress: _handleLongPress),
-        const SizedBox(height: 3),
         Opacity(opacity: 0.55, child: child),
+        const SizedBox(height: 2),
+        _GhostDeletedBadge(outgoing: outgoing, onLongPress: _handleLongPress),
       ],
     );
   }
