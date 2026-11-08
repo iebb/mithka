@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">聊天列表搜尋</string>
     <string name="appearanceShowEditAndReadMarks">顯示編輯與已讀標記</string>
     <string name="appearanceShowFolderBadges">資料夾未讀徽章</string>
+    <string name="appearanceHideAllChatsFolder">隱藏「全部」資料夾</string>
     <string name="appearanceShowGroupMemberTitles">顯示群組成員頭銜</string>
     <string name="appearanceShowMessageBubbles">顯示訊息氣泡</string>
     <string name="appearanceShowMessageBubblesDescription">關閉後將不使用自訂氣泡圖片，訊息改用主題內建的氣泡。已選的樣式會保留。</string>

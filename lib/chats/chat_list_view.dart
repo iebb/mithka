@@ -2257,6 +2257,15 @@ class _ChatListViewState extends State<ChatListView>
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final folderMode = theme.chatFolderDisplayMode;
+    // With folders not displayed the list must keep showing every chat, so
+    // the "hide All" preference only applies while folders are on screen.
+    _model.hideAllFilter =
+        theme.hideAllChatsFolder && folderMode != ChatFolderDisplayMode.hidden;
+    if (_model.selectionHiddenByFilterPreference) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _model.selectFirstVisibleFilterIfHidden();
+      });
+    }
     final isBot = context.watch<AccountStore?>()?.activeIsBotApi ?? false;
     final tabCount = isBot
         ? 1

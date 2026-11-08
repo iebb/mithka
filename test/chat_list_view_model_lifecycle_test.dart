@@ -28,6 +28,66 @@ void main() {
     expect(model.filters[1].iconName, 'Money');
   });
 
+  test('hiding "All" offers only real folders and moves the selection', () {
+    final model = ChatListViewModel();
+    addTearDown(model.dispose);
+
+    model.hideAllFilter = true;
+    // Without folders "All" is the only list, so it stays available.
+    expect(model.filters.map((f) => f.folderId), [null]);
+    expect(model.selectionHiddenByFilterPreference, isFalse);
+
+    model.applyUpdateForTesting({
+      '@type': 'updateChatFolders',
+      'chat_folders': [
+        {'id': 7, 'title': 'Business'},
+        {'id': 8, 'title': 'Personal'},
+      ],
+    });
+    expect(model.filters.map((f) => f.folderId), [7, 8]);
+    expect(model.selectedFilter.folderId, 7);
+    expect(identical(model.filters, model.filters), isTrue);
+
+    model.hideAllFilter = false;
+    expect(model.filters.map((f) => f.folderId), [null, 7, 8]);
+    expect(model.selectedFilter.folderId, 7);
+  });
+
+  test('enabling the preference later is applied after the frame', () {
+    final model = ChatListViewModel();
+    addTearDown(model.dispose);
+    model.applyUpdateForTesting({
+      '@type': 'updateChatFolders',
+      'chat_folders': [
+        {'id': 7, 'title': 'Business'},
+      ],
+    });
+    expect(model.selectedFilter.isAll, isTrue);
+
+    model.hideAllFilter = true;
+    // A single folder keeps "All" so the switcher stays reachable.
+    expect(model.filters.map((f) => f.folderId), [null, 7]);
+    expect(model.selectionHiddenByFilterPreference, isFalse);
+
+    model.applyUpdateForTesting({
+      '@type': 'updateChatFolders',
+      'chat_folders': [
+        {'id': 7, 'title': 'Business'},
+        {'id': 8, 'title': 'Personal'},
+      ],
+    });
+    // The folder update already moves off "All"; re-select it to exercise the
+    // post-frame path the view uses when the preference is turned on later.
+    model.hideAllFilter = false;
+    model.selectFilter(model.filters.first);
+    expect(model.selectedFilter.isAll, isTrue);
+    model.hideAllFilter = true;
+    expect(model.selectionHiddenByFilterPreference, isTrue);
+    model.selectFirstVisibleFilterIfHidden();
+    expect(model.selectedFilter.folderId, 7);
+    expect(model.selectionHiddenByFilterPreference, isFalse);
+  });
+
   test('message-level updates keep mention and reaction counters current', () {
     final model = ChatListViewModel();
     addTearDown(model.dispose);

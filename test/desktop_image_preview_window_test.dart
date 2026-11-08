@@ -316,6 +316,25 @@ void main() {
     expect(DesktopImagePreviewWindowArguments.tryParse('not json'), isNull);
   });
 
+  test('long galleries open the window on the tapped image', () {
+    // Past the 64-image limit the tapped photo used to be dropped and the
+    // window opened on photo 64 instead.
+    for (final (length, start) in [
+      (200, 150),
+      (200, 0),
+      (200, 199),
+      (65, 64),
+      (10, 7),
+      (1, 0),
+    ]) {
+      final slice = desktopImagePreviewWindowSlice(length, start);
+      expect(slice.count, length < 64 ? length : 64);
+      expect(slice.first, greaterThanOrEqualTo(0));
+      expect(slice.first + slice.count, lessThanOrEqualTo(length));
+      expect(slice.first + slice.initialIndex, start);
+    }
+  });
+
   test('action-bearing previews stay in the main window', () {
     expect(imagePreviewCanUseIndependentWindow(), isTrue);
     expect(

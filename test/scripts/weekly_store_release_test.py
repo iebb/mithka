@@ -266,6 +266,47 @@ class WeeklyReleaseTest(unittest.TestCase):
         with self.assertRaises(RELEASE.Error):
             RELEASE.verify_github_packages(release, manifest, plan)
 
+    def test_github_packages_accept_the_pre_split_universal_macos_archive(self):
+        plan = {"source_sha": "a" * 40, "version": "1.10.3", "android_version_code": 5}
+        common = [
+            "android-arm64-v8a.apk",
+            "android-armeabi-v7a.apk",
+            "windows-x64.zip",
+            "windows-arm64.zip",
+            "windows-x64-setup.exe",
+            "windows-arm64-setup.exe",
+            "linux-x64.tar.gz",
+            "linux-arm64.tar.gz",
+            "linux-x64.AppImage",
+            "linux-arm64.AppImage",
+        ]
+
+        def verify(macos):
+            files = {
+                f"mithka-1.10.3-20261103-{suffix}": {"sha256": "c" * 64, "size": 1}
+                for suffix in common + macos
+            }
+            release = {
+                "tag_name": "v1.10.3",
+                "draft": False,
+                "prerelease": False,
+                "assets": [
+                    {"name": name, "digest": "sha256:" + "c" * 64, "size": 1}
+                    for name in files
+                ],
+            }
+            RELEASE.verify_github_packages(release, dict(plan, files=files), plan)
+
+        verify(["macos-universal.zip"])
+        verify(["macos-arm64.zip", "macos-x64.zip"])
+        for incomplete in (
+            [],
+            ["macos-arm64.zip"],
+            ["macos-universal.zip", "macos-arm64.zip"],
+        ):
+            with self.assertRaises(RELEASE.Error):
+                verify(incomplete)
+
     def test_development_advances_one_minor_from_the_submitted_version_only(self):
         self.assertEqual(RELEASE.development_target("1.8.8", "1.8.8"), "1.9.0")
         self.assertEqual(RELEASE.development_target("1.9.11", "1.9.11"), "1.10.0")
