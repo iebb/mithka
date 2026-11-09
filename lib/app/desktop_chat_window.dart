@@ -5,16 +5,21 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth/account_store.dart' show AccountSummary;
 import '../call/call_manager.dart';
 import '../call/call_overlay_host.dart';
 import '../chat/chat_info_view.dart';
 import '../chat/chat_members_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/chat_view_model.dart';
 import '../chat/desktop_chat_context_pane.dart';
 import '../chat/group_remark_controller.dart';
 import '../chat/link_preview_fixer.dart';
 import '../chat/music_player_controller.dart';
 import '../chats/chat_folder_tag_controller.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_settings.dart';
+import '../history/message_history_store.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/ai_settings_controller.dart';
@@ -160,6 +165,26 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
     DesktopChatWindowService.instance.attachChildPresentationReload(
       _reloadPresentationPreferences,
     );
+    // Telegram §1.4 ghost folding resolves the owning account through this
+    // static bridge; the primary window wires it to its AccountStore, but
+    // this process has none — without the wiring every mirror lookup in the
+    // ChatViewModel (ghost fold, reply anchors, view-edits) reads null and
+    // silently no-ops. This window is one account, pinned for its lifetime.
+    if (allowTelegramTosViolations) {
+      final slot = widget.arguments.accountSlot;
+      final userId = widget.arguments.accountUserId;
+      final accountName = widget.arguments.accountName;
+      ChatViewModel.accountSummaryProvider = userId == null
+          ? null
+          : (candidateSlot) => candidateSlot == slot
+                ? AccountSummary(
+                    slot: slot,
+                    userId: userId,
+                    name: accountName,
+                    phone: '',
+                  )
+                : null;
+    }
     KeywordBlocker.shared.initialize(widget.prefs);
     LinkPreviewFixer.shared.initialize(widget.prefs);
     HiddenSenderStore.shared
@@ -167,6 +192,14 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
       ..addListener(_handleHiddenSendersChanged);
     CountryMessageFilter.shared.initialize(widget.prefs);
     MusicPlayerController.shared.initialize(widget.prefs);
+    // Telegram §1.4 surfaces in a popped-out chat window: ghost bubbles and
+    // the mirror-driven reply anchors read these two singletons. They are
+    // process-wide, and this window runs in its OWN process — without the
+    // seed here the switches read as off and the kept copies never fold in.
+    if (allowTelegramTosViolations) {
+      MessageHistorySettings.shared.initialize(widget.prefs);
+      MessageHistoryStore.shared.initialize(widget.prefs);
+    }
     unawaited(_ai.initialize());
     unawaited(SensitiveContentController.shared.initialize());
     unawaited(BlockedUserService.shared.loadBlockedUsers());
@@ -197,6 +230,12 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
         _readingHiddenSenders = true;
         HiddenSenderStore.shared.initialize(widget.prefs);
         _readingHiddenSenders = false;
+        // Settings changed in the primary window (ghost rendering, badge
+        // style…): re-seed the §1.4 singletons from the reloaded prefs so
+        // this window converges instead of keeping its boot-time values.
+        if (allowTelegramTosViolations) {
+          MessageHistorySettings.shared.initialize(widget.prefs);
+        }
 
         final previousTheme = _theme;
         final previousTranslation = _translation;
