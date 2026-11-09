@@ -23,7 +23,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'message_history_entry_view.dart'
     show MediaSnapshotView, localizedHistoryKindLabel;
-import 'message_history_models.dart';
+import 'message_history_store.dart';
 import 'message_media_snapshot.dart';
 
 /// One revision as it was at a point in time.
@@ -57,31 +57,60 @@ class _MessageHistoryRevisionViewState
   @override
   void initState() {
     super.initState();
+    // The entry is a snapshot taken when the page opened; a live edit or a
+    // delete-entry in another surface would leave this page showing the
+    // stale revision list, so re-read through the store and rebuild.
+    if (allowTelegramTosViolations) {
+      MessageHistoryStore.shared.addListener(_onStoreChanged);
+    }
     // The snapshot directory is resolved lazily on first snapshot; entering
     // this page straight from a long-press can be the first mirror surface
     // of the session, so resolve it before the first frame renders media
     // rows as bare kind labels. The page rebuilds once the directory lands
     // (the resolver is not a listenable).
+    unawaited(
+      MessageMediaSnapshotter.shared.ensureDirResolved().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
+  }
+
+  @override
+  void dispose() {
     if (allowTelegramTosViolations) {
-      unawaited(
-        MessageMediaSnapshotter.shared.ensureDirResolved().then((_) {
-          if (mounted) setState(() {});
-        }),
-      );
+      MessageHistoryStore.shared.removeListener(_onStoreChanged);
     }
+    super.dispose();
+  }
+
+  void _onStoreChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The store's CURRENT entry behind this page's snapshot — the snapshot
+  /// the page was opened with can be replaced by an import, an edit, or a
+  /// delete-entry while the page is open.
+  MessageHistoryEntry? get _liveEntry {
+    if (!allowTelegramTosViolations) return null;
+    return MessageHistoryStore.shared.entryFor(
+      widget.entry.accountUserId,
+      widget.entry.chatId,
+      widget.entry.messageId,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final entry = _liveEntry ?? widget.entry;
     return SettingsPageScaffold(
       title: AppStringKeys.historyRevisionsTitle.l10n(context),
       onBack: () => Navigator.of(context).pop(),
       child: SettingsListView(
         children: [
-          if (widget.entry.events.isEmpty)
+          if (entry.events.isEmpty)
             const SettingsNote(text: AppStringKeys.historyEmpty)
           else
-            for (final revision in _revisions)
+            for (final revision in _revisionsFor(entry))
               _RevisionBubble(
                 key: ValueKey('revision-${revision.at}'),
                 revision: revision,
@@ -93,9 +122,8 @@ class _MessageHistoryRevisionViewState
     );
   }
 
-  List<_Revision> get _revisions {
+  List<_Revision> _revisionsFor(MessageHistoryEntry entry) {
     // Newest first: the current text leads, then each event's previous state.
-    final entry = widget.entry;
     final list = <_Revision>[
       _Revision(
         at: entry.events.isEmpty ? entry.date : entry.events.last.at,
