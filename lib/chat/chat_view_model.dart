@@ -7731,13 +7731,18 @@ class ChatViewModel extends ChangeNotifier {
   static AccountSummaryForSlot? accountSummaryProvider;
 
   /// Deleted mirror entries of this chat become in-place ghost bubbles; the
-  /// ids not present in the transcript are the ghosts to fold in.
+  /// ids not present in the transcript are the ghosts to fold in. A topic
+  /// transcript folds only its own topic's ghosts.
   List<MessageHistoryEntry> _ghostEntriesForTranscript() {
     if (!_ghostsEnabled) return const [];
     final accountUserId = _accountUserId;
     if (accountUserId == null) return const [];
     return (historyStoreOverride ?? MessageHistoryStore.shared)
-        .deletedEntriesFor(accountUserId, chatId);
+        .deletedEntriesFor(
+          accountUserId,
+          chatId,
+          topicId: forumTopicId ?? 0,
+        );
   }
 
   /// Folds ghost bubbles into the published transcript after every rebuild.
@@ -7896,7 +7901,11 @@ class ChatViewModel extends ChangeNotifier {
       final revivedGhost =
           accountUserId != null &&
           (historyStoreOverride ?? MessageHistoryStore.shared)
-              .deletedEntriesFor(accountUserId, chatId)
+              .deletedEntriesFor(
+                accountUserId,
+                chatId,
+                topicId: forumTopicId ?? 0,
+              )
               .any((entry) => entry.messageId == message.id);
       if (revivedGhost) {
         _applyKeywordFilter();

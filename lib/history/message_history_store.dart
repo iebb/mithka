@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../chat/forum_topic_transcript.dart';
 import '../config/build_flags.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -262,7 +263,12 @@ class MessageHistoryStore extends ChangeNotifier {
   /// Deleted kept copies of one chat of one account, oldest first — the
   /// ghost-bubble source. Reads by explicit account id so a chat view of a
   /// non-active slot (desktop multi-window) still gets its own ghosts.
-  List<MessageHistoryEntry> deletedEntriesFor(int accountUserId, int chatId) {
+  /// [topicId] narrows the result to one forum topic (0 = whole chat).
+  List<MessageHistoryEntry> deletedEntriesFor(
+    int accountUserId,
+    int chatId, {
+    int topicId = 0,
+  }) {
     if (!allowTelegramTosViolations) return const [];
     if (_excludedChatsByAccount[accountUserId]?.contains(chatId) ?? false) {
       // An excluded chat owes no ghosts — belt and braces against rows that
@@ -270,12 +276,23 @@ class MessageHistoryStore extends ChangeNotifier {
       return const [];
     }
     return List.unmodifiable(
-      _byKey.values.where(
-        (entry) =>
-            entry.accountUserId == accountUserId &&
-            entry.chatId == chatId &&
-            entry.state == MessageHistoryState.deleted,
-      ),
+      _byKey.values.where((entry) {
+        if (entry.accountUserId != accountUserId ||
+            entry.chatId != chatId ||
+            entry.state != MessageHistoryState.deleted) {
+          return false;
+        }
+        // A topic-scoped transcript shows only its own topic's ghosts.
+        // Unattributed rows (topicId 0: pre-capture rows and General's
+        // no-topic-id arrivals, which the forum index maps to General)
+        // belong to the General view alone — mirroring
+        // rawMessageBelongsToForumTopic's fallback rule.
+        if (topicId != 0) {
+          if (entry.topicId != 0) return entry.topicId == topicId;
+          return topicId == generalForumTopicId;
+        }
+        return true;
+      }),
     );
   }
 
@@ -638,6 +655,9 @@ class MessageHistoryStore extends ChangeNotifier {
         senderId: _senderId(message) ?? existing.senderId,
         state: MessageHistoryState.active,
         deletedAt: 0,
+        topicId: existing.topicId == 0
+            ? _messageTopicId(message)
+            : existing.topicId,
       );
       if (refreshed == existing) return;
       _byKey[key] = refreshed;
@@ -669,6 +689,7 @@ class MessageHistoryStore extends ChangeNotifier {
       state: MessageHistoryState.active,
       deletedAt: 0,
       events: const [],
+      topicId: _messageTopicId(message),
     );
     _trim();
     notifyListeners();
@@ -1479,6 +1500,18 @@ class MessageHistoryStore extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // Message field extraction
   // ---------------------------------------------------------------------------
+
+  /// The forum topic a raw TDLib `message` was posted in: 0 when it carries
+  /// no explicit topic (ordinary chats, and a forum's General topic, which
+  /// TDLib may leave unattributed). Only an explicit messageTopicForum
+  /// counts, exactly like the transcript scoping rule
+  /// (rawMessageBelongsToForumTopic); a bot topic chat always names its
+  /// topic, so recording it needs no chat-id special case.
+  static int _messageTopicId(Map<String, dynamic> message) {
+    final topic = message.obj('topic_id');
+    if (topic == null || topic.type != 'messageTopicForum') return 0;
+    return topic.integer('forum_topic_id') ?? 0;
+  }
 
   int? _senderId(Map<String, dynamic> message) {
     final sender = message.obj('sender_id');

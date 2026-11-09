@@ -122,6 +122,7 @@ class MessageHistoryEntry {
     this.mediaPath = '',
     this.hasLiveChat = true,
     this.readAt = 0,
+    this.topicId = 0,
   });
 
   /// User id of the account that received the message. Two accounts that see
@@ -168,6 +169,12 @@ class MessageHistoryEntry {
   /// for the messages the account sent that the mirror also kept.
   final int readAt;
 
+  /// Forum topic the message was posted in, 0 for ordinary chats and
+  /// General's unattributed arrivals. Topic-scoped transcripts filter
+  /// ghosts by it; it never identifies anything on Telegram's side once
+  /// the message is gone.
+  final int topicId;
+
   bool get isEdited => events.isNotEmpty;
 
   String get key => '$accountUserId:$chatId:$messageId';
@@ -191,6 +198,7 @@ class MessageHistoryEntry {
       other.mediaPath == mediaPath &&
       other.hasLiveChat == hasLiveChat &&
       other.readAt == readAt &&
+      other.topicId == topicId &&
       listEquals(other.events, events);
 
   @override
@@ -207,6 +215,7 @@ class MessageHistoryEntry {
     mediaPath,
     hasLiveChat,
     readAt,
+    topicId,
     Object.hashAll(events),
   );
 
@@ -221,6 +230,7 @@ class MessageHistoryEntry {
     String? mediaPath,
     bool? hasLiveChat,
     int? readAt,
+    int? topicId,
   }) => MessageHistoryEntry(
     accountUserId: accountUserId ?? this.accountUserId,
     chatId: chatId,
@@ -235,6 +245,7 @@ class MessageHistoryEntry {
     mediaPath: mediaPath ?? this.mediaPath,
     hasLiveChat: hasLiveChat ?? this.hasLiveChat,
     readAt: readAt ?? this.readAt,
+    topicId: topicId ?? this.topicId,
   );
 
   Map<String, Object?> toJson() => {
@@ -251,6 +262,7 @@ class MessageHistoryEntry {
     if (mediaPath.isNotEmpty) 'media': mediaPath,
     if (!hasLiveChat) 'noChat': true,
     if (readAt > 0) 'readAt': readAt,
+    if (topicId > 0) 'topic': topicId,
   };
 
   /// Entries without an 'account' field (mirror files from before the
@@ -279,6 +291,7 @@ class MessageHistoryEntry {
     final media = json['media'];
     final noChat = json['noChat'];
     final readAt = json['readAt'];
+    final topic = json['topic'];
     return MessageHistoryEntry(
       accountUserId: account,
       chatId: chat,
@@ -300,6 +313,7 @@ class MessageHistoryEntry {
       mediaPath: media is String ? media : '',
       hasLiveChat: noChat is bool ? !noChat : true,
       readAt: readAt is int ? readAt : 0,
+      topicId: topic is int ? topic : 0,
     );
   }
 }

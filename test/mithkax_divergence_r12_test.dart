@@ -212,4 +212,215 @@ void main() {
       );
     });
   });
+
+  group('REG-2 topic transcripts fold only their own ghosts', () {
+    test('a topic pane hides other topics ghosts, keeps its own', () {
+      ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+        slot: 0,
+        userId: _accountA,
+        name: 'me',
+        phone: '+1',
+      );
+      store.debugSeed([
+        _deleted(messageId: 200, topicId: 7),
+        _deleted(messageId: 201, topicId: 8),
+        _deleted(messageId: 202, topicId: 0),
+      ]);
+      final vm = makeViewModel(forumTopicId: 7);
+      addTearDown(vm.dispose);
+      vm.debugRebuildTranscriptForTesting();
+      final ghostIds = vm.messages
+          .where((m) => m.mirrorEntry != null)
+          .map((m) => m.id)
+          .toSet();
+      expect(ghostIds, {200},
+        reason: 'topic 7 shows only its own ghost; 0-topic rows belong to '
+            'the General view alone');
+    });
+
+    test('the General topic view inherits unattributed ghosts', () {
+      ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+        slot: 0,
+        userId: _accountA,
+        name: 'me',
+        phone: '+1',
+      );
+      store.debugSeed([
+        _deleted(messageId: 200, topicId: 7),
+        _deleted(messageId: 201, topicId: 8),
+        _deleted(messageId: 202, topicId: 0),
+      ]);
+      final vm = makeViewModel(forumTopicId: generalForumTopicId);
+      addTearDown(vm.dispose);
+      vm.debugRebuildTranscriptForTesting();
+      final ghostIds = vm.messages
+          .where((m) => m.mirrorEntry != null)
+          .map((m) => m.id)
+          .toSet();
+      expect(ghostIds, {202},
+        reason: 'General owns the unattributed rows, exactly like the '
+            'transcript scoping fallback');
+    });
+
+    test('the chat-wide view keeps every ghost', () {
+      ChatViewModel.accountSummaryProvider = (_) => AccountSummary(
+        slot: 0,
+        userId: _accountA,
+        name: 'me',
+        phone: '+1',
+      );
+      store.debugSeed([
+        _deleted(messageId: 200, topicId: 7),
+        _deleted(messageId: 201, topicId: 8),
+        _deleted(messageId: 202, topicId: 0),
+      ]);
+      final vm = makeViewModel();
+      addTearDown(vm.dispose);
+      vm.debugRebuildTranscriptForTesting();
+      final ghostIds = vm.messages
+          .where((m) => m.mirrorEntry != null)
+          .map((m) => m.id)
+          .toSet();
+      expect(ghostIds, {200, 201, 202});
+    });
+  });
+
+  group('REG-3 content updates without an edited date never fake a revision', () {
+    test('content-first records nothing and a later real pair still works', () async {
+      ChatViewModel.accountSummaryProvider = (_) => null;
+      final settings = MessageHistorySettings.shared;
+      settings
+        ..setSnapshotPrivate(false)
+        ..setSnapshotGroups(false)
+        ..setSnapshotChannels(false);
+
+      const newText = 'revised';
+      store.debugSeed([
+        const MessageHistoryEntry(
+          accountUserId: _accountA,
+          chatId: _chatId,
+          messageId: 300,
+          senderId: 42,
+          date: 1,
+          text: 'original',
+          kindKey: '',
+          state: MessageHistoryState.active,
+          deletedAt: 0,
+          events: [],
+        ),
+      ]);
+      // Reversed arrival: content first. A content generation (dice roll,
+      // live location, poll) arrives exactly like this, so nothing records
+      // and the text stays put.
+      emitAs(
+        _clientA,
+        'updateMessageContent',
+        {
+          'chat_id': '$_chatId',
+          'message_id': 300,
+          'new_content': {
+            '@type': 'messageText',
+            'text': {'@type': 'formattedText', 'text': newText},
+          },
+        },
+      );
+      await pump();
+      var entry = store.entryFor(_accountA, _chatId, 300);
+      expect(entry?.events, isEmpty,
+        reason: 'a content generation without an edited date is not an edit');
+      expect(entry?.text, 'original');
+
+      // A subsequent genuine edited+content pair still records cleanly —
+      // the missed content left no stale pending state behind.
+      emitAs(
+        _clientA,
+        'updateMessageEdited',
+        {'chat_id': '$_chatId', 'message_id': 300, 'edit_date': 77},
+      );
+      await pump();
+      emitAs(
+        _clientA,
+        'updateMessageContent',
+        {
+          'chat_id': '$_chatId',
+          'message_id': 300,
+          'new_content': {
+            '@type': 'messageText',
+            'text': {'@type': 'formattedText', 'text': newText},
+          },
+        },
+      );
+      await pump();
+      entry = store.entryFor(_accountA, _chatId, 300);
+      expect(entry?.events, hasLength(1));
+      expect(entry?.events.single.editDate, 77);
+      expect(entry?.text, newText);
+    });
+  });
+
+  group('REG-4 topic capture', () {
+    test('a group message with an explicit topic records it', () async {
+      emitAs(
+        _clientA,
+        'updateNewMessage',
+        {
+          'message': {
+            '@type': 'message',
+            'id': 400,
+            'chat_id': '$_groupChatId',
+            'is_outgoing': false,
+            'date': 10,
+            'topic_id': {'@type': 'messageTopicForum', 'forum_topic_id': 9},
+            'content': {
+              '@type': 'messageText',
+              'text': {'@type': 'formattedText', 'text': 'topic msg'},
+            },
+          },
+        },
+      );
+      await pump();
+      final entry = store.entryFor(_accountA, _groupChatId, 400);
+      expect(entry, isNotNull);
+      expect(entry!.topicId, 9);
+    });
+
+    test('a private chat message never records a topic', () async {
+      emitAs(
+        _clientA,
+        'updateNewMessage',
+        {
+          'message': {
+            '@type': 'message',
+            'id': 401,
+            'chat_id': '$_chatId',
+            'is_outgoing': false,
+            'date': 10,
+            'content': {
+              '@type': 'messageText',
+              'text': {'@type': 'formattedText', 'text': 'private msg'},
+            },
+          },
+        },
+      );
+      await pump();
+      final entry = store.entryFor(_accountA, _chatId, 401);
+      expect(entry, isNotNull);
+      expect(entry!.topicId, 0);
+    });
+  });
 }
+
+MessageHistoryEntry _deleted({required int messageId, required int topicId}) =>
+    MessageHistoryEntry(
+      accountUserId: _accountA,
+      chatId: _chatId,
+      messageId: messageId,
+      senderId: 42,
+      date: 1,
+      text: 'ghost $messageId',
+      kindKey: '',
+      state: MessageHistoryState.deleted,
+      deletedAt: 2,
+      events: const [],
+      topicId: topicId,
+    );
