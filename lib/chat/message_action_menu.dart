@@ -73,10 +73,6 @@ enum MessageAction {
       this == MessageAction.report ||
       this == MessageAction.block ||
       this == MessageAction.removeMirror;
-
-  /// Whether the action exists only in MithkaX builds (compile-time gated).
-  bool get isForkOnly =>
-      this == MessageAction.removeMirror || this == MessageAction.info;
 }
 
 enum MessageActionSource { normal, video }
