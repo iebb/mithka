@@ -7863,6 +7863,21 @@ class ChatViewModel extends ChangeNotifier {
     }
     // Guaranteed by _appendIfStrictlyNewest, so the pending count cannot move.
     assert(!isPendingChatMessage(message));
+    // A revived message (the same id as a folded ghost re-entering the
+    // transcript) must retire its ghost through the full rebuild — the fast
+    // path would leave both the ghost and the live copy on screen.
+    if (_ghostsEnabled) {
+      final accountUserId = _accountUserId;
+      final revivedGhost =
+          accountUserId != null &&
+          (historyStoreOverride ?? MessageHistoryStore.shared)
+              .deletedEntriesFor(accountUserId, chatId)
+              .any((entry) => entry.messageId == message.id);
+      if (revivedGhost) {
+        _applyKeywordFilter();
+        return;
+      }
+    }
     _allMessagesById[message.id] = message;
     if (_isBlockedMessage(message)) {
       _blockedMessageIds.add(message.id);
