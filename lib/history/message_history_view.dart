@@ -79,9 +79,15 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
       _resolvingTitles = false;
       _chatTitles = const {};
       _chatId = null;
+      // Sender names were resolved against the previous account's client —
+      // different access hashes can make the same ids unresolvable (and the
+      // old answers wrong), so they reset with the titles, not only on miss.
+      _resolvingSenders = false;
+      _senderNames = const {};
     }
     if (mounted) setState(() {});
     _maybeResolveChatTitles();
+    _maybeResolveSenderNames();
   }
 
   /// Resolves display titles for every chat that has kept copies, once the
@@ -283,11 +289,7 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
                   value: '${counts[chatId]}',
                   leading: _ChatLeading(
                     label: _chatLabel(chatId),
-                    dead: latestByChat[chatId]!.hasLiveChat
-                        ? false
-                        : latestByChat.entries.any(
-                            (e) => e.key == chatId && !e.value.hasLiveChat,
-                          ),
+                    dead: !latestByChat[chatId]!.hasLiveChat,
                   ),
                   onTap: () => setState(() => _chatId = chatId),
                 ),
