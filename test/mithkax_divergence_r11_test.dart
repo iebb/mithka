@@ -27,19 +27,6 @@ class _R implements TosAccountUserIdResolver {
   Future<int?> resolve(int clientId) async => _accountA;
 }
 
-Map<String, dynamic> _msg(int chatId, int id) => {
-  '@type': 'message',
-  'chat_id': '$chatId',
-  'id': id,
-  'date': 1700000000 + id,
-  'is_outgoing': false,
-  'sender_id': {'@type': 'messageSenderUser', 'user_id': '42'},
-  'content': {
-    '@type': 'messageText',
-    'text': {'@type': 'formattedText', 'text': 'x'},
-  },
-};
-
 void main() {
   if (!_enabled) return;
 
@@ -105,7 +92,7 @@ void main() {
     persistedStore.initialize(prefs);
     persistedStore.debugSetActiveAccount(_accountA);
     persistedStore.debugSeed([
-      MessageHistoryEntry(
+      const MessageHistoryEntry(
         accountUserId: _accountA,
         chatId: chat,
         messageId: 5,
@@ -115,7 +102,7 @@ void main() {
         kindKey: 'historyKindText',
         state: MessageHistoryState.deleted,
         deletedAt: 123,
-        events: const [],
+        events: [],
       ),
     ]);
     await persistedStore.persistNowForTesting();
@@ -155,7 +142,7 @@ void main() {
     // exclusion present so it lands in _excludedChatsByAccount.
     store.initialize(prefs);
     store.debugSeed([
-      MessageHistoryEntry(
+      const MessageHistoryEntry(
         accountUserId: _accountA,
         chatId: chat,
         messageId: 7,
@@ -165,7 +152,7 @@ void main() {
         kindKey: 'historyKindText',
         state: MessageHistoryState.deleted,
         deletedAt: 123,
-        events: const [],
+        events: [],
       ),
     ]);
     expect(store.deletedEntriesFor(_accountA, chat), isEmpty);
