@@ -35,6 +35,11 @@ on:
         required: false
         type: boolean
         default: false
+      ohos_test_only:
+        description: Build only the HarmonyOS hap, without other platforms or a GitHub release
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-packages-${{ github.ref }}
@@ -83,6 +88,7 @@ jobs:
         id: version
         env:
           DESKTOP_TEST_ONLY: ${{ inputs.desktop_test_only }}
+          OHOS_TEST_ONLY: ${{ inputs.ohos_test_only }}
           STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
@@ -107,9 +113,21 @@ jobs:
             test "$GITHUB_REF" = 'refs/heads/master'
             [[ "$STORE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
             test "$DESKTOP_TEST_ONLY" != 'true'
+            test "$OHOS_TEST_ONLY" != 'true'
             branch_name='store-snapshot'
           fi
-          if [ "$DESKTOP_TEST_ONLY" = "true" ]; then
+          if [ "$DESKTOP_TEST_ONLY" = "true" ] && [ "$OHOS_TEST_ONLY" = "true" ]; then
+            echo "Choose either desktop_test_only or ohos_test_only" >&2
+            exit 1
+          fi
+          if [ "$OHOS_TEST_ONLY" = "true" ]; then
+            release_tag="ohos-test-${app_version}-${release_date}-${short_sha}"
+            release_name="Mithka $app_version HarmonyOS test ($short_sha)"
+            release_channel="HarmonyOS test"
+            artifact_label="${app_version}-ohos-test-${release_date}-${short_sha}"
+            prerelease="true"
+            make_latest="false"
+          elif [ "$DESKTOP_TEST_ONLY" = "true" ]; then
             release_tag="desktop-test-${app_version}-${release_date}-${short_sha}"
             release_name="Mithka $app_version desktop test ($short_sha)"
             release_channel="desktop test"
@@ -162,7 +180,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.abi }} APK
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only) }}
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
@@ -360,6 +378,7 @@ jobs:
 
   build-desktop:
     name: Build ${{ matrix.label }}
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.ohos_test_only }}
     needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
@@ -750,7 +769,8 @@ jobs:
     env:
       FLUTTER_OHOS_REF: '3.44.9+ohos-0.0.1-canary1'
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      # Packages resolve from pub.dev like pubspec.lock and the other jobs;
+      # the pub.flutter-io.cn mirror served archives with wrong content hashes.
       FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
     steps:
       - name: Put the ohos toolchain on PATH
@@ -839,30 +859,66 @@ jobs:
           # The fallback is only sound when the engine already refuses to call
           # the API 26 module below sdkApiVersion 26; fail loudly otherwise so
           # an engine update that drops the guard cannot ship a silent
-          # behaviour change.
-          guard = re.search(r"sdkApiVersion\s*<\s*26", text)
-          if guard is None:
-              raise SystemExit(
-                  "OhosAutoFillHelper.ets no longer guards autofill below "
-                  "sdkApiVersion 26; the API 22 capability fallback is no "
-                  "longer sound and must be re-reviewed"
-              )
+          # behaviour change. The guard is accepted either as the literal 26 or
+          # as AUTOFILL_SUPPORT_API when that constant is exactly 26, and it
+          # must precede the manager call inside each of the two methods.
+          guard_pattern = r"deviceInfo\.sdkApiVersion\s*<\s*(?:26\b"
+          if re.search(r"\bAUTOFILL_SUPPORT_API\s*=\s*26\s*;", text):
+              guard_pattern += r"|AUTOFILL_SUPPORT_API\b"
+          guard_pattern += r")"
+          for method, call in (
+              ("requestAutoFill", "autoFillManager.requestAutoFill("),
+              ("requestAutoSave", "autoFillManager.requestAutoSave("),
+          ):
+              start = text.find(f"static {method}(")
+              call_at = text.find(call, start) if start >= 0 else -1
+              if start < 0 or call_at < 0 or not re.search(
+                  guard_pattern, text[start:call_at]
+              ):
+                  raise SystemExit(
+                      f"OhosAutoFillHelper.{method} no longer guards autofill "
+                      "below sdkApiVersion 26; the API 22 capability fallback "
+                      "is no longer sound and must be re-reviewed"
+                  )
 
-          text, n_import = re.subn(
+          # Remove the manager from either a default import or a named kit
+          # import, keeping any sibling names such as bundleManager.
+          n_import = 0
+
+          def drop_named(match: re.Match) -> str:
+              global n_import
+              names = [n.strip() for n in match.group(1).split(",") if n.strip()]
+              kept = [n for n in names if n != "autoFillManager"]
+              if len(kept) == len(names):
+                  return match.group(0)
+              n_import += 1
+              if not kept:
+                  return ""
+              return f"import {{ {', '.join(kept)} }} from {match.group(2)};\n"
+
+          text = re.sub(
+              r"^[ \t]*import\s*\{([^}]*)\}\s*from\s*(['\"][^'\"]*['\"]);?[ \t]*\n",
+              drop_named,
+              text,
+              flags=re.MULTILINE,
+          )
+          text, n_default = re.subn(
               r"^[ \t]*import\s+autoFillManager\s+from\s+['\"][^'\"]*['\"];?[ \t]*\n",
               "",
               text,
-              count=1,
               flags=re.MULTILINE,
           )
-          if n_import == 0 and re.search(
-              r"^\s*import\s+autoFillManager\b", text, flags=re.MULTILINE
+          n_import += n_default
+          if n_import != 1 or re.search(
+              r"^[ \t]*import\b[^;\n]*\bautoFillManager\b", text, flags=re.MULTILINE
           ):
-              raise SystemExit("autoFillManager import was not removed")
+              raise SystemExit("autoFillManager import was not removed exactly once")
 
           anchor = "const TAG = 'OhosAutoFillHelper';"
           if anchor not in text:
               raise SystemExit("TAG anchor not found in OhosAutoFillHelper.ets")
+          # Strict ArkTS rejects object-literal types and untyped literals, so
+          # the shapes are declared as interfaces.
           aliases = (
               "\n"
               "// CI compatibility shim: these API 26 autoFillManager types are\n"
@@ -870,13 +926,34 @@ jobs:
               "type AutoFillType = number;\n"
               "type ViewData = Object;\n"
               "type AutoFillTriggerType = number;\n"
-              "type FillRequest = Object;\n"
-              "type FillFailureResult = { errCode: number };\n"
-              "type AutoFillCallback = { onSuccess: (v: ViewData) => void; onFailure: (r: FillFailureResult) => void };\n"
-              "type SaveRequest = Object;\n"
-              "type AutoSaveCallback = { onFailure: () => void };\n"
+              "interface FillRequest {\n"
+              "  type: AutoFillType;\n"
+              "  viewData: ViewData;\n"
+              "  customData: AutoFillCustomData;\n"
+              "  isPopup: boolean;\n"
+              "  triggerType: AutoFillTriggerType;\n"
+              "}\n"
+              "interface FillFailureResult {\n"
+              "  errCode: number;\n"
+              "}\n"
+              "interface AutoFillCallback {\n"
+              "  onSuccess: (v: ViewData) => void;\n"
+              "  onFailure: (r: FillFailureResult) => void;\n"
+              "}\n"
+              "interface SaveRequest {\n"
+              "  viewData: ViewData;\n"
+              "}\n"
+              "interface AutoSaveCallback {\n"
+              "  onSuccess: () => void;\n"
+              "  onFailure: () => void;\n"
+              "}\n"
           )
           text = text.replace(anchor, anchor + aliases, 1)
+
+          # Log through the embedding's own logger when it is imported;
+          # otherwise fall back to hilog.
+          use_log = re.search(r"^import\s+Log\s+from\b", text, flags=re.MULTILINE)
+          log_error = "Log.e(TAG, " if use_log else "hilog.error(0x0, TAG, "
 
           # With the real module gone these two calls can no longer be made
           # at compile time. The replacement preserves the runtime SDK
@@ -889,22 +966,28 @@ jobs:
               r"autoFillManager\.requestAutoFill\(uiContext, fillRequest, callback\);",
               "// API 26 autoFillManager unavailable on the CI API 22 SDK; "
               "runtime >= 26 reaches here only through the reviewed shim.\n"
-              "        hilog.error(0x0, TAG, 'requestAutoFill shim: "
+              f"      {log_error}'requestAutoFill shim: "
               "autoFillManager unavailable; failing loudly');\n"
-              "        callback.onFailure({ errCode: -1 });",
+              "      const shimFailure: FillFailureResult = { errCode: -1 };\n"
+              "      callback.onFailure(shimFailure);",
               text,
           )
           text, n_save = re.subn(
               r"autoFillManager\.requestAutoSave\(uiContext, saveRequest, napiCallback\);",
               "// API 26 autoFillManager unavailable on the CI API 22 SDK; "
               "runtime >= 26 reaches here only through the reviewed shim.\n"
-              "        hilog.error(0x0, TAG, 'requestAutoSave shim: "
+              f"      {log_error}'requestAutoSave shim: "
               "autoFillManager unavailable; failing loudly');\n"
-              "        napiCallback.onFailure();",
+              "      napiCallback.onFailure();",
               text,
           )
+          if n_fill != 1 or n_save != 1:
+              raise SystemExit(
+                  f"expected one requestAutoFill and one requestAutoSave call, "
+                  f"found {n_fill} and {n_save}"
+              )
           # The shim's loud failure needs hilog; ensure the import exists.
-          if not re.search(r"import\s+\{\s*hilog\s*\}", text):
+          if not use_log and not re.search(r"import\s+\{\s*hilog\s*\}", text):
               text = text.replace(
                   "const TAG = 'OhosAutoFillHelper';",
                   "import { hilog } from '@kit.PerformanceAnalysisKit';\n"
@@ -1135,7 +1218,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only) }}
     # build-ohos is deliberately NOT a hard dependency yet: its assembled
     # path is still being validated, and a failure there must not block the
     # established platforms' releases. The ohos hap artifact is simply absent
