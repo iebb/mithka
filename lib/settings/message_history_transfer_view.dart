@@ -7,7 +7,7 @@
 //
 
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -79,17 +79,21 @@ class _MessageHistoryTransferViewState
       entryCount = (document['entries'] as List).length;
       final encoded = const JsonEncoder.withIndent('  ').convert(document);
       final stamp = _exportStamp(DateTime.now());
+      final fileName = 'mithkax-history-$stamp.json';
+      // Android SAF: the returned uri.path is not directly writable and the
+      // plugin may truncate the target first — pass the bytes so the plugin
+      // itself writes the file, and never touch the path afterwards.
+      final encodedBytes = Uint8List.fromList(utf8.encode(encoded));
       final destination = await FilePicker.platform.saveFile(
         dialogTitle: exportTitle,
-        fileName: 'mithkax-history-$stamp.json',
+        fileName: fileName,
         type: FileType.custom,
         allowedExtensions: const ['json'],
+        bytes: encodedBytes,
       );
       if (destination == null || destination.trim().isEmpty) {
         return; // cancelled — not an error
       }
-      if (!mounted) return;
-      await File(destination).writeAsString(encoded, flush: true);
       if (!mounted) return;
       showToast(
         context,
