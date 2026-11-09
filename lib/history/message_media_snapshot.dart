@@ -45,6 +45,11 @@ class MessageMediaSnapshotter {
   @visibleForTesting
   Future<void> Function()? beforeValidateForTesting;
 
+  /// Test seam over [attachmentBytesBudget]: when set, the budget gate
+  /// compares against this value instead of the default ceiling.
+  @visibleForTesting
+  int? budgetOverrideForTesting;
+
   /// Resolves the production directory once (from app support, so it follows
   /// the OS convention the mirror file already uses); an injected [dir] wins
   /// and never triggers the platform lookup. Failure keeps the snapshotter
@@ -130,6 +135,13 @@ class MessageMediaSnapshotter {
       final name = _snapshotFileName(accountUserId, chatId, messageId, source);
       final target = File('${directory.path}/$name');
       if (!await target.exists()) {
+        // Budget gate: a NEW copy must fit beside the bytes already committed.
+        // Re-copying an existing target only replaces bytes the directory
+        // already counts, so it stays exempt. Without the gate the mirror's
+        // attachment dir grows without bound until the disk fills.
+        final incoming = await source.length();
+        final budget = budgetOverrideForTesting ?? attachmentBytesBudget;
+        if (usedBytes + incoming > budget) return null;
         await source.copy(target.path);
       }
       final beforeValidate = beforeValidateForTesting;
