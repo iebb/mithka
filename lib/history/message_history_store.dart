@@ -259,6 +259,11 @@ class MessageHistoryStore extends ChangeNotifier {
   /// non-active slot (desktop multi-window) still gets its own ghosts.
   List<MessageHistoryEntry> deletedEntriesFor(int accountUserId, int chatId) {
     if (!allowTelegramTosViolations) return const [];
+    if (_excludedChatsByAccount[accountUserId]?.contains(chatId) ?? false) {
+      // An excluded chat owes no ghosts — belt and braces against rows that
+      // predate an exclusion (stale disk batch, import, older build).
+      return const [];
+    }
     return List.unmodifiable(
       _byKey.values.where(
         (entry) =>
@@ -1392,6 +1397,15 @@ class MessageHistoryStore extends ChangeNotifier {
         final clearedAt =
             _clearedChatAt['${entry.accountUserId}:${entry.chatId}'];
         if (clearedAt != null && clearedAt > _persistedScopeEpoch) continue;
+        // Exclusions live in prefs (written immediately) while entries live
+        // in this file (debounced) — an excludeChat followed by a process
+        // kill inside the persist window leaves the chat's stale rows here.
+        // The exclusion is the newer intent, so its rows never load.
+        if (_excludedChatsByAccount[entry.accountUserId]
+            ?.contains(entry.chatId) ??
+            false) {
+          continue;
+        }
         _byKey.putIfAbsent(entry.key, () => entry);
       }
       _trim();
