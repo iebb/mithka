@@ -52,6 +52,13 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   Map<int, String> _senderNames = const {};
   bool _resolvingSenders = false;
 
+  // Ids whose getChat/getUser already failed on this account's client. The
+  // queries cannot start succeeding for the same ids on the same client, and
+  // every store notification re-triggers the resolve loop — without the
+  // negative cache each new kept copy re-fires the full failed set.
+  final Set<int> _unresolvableChats = {};
+  final Set<int> _unresolvableSenders = {};
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +91,8 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
       // old answers wrong), so they reset with the titles, not only on miss.
       _resolvingSenders = false;
       _senderNames = const {};
+      _unresolvableChats.clear();
+      _unresolvableSenders.clear();
     }
     if (mounted) setState(() {});
     _maybeResolveChatTitles();
@@ -95,8 +104,13 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
   /// "Chat {id}" fallback.
   void _maybeResolveChatTitles() {
     if (_resolvingTitles) return;
-    final wanted = {for (final entry in _store.entries) entry.chatId};
-    if (_chatTitles.keys.toSet().containsAll(wanted)) return;
+    final wanted = {
+      for (final entry in _store.entries)
+        if (!_chatTitles.containsKey(entry.chatId) &&
+            !_unresolvableChats.contains(entry.chatId))
+          entry.chatId,
+    };
+    if (wanted.isEmpty) return;
     _resolvingTitles = true;
     unawaited(_resolveChatTitles(wanted, ++_titleResolutionGeneration));
   }
@@ -112,9 +126,14 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
           'chat_id': chatId,
         }, clientId);
         final title = chat.str('title');
-        if (title != null && title.isNotEmpty) resolved[chatId] = title;
+        if (title != null && title.isNotEmpty) {
+          resolved[chatId] = title;
+        } else {
+          _unresolvableChats.add(chatId);
+        }
       } catch (_) {
         // Fall through to the localized "Chat {id}" label.
+        _unresolvableChats.add(chatId);
       }
     }
     if (!mounted || generation != _titleResolutionGeneration) return;
@@ -135,9 +154,12 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
     if (_resolvingSenders) return;
     final wanted = {
       for (final entry in _store.entries)
-        if (entry.senderId != 0) entry.senderId,
+        if (entry.senderId != 0 &&
+            !_senderNames.containsKey(entry.senderId) &&
+            !_unresolvableSenders.contains(entry.senderId))
+          entry.senderId,
     };
-    if (_senderNames.keys.toSet().containsAll(wanted)) return;
+    if (wanted.isEmpty) return;
     _resolvingSenders = true;
     unawaited(_resolveSenderNames(wanted, _titleResolutionGeneration));
   }
@@ -153,7 +175,11 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
           'user_id': senderId,
         }, clientId);
         final name = _userDisplayName(user);
-        if (name.isNotEmpty) resolved[senderId] = name;
+        if (name.isNotEmpty) {
+          resolved[senderId] = name;
+        } else {
+          _unresolvableSenders.add(senderId);
+        }
       } catch (_) {
         try {
           final chat = await TdClient.shared.queryTo({
@@ -161,9 +187,14 @@ class _MessageHistoryViewState extends State<MessageHistoryView> {
             'chat_id': senderId,
           }, clientId);
           final title = chat.str('title');
-          if (title != null && title.isNotEmpty) resolved[senderId] = title;
+          if (title != null && title.isNotEmpty) {
+            resolved[senderId] = title;
+          } else {
+            _unresolvableSenders.add(senderId);
+          }
         } catch (_) {
           // Fall through to the localized "User {id}" label.
+          _unresolvableSenders.add(senderId);
         }
       }
     }
