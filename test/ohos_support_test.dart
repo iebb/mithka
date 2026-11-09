@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/platform/ohos_support.dart';
 
 void main() {
@@ -36,5 +39,21 @@ void main() {
         isMobileOperatingSystemFor(Platform.operatingSystem),
       );
     });
+  });
+
+  test('HarmonyOS selects the method-channel file picker', () {
+    // file_picker registers no Dart implementation for ohos; without this
+    // fallback FilePicker.platform is an uninitialized late field there.
+    registerOhosDartPluginFallbacks(onOhos: true);
+    expect(FilePicker.platform, isA<FilePickerIO>());
+  });
+
+  test('HarmonyOS composer offers the camera entry', () {
+    // Capture goes through the system camera there, so the strip must show it
+    // even though defaultTargetPlatform is neither Android nor iOS.
+    expect(composerShowsCameraIcon(null, true), isTrue);
+    expect(composerShowsCameraIcon(TargetPlatform.macOS, true), isFalse);
+    expect(composerShowsCameraIcon(TargetPlatform.macOS, false), isFalse);
+    expect(composerShowsCameraIcon(TargetPlatform.iOS, false), isTrue);
   });
 }

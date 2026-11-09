@@ -77,8 +77,9 @@ target, overlay, backup, lock, lock_backup = sys.argv[1:6]
 t_text = open(target).read()
 o_lines = open(overlay).read().splitlines()
 
-# Scalar "key: value" entries under the overlay's dependency_overrides section.
-ovr, section = {}, None
+# Scalar "key: value" entries under the overlay's dependency_overrides and
+# dependencies sections.
+ovr, deps, section = {}, {}, None
 for raw in o_lines:
     if not raw.strip() or raw.lstrip().startswith("#"):
         continue
@@ -88,6 +89,9 @@ for raw in o_lines:
     if section == "dependency_overrides" and ":" in raw:
         key, _, val = raw.strip().partition(":")
         ovr.setdefault(key.strip(), val.strip())
+    elif section == "dependencies" and ":" in raw:
+        key, _, val = raw.strip().partition(":")
+        deps.setdefault(key.strip(), val.strip())
 
 # Back up the exact original bytes of both files pub get rewrites: the
 # YAML is copied byte-for-byte (newline style included), never re-encoded
@@ -133,8 +137,25 @@ final = pre + ["dependency_overrides:"] + body_kept + appended
 final.append("")
 final += post
 
+# Overlay dependencies go directly under the top-level `dependencies:` header,
+# skipping any package the pubspec already depends on.
+added_deps = []
+if deps:
+    try:
+        header = final.index("dependencies:")
+    except ValueError:
+        sys.exit(f"enable-ohos-plugins: {target} has no top-level dependencies: block")
+    existing = set()
+    for l in final[header + 1:]:
+        if l and not l[0].isspace():
+            break
+        if l.startswith("  ") and not l.startswith("   ") and ":" in l:
+            existing.add(l.strip().partition(":")[0].strip())
+    added_deps = [f"  {k}: {v}" for k, v in deps.items() if k not in existing]
+    final[header + 1:header + 1] = added_deps
+
 open(target, "w").write("\n".join(final).rstrip("\n") + "\n")
-print(f"merged {len(appended)} overrides into {target} (backups: {backup}, {lock_backup})")
+print(f"merged {len(appended)} overrides and {len(added_deps)} dependencies into {target} (backups: {backup}, {lock_backup})")
 PY
 
 # The backups and a lockfile rewritten for OHOS must never be committed; the

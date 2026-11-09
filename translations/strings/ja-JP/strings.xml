@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">チャット検索</string>
     <string name="appearanceShowEditAndReadMarks">編集済み・既読マークを表示</string>
     <string name="appearanceShowFolderBadges">フォルダーバッジ</string>
+    <string name="appearanceHideAllChatsFolder">「すべて」フォルダーを非表示</string>
     <string name="appearanceShowGroupMemberTitles">グループメンバーの肩書きを表示</string>
     <string name="appearanceShowMessageBubbles">メッセージバブルを表示</string>
     <string name="appearanceShowMessageBubblesDescription">オフにするとカスタムバブル画像は使われず、テーマ本来のバブルが適用されます。選択したスタイルは保持されます。</string>

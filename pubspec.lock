@@ -261,29 +261,29 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   f_videoplayer_fvp:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_fvp"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   f_videoplayer_pip:
     dependency: "direct main"
     description:
       path: "packages/f_videoplayer_pip"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
-    version: "0.5.10"
+    version: "0.5.11"
   fake_async:
     dependency: transitive
     description:
@@ -296,8 +296,8 @@ packages:
     dependency: "direct overridden"
     description:
       path: "third_party/fc_native_video_thumbnail"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
     version: "3.0.1"
@@ -589,7 +589,7 @@ packages:
     source: hosted
     version: "9.28.0"
   flutter_sound_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: flutter_sound_platform_interface
       sha256: "3394d7e664a09796818014ff85a81db0dec397f4c286cbe52f8783886fa5a497"
@@ -631,8 +631,8 @@ packages:
     dependency: "direct main"
     description:
       path: "third_party/fvp"
-      ref: "v0.5.10"
-      resolved-ref: "2e08ecbb1a274032c82282f4325925fb91f554d0"
+      ref: "v0.5.11"
+      resolved-ref: c69aa8af98cd957e733d415c3ebe2073b0fb56a7
       url: "https://github.com/iebb/f-videoplayer.git"
     source: git
     version: "0.37.3+fvideo.10"
@@ -877,7 +877,7 @@ packages:
     source: hosted
     version: "0.2.2+1"
   image_picker_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: image_picker_platform_interface
       sha256: "567e056716333a1647c64bb6bd873cff7622233a5c3f694be28a583d4715690c"
@@ -1274,7 +1274,7 @@ packages:
     source: hosted
     version: "0.1.4+1"
   permission_handler_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: permission_handler_platform_interface
       sha256: a5c8a97ecf5616112a5b16d4b8e9ec0e5ae90ef63ac69c0d7b8ae240be760b23

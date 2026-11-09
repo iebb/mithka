@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">Chat list search</string>
     <string name="appearanceShowEditAndReadMarks">Show Edit and Read Marks</string>
     <string name="appearanceShowFolderBadges">Folder badges</string>
+    <string name="appearanceHideAllChatsFolder">Hide “All” folder</string>
     <string name="appearanceShowGroupMemberTitles">Show Group Member Titles</string>
     <string name="appearanceShowMessageBubbles">Show Message Bubbles</string>
     <string name="appearanceShowMessageBubblesDescription">When off, the custom bubble image is not used and messages fall back to your theme's own bubble. Your selected style is kept.</string>

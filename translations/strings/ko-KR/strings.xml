@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">채팅 목록 검색</string>
     <string name="appearanceShowEditAndReadMarks">수정 및 읽음 표시 보이기</string>
     <string name="appearanceShowFolderBadges">폴더 배지</string>
+    <string name="appearanceHideAllChatsFolder">‘전체’ 폴더 숨기기</string>
     <string name="appearanceShowGroupMemberTitles">그룹 멤버 직함 표시</string>
     <string name="appearanceShowMessageBubbles">메시지 말풍선 표시</string>
     <string name="appearanceShowMessageBubblesDescription">끄면 사용자 지정 말풍선 이미지가 사용되지 않고 테마 기본 말풍선이 적용됩니다. 선택한 스타일은 유지됩니다.</string>

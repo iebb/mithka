@@ -123,6 +123,39 @@ class StorePublicationTest(unittest.TestCase):
                 PUBLISHER.verify_build(
                     run, changed, artifacts, SOURCE, CONTROLLER, "1.8.8"
                 )
+        for ohos in ("success", "failure"):
+            changed = jobs + [{"name": "Build HarmonyOS hap", "conclusion": ohos}]
+            self.assertEqual(
+                PUBLISHER.verify_build(
+                    run, changed, artifacts, SOURCE, CONTROLLER, "1.8.8"
+                ),
+                "20261027",
+            )
+        # Only a failed optional HarmonyOS build excuses the artifact check.
+        verify_failed = copy.deepcopy(jobs)
+        verify_failed[9]["steps"] = [
+            {"name": "Verify and list artifacts", "conclusion": "failure"}
+        ]
+        self.assertEqual(
+            PUBLISHER.verify_build(
+                run,
+                verify_failed + [{"name": "Build HarmonyOS hap", "conclusion": "failure"}],
+                artifacts,
+                SOURCE,
+                CONTROLLER,
+                "1.8.8",
+            ),
+            "20261027",
+        )
+        with self.assertRaises(PUBLISHER.Error):
+            PUBLISHER.verify_build(
+                run,
+                verify_failed + [{"name": "Build HarmonyOS hap", "conclusion": "success"}],
+                artifacts,
+                SOURCE,
+                CONTROLLER,
+                "1.8.8",
+            )
 
     def test_wrong_repository_event_controller_and_ambiguous_jobs_are_rejected(self):
         run, jobs, artifacts = evidence()

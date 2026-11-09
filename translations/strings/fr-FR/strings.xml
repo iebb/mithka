@@ -531,6 +531,7 @@
     <string name="appearanceShowChatListSearch">Recherche des chats</string>
     <string name="appearanceShowEditAndReadMarks">Afficher les marques de modification et de lecture</string>
     <string name="appearanceShowFolderBadges">Badges de dossiers</string>
+    <string name="appearanceHideAllChatsFolder">Masquer le dossier « Tout »</string>
     <string name="appearanceShowGroupMemberTitles">Afficher les titres des membres du groupe</string>
     <string name="appearanceShowMessageBubbles">Afficher les bulles de messages</string>
     <string name="appearanceShowMessageBubblesDescription">Lorsque cette option est désactivée, l'image de bulle personnalisée n'est pas utilisée et les messages reprennent la bulle de votre thème. Le style choisi est conservé.</string>

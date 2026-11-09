@@ -976,31 +976,35 @@ def verify_github_packages(release, manifest, plan):
             "GitHub release identity does not match the submitted store snapshot"
         )
     files = manifest.get("files", {})
-    suffixes = [
+    common = [
         "android-arm64-v8a.apk",
         "android-armeabi-v7a.apk",
         "windows-x64.zip",
         "windows-arm64.zip",
         "windows-x64-setup.exe",
         "windows-arm64-setup.exe",
-        "macos-arm64.zip",
-        "macos-x64.zip",
         "linux-x64.tar.gz",
         "linux-arm64.tar.gz",
         "linux-x64.AppImage",
         "linux-arm64.AppImage",
     ]
-    if len(files) != len(suffixes):
+
+    def count(suffix):
+        return sum(
+            name.startswith(f"mithka-{plan['version']}-") and name.endswith(suffix)
+            for name in files
+        )
+
+    # Releases packaged before the macOS download split carry one universal
+    # archive; a resumed store snapshot must still verify against its own set.
+    # The HarmonyOS package is optional and appears at most once.
+    optional = int(count("ohos-arm64.hap") == 1)
+    if not any(
+        len(files) == len(common) + len(macos) + optional
+        and all(count(suffix) == 1 for suffix in common + macos)
+        for macos in (["macos-arm64.zip", "macos-x64.zip"], ["macos-universal.zip"])
+    ):
         raise Error("GitHub release does not contain the complete package set")
-    for suffix in suffixes:
-        if (
-            sum(
-                name.startswith(f"mithka-{plan['version']}-") and name.endswith(suffix)
-                for name in files
-            )
-            != 1
-        ):
-            raise Error(f"GitHub release is missing or duplicates {suffix}")
     remote = {asset["name"]: asset for asset in release["assets"]}
     for name, expected in files.items():
         actual = remote.get(name)
@@ -1010,6 +1014,23 @@ def verify_github_packages(release, manifest, plan):
             or actual.get("digest") != "sha256:" + expected["sha256"]
         ):
             raise Error(f"GitHub package checksum mismatch: {name}")
+
+
+# Package jobs the release job deliberately does not need. Their failure leaves
+# the published packages complete, so it is not a publication failure.
+OPTIONAL_PACKAGE_JOBS = {"Build HarmonyOS hap"}
+
+
+def optional_package_failure_only(run_id):
+    jobs = api(f"actions/runs/{run_id}/jobs?per_page=100")["jobs"]
+    failed = {job["name"] for job in jobs if job.get("conclusion") == "failure"}
+    published = [job for job in jobs if job["name"] == "Publish GitHub Release"]
+    return (
+        bool(failed)
+        and failed <= OPTIONAL_PACKAGE_JOBS
+        and len(published) == 1
+        and published[0].get("conclusion") == "success"
+    )
 
 
 def publish_github_release(plan):
@@ -1048,7 +1069,8 @@ def publish_github_release(plan):
         failed = api(f"actions/runs/{run['id']}")
         if failed["status"] != "completed" or failed["conclusion"] != "failure":
             raise
-        recover_github_publication(plan, run, intent["workflow_sha"])
+        if not optional_package_failure_only(run["id"]):
+            recover_github_publication(plan, run, intent["workflow_sha"])
     release = github_release(tag)
     if release is None:
         raise Error("completed package workflow did not publish its GitHub release")
@@ -1070,7 +1092,8 @@ def publish_github_release(plan):
         raise Error("GitHub package manifest belongs to another workflow run")
     verify_github_packages(release, manifest, plan)
     print(
-        f"Verified GitHub release {tag}: 12 packages match the store source.",
+        f"Verified GitHub release {tag}: {len(manifest['files'])} packages match "
+        "the store source.",
         flush=True,
     )
 

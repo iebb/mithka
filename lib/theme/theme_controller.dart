@@ -1201,6 +1201,7 @@ class ThemeController extends ChangeNotifier {
     );
     _showFolderUnreadBadges =
         _prefs.getBool(_showFolderUnreadBadgesKey) ?? true;
+    _hideAllChatsFolder = _prefs.getBool(_hideAllChatsFolderKey) ?? false;
     AppTheme.applyBrand(_brandColor); // before the first MaterialApp build
   }
 
@@ -1295,6 +1296,7 @@ class ThemeController extends ChangeNotifier {
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
   static const _showFolderUnreadBadgesKey = 'showFolderUnreadBadges';
+  static const _hideAllChatsFolderKey = 'hideAllChatsFolder';
 
   static const double minFontScale = 0.8;
   // Text reflows inside bubbles and rows that grow with it, so a generous
@@ -1391,6 +1393,7 @@ class ThemeController extends ChangeNotifier {
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
   late bool _showFolderUnreadBadges;
+  late bool _hideAllChatsFolder;
 
   AppearanceMode get mode => _mode;
   bool get themingEnabled => _themingEnabled;
@@ -1889,6 +1892,10 @@ class ThemeController extends ChangeNotifier {
   bool get capUnreadBadgeAt99 =>
       _unreadBadgeOverflowMode == UnreadBadgeOverflowMode.capped;
   bool get showFolderUnreadBadges => _showFolderUnreadBadges;
+
+  /// Whether the folder tabs, menu, and rail omit the "All" entry once the
+  /// account has its own folders. Off by default.
+  bool get hideAllChatsFolder => _hideAllChatsFolder;
 
   NameColorAudience _storedNameColorAudience(
     String key, {
@@ -3000,6 +3007,13 @@ class ThemeController extends ChangeNotifier {
     if (_showFolderUnreadBadges == value) return;
     _showFolderUnreadBadges = value;
     _prefs.setBool(_showFolderUnreadBadgesKey, value);
+    notifyListeners();
+  }
+
+  set hideAllChatsFolder(bool value) {
+    if (_hideAllChatsFolder == value) return;
+    _hideAllChatsFolder = value;
+    _prefs.setBool(_hideAllChatsFolderKey, value);
     notifyListeners();
   }
 }

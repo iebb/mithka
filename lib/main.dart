@@ -224,6 +224,7 @@ Future<void> _bootstrapAndRunApp() async {
   // launch, and nothing below depends on it — the widget tree attaches to
   // AuthManager's stream whenever it is ready.
   final auth = AuthManager()..start();
+  registerOhosDartPluginFallbacks();
   _initializeVideoBackend();
   final isMobile = isMobilePlatform;
   if (isMobile) {
@@ -324,6 +325,8 @@ void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
           FVideoFvpPlatform.linux,
           FVideoFvpPlatform.macos,
           FVideoFvpPlatform.windows,
+          // video_player has no HarmonyOS implementation of its own.
+          FVideoFvpPlatform.ohos,
         },
         installGlobalLogHandler: installGlobalLogHandler,
       ),

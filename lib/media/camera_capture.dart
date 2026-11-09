@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../chat/media_library_saver.dart';
+import '../platform/ohos_support.dart';
 import 'app_camera_view.dart';
 
 /// The outcome of a capture: the photo, plus how the album write went when one
@@ -41,11 +42,15 @@ class CameraCapture {
 /// Takes one photo for sending, honoring "save captured photos to the album".
 ///
 /// Returns null when the user backs out of the camera.
+///
+/// HarmonyOS has no in-app camera (the camera plugin has no OHOS side), so it
+/// always takes the system camera; image_picker reaches it through the app's
+/// OHOS bridge.
 Future<CameraCapture?> captureComposerPhoto(
   BuildContext context, {
   required bool saveToAlbum,
 }) async {
-  if (!saveToAlbum) {
+  if (!saveToAlbum && !isOhos) {
     final result = await Navigator.of(context).push<AppCameraResult>(
       MaterialPageRoute(
         fullscreenDialog: true,

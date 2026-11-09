@@ -106,15 +106,23 @@ class AppTextSelectionToolbar extends StatelessWidget {
   /// [AdaptiveTextSelectionToolbar.buttonItems] but routing Android through
   /// this toolbar's owned overflow affordances. iOS/macOS keep the Cupertino
   /// toolbar (it pages with dots, not icons), and desktop keeps the framework
-  /// desktop toolbar.
+  /// desktop toolbar. Every other platform, including the HarmonyOS fork's
+  /// extra TargetPlatform.ohos, takes the Android path, as the fork does.
   static Widget fromButtonItems({
     required BuildContext context,
     required TextSelectionToolbarAnchors anchors,
     required List<ContextMenuButtonItem> items,
   }) {
     switch (Theme.of(context).platform) {
-      case TargetPlatform.android:
-      case TargetPlatform.fuchsia:
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+      case TargetPlatform.linux:
+      case TargetPlatform.windows:
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: anchors,
+          buttonItems: items,
+        );
+      default:
         return AppTextSelectionToolbar(
           anchorAbove: anchors.primaryAnchor,
           anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
@@ -139,14 +147,6 @@ class AppTextSelectionToolbar extends StatelessWidget {
                 ),
               )
               .toList(),
-        );
-      case TargetPlatform.iOS:
-      case TargetPlatform.macOS:
-      case TargetPlatform.linux:
-      case TargetPlatform.windows:
-        return AdaptiveTextSelectionToolbar.buttonItems(
-          anchors: anchors,
-          buttonItems: items,
         );
     }
   }
