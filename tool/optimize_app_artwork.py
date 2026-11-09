@@ -35,6 +35,15 @@ def size(paths):
     return sum(path.stat().st_size for path in paths)
 
 
+def uses_glass(icon):
+    spec = json.loads((icon / "icon.json").read_text())
+    return any(
+        layer.get("glass")
+        for group in spec.get("groups", [])
+        for layer in group.get("layers", [])
+    )
+
+
 def inventory():
     return {
         "launcher_png_bytes": size(ICONS.glob("*.png")),
@@ -46,6 +55,14 @@ def inventory():
 
 def check():
     errors = []
+    # Xcode bakes every .icon into flattened 1024px light, dark and tinted
+    # renditions (~2.2 MB per device), while the same art from an .appiconset
+    # compiles to ~0.35 MB. Flat art keeps only its .appiconset.
+    for icon in sorted((ROOT / "ios/Runner").glob("*.icon")):
+        if not uses_glass(icon) and (NATIVE / f"{icon.stem}.appiconset").is_dir():
+            errors.append(
+                f"Flat icon duplicates its .appiconset: {icon.relative_to(ROOT)}"
+            )
     for path in NATIVE.rglob("*.png"):
         data = path.read_bytes()
         if data[:8] != b"\x89PNG\r\n\x1a\n":
