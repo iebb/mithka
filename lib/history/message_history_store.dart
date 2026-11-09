@@ -240,7 +240,12 @@ class MessageHistoryStore extends ChangeNotifier {
           ),
         );
 
-  /// Looks up an entry of the ACTIVE account.
+  /// Looks up an entry of the ACTIVE account. Kept for the viewer, whose
+  /// whole data model is the active account; every chat-surface caller
+  /// must resolve the owning slot's user id instead (ChatViewModel's
+  /// mirrorEntryForMessage) — a transcript can outlive the account switch
+  /// that changes what "active" means.
+  @visibleForTesting
   MessageHistoryEntry? entry(int chatId, int messageId) =>
       _activeAccountUserId == null
       ? null

@@ -5681,20 +5681,12 @@ class _ChatViewState extends State<ChatView> {
   /// gated): the long-press menu then offers the revision sheet.
   bool _actionTargetHasEdits(ChatMessage message) {
     if (!allowTelegramTosViolations) return false;
-    final entry = MessageHistoryStore.shared.entry(
-      message.chatId ?? _vm.chatId,
-      message.id,
-    );
+    final entry = _vm.mirrorEntryForMessage(message);
     return entry != null && entry.events.isNotEmpty;
   }
 
   Future<void> _openMessageEdits(ChatMessage message) async {
-    final entry =
-        message.mirrorEntry ??
-        MessageHistoryStore.shared.entry(
-          message.chatId ?? _vm.chatId,
-          message.id,
-        );
+    final entry = message.mirrorEntry ?? _vm.mirrorEntryForMessage(message);
     if (entry == null || entry.events.isEmpty) return;
     await Navigator.of(context).push(
       AppPageRoute<void>(
@@ -5732,8 +5724,11 @@ class _ChatViewState extends State<ChatView> {
         if (!mounted) return;
         await Navigator.of(context).push(
           AppPageRoute<void>(
-            pageBuilder: (_, _, _) =>
-                MessageInfoView(chatId: _vm.chatId, message: message),
+            pageBuilder: (_, _, _) => MessageInfoView(
+              chatId: _vm.chatId,
+              message: message,
+              mirrorAccountUserId: _vm.mirrorAccountUserId,
+            ),
           ),
         );
       case MessageAction.removeMirror:

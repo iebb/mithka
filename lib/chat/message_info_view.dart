@@ -19,10 +19,17 @@ class MessageInfoView extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.message,
+    required this.mirrorAccountUserId,
   });
 
   final int chatId;
   final ChatMessage message;
+
+  /// Owning account for the mirror lookup: the slot this chat was opened
+  /// under. Required on purpose — resolving the store's ACTIVE account here
+  /// would read another account's row after a switch, since the sheet can
+  /// outlive one.
+  final int? mirrorAccountUserId;
 
   @override
   State<MessageInfoView> createState() => _MessageInfoViewState();
@@ -282,7 +289,10 @@ class _MessageInfoViewState extends State<MessageInfoView> {
   /// stamp keeps the stock row, so nothing changes for non-mirrored chats.
   Widget _mirrorReadAtRow() {
     if (!allowTelegramTosViolations) return const SizedBox.shrink();
-    final entry = MessageHistoryStore.shared.entry(
+    final accountUserId = widget.mirrorAccountUserId;
+    if (accountUserId == null) return const SizedBox.shrink();
+    final entry = MessageHistoryStore.shared.entryFor(
+      accountUserId,
       widget.chatId,
       widget.message.id,
     );

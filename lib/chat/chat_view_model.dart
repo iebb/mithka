@@ -7491,6 +7491,31 @@ class ChatViewModel extends ChangeNotifier {
     return true;
   }
 
+  /// The account whose mirror this transcript reads (via
+  /// [accountSummaryProvider]), exposed for surfaces that outlive the view
+  /// model's own lookups (the message info sheet's mirror row).
+  int? get mirrorAccountUserId => _accountUserId;
+
+  /// The mirror's kept copy behind one message addressed by THIS
+  /// transcript, looked up under the slot that owns this transcript — not
+  /// whichever account is currently active. Long-press actions (view
+  /// edits) and the message info sheet read through here, so a stale pane
+  /// after an account switch never shows (or fails to find) another
+  /// account's mirror row. [message] may carry its own chat id (a
+  /// forwarded or quoted target lives in another chat); the transcript's
+  /// chat is the fallback.
+  MessageHistoryEntry? mirrorEntryForMessage(ChatMessage message) {
+    if (!allowTelegramTosViolations) return null;
+    final accountUserId = _accountUserId;
+    if (accountUserId == null) return null;
+    final targetChatId = message.chatId ?? chatId;
+    return (historyStoreOverride ?? MessageHistoryStore.shared).entryFor(
+      accountUserId,
+      targetChatId,
+      message.id,
+    );
+  }
+
   /// Localized kind label without a BuildContext (AppStrings reads the
   /// ambient locale); a media-only kept copy shows this instead of its
   /// empty text. Falls back to the raw suffix when the key is unknown.
