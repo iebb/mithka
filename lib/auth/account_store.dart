@@ -62,10 +62,17 @@ class AccountSummary {
 
   /// Telegram Premium, from getMe. Cached with the rest so Premium-only
   /// entries (Business, the emoji status button) are right from the first
-  /// frame instead of appearing once the account answers.
+  /// frame instead of appearing once the account answers. Always the raw
+  /// server value — the local-premium overlay is applied at read time via
+  /// [premiumForView], never baked in.
   final bool isPremium;
   final bool isBotApi;
   final Uri? botApiEndpoint;
+
+  /// The premium answer for display surfaces: the raw server value OR the
+  /// self-build local-premium overlay when it is enabled for this build.
+  bool get premiumForView =>
+      LocalPremium.shared.premiumForMe(isPremium);
 
   AccountSummary copyWith({String? avatarPath}) => AccountSummary(
     slot: slot,
@@ -153,6 +160,10 @@ class AccountStore extends ChangeNotifier {
     // its half-created slot can still be cleaned up.
     _pendingSlot = prefs.getInt(_pendingKey);
     _returnSlot = prefs.getInt(_returnKey) ?? 0;
+    // The local-premium overlay changes what every premiumForView/activeIsPremium
+    // reader sees without any getMe round-trip — forward its notifications so
+    // dependents rebuild the moment the switch flips.
+    LocalPremium.shared.addListener(_localPremiumChanged);
     // Refresh the switcher when one of our own accounts changes (e.g. after a
     // name edit) — TDLib emits updateUser for us. Filtered to known self-ids so
     // it doesn't fire for every contact seen in chats.
@@ -231,6 +242,8 @@ class AccountStore extends ChangeNotifier {
   int get activeSlot => _activeSlot;
   List<AccountSummary> get summaries => _summaries;
   bool get activeIsBotApi => TdClient.shared.isBotApiSlot(_activeSlot);
+
+  void _localPremiumChanged() => notifyListeners();
 
   /// The summary for the active slot, when one has been recorded.
   AccountSummary? get activeSummary {
@@ -432,9 +445,10 @@ class AccountStore extends ChangeNotifier {
         phone: phone,
         avatarPath: avatarFileId == null ? null : cachedAvatar,
         emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
-        isPremium: LocalPremium.shared.premiumForMe(
-          me.boolean('is_premium') ?? false,
-        ),
+        // Raw server value. LocalPremium is a display-time overlay — baking
+        // it in here would persist it into the prefs cache and leave Premium
+        // on after the switch turns off until the next getMe.
+        isPremium: me.boolean('is_premium') ?? false,
         isBotApi: botApiAccount != null,
         botApiEndpoint: botApiAccount?.endpoint,
       ),
