@@ -12,6 +12,7 @@ on:
       - 'pubspec.*'
       - 'scripts/refresh-apple-mdk.sh'
       - 'scripts/apple_shipping_sdk.py'
+      - 'scripts/check_ios_asset_catalog_size.sh'
       - 'test/scripts/apple_shipping_sdk_test.py'
       - '.github/workflows/ios-testflight.yml'
       - '.github/workflows/apple-pr.yml'
@@ -173,6 +174,11 @@ jobs:
               exit 1
             }
           tail -n 12 "$RUNNER_TEMP/ios-build.log"
+
+      - name: Keep the compiled icon catalogue within budget
+        run: |
+          sh scripts/check_ios_asset_catalog_size.sh \
+            build/derived/Build/Products/Debug-iphonesimulator/Runner.app
 
       - name: Run native RunnerTests on an available verification iPhone
         run: |
