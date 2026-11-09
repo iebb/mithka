@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">グループ動画</string>
     <string name="chatInfoKeepRecording">メッセージ履歴を保持</string>
     <string name="chatInfoLeaveGroup">グループを退出</string>
+    <string name="chatInfoStopRecordingConfirmTitle">このチャットの記録を停止しますか？</string>
+    <string name="chatInfoStopRecordingConfirmMessage">このチャットの保持されたコピーはすべて削除されます。記録はいつでも再開できます。</string>
     <string name="chatInfoLoadFoldersFailed">チャットフォルダを読み込めません</string>
     <string name="chatInfoManageChannel">チャンネルを管理</string>
     <string name="chatInfoManageGroup">グループを管理</string>

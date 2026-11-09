@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">Gruppenvideos</string>
     <string name="chatInfoKeepRecording">Nachrichtenverlauf behalten</string>
     <string name="chatInfoLeaveGroup">Gruppe verlassen</string>
+    <string name="chatInfoStopRecordingConfirmTitle">Aufzeichnung für diesen Chat beenden?</string>
+    <string name="chatInfoStopRecordingConfirmMessage">Alle aufbewahrten Kopien dieses Chats werden gelöscht. Die Aufzeichnung kann jederzeit wieder aktiviert werden.</string>
     <string name="chatInfoLoadFoldersFailed">Chat-Ordner konnten nicht geladen werden</string>
     <string name="chatInfoManageChannel">Kanal verwalten</string>
     <string name="chatInfoManageGroup">Gruppe verwalten</string>

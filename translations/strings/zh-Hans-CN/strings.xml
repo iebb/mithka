@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">群视频</string>
     <string name="chatInfoKeepRecording">记录消息历史</string>
     <string name="chatInfoLeaveGroup">退出群聊</string>
+    <string name="chatInfoStopRecordingConfirmTitle">停止记录这个聊天？</string>
+    <string name="chatInfoStopRecordingConfirmMessage">该聊天的全部保留副本都会被删除。之后随时可以重新开启记录。</string>
     <string name="chatInfoLoadFoldersFailed">无法加载聊天分组</string>
     <string name="chatInfoManageChannel">管理频道</string>
     <string name="chatInfoManageGroup">管理群</string>

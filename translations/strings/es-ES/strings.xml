@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">Videos del grupo</string>
     <string name="chatInfoKeepRecording">Conservar historial de mensajes</string>
     <string name="chatInfoLeaveGroup">Salir del grupo</string>
+    <string name="chatInfoStopRecordingConfirmTitle">¿Dejar de registrar este chat?</string>
+    <string name="chatInfoStopRecordingConfirmMessage">Se eliminarán todas las copias guardadas de este chat. Se puede volver a activar el registro en cualquier momento.</string>
     <string name="chatInfoLoadFoldersFailed">No se pudieron cargar las carpetas de chats</string>
     <string name="chatInfoManageChannel">Gestionar el canal</string>
     <string name="chatInfoManageGroup">Gestionar grupo</string>

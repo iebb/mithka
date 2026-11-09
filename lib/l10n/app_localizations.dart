@@ -1080,6 +1080,10 @@ abstract final class AppStringKeys {
   static const chatInfoFolderName = 'chatInfoFolderName';
   static const chatInfoFolderNameLabel = 'chatInfoFolderNameLabel';
   static const chatInfoKeepRecording = 'chatInfoKeepRecording';
+  static const chatInfoStopRecordingConfirmTitle =
+      'chatInfoStopRecordingConfirmTitle';
+  static const chatInfoStopRecordingConfirmMessage =
+      'chatInfoStopRecordingConfirmMessage';
   static const chatInfoGroupAlbum = 'chatInfoGroupAlbum';
   static const chatInfoGroupApps = 'chatInfoGroupApps';
   static const chatInfoGroupChat = 'chatInfoGroupChat';

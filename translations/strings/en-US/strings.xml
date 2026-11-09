@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">Group videos</string>
     <string name="chatInfoKeepRecording">Keep message history</string>
     <string name="chatInfoLeaveGroup">Leave group</string>
+    <string name="chatInfoStopRecordingConfirmTitle">Stop recording this chat?</string>
+    <string name="chatInfoStopRecordingConfirmMessage">All kept copies of this chat will be deleted. Recording can be turned back on at any time.</string>
     <string name="chatInfoLoadFoldersFailed">Couldn’t load chat folders</string>
     <string name="chatInfoManageChannel">Manage channel</string>
     <string name="chatInfoManageGroup">Manage group</string>

@@ -1007,6 +1007,8 @@
     <string name="chatInfoGroupVideos">Vidéos du groupe</string>
     <string name="chatInfoKeepRecording">Conserver l’historique des messages</string>
     <string name="chatInfoLeaveGroup">Quitter le groupe</string>
+    <string name="chatInfoStopRecordingConfirmTitle">Arrêter l’enregistrement de ce dialogue ?</string>
+    <string name="chatInfoStopRecordingConfirmMessage">Toutes les copies conservées de ce dialogue seront supprimées. L’enregistrement peut être réactivé à tout moment.</string>
     <string name="chatInfoLoadFoldersFailed">Impossible de charger les dossiers de discussions</string>
     <string name="chatInfoManageChannel">Gérer la chaîne</string>
     <string name="chatInfoManageGroup">Gérer le groupe</string>

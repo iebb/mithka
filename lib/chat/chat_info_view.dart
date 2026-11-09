@@ -19,6 +19,7 @@ import '../app/primary_chat_launcher.dart';
 import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../chats/chat_removal_actions.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/icon_grid.dart';
@@ -1182,7 +1183,7 @@ class _ChatInfoViewState extends State<ChatInfoView> {
                 value: !excluded,
                 onChanged: (value) => value
                     ? MessageHistoryStore.shared.includeChat(widget.chatId)
-                    : MessageHistoryStore.shared.excludeChat(widget.chatId),
+                    : _confirmStopRecording(),
                 height: 52,
                 leadingInset: 14,
               );
@@ -1191,6 +1192,20 @@ class _ChatInfoViewState extends State<ChatInfoView> {
         ],
       ],
     );
+  }
+
+  /// Turning recording off deletes this chat's kept copies — confirm first,
+  /// exactly like the viewer's exclude action.
+  Future<void> _confirmStopRecording() async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.chatInfoStopRecordingConfirmTitle),
+      message: AppStrings.t(AppStringKeys.chatInfoStopRecordingConfirmMessage),
+      confirmText: AppStrings.t(AppStringKeys.historyClearAction),
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    MessageHistoryStore.shared.excludeChat(widget.chatId);
   }
 
   Future<void> _chooseAutoDelete() async {
