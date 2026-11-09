@@ -336,11 +336,19 @@ class ChatInfoView extends StatefulWidget {
     required this.chatId,
     required this.title,
     this.showBackButton = true,
+    this.accountUserId,
     @visibleForTesting this.searchChatLauncher,
   });
   final int chatId;
   final String title;
   final bool showBackButton;
+
+  /// The account whose mirror the §1.4 rows act on (Telegram §1.4 feature,
+  /// compile-gated). Null — the common mobile/main-window case — follows the
+  /// store's active account; a desktop utility window passes its pinned
+  /// account so the primary window's account switch cannot redirect the
+  /// exclude/include actions onto the wrong account's mirror.
+  final int? accountUserId;
   @visibleForTesting
   final ChatInfoSearchChatLauncher? searchChatLauncher;
 
@@ -1174,15 +1182,19 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           ListenableBuilder(
             listenable: MessageHistoryStore.shared,
             builder: (context, _) {
-              final excluded = MessageHistoryStore.shared.isChatExcluded(
-                widget.chatId,
-              );
+              final store = MessageHistoryStore.shared;
+              final accountUserId = widget.accountUserId;
+              final excluded = accountUserId != null
+                  ? store.isChatExcludedFor(accountUserId, widget.chatId)
+                  : store.isChatExcluded(widget.chatId);
               return SettingsSwitchRow(
                 key: const ValueKey('chatInfoKeepRecording'),
                 title: AppStrings.t(AppStringKeys.chatInfoKeepRecording),
                 value: !excluded,
                 onChanged: (value) => value
-                    ? MessageHistoryStore.shared.includeChat(widget.chatId)
+                    ? (accountUserId != null
+                          ? store.includeChatFor(accountUserId, widget.chatId)
+                          : store.includeChat(widget.chatId))
                     : _confirmStopRecording(),
                 height: 52,
                 leadingInset: 14,
@@ -1205,7 +1217,12 @@ class _ChatInfoViewState extends State<ChatInfoView> {
       destructive: true,
     );
     if (!confirmed || !mounted) return;
-    MessageHistoryStore.shared.excludeChat(widget.chatId);
+    final accountUserId = widget.accountUserId;
+    if (accountUserId != null) {
+      MessageHistoryStore.shared.excludeChatFor(accountUserId, widget.chatId);
+    } else {
+      MessageHistoryStore.shared.excludeChat(widget.chatId);
+    }
   }
 
   Future<void> _chooseAutoDelete() async {

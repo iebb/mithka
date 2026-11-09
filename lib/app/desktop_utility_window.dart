@@ -37,6 +37,9 @@ import '../chats/chat_folder_tag_controller.dart';
 import '../chats/search_view.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_settings.dart';
+import '../history/message_history_store.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../notifications/notification_preferences.dart';
@@ -229,6 +232,15 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       ..addListener(_handleHiddenSendersChanged);
     CountryMessageFilter.shared.initialize(widget.prefs);
     MusicPlayerController.shared.initialize(widget.prefs);
+    // Telegram §1.4 surfaces reached from a utility window (chat info's kept
+    // messages row and per-chat recording switch): these singletons are
+    // process-wide and this window runs in its own process, so without the
+    // seed here the switch reads the default and the exclude/record actions
+    // act on a store with no exclusions loaded.
+    if (allowTelegramTosViolations) {
+      MessageHistorySettings.shared.initialize(widget.prefs);
+      MessageHistoryStore.shared.initialize(widget.prefs);
+    }
     _autoDownload.initialize(widget.prefs);
     _notificationPreferences.initialize(widget.prefs);
     _performance.start();
@@ -242,6 +254,12 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     _auth.start();
     _auth.reloadAuthState();
     unawaited(_accounts.refresh());
+    // Telegram §1.4 ghost folding resolves the owning account through this
+    // static bridge (the primary window wires it in main). This window's
+    // ChatViews run against its pinned slot's proxy account.
+    if (allowTelegramTosViolations) {
+      ChatViewModel.accountSummaryProvider = _accounts.summaryForSlot;
+    }
     unawaited(_sensitiveContent.initialize());
     unawaited(BlockedUserService.shared.loadBlockedUsers());
     if (widget.arguments.kind == DesktopUtilityWindowKind.settings) {
@@ -336,6 +354,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
           if (desktopHotkeys != null) await desktopHotkeys.reload();
           // Inside the reload, so the listener does not echo it back.
           HiddenSenderStore.shared.initialize(widget.prefs);
+          if (allowTelegramTosViolations) {
+            MessageHistorySettings.shared.initialize(widget.prefs);
+          }
         } on Object {
           // A transient platform-preferences failure must not unregister an
           // otherwise healthy TD proxy window from the primary bridge.
@@ -729,6 +750,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       chatId: widget.arguments.chatId!,
       title: widget.arguments.title,
       showBackButton: false,
+      accountUserId: widget.arguments.accountUserId,
     ),
     DesktopUtilityWindowKind.userProfile => ProfileDetailView(
       userId: widget.arguments.userId!,

@@ -320,6 +320,12 @@ class MessageHistoryStore extends ChangeNotifier {
       (_excludedChatsByAccount[_activeAccountUserId]?.contains(chatId) ??
           false);
 
+  /// Exclusion check for an EXPLICIT account — a surface pinned to one
+  /// account (a desktop utility window's chat info) must not read the
+  /// primary window's active account.
+  bool isChatExcludedFor(int accountUserId, int chatId) =>
+      _excludedChatsByAccount[accountUserId]?.contains(chatId) ?? false;
+
   Set<int> get excludedChats => Set.unmodifiable(
     _excludedChatsByAccount[_activeAccountUserId] ?? const {},
   );
