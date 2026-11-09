@@ -459,6 +459,70 @@ void main() {
       expect(entry?.events.single.newText, 'revised');
     });
   });
+
+
+  group('REG-7 the revision page resolves the snapshot dir on a cold start', () {
+    testWidgets('a persisted snapshot renders once the directory lands',
+        (tester) async {
+      final root = Directory.systemTemp.createTempSync('mithkax-r12-rev-');
+      addTearDown(() => root.deleteSync(recursive: true));
+      PathProviderPlatform.instance = _FakePathProvider(root.path);
+      final snapshotDir = Directory(
+        '${root.path}/${MessageMediaSnapshotter.dirName}',
+      )..createSync(recursive: true);
+      final file = File('${snapshotDir.path}/9101_21_700_photo.bin')
+        ..writeAsBytesSync(List.filled(8, 1));
+      final entry = MessageHistoryEntry(
+        accountUserId: _accountA,
+        chatId: _chatId,
+        messageId: 700,
+        senderId: 42,
+        date: 1,
+        text: '',
+        kindKey: 'historyKindDocument',
+        state: MessageHistoryState.active,
+        deletedAt: 0,
+        events: [
+          MessageHistoryEvent(
+            at: 2,
+            oldText: 'before',
+            newText: '',
+            oldKindKey: 'historyKindDocument',
+            oldMediaPath: file.path,
+          ),
+        ],
+        mediaPath: file.path,
+      );
+      final preferences = await SharedPreferences.getInstance();
+      final theme = ThemeController(preferences);
+      addTearDown(theme.dispose);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeController>.value(value: theme),
+          ],
+          child: MaterialApp(
+            locale: const Locale('en'),
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: ThemeData(extensions: [AppColors.light]),
+            home: MessageHistoryRevisionView(entry: entry),
+          ),
+        ),
+      );
+      // First frame: the singleton has no directory yet, so a persisted
+      // snapshot path is still rendered as a bare kind label.
+      expect(find.byType(MediaSnapshotView), findsNothing);
+      await tester.pumpAndSettle();
+      expect(find.byType(MediaSnapshotView), findsWidgets,
+        reason: 'the page resolves the directory and rebuilds for its media');
+    });
+  });
 }
 
 MessageHistoryEntry _deleted({required int messageId, required int topicId}) =>
@@ -475,3 +539,12 @@ MessageHistoryEntry _deleted({required int messageId, required int topicId}) =>
       events: const [],
       topicId: topicId,
     );
+
+class _FakePathProvider extends PathProviderPlatform {
+  _FakePathProvider(this.root);
+
+  final String root;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => root;
+}

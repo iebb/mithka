@@ -8,6 +8,8 @@
 //  the chat message menu and from the history viewer.
 //
 
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -16,6 +18,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'message_history_entry_view.dart'
@@ -39,13 +42,60 @@ class _Revision {
 }
 
 /// Full-screen edit history of one mirrored message.
-class MessageHistoryRevisionView extends StatelessWidget {
+class MessageHistoryRevisionView extends StatefulWidget {
   const MessageHistoryRevisionView({super.key, required this.entry});
 
   final MessageHistoryEntry entry;
 
+  @override
+  State<MessageHistoryRevisionView> createState() =>
+      _MessageHistoryRevisionViewState();
+}
+
+class _MessageHistoryRevisionViewState
+    extends State<MessageHistoryRevisionView> {
+  @override
+  void initState() {
+    super.initState();
+    // The snapshot directory is resolved lazily on first snapshot; entering
+    // this page straight from a long-press can be the first mirror surface
+    // of the session, so resolve it before the first frame renders media
+    // rows as bare kind labels. The page rebuilds once the directory lands
+    // (the resolver is not a listenable).
+    if (allowTelegramTosViolations) {
+      unawaited(
+        MessageMediaSnapshotter.shared.ensureDirResolved().then((_) {
+          if (mounted) setState(() {});
+        }),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsPageScaffold(
+      title: AppStringKeys.historyRevisionsTitle.l10n(context),
+      onBack: () => Navigator.of(context).pop(),
+      child: SettingsListView(
+        children: [
+          if (widget.entry.events.isEmpty)
+            const SettingsNote(text: AppStringKeys.historyEmpty)
+          else
+            for (final revision in _revisions)
+              _RevisionBubble(
+                key: ValueKey('revision-${revision.at}'),
+                revision: revision,
+                mediaDir: MessageMediaSnapshotter.shared,
+                onOpenMedia: (path) => openDownloadedFile(context, path),
+              ),
+        ],
+      ),
+    );
+  }
+
   List<_Revision> get _revisions {
     // Newest first: the current text leads, then each event's previous state.
+    final entry = widget.entry;
     final list = <_Revision>[
       _Revision(
         at: entry.events.isEmpty ? entry.date : entry.events.last.at,
@@ -62,28 +112,6 @@ class MessageHistoryRevisionView extends StatelessWidget {
         ),
     ];
     return list;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SettingsPageScaffold(
-      title: AppStringKeys.historyRevisionsTitle.l10n(context),
-      onBack: () => Navigator.of(context).pop(),
-      child: SettingsListView(
-        children: [
-          if (entry.events.isEmpty)
-            const SettingsNote(text: AppStringKeys.historyEmpty)
-          else
-            for (final revision in _revisions)
-              _RevisionBubble(
-                key: ValueKey('revision-${revision.at}'),
-                revision: revision,
-                mediaDir: MessageMediaSnapshotter.shared,
-                onOpenMedia: (path) => openDownloadedFile(context, path),
-              ),
-        ],
-      ),
-    );
   }
 }
 
