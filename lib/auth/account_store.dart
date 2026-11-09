@@ -71,8 +71,7 @@ class AccountSummary {
 
   /// The premium answer for display surfaces: the raw server value OR the
   /// self-build local-premium overlay when it is enabled for this build.
-  bool get premiumForView =>
-      LocalPremium.shared.premiumForMe(isPremium);
+  bool get premiumForView => LocalPremium.shared.premiumForMe(isPremium);
 
   AccountSummary copyWith({String? avatarPath}) => AccountSummary(
     slot: slot,

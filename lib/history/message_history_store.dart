@@ -1493,8 +1493,9 @@ class MessageHistoryStore extends ChangeNotifier {
         // in this file (debounced) — an excludeChat followed by a process
         // kill inside the persist window leaves the chat's stale rows here.
         // The exclusion is the newer intent, so its rows never load.
-        if (_excludedChatsByAccount[entry.accountUserId]
-            ?.contains(entry.chatId) ??
+        if (_excludedChatsByAccount[entry.accountUserId]?.contains(
+              entry.chatId,
+            ) ??
             false) {
           continue;
         }

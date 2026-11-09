@@ -7738,11 +7738,7 @@ class ChatViewModel extends ChangeNotifier {
     final accountUserId = _accountUserId;
     if (accountUserId == null) return const [];
     return (historyStoreOverride ?? MessageHistoryStore.shared)
-        .deletedEntriesFor(
-          accountUserId,
-          chatId,
-          topicId: forumTopicId ?? 0,
-        );
+        .deletedEntriesFor(accountUserId, chatId, topicId: forumTopicId ?? 0);
   }
 
   /// Folds ghost bubbles into the published transcript after every rebuild.

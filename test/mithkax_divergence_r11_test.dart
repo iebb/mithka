@@ -33,10 +33,7 @@ Map<String, dynamic> _msg(int chatId, int id) => {
   'id': id,
   'date': 1700000000 + id,
   'is_outgoing': false,
-  'sender_id': {
-    '@type': 'messageSenderUser',
-    'user_id': '42',
-  },
+  'sender_id': {'@type': 'messageSenderUser', 'user_id': '42'},
   'content': {
     '@type': 'messageText',
     'text': {'@type': 'formattedText', 'text': 'x'},
@@ -83,8 +80,9 @@ void main() {
     // The widget lives behind an SAF flow we cannot drive headless; assert
     // the source contract instead: the call site forwards `bytes:` and does
     // not write the returned path.
-    final source = File('lib/settings/message_history_transfer_view.dart')
-        .readAsStringSync();
+    final source = File(
+      'lib/settings/message_history_transfer_view.dart',
+    ).readAsStringSync();
     expect(source, contains('bytes: encodedBytes'));
     expect(
       source,
@@ -93,66 +91,61 @@ void main() {
     );
   });
 
-  test(
-    'REG-4a: rows of an excluded chat never load back from disk',
-    () async {
-      const chat = -1001234567891;
-      // Simulate: entries persisted, exclusion written to prefs (immediate),
-      // then the process died inside the entry-persist debounce window.
-      final persistedStore = MessageHistoryStore.forTesting();
-      persistedStore.fileDir = dir;
-      persistedStore.updateSource = (_) => const Stream.empty();
-      persistedStore.activeSlotChangeSource = () => const Stream<int>.empty();
-      persistedStore.accountUserIdResolver = _R();
-      persistedStore.activeClientIdProvider = () => _clientA;
-      final prefs = await SharedPreferences.getInstance();
-      persistedStore.initialize(prefs);
-      persistedStore.debugSetActiveAccount(_accountA);
-      persistedStore.debugSeed([
-        MessageHistoryEntry(
-          accountUserId: _accountA,
-          chatId: chat,
-          messageId: 5,
-          senderId: 42,
-          date: 1,
-          text: 'ghost-food',
-          kindKey: 'historyKindText',
-          state: MessageHistoryState.deleted,
-          deletedAt: 123,
-          events: const [],
-        ),
-      ]);
-      await persistedStore.persistNowForTesting();
-      persistedStore.dispose();
+  test('REG-4a: rows of an excluded chat never load back from disk', () async {
+    const chat = -1001234567891;
+    // Simulate: entries persisted, exclusion written to prefs (immediate),
+    // then the process died inside the entry-persist debounce window.
+    final persistedStore = MessageHistoryStore.forTesting();
+    persistedStore.fileDir = dir;
+    persistedStore.updateSource = (_) => const Stream.empty();
+    persistedStore.activeSlotChangeSource = () => const Stream<int>.empty();
+    persistedStore.accountUserIdResolver = _R();
+    persistedStore.activeClientIdProvider = () => _clientA;
+    final prefs = await SharedPreferences.getInstance();
+    persistedStore.initialize(prefs);
+    persistedStore.debugSetActiveAccount(_accountA);
+    persistedStore.debugSeed([
+      MessageHistoryEntry(
+        accountUserId: _accountA,
+        chatId: chat,
+        messageId: 5,
+        senderId: 42,
+        date: 1,
+        text: 'ghost-food',
+        kindKey: 'historyKindText',
+        state: MessageHistoryState.deleted,
+        deletedAt: 123,
+        events: const [],
+      ),
+    ]);
+    await persistedStore.persistNowForTesting();
+    persistedStore.dispose();
 
-      // Fresh boot: the exclusion is already in prefs, the file still holds
-      // the chat's rows.
-      final prefs2 = await SharedPreferences.getInstance();
-      await prefs2.setStringList('$_prefsKeyPrefixProbe$_accountA', [
-        '$chat',
-      ]);
-      final rebooted = MessageHistoryStore.forTesting();
-      rebooted.fileDir = dir;
-      rebooted.updateSource = (_) => const Stream.empty();
-      rebooted.activeSlotChangeSource = () => const Stream<int>.empty();
-      rebooted.accountUserIdResolver = _R();
-      rebooted.activeClientIdProvider = () => _clientA;
-      rebooted.initialize(prefs2);
-      rebooted.debugSetActiveAccount(_accountA);
-      await rebooted.ensureLoaded();
-      expect(
-        rebooted.entries.where((e) => e.chatId == chat),
-        isEmpty,
-        reason: 'excluded chat rows must not resurrect on reboot',
-      );
-      expect(
-        rebooted.deletedEntriesFor(_accountA, chat),
-        isEmpty,
-        reason: 'excluded chat owes no ghosts',
-      );
-      rebooted.dispose();
-    },
-  );
+    // Fresh boot: the exclusion is already in prefs, the file still holds
+    // the chat's rows.
+    final prefs2 = await SharedPreferences.getInstance();
+    await prefs2.setStringList('$_prefsKeyPrefixProbe$_accountA', ['$chat']);
+    final rebooted = MessageHistoryStore.forTesting();
+    rebooted.fileDir = dir;
+    rebooted.updateSource = (_) => const Stream.empty();
+    rebooted.activeSlotChangeSource = () => const Stream<int>.empty();
+    rebooted.accountUserIdResolver = _R();
+    rebooted.activeClientIdProvider = () => _clientA;
+    rebooted.initialize(prefs2);
+    rebooted.debugSetActiveAccount(_accountA);
+    await rebooted.ensureLoaded();
+    expect(
+      rebooted.entries.where((e) => e.chatId == chat),
+      isEmpty,
+      reason: 'excluded chat rows must not resurrect on reboot',
+    );
+    expect(
+      rebooted.deletedEntriesFor(_accountA, chat),
+      isEmpty,
+      reason: 'excluded chat owes no ghosts',
+    );
+    rebooted.dispose();
+  });
 
   test('REG-4b: deletedEntriesFor defends an excluded chat', () async {
     const chat = -1001234567892;
