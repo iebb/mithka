@@ -118,6 +118,23 @@ class MessageHistoryStore extends ChangeNotifier {
   /// entry even when the chat/message ids are identical.
   final Map<String, int> _pendingEditDates = {};
 
+  /// updateMessageContent payloads that arrived BEFORE their
+  /// updateMessageEdited. TDLib's catch-up can deliver the pair in either
+  /// order; the content waits here for its date instead of being lost, and
+  /// expires unapplied (a content generation — dice, poll, live location —
+  /// never gets a date and must not become a revision).
+  final Map<String, ({Map<String, dynamic> update, int at})>
+  _lateContentUpdates = {};
+
+  /// How long a content payload waits for its edited date. Both halves of
+  /// a pair ride the same update batch, so seconds are already generous;
+  /// keeping it short bounds a generation landing right before an edit.
+  static const _lateContentWindowSeconds = 5;
+
+  /// Cap on waiting payloads; beyond it expired ones are dropped first and
+  /// the rest only in a flood (a live location update stream).
+  static const _lateContentLimit = 256;
+
   /// Identity resolution state per TDLib client. While a lookup is in
   /// flight every arrival of that client shares it; a known identity stays
   /// memoized for later events, a failed one is dropped so the next
@@ -963,8 +980,44 @@ class MessageHistoryStore extends ChangeNotifier {
     final chatId = update.int64('chat_id');
     final messageId = update.integer('message_id');
     if (chatId == null || messageId == null) return;
-    _pendingEditDates['$accountUserId:$chatId:$messageId'] =
-        update.integer('edit_date') ?? 0;
+    final key = '$accountUserId:$chatId:$messageId';
+    final editDate = update.integer('edit_date') ?? 0;
+    _pendingEditDates[key] = editDate;
+
+    // Reversed pair: TDLib catch-up delivered the content first. The date
+    // completes the revision it was waiting for, and the pending stamp is
+    // consumed so a duplicate date cannot record it twice.
+    final late = _lateContentUpdates.remove(key);
+    if (late == null) return;
+    final now = _nowSeconds();
+    if (now - late.at > _lateContentWindowSeconds) return;
+    _pendingEditDates.remove(key);
+    _applyContentRevision(accountUserId, key, editDate, late.update);
+  }
+
+  int _nowSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+  /// Forgets a scope's pending edit pairs — the date and the content half
+  /// alike — so a cleared chat or removed account cannot apply either.
+  void _forgetPendingEdits(int accountUserId, {int? chatId}) {
+    final prefix = chatId == null
+        ? '$accountUserId:'
+        : '$accountUserId:$chatId:';
+    _pendingEditDates.removeWhere((key, _) => key.startsWith(prefix));
+    _lateContentUpdates.removeWhere((key, _) => key.startsWith(prefix));
+  }
+
+  /// Keeps a content payload that arrived without its edited date waiting
+  /// for one. Expired waits are dropped on every arrival so a long-lived
+  /// store never accumulates generations.
+  void _holdLateContent(String key, Map<String, dynamic> update, int now) {
+    _lateContentUpdates.removeWhere(
+      (_, late) => now - late.at > _lateContentWindowSeconds,
+    );
+    if (_lateContentUpdates.length >= _lateContentLimit) {
+      _lateContentUpdates.remove(_lateContentUpdates.keys.first);
+    }
+    _lateContentUpdates[key] = (update: update, at: now);
   }
 
   void _recordContentUpdate(int accountUserId, Map<String, dynamic> update) {
@@ -973,21 +1026,41 @@ class MessageHistoryStore extends ChangeNotifier {
     final messageId = update.integer('message_id');
     if (chatId == null || messageId == null) return;
     final key = '$accountUserId:$chatId:$messageId';
+    final now = _nowSeconds();
     final editDate = _pendingEditDates.remove(key);
-    if (editDate == null) return;
-
-    // Re-read after the await in [_handleUpdateForClient]: the mirror may
-    // have loaded or changed since the update was received.
-    final existing = _byKey[key];
-    if (existing == null || existing.state == MessageHistoryState.deleted) {
+    if (editDate == null) {
+      // No pending date: either a content generation (dice roll, live
+      // location, poll update — it never gets a date and must not become a
+      // revision) or the first half of a reversed edit pair. Hold it for a
+      // short window; _rememberEditDate applies it if the date follows.
+      _holdLateContent(key, update, now);
       return;
     }
+    _applyContentRevision(accountUserId, key, editDate, update);
+  }
+
+  /// Records one edit: [existing] keeps its state as the previous revision
+  /// and takes the payload's content as the new one.
+  void _applyContentRevision(
+    int accountUserId,
+    String key,
+    int editDate,
+    Map<String, dynamic> update,
+  ) {
+    // The mirror may have loaded or changed since the update was received.
+    final existing = _byKey[key];
+    if (existing == null || existing.state == MessageHistoryState.deleted) {
+      // No kept copy, no revision: a diff without its base would float.
+      return;
+    }
+    final chatId = existing.chatId;
+    final messageId = existing.messageId;
     final content = update.obj('new_content');
     final newText = _messageText(content) ?? '';
     final newKind = _messageKindKey(content) ?? '';
     if (newText == existing.text && newKind == existing.kindKey) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final now = _nowSeconds();
     final event = MessageHistoryEvent(
       at: now,
       oldText: existing.text,
@@ -1094,9 +1167,7 @@ class MessageHistoryStore extends ChangeNotifier {
     );
     if (!excluded.add(chatId)) return;
     _clearedChatAt['$accountUserId:$chatId'] = ++_scopeEpoch;
-    _pendingEditDates.removeWhere(
-      (key, _) => key.startsWith('$accountUserId:$chatId:'),
-    );
+    _forgetPendingEdits(accountUserId, chatId: chatId);
     _byKey.removeWhere(
       (key, entry) =>
           entry.accountUserId == accountUserId && entry.chatId == chatId,
@@ -1135,9 +1206,7 @@ class MessageHistoryStore extends ChangeNotifier {
     for (final key in keys) {
       _byKey.remove(key);
     }
-    _pendingEditDates.removeWhere(
-      (key, _) => key.startsWith('$accountUserId:$chatId:'),
-    );
+    _forgetPendingEdits(accountUserId, chatId: chatId);
     _clearedChatAt['$accountUserId:$chatId'] = ++_scopeEpoch;
     _media().deleteScope(accountUserId, chatId);
     notifyListeners();
@@ -1154,6 +1223,7 @@ class MessageHistoryStore extends ChangeNotifier {
     final removed = _byKey.length;
     _byKey.clear();
     _pendingEditDates.clear();
+    _lateContentUpdates.clear();
     _generation++;
     _clearedAllAt = ++_scopeEpoch;
     _media().deleteAll();
@@ -1182,9 +1252,7 @@ class MessageHistoryStore extends ChangeNotifier {
       _byKey.remove(key);
     }
     if (keys.isNotEmpty) changed = true;
-    _pendingEditDates.removeWhere(
-      (key, _) => key.startsWith('$accountUserId:'),
-    );
+    _forgetPendingEdits(accountUserId);
     _media().deleteAccount(accountUserId);
     if (_excludedChatsByAccount.remove(accountUserId) != null) changed = true;
     unawaited(_prefs?.remove('$_prefsKeyPrefix$accountUserId'));
@@ -1307,9 +1375,7 @@ class MessageHistoryStore extends ChangeNotifier {
     for (final key in keys) {
       _byKey.remove(key);
     }
-    _pendingEditDates.removeWhere(
-      (key, _) => key.startsWith('$accountUserId:'),
-    );
+    _forgetPendingEdits(accountUserId);
     _media().deleteAccount(accountUserId);
     final excluded = <int>{
       for (final raw

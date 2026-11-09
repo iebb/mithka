@@ -408,6 +408,57 @@ void main() {
       expect(entry!.topicId, 0);
     });
   });
+
+  group('REG-5 a reversed edit pair still records its revision', () {
+    test('content before its edited date lands when the date arrives', () async {
+      store.debugSeed([
+        const MessageHistoryEntry(
+          accountUserId: _accountA,
+          chatId: _chatId,
+          messageId: 500,
+          senderId: 42,
+          date: 1,
+          text: 'original',
+          kindKey: '',
+          state: MessageHistoryState.active,
+          deletedAt: 0,
+          events: [],
+        ),
+      ]);
+      // TDLib catch-up can deliver the pair backwards: the content first.
+      emitAs(
+        _clientA,
+        'updateMessageContent',
+        {
+          'chat_id': '$_chatId',
+          'message_id': 500,
+          'new_content': {
+            '@type': 'messageText',
+            'text': {'@type': 'formattedText', 'text': 'revised'},
+          },
+        },
+      );
+      await pump();
+      var entry = store.entryFor(_accountA, _chatId, 500);
+      expect(entry?.text, 'original',
+        reason: 'content alone is held, never applied as a revision');
+      expect(entry?.events, isEmpty);
+
+      emitAs(
+        _clientA,
+        'updateMessageEdited',
+        {'chat_id': '$_chatId', 'message_id': 500, 'edit_date': 88},
+      );
+      await pump();
+      entry = store.entryFor(_accountA, _chatId, 500);
+      expect(entry?.text, 'revised');
+      expect(entry?.events, hasLength(1),
+        reason: 'the late date completes the pair instead of dropping it');
+      expect(entry?.events.single.editDate, 88);
+      expect(entry?.events.single.oldText, 'original');
+      expect(entry?.events.single.newText, 'revised');
+    });
+  });
 }
 
 MessageHistoryEntry _deleted({required int messageId, required int topicId}) =>
