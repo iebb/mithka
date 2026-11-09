@@ -1640,6 +1640,8 @@
     <string name="generalSendMessageWithEnter">Nachricht mit Eingabetaste senden</string>
     <string name="generalShowSavedMessagesIdentity">„Gespeicherte Nachrichten“ statt meines Profils anzeigen</string>
     <string name="generalStorage">Speicher</string>
+    <string name="generalSystemPhotoPicker">System-Fotoauswahl verwenden</string>
+    <string name="generalSystemPhotoPickerHint">Fotos und Videos auswählen, ohne Mithka Zugriff auf deine Mediathek zu geben. Original und Live Photos sind nicht verfügbar.</string>
     <string name="generalTitle">Allgemein</string>
     <string name="gesturesChatActions">Chat-Aktionen</string>
     <string name="gesturesChatActionsModeDescription">1 Finger: Chat-Aktionen · 2 Finger: Ordner · 3 Finger: Konten</string>
@@ -2547,6 +2549,7 @@
     <string name="passkeysRemoved">Passkey gelöscht</string>
     <string name="passkeysTitle">Passkeys</string>
     <string name="passkeysUnknownName">Unbenannter Passkey</string>
+    <string name="pickerSystemPicker">System</string>
     <string name="pinnedMessagesEmpty">Noch keine hervorgehobenen Nachrichten</string>
     <string name="pinnedMessagesSentBy">Gesendet von {value1}</string>
     <string name="pollComposerAddOption">Option hinzufügen</string>

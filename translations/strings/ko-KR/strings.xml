@@ -1633,6 +1633,8 @@
     <string name="generalSendMessageWithEnter">Enter 키로 메시지 보내기</string>
     <string name="generalShowSavedMessagesIdentity">내 프로필 대신 ‘저장된 메시지’ 표시</string>
     <string name="generalStorage">저장 공간</string>
+    <string name="generalSystemPhotoPicker">시스템 사진 선택기 사용</string>
+    <string name="generalSystemPhotoPickerHint">사진 보관함 접근 권한 없이 사진과 동영상을 선택합니다. 원본 및 Live Photo 옵션은 사용할 수 없습니다.</string>
     <string name="generalTitle">일반</string>
     <string name="gesturesChatActions">채팅 동작</string>
     <string name="gesturesChatActionsModeDescription">한 손가락: 채팅 동작 · 두 손가락: 폴더 전환 · 세 손가락: 계정 전환</string>
@@ -2537,6 +2539,7 @@
     <string name="passkeysRemoved">패스키를 삭제했습니다</string>
     <string name="passkeysTitle">패스키</string>
     <string name="passkeysUnknownName">이름 없는 패스키</string>
+    <string name="pickerSystemPicker">시스템 선택기</string>
     <string name="pinnedMessagesEmpty">고정된 메시지가 없습니다</string>
     <string name="pinnedMessagesSentBy">{value1} 보냄</string>
     <string name="pollComposerAddOption">옵션 추가</string>
