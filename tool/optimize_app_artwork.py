@@ -21,6 +21,21 @@ ROOT = Path(__file__).resolve().parents[1]
 ICONS = ROOT / "assets/app_icons"
 PICKER = ICONS / "picker"
 NATIVE = ROOT / "ios/Runner/Assets.xcassets"
+# Mascot art is flat sticker artwork; ~50 KB keeps it crisp at 1024px.
+ICON_TARGET_BYTES = 52 * 1024
+ICON_LIMIT_BYTES = 56 * 1024
+# Faint paper texture, not colour count, dominates these PNGs. Smoothing it
+# away before quantising is tried from gentlest to strongest.
+SMOOTHING_LADDER = (
+    (3, 64),
+    (3, 48),
+    (3, 40),
+    (3, 32),
+    (5, 48),
+    (5, 32),
+    (5, 24),
+)
+MIN_PSNR_DB = 36.0
 
 
 def composer_pngs():
@@ -72,8 +87,11 @@ def check():
         # The three existing clear tinted renditions are 1px placeholders.
         if dimensions not in ((1024, 1024), (1, 1)):
             errors.append(f"Invalid native icon dimensions: {path.relative_to(ROOT)}")
-        if len(data) > 384 * 1024:
-            errors.append(f"Native icon exceeds 384 KiB: {path.relative_to(ROOT)}")
+        if len(data) > ICON_LIMIT_BYTES:
+            errors.append(f"Native icon exceeds 56 KiB: {path.relative_to(ROOT)}")
+    for path in ICONS.glob("*.png"):
+        if path.stat().st_size > ICON_LIMIT_BYTES:
+            errors.append(f"Launcher icon exceeds 56 KiB: {path.relative_to(ROOT)}")
     for path in PICKER.iterdir():
         if path.suffix != ".webp":
             errors.append(f"Picker must use optimized WebP: {path.relative_to(ROOT)}")
@@ -82,13 +100,63 @@ def check():
     values = inventory()
     if values["picker_bytes"] > 2 * 1024**2:
         errors.append("Picker catalogue exceeds 2 MiB")
-    if values["ios_catalogue_png_bytes"] > 22 * 1024**2:
-        errors.append("Native iOS icon catalogue exceeds 22 MiB")
+    if values["ios_catalogue_png_bytes"] > 6 * 1024**2:
+        errors.append("Native iOS icon catalogue exceeds 6 MiB")
     if values["ios_composer_png_bytes"] > 10 * 1024**2:
         errors.append("Native iOS icon layers exceed 10 MiB")
     print(json.dumps(values, indent=2))
     if errors:
         raise SystemExit("\n".join(errors))
+
+
+def psnr(first, second):
+    import math
+    from PIL import ImageChops, ImageStat
+
+    # Premultiply so colours hidden under transparent pixels do not count.
+    first, second = (image.convert("RGBA").convert("RGBa") for image in (first, second))
+    difference = ImageChops.difference(first, second)
+    mse = sum(value**2 for value in ImageStat.Stat(difference).rms) / 4
+    return math.inf if mse == 0 else 10 * math.log10(255**2 / mse)
+
+
+def fit_budget(path, directory):
+    """Return the gentlest smoothed palette PNG within the icon budget."""
+    from PIL import Image, ImageFilter
+
+    with Image.open(path) as image:
+        original = image.convert("RGBA")
+    best = None
+    for radius, colours in SMOOTHING_LADDER:
+        source = Path(directory) / f"smooth-{radius}.png"
+        if not source.exists():
+            original.filter(ImageFilter.MedianFilter(radius)).save(source)
+        output = Path(directory) / f"smooth-{radius}-{colours}.png"
+        subprocess.run(
+            [
+                "pngquant",
+                "--speed",
+                "1",
+                "--strip",
+                "--nofs",
+                "--force",
+                "--output",
+                str(output),
+                str(colours),
+                str(source),
+            ],
+            env={**os.environ, "OMP_NUM_THREADS": "1"},
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
+        with Image.open(output) as candidate:
+            if psnr(original, candidate) < MIN_PSNR_DB:
+                break
+        best = output
+        if output.stat().st_size <= ICON_TARGET_BYTES:
+            break
+    return best
 
 
 def optimize():
@@ -108,37 +176,45 @@ def optimize():
 
     def compress(group):
         original = group[0]
+        if original.stat().st_size <= ICON_TARGET_BYTES:
+            return
         with Image.open(original) as image:
-            if image.mode == "P" or original.stat().st_size < 1024:
-                return
             if image.info.get("icc_profile"):
                 raise ValueError(f"Convert the color profile explicitly: {original}")
+            palette = image.mode == "P"
         with tempfile.TemporaryDirectory(prefix="mithka-png-") as directory:
             output = Path(directory) / "optimized.png"
-            result = subprocess.run(
-                [
-                    "pngquant",
-                    "--quality=80-95",
-                    "--speed",
-                    "1",
-                    "--strip",
-                    "--floyd=0.35",
-                    "--output",
-                    str(output),
-                    str(original),
-                ],
-                env={**os.environ, "OMP_NUM_THREADS": "1"},
-                capture_output=True,
-                text=True,
-                timeout=90,
-            )
-            if (
-                result.returncode == 99
-            ):  # Preserve quality rather than forcing a poor palette.
-                return
-            if result.returncode:
-                raise RuntimeError(result.stderr)
-            if output.stat().st_size < original.stat().st_size:
+            result = None
+            if not palette:
+                result = subprocess.run(
+                    [
+                        "pngquant",
+                        "--quality=80-95",
+                        "--speed",
+                        "1",
+                        "--strip",
+                        "--floyd=0.35",
+                        "--output",
+                        str(output),
+                        str(original),
+                    ],
+                    env={**os.environ, "OMP_NUM_THREADS": "1"},
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                # 99 preserves quality rather than forcing a poor palette.
+                if result.returncode not in (0, 99):
+                    raise RuntimeError(result.stderr)
+            # Smoothing would blur the pixel-art grid.
+            pixel_art = any("pixel" in path.name.lower() for path in group)
+            if not pixel_art and (
+                result is None
+                or result.returncode
+                or output.stat().st_size > ICON_TARGET_BYTES
+            ):
+                output = fit_budget(original, directory) or output
+            if output.exists() and output.stat().st_size < original.stat().st_size:
                 data = output.read_bytes()
                 for path in group:
                     path.write_bytes(data)
