@@ -370,7 +370,11 @@ class MessageHistoryStore extends ChangeNotifier {
   Stream<Map<String, dynamic>> _openUpdates(Iterable<String> types) {
     final source = updateSource;
     if (source != null) return source(types);
-    return TdClient.shared.updatesOfAny(types);
+    // allAccounts: records are owned by the client that received the update
+    // (resolved through '@client_id'), and the active-only stream would
+    // silence every background account's deletions and edits — the whole
+    // per-account scoping of this store exists for the multi-account case.
+    return TdClient.shared.updatesOfAny(types, allAccounts: true);
   }
 
   Stream<int> _openActiveSlotChanges() {
@@ -1157,9 +1161,13 @@ class MessageHistoryStore extends ChangeNotifier {
   /// Stops the ACTIVE account from recording [chatId] and drops its kept
   /// copies of that chat — an excluded chat must have no mirror at all, not
   /// just a paused one. Other accounts' copies of the same chat are kept.
-  void excludeChat(int chatId) {
+  void excludeChat(int chatId) => excludeChatFor(_activeAccountUserId, chatId);
+
+  /// [excludeChat] for an explicit account (desktop utility window's chat
+  /// info, pinned to one slot's account even when the primary window's
+  /// active account differs).
+  void excludeChatFor(int? accountUserId, int chatId) {
     if (!allowTelegramTosViolations) return;
-    final accountUserId = _activeAccountUserId;
     if (accountUserId == null) return;
     final excluded = _excludedChatsByAccount.putIfAbsent(
       accountUserId,
@@ -1178,9 +1186,11 @@ class MessageHistoryStore extends ChangeNotifier {
     _schedulePersist();
   }
 
-  void includeChat(int chatId) {
+  void includeChat(int chatId) => includeChatFor(_activeAccountUserId, chatId);
+
+  /// [includeChat] for an explicit account (see [excludeChatFor]).
+  void includeChatFor(int? accountUserId, int chatId) {
     if (!allowTelegramTosViolations) return;
-    final accountUserId = _activeAccountUserId;
     if (accountUserId == null) return;
     final excluded = _excludedChatsByAccount[accountUserId];
     if (excluded == null || !excluded.remove(chatId)) return;
