@@ -5,10 +5,12 @@
 //
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  if (!allowTelegramTosViolations) return; // getters chain isAvailable
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late SharedPreferences prefs;

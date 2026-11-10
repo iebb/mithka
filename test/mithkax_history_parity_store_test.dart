@@ -316,11 +316,11 @@ void main() {
       final snap = MessageMediaSnapshotter.forTesting();
       snap.dir = Directory('${dir.path}/media');
       store.mediaSnapshotter = snap;
-      final path = await snap.writeSnapshotBytes('7901:55:9', [1, 2, 3]);
+      final path = await snap.writeSnapshotBytes('$_accountA:55:9', [1, 2, 3]);
       expect(path, isNotNull);
       store.debugSeed([
         MessageHistoryEntry(
-          accountUserId: 7901,
+          accountUserId: _accountA,
           chatId: 55,
           messageId: 9,
           senderId: 42,
