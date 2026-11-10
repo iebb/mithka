@@ -6922,11 +6922,7 @@ class _GhostDeletedBadge extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (showIcon) ...[
-                  AppIcon(
-                    HeroAppIcons.trash,
-                    size: 11,
-                    color: c.textTertiary,
-                  ),
+                  AppIcon(HeroAppIcons.trash, size: 11, color: c.textTertiary),
                 ],
                 if (showIcon && showText) const SizedBox(width: 4),
                 if (showText)

@@ -490,9 +490,7 @@ class MessageActionMenu extends StatelessWidget {
   }) {
     // Call logs aren't reactable, but their delivery metadata stays useful.
     if (message.isCall) {
-      return [
-        MessageAction.delete,
-      ];
+      return [MessageAction.delete];
     }
     final result = <MessageAction>[];
     if (_hasCopyableText) {
