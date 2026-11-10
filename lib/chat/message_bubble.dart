@@ -1148,20 +1148,26 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
 
   /// Ghost styling for a deleted message's kept copy (Telegram §1.4
   /// self-build feature): the bubble stays where the message used to be,
-  /// translucent with the deleted marker tucked UNDER the bubble next to the
-  /// meta line, media from the mirror's snapshot. Group ghosts keep the
-  /// sender header so the kept copy stays attributable.
+  /// translucent with media from the mirror's snapshot. The deleted marker
+  /// rides the sender-header line, between the name and the time; a ghost
+  /// without that header (outgoing, 1:1) carries the marker as its own
+  /// line in the same position above the bubble.
   Widget _maybeGhost(Widget child, bool outgoing) {
     if (message.mirrorEntry == null) return child;
+    final inSenderHeader =
+        widget.bubble.isGroup && !outgoing && message.senderName != null;
+    if (inSenderHeader) {
+      return Opacity(opacity: 0.55, child: child);
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: outgoing
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
       children: [
-        Opacity(opacity: 0.55, child: child),
+        _GhostDeletedBadge(onLongPress: _handleLongPress),
         const SizedBox(height: 2),
-        _GhostDeletedBadge(outgoing: outgoing, onLongPress: _handleLongPress),
+        Opacity(opacity: 0.55, child: child),
       ],
     );
   }
@@ -1233,6 +1239,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             ),
           ),
           const SizedBox(width: 5),
+          if (message.mirrorEntry != null) ...[
+            _GhostDeletedBadge(onLongPress: _handleLongPress),
+            const SizedBox(width: 5),
+          ],
           SizedBox(
             width: 96,
             height: 14,
@@ -6880,13 +6890,14 @@ class _RenderQuoteFold extends RenderProxyBox {
   }
 }
 
-/// The tiny "deleted" badge above a ghost bubble. Tap-through except for the
-/// long-press, which forwards to the bubble's own action menu (the mirror
-/// actions live there).
+/// The tiny "deleted" badge of a ghost bubble. In a group it rides the
+/// sender-header line between the name and the time; elsewhere it renders
+/// above the bubble on its own line, aligned to the bubble's side.
+/// Tap-through except for the long-press, which forwards to the bubble's
+/// own action menu (the mirror actions live there).
 class _GhostDeletedBadge extends StatelessWidget {
-  const _GhostDeletedBadge({required this.outgoing, this.onLongPress});
+  const _GhostDeletedBadge({this.onLongPress});
 
-  final bool outgoing;
   final VoidCallback? onLongPress;
 
   @override
@@ -6898,35 +6909,32 @@ class _GhostDeletedBadge extends StatelessWidget {
         final style = MessageHistorySettings.shared.badgeStyle;
         final showIcon = style != GhostBadgeStyle.text;
         final showText = style != GhostBadgeStyle.icon;
-        return Align(
-          alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onLongPress: onLongPress,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: c.groupedBackground.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showIcon) ...[
-                    AppIcon(
-                      HeroAppIcons.trash,
-                      size: 11,
-                      color: c.textTertiary,
-                    ),
-                  ],
-                  if (showIcon && showText) const SizedBox(width: 4),
-                  if (showText)
-                    Text(
-                      AppStringKeys.historyDeletedLabel.l10n(context),
-                      style: AppTextStyle.footnote(c.textTertiary),
-                    ),
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onLongPress: onLongPress,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: c.groupedBackground.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showIcon) ...[
+                  AppIcon(
+                    HeroAppIcons.trash,
+                    size: 11,
+                    color: c.textTertiary,
+                  ),
                 ],
-              ),
+                if (showIcon && showText) const SizedBox(width: 4),
+                if (showText)
+                  Text(
+                    AppStringKeys.historyDeletedLabel.l10n(context),
+                    style: AppTextStyle.footnote(c.textTertiary),
+                  ),
+              ],
             ),
           ),
         );
