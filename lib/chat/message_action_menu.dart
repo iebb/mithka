@@ -14,7 +14,6 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
-import '../config/build_flags.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
@@ -59,7 +58,6 @@ enum MessageAction {
   saveSticker(HeroAppIcons.circlePlus, AppStringKeys.imageEditAdd),
   viewStickerSet(HeroAppIcons.tableCells, AppStringKeys.messageActionSticker),
   viewEdits(HeroAppIcons.clock, AppStringKeys.messageActionViewEdits),
-  info(HeroAppIcons.circleInfo, AppStringKeys.messageActionInfo),
   removeMirror(HeroAppIcons.trash, AppStringKeys.historyRemoveFromMirrorAction),
   delete(HeroAppIcons.trash, AppStringKeys.chatDelete);
 
@@ -490,11 +488,9 @@ class MessageActionMenu extends StatelessWidget {
     required bool isDesktop,
     required bool isMacOS,
   }) {
-    // Call logs aren't reactable, but their delivery metadata stays useful —
-    // and a mirrored call still owes its read stamp.
+    // Call logs aren't reactable, but their delivery metadata stays useful.
     if (message.isCall) {
       return [
-        if (allowTelegramTosViolations) MessageAction.info,
         MessageAction.delete,
       ];
     }
@@ -578,10 +574,6 @@ class MessageActionMenu extends StatelessWidget {
     if (allowHideSender) result.add(MessageAction.hideSender);
     if (allowViewEdits) result.add(MessageAction.viewEdits);
     if (message.mirrorEntry != null) result.add(MessageAction.removeMirror);
-    // MithkaX restore (Telegram §1.4, compile-gated): upstream dropped the
-    // Info entry in 786689ac, which stranded the mirror's read-time row —
-    // its only host. Non-mirrored messages keep it for the delivery card.
-    if (allowTelegramTosViolations) result.add(MessageAction.info);
     result.add(MessageAction.delete);
     return result;
   }

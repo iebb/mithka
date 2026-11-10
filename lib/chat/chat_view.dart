@@ -129,7 +129,6 @@ import 'message_action_menu.dart';
 import 'message_action_menu_presentation.dart';
 import 'message_bubble.dart';
 import 'message_bubble_repository_view.dart';
-import 'message_info_view.dart';
 import 'message_quote_selection_dialog.dart';
 import 'message_reaction_availability.dart';
 import 'message_replies_sheet.dart';
@@ -5720,17 +5719,6 @@ class _ChatViewState extends State<ChatView> {
     switch (action) {
       case MessageAction.viewEdits:
         await _openMessageEdits(message);
-      case MessageAction.info:
-        if (!mounted) return;
-        await Navigator.of(context).push(
-          AppPageRoute<void>(
-            pageBuilder: (_, _, _) => MessageInfoView(
-              chatId: _vm.chatId,
-              message: message,
-              mirrorAccountUserId: _vm.mirrorAccountUserId,
-            ),
-          ),
-        );
       case MessageAction.removeMirror:
         _removeMirrorEntry(message);
       case MessageAction.copy:

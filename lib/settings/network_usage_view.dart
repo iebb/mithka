@@ -172,7 +172,7 @@ class _NetworkUsageViewState extends State<NetworkUsageView> {
   List<Widget> _networkRows((int, int, double) value) {
     return [
       SettingsRow(
-        title: AppStrings.t(AppStringKeys.messageInfoSent),
+        title: AppStrings.t(AppStringKeys.networkUsageSent),
         value: _bytes(value.$1),
         showChevron: false,
       ),
