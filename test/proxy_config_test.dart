@@ -49,6 +49,14 @@ void main() {
       isNull,
       reason: 'paths require Telegram marker encoding',
     );
+    expect(
+      ProxyConfig.isValidWebProxy('relay.example', 443, 'relay/v2', webSecret),
+      isTrue,
+    );
+    expect(
+      ProxyConfig.isValidWebProxy('relay.example', 443, '../escape', webSecret),
+      isFalse,
+    );
   });
 
   test(

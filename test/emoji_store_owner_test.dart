@@ -5,15 +5,13 @@
 //  pack load that outlives an account switch must never publish the account it
 //  started for into the account the user is now looking at. These tests drive
 //  the real TDLib registry (clients created by `addSlot`, queries answered per
-//  client) and the production topic-icon picker.
+//  client).
 //
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/chat/custom_emoji.dart';
 import 'package:mithka/chat/emoji_store.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
@@ -43,7 +41,7 @@ void main() {
     _client.prepareForTesting(
       prefs: prefs,
       supportDir: supportDir.path,
-      bindings: _FakeBindings(_client),
+      bindings: _FakeBindings(),
       queryOverride: _registry.respond,
     );
   });
@@ -51,7 +49,6 @@ void main() {
   setUp(() {
     _registry.reset();
     EmojiStore.shared.reset();
-    CustomEmojiCenter.shared.reset();
   });
 
   test(
@@ -276,23 +273,12 @@ class _Registry {
     calls.add(_Call(clientId, request));
     switch (type) {
       case 'getOption':
-        if (request['name'] != 'is_premium') {
-          return {
-            '@type': 'optionValue',
-            'name': request['name'],
-            'value': false,
-          };
-        }
         // Snapshot before the gate: the answer was prepared for the client
         // that asked, whenever the test lets it through.
         final premium = accounts[clientId]?.premium ?? false;
         await _pass('option', clientId);
         return {'@type': 'optionValue', 'name': 'is_premium', 'value': premium};
       case 'getInstalledStickerSets':
-        if ((request['sticker_type'] as Map<String, dynamic>?)?['@type'] !=
-            'stickerTypeCustomEmoji') {
-          return {'@type': 'stickerSets', 'sets': <Map<String, dynamic>>[]};
-        }
         final installed = accounts[clientId]?.packs ?? const <_Pack>[];
         await _pass('sets', clientId);
         return {
@@ -314,23 +300,7 @@ class _Registry {
           orElse: () =>
               throw StateError('client $clientId has no installed pack $setId'),
         );
-        await _pass('set', clientId);
         return _stickerSet(pack);
-      case 'getDefaultChatEmojiStatuses':
-      case 'getDefaultEmojiStatuses':
-        return {
-          '@type': 'emojiStatuses',
-          'emoji_statuses': [
-            for (final id in [9001, 9002])
-              {
-                '@type': 'emojiStatus',
-                'custom_emoji_id': id,
-                'expiration_date': 0,
-              },
-          ],
-        };
-      case 'getCustomEmojiStickers':
-        return {'@type': 'stickers', 'stickers': <Map<String, dynamic>>[]};
       default:
         return {'@type': 'ok'};
     }
@@ -383,21 +353,13 @@ Map<String, dynamic> _stickerSet(_Pack pack) => {
 
 /// Stands in for tdjson: allocates the client ids the registry answers for.
 class _FakeBindings implements TdBindings {
-  _FakeBindings(this._client);
-
-  final TdClient _client;
   int _nextClientId = 100;
 
   @override
   int createClientId() => _nextClientId++;
 
   @override
-  void send(int clientId, String request) {
-    final decoded = jsonDecode(request) as Map<String, dynamic>;
-    if (decoded['@type'] == 'close') {
-      _client.debugCompleteClientClosed(clientId);
-    }
-  }
+  void send(int clientId, String request) {}
 
   @override
   bool get supportsSessionStringBackup => false;

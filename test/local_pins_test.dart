@@ -8,9 +8,7 @@
 //
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
@@ -32,7 +30,6 @@ void main() {
 
   late Directory supportDir;
   late List<Map<String, dynamic>> requests;
-  late _FakeBindings bindings;
   Object? pinFailure;
 
   setUpAll(() async {
@@ -45,11 +42,10 @@ void main() {
     // The model sends its toggle through the real client, so it needs a
     // registry the fake transport can answer (the recorded queryForTesting
     // transport only covers the model's own chat queries).
-    bindings = _FakeBindings();
     TdClient.shared.prepareForTesting(
       prefs: prefs,
       supportDir: supportDir.path,
-      bindings: bindings,
+      bindings: _FakeBindings(),
       queryOverride: (request, clientId) async {
         requests.add(Map<String, dynamic>.from(request));
         if (request['@type'] == 'toggleChatIsPinned' && pinFailure != null) {
@@ -61,7 +57,6 @@ void main() {
     final slot = TdClient.shared.addSlot();
     final clientId = TdClient.shared.clientId(slot);
     TdClient.shared.debugSetActiveAccountForTesting(slot, clientId ?? 0);
-    bindings.adopt(clientId ?? -1);
   });
 
   setUp(() async {
@@ -538,13 +533,6 @@ Future<Map<String, dynamic>> _respond(
     case 'getChat':
       final id = jsonInt(request['chat_id']) ?? 0;
       return _chat(id);
-    case 'getUser':
-      return {
-        '@type': 'user',
-        'id': jsonInt(request['user_id']) ?? 0,
-        'first_name': 'Peer',
-        'last_name': '',
-      };
     case 'getOption':
       // The server's pin cap; five chats are already pinned.
       return {'@type': 'optionValueInteger', 'value': 5};
@@ -613,57 +601,8 @@ class _FakeBindings implements TdBindings {
   int createClientId() => _nextClientId++;
 
   @override
-  void send(int clientId, String request) {
-    if (clientId != _clientId) return;
-    // Answers the requests the client sends directly (the `setTdlibParameters`
-    // handshake). Everything the model asks for goes through queryOverride,
-    // which is what the tests read.
-    final decoded = jsonDecode(request);
-    if (decoded is! Map<String, dynamic>) return;
-    final extra = decoded.int64('@extra');
-    if (extra == null) return;
-    pending.add({'@client_id': clientId, '@extra': extra, '@type': 'ok'});
-  }
-
-  /// Registers the client id the test's account runs as.
-  void adopt(int clientId) => _clientId = clientId;
-
-  final List<Map<String, dynamic>> pending = [];
-  int _clientId = -1;
+  void send(int clientId, String request) {}
 
   @override
-  void importSessionString(String sessionString, String destinationPath) {
-    File(destinationPath).writeAsBytesSync(Uint8List.fromList(const [1]));
-  }
-
-  @override
-  bool get supportsSessionStringBackup => false;
-
-  @override
-  bool get supportsTransferBoost => false;
-
-  @override
-  String? receive(double timeout) => throw UnimplementedError();
-
-  @override
-  Object? receiveJson(double timeout) => throw UnimplementedError();
-
-  @override
-  String? execute(String request) => throw UnimplementedError();
-
-  @override
-  String exportSessionString(
-    String sourcePath, {
-    required int apiId,
-    required bool testMode,
-    required int userId,
-  }) => throw UnimplementedError();
-
-  @override
-  void configureTransferBoost({
-    required int downloadChunkSize,
-    required int downloadParallelism,
-    required int uploadChunkSize,
-    required int uploadParallelism,
-  }) {}
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

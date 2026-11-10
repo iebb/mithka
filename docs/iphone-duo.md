@@ -27,7 +27,7 @@ Xcode selection change is required.
 ## Verification
 
 ```sh
-flutter test test/main_tab_motion_test.dart
+flutter test test/main_tab_navigation_test.dart
 ```
 
 The retained shell tests cover compact Back behavior, navigation ownership and

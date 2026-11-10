@@ -23,30 +23,6 @@ const _chatId = -1000000005151;
 const _otherChatId = 3001;
 const _botUserId = 990011;
 
-Map<String, dynamic> _inlineMessageJson({
-  int id = 10,
-  int viaBotUserId = _botUserId,
-  List<List<Map<String, dynamic>>>? rows,
-}) => {
-  '@type': 'message',
-  'id': id,
-  'chat_id': _chatId,
-  'date': 1785862260 + id,
-  'is_outgoing': true,
-  'sender_id': {'@type': 'messageSenderUser', 'user_id': 1},
-  'via_bot_user_id': viaBotUserId,
-  'content': {
-    '@type': 'messageText',
-    'text': {
-      '@type': 'formattedText',
-      'text': 'Inline result card $id',
-      'entities': <Map<String, dynamic>>[],
-    },
-  },
-  if (rows != null)
-    'reply_markup': {'@type': 'replyMarkupInlineKeyboard', 'rows': rows},
-};
-
 Map<String, dynamic> _chatJson(int chatId, {String title = 'Group chat'}) => {
   '@type': 'chat',
   'id': chatId,
@@ -85,13 +61,10 @@ Map<String, dynamic> _channelChatJson(int chatId) => {
   'permissions': {'can_send_basic_messages': true},
 };
 
-Map<String, dynamic> _supergroupForChat(
-  int chatId, {
-  String statusType = 'chatMemberStatusCreator',
-}) => {
+Map<String, dynamic> _supergroupForChat(int chatId) => {
   '@type': 'supergroup',
   'id': -chatId - 1000000000000,
-  'status': {'@type': statusType},
+  'status': {'@type': 'chatMemberStatusCreator'},
 };
 
 /// A message whose inline keyboard carries a current-chat switch-inline
@@ -160,7 +133,6 @@ void main() {
   L10nFixtures.load().install();
 
   late Future<Map<String, dynamic>> Function(Map<String, dynamic>) queryHandler;
-  late List<Map<String, dynamic>> requests;
 
   // Requests that were routed through an explicit account slot, with the slot
   // they were pinned to. Only engineered ownership crosses this hop.
@@ -175,9 +147,7 @@ void main() {
           routedRequests.add((slot, request));
           return queryHandler(request);
         },
-        send: (request) async {
-          requests.add(Map<String, dynamic>.from(request));
-        },
+        send: (request) async {},
         updates: const Stream.empty(),
       ),
     );
@@ -188,138 +158,11 @@ void main() {
   late TranslationController translation;
 
   setUp(() async {
-    requests = [];
     routedRequests = [];
     ChatDeepLinkController.shared.consumePending();
     SharedPreferences.setMockInitialValues({});
     theme = ThemeController(await SharedPreferences.getInstance());
     translation = TranslationController(await SharedPreferences.getInstance());
-    queryHandler = (request) async {
-      requests.add(Map<String, dynamic>.from(request));
-      return switch (request['@type']) {
-        'getChat' => switch (request['chat_id']) {
-          _otherChatId => _chatJson(_otherChatId, title: 'Alice'),
-          _ => _chatJson(_chatId),
-        },
-        'getChats' => {
-          '@type': 'chats',
-          'total_count': 2,
-          'chat_ids': [_chatId, _otherChatId],
-        },
-        'getChatHistory' => {
-          '@type': 'messages',
-          'total_count': 1,
-          'messages': [
-            _inlineMessageJson(
-              rows: [
-                [
-                  {
-                    '@type': 'inlineKeyboardButton',
-                    'text': 'Try Inline Here',
-                    'type': {
-                      '@type': 'inlineKeyboardButtonTypeSwitchInline',
-                      'query': 'cats',
-                      'target_chat': {'@type': 'targetChatCurrent'},
-                    },
-                  },
-                  {
-                    '@type': 'inlineKeyboardButton',
-                    'text': 'Share Inline',
-                    'type': {
-                      '@type': 'inlineKeyboardButtonTypeSwitchInline',
-                      'query': 'dogs',
-                      'target_chat': {
-                        '@type': 'targetChatChosen',
-                        'types': {
-                          '@type': 'targetChatTypes',
-                          'allow_user_chats': true,
-                          'allow_bot_chats': false,
-                          'allow_group_chats': false,
-                          'allow_channel_chats': false,
-                        },
-                      },
-                    },
-                  },
-                ],
-              ],
-            ),
-          ],
-        },
-        'getMe' => {
-          '@type': 'user',
-          'id': 1,
-          'first_name': 'Me',
-          'type': {'@type': 'userTypeRegular'},
-        },
-        'getUser' =>
-          (request['user_id'] == _botUserId)
-              ? _botUserJson()
-              : {
-                  '@type': 'user',
-                  'id': request['user_id'] ?? 1,
-                  'first_name': 'User',
-                  'type': {'@type': 'userTypeRegular'},
-                },
-        'searchPublicChat' => {
-          '@type': 'chat',
-          'id': _botUserId,
-          'title': 'PicBot',
-          'type': {'@type': 'chatTypePrivate', 'user_id': _botUserId},
-        },
-        'getInlineQueryResults' => {
-          '@type': 'inlineQueryResults',
-          'inline_query_id': '778899',
-          'next_offset': request['offset'] == 'page-2' ? '' : 'page-2',
-          'is_gallery': false,
-          'button': {
-            '@type': 'inlineQueryResultsButton',
-            'text': 'Open PicBot App',
-            'type': {
-              '@type': 'inlineQueryResultsButtonTypeStartBot',
-              'parameter': 'from_inline',
-            },
-          },
-          'results': request['offset'] == 'page-2'
-              ? [
-                  {
-                    '@type': 'inlineQueryResultArticle',
-                    'id': 'res-2',
-                    'title': 'Second Page Cat',
-                    'description': 'Page 2 item',
-                  },
-                ]
-              : [
-                  {
-                    '@type': 'inlineQueryResultArticle',
-                    'id': 'res-1',
-                    'title': 'First Cat',
-                    'description': 'Cute cat photo',
-                  },
-                ],
-        },
-        'getSupergroup' => {
-          '@type': 'supergroup',
-          'id': -_chatId - 1000000000000,
-        },
-        'getSupergroupFullInfo' => {
-          '@type': 'supergroupFullInfo',
-          'member_count': 4,
-        },
-        'getRecentInlineBots' => {
-          '@type': 'users',
-          'total_count': 1,
-          'user_ids': [_botUserId],
-        },
-        'searchChatMembers' => {
-          '@type': 'chatMembers',
-          'total_count': 0,
-          'members': <Map<String, dynamic>>[],
-        },
-        'getContacts' => {'@type': 'users', 'total_count': 0, 'user_ids': []},
-        'getOption' => {'@type': 'optionValueBoolean', 'value': false},
-        _ => {'@type': 'ok'},
-      };
-    };
   });
 
   tearDown(() {
@@ -328,6 +171,25 @@ void main() {
     theme.dispose();
     translation.dispose();
   });
+
+  // The composer and picker stay on the same providers the app shell
+  // supplies, so the live flows can actually open a chat.
+  Widget app(Widget home) => MultiProvider(
+    providers: [
+      ChangeNotifierProvider<ThemeController>.value(value: theme),
+      ChangeNotifierProvider<TranslationController>.value(value: translation),
+    ],
+    child: MaterialApp(
+      locale: const Locale('en'),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [AppLocalizations.delegate],
+      theme: ThemeData(
+        platform: TargetPlatform.iOS,
+        extensions: [AppColors.light],
+      ),
+      home: home,
+    ),
+  );
 
   // ---------------------------------------------------------------------------
   // TopicPostContent current-chat switch-inline ownership.
@@ -346,16 +208,8 @@ void main() {
     final routedTopicRequests = <(int?, Map<String, dynamic>)>[];
 
     setUp(() {
-      // Installed in this order (mounted per test, after the outer setUp):
-      //   1. record the response, so the slot is read at request time
-      //   2. record the request through `topicRequests`
-      //   3. the per-test `topicHandler` decides the response, holding it if the
-      //      test needs to resolve it after the screen has gone away.
-      topicHandler = (request) async => switch (request['@type']) {
-        'getChat' => _channelChatJson(_chatId),
-        'getSupergroup' => _supergroupForChat(_chatId),
-        _ => {'@type': 'ok'},
-      };
+      // Each test installs `topicHandler` to decide the response, holding it
+      // if the test needs to resolve it after the screen has gone away.
       topicRequests = [];
       routedTopicRequests.clear();
       queryHandler = (request) async {
@@ -378,28 +232,9 @@ void main() {
       };
     });
 
-    // The composer for this chat stays on the same providers the app shell
-    // supplies, so the live flow can actually open the current chat.
-    Widget topicApp(Widget home) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeController>.value(value: theme),
-        ChangeNotifierProvider<TranslationController>.value(value: translation),
-      ],
-      child: MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: const [AppLocalizations.delegate],
-        theme: ThemeData(
-          platform: TargetPlatform.iOS,
-          extensions: [AppColors.light],
-        ),
-        home: home,
-      ),
-    );
-
     Future<void> pumpTopicPost(WidgetTester tester, ChatMessage message) async {
       await tester.pumpWidget(
-        topicApp(
+        app(
           Scaffold(
             body: TopicPostContent(
               chatId: _chatId,
@@ -509,41 +344,20 @@ void main() {
             'chat_ids': [_otherChatId],
           },
           'getChat' => _chatJson(_otherChatId, title: 'Alice'),
-          'getContacts' => {
-            '@type': 'users',
-            'total_count': 0,
-            'user_ids': <int>[],
-          },
-          'getOption' => {'@type': 'optionValueBoolean', 'value': false},
           _ => {'@type': 'ok'},
         };
 
         // The picker is launched from the composer's inline-query flow, which
         // runs on a client pinned to the account that owns the chat.
         await tester.pumpWidget(
-          MultiProvider(
-            providers: [
-              ChangeNotifierProvider<ThemeController>.value(value: theme),
-              ChangeNotifierProvider<TranslationController>.value(
-                value: translation,
+          app(
+            const InternalChatLinkScope(
+              target: InternalChatLinkTarget(
+                chatId: _chatId,
+                accountSlot: 7,
+                openMessage: _noopOpenMessage,
               ),
-            ],
-            child: MaterialApp(
-              theme: ThemeData(
-                extensions: [AppColors.light],
-                platform: TargetPlatform.iOS,
-              ),
-              locale: const Locale('en'),
-              localizationsDelegates: const [AppLocalizations.delegate],
-              supportedLocales: AppLocalizations.supportedLocales,
-              home: const InternalChatLinkScope(
-                target: InternalChatLinkTarget(
-                  chatId: _chatId,
-                  accountSlot: 7,
-                  openMessage: _noopOpenMessage,
-                ),
-                child: ChatPickerView(allowedKinds: {ChatKind.privateChat}),
-              ),
+              child: ChatPickerView(allowedKinds: {ChatKind.privateChat}),
             ),
           ),
         );
@@ -642,7 +456,6 @@ void main() {
               ? slotUser(contactId, contactName)
               : slotUser((request['user_id'] as int?) ?? 1, 'User'),
         'createPrivateChat' => _chatJson(contactId, title: contactName),
-        'getOption' => {'@type': 'optionValueBoolean', 'value': false},
         _ => {'@type': 'ok'},
       };
     }
@@ -675,23 +488,6 @@ void main() {
         if (types.contains(entry.$2['@type'])) entry,
     ];
 
-    Widget pickerApp(Widget home) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeController>.value(value: theme),
-        ChangeNotifierProvider<TranslationController>.value(value: translation),
-      ],
-      child: MaterialApp(
-        locale: const Locale('en'),
-        supportedLocales: AppLocalizations.supportedLocales,
-        localizationsDelegates: const [AppLocalizations.delegate],
-        theme: ThemeData(
-          platform: TargetPlatform.iOS,
-          extensions: [AppColors.light],
-        ),
-        home: home,
-      ),
-    );
-
     Future<void> settle(WidgetTester tester) async {
       for (var i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 120));
@@ -710,7 +506,7 @@ void main() {
         final drafts = <(int, Object?)>[];
 
         await tester.pumpWidget(
-          pickerApp(
+          app(
             InternalChatLinkScope(
               target: const InternalChatLinkTarget(
                 chatId: 7000,
@@ -807,7 +603,7 @@ void main() {
         ChatSummary? picked;
 
         await tester.pumpWidget(
-          pickerApp(
+          app(
             Scaffold(
               body: Builder(
                 builder: (context) => TextButton(

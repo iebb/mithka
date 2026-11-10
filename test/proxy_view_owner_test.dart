@@ -77,38 +77,7 @@ class _FakeBindings implements TdBindings {
   }
 
   @override
-  void importSessionString(String sessionString, String destinationPath) {}
-
-  @override
-  bool get supportsSessionStringBackup => false;
-
-  @override
-  bool get supportsTransferBoost => false;
-
-  @override
-  String? receive(double timeout) => throw UnimplementedError();
-
-  @override
-  Object? receiveJson(double timeout) => throw UnimplementedError();
-
-  @override
-  String? execute(String request) => throw UnimplementedError();
-
-  @override
-  String exportSessionString(
-    String sourcePath, {
-    required int apiId,
-    required bool testMode,
-    required int userId,
-  }) => throw UnimplementedError();
-
-  @override
-  void configureTransferBoost({
-    required int downloadChunkSize,
-    required int downloadParallelism,
-    required int uploadChunkSize,
-    required int uploadParallelism,
-  }) {}
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// The two accounts behind one private registry, plus the scripted TDLib side.
@@ -175,8 +144,6 @@ final class _Harness {
             if ((proxy['id'] as int? ?? 0) != id) proxy,
         ];
         return {'@type': 'ok'};
-      case 'getConnectionState':
-        return {'@type': 'connectionStateReady'};
       default:
         return {'@type': 'ok'};
     }
