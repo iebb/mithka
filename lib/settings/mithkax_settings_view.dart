@@ -118,13 +118,6 @@ class _HistoryCoreSection extends StatelessWidget {
               onChanged: settings.setRecordEdits,
               active: masterOn,
             ),
-            _GatedSwitch(
-              switchKey: const ValueKey('history-record-read-times'),
-              titleKey: AppStringKeys.historyRecordReadTimes,
-              value: settings.recordReadTimes,
-              onChanged: settings.setRecordReadTimes,
-              active: masterOn,
-            ),
             SettingsSwitchRow(
               key: const ValueKey('history-render-ghosts'),
               title: AppStringKeys.historyRenderGhosts.l10n(context),

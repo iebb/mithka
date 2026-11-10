@@ -1977,7 +1977,6 @@
     <string name="historyKindVideoNote">Videonachricht</string>
     <string name="historyKindVoice">Sprachnachricht</string>
     <string name="historyNoExcludedChats">Keine Chats ausgeschlossen.</string>
-    <string name="historyReadAtLabel">Gelesen am</string>
     <string name="historyRecordBots">In Bot-Chats aufzeichnen</string>
     <string name="historyRecordChannels">In Kanälen aufzeichnen</string>
     <string name="historyRecordDeleted">Gelöschte Nachrichten aufbewahren</string>
@@ -1985,7 +1984,6 @@
     <string name="historyRecordGroups">In Gruppen aufzeichnen</string>
     <string name="historyRecordNote">Beide Schalter sind standardmäßig aus; es wird nichts aufgezeichnet, bis du sie aktivierst. Aufbewahrte Kopien liegen nur auf diesem Gerät und bleiben, bis du sie löschst.</string>
     <string name="historyRecordPrivate">In privaten Chats aufzeichnen</string>
-    <string name="historyRecordReadTimes">Lesezeiten aufzeichnen</string>
     <string name="historyRecordSection">Aufzeichnung</string>
     <string name="historyReincludeAction">Aufnehmen</string>
     <string name="historyRemoveFromMirrorAction">Aus dem Spiegel entfernen</string>

@@ -1977,7 +1977,6 @@
     <string name="historyKindVideoNote">Video message</string>
     <string name="historyKindVoice">Voice message</string>
     <string name="historyNoExcludedChats">No chats are excluded.</string>
-    <string name="historyReadAtLabel">Read at</string>
     <string name="historyRecordBots">Record in bot chats</string>
     <string name="historyRecordChannels">Record in channels</string>
     <string name="historyRecordDeleted">Keep deleted messages</string>
@@ -1985,7 +1984,6 @@
     <string name="historyRecordGroups">Record in groups</string>
     <string name="historyRecordNote">Both switches default to off; nothing is recorded until you enable them. Kept copies live on this device only and stay until you clear them.</string>
     <string name="historyRecordPrivate">Record in private chats</string>
-    <string name="historyRecordReadTimes">Record read times</string>
     <string name="historyRecordSection">Recording</string>
     <string name="historyReincludeAction">Include</string>
     <string name="historyRemoveFromMirrorAction">Remove from mirror</string>

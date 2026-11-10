@@ -1970,7 +1970,6 @@
     <string name="historyKindVideoNote">영상 메시지</string>
     <string name="historyKindVoice">음성 메시지</string>
     <string name="historyNoExcludedChats">제외된 채팅이 없습니다.</string>
-    <string name="historyReadAtLabel">읽은 시간</string>
     <string name="historyRecordBots">봇 채팅 기록</string>
     <string name="historyRecordChannels">채널 기록</string>
     <string name="historyRecordDeleted">삭제된 메시지 보관</string>
@@ -1978,7 +1977,6 @@
     <string name="historyRecordGroups">그룹 기록</string>
     <string name="historyRecordNote">두 스위치는 기본적으로 꺼져 있으며, 켜기 전까지 아무것도 기록되지 않습니다. 보관된 복사본은 이 기기에만 저장되며 직접 지우기 전까지 유지됩니다.</string>
     <string name="historyRecordPrivate">개인 채팅 기록</string>
-    <string name="historyRecordReadTimes">읽은 시간 기록</string>
     <string name="historyRecordSection">기록</string>
     <string name="historyReincludeAction">기록 재개</string>
     <string name="historyRemoveFromMirrorAction">미러에서 삭제</string>

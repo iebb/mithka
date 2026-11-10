@@ -56,7 +56,6 @@ class MessageHistorySettings extends ChangeNotifier {
   static const _snapshotPrivateKey = 'message_history.snapshot_private';
   static const _snapshotGroupsKey = 'message_history.snapshot_groups';
   static const _snapshotChannelsKey = 'message_history.snapshot_channels';
-  static const _recordReadTimesKey = 'message_history.record_read_times';
   static const _renderGhostsKey = 'message_history.render_ghosts';
   static const _badgeStyleKey = 'message_history.badge_style';
 
@@ -74,7 +73,6 @@ class MessageHistorySettings extends ChangeNotifier {
   bool _snapshotPrivate = false;
   bool _snapshotGroups = false;
   bool _snapshotChannels = false;
-  bool _recordReadTimes = false;
   bool _renderGhosts = false;
   GhostBadgeStyle _badgeStyle = GhostBadgeStyle.icon;
 
@@ -98,10 +96,6 @@ class MessageHistorySettings extends ChangeNotifier {
   /// are on — a bot dialog is private, but recording service messages is a
   /// separate opt-in.
   bool get recordBots => _recordBots && recordPrivate;
-
-  /// Spy-style read-time capture (exteraless RecordReadTimes): stamps kept
-  /// copies with the time the counterpart's read cursor crossed them.
-  bool get recordReadTimes => _recordReadTimes && enableAll;
 
   /// How a ghost bubble's deleted badge renders: the trash icon alone, the
   /// localized "已删除" text alone, or both.
@@ -137,7 +131,6 @@ class MessageHistorySettings extends ChangeNotifier {
     _snapshotPrivate = prefs.getBool(_snapshotPrivateKey) ?? false;
     _snapshotGroups = prefs.getBool(_snapshotGroupsKey) ?? false;
     _snapshotChannels = prefs.getBool(_snapshotChannelsKey) ?? false;
-    _recordReadTimes = prefs.getBool(_recordReadTimesKey) ?? false;
     _renderGhosts = prefs.getBool(_renderGhostsKey) ?? false;
     _badgeStyle = GhostBadgeStyle.fromPrefs(prefs.getString(_badgeStyleKey));
     notifyListeners();
@@ -189,13 +182,6 @@ class MessageHistorySettings extends ChangeNotifier {
     if (!isAvailable || _recordBots == value) return;
     _recordBots = value;
     _prefs?.setBool(_recordBotsKey, value);
-    notifyListeners();
-  }
-
-  void setRecordReadTimes(bool value) {
-    if (!isAvailable || _recordReadTimes == value) return;
-    _recordReadTimes = value;
-    _prefs?.setBool(_recordReadTimesKey, value);
     notifyListeners();
   }
 

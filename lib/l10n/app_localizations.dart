@@ -452,13 +452,11 @@ abstract final class AppStringKeys {
   static const historyNoExcludedChats = 'historyNoExcludedChats';
   static const historyRecordDeleted = 'historyRecordDeleted';
   static const historyRecordEdits = 'historyRecordEdits';
-  static const historyReadAtLabel = 'historyReadAtLabel';
   static const historyRecordBots = 'historyRecordBots';
   static const historyRecordChannels = 'historyRecordChannels';
   static const historyRecordGroups = 'historyRecordGroups';
   static const historyRecordNote = 'historyRecordNote';
   static const historyRecordPrivate = 'historyRecordPrivate';
-  static const historyRecordReadTimes = 'historyRecordReadTimes';
   static const historyRecordSection = 'historyRecordSection';
   static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
   static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';

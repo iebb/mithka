@@ -1977,7 +1977,6 @@
     <string name="historyKindVideoNote">Message vidéo</string>
     <string name="historyKindVoice">Message vocal</string>
     <string name="historyNoExcludedChats">Aucune discussion exclue.</string>
-    <string name="historyReadAtLabel">Lu le</string>
     <string name="historyRecordBots">Enregistrer dans les chats de bots</string>
     <string name="historyRecordChannels">Enregistrer dans les chaînes</string>
     <string name="historyRecordDeleted">Conserver les messages supprimés</string>
@@ -1985,7 +1984,6 @@
     <string name="historyRecordGroups">Enregistrer dans les groupes</string>
     <string name="historyRecordNote">Les deux commutateurs sont désactivés par défaut ; rien n'est enregistré tant que vous ne les activez pas. Les copies conservées restent sur cet appareil jusqu'à leur suppression.</string>
     <string name="historyRecordPrivate">Enregistrer dans les chats privés</string>
-    <string name="historyRecordReadTimes">Enregistrer les heures de lecture</string>
     <string name="historyRecordSection">Enregistrement</string>
     <string name="historyReincludeAction">Inclure</string>
     <string name="historyRemoveFromMirrorAction">Retirer du miroir</string>

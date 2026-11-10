@@ -1970,7 +1970,6 @@
     <string name="historyKindVideoNote">视频消息</string>
     <string name="historyKindVoice">语音消息</string>
     <string name="historyNoExcludedChats">没有排除任何聊天。</string>
-    <string name="historyReadAtLabel">已读时间</string>
     <string name="historyRecordBots">机器人聊天记录消息</string>
     <string name="historyRecordChannels">频道记录消息</string>
     <string name="historyRecordDeleted">保存已删除的消息</string>
@@ -1978,7 +1977,6 @@
     <string name="historyRecordGroups">群聊记录消息</string>
     <string name="historyRecordNote">两个开关默认关闭，开启前不记录任何内容。留存副本只存在本机，清除前一直在。</string>
     <string name="historyRecordPrivate">私聊记录消息</string>
-    <string name="historyRecordReadTimes">记录已读时间</string>
     <string name="historyRecordSection">记录</string>
     <string name="historyReincludeAction">恢复记录</string>
     <string name="historyRemoveFromMirrorAction">从镜像删除</string>

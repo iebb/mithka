@@ -97,9 +97,6 @@ class MessageHistoryStore extends ChangeNotifier {
     // A chat whose counterpart deleted their account (or the chat) stops
     // being openable; kept entries then render in the ghost style.
     'updateChat',
-    // Spy-style read-time capture: the counterpart's outbox read cursor
-    // moving stamps kept outgoing copies with the read time.
-    'updateChatReadOutbox',
   ];
 
   final Map<String, MessageHistoryEntry> _byKey = {};
@@ -581,8 +578,6 @@ class MessageHistoryStore extends ChangeNotifier {
         return update.int64('chat_id');
       case 'updateChat':
         return update.obj('chat')?.int64('id');
-      case 'updateChatReadOutbox':
-        return update.int64('chat_id');
     }
     return null;
   }
@@ -638,8 +633,6 @@ class MessageHistoryStore extends ChangeNotifier {
         _recordDeletedMessages(accountUserId, update);
       case 'updateChat':
         _recordChatLiveness(accountUserId, update);
-      case 'updateChatReadOutbox':
-        _recordOutboxRead(accountUserId, update);
     }
     return Future<void>.value();
   }
@@ -943,43 +936,6 @@ class MessageHistoryStore extends ChangeNotifier {
     }
   }
 
-  /// Spy-style read-time capture: updateChatReadOutbox moves the
-  /// counterpart's read cursor. Every kept copy of this account whose
-  /// message id is at or below the cursor and not yet stamped gets the
-  /// observed read time — the earliest cursor crossing wins, exactly like
-  /// exteraless's read-time log. Runs for outgoing kept copies (Saved
-  /// Messages) and for kept incoming copies read by the counterpart in
-  /// cross-chat scenarios the id ranges cannot distinguish; the viewer
-  /// only shows the stamp on messages the account sent.
-  void _recordOutboxRead(int accountUserId, Map<String, dynamic> update) {
-    final settings = MessageHistorySettings.shared;
-    if (!settings.recordReadTimes) return;
-    final chatId = update.int64('chat_id');
-    final cursor = update.int64('last_read_outbox_message_id');
-    if (chatId == null || cursor == null || cursor <= 0) return;
-    var changed = false;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    for (final entry in _byKey.values.toList(growable: false)) {
-      if (entry.accountUserId != accountUserId ||
-          entry.chatId != chatId ||
-          entry.messageId > cursor ||
-          entry.readAt > 0) {
-        continue;
-      }
-      // The cursor is the counterpart reading THIS account's messages; a
-      // kept incoming copy was never part of that outbox (the mirror only
-      // keeps incoming + Saved-Messages self copies — the latter reads the
-      // stamp, the former never does).
-      final isSelfKept = entry.senderId == accountUserId;
-      if (!isSelfKept) continue;
-      _byKey[entry.key] = entry.copyWith(readAt: now);
-      changed = true;
-    }
-    if (changed) {
-      notifyListeners();
-      _schedulePersist();
-    }
-  }
 
   /// updateMessageEdited carries the edit time but not the content; the new
   /// content arrives in a following updateMessageContent. Only that pair —

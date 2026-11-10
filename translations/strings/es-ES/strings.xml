@@ -1977,7 +1977,6 @@
     <string name="historyKindVideoNote">Mensaje de vídeo</string>
     <string name="historyKindVoice">Mensaje de voz</string>
     <string name="historyNoExcludedChats">No hay chats excluidos.</string>
-    <string name="historyReadAtLabel">Leído el</string>
     <string name="historyRecordBots">Registrar en chats de bots</string>
     <string name="historyRecordChannels">Registrar en canales</string>
     <string name="historyRecordDeleted">Guardar mensajes eliminados</string>
@@ -1985,7 +1984,6 @@
     <string name="historyRecordGroups">Registrar en grupos</string>
     <string name="historyRecordNote">Ambos interruptores están desactivados por defecto; no se guarda nada hasta que los actives. Las copias guardadas viven solo en este dispositivo y permanecen hasta que las borres.</string>
     <string name="historyRecordPrivate">Registrar en chats privados</string>
-    <string name="historyRecordReadTimes">Registrar horas de lectura</string>
     <string name="historyRecordSection">Grabación</string>
     <string name="historyReincludeAction">Incluir</string>
     <string name="historyRemoveFromMirrorAction">Quitar del espejo</string>

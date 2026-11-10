@@ -1970,7 +1970,6 @@
     <string name="historyKindVideoNote">ビデオメッセージ</string>
     <string name="historyKindVoice">ボイスメッセージ</string>
     <string name="historyNoExcludedChats">除外されたチャットはありません。</string>
-    <string name="historyReadAtLabel">既読時刻</string>
     <string name="historyRecordBots">ボットとの対話を記録</string>
     <string name="historyRecordChannels">チャンネルで記録</string>
     <string name="historyRecordDeleted">削除されたメッセージを保持</string>
@@ -1978,7 +1977,6 @@
     <string name="historyRecordGroups">グループで記録</string>
     <string name="historyRecordNote">両スイッチはデフォルトでオフです。有効にするまで何も記録されません。保持したコピーは本端末にのみ保存され、削除するまで残ります。</string>
     <string name="historyRecordPrivate">私聊で記録</string>
-    <string name="historyRecordReadTimes">既読時刻を記録</string>
     <string name="historyRecordSection">記録</string>
     <string name="historyReincludeAction">記録を再開</string>
     <string name="historyRemoveFromMirrorAction">ミラーから削除</string>

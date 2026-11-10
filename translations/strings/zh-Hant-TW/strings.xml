@@ -1970,7 +1970,6 @@
     <string name="historyKindVideoNote">影片訊息</string>
     <string name="historyKindVoice">語音訊息</string>
     <string name="historyNoExcludedChats">沒有排除任何聊天。</string>
-    <string name="historyReadAtLabel">已讀時間</string>
     <string name="historyRecordBots">機器人聊天記錄訊息</string>
     <string name="historyRecordChannels">頻道記錄訊息</string>
     <string name="historyRecordDeleted">保存已刪除的訊息</string>
@@ -1978,7 +1977,6 @@
     <string name="historyRecordGroups">群聊記錄訊息</string>
     <string name="historyRecordNote">兩個開關預設關閉，開啟前不記錄任何內容。留存副本只存在本機，清除前一直在。</string>
     <string name="historyRecordPrivate">私聊記錄訊息</string>
-    <string name="historyRecordReadTimes">記錄已讀時間</string>
     <string name="historyRecordSection">記錄</string>
     <string name="historyReincludeAction">恢復記錄</string>
     <string name="historyRemoveFromMirrorAction">從鏡像刪除</string>
