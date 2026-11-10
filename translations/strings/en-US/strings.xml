@@ -2120,7 +2120,7 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Opening this Telegram link is not supported yet</string>
     <string name="linkHandlerWritingStyle">Writing style</string>
-    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxSettingsTitle">Ayu 功能</string>
     <string name="mithkaxHistorySection">Message history</string>
     <string name="mithkaxGhostSection">Ghost mode</string>
     <string name="mithkaxPremiumSection">Local premium</string>

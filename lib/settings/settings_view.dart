@@ -40,7 +40,6 @@ import 'developer_settings_view.dart';
 import 'feature_settings_view.dart';
 import 'general_settings_view.dart';
 import 'language_settings_view.dart';
-import 'mithkax_settings_view.dart';
 import 'notification_settings_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_security_view.dart';
@@ -976,23 +975,6 @@ class _SettingsViewState extends State<SettingsView> {
         searchTerms: const ['backup', 'restore', 'session', 'export', 'import'],
       ),
       _SettingsDestination(
-        id: 'mithkax-features',
-        owner: _SettingsOwner.mithka,
-        group: 5,
-        order: 0,
-        titleKey: AppStringKeys.mithkaxSettingsTitle,
-        icon: HeroAppIcons.wandMagicSparkles,
-        color: const Color(0xFF7467F0),
-        destination: () => const MithkaXSettingsView(),
-        searchTerms: const [
-          'mithkax',
-          'message history',
-          'ghost mode',
-          'local premium',
-          'deleted messages',
-        ],
-      ),
-      _SettingsDestination(
         id: 'mithka-features',
         owner: _SettingsOwner.mithka,
         group: 5,
@@ -1380,7 +1362,6 @@ const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
     titleKey: AppStringKeys.advancedTitle,
     icon: HeroAppIcons.grip,
     destinationIds: [
-      'mithkax-features',
       'mithka-features',
       'mithka-ai',
       'mithka-proxy',

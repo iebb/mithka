@@ -2114,7 +2114,7 @@
     <string name="linkHandlerUnsupportedTelegramLink">暫不支援開啟此 Telegram 連結</string>
     <string name="linkHandlerWritingStyle">寫作風格</string>
     <string name="listSeparator">、</string>
-    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxSettingsTitle">Ayu 功能</string>
     <string name="mithkaxHistorySection">訊息歷史</string>
     <string name="mithkaxGhostSection">隱身模式</string>
     <string name="mithkaxPremiumSection">本機大會員</string>

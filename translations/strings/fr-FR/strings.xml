@@ -2120,7 +2120,7 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Étoiles du télégramme</string>
     <string name="linkHandlerUnsupportedTelegramLink">L’ouverture de ce lien Telegram n’est pas encore prise en charge</string>
     <string name="linkHandlerWritingStyle">Style d'écriture</string>
-    <string name="mithkaxSettingsTitle">Mithka X</string>
+    <string name="mithkaxSettingsTitle">Ayu 功能</string>
     <string name="mithkaxHistorySection">Historique des messages</string>
     <string name="mithkaxGhostSection">Mode fantôme</string>
     <string name="mithkaxPremiumSection">Premium local</string>

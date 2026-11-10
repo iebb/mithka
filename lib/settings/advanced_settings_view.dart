@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import '../chats/local_pin_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'bot_api_endpoint_view.dart';
+import 'mithkax_settings_view.dart';
 import 'rich_message_relay_config.dart';
 import 'rich_message_relay_view.dart';
 import 'transfer_boost_config.dart';
@@ -172,6 +174,26 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
               ),
             ],
           ),
+          // The Ayu surface (message mirror, ghost mode, local premium) lives
+          // as a second-level page inside 高级; the compile-time gate keeps
+          // the row — and every screen behind it — out of non-opted builds.
+          if (allowTelegramTosViolations)
+            SettingsCard.rows(
+              rows: [
+                SettingsRow(
+                  key: const ValueKey('mithkax-features'),
+                  title: AppStringKeys.mithkaxSettingsTitle.l10n(context),
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.wandMagicSparkles,
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MithkaXSettingsView(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
