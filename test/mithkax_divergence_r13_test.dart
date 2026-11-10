@@ -65,15 +65,15 @@ void main() {
   if (!_enabled) return;
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('REG-1 multi-account subscription', () {
+  group('REG-1 active-only subscription', () {
     test(
-      'a background client message records through the production wire',
+      'a background client message never reaches the production wire',
       () async {
-        // The store's PRODUCTION update source (no test override): a message
-        // stamped with a non-active @client_id must still reach the store and
-        // record under that client's account. With the old active-only
-        // subscription every background account's mirror silently stayed
-        // empty.
+        // The store's PRODUCTION update source (no test override) is
+        // active-only: background accounts' chats are not open here, so
+        // their history and edits are not recorded. A background client's
+        // message must stay invisible to the store, and the active
+        // client's must record through the same wire.
         final dir = await Directory.systemTemp.createTemp('mithkax-r13-wire');
         addTearDown(() async {
           await dir.delete(recursive: true);
@@ -83,7 +83,7 @@ void main() {
         store.fileDir = dir;
         // No updateSource override: _openUpdates takes the production path.
         store.activeSlotChangeSource = () => const Stream<int>.empty();
-        store.accountUserIdResolver = _StubResolver({333: 7005});
+        store.accountUserIdResolver = _StubResolver({333: 7005, 101: 7001});
         store.activeClientIdProvider = () => 0;
         store.initialize(await SharedPreferences.getInstance());
         final settings = MessageHistorySettings.shared;
@@ -113,7 +113,11 @@ void main() {
         await Future<void>.delayed(Duration.zero);
 
         store.debugSetActiveAccount(7005);
-        expect(store.entriesFor(77).single.text, 'bg');
+        expect(
+          store.entriesFor(77),
+          isEmpty,
+          reason: 'background accounts are not mirrored (active-only wire)',
+        );
       },
     );
   });

@@ -376,11 +376,12 @@ class MessageHistoryStore extends ChangeNotifier {
   Stream<Map<String, dynamic>> _openUpdates(Iterable<String> types) {
     final source = updateSource;
     if (source != null) return source(types);
-    // allAccounts: records are owned by the client that received the update
-    // (resolved through '@client_id'), and the active-only stream would
-    // silence every background account's deletions and edits — the whole
-    // per-account scoping of this store exists for the multi-account case.
-    return TdClient.shared.updatesOfAny(types, allAccounts: true);
+    // Active-only: background accounts' chats are not open here, so their
+    // history and edits are not recorded — mirroring is tied to the account
+    // the user is actually looking at. Updates that do reach this stream
+    // still carry '@client_id' and are attributed per client, so a slot
+    // switch mid-flight never misattributes a queued update.
+    return TdClient.shared.updatesOfAny(types);
   }
 
   Stream<int> _openActiveSlotChanges() {
