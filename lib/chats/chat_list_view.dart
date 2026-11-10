@@ -734,10 +734,14 @@ class ChatListConnectionStatusView extends StatelessWidget {
                 key: indicatorKey,
                 width: AppMetric.onlineDot + 2,
                 height: AppMetric.onlineDot + 2,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.4,
-                  color: c.textSecondary,
-                  backgroundColor: c.textTertiary.withValues(alpha: 0.22),
+                // Own layer: the spin runs for as long as the app is
+                // connecting and would otherwise repaint the whole header.
+                child: RepaintBoundary(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.4,
+                    color: c.textSecondary,
+                    backgroundColor: c.textTertiary.withValues(alpha: 0.22),
+                  ),
                 ),
               )
             else
@@ -3259,6 +3263,19 @@ class _ChatListViewState extends State<ChatListView>
                   (hasPullDownArchiveSlot ? 1 : 0) +
                   (showInlineArchive ? 1 : 0) +
                   (hasFiltered ? 1 : 0),
+              // A new message moves its chat to the top. Without this the
+              // sliver matches rows by position, so every row above the old
+              // slot is torn down and rebuilt from scratch: animation
+              // controllers, avatar load and text layout included.
+              findChildIndexCallback: (key) {
+                final entryIndex = _entryIndexByKey(entries)[key];
+                if (entryIndex == null) return null;
+                return entryIndex +
+                    (showLeadingControls ? 1 : 0) +
+                    (hasPullDownArchiveSlot ? 1 : 0) +
+                    (hasFiltered ? 1 : 0) +
+                    (showInlineArchive && entryIndex >= archiveIndex ? 1 : 0);
+              },
               itemBuilder: (context, index) {
                 if (showLeadingControls && index == 0) {
                   return _pinnedSearchPill();
@@ -3300,6 +3317,27 @@ class _ChatListViewState extends State<ChatListView>
         },
       ),
     );
+  }
+
+  List<CommunityChatListEntry>? _entryIndexSource;
+  Map<Key, int> _entryIndexCache = const {};
+
+  /// Row key → position in [entries], rebuilt only when the model publishes a
+  /// new projection. The keys match [_swipeRow] and [_communityRow].
+  Map<Key, int> _entryIndexByKey(List<CommunityChatListEntry> entries) {
+    if (identical(_entryIndexSource, entries)) return _entryIndexCache;
+    final byKey = <Key, int>{};
+    for (var i = 0; i < entries.length; i++) {
+      final Key key = switch (entries[i]) {
+        CommunityChatEntry(:final chat) => ValueKey(chat.id),
+        CommunityGroupEntry(:final community) => ValueKey(
+          'community-${community.id}',
+        ),
+      };
+      byKey[key] = i;
+    }
+    _entryIndexSource = entries;
+    return _entryIndexCache = byKey;
   }
 
   double _leadingListControlsExtent(ThemeController theme) {
@@ -4903,10 +4941,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                             GestureDetector(
                               onTap: () {
                                 item.onTap();
-                                setState(() => _offset = 0);
-                                if (widget.openRowId == widget.rowId) {
-                                  widget.onOpenChanged(null);
-                                }
+                                _close();
                               },
                               child: Container(
                                 width: _buttonWidth,

@@ -2282,6 +2282,94 @@ class _WallpaperRequestPayload {
   final int darkThemeDimming;
 }
 
+/// Blurred and moving wallpapers are drawn this much larger than their box.
+const double _wallpaperOverscan = 1.08;
+
+/// The smallest decode size at which a [sourceWidth] × [sourceHeight] image
+/// still aspect-fills a [width] × [height] box without upscaling, or null when
+/// the source is already no larger than that.
+({int width, int height})? coverDecodeSize({
+  required int sourceWidth,
+  required int sourceHeight,
+  required int width,
+  required int height,
+}) {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || width <= 0 || height <= 0) {
+    return null;
+  }
+  final scale = math.max(width / sourceWidth, height / sourceHeight);
+  if (scale >= 1) return null;
+  return (
+    width: math.min(sourceWidth, (sourceWidth * scale).ceil()),
+    height: math.min(sourceHeight, (sourceHeight * scale).ceil()),
+  );
+}
+
+/// A file image decoded no larger than needed to aspect-fill a
+/// [width] × [height] physical-pixel box. Unlike [ResizeImage], which can only
+/// fit an image inside a box, this keeps the shorter side at full coverage.
+@immutable
+class CoverSizedFileImage extends ImageProvider<CoverSizedFileImage> {
+  const CoverSizedFileImage(
+    this.file, {
+    required this.width,
+    required this.height,
+  });
+
+  final File file;
+  final int width;
+  final int height;
+
+  @override
+  Future<CoverSizedFileImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<CoverSizedFileImage>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    CoverSizedFileImage key,
+    ImageDecoderCallback decode,
+  ) => MultiFrameImageStreamCompleter(
+    codec: _load(key),
+    scale: 1,
+    debugLabel: key.file.path,
+  );
+
+  static Future<ui.Codec> _load(CoverSizedFileImage key) async {
+    final bytes = await key.file.readAsBytes();
+    if (bytes.isEmpty) {
+      // The file is still being written; let a later attempt read it.
+      PaintingBinding.instance.imageCache.evict(key);
+      throw StateError('${key.file.path} is empty and cannot be decoded.');
+    }
+    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    return ui.instantiateImageCodecWithSize(
+      buffer,
+      getTargetSize: (sourceWidth, sourceHeight) {
+        final size = coverDecodeSize(
+          sourceWidth: sourceWidth,
+          sourceHeight: sourceHeight,
+          width: key.width,
+          height: key.height,
+        );
+        return ui.TargetImageSize(width: size?.width, height: size?.height);
+      },
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CoverSizedFileImage &&
+      other.file.path == file.path &&
+      other.width == width &&
+      other.height == height;
+
+  @override
+  int get hashCode => Object.hash(file.path, width, height);
+
+  @override
+  String toString() => 'CoverSizedFileImage("${file.path}", $width×$height)';
+}
+
 class ChatWallpaperBackground extends StatelessWidget {
   const ChatWallpaperBackground({
     super.key,
@@ -2305,7 +2393,7 @@ class ChatWallpaperBackground extends StatelessWidget {
       return ColoredBox(color: fallbackColor, child: child);
     }
     if (value.kind == ChatWallpaperKind.image) {
-      return _localImage(value);
+      return _localImage(context, value);
     }
     if (value.kind == ChatWallpaperKind.telegram) {
       return _telegramBackground(context, value);
@@ -2324,7 +2412,7 @@ class ChatWallpaperBackground extends StatelessWidget {
     );
   }
 
-  Widget _localImage(ChatWallpaper value) {
+  Widget _localImage(BuildContext context, ChatWallpaper value) {
     final path = value.imagePath;
     if (path == null || path.isEmpty) {
       return ColoredBox(color: fallbackColor, child: child);
@@ -2336,8 +2424,8 @@ class ChatWallpaperBackground extends StatelessWidget {
         _wallpaperEffects(
           value,
           RepaintBoundary(
-            child: Image.file(
-              File(path),
+            child: Image(
+              image: _coverImage(context, path),
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, _, _) => const SizedBox.shrink(),
@@ -2347,6 +2435,25 @@ class ChatWallpaperBackground extends StatelessWidget {
         ColoredBox(color: imageScrim),
         ?child,
       ],
+    );
+  }
+
+  /// A gallery photo decodes to tens of megabytes at its source resolution,
+  /// far more than a phone screen can show. Phones decode just enough pixels
+  /// to aspect-fill the screen; desktop windows resize continuously, where a
+  /// size-keyed decode would repeat on every drag frame.
+  ImageProvider _coverImage(BuildContext context, String path) {
+    final file = File(path);
+    if (!Platform.isAndroid && !Platform.isIOS) return FileImage(file);
+    final screen =
+        MediaQuery.sizeOf(context) *
+        MediaQuery.devicePixelRatioOf(context) *
+        _wallpaperOverscan;
+    if (screen.isEmpty) return FileImage(file);
+    return CoverSizedFileImage(
+      file,
+      width: screen.width.ceil(),
+      height: screen.height.ceil(),
     );
   }
 
@@ -2392,8 +2499,12 @@ class ChatWallpaperBackground extends StatelessWidget {
                 _wallpaperEffects(
                   value,
                   RepaintBoundary(
-                    child: Image.file(
-                      File(path),
+                    child: Image(
+                      // A tile repeats at its native size, so only the
+                      // aspect-filled case can decode smaller.
+                      image: value.isTiled
+                          ? FileImage(File(path))
+                          : _coverImage(context, path),
                       fit: value.isTiled ? BoxFit.none : BoxFit.cover,
                       repeat: value.isTiled
                           ? ImageRepeat.repeat
@@ -2473,7 +2584,7 @@ class ChatWallpaperBackground extends StatelessWidget {
         child: result,
       );
     }
-    result = Transform.scale(scale: 1.08, child: result);
+    result = Transform.scale(scale: _wallpaperOverscan, child: result);
     // The parallax offset changes up to 30x a second. Retain the blurred,
     // scaled result so a sample only re-composites it instead of re-running
     // the sigma-12 gaussian over the whole viewport.

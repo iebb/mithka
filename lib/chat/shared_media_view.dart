@@ -1769,7 +1769,9 @@ class _SharedMediaViewState extends State<SharedMediaView> {
               child: message.image == null
                   ? const SizedBox.expand()
                   : TDImage(
-                      photo: message.image,
+                      // Grid tiles show the small photo size; the viewer
+                      // loads the full one when a tile is opened.
+                      photo: message.image?.thumbnail ?? message.image,
                       accountSlot: _accountSlot,
                       cornerRadius: 0,
                       fit: BoxFit.contain,

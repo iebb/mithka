@@ -240,6 +240,11 @@ Future<void> _bootstrapAndRunApp() async {
     // Draw under transparent status / navigation bars (edge-to-edge).
     configureImmersiveSystemUI();
   }
+  // Neither of these reads the preferences, so their platform round trips
+  // (the lock's keystore read is the slow one on Android) start now instead
+  // of queueing behind the preferences load.
+  final appLockReady = LocalAppLockController.shared.initialize();
+  final videoViewTypeReady = initializeCompatibleVideoViewType();
   final prefs = await SharedPreferences.getInstance();
   // These must land before the first frame — the catalogue or early widgets
   // render bare keys, the lock or the chat list flashes before the gate, and
@@ -247,9 +252,9 @@ Future<void> _bootstrapAndRunApp() async {
   // platform and asset reads are independent, so they overlap.
   await Future.wait<void>([
     _preloadLocaleCatalogue(prefs),
-    LocalAppLockController.shared.initialize(),
+    appLockReady,
     ThemeController.preloadCachedEmojiFont(prefs),
-    initializeCompatibleVideoViewType(),
+    videoViewTypeReady,
   ]);
   DesktopHotkeyController.initializeShared(prefs, replace: true);
   KeywordBlocker.shared.initialize(prefs);

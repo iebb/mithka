@@ -1194,9 +1194,13 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-              child: TDImage(photo: _photo, cornerRadius: 0),
+            // Own layer, so scrolling the profile does not re-record the
+            // gaussian with the header.
+            RepaintBoundary(
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                child: TDImage(photo: _photo, cornerRadius: 0),
+              ),
             ),
             Container(color: Colors.black.withValues(alpha: 0.18)),
           ],

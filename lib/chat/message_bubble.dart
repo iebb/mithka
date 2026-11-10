@@ -4428,7 +4428,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
                   width: 44,
                   height: 44,
                   child: TDImage(
-                    photo: message.replyToImage,
+                    // A 44pt slot: the small photo size is plenty, and it
+                    // avoids downloading and decoding the full-size one.
+                    photo:
+                        message.replyToImage?.thumbnail ?? message.replyToImage,
                     cornerRadius: 6,
                     cacheWidth: _cachePx(44),
                     cacheHeight: _cachePx(44),

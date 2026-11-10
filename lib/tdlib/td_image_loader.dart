@@ -113,6 +113,9 @@ class TdFileCenter {
     final slot = accountSlot ?? _client.activeSlot;
     final localPath = ref.localPath;
     if (localPath != null && localPath.isNotEmpty) {
+      // Already verified once; a path that has since vanished is recovered by
+      // the image error handlers, the same as any other cached path.
+      if (_cache[_key(slot, ref.id)] == localPath) return localPath;
       final source = File(localPath);
       if (await source.exists()) {
         _remember(_key(slot, ref.id), localPath);

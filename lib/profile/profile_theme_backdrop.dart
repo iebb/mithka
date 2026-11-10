@@ -28,16 +28,20 @@ class ProfileThemeBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Transform.scale(
-              scale: 1.12,
-              child: ChatWallpaperBackground(
-                wallpaper: wallpaper,
-                fallbackColor: colors.background,
-                brightness: brightness,
-                imageScrim: colors.background.withValues(alpha: 0),
-                child: const SizedBox.expand(),
+          // Own layer, so profile content scrolling above it does not
+          // re-record the full-screen gaussian.
+          RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Transform.scale(
+                scale: 1.12,
+                child: ChatWallpaperBackground(
+                  wallpaper: wallpaper,
+                  fallbackColor: colors.background,
+                  brightness: brightness,
+                  imageScrim: colors.background.withValues(alpha: 0),
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),

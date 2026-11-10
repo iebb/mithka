@@ -72,7 +72,38 @@ class MainActivity : FlutterFragmentActivity() {
         // Let Flutter paint under the status bar and gesture/nav bar.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        requestHighestRefreshRate()
         pendingSharePayload = parseIncomingShareIntent(intent)
+    }
+
+    /**
+     * Some 90/120 Hz phones hold an app at 60 Hz unless its window asks for
+     * more. Prefer the fastest mode at the resolution already in use, so the
+     * request never changes the panel's resolution. The system still lowers
+     * the rate on its own in battery saver.
+     */
+    private fun requestHighestRefreshRate() {
+        try {
+            @Suppress("DEPRECATION")
+            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                windowManager.defaultDisplay
+            } ?: return
+            val current = display.mode
+            val fastest = display.supportedModes
+                .filter {
+                    it.physicalWidth == current.physicalWidth &&
+                        it.physicalHeight == current.physicalHeight
+                }
+                .maxByOrNull { it.refreshRate } ?: return
+            if (fastest.refreshRate <= current.refreshRate + 0.5f) return
+            val attributes = window.attributes
+            attributes.preferredDisplayModeId = fastest.modeId
+            window.attributes = attributes
+        } catch (error: Exception) {
+            Log.w("MainActivity", "Could not request a faster display mode", error)
+        }
     }
 
     override fun onStart() {
@@ -960,6 +991,18 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun currentLauncherIcon(): String {
         val aliases = launcherAliases()
+        // Choosing any icon explicitly disables the default alias, so one that
+        // is still in its manifest state means no icon was ever chosen. That is
+        // the common case, and without this check it costs one binder call per
+        // alias on the main thread during launch before falling through.
+        val defaultState = packageManager.getComponentEnabledSetting(
+            ComponentName(packageName, aliases.getValue("default")),
+        )
+        if (defaultState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+            defaultState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        ) {
+            return "default"
+        }
         for ((key, className) in aliases) {
             val component = ComponentName(packageName, className)
             val state = packageManager.getComponentEnabledSetting(component)
