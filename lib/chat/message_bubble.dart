@@ -1148,28 +1148,12 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
 
   /// Ghost styling for a deleted message's kept copy (Telegram §1.4
   /// self-build feature): the bubble stays where the message used to be,
-  /// translucent with media from the mirror's snapshot. The deleted marker
-  /// rides the sender-header line, between the name and the time; a ghost
-  /// without that header (outgoing, 1:1) carries the marker as its own
-  /// line in the same position above the bubble.
+  /// translucent with media from the mirror's snapshot. The deleted chip
+  /// floats at the bubble's bottom-right corner, in the same meta row as
+  /// the edited mark and the reply count.
   Widget _maybeGhost(Widget child, bool outgoing) {
     if (message.mirrorEntry == null) return child;
-    final inSenderHeader =
-        widget.bubble.isGroup && !outgoing && message.senderName != null;
-    if (inSenderHeader) {
-      return Opacity(opacity: 0.55, child: child);
-    }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: outgoing
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        _GhostDeletedBadge(onLongPress: _handleLongPress),
-        const SizedBox(height: 2),
-        Opacity(opacity: 0.55, child: child),
-      ],
-    );
+    return Opacity(opacity: 0.55, child: child);
   }
 
   Widget _detailTimestampOverlay(bool outgoing, Widget child) => Positioned(
@@ -1239,10 +1223,6 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             ),
           ),
           const SizedBox(width: 5),
-          if (message.mirrorEntry != null) ...[
-            _GhostDeletedBadge(onLongPress: _handleLongPress),
-            const SizedBox(width: 5),
-          ],
           SizedBox(
             width: 96,
             height: 14,
@@ -1706,11 +1686,29 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   }
 
   /// [meta] false leaves the delivery mark out, for content that draws it
-  /// itself; the compact reply count still floats over it.
+  /// itself; the compact reply count still floats over it. A ghost bubble
+  /// (kept copy of a deleted message) appends its deleted chip to the same
+  /// floating row.
   Widget _withFloatingMeta(Widget child, bool outgoing, {bool meta = true}) {
     final showReplies = _showsCompactReplyCount;
+    // One chip language for the whole corner: reply count, edited mark and
+    // the ghost's deleted chip share colors, so they read as one family
+    // whichever of them a bubble carries.
+    final chipForeground = outgoing
+        ? _outgoingTextColor.withValues(alpha: 0.78)
+        : _colors.textSecondary;
+    final chipBackground = outgoing
+        ? _outgoingBubbleColor.withValues(alpha: 0.82)
+        : _colors.card.withValues(alpha: 0.82);
+    final ghostMarker = message.mirrorEntry == null
+        ? null
+        : _GhostDeletedBadge(
+            onLongPress: _handleLongPress,
+            foreground: chipForeground,
+            background: chipBackground,
+          );
     final showMeta = meta && (message.isEdited || outgoing);
-    final show = showMeta || showReplies;
+    final show = showMeta || showReplies || ghostMarker != null;
     if (!show) return child;
     return Stack(
       clipBehavior: Clip.none,
@@ -1719,36 +1717,53 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           Padding(padding: const EdgeInsets.only(bottom: 19), child: child)
         else
           child,
+        // Both edges pinned: the row may never grow past the bubble's
+        // width, and the FittedBox shrinks it instead of spilling over a
+        // narrow bubble onto the neighboring content.
         Positioned(
+          left: 2,
           right: 2,
           bottom: showReplies ? 0 : 2,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showReplies)
-                MessageReplyCountBadge(
-                  key: ValueKey('messageCompactReplies-${message.id}'),
-                  count: message.commentCount,
-                  foreground: outgoing
-                      ? _outgoingTextColor.withValues(alpha: 0.78)
-                      : _colors.textSecondary,
-                  background: outgoing
-                      ? _outgoingBubbleColor.withValues(alpha: 0.82)
-                      : _colors.card.withValues(alpha: 0.82),
-                  onTap: widget.bubble.onOpenComments == null
-                      ? null
-                      : () => widget.bubble.onOpenComments?.call(message),
-                ),
-              if (showReplies && showMeta) const SizedBox(width: 4),
-              if (showMeta) _floatingMeta(outgoing),
-            ],
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showReplies)
+                    MessageReplyCountBadge(
+                      key: ValueKey('messageCompactReplies-${message.id}'),
+                      count: message.commentCount,
+                      foreground: chipForeground,
+                      background: chipBackground,
+                      onTap: widget.bubble.onOpenComments == null
+                          ? null
+                          : () => widget.bubble.onOpenComments?.call(message),
+                    ),
+                  if (showReplies && showMeta) const SizedBox(width: 4),
+                  if (showMeta)
+                    _floatingMeta(
+                      outgoing,
+                      chipForeground: chipForeground,
+                      chipBackground: chipBackground,
+                    ),
+                  if (showMeta && ghostMarker != null) const SizedBox(width: 4),
+                  ?ghostMarker,
+                ],
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _floatingMeta(bool outgoing) {
+  Widget _floatingMeta(
+    bool outgoing, {
+    required Color chipForeground,
+    required Color chipBackground,
+  }) {
     final usesMediaOverlayColor =
         message.animatedSticker != null ||
         message.videoSticker != null ||
@@ -1761,34 +1776,47 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         : outgoing
         ? _outgoingTextColor.withValues(alpha: 0.72)
         : _colors.textTertiary;
-    final content = Padding(
-      padding: outgoing
-          ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-      // One glyph wide either way, so it needs no flex row to hold it.
-      child: message.isEdited
-          ? AppIcon(
-              HeroAppIcons.penToSquare,
-              key: const ValueKey('messageDeliveryEdited'),
-              size: 10,
-              color: faint,
-            )
-          : outgoing
-          ? _deliveryTick()
-          : const SizedBox.shrink(),
-    );
-    return IgnorePointer(
-      child: outgoing
-          ? content
-          : DecoratedBox(
-              decoration: BoxDecoration(
-                color: _colors.card.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(AppRadius.control),
+    if (!message.isEdited) {
+      // The delivery tick is ink on the bubble like the time text: it keeps
+      // its bare glyph instead of a chip, on both directions.
+      return IgnorePointer(
+        child: outgoing
+            ? _deliveryTick(color: faint)
+            : _chipShell(
+                chipBackground,
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  child: _deliveryTick(color: faint),
+                ),
               ),
-              child: content,
-            ),
+      );
+    }
+    // The edited mark rides the same chip language as the corner's other
+    // badges, on both directions.
+    return IgnorePointer(
+      child: Container(
+        key: const ValueKey('messageDeliveryEdited'),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: chipBackground,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: AppIcon(HeroAppIcons.penToSquare, size: 12, color: faint),
+      ),
     );
   }
+
+  /// The chip shell every corner badge shares.
+  Widget _chipShell(Color background, Widget child) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+    ),
+    child: child,
+  );
 
   /// The in-flight spinner is the only delivery state that needs a ticker, so
   /// the settled tick gets a plain painter instead of an AnimationController
@@ -1797,7 +1825,18 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     Color? sentColor,
     Color? pendingColor,
     Color readColor = AppTheme.readMark,
+    Color? color,
   }) {
+    if (color != null) {
+      if (message.isSending && !message.isSendAcknowledged) {
+        return _MessageDeliveryIndicator(pendingColor: color, size: 10);
+      }
+      return _MessageDeliverySettled(
+        isRead: widget.bubble.isRead,
+        color: widget.bubble.isRead ? readColor : color,
+        size: 10,
+      );
+    }
     if (message.isSending && !message.isSendAcknowledged) {
       return _MessageDeliveryIndicator(
         pendingColor: pendingColor ?? _outgoingTextColor,
@@ -6890,19 +6929,24 @@ class _RenderQuoteFold extends RenderProxyBox {
   }
 }
 
-/// The tiny "deleted" badge of a ghost bubble. In a group it rides the
-/// sender-header line between the name and the time; elsewhere it renders
-/// above the bubble on its own line, aligned to the bubble's side.
-/// Tap-through except for the long-press, which forwards to the bubble's
-/// own action menu (the mirror actions live there).
+/// The tiny "deleted" chip of a ghost bubble. It floats at the bubble's
+/// bottom-right corner in the meta row, after the edited mark and the
+/// compact reply count, sharing their chip language. Tap-through except
+/// for the long-press, which forwards to the bubble's own action menu
+/// (the mirror actions live there).
 class _GhostDeletedBadge extends StatelessWidget {
-  const _GhostDeletedBadge({this.onLongPress});
+  const _GhostDeletedBadge({
+    this.onLongPress,
+    required this.foreground,
+    required this.background,
+  });
 
   final VoidCallback? onLongPress;
+  final Color foreground;
+  final Color background;
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     return ListenableBuilder(
       listenable: MessageHistorySettings.shared,
       builder: (context, _) {
@@ -6913,22 +6957,29 @@ class _GhostDeletedBadge extends StatelessWidget {
           behavior: HitTestBehavior.translucent,
           onLongPress: onLongPress,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
             decoration: BoxDecoration(
-              color: c.groupedBackground.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(8),
+              color: background,
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (showIcon) ...[
-                  AppIcon(HeroAppIcons.trash, size: 11, color: c.textTertiary),
+                  AppIcon(HeroAppIcons.trash, size: 12, color: foreground),
                 ],
-                if (showIcon && showText) const SizedBox(width: 4),
+                if (showIcon && showText) const SizedBox(width: 3),
                 if (showText)
                   Text(
                     AppStringKeys.historyDeletedLabel.l10n(context),
-                    style: AppTextStyle.footnote(c.textTertiary),
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 11,
+                      height: 1.1,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
               ],
             ),
