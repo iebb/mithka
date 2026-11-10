@@ -16,6 +16,7 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
 import 'package:mithka/config/build_flags.dart';
+import 'package:mithka/profile/profile_proxy_button.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/app_locale_controller.dart';
 import 'package:mithka/profile/profile_view.dart';

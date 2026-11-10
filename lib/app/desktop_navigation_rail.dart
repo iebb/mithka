@@ -71,6 +71,7 @@ class DesktopNavigationRail extends StatefulWidget {
     this.themeToggleLabel = 'Toggle day or night mode',
     this.darkMode = false,
     this.onToggleThemeMode,
+    this.proxyButton,
     this.ghostModeLabel,
     this.ghostModeActive = false,
     this.onOpenGhostMode,
@@ -100,6 +101,12 @@ class DesktopNavigationRail extends StatefulWidget {
   final String themeToggleLabel;
   final bool darkMode;
   final VoidCallback? onToggleThemeMode;
+
+  /// The 代理 shortcut (the drawer sidebar's ProfileProxyButton, re-hosted
+  /// for the rail). Caller owns the widget so the compile-time gate and the
+  /// navigation stay outside this chrome file.
+  final Widget? proxyButton;
+
   final String? ghostModeLabel;
   final bool ghostModeActive;
   final VoidCallback? onOpenGhostMode;
@@ -268,6 +275,7 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
           if (widget.onSelectAccount != null ||
               widget.onAddAccount != null ||
               widget.onToggleThemeMode != null ||
+              widget.proxyButton != null ||
               widget.onOpenGhostMode != null ||
               widget.languageOptions.isNotEmpty ||
               widget.applicationMenuPrimaryActions.isNotEmpty ||
@@ -297,10 +305,16 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
                       darkMode: widget.darkMode,
                       onTap: widget.onToggleThemeMode!,
                     ),
-                  // Ghost-mode shortcut sits right after the theme toggle —
-                  // the rail counterpart of the drawer sidebar's slot between
-                  // 代理 and day/night. The glyph doubles as the status light
-                  // (brand colour while intercepting).
+                  // 代理 and ghost-mode shortcuts sit right after the
+                  // theme toggle, mirroring the drawer sidebar's bottom-bar
+                  // order (代理 → ghost → day/night reads right-to-left as
+                  // night → ghost → 代理 here). Both double as status lights
+                  // (proxy dot / brand-coloured eyeSlash).
+                  if (widget.proxyButton != null)
+                    SizedBox(
+                      height: 42,
+                      child: Center(child: widget.proxyButton),
+                    ),
                   if (widget.onOpenGhostMode != null)
                     _DesktopGhostModeButton(
                       label: widget.ghostModeLabel ?? '',
