@@ -222,7 +222,7 @@ class _SnapshotSection extends StatelessWidget {
               active: active,
             ),
           ],
-        ),
+        );
       },
     );
   }

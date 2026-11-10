@@ -33,11 +33,9 @@ const _entryFiles = <String, List<String>>{
   'lib/app/main_tab_view.dart': ['GhostModeSettingsView'],
   'lib/chat/chat_info_view.dart': ['MessageHistoryView'],
   'lib/chat/chat_view.dart': [
-    'MessageInfoView',
     'MessageAction.viewEdits',
     'MessageAction.removeMirror',
   ],
-  'lib/chat/message_action_menu.dart': ['MessageAction.info'],
 };
 
 void main() {

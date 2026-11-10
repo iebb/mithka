@@ -1,16 +1,15 @@
 //
 //  Exteraless-parity store tests: per-chat-type recording gates, bot
-//  detection, Spy-style read-time stamps, and the export/import round trip.
-//
+//  detection, exclusions, and the export/import round trip.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/history/message_history_store.dart';
+import 'package:mithka/history/message_media_snapshot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _enabled = allowTelegramTosViolations;
@@ -91,7 +90,6 @@ void main() {
     settings.setEnableAll(false);
     settings.setRecordDeleted(false);
     settings.setRecordEdits(false);
-    settings.setRecordReadTimes(false);
     settings.setRecordPrivate(true);
     settings.setRecordGroups(true);
     settings.setRecordChannels(true);
@@ -182,78 +180,6 @@ void main() {
     expect(store.entries.map((e) => e.messageId), [1]);
   });
 
-  test('updateChatReadOutbox stamps kept copies with a read time', () async {
-    await start();
-    final settings = MessageHistorySettings.shared;
-    settings.setRecordReadTimes(true);
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(801, 10, senderId: _accountA),
-    });
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(801, 11, senderId: _accountA),
-    });
-    expect(store.entry(801, 10)?.readAt, 0);
-
-    await emit({
-      '@type': 'updateChatReadOutbox',
-      '@client_id': _clientA,
-      'chat_id': '801',
-      'last_read_outbox_message_id': 10,
-    });
-    expect(store.entry(801, 10)?.readAt, greaterThan(0));
-    expect(
-      store.entry(801, 11)?.readAt,
-      0,
-      reason: 'beyond the cursor it stays unread',
-    );
-
-    // The earliest crossing wins: a later cursor does not restamp.
-    final first = store.entry(801, 10)!.readAt;
-    await emit({
-      '@type': 'updateChatReadOutbox',
-      '@client_id': _clientA,
-      'chat_id': '801',
-      'last_read_outbox_message_id': 11,
-    });
-    expect(store.entry(801, 10)?.readAt, first);
-    expect(store.entry(801, 11)?.readAt, greaterThan(0));
-  });
-
-  test('read-time stamps respect the switch and survive persistence', () async {
-    await start();
-    final settings = MessageHistorySettings.shared;
-    settings.setRecordReadTimes(false);
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(901, 1),
-    });
-    await emit({
-      '@type': 'updateChatReadOutbox',
-      '@client_id': _clientA,
-      'chat_id': '901',
-      'last_read_outbox_message_id': 1,
-    });
-    expect(store.entry(901, 1)?.readAt, 0, reason: 'switch off → no stamp');
-
-    settings.setRecordReadTimes(true);
-    await store.persistNowForTesting();
-    final raw =
-        jsonDecode(
-              await File('${dir.path}/message-history.json').readAsString(),
-            )
-            as Map<String, dynamic>;
-    final rows = (raw['entries'] as List)
-        .map(MessageHistoryEntry.fromJson)
-        .whereType<MessageHistoryEntry>()
-        .toList();
-    expect(rows.single.readAt, 0);
-  });
-
   test(
     'export/import round-trips entries and replaces the account mirror',
     () async {
@@ -290,25 +216,6 @@ void main() {
       throwsA(isA<FormatException>()),
     );
     expect(store.entry(1101, 1)?.text, 'present');
-  });
-
-  test('an incoming kept copy never takes an outbox read stamp', () async {
-    await start();
-    final settings = MessageHistorySettings.shared;
-    settings.setRecordReadTimes(true);
-    // sender 42 is NOT the account — a kept INCOMING copy.
-    await emit({
-      '@type': 'updateNewMessage',
-      '@client_id': _clientA,
-      'message': _message(1201, 1),
-    });
-    await emit({
-      '@type': 'updateChatReadOutbox',
-      '@client_id': _clientA,
-      'chat_id': '1201',
-      'last_read_outbox_message_id': 5,
-    });
-    expect(store.entry(1201, 1)?.readAt, 0);
   });
 
   test('a via-bot human group message does not flip its chat to bot', () async {
@@ -351,4 +258,190 @@ void main() {
     // The exclusion itself imports as the account's preference.
     expect(store.excludedChats, contains(1301));
   });
+
+  test('REG-1: a genuine bot posting inside a group still records', () async {
+    store.startObserving();
+    await pump();
+    final settings = MessageHistorySettings.shared;
+    settings.setRecordBots(false);
+    const group = -1001234567890;
+    await emit({
+      '@type': 'updateNewMessage',
+      '@client_id': _clientA,
+      'message': _message(group, 1, isBot: true),
+    });
+    expect(store.entries, isNotEmpty);
+    // A human message in the same group after the bot one records too —
+    // the bot post must not have flipped the chat's gate.
+    await emit({
+      '@type': 'updateNewMessage',
+      '@client_id': _clientA,
+      'message': _message(group, 2),
+    });
+    expect(store.entries.map((e) => e.messageId), [1, 2]);
+  });
+
+  test(
+    'REG-2: updateChat(verified bot private chat) still gates that dialog',
+    () async {
+      store.startObserving();
+      await pump();
+      final settings = MessageHistorySettings.shared;
+      settings.setRecordBots(false);
+      await emit({
+        '@type': 'updateChat',
+        '@client_id': _clientA,
+        'chat': {
+          '@type': 'chat',
+          'id': '601',
+          'type': {'@type': 'chatTypePrivate', 'user_id': '99', 'is_bot': true},
+        },
+      });
+      await emit({
+        '@type': 'updateNewMessage',
+        '@client_id': _clientA,
+        'message': _message(601, 1),
+      });
+      expect(
+        store.entries,
+        isEmpty,
+        reason: 'bot dialog stays gated by recordBots',
+      );
+    },
+  );
+
+  test(
+    'REG-3: imported media is renamed to the importing account prefix',
+    () async {
+      final snap = MessageMediaSnapshotter.forTesting();
+      snap.dir = Directory('${dir.path}/media');
+      store.mediaSnapshotter = snap;
+      final path = await snap.writeSnapshotBytes('7901:55:9', [1, 2, 3]);
+      expect(path, isNotNull);
+      store.debugSeed([
+        MessageHistoryEntry(
+          accountUserId: 7901,
+          chatId: 55,
+          messageId: 9,
+          senderId: 42,
+          date: 1,
+          text: '',
+          kindKey: 'historyKindPhoto',
+          state: MessageHistoryState.active,
+          deletedAt: 0,
+          events: const [],
+          mediaPath: path!,
+        ),
+      ]);
+      final doc = await store.exportAccount();
+      store.debugSetActiveAccount(7902);
+      final restored = await store.importAccount(
+        Map<String, Object?>.from(doc),
+      );
+      expect(restored, 1);
+      final entry = store.entry(55, 9)!;
+      expect(entry.mediaPath, contains('7902_55_9_'));
+      // And the importing account can reclaim the file by scope.
+      store.excludeChat(55);
+      expect(File(entry.mediaPath).existsSync(), isFalse);
+    },
+  );
+
+  test('REG-1: export view passes bytes to saveFile (source scan)', () async {
+    // The widget lives behind an SAF flow we cannot drive headless; assert
+    // the source contract instead: the call site forwards `bytes:` and does
+    // not write the returned path.
+    final source = File(
+      'lib/settings/message_history_transfer_view.dart',
+    ).readAsStringSync();
+    expect(source, contains('bytes: encodedBytes'));
+    expect(
+      source,
+      isNot(contains('File(destination).writeAsString')),
+      reason: 'the plugin owns the write on Android SAF paths',
+    );
+  });
+
+  test('REG-4a: rows of an excluded chat never load back from disk', () async {
+    const chat = -1001234567891;
+    // Simulate: entries persisted, exclusion written to prefs (immediate),
+    // then the process died inside the entry-persist debounce window.
+    final persistedStore = MessageHistoryStore.forTesting();
+    persistedStore.fileDir = dir;
+    persistedStore.updateSource = (_) => const Stream.empty();
+    persistedStore.activeSlotChangeSource = () => const Stream<int>.empty();
+    persistedStore.accountUserIdResolver = _StubResolver({_clientA: _accountA});
+    persistedStore.activeClientIdProvider = () => _clientA;
+    final prefs = await SharedPreferences.getInstance();
+    persistedStore.initialize(prefs);
+    persistedStore.debugSetActiveAccount(_accountA);
+    persistedStore.debugSeed([
+      const MessageHistoryEntry(
+        accountUserId: _accountA,
+        chatId: chat,
+        messageId: 5,
+        senderId: 42,
+        date: 1,
+        text: 'ghost-food',
+        kindKey: 'historyKindText',
+        state: MessageHistoryState.deleted,
+        deletedAt: 123,
+        events: [],
+      ),
+    ]);
+    await persistedStore.persistNowForTesting();
+    persistedStore.dispose();
+
+    // Fresh boot: the exclusion is already in prefs, the file still holds
+    // the chat's rows.
+    final prefs2 = await SharedPreferences.getInstance();
+    await prefs2.setStringList('$_prefsKeyPrefixProbe$_accountA', ['$chat']);
+    final rebooted = MessageHistoryStore.forTesting();
+    rebooted.fileDir = dir;
+    rebooted.updateSource = (_) => const Stream.empty();
+    rebooted.activeSlotChangeSource = () => const Stream<int>.empty();
+    rebooted.accountUserIdResolver = _StubResolver({_clientA: _accountA});
+    rebooted.activeClientIdProvider = () => _clientA;
+    rebooted.initialize(prefs2);
+    rebooted.debugSetActiveAccount(_accountA);
+    await rebooted.ensureLoaded();
+    expect(
+      rebooted.entries.where((e) => e.chatId == chat),
+      isEmpty,
+      reason: 'excluded chat rows must not resurrect on reboot',
+    );
+    expect(
+      rebooted.deletedEntriesFor(_accountA, chat),
+      isEmpty,
+      reason: 'excluded chat owes no ghosts',
+    );
+    rebooted.dispose();
+  });
+
+  test('REG-4b: deletedEntriesFor defends an excluded chat', () async {
+    const chat = -1001234567892;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('$_prefsKeyPrefixProbe$_accountA', ['$chat']);
+    // initialize() already ran in setUp with empty prefs; re-run with the
+    // exclusion present so it lands in _excludedChatsByAccount.
+    store.initialize(prefs);
+    store.debugSeed([
+      const MessageHistoryEntry(
+        accountUserId: _accountA,
+        chatId: chat,
+        messageId: 7,
+        senderId: 42,
+        date: 1,
+        text: 'stale',
+        kindKey: 'historyKindText',
+        state: MessageHistoryState.deleted,
+        deletedAt: 123,
+        events: [],
+      ),
+    ]);
+    expect(store.deletedEntriesFor(_accountA, chat), isEmpty);
+  });
 }
+
+// The store's prefs key prefix is private; mirror it for the test only.
+const _prefsKeyPrefixProbe = 'messageHistory.excludedChats.v2.';

@@ -183,7 +183,6 @@ void main() {
     settings.setEnableAll(false);
     settings.setRecordDeleted(false);
     settings.setRecordEdits(false);
-    settings.setRecordReadTimes(false);
     settings.setSnapshotPrivate(false);
     settings.setSnapshotGroups(false);
     settings.setSnapshotChannels(false);

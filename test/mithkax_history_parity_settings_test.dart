@@ -24,7 +24,6 @@ void main() {
     s.setEnableAll(false);
     s.setRecordDeleted(false);
     s.setRecordEdits(false);
-    s.setRecordReadTimes(false);
     s.setRecordPrivate(true);
     s.setRecordGroups(true);
     s.setRecordChannels(true);
@@ -37,7 +36,6 @@ void main() {
     expect(s.enableAll, isFalse);
     expect(s.recordDeleted, isFalse);
     expect(s.recordEdits, isFalse);
-    expect(s.recordReadTimes, isFalse);
     // Type dims default on but sit under the master switch.
     expect(s.recordPrivate, isFalse);
     expect(s.recordGroups, isFalse);
@@ -103,5 +101,15 @@ void main() {
     // the setter wrote instead.
     expect(prefs.getString('message_history.badge_style'), 'text');
     expect(reloaded.badgeStyle, GhostBadgeStyle.text);
+  });
+
+  test('toggles notify listeners once per flip', () {
+    final s = MessageHistorySettings.shared;
+    var notified = 0;
+    s.addListener(() => notified++);
+    s.setRecordDeleted(true);
+    expect(notified, 1);
+    s.setRecordDeleted(true);
+    expect(notified, 1);
   });
 }
