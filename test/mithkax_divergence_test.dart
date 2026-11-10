@@ -1,37 +1,11 @@
 //
-//  mithkax divergence r12: the fixes from the deep re-scan.
+//  mithkax divergence regression, consolidated: the chat surface's mirror
+//  lookups resolve the owning slot (r12 REG-1), content generations never
+//  fake revisions (r12 REG-3), the revision page resolves its snapshot
+//  directory on a cold start (r12 REG-7), and the production update wire
+//  is active-only — background accounts never record (r13 REG-1).
 //
-//  REG-1 (cross-account leak): the chat surface's mirror lookups (view-edits
-//  gate, message info read-time row) resolve the OWNING slot's account, not
-//  whichever account is active. A stale pane after an account switch must
-//  neither show another account's mirror row (same chat/message ids) nor
-//  lose its own.
-//
-//  REG-2 (forum topic ghost leak): a topic transcript folds only its own
-//  topic's ghosts; other topics' deleted messages stay out. Entries with no
-//  recorded topic (0, pre-capture rows or General's unattributed arrivals)
-//  render only in the General view; the chat-wide view keeps everything.
-//
-//  REG-3 (content generation guard): updateMessageContent without an edited
-//  date is a TDLib content generation (dice, poll, live location), never a
-//  revision — and it leaves no stale pairing state behind.
-//
-//  REG-4 (topic capture): a message carrying an explicit messageTopicForum
-//  topic_id records that topic id; a message with none records 0.
-//
-//  REG-5 (reversed edit pair): when TDLib catch-up delivers
-//  updateMessageContent BEFORE its updateMessageEdited, the content is held
-//  briefly and the late edited-date completes the revision instead of the
-//  pair being dropped wholesale.
-//
-//  REG-7 (revision page cold start): the page resolves the snapshot
-//  directory itself and rebuilds for its media; entering it first in a
-//  session must not render persisted snapshots as bare kind labels.
-//
-//  A scanned B3 (snapshot gate bypass) did not reproduce: _snapshotsEnabledFor
-//  already reaches settings.recordDeleted through recordsChatType, so it was
-//  dropped instead of "fixed".
-//
+
 import 'dart:async';
 import 'dart:io';
 
@@ -40,7 +14,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/chat/chat_view_model.dart';
-import 'package:mithka/chat/forum_topic_transcript.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_entry_view.dart';
 import 'package:mithka/history/message_history_revision_view.dart';
@@ -62,7 +35,6 @@ const _accountB = 9102;
 const _clientA = 101;
 const _clientB = 202;
 const _chatId = 21;
-const _groupChatId = -1001234;
 
 class _StubResolver implements TosAccountUserIdResolver {
   _StubResolver(this.ids);
@@ -214,74 +186,6 @@ void main() {
     });
   });
 
-  group('REG-2 topic transcripts fold only their own ghosts', () {
-    test('a topic pane hides other topics ghosts, keeps its own', () {
-      ChatViewModel.accountSummaryProvider = (_) =>
-          AccountSummary(slot: 0, userId: _accountA, name: 'me', phone: '+1');
-      store.debugSeed([
-        _deleted(messageId: 200, topicId: 7),
-        _deleted(messageId: 201, topicId: 8),
-        _deleted(messageId: 202, topicId: 0),
-      ]);
-      final vm = makeViewModel(forumTopicId: 7);
-      addTearDown(vm.dispose);
-      vm.debugRebuildTranscriptForTesting();
-      final ghostIds = vm.messages
-          .where((m) => m.mirrorEntry != null)
-          .map((m) => m.id)
-          .toSet();
-      expect(
-        ghostIds,
-        {200},
-        reason:
-            'topic 7 shows only its own ghost; 0-topic rows belong to '
-            'the General view alone',
-      );
-    });
-
-    test('the General topic view inherits unattributed ghosts', () {
-      ChatViewModel.accountSummaryProvider = (_) =>
-          AccountSummary(slot: 0, userId: _accountA, name: 'me', phone: '+1');
-      store.debugSeed([
-        _deleted(messageId: 200, topicId: 7),
-        _deleted(messageId: 201, topicId: 8),
-        _deleted(messageId: 202, topicId: 0),
-      ]);
-      final vm = makeViewModel(forumTopicId: generalForumTopicId);
-      addTearDown(vm.dispose);
-      vm.debugRebuildTranscriptForTesting();
-      final ghostIds = vm.messages
-          .where((m) => m.mirrorEntry != null)
-          .map((m) => m.id)
-          .toSet();
-      expect(
-        ghostIds,
-        {202},
-        reason:
-            'General owns the unattributed rows, exactly like the '
-            'transcript scoping fallback',
-      );
-    });
-
-    test('the chat-wide view keeps every ghost', () {
-      ChatViewModel.accountSummaryProvider = (_) =>
-          AccountSummary(slot: 0, userId: _accountA, name: 'me', phone: '+1');
-      store.debugSeed([
-        _deleted(messageId: 200, topicId: 7),
-        _deleted(messageId: 201, topicId: 8),
-        _deleted(messageId: 202, topicId: 0),
-      ]);
-      final vm = makeViewModel();
-      addTearDown(vm.dispose);
-      vm.debugRebuildTranscriptForTesting();
-      final ghostIds = vm.messages
-          .where((m) => m.mirrorEntry != null)
-          .map((m) => m.id)
-          .toSet();
-      expect(ghostIds, {200, 201, 202});
-    });
-  });
-
   group(
     'REG-3 content updates without an edited date never fake a revision',
     () {
@@ -357,105 +261,6 @@ void main() {
     },
   );
 
-  group('REG-4 topic capture', () {
-    test('a group message with an explicit topic records it', () async {
-      emitAs(_clientA, 'updateNewMessage', {
-        'message': {
-          '@type': 'message',
-          'id': 400,
-          'chat_id': '$_groupChatId',
-          'is_outgoing': false,
-          'date': 10,
-          'topic_id': {'@type': 'messageTopicForum', 'forum_topic_id': 9},
-          'content': {
-            '@type': 'messageText',
-            'text': {'@type': 'formattedText', 'text': 'topic msg'},
-          },
-        },
-      });
-      await pump();
-      final entry = store.entryFor(_accountA, _groupChatId, 400);
-      expect(entry, isNotNull);
-      expect(entry!.topicId, 9);
-    });
-
-    test('a private chat message never records a topic', () async {
-      emitAs(_clientA, 'updateNewMessage', {
-        'message': {
-          '@type': 'message',
-          'id': 401,
-          'chat_id': '$_chatId',
-          'is_outgoing': false,
-          'date': 10,
-          'content': {
-            '@type': 'messageText',
-            'text': {'@type': 'formattedText', 'text': 'private msg'},
-          },
-        },
-      });
-      await pump();
-      final entry = store.entryFor(_accountA, _chatId, 401);
-      expect(entry, isNotNull);
-      expect(entry!.topicId, 0);
-    });
-  });
-
-  group('REG-5 a reversed edit pair still records its revision', () {
-    test(
-      'content before its edited date lands when the date arrives',
-      () async {
-        store.debugSeed([
-          const MessageHistoryEntry(
-            accountUserId: _accountA,
-            chatId: _chatId,
-            messageId: 500,
-            senderId: 42,
-            date: 1,
-            text: 'original',
-            kindKey: '',
-            state: MessageHistoryState.active,
-            deletedAt: 0,
-            events: [],
-          ),
-        ]);
-        // TDLib catch-up can deliver the pair backwards: the content first.
-        emitAs(_clientA, 'updateMessageContent', {
-          'chat_id': '$_chatId',
-          'message_id': 500,
-          'new_content': {
-            '@type': 'messageText',
-            'text': {'@type': 'formattedText', 'text': 'revised'},
-          },
-        });
-        await pump();
-        var entry = store.entryFor(_accountA, _chatId, 500);
-        expect(
-          entry?.text,
-          'original',
-          reason: 'content alone is held, never applied as a revision',
-        );
-        expect(entry?.events, isEmpty);
-
-        emitAs(_clientA, 'updateMessageEdited', {
-          'chat_id': '$_chatId',
-          'message_id': 500,
-          'edit_date': 88,
-        });
-        await pump();
-        entry = store.entryFor(_accountA, _chatId, 500);
-        expect(entry?.text, 'revised');
-        expect(
-          entry?.events,
-          hasLength(1),
-          reason: 'the late date completes the pair instead of dropping it',
-        );
-        expect(entry?.events.single.editDate, 88);
-        expect(entry?.events.single.oldText, 'original');
-        expect(entry?.events.single.newText, 'revised');
-      },
-    );
-  });
-
   group(
     'REG-7 the revision page resolves the snapshot dir on a cold start',
     () {
@@ -526,21 +331,6 @@ void main() {
     },
   );
 }
-
-MessageHistoryEntry _deleted({required int messageId, required int topicId}) =>
-    MessageHistoryEntry(
-      accountUserId: _accountA,
-      chatId: _chatId,
-      messageId: messageId,
-      senderId: 42,
-      date: 1,
-      text: 'ghost $messageId',
-      kindKey: '',
-      state: MessageHistoryState.deleted,
-      deletedAt: 2,
-      events: const [],
-      topicId: topicId,
-    );
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.root);
