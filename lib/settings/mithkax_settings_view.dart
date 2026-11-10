@@ -40,6 +40,7 @@ class MithkaXSettingsView extends StatelessWidget {
           _HistoryCoreSection(),
           _RecordScopeSection(),
           _SnapshotSection(),
+          _SnapshotNote(),
           _TransferSection(),
           SettingsNote(text: AppStringKeys.historyRecordNote),
           _GhostSection(),
@@ -220,11 +221,23 @@ class _SnapshotSection extends StatelessWidget {
               onChanged: settings.setSnapshotChannels,
               active: active,
             ),
-            const SettingsNote(text: AppStringKeys.historySnapshotNote),
           ],
-        );
+        ),
       },
     );
+  }
+}
+
+/// The snapshot section's explanatory line. Lives BETWEEN sections as its
+/// own scroll child — a note inside the section's rows would sit on the
+/// card's white surface with a different inset than every other note in
+/// the app, which all render on the grouped background below a card.
+class _SnapshotNote extends StatelessWidget {
+  const _SnapshotNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SettingsNote(text: AppStringKeys.historySnapshotNote);
   }
 }
 

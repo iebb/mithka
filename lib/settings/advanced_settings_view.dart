@@ -9,6 +9,7 @@ import '../config/build_flags.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import '../theme/app_theme.dart';
 import 'bot_api_endpoint_view.dart';
 import 'mithkax_settings_view.dart';
 import 'rich_message_relay_config.dart';
@@ -177,7 +178,8 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
           // The Ayu surface (message mirror, ghost mode, local premium) lives
           // as a second-level page inside 高级; the compile-time gate keeps
           // the row — and every screen behind it — out of non-opted builds.
-          if (allowTelegramTosViolations)
+          if (allowTelegramTosViolations) ...[
+            const SizedBox(height: AppSpacing.section),
             SettingsCard.rows(
               rows: [
                 SettingsRow(
@@ -194,6 +196,7 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
                 ),
               ],
             ),
+          ],
         ],
       ),
     );

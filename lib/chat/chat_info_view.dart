@@ -1165,7 +1165,6 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           SettingsRow(
             key: const ValueKey('chatInfoKeptMessages'),
             title: AppStrings.t(AppStringKeys.historyTitle),
-            leading: const SettingsLeadingIcon(icon: HeroAppIcons.clock),
             onTap: () => Navigator.of(context).push(
               AppPageRoute<void>(
                 pageBuilder: (_, _, _) =>
