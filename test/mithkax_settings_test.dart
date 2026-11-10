@@ -59,7 +59,15 @@ void main() {
 
   testWidgets('history switches flip on tap', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
-    if (_enabled) {
+    if (!_enabled) {
+      // The hub shrinks to nothing in non-opted builds: no row exists.
+      expect(
+        find.byKey(const ValueKey('history-record-deleted')),
+        findsNothing,
+      );
+      return;
+    }
+    {
       // The master switch gates every record switch now.
       final master = find.byKey(const ValueKey('history-enable-all'));
       await tester.scrollUntilVisible(master, 200);
@@ -72,18 +80,11 @@ void main() {
 
     await tester.tap(row);
     await tester.pumpAndSettle();
-    expect(
-      MessageHistorySettings.shared.recordDeleted,
-      _enabled ? isTrue : isFalse,
-    );
-    if (_enabled) {
-      MessageHistorySettings.shared.setEnableAll(false);
-      MessageHistorySettings.shared.setRecordDeleted(false);
-    }
+    expect(MessageHistorySettings.shared.recordDeleted, isTrue);
 
     // The row's knob reflects the new value with no outside rebuild: the
     // rebuilt AppSwitch aligns its handle right when on.
-    if (_enabled) {
+    {
       final handle = find.descendant(
         of: row,
         matching: find.byType(AnimatedAlign),
@@ -94,26 +95,35 @@ void main() {
         Alignment.centerRight,
       );
     }
+    MessageHistorySettings.shared.setEnableAll(false);
+    MessageHistorySettings.shared.setRecordDeleted(false);
   });
 
   testWidgets('local premium knob answers its own tap', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
+    if (!_enabled) {
+      expect(find.byKey(const ValueKey('mithkax-local-premium')), findsNothing);
+      return;
+    }
     final row = find.byKey(const ValueKey('mithkax-local-premium'));
     await tester.scrollUntilVisible(row, 200);
     expect(row, findsOneWidget);
 
     await tester.tap(row);
     await tester.pumpAndSettle();
-    expect(LocalPremium.shared.enabled, _enabled ? isTrue : isFalse);
+    expect(LocalPremium.shared.enabled, isTrue);
   });
 
   testWidgets('master switch gates the sub-switches visually', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
+    if (!_enabled) {
+      expect(find.byKey(const ValueKey('history-enable-all')), findsNothing);
+      return;
+    }
     final master = find.byKey(const ValueKey('history-enable-all'));
     await tester.scrollUntilVisible(master, 200);
     expect(master, findsOneWidget);
 
-    if (!_enabled) return;
     // Sub-switches are dimmed while the master is off.
     final sub = find.byKey(const ValueKey('history-record-deleted'));
     await tester.scrollUntilVisible(sub, 200);
@@ -133,6 +143,13 @@ void main() {
 
   testWidgets('the transfer entry and badge style row exist', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
+    if (!_enabled) {
+      expect(
+        find.byKey(const ValueKey('mithkax-history-transfer')),
+        findsNothing,
+      );
+      return;
+    }
     final transfer = find.byKey(const ValueKey('mithkax-history-transfer'));
     await tester.scrollUntilVisible(transfer, 300);
     expect(transfer, findsOneWidget);
@@ -143,12 +160,12 @@ void main() {
 
   testWidgets('badge style picker updates the settings store', (tester) async {
     await _pump(tester, const MithkaXSettingsView());
-    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
-    await tester.scrollUntilVisible(badge, 300);
     if (!_enabled) {
-      expect(badge, findsOneWidget);
+      expect(find.byKey(const ValueKey('mithkax-badge-style')), findsNothing);
       return;
     }
+    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
+    await tester.scrollUntilVisible(badge, 300);
     await tester.tap(badge);
     await tester.pumpAndSettle();
     final option = find.byKey(const ValueKey('mithkax-badge-style-text'));
