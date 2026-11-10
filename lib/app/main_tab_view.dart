@@ -37,6 +37,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
 import '../contacts/contacts_view.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
@@ -44,6 +45,8 @@ import '../moments/moments_view.dart';
 import '../platform/android_share_intent.dart';
 import '../profile/profile_view.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../settings/ghost_mode_controller.dart';
+import '../settings/ghost_mode_settings_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -604,6 +607,18 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     });
   }
 
+  /// Ghost-mode settings straight from the desktop rail. The view reads
+  /// GhostModeController.shared, whose prefs the primary engine already
+  /// initialized; a plain route keeps it inside the main window (the
+  /// controller is not wired through the TD-proxy child engines).
+  void _openDesktopGhostMode() {
+    Navigator.of(context, rootNavigator: true).push<void>(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => const GhostModeSettingsView(),
+      ),
+    );
+  }
+
   void _openDesktopUtility(
     DesktopUtilityWindowKind kind,
     String title, {
@@ -1021,7 +1036,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         ),
     ];
     final rail = AnimatedBuilder(
-      animation: Listenable.merge([_unread, _chatListController.sideFolders]),
+      // GhostModeController joins the rebuild set: the rail's ghost glyph is
+      // a status light and must repaint the moment the switch flips.
+      animation: Listenable.merge([
+        _unread,
+        _chatListController.sideFolders,
+        if (GhostModeController.isAvailable) GhostModeController.shared,
+      ]),
       builder: (context, _) => DesktopNavigationRail(
         destinations: destinations,
         folders: activeTabIndex == 0
@@ -1046,6 +1067,19 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         darkMode: Theme.of(context).brightness == Brightness.dark,
         onToggleThemeMode: () =>
             theme.toggleDayNight(Theme.of(context).brightness),
+        // Compile-time gated ghost-mode shortcut, right under the theme
+        // toggle (the rail's counterpart of the drawer sidebar's slot).
+        ghostModeLabel:
+            allowTelegramTosViolations && GhostModeController.isAvailable
+            ? AppStrings.t(AppStringKeys.ghostModeTitle)
+            : null,
+        ghostModeActive:
+            allowTelegramTosViolations &&
+            GhostModeController.shared.globalEnabled,
+        onOpenGhostMode:
+            allowTelegramTosViolations && GhostModeController.isAvailable
+            ? _openDesktopGhostMode
+            : null,
         showAccountPhone: !theme.hideSidebarPhone,
         applicationMenuLabel: AppStrings.t(AppStringKeys.chatMenu),
         languageMenuLabel: AppStrings.t(AppStringKeys.languageMithkaLanguage),
