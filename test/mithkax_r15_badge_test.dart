@@ -22,32 +22,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _enabled = allowTelegramTosViolations;
 
-Widget _harness(ThemeController theme, ChatMessage message,
-        {required bool isGroup}) =>
-    ChangeNotifierProvider<ThemeController>.value(
-      value: theme,
-      child: MaterialApp(
-        theme: ThemeData(extensions: [AppColors.light]),
-        locale: const Locale('en'),
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: TickerMode(
-            enabled: false,
-            child: MessageBubble(
-              message: message,
-              peerTitle: 'Test Group',
-              isGroup: isGroup,
-            ),
-          ),
+Widget _harness(
+  ThemeController theme,
+  ChatMessage message, {
+  required bool isGroup,
+}) => ChangeNotifierProvider<ThemeController>.value(
+  value: theme,
+  child: MaterialApp(
+    theme: ThemeData(extensions: [AppColors.light]),
+    locale: const Locale('en'),
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: TickerMode(
+        enabled: false,
+        child: MessageBubble(
+          message: message,
+          peerTitle: 'Test Group',
+          isGroup: isGroup,
         ),
       ),
-    );
+    ),
+  ),
+);
 
 ChatMessage _ghost({required bool outgoing, String? senderName}) {
   final message = ChatMessage(
@@ -101,14 +103,15 @@ void main() {
     final theme = ThemeController(prefs);
     addTearDown(theme.dispose);
     await tester.pumpWidget(
-      _harness(theme, _ghost(outgoing: false, senderName: 'Alice'),
-          isGroup: true),
+      _harness(
+        theme,
+        _ghost(outgoing: false, senderName: 'Alice'),
+        isGroup: true,
+      ),
     );
     await tester.pumpAndSettle();
 
-    final badge = find.text(
-      AppStrings.t(AppStringKeys.historyDeletedLabel),
-    );
+    final badge = find.text(AppStrings.t(AppStringKeys.historyDeletedLabel));
     expect(badge, findsOneWidget);
     final badgeRect = tester.getRect(badge);
     final header = find.byKey(const ValueKey('messageSenderHeader-1'));
@@ -116,10 +119,7 @@ void main() {
     final headerRect = tester.getRect(header);
     // The badge sits INSIDE the header's vertical span, on the same line
     // as the name and the time slot.
-    expect(
-      badgeRect.center.dy,
-      greaterThanOrEqualTo(headerRect.top),
-    );
+    expect(badgeRect.center.dy, greaterThanOrEqualTo(headerRect.top));
     expect(badgeRect.center.dy, lessThanOrEqualTo(headerRect.bottom));
   });
 
@@ -139,9 +139,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final badge = find.text(
-      AppStrings.t(AppStringKeys.historyDeletedLabel),
-    );
+    final badge = find.text(AppStrings.t(AppStringKeys.historyDeletedLabel));
     expect(badge, findsOneWidget);
     // No sender header on an outgoing message: the badge is its own line,
     // above the translucent bubble (the badge's bottom stays above the

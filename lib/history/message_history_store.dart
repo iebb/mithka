@@ -936,7 +936,6 @@ class MessageHistoryStore extends ChangeNotifier {
     }
   }
 
-
   /// updateMessageEdited carries the edit time but not the content; the new
   /// content arrives in a following updateMessageContent. Only that pair —
   /// not TDLib's own content generations (dice rolls, live locations) —

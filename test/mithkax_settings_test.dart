@@ -47,7 +47,8 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
   await tester.pumpAndSettle();
 }
 
-  Future<void> pumpHub(WidgetTester tester) => _pump(tester, const MithkaXSettingsView());
+Future<void> pumpHub(WidgetTester tester) =>
+    _pump(tester, const MithkaXSettingsView());
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
