@@ -25,9 +25,13 @@ full-size launcher PNG in `flutter_assets`.
 Run `python3 tool/optimize_app_artwork.py --write` after adding artwork. This
 requires pngquant, cwebp and Pillow. It compresses identical PNG inputs once and
 writes the same bytes to their existing native/source paths, then converts new
-picker PNGs to WebP. PNG quantization has a quality floor and keeps the original
-when that floor cannot be met. Commit the resulting assets and picker paths.
-CI runs the dependency-free `--check` byte and dimension budgets.
+picker PNGs to WebP. Native and launcher PNGs above about 50 KB are median-
+smoothed to remove faint paper texture, then quantized, trying the gentlest
+setting first. A 36 dB floor, measured on premultiplied colour, keeps the
+original when no setting is good enough. Pixel artwork is already far below the
+budget and is never smoothed. Commit the resulting assets and picker paths.
+CI runs the dependency-free `--check` budgets: 56 KiB per native or launcher
+PNG and 6 MiB for the native iOS icon catalogue.
 
 The Runner target uses `ASSETCATALOG_COMPILER_OPTIMIZATION = space` for all
 configurations. All alternate icons remain included. See Apple's

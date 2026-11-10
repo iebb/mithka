@@ -199,6 +199,9 @@ jobs:
           fi
           echo "Verified iOS marketing version $actual_version"
 
+      - name: Keep the compiled icon catalogue within budget
+        run: sh scripts/check_ios_asset_catalog_size.sh "$ARCHIVE_PATH/Products/Applications/Runner.app"
+
       - name: Export and upload IPA to App Store Connect
         run: |
           set -euo pipefail
