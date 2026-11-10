@@ -2120,7 +2120,7 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Dieser Telegram-Link wird derzeit nicht unterstützt</string>
     <string name="linkHandlerWritingStyle">Schreibstil</string>
-    <string name="mithkaxSettingsTitle">Ayu 功能</string>
+    <string name="mithkaxSettingsTitle">Ayu-Funktionen</string>
     <string name="mithkaxHistorySection">Nachrichtenverlauf</string>
     <string name="mithkaxGhostSection">Geistermodus</string>
     <string name="mithkaxPremiumSection">Lokales Premium</string>

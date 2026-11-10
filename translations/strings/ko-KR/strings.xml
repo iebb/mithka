@@ -2113,7 +2113,7 @@
     <string name="linkHandlerTelegramStarsCount">{value1} 텔레그램 스타</string>
     <string name="linkHandlerUnsupportedTelegramLink">이 Telegram 링크 열기는 아직 지원되지 않습니다</string>
     <string name="linkHandlerWritingStyle">글쓰기 스타일</string>
-    <string name="mithkaxSettingsTitle">Ayu 功能</string>
+    <string name="mithkaxSettingsTitle">Ayu 기능</string>
     <string name="mithkaxHistorySection">메시지 기록</string>
     <string name="mithkaxGhostSection">고스트 모드</string>
     <string name="mithkaxPremiumSection">로컬 프리미엄</string>

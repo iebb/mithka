@@ -2114,7 +2114,7 @@
     <string name="linkHandlerUnsupportedTelegramLink">この Telegram リンクを開くことはまだサポートされていません</string>
     <string name="linkHandlerWritingStyle">文体</string>
     <string name="listSeparator">、</string>
-    <string name="mithkaxSettingsTitle">Ayu 功能</string>
+    <string name="mithkaxSettingsTitle">Ayu機能</string>
     <string name="mithkaxHistorySection">メッセージ履歴</string>
     <string name="mithkaxGhostSection">ゴーストモード</string>
     <string name="mithkaxPremiumSection">ローカルプレミアム</string>
