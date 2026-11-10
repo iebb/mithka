@@ -16,13 +16,13 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
 import 'package:mithka/config/build_flags.dart';
-import 'package:mithka/profile/profile_proxy_button.dart';
-import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/app_locale_controller.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/profile/profile_proxy_button.dart';
 import 'package:mithka/profile/profile_view.dart';
+import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
-import 'package:mithka/settings/translation_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -119,6 +119,7 @@ void main() {
             unread: 0,
             onClearUnread: () {},
             onToggleThemeMode: () {},
+            proxyButton: ProfileProxyButton(extent: 38, onTap: () {}),
             onOpenGhostMode: _enabled ? () {} : null,
           ),
         ),
@@ -131,13 +132,16 @@ void main() {
       return;
     }
     expect(ghost, findsOneWidget);
-    // Below the theme toggle (higher dy).
+    // Order under the theme toggle: theme → 代理 → ghost (growing dy).
     final themeButton = find.byKey(
       const ValueKey('desktop-theme-toggle-button'),
     );
+    final proxy = find.byKey(const ValueKey('profile-proxy-button'));
+    expect(proxy, findsOneWidget);
     expect(
-      tester.getCenter(ghost).dy,
+      tester.getCenter(proxy).dy,
       greaterThan(tester.getCenter(themeButton).dy),
     );
+    expect(tester.getCenter(ghost).dy, greaterThan(tester.getCenter(proxy).dy));
   });
 }
