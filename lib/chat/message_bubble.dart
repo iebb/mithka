@@ -4428,7 +4428,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
                   width: 44,
                   height: 44,
                   child: TDImage(
-                    photo: message.replyToImage,
+                    // A 44pt slot: the small photo size is plenty, and it
+                    // avoids downloading and decoding the full-size one.
+                    photo:
+                        message.replyToImage?.thumbnail ?? message.replyToImage,
                     cornerRadius: 6,
                     cacheWidth: _cachePx(44),
                     cacheHeight: _cachePx(44),
@@ -4727,11 +4730,21 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         leadingDistribution: bodyStyle.leadingDistribution,
       ),
     );
+    // A fading paragraph wraps its inline children in a save layer and then
+    // translates and restores the canvas. A resolved custom emoji composites
+    // (tint filter, Lottie), which swaps the canvas mid-paint: the fade lands
+    // as a dark band and everything painted after it in the bubble shifts out
+    // of place. Inline widgets therefore truncate with an ellipsis instead.
+    final overflow = maxLines == null
+        ? TextOverflow.clip
+        : children.any(_containsWidgetSpan)
+        ? TextOverflow.ellipsis
+        : TextOverflow.fade;
     return Builder(
       builder: (context) => RichText(
         textScaler: MediaQuery.textScalerOf(context),
         maxLines: maxLines,
-        overflow: maxLines == null ? TextOverflow.clip : TextOverflow.fade,
+        overflow: overflow,
         textHeightBehavior: hasCustomEmoji
             ? const TextHeightBehavior(
                 applyHeightToFirstAscent: false,
@@ -4746,6 +4759,15 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             AppTheme.brand.withValues(alpha: 0.28),
       ),
     );
+  }
+
+  static bool _containsWidgetSpan(InlineSpan span) {
+    var found = false;
+    span.visitChildren((child) {
+      found = child is WidgetSpan;
+      return !found;
+    });
+    return found;
   }
 
   Widget _quoteBlock(
