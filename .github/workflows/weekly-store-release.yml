@@ -1,10 +1,10 @@
-name: Friday Store Release
+name: Twice-Monthly Store Release
 run-name: Store ${{ github.event_name == 'schedule' && 'release' || inputs.operation }} from master
 
 on:
   schedule:
-    # Friday 09:00 Asia/Tokyo. Keep this in GitHub, not a maintainer-PC timer.
-    - cron: '0 0 * * 5'
+    # 1st and 15th at 09:00 Asia/Tokyo. Keep this in GitHub, not a maintainer-PC timer.
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
     inputs:
       operation:

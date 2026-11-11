@@ -7,11 +7,11 @@
 ## Versioning
 
 - `master` always carries the next minor at patch 0 in `pubspec.yaml` (for example `1.10.0`).
-- When master moves to a new minor, that exact `X.Y.0` goes to TestFlight and the Google Play beta the same day as an immediate update; it does not wait for the daily run. The Friday store release dispatches `.github/workflows/sync-nightly.yml` right after it advances master, and the first sync of a new minor stamps nightly with master's exact `X.Y.0`.
+- When master moves to a new minor, that exact `X.Y.0` goes to TestFlight and the Google Play beta the same day as an immediate update; it does not wait for the daily run. The twice-monthly store release dispatches `.github/workflows/sync-nightly.yml` right after it advances master, and the first sync of a new minor stamps nightly with master's exact `X.Y.0`.
 - From the next day on, each daily build with new master changes raises the patch once: `X.Y.1`, `X.Y.2`, and so on. A day without new master commits produces no build. TestFlight and Google Play show that exact version; never rewrite the patch to `.0`. `scripts/apple_marketing_version.sh` keeps the exact `X.Y.Z` on every branch and tag.
 - A store release submits the exact version of the build it ships: a nonzero patch above every version already used on that minor, built from its `store-vX.Y.Z` tag. Afterwards master moves to `X.(Y+1).0` and the immediate-update rule applies again.
 - The Apple build number is always the Git commit height (`scripts/apple_ci_build_number.sh`). Android keeps its own always-increasing version code in `android/version-code.txt`, because Google Play rejects a code that goes down.
-- Releases run only through the owner's existing workflows: the daily build (`sync-nightly.yml`, 00:00 UTC = 09:00 Tokyo) and the Friday 09:00 Tokyo store release (`weekly-store-release.yml`). A one-off run, rerun, or dispatch happens only when the owner asks.
+- Releases run only through the owner's existing workflows: the daily build (`sync-nightly.yml`, 00:00 UTC = 09:00 Tokyo) and the store release on the 1st and 15th of each month at 09:00 Tokyo (`weekly-store-release.yml`). A one-off run, rerun, or dispatch happens only when the owner asks.
 
 ## Contributions and agentic PR review
 

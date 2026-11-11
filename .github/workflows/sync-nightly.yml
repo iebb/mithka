@@ -3,7 +3,7 @@ name: 🌙 Sync Nightly
 # Merge master into nightly once per day. The first sync of a new minor ships
 # master's exact X.Y.0; every later sync that incorporates new master commits
 # increments the app's patch version once (see Versioning in AGENTS.md). The
-# Friday store release dispatches this workflow right after it moves master to
+# Twice-monthly store release dispatches this workflow right after it moves master to
 # the next minor, so that X.Y.0 goes out the same day. Master is
 # authoritative for the nightly tree; only pubspec.yaml receives a generated
 # nightly version. A generated GITHUB_TOKEN push doesn't trigger other
