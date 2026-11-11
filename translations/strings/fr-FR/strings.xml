@@ -1837,6 +1837,8 @@
     <string name="ghostModeChatExceptions">Exceptions de discussion</string>
     <string name="ghostModeAddChatException">Ajouter une exception</string>
     <string name="ghostModeNoChatExceptions">Toutes les discussions suivent les réglages ci-dessus.</string>
+    <string name="ghostModeShowSidebarEntry">Afficher dans la barre latérale</string>
+    <string name="ghostModeShowSidebarEntryDescription">Affiche ou masque le bouton du mode fantôme dans la barre latérale et le rail du bureau, sans toucher à l'interception.</string>
     <string name="ghostModeExceptionDefault">Suivre le mode global</string>
     <string name="ghostModeExceptionForceBlock">Toujours masquer</string>
     <string name="ghostModeExceptionForceAllow">Ne jamais masquer</string>

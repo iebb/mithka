@@ -695,6 +695,9 @@ abstract final class AppStringKeys {
   static const ghostModeChatExceptions = 'ghostModeChatExceptions';
   static const ghostModeAddChatException = 'ghostModeAddChatException';
   static const ghostModeNoChatExceptions = 'ghostModeNoChatExceptions';
+  static const ghostModeShowSidebarEntry = 'ghostModeShowSidebarEntry';
+  static const ghostModeShowSidebarEntryDescription =
+      'ghostModeShowSidebarEntryDescription';
   static const ghostModeExceptionDefault = 'ghostModeExceptionDefault';
   static const ghostModeExceptionForceBlock = 'ghostModeExceptionForceBlock';
   static const ghostModeExceptionForceAllow = 'ghostModeExceptionForceAllow';

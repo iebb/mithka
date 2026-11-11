@@ -1837,6 +1837,8 @@
     <string name="ghostModeChatExceptions">Chatausnahmen</string>
     <string name="ghostModeAddChatException">Chatausnahme hinzufügen</string>
     <string name="ghostModeNoChatExceptions">Alle Chats folgen den Schaltern oben.</string>
+    <string name="ghostModeShowSidebarEntry">In der Seitenleiste anzeigen</string>
+    <string name="ghostModeShowSidebarEntryDescription">Den Ghost-Modus-Knopf in Seitenleiste und Desktop-Leiste anzeigen oder ausblenden, ohne die Aufzeichnung selbst zu berühren.</string>
     <string name="ghostModeExceptionDefault">Global folgen</string>
     <string name="ghostModeExceptionForceBlock">Immer verbergen</string>
     <string name="ghostModeExceptionForceAllow">Nie verbergen</string>

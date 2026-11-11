@@ -1830,6 +1830,8 @@
     <string name="ghostModeChatExceptions">チャット例外</string>
     <string name="ghostModeAddChatException">チャット例外を追加</string>
     <string name="ghostModeNoChatExceptions">すべてのチャットは上のスイッチに従います。</string>
+    <string name="ghostModeShowSidebarEntry">サイドバーに表示する</string>
+    <string name="ghostModeShowSidebarEntryDescription">サイドバーとデスクトップレールのゴーストモードボタンを表示・非表示にします。遮断自体には影響しません。</string>
     <string name="ghostModeExceptionDefault">全体設定に従う</string>
     <string name="ghostModeExceptionForceBlock">常に隠す</string>
     <string name="ghostModeExceptionForceAllow">隠さない</string>

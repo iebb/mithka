@@ -1830,6 +1830,8 @@
     <string name="ghostModeChatExceptions">채팅 예외</string>
     <string name="ghostModeAddChatException">채팅 예외 추가</string>
     <string name="ghostModeNoChatExceptions">모든 채팅은 위의 스위치를 따릅니다.</string>
+    <string name="ghostModeShowSidebarEntry">사이드바에 표시</string>
+    <string name="ghostModeShowSidebarEntryDescription">사이드바와 데스크톱 레일의 고스트 모드 버튼 표시 여부를 정합니다. 차단 자체에는 영향을 주지 않습니다.</string>
     <string name="ghostModeExceptionDefault">전체 설정 따르기</string>
     <string name="ghostModeExceptionForceBlock">항상 숨기기</string>
     <string name="ghostModeExceptionForceAllow">숨기지 않기</string>

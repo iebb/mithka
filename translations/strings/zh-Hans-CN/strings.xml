@@ -1830,6 +1830,8 @@
     <string name="ghostModeChatExceptions">聊天例外</string>
     <string name="ghostModeAddChatException">添加聊天例外</string>
     <string name="ghostModeNoChatExceptions">所有聊天均遵循上方开关。</string>
+    <string name="ghostModeShowSidebarEntry">在侧边栏显示入口</string>
+    <string name="ghostModeShowSidebarEntryDescription">显示或隐藏侧边栏和桌面栏中的隐身模式按钮，不影响隐身功能本身。</string>
     <string name="ghostModeExceptionDefault">跟随全局</string>
     <string name="ghostModeExceptionForceBlock">始终拦截</string>
     <string name="ghostModeExceptionForceAllow">始终放行</string>

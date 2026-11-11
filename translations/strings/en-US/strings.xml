@@ -1837,6 +1837,8 @@
     <string name="ghostModeChatExceptions">Chat exceptions</string>
     <string name="ghostModeAddChatException">Add chat exception</string>
     <string name="ghostModeNoChatExceptions">All chats follow the switches above.</string>
+    <string name="ghostModeShowSidebarEntry">Show in sidebar</string>
+    <string name="ghostModeShowSidebarEntryDescription">Show or hide the ghost-mode button in the sidebar and the desktop rail, without touching interception itself.</string>
     <string name="ghostModeExceptionDefault">Follow global</string>
     <string name="ghostModeExceptionForceBlock">Always hide</string>
     <string name="ghostModeExceptionForceAllow">Never hide</string>

@@ -1085,15 +1085,20 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         ),
         // Compile-time gated ghost-mode shortcut, right under the theme
         // toggle (the rail's counterpart of the drawer sidebar's slot).
+        // The runtime sidebar-entry switch hides it on both surfaces.
         ghostModeLabel:
-            allowTelegramTosViolations && GhostModeController.isAvailable
+            allowTelegramTosViolations &&
+                GhostModeController.isAvailable &&
+                GhostModeController.shared.showSidebarEntry
             ? AppStrings.t(AppStringKeys.ghostModeTitle)
             : null,
         ghostModeActive:
             allowTelegramTosViolations &&
             GhostModeController.shared.globalEnabled,
         onOpenGhostMode:
-            allowTelegramTosViolations && GhostModeController.isAvailable
+            allowTelegramTosViolations &&
+                GhostModeController.isAvailable &&
+                GhostModeController.shared.showSidebarEntry
             ? _openDesktopGhostMode
             : null,
         showAccountPhone: !theme.hideSidebarPhone,

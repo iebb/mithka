@@ -778,8 +778,11 @@ class _ProfileViewState extends State<ProfileView> {
               const SizedBox(width: 24),
               // 幽灵模式 straight from the sidebar, between 代理 and the
               // day/night switch. Compile-time gated: the button (and the
-              // page behind it) does not exist in non-opted builds.
-              if (allowTelegramTosViolations) ...[
+              // page behind it) does not exist in non-opted builds; the
+              // runtime sidebar-entry switch (ghost mode settings) hides it
+              // without touching interception.
+              if (allowTelegramTosViolations &&
+                  GhostModeController.shared.showSidebarEntry) ...[
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _root.push(
@@ -834,7 +837,8 @@ class _ProfileViewState extends State<ProfileView> {
 
   /// The sidebar's ghost-mode glyph: eyeSlash that lights up in the brand
   /// colour while ghost mode is intercepting, so the shortcut doubles as a
-  /// status light the way the proxy globe does.
+  /// status light the way the proxy globe does. Hidden entirely when the
+  /// user turned the sidebar entry off in ghost mode's settings.
   Widget _ghostBarItem(BuildContext context) {
     final c = context.colors;
     return AnimatedBuilder(
