@@ -1686,14 +1686,18 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   }
 
   /// [meta] false leaves the delivery mark out, for content that draws it
-  /// itself; the compact reply count still floats over it. A ghost bubble
-  /// (kept copy of a deleted message) appends its deleted chip to the same
-  /// floating row.
+  /// itself; the compact reply count still floats over it. The corner row
+  /// hangs OUTSIDE the bubble: the bubble keeps its content height and the
+  /// chips ride a band below it (the reply-count badge's original look), so
+  /// nothing covers the message body. A ghost bubble (kept copy of a
+  /// deleted message) appends its deleted chip to the same band; a
+  /// forwarded message leads the band with its forward chip on the left.
   Widget _withFloatingMeta(Widget child, bool outgoing, {bool meta = true}) {
     final showReplies = _showsCompactReplyCount;
-    // One chip language for the whole corner: reply count, edited mark and
-    // the ghost's deleted chip share colors, so they read as one family
-    // whichever of them a bubble carries.
+    final showForward = message.hasForwardAttribution;
+    // One chip language for the whole band: reply count, edited mark, the
+    // ghost's deleted chip and the forward chip share colors, so they read
+    // as one family whichever of them a bubble carries.
     final chipForeground = outgoing
         ? _outgoingTextColor.withValues(alpha: 0.78)
         : _colors.textSecondary;
@@ -1702,57 +1706,87 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         : _colors.card.withValues(alpha: 0.82);
     final ghostMarker = message.mirrorEntry == null
         ? null
-        : _GhostDeletedBadge(
+        : _GhostBandChip(
+            key: ValueKey('messageGhostChip-${message.id}'),
             onLongPress: _handleLongPress,
+            icon: HeroAppIcons.trash,
+            label: AppStringKeys.historyDeletedLabel.l10n(context),
             foreground: chipForeground,
             background: chipBackground,
           );
     final showMeta = meta && (message.isEdited || outgoing);
-    final show = showMeta || showReplies || ghostMarker != null;
+    final show = showMeta || showReplies || ghostMarker != null || showForward;
     if (!show) return child;
+    // The forward attribution never renders inside the bubble any more — the
+    // band below carries its chip — so a message can never show two marks.
+    final forwardChip = showForward
+        ? _GhostBandChip(
+            key: ValueKey('messageForwardChip-${message.id}'),
+            onTap:
+                widget.bubble.onOpenForwarded != null &&
+                    message.forwardFromChatId != null &&
+                    message.forwardFromMessageId != null &&
+                    message.forwardFromMessageId! > 0
+                ? () => widget.bubble.onOpenForwarded!.call(message)
+                : null,
+            icon: HeroAppIcons.forward,
+            label: AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+              'value1': message.forwardDisplayName,
+            }),
+            foreground: chipForeground,
+            background: chipBackground,
+          )
+        : null;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        if (showReplies)
-          Padding(padding: const EdgeInsets.only(bottom: 19), child: child)
-        else
-          child,
-        // Both edges pinned: the row may never grow past the bubble's
+        Padding(padding: const EdgeInsets.only(bottom: 19), child: child),
+        // Both edges pinned: the band may never grow past the bubble's
         // width, and the FittedBox shrinks it instead of spilling over a
-        // narrow bubble onto the neighboring content.
+        // narrow bubble onto the neighboring content. The forward chip
+        // anchors to the left edge, the meta cluster to the right; on a
+        // narrow bubble the whole line shrinks as one so the two ends can
+        // never overlap.
         Positioned(
           left: 2,
           right: 2,
-          bottom: showReplies ? 0 : 2,
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showReplies)
-                    MessageReplyCountBadge(
-                      key: ValueKey('messageCompactReplies-${message.id}'),
-                      count: message.commentCount,
-                      foreground: chipForeground,
-                      background: chipBackground,
-                      onTap: widget.bubble.onOpenComments == null
-                          ? null
-                          : () => widget.bubble.onOpenComments?.call(message),
-                    ),
-                  if (showReplies && showMeta) const SizedBox(width: 4),
-                  if (showMeta)
-                    _floatingMeta(
-                      outgoing,
-                      chipForeground: chipForeground,
-                      chipBackground: chipBackground,
-                    ),
-                  if (showMeta && ghostMarker != null) const SizedBox(width: 4),
-                  ?ghostMarker,
-                ],
+          bottom: 0,
+          child: Row(
+            children: [
+              if (forwardChip != null) Flexible(child: forwardChip),
+              const Spacer(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showReplies)
+                        MessageReplyCountBadge(
+                          key: ValueKey('messageCompactReplies-${message.id}'),
+                          count: message.commentCount,
+                          foreground: chipForeground,
+                          background: chipBackground,
+                          onTap: widget.bubble.onOpenComments == null
+                              ? null
+                              : () =>
+                                    widget.bubble.onOpenComments?.call(message),
+                        ),
+                      if (showReplies && showMeta) const SizedBox(width: 4),
+                      if (showMeta)
+                        _floatingMeta(
+                          outgoing,
+                          chipForeground: chipForeground,
+                          chipBackground: chipBackground,
+                        ),
+                      if (showMeta && ghostMarker != null)
+                        const SizedBox(width: 4),
+                      ?ghostMarker,
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ],
@@ -2242,7 +2276,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   Widget _textBubble(
     String text,
     bool outgoing, {
-    bool includeForwardHeader = true,
+    bool includeViaBotHeader = true,
     bool includeReplyQuote = true,
     ChatMessage? source,
   }) {
@@ -2359,11 +2393,10 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             children: messageSelectableParts,
           );
     final parts = <Widget>[
-      if (includeForwardHeader && message.hasForwardAttribution) ...[
-        _forwardHeader(outgoing),
-        const SizedBox(height: 3),
-      ],
-      if (includeForwardHeader && message.hasViaBotAttribution) ...[
+      // The forward attribution moved OUT of the bubble: it rides the band
+      // below as a chip (_withFloatingMeta), like the reply/edited/deleted
+      // marks, so it no longer takes a line above the text.
+      if (includeViaBotHeader && message.hasViaBotAttribution) ...[
         _viaBotHeader(outgoing),
         const SizedBox(height: 3),
       ],
@@ -4382,53 +4415,6 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     );
   }
 
-  /// 转发 attribution shown above forwarded content: `转发自 …`.
-  Widget _forwardHeader(bool outgoing) {
-    final textColor = _messageForwardedNameColor(outgoing);
-    final accent = _usesDecorativeBubbleBackground
-        ? textColor
-        : _messageColors == null && !outgoing
-        ? AppTheme.brand
-        : textColor;
-    final canOpenOriginal =
-        widget.bubble.onOpenForwarded != null &&
-        message.forwardFromChatId != null &&
-        message.forwardFromMessageId != null &&
-        message.forwardFromMessageId! > 0;
-    return GestureDetector(
-      key: ValueKey('messageForwardHeader-${message.id}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: canOpenOriginal
-          ? () => widget.bubble.onOpenForwarded!.call(message)
-          : null,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppIcon(
-            HeroAppIcons.forward,
-            size: 11,
-            color: accent.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
-                'value1': message.forwardDisplayName,
-              }),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: textColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Inline-bot attribution shown above inline-sent content: `via @bot`.
   Widget _viaBotHeader(bool outgoing) {
     final textColor = _messageForwardedNameColor(outgoing);
@@ -5528,16 +5514,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     required String? caption,
     required bool outgoing,
   }) {
-    final hasForwardHeader = message.hasForwardAttribution;
     final hasViaBotHeader = message.hasViaBotAttribution;
-    final hasAttributionHeader = hasForwardHeader || hasViaBotHeader;
     final hasReplyQuote = message.replyPreviewText != null;
     if (!_groupsMediaCaption(caption)) {
-      final attributedMedia = hasAttributionHeader || hasReplyQuote
+      // The forward attribution moved to the outside band as a chip; only
+      // via-bot and reply-quote still build the attributed media wrapper.
+      final attributedMedia = hasViaBotHeader || hasReplyQuote
           ? _bubbleBackground(
               key: ValueKey(
-                hasAttributionHeader
-                    ? 'messageForwardedMedia-${message.id}'
+                hasViaBotHeader
+                    ? 'messageViaBotMedia-${message.id}'
                     : 'messageRepliedMedia-${message.id}',
               ),
               outgoing: outgoing,
@@ -5548,31 +5534,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (hasForwardHeader)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        10,
-                        7,
-                        10,
-                        hasViaBotHeader ? 2 : 6,
-                      ),
-                      child: _forwardHeader(outgoing),
-                    ),
                   if (hasViaBotHeader)
                     Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        10,
-                        hasForwardHeader ? 0 : 7,
-                        10,
-                        6,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
                       child: _viaBotHeader(outgoing),
                     ),
                   if (hasReplyQuote)
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         6,
-                        hasAttributionHeader ? 0 : 6,
+                        hasViaBotHeader ? 0 : 6,
                         6,
                         6,
                       ),
@@ -5595,7 +5566,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
             _textBubble(
               caption,
               outgoing,
-              includeForwardHeader: !hasAttributionHeader,
+              includeViaBotHeader: !hasViaBotHeader,
               includeReplyQuote: false,
             ),
           ],
@@ -5638,24 +5609,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (hasForwardHeader)
-            Padding(
-              padding: EdgeInsets.fromLTRB(10, 7, 10, hasViaBotHeader ? 2 : 6),
-              child: _forwardHeader(outgoing),
-            ),
+          // The forward attribution rides the outside band as a chip now;
+          // only via-bot and reply-quote stay above the media.
           if (hasViaBotHeader)
             Padding(
-              padding: EdgeInsets.fromLTRB(10, hasForwardHeader ? 0 : 7, 10, 6),
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 6),
               child: _viaBotHeader(outgoing),
             ),
           if (hasReplyQuote)
             Padding(
-              padding: EdgeInsets.fromLTRB(
-                6,
-                hasAttributionHeader ? 0 : 6,
-                6,
-                6,
-              ),
+              padding: EdgeInsets.fromLTRB(6, hasViaBotHeader ? 0 : 6, 6, 6),
               child: _replyQuote(outgoing),
             ),
           media,
@@ -6929,32 +6892,56 @@ class _RenderQuoteFold extends RenderProxyBox {
   }
 }
 
-/// The tiny "deleted" chip of a ghost bubble. It floats at the bubble's
-/// bottom-right corner in the meta row, after the edited mark and the
-/// compact reply count, sharing their chip language. Tap-through except
-/// for the long-press, which forwards to the bubble's own action menu
-/// (the mirror actions live there).
-class _GhostDeletedBadge extends StatelessWidget {
-  const _GhostDeletedBadge({
+/// One chip of the band under the bubble. The band carries the corner
+/// metadata — reply count, edited mark, the ghost's deleted chip and the
+/// forward attribution — all in the same chip language: padding 5/2,
+/// control radius, 12pt icon, 11pt w500 label, colors handed in by
+/// [_withFloatingMeta] so the family reads as one whichever a bubble
+/// carries. Tap-through except for an explicit [onTap]/[onLongPress],
+/// which forward to the bubble's own actions.
+class _GhostBandChip extends StatelessWidget {
+  const _GhostBandChip({
+    super.key,
+    this.onTap,
     this.onLongPress,
+    required this.icon,
+    this.label,
     required this.foreground,
     required this.background,
   });
 
+  final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// HeroAppIcons glyph drawn at the family's 12pt.
+  final AppIconData icon;
+
+  /// Optional text beside the icon; the deleted chip honours the global
+  /// badge-style setting (icon / text / both), every other chip shows what
+  /// it is given.
+  final String? label;
+
   final Color foreground;
   final Color background;
 
   @override
   Widget build(BuildContext context) {
+    final honorBadgeStyle =
+        key is ValueKey<String> &&
+        (key as ValueKey<String>).value.startsWith('messageGhostChip-');
     return ListenableBuilder(
       listenable: MessageHistorySettings.shared,
       builder: (context, _) {
-        final style = MessageHistorySettings.shared.badgeStyle;
-        final showIcon = style != GhostBadgeStyle.text;
-        final showText = style != GhostBadgeStyle.icon;
+        var showIcon = true;
+        var showText = label != null;
+        if (honorBadgeStyle) {
+          final style = MessageHistorySettings.shared.badgeStyle;
+          showIcon = style != GhostBadgeStyle.text;
+          showText = style != GhostBadgeStyle.icon && label != null;
+        }
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
+          onTap: onTap,
           onLongPress: onLongPress,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -6965,20 +6952,22 @@ class _GhostDeletedBadge extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (showIcon) ...[
-                  AppIcon(HeroAppIcons.trash, size: 12, color: foreground),
-                ],
+                if (showIcon) ...[AppIcon(icon, size: 12, color: foreground)],
                 if (showIcon && showText) const SizedBox(width: 3),
                 if (showText)
-                  Text(
-                    AppStringKeys.historyDeletedLabel.l10n(context),
-                    textScaler: TextScaler.noScaling,
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 11,
-                      height: 1.1,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
+                  Flexible(
+                    child: Text(
+                      label!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 11,
+                        height: 1.1,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.none,
+                      ),
                     ),
                   ),
               ],

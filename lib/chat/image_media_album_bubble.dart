@@ -428,19 +428,12 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_first.hasForwardAttribution)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
-              child: _forwardHeader(context, _first),
-            ),
+          // The forward attribution rides the outside band as a chip now
+          // (see the badge wrapper below); only via-bot stays above the
+          // tiles.
           if (_first.hasViaBotAttribution)
             Padding(
-              padding: EdgeInsets.fromLTRB(
-                10,
-                _first.hasForwardAttribution ? 0 : 7,
-                10,
-                2,
-              ),
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
               child: _viaBotHeader(context, _first),
             ),
           Padding(
@@ -586,26 +579,63 @@ class ImageMediaAlbumBubble extends StatelessWidget {
         ],
       ),
     );
-    if (!showCompactReplies) return card;
+    final showForwardBand = _first.hasForwardAttribution;
+    final showBand = showCompactReplies || showForwardBand;
+    if (!showBand) return card;
+    // The band's chip language, shared with MessageBubble's corner row:
+    // the reply count anchors right, the forward chip left.
+    final bandForeground = outgoing
+        ? outgoingText.withValues(alpha: 0.78)
+        : colors.textSecondary;
+    final bandBackground = outgoing
+        ? outgoingColor.withValues(alpha: 0.82)
+        : colors.card.withValues(alpha: 0.82);
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Padding(padding: const EdgeInsets.only(bottom: 19), child: card),
         Positioned(
+          left: 2,
           right: 2,
           bottom: 0,
-          child: MessageReplyCountBadge(
-            key: ValueKey('messageCompactReplies-${interactionOwner.id}'),
-            count: interactionOwner.commentCount,
-            foreground: outgoing
-                ? outgoingText.withValues(alpha: 0.78)
-                : colors.textSecondary,
-            background: outgoing
-                ? outgoingColor.withValues(alpha: 0.82)
-                : colors.card.withValues(alpha: 0.82),
-            onTap: onOpenComments == null
-                ? null
-                : () => onOpenComments?.call(interactionOwner),
+          child: Row(
+            children: [
+              if (showForwardBand)
+                Flexible(
+                  child: _bandChip(
+                    key: ValueKey('messageForwardChip-${interactionOwner.id}'),
+                    onTap:
+                        onOpenForwarded != null &&
+                            _first.forwardFromChatId != null &&
+                            _first.forwardFromMessageId != null &&
+                            _first.forwardFromMessageId! > 0
+                        ? () => onOpenForwarded!.call(_first)
+                        : null,
+                    icon: HeroAppIcons.forward,
+                    label: AppStrings.t(
+                      AppStringKeys.messageBubbleForwardedFrom,
+                      {'value1': _first.forwardDisplayName},
+                    ),
+                    foreground: bandForeground,
+                    background: bandBackground,
+                  ),
+                ),
+              const Spacer(),
+              if (showCompactReplies)
+                Flexible(
+                  child: MessageReplyCountBadge(
+                    key: ValueKey(
+                      'messageCompactReplies-${interactionOwner.id}',
+                    ),
+                    count: interactionOwner.commentCount,
+                    foreground: bandForeground,
+                    background: bandBackground,
+                    onTap: onOpenComments == null
+                        ? null
+                        : () => onOpenComments?.call(interactionOwner),
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -630,41 +660,49 @@ class ImageMediaAlbumBubble extends StatelessWidget {
     onMentionTap: onMentionTap,
   );
 
-  Widget _forwardHeader(BuildContext context, ChatMessage message) {
-    final colors = context.colors;
-    final canOpenOriginal =
-        onOpenForwarded != null &&
-        message.forwardFromChatId != null &&
-        message.forwardFromMessageId != null &&
-        message.forwardFromMessageId! > 0;
+  /// One chip of the album's outside band, in the same chip language as
+  /// MessageBubble's corner chips (padding 5/2, control radius, 12pt
+  /// icon, 11pt w500 label). Tap-through except an explicit [onTap].
+  Widget _bandChip({
+    Key? key,
+    VoidCallback? onTap,
+    required AppIconData icon,
+    required String label,
+    required Color foreground,
+    required Color background,
+  }) {
     return GestureDetector(
-      key: ValueKey('messageForwardHeader-${message.id}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: canOpenOriginal ? () => onOpenForwarded!.call(message) : null,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppIcon(
-            HeroAppIcons.forward,
-            size: 11,
-            color: colors.linkBlue.withValues(alpha: 0.9),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
-                'value1': message.forwardDisplayName,
-              }),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: colors.linkBlue,
+      key: key,
+      behavior: HitTestBehavior.translucent,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppIcon(icon, size: 12, color: foreground),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textScaler: TextScaler.noScaling,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 11,
+                  height: 1.1,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.none,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

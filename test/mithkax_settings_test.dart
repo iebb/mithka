@@ -6,12 +6,17 @@
 //  triggered a page rebuild.
 //
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/components/ui_components.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/ghost_mode_controller.dart';
+import 'package:mithka/settings/ghost_mode_settings_view.dart';
 import 'package:mithka/settings/local_premium.dart';
 import 'package:mithka/settings/mithkax_settings_view.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -58,6 +63,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     MessageHistorySettings.shared.initialize(prefs);
     LocalPremium.shared.initialize(prefs);
+    GhostModeController.shared.initialize(prefs);
   });
 
   testWidgets('history switches flip on tap', (tester) async {
@@ -234,6 +240,47 @@ void main() {
     expect(opacityOf(tester, const ValueKey('history-snapshot-groups')), 1.0);
   });
 
+  testWidgets('dimmed rows refuse taps (media snapshots)', (tester) async {
+    // The dim was opacity-only once: a dimmed row still answered taps and
+    // flipped its setting. The gate now also disables the row.
+    await pumpHub(tester);
+    if (!_enabled) return;
+    final s = MessageHistorySettings.shared;
+    s.setEnableAll(false);
+    await tester.pumpAndSettle();
+    final dim = find.byKey(const ValueKey('history-snapshot-private'));
+    await tester.scrollUntilVisible(dim, 400);
+    final row = tester.widget<SettingsSwitchRow>(dim);
+    expect(row.enabled, isFalse, reason: 'a dimmed row must be disabled');
+    expect(s.snapshotPrivate, isFalse, reason: 'snapshot dims default to off');
+
+    await tester.tap(dim, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(
+      s.snapshotPrivate,
+      isFalse,
+      reason: 'tapping a dimmed row must not change its setting',
+    );
+
+    // Lit again under both gates: taps flip it.
+    s.setEnableAll(true);
+    s.setRecordDeleted(true);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(dim, 400);
+    final rowAfter = tester.widget<SettingsSwitchRow>(dim);
+    expect(
+      rowAfter.enabled,
+      isTrue,
+      reason: 'the row lights up with its gates',
+    );
+    await tester.tap(dim);
+    await tester.pumpAndSettle();
+    expect(s.snapshotPrivate, isTrue);
+    s.setSnapshotPrivate(false);
+    s.setEnableAll(false);
+    s.setRecordDeleted(false);
+  });
+
   testWidgets('sections carry headers so cards never sit flush', (
     tester,
   ) async {
@@ -252,5 +299,73 @@ void main() {
       find.text(AppStrings.t(AppStringKeys.historyRecordSection)),
       findsOneWidget,
     );
+  });
+
+  group('ghost mode settings', () {
+    Future<void> pumpGhost(WidgetTester tester) =>
+        _pump(tester, const GhostModeSettingsView());
+
+    testWidgets('gated switches refuse taps while the master is off', (
+      tester,
+    ) async {
+      await pumpGhost(tester);
+      if (!_enabled) return;
+      final controller = GhostModeController.shared;
+      await controller.setGlobalEnabled(false);
+      await tester.pumpAndSettle();
+
+      // All four dimensions are disabled with the master off: tapping one
+      // must not flip its stored value.
+      final receipts = find.text(
+        AppStrings.t(AppStringKeys.ghostModeReadReceipts),
+      );
+      await tester.scrollUntilVisible(receipts, 200);
+      final row = find.ancestor(
+        of: receipts,
+        matching: find.byType(SettingsSwitchRow),
+      );
+      expect(tester.widget<SettingsSwitchRow>(row).enabled, isFalse);
+      await tester.tap(receipts);
+      await tester.pumpAndSettle();
+      expect(
+        controller.blockReadReceipts,
+        isTrue,
+        reason: 'a dimmed row must not change its setting',
+      );
+
+      // Turning the master on lights the rows and taps work again.
+      final master = find.byKey(const ValueKey('ghost-mode-master'));
+      await tester.tap(master);
+      await tester.pumpAndSettle();
+      await tester.tap(receipts);
+      await tester.pumpAndSettle();
+      expect(controller.blockReadReceipts, isFalse);
+      await controller.setGlobalEnabled(false);
+      await controller.setBlockReadReceipts(true);
+    });
+
+    testWidgets('the sidebar entry switch flips and persists', (tester) async {
+      await pumpGhost(tester);
+      if (!_enabled) return;
+      final controller = GhostModeController.shared;
+      expect(
+        controller.showSidebarEntry,
+        isTrue,
+        reason: 'the sidebar entry defaults to on',
+      );
+
+      final entry = find.byKey(const ValueKey('ghost-mode-sidebar-entry'));
+      await tester.scrollUntilVisible(entry, 200);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(controller.showSidebarEntry, isFalse);
+
+      // The preference survives re-initialization (a restart).
+      final prefs = await SharedPreferences.getInstance();
+      GhostModeController.shared.initialize(prefs);
+      await tester.pumpAndSettle();
+      expect(GhostModeController.shared.showSidebarEntry, isFalse);
+      unawaited(GhostModeController.shared.setShowSidebarEntry(true));
+    });
   });
 }
