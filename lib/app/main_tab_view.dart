@@ -658,6 +658,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       for (var i = 0; i < others.length; i++)
         if (found[i]) others[i],
     ];
+  }
+
   /// Ghost-mode settings straight from the desktop rail. The view reads
   /// GhostModeController.shared, whose prefs the primary engine already
   /// initialized; a plain route keeps it inside the main window (the
