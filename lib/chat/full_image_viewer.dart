@@ -316,10 +316,12 @@ class _FullImageViewerState extends State<FullImageViewer> {
                                 widthFactor: 1,
                                 child: Text(
                                   '${_index + 1} / ${widget.items.length}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFFFFFFF),
+                                  style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w500,
+                                    foreground: Paint()
+                                      ..color = const Color(0xFFFFFFFF)
+                                      ..blendMode = BlendMode.difference,
                                   ),
                                 ),
                               ),
@@ -441,9 +443,45 @@ class _FullImageViewerState extends State<FullImageViewer> {
             color: const Color(0xFFFFFFFF).withValues(alpha: 0.18),
             shape: BoxShape.circle,
           ),
-          child: AppIcon(name, size: 18, color: const Color(0xFFFFFFFF)),
+          child: _DifferenceGlyph(name, size: 18),
         ),
       );
+}
+
+/// Paints an icon glyph white with a difference blend, so it inverts against
+/// the image under it: black over light photos, white over dark ones. A plain
+/// white glyph vanished on light images behind the translucent white circle.
+class _DifferenceGlyph extends StatelessWidget {
+  const _DifferenceGlyph(this.icon, {required this.size});
+
+  final AppIconData icon;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = icon.data;
+    return SizedBox.square(
+      dimension: size,
+      child: Center(
+        child: Text(
+          String.fromCharCode(data.codePoint),
+          textDirection: TextDirection.ltr,
+          style: TextStyle(
+            inherit: false,
+            fontFamily: data.fontFamily,
+            package: data.fontPackage,
+            fontFamilyFallback: data.fontFamilyFallback,
+            fontSize: size,
+            height: 1,
+            leadingDistribution: TextLeadingDistribution.even,
+            foreground: Paint()
+              ..color = const Color(0xFFFFFFFF)
+              ..blendMode = BlendMode.difference,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Saves a gallery image the way the viewer's own `…` menu does: into the
