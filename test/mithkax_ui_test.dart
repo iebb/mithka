@@ -93,6 +93,7 @@ Widget _harness(
   ThemeController theme,
   ChatMessage message, {
   required bool isGroup,
+  bool isRead = false,
 }) => ChangeNotifierProvider<ThemeController>.value(
   value: theme,
   child: MaterialApp(
@@ -112,6 +113,7 @@ Widget _harness(
           message: message,
           peerTitle: 'Test Group',
           isGroup: isGroup,
+          isRead: isRead,
         ),
       ),
     ),
@@ -479,11 +481,15 @@ void main() {
         lessThan(2),
         reason: 'the chip icons must share one size',
       );
-      final bodyRect = tester.getRect(
-        find.byKey(const ValueKey('messageTapTarget-1')),
+      final surfaceRect = tester.getRect(
+        find.byKey(const ValueKey('messageTextBubble-1')),
       );
-      expect(deletedRect.left, greaterThanOrEqualTo(bodyRect.left - 1));
-      expect(replyRect.right, lessThanOrEqualTo(bodyRect.right + 1));
+      expect(deletedRect.left, greaterThanOrEqualTo(surfaceRect.left - 1));
+      expect(
+        (deletedRect.right - surfaceRect.right).abs(),
+        lessThan(1),
+        reason: 'the band flushes with the bubble right edge',
+      );
     });
   });
 
@@ -492,6 +498,7 @@ void main() {
       WidgetTester tester,
       ChatMessage message, {
       bool isGroup = true,
+      bool isRead = false,
     }) async {
       tester.view.physicalSize = const Size(600, 400);
       tester.view.devicePixelRatio = 1;
@@ -501,7 +508,9 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final theme = ThemeController(prefs);
       addTearDown(theme.dispose);
-      await tester.pumpWidget(_harness(theme, message, isGroup: isGroup));
+      await tester.pumpWidget(
+        _harness(theme, message, isGroup: isGroup, isRead: isRead),
+      );
       await tester.pumpAndSettle();
     }
 
@@ -530,49 +539,34 @@ void main() {
       return message;
     }
 
-    testWidgets('a forwarded message carries its mark outside the bubble', (
+    testWidgets('the forward attribution stays inside the bubble', (
       tester,
     ) async {
       final message = bandMessage(forwardOrigin: 'Bob');
       await pumpBand(tester, message);
 
-      final chip = find.byKey(const ValueKey('messageForwardChip-1'));
-      expect(chip, findsOneWidget);
-      // The old in-bubble header must not come back.
-      expect(
-        find.byKey(const ValueKey('messageForwardHeader-1')),
-        findsNothing,
-      );
-      final body = find.byKey(const ValueKey('messageTapTarget-1'));
-      final bodyRect = tester.getRect(body);
-      // The tap target now spans the whole row including the band; the
-      // chip must live in the band's strip, below the bubble surface.
+      // The in-bubble header is back and the outside chip is gone.
+      final header = find.byKey(const ValueKey('messageForwardHeader-1'));
+      expect(header, findsOneWidget);
+      expect(find.byKey(const ValueKey('messageForwardChip-1')), findsNothing);
       final surface = tester.getRect(
         find.byKey(const ValueKey('messageTextBubble-1')),
       );
-      final chipRect = tester.getRect(chip);
+      final headerRect = tester.getRect(header);
       expect(
-        chipRect.bottom,
-        greaterThan(surface.bottom),
-        reason: 'the forward chip hangs below the bubble',
-      );
-      expect(
-        chipRect.left,
-        lessThan(bodyRect.center.dx),
-        reason: 'the forward chip anchors to the band\'s left side',
+        headerRect.bottom,
+        lessThanOrEqualTo(surface.bottom + 1),
+        reason: 'the forward header rides inside the bubble again',
       );
     });
 
-    testWidgets('the band never overlaps itself on a narrow bubble', (
+    testWidgets('the band hugs the bubble right edge with no reservation', (
       tester,
     ) async {
-      // Forward (left) + replies/edited/deleted (right) on one narrow
-      // bubble: the two clusters must stay disjoint.
-      final message = bandMessage(
-        forwardOrigin: 'A Very Long Forward Origin Name',
-        isEdited: true,
-        commentCount: 12,
-      );
+      // Replies + edited + deleted with NO forward: the cluster's right
+      // edge must sit on the bubble's own right edge, not inset to reserve
+      // room for a forward mark that is not there.
+      final message = bandMessage(isEdited: true, commentCount: 12);
       message.mirrorEntry = const MessageHistoryEntry(
         accountUserId: 7,
         chatId: -100,
@@ -587,31 +581,60 @@ void main() {
       );
       await pumpBand(tester, message);
 
-      final forwardRect = tester.getRect(
-        find.byKey(const ValueKey('messageForwardChip-1')),
+      expect(find.byKey(const ValueKey('messageForwardChip-1')), findsNothing);
+      final surface = tester.getRect(
+        find.byKey(const ValueKey('messageTextBubble-1')),
       );
-      final replyRect = tester.getRect(
+      final deletedChip = find
+          .ancestor(
+            of: find.text(AppStrings.t(AppStringKeys.historyDeletedLabel)),
+            matching: find.byType(Container),
+          )
+          .first;
+      final deletedRect = tester.getRect(deletedChip);
+      expect(
+        (deletedRect.right - surface.right).abs(),
+        lessThan(1),
+        reason: 'the band flushes with the bubble right edge',
+      );
+      expect(
+        deletedRect.bottom,
+        greaterThan(surface.bottom),
+        reason: 'the band still hangs below the bubble',
+      );
+    });
+
+    testWidgets('the read tick stays on the bubble corner, not the band', (
+      tester,
+    ) async {
+      // A plain read outgoing message carries no band mark: the read
+      // circle is ink on the bubble's inside corner, and the band never
+      // reserves a strip for it.
+      final message = bandMessage(outgoing: true);
+      await pumpBand(tester, message, isRead: true);
+
+      final surface = tester.getRect(
+        find.byKey(const ValueKey('messageTextBubble-1')),
+      );
+      final tick = find.byKey(const ValueKey('messageDeliveryRead'));
+      expect(tick, findsOneWidget);
+      final tickRect = tester.getRect(tick);
+      expect(
+        tickRect.bottom,
+        lessThan(surface.bottom + 1),
+        reason: 'the read tick rides inside the bubble',
+      );
+      expect(
+        tickRect.right,
+        lessThanOrEqualTo(surface.right + 1),
+        reason: 'the read tick never passes the bubble border',
+      );
+      // Nothing renders below the bubble: no band, no reserved strip.
+      expect(
         find.byKey(const ValueKey('messageCompactReplies-1')),
+        findsNothing,
       );
-      final deletedRect = tester.getRect(
-        find.text(AppStrings.t(AppStringKeys.historyDeletedLabel)),
-      );
-      // Right cluster keeps its internal order and both clusters live in
-      // the same band, disjoint horizontally.
-      expect(deletedRect.left, greaterThan(replyRect.right));
-      expect(
-        forwardRect.right,
-        lessThanOrEqualTo(replyRect.left + 1),
-        reason: 'the forward chip must not run into the right cluster',
-      );
-      final bodyRect = tester.getRect(
-        find.byKey(const ValueKey('messageTapTarget-1')),
-      );
-      expect(
-        forwardRect.right,
-        lessThanOrEqualTo(bodyRect.right + 1),
-        reason: 'nothing spills past the bubble',
-      );
+      expect(find.byKey(const ValueKey('messageDeliveryEdited')), findsNothing);
     });
   });
 }
