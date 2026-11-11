@@ -8,6 +8,7 @@ class ChatDeepLinkRequest {
     this.accountUserId,
     this.accountSlot,
     this.preserveChatStack = false,
+    this.fromNotification = false,
   });
 
   final int chatId;
@@ -17,6 +18,11 @@ class ChatDeepLinkRequest {
   final int? accountSlot;
   final bool preserveChatStack;
 
+  /// A notification is about a message an account received, so when its
+  /// account cannot be named the shell switches to the account that has the
+  /// chat instead of asking.
+  final bool fromNotification;
+
   ChatDeepLinkRequest scopedToAccountSlot(int slot) => ChatDeepLinkRequest(
     chatId: chatId,
     title: title,
@@ -24,6 +30,7 @@ class ChatDeepLinkRequest {
     accountUserId: accountUserId,
     accountSlot: slot,
     preserveChatStack: preserveChatStack,
+    fromNotification: fromNotification,
   );
 
   /// Presentation-only payload used when a registered desktop child asks the
@@ -102,6 +109,7 @@ class ChatDeepLinkController extends ChangeNotifier {
     int? accountUserId,
     int? accountSlot,
     bool preserveChatStack = false,
+    bool fromNotification = false,
   }) {
     _pending = ChatDeepLinkRequest(
       chatId: chatId,
@@ -110,6 +118,7 @@ class ChatDeepLinkController extends ChangeNotifier {
       accountUserId: accountUserId,
       accountSlot: accountSlot,
       preserveChatStack: preserveChatStack,
+      fromNotification: fromNotification,
     );
     notifyListeners();
   }

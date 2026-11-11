@@ -537,22 +537,35 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           (slot: account.slot, userId: account.userId),
       ],
     );
-    // Nothing to place the chat id against automatically. Opening it against
-    // the active account would show a different conversation with the same
-    // id, but dropping the request silently reads as a dead tap — so when the
-    // ambiguity is only WHICH signed-in account, ask. (A link naming an
-    // account that is not signed in has nothing to offer the user.)
+    // The request names no account. Most come from the active session (a
+    // search result, a profile, the music bar), so the chat opens there when
+    // the active account has it. Otherwise ask which account to use, marking
+    // the ones that have it; a notification goes straight to that account.
+    // (A link naming an account that is not signed in has nothing to offer.)
     if (requestedSlot == null &&
         request.accountSlot == null &&
         request.accountUserId == null &&
         accounts.summaries.length > 1) {
-      final picked = await showAccountPickerDialog(
-        context,
-        accounts: accounts.summaries,
-        activeSlot: accounts.activeSlot,
-      );
-      if (!mounted || picked == null) return;
-      await _openMessageDeepLink(request.scopedToAccountSlot(picked));
+      final activeSlot = accounts.activeSlot;
+      final slots = [for (final account in accounts.summaries) account.slot];
+      final withChat = await _slotsWithChat(request.chatId, slots, activeSlot);
+      // The account changed while the probe ran; the request predates it.
+      if (!mounted || accounts.activeSlot != activeSlot) return;
+      final int? slot;
+      if (withChat.contains(activeSlot)) {
+        slot = activeSlot;
+      } else if (request.fromNotification && withChat.isNotEmpty) {
+        slot = withChat.first;
+      } else {
+        slot = await showAccountPickerDialog(
+          context,
+          accounts: accounts.summaries,
+          activeSlot: activeSlot,
+          slotsWithChat: withChat.toSet(),
+        );
+      }
+      if (!mounted || slot == null) return;
+      await _openMessageDeepLink(request.scopedToAccountSlot(slot));
       return;
     }
     if (requestedSlot == null) return;
@@ -602,6 +615,43 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         ),
       );
     });
+  }
+
+  /// The slots, in [slots] order, whose account has [chatId].
+  ///
+  /// `getChat` is answered from the account's local database, so it only
+  /// succeeds for chats that account has seen. The active account is asked
+  /// first; when it has the chat the others are not asked at all.
+  static Future<List<int>> _slotsWithChat(
+    int chatId,
+    List<int> slots,
+    int activeSlot,
+  ) async {
+    Future<bool> hasChat(int slot) async {
+      try {
+        final chat = await TdClient.shared.queryForSlot(
+          {'@type': 'getChat', 'chat_id': chatId},
+          slot,
+          timeout: const Duration(seconds: 3),
+        );
+        return chat.type == 'chat';
+      } catch (_) {
+        return false;
+      }
+    }
+
+    if (slots.contains(activeSlot) && await hasChat(activeSlot)) {
+      return [activeSlot];
+    }
+    final others = [
+      for (final slot in slots)
+        if (slot != activeSlot) slot,
+    ];
+    final found = await Future.wait(others.map(hasChat));
+    return [
+      for (var i = 0; i < others.length; i++)
+        if (found[i]) others[i],
+    ];
   }
 
   void _openDesktopUtility(
