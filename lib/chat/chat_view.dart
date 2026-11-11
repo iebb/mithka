@@ -6944,14 +6944,26 @@ class _ChatViewState extends State<ChatView> {
     bool useAppPageRoute = false,
   }) async {
     final chatTitle = title ?? _vm.peerTitle;
+    // The §1.4 mirror rows act on the OWNING transcript's account, not the
+    // store's active one: a stale pane after an account switch must never
+    // exclude the other account's chat.
+    final accountUserId = allowTelegramTosViolations
+        ? _vm.mirrorAccountUserId
+        : null;
     final Route<int> route = useAppPageRoute
         ? AppPageRoute<int>(
-            pageBuilder: (_, _, _) =>
-                ChatInfoView(chatId: widget.chatId, title: chatTitle),
+            pageBuilder: (_, _, _) => ChatInfoView(
+              chatId: widget.chatId,
+              title: chatTitle,
+              accountUserId: accountUserId,
+            ),
           )
         : MaterialPageRoute<int>(
-            builder: (_) =>
-                ChatInfoView(chatId: widget.chatId, title: chatTitle),
+            builder: (_) => ChatInfoView(
+              chatId: widget.chatId,
+              title: chatTitle,
+              accountUserId: accountUserId,
+            ),
           );
     final messageId = await Navigator.of(context).push<int>(route);
     if (!mounted || messageId == null) return;

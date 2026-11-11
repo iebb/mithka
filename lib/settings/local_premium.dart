@@ -49,8 +49,9 @@ class LocalPremium extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The premium answer for OUR OWN account. Everything else passes the
-  /// real value through untouched.
-  bool premiumForMe(bool serverValue) =>
-      enabled || (isAvailable && serverValue);
+  /// The premium answer for OUR OWN account. The overlay only ever ADDS
+  /// premium: when the switch is off the real server value passes through
+  /// untouched — a non-opted build never downgrades a genuine Premium
+  /// account, it simply has no overlay at all.
+  bool premiumForMe(bool serverValue) => enabled || serverValue;
 }

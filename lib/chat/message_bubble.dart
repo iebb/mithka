@@ -27,6 +27,7 @@ import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
 import '../history/message_history_settings.dart';
 import '../media/media_metadata.dart';
 import '../platform/adaptive_platform.dart';
@@ -1152,6 +1153,7 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
   /// floats at the bubble's bottom-right corner, in the same meta row as
   /// the edited mark and the reply count.
   Widget _maybeGhost(Widget child, bool outgoing) {
+    if (!allowTelegramTosViolations) return child;
     if (message.mirrorEntry == null) return child;
     return Opacity(opacity: 0.55, child: child);
   }

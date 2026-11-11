@@ -780,20 +780,32 @@ class _ProfileViewState extends State<ProfileView> {
               // day/night switch. Compile-time gated: the button (and the
               // page behind it) does not exist in non-opted builds; the
               // runtime sidebar-entry switch (ghost mode settings) hides it
-              // without touching interception.
-              if (allowTelegramTosViolations &&
-                  GhostModeController.shared.showSidebarEntry) ...[
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _root.push(
-                    MaterialPageRoute(
-                      builder: (_) => const GhostModeSettingsView(),
-                    ),
-                  ),
-                  child: _ghostBarItem(context),
+              // without touching interception. The bar listens to the
+              // controller so flipping that switch adds/removes the button
+              // immediately — _ghostBarItem's own builder only repaints the
+              // glyph, it cannot add or remove the slot.
+              if (allowTelegramTosViolations)
+                ListenableBuilder(
+                  listenable: GhostModeController.shared,
+                  builder: (context, _) =>
+                      GhostModeController.shared.showSidebarEntry
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _root.push(
+                                MaterialPageRoute(
+                                  builder: (_) => const GhostModeSettingsView(),
+                                ),
+                              ),
+                              child: _ghostBarItem(context),
+                            ),
+                            const SizedBox(width: 24),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                const SizedBox(width: 24),
-              ],
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => theme.toggleDayNight(Theme.of(context).brightness),

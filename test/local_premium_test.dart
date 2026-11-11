@@ -16,10 +16,9 @@ void main() {
     expect(LocalPremium.shared.enabled, isFalse);
     // Without the switch the real server value passes through.
     expect(LocalPremium.shared.premiumForMe(true), isTrue);
-    expect(
-      LocalPremium.shared.premiumForMe(false),
-      allowTelegramTosViolations ? isFalse : isTrue,
-    );
+    // The overlay only adds: with the switch off the real server value
+    // passes through untouched on every build.
+    expect(LocalPremium.shared.premiumForMe(false), isFalse);
   });
 
   test('enabling unlocks the own-account premium answer', () async {
