@@ -8,6 +8,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart' show FrameRate;
 
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart'; // TDImage
@@ -25,7 +26,11 @@ class StickerPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final file = TdFileRef(id: item.id);
-    if (item.isAnimated) return AnimatedStickerView(file: file);
+    if (item.isAnimated) {
+      // Previews sit in grids of a dozen or more; at this size 30 fps looks
+      // the same and halves the per-frame Lottie work for 60 fps stickers.
+      return AnimatedStickerView(file: file, frameRate: const FrameRate(30));
+    }
     if (item.isVideo) {
       final fallback = item.thumb?.id == item.id ? null : item.thumb;
       if (fallback != null) {

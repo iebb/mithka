@@ -538,7 +538,10 @@ class _PhotoAvatarState extends State<PhotoAvatar> with WidgetsBindingObserver {
     }
     TdFileCenter.shared.pathFor(ref, accountSlot: slot).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
-      if (path != null) setState(() => _file = File(path));
+      // Seeded from the cache above: a second build would paint the same file.
+      if (path != null && _file?.path != path) {
+        setState(() => _file = File(path));
+      }
     });
   }
 
@@ -870,14 +873,22 @@ class _TDImageState extends State<TDImage> {
             setState(() => _progress = progress);
           });
     }
-    if (_file != null || _thumbnailFile != null) {
-      setState(() {
-        _file = null;
-        _thumbnailFile = null;
-      });
-    }
     final thumbnail = ref.thumbnail;
-    if (thumbnail != null && thumbnail.id != ref.id) {
+    final hasThumbnail = thumbnail != null && thumbnail.id != ref.id;
+    // An already-resolved path paints in this very frame. Awaiting pathFor
+    // first costs every recycled list cell a placeholder frame and a second
+    // build, even though the file is known.
+    final cachedPath = TdFileCenter.shared.cachedPath(ref, accountSlot: slot);
+    final cachedThumbnailPath = hasThumbnail
+        ? TdFileCenter.shared.cachedPath(thumbnail, accountSlot: slot)
+        : null;
+    final hadFiles = _file != null || _thumbnailFile != null;
+    _file = cachedPath == null ? null : File(cachedPath);
+    _thumbnailFile = cachedThumbnailPath == null
+        ? null
+        : File(cachedThumbnailPath);
+    if (hadFiles) setState(() {});
+    if (hasThumbnail && cachedPath == null) {
       TdFileCenter.shared.pathFor(thumbnail, accountSlot: slot).then((path) {
         if (!mounted ||
             _loadedId != ref.id ||
@@ -885,13 +896,15 @@ class _TDImageState extends State<TDImage> {
             _loadedSlot != slot) {
           return;
         }
-        if (path != null) setState(() => _thumbnailFile = File(path));
+        if (path != null && _thumbnailFile?.path != path) {
+          setState(() => _thumbnailFile = File(path));
+        }
       });
     }
     TdFileCenter.shared.pathFor(ref, accountSlot: slot).then((path) {
       if (!mounted || _loadedId != ref.id || _loadedSlot != slot) return;
       if (path != null) {
-        setState(() => _file = File(path));
+        if (_file?.path != path) setState(() => _file = File(path));
         return;
       }
       // The bounded resolver expired. Stop painting its last active percent

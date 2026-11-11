@@ -32,6 +32,29 @@ class ChatRowMetrics {
   final double timestampWidth;
   final bool timeBelow;
 
+  // Every row build and every chat-list scroll tick resolves these metrics,
+  // and the strings measured are a tiny set: clock labels, short counters and
+  // one line-height probe. Laying each out once per style keeps text layout
+  // off the scroll path.
+  static final Map<(String, TextStyle, TextScaler, TextDirection), Size>
+  _measureCache = {};
+  static const _measureCacheLimit = 256;
+  static bool _listeningForFontChanges = false;
+
+  static void _rememberMeasure(
+    (String, TextStyle, TextScaler, TextDirection) key,
+    Size size,
+  ) {
+    if (!_listeningForFontChanges) {
+      _listeningForFontChanges = true;
+      // A font that finishes loading changes glyph metrics under an unchanged
+      // TextStyle, so every remembered size is stale.
+      PaintingBinding.instance.systemFonts.addListener(_measureCache.clear);
+    }
+    if (_measureCache.length >= _measureCacheLimit) _measureCache.clear();
+    _measureCache[key] = size;
+  }
+
   static ChatRowMetrics resolve(
     BuildContext context, {
     bool folderTags = false,
@@ -56,23 +79,27 @@ class ChatRowMetrics {
       FontWeight? weight,
       TextScaler? textScaler,
     }) {
+      final style = base.copyWith(
+        fontSize: textScaler == null
+            ? data.systemTextScaler.scale(size * scale)
+            : size,
+        height: height,
+        fontWeight: weight,
+      );
+      final direction = Directionality.of(context);
+      final scaler = textScaler ?? TextScaler.noScaling;
+      final key = (text, style, scaler, direction);
+      final cached = _measureCache[key];
+      if (cached != null) return cached;
       final painter = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: base.copyWith(
-            fontSize: textScaler == null
-                ? data.systemTextScaler.scale(size * scale)
-                : size,
-            height: height,
-            fontWeight: weight,
-          ),
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: textScaler ?? TextScaler.noScaling,
+        text: TextSpan(text: text, style: style),
+        textDirection: direction,
+        textScaler: scaler,
         maxLines: 1,
       )..layout();
       final result = painter.size;
       painter.dispose();
+      _rememberMeasure(key, result);
       return result;
     }
 

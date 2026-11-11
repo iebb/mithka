@@ -484,6 +484,8 @@ class _PollComposerViewState extends State<PollComposerView> {
                 File(option.mediaPath!),
                 width: 38,
                 height: 38,
+                // A picked camera photo is tens of megabytes decoded.
+                cacheWidth: 256,
                 fit: BoxFit.cover,
               ),
             ),
@@ -765,6 +767,7 @@ class _PollComposerViewState extends State<PollComposerView> {
                   File(path),
                   width: 38,
                   height: 38,
+                  cacheWidth: 256,
                   fit: BoxFit.cover,
                 ),
               ),

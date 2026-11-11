@@ -1275,7 +1275,11 @@ class _StoryAuthoringViewState extends State<StoryAuthoringView> {
               image: item.isVideo
                   ? null
                   : DecorationImage(
-                      image: FileImage(File(item.path)),
+                      // A 48pt strip thumbnail of a full-size picked photo.
+                      image: ResizeImage(
+                        FileImage(File(item.path)),
+                        width: 256,
+                      ),
                       fit: BoxFit.cover,
                     ),
             ),

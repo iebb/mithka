@@ -2747,12 +2747,14 @@ class _MomentsComposerHeader extends StatelessWidget {
                       : Stack(
                           fit: StackFit.expand,
                           children: [
-                            ImageFiltered(
-                              imageFilter: ui.ImageFilter.blur(
-                                sigmaX: 28,
-                                sigmaY: 28,
+                            RepaintBoundary(
+                              child: ImageFiltered(
+                                imageFilter: ui.ImageFilter.blur(
+                                  sigmaX: 28,
+                                  sigmaY: 28,
+                                ),
+                                child: TDImage(photo: photo, cornerRadius: 0),
                               ),
-                              child: TDImage(photo: photo, cornerRadius: 0),
                             ),
                             ColoredBox(
                               color: Colors.black.withValues(alpha: 0.18),
@@ -4333,6 +4335,8 @@ class _ChannelPostComposerViewState extends State<ChannelPostComposerView> {
                   File(attachment.path),
                   width: AppMetric.mediaTile,
                   height: AppMetric.mediaTile,
+                  // A picked camera photo is tens of megabytes decoded.
+                  cacheWidth: 512,
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => _postAttachmentIcon(attachment),
                 )

@@ -2348,7 +2348,8 @@ class ChatListViewModel extends ChangeNotifier {
           if (_disposed) return;
           if (supergroup.boolean('is_forum') != true) return;
           _mutate(summary.id, (s) => s.isForum = true);
-          _scheduleResort();
+          // Changes how the row draws, not where it sorts.
+          _scheduleBadgeRefresh();
         })
         .catchError((_) {})
         .whenComplete(() => _resolvingForums.remove(summary.id));
@@ -2993,7 +2994,8 @@ class ChatListViewModel extends ChangeNotifier {
             if (_lastSenderKeys[chatId] != key) continue;
             _setLastSender(name, chatId);
           }
-          _scheduleResort();
+          // A sender name is display-only: no sort key or grouping reads it.
+          _scheduleBadgeRefresh();
         })
         .catchError((_) {
           _resolvingSenders.remove(key);
@@ -3020,7 +3022,7 @@ class ChatListViewModel extends ChangeNotifier {
             if (_lastSenderKeys[chatId] != key) continue;
             _setLastSender(title, chatId);
           }
-          _scheduleResort();
+          _scheduleBadgeRefresh();
         })
         .catchError((_) {
           _resolvingSenders.remove(key);

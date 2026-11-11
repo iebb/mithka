@@ -3289,13 +3289,23 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
               if (widget.thumb != null)
                 Positioned.fill(
                   child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                      child: Transform.scale(
-                        scale: 1.12,
-                        child: Opacity(
-                          opacity: 0.42,
-                          child: TDImage(photo: widget.thumb, cornerRadius: 0),
+                    // Own layer, so the gaussian is not re-recorded each
+                    // time the controls or the video surface repaint.
+                    child: RepaintBoundary(
+                      child: ImageFiltered(
+                        imageFilter: ui.ImageFilter.blur(
+                          sigmaX: 24,
+                          sigmaY: 24,
+                        ),
+                        child: Transform.scale(
+                          scale: 1.12,
+                          child: Opacity(
+                            opacity: 0.42,
+                            child: TDImage(
+                              photo: widget.thumb,
+                              cornerRadius: 0,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -3345,13 +3355,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           if (widget.thumb != null)
             Positioned.fill(
               child: ClipRect(
-                child: ImageFiltered(
-                  imageFilter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                  child: Transform.scale(
-                    scale: 1.14,
-                    child: Opacity(
-                      opacity: 0.46,
-                      child: TDImage(photo: widget.thumb, cornerRadius: 0),
+                child: RepaintBoundary(
+                  child: ImageFiltered(
+                    imageFilter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                    child: Transform.scale(
+                      scale: 1.14,
+                      child: Opacity(
+                        opacity: 0.46,
+                        child: TDImage(photo: widget.thumb, cornerRadius: 0),
+                      ),
                     ),
                   ),
                 ),
