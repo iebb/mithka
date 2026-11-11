@@ -51,9 +51,10 @@ class MithkaXSettingsView extends StatelessWidget {
   }
 }
 
-/// A switch row plus a dimming wrapper: [active] false dims the row to signal
-/// the dependency chain (still tappable so the user can pre-configure, the
-/// effective gating stays in the settings getters).
+/// A switch row plus a dimming wrapper: [active] false dims the row and
+/// stops it answering taps — the setting genuinely cannot change while its
+/// gate is off (the effective gating stays in the settings getters too, so
+/// a stale pref can never leak into recording).
 class _GatedSwitch extends StatelessWidget {
   const _GatedSwitch({
     required this.switchKey,
@@ -77,6 +78,7 @@ class _GatedSwitch extends StatelessWidget {
         key: switchKey,
         title: titleKey.l10n(context),
         value: value,
+        enabled: active,
         onChanged: onChanged,
       ),
     );
