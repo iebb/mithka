@@ -587,25 +587,32 @@ class ImageMediaAlbumBubble extends StatelessWidget {
       ),
     );
     if (!showCompactReplies) return card;
+    // The band's chip language, shared with MessageBubble's corner row:
+    // the reply count hugs the card's own right edge.
+    final bandForeground = outgoing
+        ? outgoingText.withValues(alpha: 0.78)
+        : colors.textSecondary;
+    final bandBackground = outgoing
+        ? outgoingColor.withValues(alpha: 0.82)
+        : colors.card.withValues(alpha: 0.82);
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Padding(padding: const EdgeInsets.only(bottom: 19), child: card),
         Positioned(
-          right: 2,
+          right: 0,
           bottom: 0,
-          child: MessageReplyCountBadge(
-            key: ValueKey('messageCompactReplies-${interactionOwner.id}'),
-            count: interactionOwner.commentCount,
-            foreground: outgoing
-                ? outgoingText.withValues(alpha: 0.78)
-                : colors.textSecondary,
-            background: outgoing
-                ? outgoingColor.withValues(alpha: 0.82)
-                : colors.card.withValues(alpha: 0.82),
-            onTap: onOpenComments == null
-                ? null
-                : () => onOpenComments?.call(interactionOwner),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: MessageReplyCountBadge(
+              key: ValueKey('messageCompactReplies-${interactionOwner.id}'),
+              count: interactionOwner.commentCount,
+              foreground: bandForeground,
+              background: bandBackground,
+              onTap: onOpenComments == null
+                  ? null
+                  : () => onOpenComments?.call(interactionOwner),
+            ),
           ),
         ),
       ],

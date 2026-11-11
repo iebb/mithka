@@ -155,7 +155,7 @@ jobs:
       - name: Verify guarded self-build features against every define state
         run: |
           flutter test test/message_history_gate_test.dart test/ghost_mode_default_test.dart test/ghost_mode_story_viewer_default_test.dart test/guarded_feature_entry_points_test.dart --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
-          flutter test test/message_history_gate_test.dart test/message_history_store_test.dart test/message_history_view_test.dart test/ghost_mode_enabled_test.dart test/ghost_mode_settings_enabled_test.dart test/ghost_mode_story_viewer_enabled_test.dart --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=true --dart-define=EXPECT_TOS_VIOLATIONS=true
+          flutter test test/message_history_gate_test.dart test/message_history_store_test.dart test/message_history_view_test.dart test/message_history_revision_view_test.dart test/ghost_transcript_test.dart test/ghost_mode_enabled_test.dart test/ghost_mode_settings_enabled_test.dart test/ghost_mode_story_viewer_enabled_test.dart --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=true --dart-define=EXPECT_TOS_VIOLATIONS=true
           flutter test test/message_history_gate_test.dart test/ghost_mode_default_test.dart test/ghost_mode_story_viewer_default_test.dart test/guarded_feature_entry_points_test.dart --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=invalid
 
       - name: Verify Telegram API Terms compile-time gate

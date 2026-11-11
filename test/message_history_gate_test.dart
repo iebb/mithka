@@ -15,7 +15,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
+import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/history/message_history_store.dart';
+import 'package:mithka/settings/local_premium.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const enabled = allowTelegramTosViolations;
@@ -27,6 +29,30 @@ void main() {
   });
 
   if (!enabled) {
+    test('flag off: the runtime switches stay inert on saved state', () async {
+      const saved = {
+        'message_history.enable_all': true,
+        'message_history.record_deleted': true,
+        'message_history.render_ghosts': true,
+        'local_premium.enabled': true,
+      };
+      SharedPreferences.setMockInitialValues(saved);
+      final prefs = await SharedPreferences.getInstance();
+      final settings = MessageHistorySettings.shared;
+      settings.initialize(prefs);
+      LocalPremium.shared.initialize(prefs);
+      expect(settings.enableAll, isFalse);
+      expect(settings.recordDeleted, isFalse);
+      expect(settings.renderGhosts, isFalse);
+      expect(LocalPremium.shared.enabled, isFalse);
+      expect(LocalPremium.shared.premiumForMe(true), isTrue);
+      expect(LocalPremium.shared.premiumForMe(false), isFalse);
+      // Mutators refuse and leave the saved keys untouched.
+      settings.setEnableAll(false);
+      LocalPremium.shared.setEnabled(true);
+      expect({for (final key in prefs.getKeys()) key: prefs.get(key)}, saved);
+    });
+
     test(
       'flag off: the mirror is inert and stale saved state has no effect',
       () async {
@@ -108,6 +134,15 @@ void main() {
       store.accountUserIdResolver = _SingleAccountIdentity();
       store.activeClientIdProvider = () => 101;
       addTearDown(store.dispose);
+      // The runtime switches ship OFF; the end-to-end leg opts in first,
+      // the way a user of a self-build would.
+      final settings = MessageHistorySettings.shared;
+      settings.setEnableAll(true);
+      settings.setRecordDeleted(true);
+      addTearDown(() {
+        settings.setEnableAll(false);
+        settings.setRecordDeleted(false);
+      });
       store.initialize(await SharedPreferences.getInstance());
       await store.ensureLoaded();
       store.startObserving();

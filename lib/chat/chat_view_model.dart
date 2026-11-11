@@ -16,8 +16,11 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth/account_store.dart';
 import '../channels/topic_list_actions.dart';
 import '../config/build_flags.dart';
+import '../history/message_history_settings.dart';
+import '../history/message_history_store.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/ghost_mode_controller.dart';
@@ -484,6 +487,11 @@ class _DraftMention {
 /// cannot be read.
 const defaultMessageCaptionLengthLimit = 1024;
 
+/// Slot → owning account identity bridge for the ghost transcript. The
+/// chat view model cannot reach the provider tree, so main injects the
+/// AccountStore lookup; tests inject their own mapping.
+typedef AccountSummaryForSlot = AccountSummary? Function(int slot);
+
 class ChatViewModel extends ChangeNotifier {
   static const int _maximumAiReplyContextMessages = 64;
   static const int _maximumAiReplySearchCharacters = 160;
@@ -500,6 +508,7 @@ class ChatViewModel extends ChangeNotifier {
     ChatFirstContactInfo? sessionFirstContactInfo,
     ChatMessage? seedMessage,
     this.forumTopicId,
+    this.historyStoreOverride,
   }) : _accountClientId = TdClient.shared.activeClientId,
        _accountSlot = TdClient.shared.activeSlot,
        peerTitle = title {
@@ -525,6 +534,10 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   final int chatId;
+
+  /// Store the ghost fold reads (tests inject one; production reads
+  /// [MessageHistoryStore.shared]).
+  final MessageHistoryStore? historyStoreOverride;
 
   /// When set, this transcript shows a single forum topic as an ordinary
   /// chat: history, search, drafts, sends and live updates are scoped to it.
@@ -1284,6 +1297,12 @@ class ChatViewModel extends ChangeNotifier {
     KeywordBlocker.shared.addListener(_applyKeywordFilter);
     HiddenSenderStore.shared.removeListener(_applyKeywordFilter);
     HiddenSenderStore.shared.addListener(_applyKeywordFilter);
+    if (allowTelegramTosViolations) {
+      MessageHistorySettings.shared.removeListener(_onGhostSourceChanged);
+      MessageHistorySettings.shared.addListener(_onGhostSourceChanged);
+      MessageHistoryStore.shared.removeListener(_onGhostSourceChanged);
+      MessageHistoryStore.shared.addListener(_onGhostSourceChanged);
+    }
     () async {
       unawaited(_loadMe());
       unawaited(_loadAiCapabilities());
@@ -1531,6 +1550,10 @@ class ChatViewModel extends ChangeNotifier {
     _sub = null;
     KeywordBlocker.shared.removeListener(_applyKeywordFilter);
     HiddenSenderStore.shared.removeListener(_applyKeywordFilter);
+    if (allowTelegramTosViolations) {
+      MessageHistorySettings.shared.removeListener(_onGhostSourceChanged);
+      MessageHistoryStore.shared.removeListener(_onGhostSourceChanged);
+    }
     _client.send({'@type': 'closeChat', 'chat_id': chatId});
   }
 
@@ -1539,6 +1562,10 @@ class ChatViewModel extends ChangeNotifier {
     _isDisposed = true;
     KeywordBlocker.shared.removeListener(_applyKeywordFilter);
     HiddenSenderStore.shared.removeListener(_applyKeywordFilter);
+    if (allowTelegramTosViolations) {
+      MessageHistorySettings.shared.removeListener(_onGhostSourceChanged);
+      MessageHistoryStore.shared.removeListener(_onGhostSourceChanged);
+    }
     if (_forumTopicIndexListening) {
       ForumTopicIndex.shared.removeListener(_onForumTopicIndexChanged);
       _forumTopicIndexListening = false;
@@ -7402,6 +7429,12 @@ class ChatViewModel extends ChangeNotifier {
         }
         continue;
       }
+      // Reply-to-deleted fill: when the target is not in
+      // the transcript, the local mirror may still hold a kept copy of the
+      // deleted original; its text fills the reply anchor like a quote.
+      if (_applyMirrorReply(m, rid, rChatId)) {
+        continue;
+      }
       final unresolved = unresolvedByChat.putIfAbsent(
         rChatId,
         () => <int, List<ChatMessage>>{},
@@ -7425,6 +7458,86 @@ class ChatViewModel extends ChangeNotifier {
         );
       }
     }
+  }
+
+  /// Fills a reply anchor from the mirror when the quoted message was
+  /// deleted (Telegram §1.4, self-build gated): the kept copy's text,
+  /// sender and date become the quote-style preview. Only used when the
+  /// live transcript does not have the target — a live message always wins.
+  bool _applyMirrorReply(ChatMessage m, int replyId, int replyChatId) {
+    if (!allowTelegramTosViolations) return false;
+    final store = historyStoreOverride ?? MessageHistoryStore.shared;
+    final accountUserId = _accountUserId;
+    if (accountUserId == null) return false;
+    final entry = store.entryFor(accountUserId, replyChatId, replyId);
+    if (entry == null) return false;
+    // Only the plain fallback preview takes the mirror text — a real quote
+    // (replyToQuote, an explicit quote of part of the original) keeps its
+    // own stored excerpt, which stays more truthful than the whole copy.
+    if (m.replyToQuote != null) return true;
+    final body = entry.text.trim().isNotEmpty
+        ? entry.text.trim()
+        : localizedHistoryKindLabelStub(entry.kindKey);
+    m.replyToPreview = body;
+    m.replyToDate = entry.date;
+    if (entry.senderId != 0) {
+      m.replyToSender = _senderCache[entry.senderId]?.name ?? '';
+      if ((m.replyToSender ?? '').isEmpty && entry.senderId > 0) {
+        unawaited(_resolveQuotedSender(m, entry.senderId));
+      }
+    } else {
+      m.replyToSender = isGroup ? '' : peerTitle;
+    }
+    return true;
+  }
+
+  /// The account whose mirror this transcript reads (via
+  /// [accountSummaryProvider]), exposed for surfaces that outlive the view
+  /// model's own lookups (the message info sheet's mirror row).
+  int? get mirrorAccountUserId => _accountUserId;
+
+  /// The mirror's kept copy behind one message addressed by THIS
+  /// transcript, looked up under the slot that owns this transcript — not
+  /// whichever account is currently active. Long-press actions (view
+  /// edits) and the message info sheet read through here, so a stale pane
+  /// after an account switch never shows (or fails to find) another
+  /// account's mirror row. [message] may carry its own chat id (a
+  /// forwarded or quoted target lives in another chat); the transcript's
+  /// chat is the fallback.
+  MessageHistoryEntry? mirrorEntryForMessage(ChatMessage message) {
+    if (!allowTelegramTosViolations) return null;
+    final accountUserId = _accountUserId;
+    if (accountUserId == null) return null;
+    final targetChatId = message.chatId ?? chatId;
+    return (historyStoreOverride ?? MessageHistoryStore.shared).entryFor(
+      accountUserId,
+      targetChatId,
+      message.id,
+    );
+  }
+
+  /// Localized kind label without a BuildContext (AppStrings reads the
+  /// ambient locale); a media-only kept copy shows this instead of its
+  /// empty text. Falls back to the raw suffix when the key is unknown.
+  static String localizedHistoryKindLabelStub(String kindKey) {
+    if (kindKey.isEmpty) return '';
+    final key = switch (kindKey) {
+      'historyKindPhoto' => AppStringKeys.historyKindPhoto,
+      'historyKindVideo' => AppStringKeys.historyKindVideo,
+      'historyKindVideoNote' => AppStringKeys.historyKindVideoNote,
+      'historyKindVoice' => AppStringKeys.historyKindVoice,
+      'historyKindAnimation' => AppStringKeys.historyKindAnimation,
+      'historyKindSticker' => AppStringKeys.historyKindSticker,
+      'historyKindDocument' => AppStringKeys.historyKindDocument,
+      'historyKindAudio' => AppStringKeys.historyKindAudio,
+      'historyKindPoll' => AppStringKeys.historyKindPoll,
+      'historyKindLocation' => AppStringKeys.historyKindLocation,
+      'historyKindContact' => AppStringKeys.historyKindContact,
+      'historyKindDice' => AppStringKeys.historyKindDice,
+      _ => AppStringKeys.historyKindUnknown,
+    };
+    final label = AppStrings.t(key);
+    return label.isEmpty ? kindKey : label;
   }
 
   /// Fetches one batch of reply targets and patches every message waiting on it.
@@ -7598,6 +7711,108 @@ class ChatViewModel extends ChangeNotifier {
     return KeywordBlocker.shared.matches(message.text);
   }
 
+  // ---------------------------------------------------------------------------
+  // Ghost transcript (Telegram §1.4 mirror, self-build gated)
+  // ---------------------------------------------------------------------------
+
+  /// Whether ghost bubbles may render in this transcript. Ghosts are a
+  /// render-only layer: the switches live in settings, the data in the
+  /// mirror store, and neither touches TDLib traffic.
+  bool get _ghostsEnabled =>
+      allowTelegramTosViolations && MessageHistorySettings.shared.renderGhosts;
+
+  /// The owning account's user id for this transcript's slot. Ghost folding
+  /// is sync-only (it runs inside every transcript rebuild), so the id comes
+  /// from the app's cached account summaries via the injected bridge —
+  /// production wires it in main, tests inject their own.
+  int? get _accountUserId => accountSummaryProvider?.call(_accountSlot)?.userId;
+
+  /// Slot → account summary bridge (production: the app's AccountStore).
+  static AccountSummaryForSlot? accountSummaryProvider;
+
+  /// Deleted mirror entries of this chat become in-place ghost bubbles; the
+  /// ids not present in the transcript are the ghosts to fold in. A topic
+  /// transcript folds only its own topic's ghosts.
+  List<MessageHistoryEntry> _ghostEntriesForTranscript() {
+    if (!_ghostsEnabled) return const [];
+    final accountUserId = _accountUserId;
+    if (accountUserId == null) return const [];
+    return (historyStoreOverride ?? MessageHistoryStore.shared)
+        .deletedEntriesFor(accountUserId, chatId, topicId: forumTopicId ?? 0);
+  }
+
+  /// Folds ghost bubbles into the published transcript after every rebuild.
+  /// Ghosts are render-only: they join `messages` (sorted by their original
+  /// message id, so they sit where the message used to be) but never enter
+  /// `_allMessages` or any id index — the id no longer exists on Telegram's
+  /// side, so read states, mentions and merges must not see it.
+  void _foldGhostsIntoTranscript() {
+    if (!_ghostsEnabled) return;
+    final entries = _ghostEntriesForTranscript();
+    final inTranscript = _allMessages.map((m) => m.id).toSet();
+    final accountUserId = _accountUserId;
+    final ghosts = <ChatMessage>[];
+    for (final entry in entries) {
+      if (inTranscript.contains(entry.messageId)) continue;
+      ghosts.add(_ghostChatMessageFor(entry, accountUserId));
+    }
+    if (ghosts.isEmpty) return;
+    messages = mergeChatMessages(messages, ghosts);
+  }
+
+  /// One ghost as a transcript [ChatMessage]. `contentType` marks the ghost
+  /// for the bubble layer; media ghosts carry their snapshot through
+  /// [ChatMessage.mirrorEntry].
+  ChatMessage _ghostChatMessageFor(
+    MessageHistoryEntry entry,
+    int? accountUserId,
+  ) {
+    final senderId = entry.senderId == 0 ? null : entry.senderId;
+    final isOutgoing = accountUserId != null && entry.senderId == accountUserId;
+    return ChatMessage(
+      id: entry.messageId,
+      isOutgoing: isOutgoing,
+      // Media-only kept copies have no text; the localized kind label keeps
+      // the ghost bubble from rendering as an empty shell.
+      text: entry.text.trim().isNotEmpty
+          ? entry.text
+          : localizedHistoryKindLabelStub(entry.kindKey),
+      date: entry.date,
+      chatId: chatId,
+      senderId: senderId,
+      contentType: 'mithkaGhost',
+      // Attribution: a group ghost renders the sender header like any kept
+      // message would; the fold re-runs on every rebuild, so a cached name
+      // lands without waiting for another pass.
+      senderName: isOutgoing
+          ? (meName.trim().isNotEmpty ? meName : null)
+          : _senderCache[senderId]?.name,
+    )..mirrorEntry = entry;
+  }
+
+  /// Test seam: run the transcript rebuild (and with it the ghost fold)
+  /// without driving TDLib.
+  @visibleForTesting
+  void debugRebuildTranscriptForTesting() => _applyKeywordFilter();
+
+  /// Test seam: merge live messages as the update path would.
+  @visibleForTesting
+  void debugMergeMessagesForTesting(List<ChatMessage> incoming) {
+    _merge(incoming);
+    _resolveRepliesIfNeeded(incoming);
+  }
+
+  /// Test seam: ids currently in `_allMessages` (ghosts never join it).
+  @visibleForTesting
+  Iterable<int> debugAllMessageIdsForTesting() => _allMessages.map((m) => m.id);
+
+  /// Settings and mirror flips re-fold the transcript: turning ghosts off
+  /// must remove them, a new deletion must insert one.
+  void _onGhostSourceChanged() {
+    if (_isDisposed) return;
+    _applyKeywordFilter();
+  }
+
   /// Rebuilds `messages` from `_allMessages` and refreshes the lookup indexes.
   ///
   /// One pass does the filtering, the blocked-user marking and the index fill
@@ -7643,6 +7858,7 @@ class ChatViewModel extends ChangeNotifier {
     // is not a total order, so only the pure-id case can be checked.
     assert(_pendingMessageCount > 0 || _isSortedById(_allMessages));
     messages = visible;
+    _foldGhostsIntoTranscript();
     _blockedMessageIds = blockedIds;
     _markBlockedMessagesReadThroughVisibleBoundary(blockedIds);
     notifyListeners();
@@ -7673,6 +7889,25 @@ class ChatViewModel extends ChangeNotifier {
     }
     // Guaranteed by _appendIfStrictlyNewest, so the pending count cannot move.
     assert(!isPendingChatMessage(message));
+    // A revived message (the same id as a folded ghost re-entering the
+    // transcript) must retire its ghost through the full rebuild — the fast
+    // path would leave both the ghost and the live copy on screen.
+    if (_ghostsEnabled) {
+      final accountUserId = _accountUserId;
+      final revivedGhost =
+          accountUserId != null &&
+          (historyStoreOverride ?? MessageHistoryStore.shared)
+              .deletedEntriesFor(
+                accountUserId,
+                chatId,
+                topicId: forumTopicId ?? 0,
+              )
+              .any((entry) => entry.messageId == message.id);
+      if (revivedGhost) {
+        _applyKeywordFilter();
+        return;
+      }
+    }
     _allMessagesById[message.id] = message;
     if (_isBlockedMessage(message)) {
       _blockedMessageIds.add(message.id);
@@ -8175,6 +8410,22 @@ class ChatViewModel extends ChangeNotifier {
         m.senderAccentColorId = info.accentColorId;
         m.senderEmojiStatusId = info.emojiStatusId;
         changed = true;
+      }
+    }
+    // Ghost bubbles never join the id/sender indexes (their ids no longer
+    // exist on Telegram's side), so the loop above cannot reach them. Patch
+    // the folded ghosts of the resolved senders directly — otherwise a group
+    // ghost stays unattributed until the next full transcript rebuild.
+    if (allowTelegramTosViolations) {
+      for (final m in messages) {
+        final entry = m.mirrorEntry;
+        if (entry == null) continue;
+        if (!senders.containsKey(entry.senderId)) continue;
+        final name = senders[entry.senderId]!.name;
+        if (m.senderName != name) {
+          m.senderName = name;
+          changed = true;
+        }
       }
     }
     if (changed) _scheduleCoalescedNotify();

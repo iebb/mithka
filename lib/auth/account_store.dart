@@ -17,6 +17,7 @@ import '../chat/emoji_store.dart';
 import '../config/build_flags.dart';
 import '../history/message_history_store.dart';
 import '../notifications/notification_preferences.dart';
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -61,10 +62,16 @@ class AccountSummary {
 
   /// Telegram Premium, from getMe. Cached with the rest so Premium-only
   /// entries (Business, the emoji status button) are right from the first
-  /// frame instead of appearing once the account answers.
+  /// frame instead of appearing once the account answers. Always the raw
+  /// server value — the local-premium overlay is applied at read time via
+  /// [premiumForView], never baked in.
   final bool isPremium;
   final bool isBotApi;
   final Uri? botApiEndpoint;
+
+  /// The premium answer for display surfaces: the raw server value OR the
+  /// self-build local-premium overlay when it is enabled for this build.
+  bool get premiumForView => LocalPremium.shared.premiumForMe(isPremium);
 
   AccountSummary copyWith({String? avatarPath}) => AccountSummary(
     slot: slot,
@@ -152,6 +159,10 @@ class AccountStore extends ChangeNotifier {
     // its half-created slot can still be cleaned up.
     _pendingSlot = prefs.getInt(_pendingKey);
     _returnSlot = prefs.getInt(_returnKey) ?? 0;
+    // The local-premium overlay changes what every premiumForView/activeIsPremium
+    // reader sees without any getMe round-trip — forward its notifications so
+    // dependents rebuild the moment the switch flips.
+    LocalPremium.shared.addListener(_localPremiumChanged);
     // Refresh the switcher when one of our own accounts changes (e.g. after a
     // name edit) — TDLib emits updateUser for us. Filtered to known self-ids so
     // it doesn't fire for every contact seen in chats.
@@ -231,6 +242,8 @@ class AccountStore extends ChangeNotifier {
   List<AccountSummary> get summaries => _summaries;
   bool get activeIsBotApi => TdClient.shared.isBotApiSlot(_activeSlot);
 
+  void _localPremiumChanged() => notifyListeners();
+
   /// The summary for the active slot, when one has been recorded.
   AccountSummary? get activeSummary {
     for (final summary in _summaries) {
@@ -239,8 +252,20 @@ class AccountStore extends ChangeNotifier {
     return null;
   }
 
-  /// Whether the active account has Telegram Premium, as last seen.
-  bool get activeIsPremium => activeSummary?.isPremium ?? false;
+  /// The summary recorded for a specific slot, when one exists.
+  AccountSummary? summaryForSlot(int slot) {
+    for (final summary in _summaries) {
+      if (summary.slot == slot) return summary;
+    }
+    return null;
+  }
+
+  /// Whether the active account has Telegram Premium, as last seen. The
+  /// self-build local-premium switch (Telegram §1.4) short-circuits this to
+  /// true for our own account when enabled; every consumer reads through
+  /// here so the override applies in one place.
+  bool get activeIsPremium =>
+      LocalPremium.shared.premiumForMe(activeSummary?.isPremium ?? false);
 
   int? get activeUserId => activeSummary?.userId;
 
@@ -419,6 +444,9 @@ class AccountStore extends ChangeNotifier {
         phone: phone,
         avatarPath: avatarFileId == null ? null : cachedAvatar,
         emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
+        // Raw server value. LocalPremium is a display-time overlay — baking
+        // it in here would persist it into the prefs cache and leave Premium
+        // on after the switch turns off until the next getMe.
         isPremium: me.boolean('is_premium') ?? false,
         isBotApi: botApiAccount != null,
         botApiEndpoint: botApiAccount?.endpoint,

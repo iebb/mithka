@@ -54,6 +54,11 @@ class GhostModeSettingsView extends StatelessWidget {
       builder: (context, _) {
         final exceptions = controller.chatExceptions.entries.toList()
           ..sort((a, b) => a.key.compareTo(b.key));
+        // While ghost mode is off the dimensions are inert — interception is
+        // resolved against the global switch — and the exceptions cannot
+        // bite either. The rows dim and stop answering; re-enabling the
+        // master lights them right up with their stored values.
+        final active = controller.globalEnabled;
         return SettingsPageScaffold(
           title: AppStrings.t(AppStringKeys.ghostModeTitle),
           onBack: () => Navigator.of(context).pop(),
@@ -68,6 +73,19 @@ class GhostModeSettingsView extends StatelessWidget {
                     unawaited(controller.setGlobalEnabled(value)),
               ),
               const SettingsNote(text: AppStringKeys.ghostModeDescription),
+              SettingsSwitchRow(
+                key: const ValueKey('ghost-mode-sidebar-entry'),
+                title: AppStringKeys.ghostModeShowSidebarEntry.l10n(context),
+                subtitle: AppStringKeys.ghostModeShowSidebarEntryDescription
+                    .l10n(context),
+                value: controller.showSidebarEntry,
+                leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
+                onChanged: (value) =>
+                    unawaited(controller.setShowSidebarEntry(value)),
+              ),
+              const SettingsNote(
+                text: AppStringKeys.ghostModeShowSidebarEntryDescription,
+              ),
               SettingsSection(
                 titleKey: AppStringKeys.ghostModeTitle,
                 rows: [
@@ -76,6 +94,7 @@ class GhostModeSettingsView extends StatelessWidget {
                     subtitle: AppStringKeys.ghostModeReadReceiptsDescription
                         .l10n(context),
                     value: controller.blockReadReceipts,
+                    enabled: active,
                     onChanged: (value) =>
                         unawaited(controller.setBlockReadReceipts(value)),
                   ),
@@ -85,6 +104,7 @@ class GhostModeSettingsView extends StatelessWidget {
                       context,
                     ),
                     value: controller.blockStoryReads,
+                    enabled: active,
                     onChanged: (value) =>
                         unawaited(controller.setBlockStoryReads(value)),
                   ),
@@ -94,6 +114,7 @@ class GhostModeSettingsView extends StatelessWidget {
                       context,
                     ),
                     value: controller.blockTyping,
+                    enabled: active,
                     onChanged: (value) =>
                         unawaited(controller.setBlockTyping(value)),
                   ),
@@ -103,6 +124,7 @@ class GhostModeSettingsView extends StatelessWidget {
                       context,
                     ),
                     value: controller.hideOnline,
+                    enabled: active,
                     onChanged: (value) =>
                         unawaited(controller.setHideOnline(value)),
                   ),
@@ -116,9 +138,12 @@ class GhostModeSettingsView extends StatelessWidget {
                       key: ValueKey('ghost-exception-${entry.key}'),
                       chatId: entry.key,
                       state: entry.value,
-                      onSelected: (value) => unawaited(
-                        controller.setChatException(entry.key, value),
-                      ),
+                      enabled: active,
+                      onSelected: active
+                          ? (value) => unawaited(
+                              controller.setChatException(entry.key, value),
+                            )
+                          : null,
                     ),
                   SettingsRow(
                     key: const ValueKey('ghost-mode-add-exception'),
@@ -126,7 +151,10 @@ class GhostModeSettingsView extends StatelessWidget {
                       context,
                     ),
                     leading: const SettingsLeadingIcon(icon: HeroAppIcons.plus),
-                    onTap: () => unawaited(_addChatException(context)),
+                    enabled: active,
+                    onTap: active
+                        ? () => unawaited(_addChatException(context))
+                        : null,
                   ),
                   if (exceptions.isEmpty)
                     SettingsRow(
@@ -167,11 +195,13 @@ class _GhostExceptionRow extends StatefulWidget {
     required this.chatId,
     required this.state,
     required this.onSelected,
+    this.enabled = true,
   });
 
   final int chatId;
   final GhostChatException state;
-  final ValueChanged<GhostChatException> onSelected;
+  final FutureOr<void> Function(GhostChatException value)? onSelected;
+  final bool enabled;
 
   @override
   State<_GhostExceptionRow> createState() => _GhostExceptionRowState();
@@ -208,6 +238,7 @@ class _GhostExceptionRowState extends State<_GhostExceptionRow> {
         return SettingsSelectionRow<GhostChatException>(
           title: title == null || title.isEmpty ? '${widget.chatId}' : title,
           value: GhostModeSettingsView._exceptionLabel(context, widget.state),
+          enabled: widget.onSelected != null,
           options: [
             for (final state in GhostChatException.values)
               SettingsSelectionOption(
@@ -217,7 +248,7 @@ class _GhostExceptionRowState extends State<_GhostExceptionRow> {
               ),
           ],
           isSelected: (value) => value == widget.state,
-          onSelected: widget.onSelected,
+          onSelected: widget.onSelected ?? (_) {},
         );
       },
     );

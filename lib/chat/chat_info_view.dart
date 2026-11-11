@@ -19,12 +19,16 @@ import '../app/primary_chat_launcher.dart';
 import '../chats/chat_delete_dialog.dart';
 import '../chats/chat_delete_policy.dart';
 import '../chats/chat_removal_actions.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_store.dart';
+import '../history/message_history_view.dart';
 import '../moments/story_management_view.dart';
 import '../notifications/notification_settings_payload.dart';
 import '../profile/qr_code_view.dart';
@@ -332,11 +336,19 @@ class ChatInfoView extends StatefulWidget {
     required this.chatId,
     required this.title,
     this.showBackButton = true,
+    this.accountUserId,
     @visibleForTesting this.searchChatLauncher,
   });
   final int chatId;
   final String title;
   final bool showBackButton;
+
+  /// The account whose mirror the §1.4 rows act on (Telegram §1.4 feature,
+  /// compile-gated). Null — the common mobile/main-window case — follows the
+  /// store's active account; a desktop utility window passes its pinned
+  /// account so the primary window's account switch cannot redirect the
+  /// exclude/include actions onto the wrong account's mirror.
+  final int? accountUserId;
   @visibleForTesting
   final ChatInfoSearchChatLauncher? searchChatLauncher;
 
@@ -1146,8 +1158,70 @@ class _ChatInfoViewState extends State<ChatInfoView> {
           height: 52,
           leadingInset: 14,
         ),
+        // Telegram §1.4 feature: the kept-message mirror ships only in
+        // opted-in self-builds; this row is the per-chat entry.
+        if (allowTelegramTosViolations) ...[
+          const InsetDivider(leadingInset: 14),
+          SettingsRow(
+            key: const ValueKey('chatInfoKeptMessages'),
+            title: AppStrings.t(AppStringKeys.historyTitle),
+            onTap: () => Navigator.of(context).push(
+              AppPageRoute<void>(
+                pageBuilder: (_, _, _) =>
+                    MessageHistoryView(chatId: widget.chatId),
+              ),
+            ),
+            height: 52,
+            leadingInset: 14,
+          ),
+          // Per-chat recording switch (exclude/re-include without a
+          // unified viewer): off stops recording AND drops this chat's
+          // kept copies, exactly like the viewer's exclude action.
+          const InsetDivider(leadingInset: 14),
+          ListenableBuilder(
+            listenable: MessageHistoryStore.shared,
+            builder: (context, _) {
+              final store = MessageHistoryStore.shared;
+              final accountUserId = widget.accountUserId;
+              final excluded = accountUserId != null
+                  ? store.isChatExcludedFor(accountUserId, widget.chatId)
+                  : store.isChatExcluded(widget.chatId);
+              return SettingsSwitchRow(
+                key: const ValueKey('chatInfoKeepRecording'),
+                title: AppStrings.t(AppStringKeys.chatInfoKeepRecording),
+                value: !excluded,
+                onChanged: (value) => value
+                    ? (accountUserId != null
+                          ? store.includeChatFor(accountUserId, widget.chatId)
+                          : store.includeChat(widget.chatId))
+                    : _confirmStopRecording(),
+                height: 52,
+                leadingInset: 14,
+              );
+            },
+          ),
+        ],
       ],
     );
+  }
+
+  /// Turning recording off deletes this chat's kept copies — confirm first,
+  /// exactly like the viewer's exclude action.
+  Future<void> _confirmStopRecording() async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.chatInfoStopRecordingConfirmTitle),
+      message: AppStrings.t(AppStringKeys.chatInfoStopRecordingConfirmMessage),
+      confirmText: AppStrings.t(AppStringKeys.historyClearAction),
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    final accountUserId = widget.accountUserId;
+    if (accountUserId != null) {
+      MessageHistoryStore.shared.excludeChatFor(accountUserId, widget.chatId);
+    } else {
+      MessageHistoryStore.shared.excludeChat(widget.chatId);
+    }
   }
 
   Future<void> _chooseAutoDelete() async {

@@ -71,6 +71,10 @@ class DesktopNavigationRail extends StatefulWidget {
     this.themeToggleLabel = 'Toggle day or night mode',
     this.darkMode = false,
     this.onToggleThemeMode,
+    this.proxyButton,
+    this.ghostModeLabel,
+    this.ghostModeActive = false,
+    this.onOpenGhostMode,
     this.showAccountPhone = true,
     this.actions = const [],
     this.applicationMenuLabel = 'Menu',
@@ -97,6 +101,15 @@ class DesktopNavigationRail extends StatefulWidget {
   final String themeToggleLabel;
   final bool darkMode;
   final VoidCallback? onToggleThemeMode;
+
+  /// The 代理 shortcut (the drawer sidebar's ProfileProxyButton, re-hosted
+  /// for the rail). Caller owns the widget so the compile-time gate and the
+  /// navigation stay outside this chrome file.
+  final Widget? proxyButton;
+
+  final String? ghostModeLabel;
+  final bool ghostModeActive;
+  final VoidCallback? onOpenGhostMode;
   final bool showAccountPhone;
   final List<DesktopNavigationAction> actions;
   final String applicationMenuLabel;
@@ -262,6 +275,8 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
           if (widget.onSelectAccount != null ||
               widget.onAddAccount != null ||
               widget.onToggleThemeMode != null ||
+              widget.proxyButton != null ||
+              widget.onOpenGhostMode != null ||
               widget.languageOptions.isNotEmpty ||
               widget.applicationMenuPrimaryActions.isNotEmpty ||
               widget.applicationMenuActions.isNotEmpty) ...[
@@ -290,6 +305,22 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
                       darkMode: widget.darkMode,
                       onTap: widget.onToggleThemeMode!,
                     ),
+                  // 代理 and ghost-mode shortcuts sit right after the
+                  // theme toggle, mirroring the drawer sidebar's bottom-bar
+                  // order (代理 → ghost → day/night reads right-to-left as
+                  // night → ghost → 代理 here). Both double as status lights
+                  // (proxy dot / brand-coloured eyeSlash).
+                  if (widget.proxyButton != null)
+                    SizedBox(
+                      height: 42,
+                      child: Center(child: widget.proxyButton),
+                    ),
+                  if (widget.onOpenGhostMode != null)
+                    _DesktopGhostModeButton(
+                      label: widget.ghostModeLabel ?? '',
+                      active: widget.ghostModeActive,
+                      onTap: widget.onOpenGhostMode!,
+                    ),
                   if (widget.applicationMenuPrimaryActions.isNotEmpty ||
                       widget.languageOptions.isNotEmpty ||
                       widget.applicationMenuActions.isNotEmpty)
@@ -303,6 +334,51 @@ class _DesktopNavigationRailState extends State<DesktopNavigationRail> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The rail's ghost-mode shortcut: eyeSlash glyph, brand-coloured while
+/// ghost mode is intercepting. Present only in opted-in builds (the caller
+/// passes the callback behind the compile-time gate).
+class _DesktopGhostModeButton extends StatelessWidget {
+  const _DesktopGhostModeButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SizedBox(
+      key: const ValueKey('desktop-ghost-mode-button'),
+      height: 42,
+      child: Tooltip(
+        message: label,
+        waitDuration: const Duration(milliseconds: 450),
+        child: AppInteractiveSurface(
+          semanticLabel: label,
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Center(
+              child: AppIcon(
+                HeroAppIcons.eyeSlash,
+                key: const ValueKey('desktop-ghost-mode-icon'),
+                size: 19,
+                color: active ? AppTheme.brand : c.textSecondary,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

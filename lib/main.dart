@@ -51,6 +51,7 @@ import 'call/call_manager.dart';
 import 'call/call_overlay_host.dart';
 import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
+import 'chat/chat_view_model.dart';
 import 'chat/gift_tint.dart';
 import 'chat/group_remark_controller.dart';
 import 'chat/link_preview_fixer.dart';
@@ -60,6 +61,7 @@ import 'chats/local_pin_store.dart';
 import 'components/drawer_controller.dart' as dc;
 import 'config/build_flags.dart';
 import 'firebase_options.dart';
+import 'history/message_history_settings.dart';
 import 'history/message_history_store.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
@@ -87,6 +89,7 @@ import 'settings/developer_mode_controller.dart';
 import 'settings/ghost_mode_controller.dart';
 import 'settings/hidden_sender_store.dart';
 import 'settings/keyword_blocker.dart';
+import 'settings/local_premium.dart';
 import 'settings/safety_notice_controller.dart';
 import 'settings/sensitive_content_controller.dart';
 import 'settings/translation_controller.dart';
@@ -273,6 +276,8 @@ Future<void> _bootstrapAndRunApp() async {
   // opted-in self-builds — with the flag off nothing is subscribed, read or
   // written, and old saved state stays inert.
   if (allowTelegramTosViolations) {
+    MessageHistorySettings.shared.initialize(prefs);
+    LocalPremium.shared.initialize(prefs);
     MessageHistoryStore.shared.initialize(prefs);
     unawaited(MessageHistoryStore.shared.ensureLoaded());
     MessageHistoryStore.shared.startObserving();
@@ -500,6 +505,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
+    if (allowTelegramTosViolations) {
+      ChatViewModel.accountSummaryProvider = _accounts.summaryForSlot;
+    }
     WidgetsBinding.instance.addObserver(this);
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
@@ -681,6 +689,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         CountryMessageFilter.shared.initialize(widget.prefs);
         if (allowTelegramTosViolations) {
           GhostModeController.shared.initialize(widget.prefs);
+          MessageHistorySettings.shared.initialize(widget.prefs);
         }
         MusicPlayerController.shared.initialize(widget.prefs);
         BlockedUserService.shared.enabled = nextTheme.hideBlockedUserMessages;

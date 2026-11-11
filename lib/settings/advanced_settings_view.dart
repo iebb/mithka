@@ -6,12 +6,12 @@ import '../chats/local_pin_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
-import '../history/message_history_view.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
-import '../theme/app_motion.dart';
+import '../theme/app_theme.dart';
 import 'bot_api_endpoint_view.dart';
+import 'kept_messages_settings_view.dart';
 import 'rich_message_relay_config.dart';
 import 'rich_message_relay_view.dart';
 import 'transfer_boost_config.dart';
@@ -175,23 +175,28 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
               ),
             ],
           ),
-          // Telegram §1.4 exception: the mirror and its viewer ship only in
-          // opted-in self-builds; with the flag off there is no entry point.
-          if (allowTelegramTosViolations)
-            SettingsSection(
-              titleKey: AppStringKeys.historyTitle,
+          // The kept-message surface (mirror, ghost mode, local premium)
+          // lives as a second-level page: the compile-time gate keeps the
+          // row — and every screen behind it — out of non-opted builds.
+          if (allowTelegramTosViolations) ...[
+            const SizedBox(height: AppSpacing.section),
+            SettingsCard.rows(
               rows: [
                 SettingsRow(
-                  title: AppStringKeys.historySettingsRow,
-                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.clock),
+                  key: const ValueKey('kept-features'),
+                  title: AppStringKeys.keptSettingsTitle.l10n(context),
+                  leading: const SettingsLeadingIcon(
+                    icon: HeroAppIcons.wandMagicSparkles,
+                  ),
                   onTap: () => Navigator.of(context).push(
-                    AppPageRoute<void>(
-                      pageBuilder: (_, _, _) => const MessageHistoryView(),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const KeptMessagesSettingsView(),
                     ),
                   ),
                 ),
               ],
             ),
+          ],
         ],
       ),
     );
