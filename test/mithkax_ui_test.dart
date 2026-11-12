@@ -221,7 +221,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, const AdvancedSettingsView());
-      final entry = find.byKey(const ValueKey('mithkax-features'));
+      final entry = find.byKey(const ValueKey('kept-features'));
       if (!_enabled) {
         expect(entry, findsNothing);
         return;

@@ -111,10 +111,10 @@ void main() {
   testWidgets('local premium knob answers its own tap', (tester) async {
     await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
-      expect(find.byKey(const ValueKey('mithkax-local-premium')), findsNothing);
+      expect(find.byKey(const ValueKey('kept-local-premium')), findsNothing);
       return;
     }
-    final row = find.byKey(const ValueKey('mithkax-local-premium'));
+    final row = find.byKey(const ValueKey('kept-local-premium'));
     await tester.scrollUntilVisible(row, 200);
     expect(row, findsOneWidget);
 
@@ -154,15 +154,15 @@ void main() {
     await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       expect(
-        find.byKey(const ValueKey('mithkax-history-transfer')),
+        find.byKey(const ValueKey('kept-history-transfer')),
         findsNothing,
       );
       return;
     }
-    final transfer = find.byKey(const ValueKey('mithkax-history-transfer'));
+    final transfer = find.byKey(const ValueKey('kept-history-transfer'));
     await tester.scrollUntilVisible(transfer, 300);
     expect(transfer, findsOneWidget);
-    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
+    final badge = find.byKey(const ValueKey('kept-badge-style'));
     await tester.scrollUntilVisible(badge, 300);
     expect(badge, findsOneWidget);
   });
@@ -170,14 +170,14 @@ void main() {
   testWidgets('badge style picker updates the settings store', (tester) async {
     await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
-      expect(find.byKey(const ValueKey('mithkax-badge-style')), findsNothing);
+      expect(find.byKey(const ValueKey('kept-badge-style')), findsNothing);
       return;
     }
-    final badge = find.byKey(const ValueKey('mithkax-badge-style'));
+    final badge = find.byKey(const ValueKey('kept-badge-style'));
     await tester.scrollUntilVisible(badge, 300);
     await tester.tap(badge);
     await tester.pumpAndSettle();
-    final option = find.byKey(const ValueKey('mithkax-badge-style-text'));
+    final option = find.byKey(const ValueKey('kept-badge-style-text'));
     await tester.tap(option);
     await tester.pumpAndSettle();
     expect(MessageHistorySettings.shared.badgeStyle, GhostBadgeStyle.text);
@@ -288,7 +288,7 @@ void main() {
     if (!_enabled) return;
     // Every block is a titled section now; the transfer card must be
     // preceded by a section header, not glued to the switches card.
-    final transfer = find.byKey(const ValueKey('mithkax-history-transfer'));
+    final transfer = find.byKey(const ValueKey('kept-history-transfer'));
     await tester.scrollUntilVisible(transfer, 600);
     expect(transfer, findsOneWidget);
     expect(

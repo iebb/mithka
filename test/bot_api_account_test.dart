@@ -162,7 +162,7 @@ void main() {
     await BotApiAccountRegistry.readToken(account.slot);
 
     expect(operationOptions['write'], operationOptions['read']);
-    expect(operationOptions['write']?['accountName'], 'ad.neko.mithka.bot-api');
+    expect(operationOptions['write']?['accountName'], 'x.empty.mithka.bot-api');
     expect(operationOptions['write']?['accessibility'], 'unlocked');
     expect(operationOptions['write']?['synchronizable'], 'true');
     expect(operationOptions['write'], isNot(contains('groupId')));
