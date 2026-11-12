@@ -555,6 +555,8 @@ class ChatSummary {
     required this.order,
     required this.isMuted,
     this.kind = ChatKind.unknown,
+    this.useDefaultMuteFor = true,
+    this.muteForOverride = 0,
     this.photo,
     this.lastSender,
     this.isPinned = false,
@@ -584,6 +586,16 @@ class ChatSummary {
   int unreadMentionCount;
   int unreadReactionCount;
   int order;
+
+  /// Whether the chat's mute state follows its scope's default. A default-
+  /// following chat has no mute state of its own (TDLib zeroes its
+  /// `mute_for`), so [isMuted] is derived from the scope cache and re-derived
+  /// whenever the scope settings change or load.
+  bool useDefaultMuteFor;
+
+  /// The chat's own `mute_for` override, valid only when
+  /// [useDefaultMuteFor] is false.
+  int muteForOverride;
   bool isMuted;
   ChatKind kind;
   TdFileRef? photo;
@@ -623,6 +635,21 @@ class ChatSummary {
   bool get supportsTopics => isForum || supportsBotTopics;
 
   bool get isBotTopicChat => supportsBotTopics && !isForum;
+
+  /// Re-derives [isMuted] from the stored per-chat override plus the given
+  /// scope-level mute_for. Returns true when the derived value changed.
+  ///
+  /// A default-following chat has no mute state of its own: TDLib zeroes its
+  /// `mute_for` (`DialogNotificationSettings::fix_mute_until`), so the
+  /// effective mute state is the scope's. The scope cache loads after the
+  /// first chat snapshots on a cold start, which is why this is derived, not
+  /// frozen at parse time.
+  bool applyScopeMuteFor(int scopeMuteFor) {
+    final derived = useDefaultMuteFor ? scopeMuteFor > 0 : muteForOverride > 0;
+    if (derived == isMuted) return false;
+    isMuted = derived;
+    return true;
+  }
 
   bool get showsRedUnreadIndicator =>
       (unreadCount > 0 && !isMuted) || isMarkedUnread;
@@ -1633,7 +1660,18 @@ abstract final class TDParse {
       }
     }
 
-    final muted = ScopeNotificationSettings.shared.isMuted(chat);
+    final notificationSettings = chat.obj('notification_settings');
+    final useDefaultMuteFor =
+        notificationSettings?.boolean('use_default_mute_for') ?? true;
+    final muteForOverride = notificationSettings?.integer('mute_for') ?? 0;
+    final muted = useDefaultMuteFor
+        ? ScopeNotificationSettings.shared.getMuteForScope(
+                ScopeNotificationSettings.shared.scopeTagForKind(
+                  chatKind(chat),
+                ),
+              ) >
+              0
+        : muteForOverride > 0;
 
     final type = chat.obj('type');
     return ChatSummary(
@@ -1649,6 +1687,8 @@ abstract final class TDParse {
       order: order,
       isMuted: muted,
       kind: chatKind(chat),
+      useDefaultMuteFor: useDefaultMuteFor,
+      muteForOverride: muteForOverride,
       photo: smallPhoto(chat.obj('photo')),
       isPinned: pinned,
       archiveOrder: archiveOrder,

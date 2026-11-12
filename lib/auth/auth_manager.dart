@@ -385,6 +385,14 @@ class AuthManager extends ChangeNotifier {
         _errorMessage = null;
         _set(const AuthReady());
         if (!_client.activeIsBotApi) {
+          // Fired on cold start AND on every account switch (reloadAuthState
+          // re-enters this state): the scope cache is per-account state, so
+          // re-read it for whichever account just became active.
+          unawaited(
+            ScopeNotificationSettings.shared.load().timeout(
+              const Duration(seconds: 8),
+            ),
+          );
           unawaited(AccountBackupService.shared.backupActiveAccountIfEnabled());
         }
       case 'authorizationStateLoggingOut':

@@ -103,7 +103,12 @@ class ChatListViewModel extends ChangeNotifier {
     @visibleForTesting this._membershipForTesting,
     @visibleForTesting TdClient? clientForTesting,
     this.accountSlot,
-  }) : _client = clientForTesting ?? TdClient.shared;
+  }) : _client = clientForTesting ?? TdClient.shared {
+    // Registered at construction, not onAppear: the scope cache can fill (or
+    // refill after an account switch) before the list first appears, and any
+    // snapshot parsed before that moment may hold a stale mute state.
+    ScopeNotificationSettings.shared.addListener(_handleScopeSettingsChange);
+  }
 
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
@@ -466,6 +471,7 @@ class ChatListViewModel extends ChangeNotifier {
     // Also strands any bulk read whose requests are still in flight.
     _bulkReadGeneration++;
     LocalPinStore.shared.removeListener(_handleLocalPinStoreChange);
+    ScopeNotificationSettings.shared.removeListener(_handleScopeSettingsChange);
     _sub?.cancel();
     _sub = null;
     _resortTimer?.cancel();
@@ -1193,6 +1199,27 @@ class ChatListViewModel extends ChangeNotifier {
     _resort();
   }
 
+  /// Re-derives every row's effective mute state after a scope-settings
+  /// change. Rows painted from a snapshot parsed before the scope cache
+  /// filled (cold start) or before a scope edit hold a stale value; the
+  /// summary's own override is unaffected, so only default-following rows
+  /// move. Mute state feeds row badges but not sort order, so this owes the
+  /// badge refresh, not a resort.
+  void _handleScopeSettingsChange() {
+    if (_disposed) return;
+    final scopes = ScopeNotificationSettings.shared;
+    var changed = false;
+    for (final s in _map.values) {
+      if (s.applyScopeMuteFor(
+        scopes.getMuteForScope(scopes.scopeTagForKind(s.kind)),
+      )) {
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    _refreshBadges();
+  }
+
   /// Chats whose local pin is already known to be obsolete, applied by
   /// [_pruneLocalPins] on its debounce.
   final Set<int> _localPinsToDrop = {};
@@ -1347,7 +1374,13 @@ class ChatListViewModel extends ChangeNotifier {
   void toggleMute(ChatSummary chat) {
     final newValue = !chat.isMuted;
     final id = chat.id;
-    _mutate(id, (summary) => summary.isMuted = newValue);
+    _mutate(id, (summary) {
+      // The toggle always writes an explicit per-chat override (below), so
+      // record it: a later scope change must not flip the row back.
+      summary.useDefaultMuteFor = false;
+      summary.muteForOverride = newValue ? 2147483647 : 0;
+      summary.isMuted = newValue;
+    });
     _refreshBadges();
 
     _client
@@ -1359,7 +1392,11 @@ class ChatListViewModel extends ChangeNotifier {
           ),
         })
         .catchError((Object _) {
-          _mutate(id, (summary) => summary.isMuted = !newValue);
+          _mutate(id, (summary) {
+            summary.useDefaultMuteFor = false;
+            summary.muteForOverride = newValue ? 0 : 2147483647;
+            summary.isMuted = !newValue;
+          });
           notice = AppStrings.t(AppStringKeys.chatDeleteActionsFailed, {
             'value1': AppStrings.t(
               newValue ? AppStringKeys.callMute : AppStringKeys.chatUnmute,
@@ -2054,14 +2091,14 @@ class ChatListViewModel extends ChangeNotifier {
         if (id == null) return;
         _mutate(id, (s) {
           final notificationSettings = update.obj('notification_settings');
-          final useDefault =
-              notificationSettings?.boolean('use_default_mute_for') ?? false;
-          final muteFor = useDefault
-              ? ScopeNotificationSettings.shared.getMuteForScope(
-                  ScopeNotificationSettings.shared.scopeTagForKind(s.kind),
-                )
-              : (notificationSettings?.integer('mute_for') ?? 0);
-          s.isMuted = muteFor > 0;
+          s.useDefaultMuteFor =
+              notificationSettings?.boolean('use_default_mute_for') ?? true;
+          s.muteForOverride = notificationSettings?.integer('mute_for') ?? 0;
+          s.applyScopeMuteFor(
+            ScopeNotificationSettings.shared.getMuteForScope(
+              ScopeNotificationSettings.shared.scopeTagForKind(s.kind),
+            ),
+          );
         });
         _scheduleBadgeRefresh();
 
