@@ -238,6 +238,18 @@ class TdClient {
   static const defaultQueryTimeout = Duration(seconds: 30);
   WebProxyCarriers? _webProxyCarriers;
 
+  /// The version reported to Telegram in `setTdlibParameters` (Settings ›
+  /// Devices shows it). The bootstrap seeds it from the packaged version as
+  /// soon as the platform channel answers; until then the legacy "1.0"
+  /// placeholder keeps a launch that races the read reporting something.
+  static String? Function()? applicationVersionProvider;
+
+  String _applicationVersion() => applicationVersionProvider?.call() ?? '1.0';
+
+  /// Reads [applicationVersionProvider] the way `_sendParameters` does.
+  @visibleForTesting
+  String debugApplicationVersionForTesting() => _applicationVersion();
+
   /// A private instance for tests that exercise the real restore lifecycle
   /// against synthetic bindings instead of tdjson.
   @visibleForTesting
@@ -2160,7 +2172,9 @@ class TdClient {
           Platform.isIOS ? 'iPhone' : 'Android',
         ),
         'system_version': api.resolvedSystemVersion(_safeSystemVersion()),
-        'application_version': api.resolvedApplicationVersion('1.0'),
+        'application_version': api.resolvedApplicationVersion(
+          _applicationVersion(),
+        ),
       }),
     );
     // Ask Telegram's transport for an early server acknowledgement. TDLib
