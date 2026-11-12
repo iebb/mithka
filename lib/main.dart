@@ -221,6 +221,16 @@ Future<void> _bootstrapAndRunApp() async {
   // launch, and nothing below depends on it — the widget tree attaches to
   // AuthManager's stream whenever it is ready.
   final auth = AuthManager()..start();
+  // Seed the version Telegram's Devices screen shows. PackageInfo is a
+  // platform-channel read, so it cannot block the launch: TDLib boots with
+  // the legacy placeholder and every later setTdlibParameters (login, slot
+  // restore, hot restart) carries the real value.
+  unawaited(
+    AppVersion.load().then((version) {
+      TdClient.applicationVersionProvider = () =>
+          version.version.isNotEmpty ? version.version : '1.0';
+    }),
+  );
   registerOhosDartPluginFallbacks();
   _initializeVideoBackend();
   final isMobile = isMobilePlatform;
