@@ -26,7 +26,7 @@ const enabled = allowTelegramTosViolations;
 // runs enabled, so the expectation follows the fork's default when no define
 // is given.
 const expectedEnabled = bool.hasEnvironment('EXPECT_TOS_VIOLATIONS')
-    ? const bool.fromEnvironment('EXPECT_TOS_VIOLATIONS')
+    ? bool.fromEnvironment('EXPECT_TOS_VIOLATIONS')
     : enabled;
 
 void main() {
