@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/external_links.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
@@ -139,6 +140,13 @@ bool linkCanOpenExternally(Uri uri) {
 
 Future<bool> launchInDefaultBrowser(Uri uri) async {
   if (!linkCanOpenExternally(uri)) return false;
+  // Loop guard: once the user lets Mithka open t.me (or picks it for tg://),
+  // a generic VIEW intent for a link Mithka could not open in-app would come
+  // straight back. Target a browser (or another tg:// handler) explicitly.
+  if (externalLaunchMustBypassMithka(uri)) {
+    final opened = await ExternalLinksPlatform.openExternally(uri);
+    if (opened != null) return opened;
+  }
   // Android 11 package visibility can make canLaunchUrl report a false
   // negative. Attempt the launch directly, retaining the established fallback.
   for (final mode in const [

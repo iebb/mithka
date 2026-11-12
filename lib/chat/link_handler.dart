@@ -2828,7 +2828,9 @@ Future<void> _openBrowserLink(
     case LinkOpenTarget.internalBrowser:
       if (!internalBrowserCanOpen(uri) ||
           !internalBrowserSupported(platform: platform)) {
-        await launchInDefaultBrowser(uri);
+        if (!await launchInDefaultBrowser(uri) && context.mounted) {
+          _reportTelegramLaunchFailure(context, uri);
+        }
         return;
       }
       await Navigator.of(context).push<void>(
@@ -2840,6 +2842,18 @@ Future<void> _openBrowserLink(
         ),
       );
     case LinkOpenTarget.defaultBrowser:
-      await launchInDefaultBrowser(uri);
+      if (!await launchInDefaultBrowser(uri) && context.mounted) {
+        _reportTelegramLaunchFailure(context, uri);
+      }
   }
+}
+
+/// A Telegram link that neither Mithka nor any other app could open must not
+/// end as a silent tap. Other links keep their existing silent failure.
+void _reportTelegramLaunchFailure(BuildContext context, Uri uri) {
+  if (normalizeTelegramLink(uri.toString()) == null) return;
+  showToast(
+    context,
+    AppStrings.t(AppStringKeys.linkHandlerOpenTelegramLinkFailed),
+  );
 }

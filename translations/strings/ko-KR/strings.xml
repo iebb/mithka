@@ -2073,6 +2073,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} 텔레그램 스타</string>
     <string name="linkHandlerUnsupportedTelegramLink">이 Telegram 링크 열기는 아직 지원되지 않습니다</string>
     <string name="linkHandlerWritingStyle">글쓰기 스타일</string>
+    <string name="linkLogInToOpen">로그인하면 이 링크를 열 수 있습니다.</string>
+    <string name="linkNotTelegramLink">Mithka에서는 Telegram 링크만 열 수 있습니다.</string>
+    <string name="linkOpenTmeInMithka">t.me 링크를 Mithka에서 열기</string>
+    <string name="linkOpenTmeInMithkaHint">Android 설정에서 t.me를 Mithka로 여는 링크로 추가하세요. Telegram이 설치되어 있다면 먼저 Telegram의 링크 열기를 끄세요.</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="locationDetailFetchingLocation">위치 가져오는 중…</string>
     <string name="locationPickerDragMapToChoose">지도를 드래그해 위치 선택</string>
