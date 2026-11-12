@@ -539,6 +539,8 @@ class ChatInputBar extends StatefulWidget {
     this.quickRepliesEnabled = true,
     this.showCallAction = true,
     this.simpleMode = false,
+    this.initialMediaKind,
+    this.onMediaKindChanged,
     this.onBotTopicCreated,
     this.quickReplyLoader,
     this.quickReplySender,
@@ -581,6 +583,15 @@ class ChatInputBar extends StatefulWidget {
   /// the strip's other tools move into the More panel. The native desktop
   /// composer ignores it.
   final bool simpleMode;
+
+  /// The media panel segment ('emoji'/'sticker'/'gif') the panel should open
+  /// on; chat_view restores the last-used segment from preferences. Null (and
+  /// any unrecognized value) means emoji.
+  final String? initialMediaKind;
+
+  /// Reports every segment switch so the caller can persist the last-used
+  /// segment. Fires only on real changes, never on restore.
+  final ValueChanged<String>? onMediaKindChanged;
   final ValueChanged<int>? onBotTopicCreated;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
@@ -824,6 +835,16 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void initState() {
     super.initState();
+    // The panel reopens on the last-used segment; anything unknown (including
+    // null) keeps the emoji default set on the field above.
+    switch (widget.initialMediaKind) {
+      case 'sticker':
+        _mediaKind = _MediaKind.sticker;
+      case 'gif':
+        _mediaKind = _MediaKind.gif;
+      case 'emoji' || null:
+        _mediaKind = _MediaKind.emoji;
+    }
     WidgetsBinding.instance.addObserver(this);
     _syncedVmState = _renderedVmState;
     _botPlatform =
@@ -1916,6 +1937,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       _mediaKind = kind;
       _stickerPack = stickerPack;
     });
+    widget.onMediaKindChanged?.call(kind.name);
     switch (kind) {
       case _MediaKind.emoji:
         EmojiStore.shared.loadIfNeeded();

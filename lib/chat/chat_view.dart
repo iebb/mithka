@@ -8339,6 +8339,7 @@ class _ChatViewState extends State<ChatView> {
   bool _composerBarQuickRepliesEnabled = false;
   bool _composerBarShowCallAction = false;
   bool _composerBarSimpleMode = false;
+  String? _composerBarMediaKind;
 
   Widget _chatInputBar() {
     final themeController = context.watch<ThemeController>();
@@ -8347,13 +8348,15 @@ class _ChatViewState extends State<ChatView> {
     final quickRepliesEnabled = themeController.quickRepliesEnabled;
     final showCallAction = !_usesWideGroupHeader;
     final simpleMode = themeController.simpleMode;
+    final mediaSegment = themeController.mediaPanelSegment;
     final cached = _composerBarCache;
     if (cached != null &&
         _composerBarRequestInitialFocus == requestInitialFocus &&
         _composerBarEnterToSend == enterToSend &&
         _composerBarQuickRepliesEnabled == quickRepliesEnabled &&
         _composerBarShowCallAction == showCallAction &&
-        _composerBarSimpleMode == simpleMode) {
+        _composerBarSimpleMode == simpleMode &&
+        _composerBarMediaKind == mediaSegment) {
       return cached;
     }
     _composerBarRequestInitialFocus = requestInitialFocus;
@@ -8361,6 +8364,7 @@ class _ChatViewState extends State<ChatView> {
     _composerBarQuickRepliesEnabled = quickRepliesEnabled;
     _composerBarShowCallAction = showCallAction;
     _composerBarSimpleMode = simpleMode;
+    _composerBarMediaKind = mediaSegment;
     return _composerBarCache = ChatInputBar(
       vm: _vm,
       requestInitialFocus: requestInitialFocus,
@@ -8368,6 +8372,8 @@ class _ChatViewState extends State<ChatView> {
       quickRepliesEnabled: quickRepliesEnabled,
       showCallAction: showCallAction,
       simpleMode: simpleMode,
+      initialMediaKind: mediaSegment,
+      onMediaKindChanged: (v) => themeController.mediaPanelSegment = v,
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,

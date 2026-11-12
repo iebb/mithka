@@ -1286,6 +1286,7 @@ class ThemeController extends ChangeNotifier {
   static const _autoRevealRestrictedMediaKey = 'autoRevealRestrictedMedia';
   static const _liquidGlassBottomBarKey = 'liquidGlassBottomBar';
   static const _simpleModeKey = 'simpleMode';
+  static const _mediaPanelSegmentKey = 'mediaPanelSegment';
   static const _showChannelsTabKey = 'showChannelsTab';
   static const _showContactsTabKey = 'showContactsTab';
   static const _showMomentsTabKey = 'showMomentsTab';
@@ -1876,6 +1877,12 @@ class ThemeController extends ChangeNotifier {
   /// Collapses the phone composer to one row and moves its tools into the
   /// More panel. Local presentation pref only; never rewrites other settings.
   bool get simpleMode => _simpleMode;
+
+  /// The composer media panel segment (emoji/sticker/gif) the user last used;
+  /// the panel reopens on it. Silent by design: nothing visual depends on it,
+  /// so a segment switch must not rebuild the app.
+  String get mediaPanelSegment =>
+      _prefs.getString(_mediaPanelSegmentKey) ?? 'emoji';
   bool get showChannelsTab => _showChannelsTab;
   bool get showContactsTab => _showContactsTab;
   bool get showMomentsTab => _showMomentsTab;
@@ -2935,6 +2942,13 @@ class ThemeController extends ChangeNotifier {
     _simpleMode = value;
     _prefs.setBool(_simpleModeKey, value);
     notifyListeners();
+  }
+
+  /// Silent setter: no listener is notified because no widget rebuilds from
+  /// this value — it is read only when the composer cache is (re)built.
+  set mediaPanelSegment(String value) {
+    if (_prefs.getString(_mediaPanelSegmentKey) == value) return;
+    _prefs.setString(_mediaPanelSegmentKey, value);
   }
 
   set showChannelsTab(bool value) {
