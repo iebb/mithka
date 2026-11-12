@@ -7,6 +7,8 @@
 //  one tab per pack. Port of the Swift `EmojiStore`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../config/build_flags.dart';
@@ -31,7 +33,15 @@ class CustomEmojiPack {
 }
 
 class EmojiStore extends ChangeNotifier {
-  EmojiStore._();
+  EmojiStore._() {
+    // Custom-emoji sets are installed server-side too, so the panel's tabs
+    // must follow an install made anywhere — the set page, another device —
+    // the same way StickerStore now does for regular sets.
+    _subscription = TdClient.shared
+        .updatesOf('updateInstalledStickerSets')
+        .listen((update) => invalidate());
+  }
+
   static final EmojiStore shared = EmojiStore._();
 
   bool isPremium = false;
@@ -42,6 +52,8 @@ class EmojiStore extends ChangeNotifier {
   /// it started with, and only that exact value may publish: a newer account's
   /// load, an [invalidate] or a [reset] supersedes whatever came before it.
   int _loadGeneration = 0;
+
+  late final StreamSubscription<Map<String, dynamic>> _subscription;
 
   void reset() {
     // Strand every in-flight load. Its answer describes the account the user
@@ -178,6 +190,12 @@ class EmojiStore extends ChangeNotifier {
       return parseStickers([covers.first]).firstOrNull?.thumb;
     }
     return null;
+  }
+
+  @override
+  void dispose() {
+    unawaited(_subscription.cancel());
+    super.dispose();
   }
 }
 

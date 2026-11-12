@@ -16,10 +16,12 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'custom_emoji.dart'; // parseStickers
+import 'emoji_store.dart';
 import 'sticker_export_service.dart';
 import 'sticker_item.dart';
 import 'sticker_preview.dart';
 import 'sticker_set_studio_view.dart';
+import 'sticker_store.dart';
 
 class StickerSetDetailView extends StatefulWidget {
   const StickerSetDetailView({super.key, required this.setId, this.onClose});
@@ -238,6 +240,11 @@ class _StickerSetDetailViewState extends State<StickerSetDetailView> {
       });
       if (!mounted) return;
       setState(() => _installed = target);
+      // Belt-and-braces: the TDLib update subscription refreshes the
+      // composer stores too, but an explicit invalidate also covers a
+      // swallowed update and keeps this device's own action immediate.
+      StickerStore.shared.invalidate();
+      EmojiStore.shared.invalidate();
       showToast(
         context,
         target
