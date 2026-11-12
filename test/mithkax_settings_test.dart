@@ -153,10 +153,7 @@ void main() {
   testWidgets('the transfer entry and badge style row exist', (tester) async {
     await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
-      expect(
-        find.byKey(const ValueKey('kept-history-transfer')),
-        findsNothing,
-      );
+      expect(find.byKey(const ValueKey('kept-history-transfer')), findsNothing);
       return;
     }
     final transfer = find.byKey(const ValueKey('kept-history-transfer'));
