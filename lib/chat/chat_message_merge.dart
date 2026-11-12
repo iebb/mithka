@@ -55,6 +55,27 @@ bool confirmsOlderHistoryExhausted({required bool onlyLocal}) {
   return !onlyLocal;
 }
 
+/// An empty remote latest page (from the newest message, no offset) for a
+/// window holding no server messages proves the chat has no history yet, so
+/// the window already reaches the latest edge and live messages can join it.
+/// A local-cache miss proves nothing, and anchored or session-restored
+/// windows keep their own latest-edge bookkeeping.
+bool confirmsEmptyChatReachesLatest({
+  required bool onlyLocal,
+  required int fromMessageId,
+  required int offset,
+  required bool anchoredHistory,
+  required bool restoredFromSession,
+  required int windowLatestServerMessageId,
+}) {
+  return !onlyLocal &&
+      fromMessageId == 0 &&
+      offset == 0 &&
+      !anchoredHistory &&
+      !restoredFromSession &&
+      windowLatestServerMessageId <= 0;
+}
+
 /// Chat-list preview / cold local cache often yields a single bubble. Windows
 /// thinner than this must await a remote page before the transcript is marked
 /// ready, otherwise the UI settles on the preview until the user scrolls.

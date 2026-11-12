@@ -6085,6 +6085,20 @@ class ChatViewModel extends ChangeNotifier {
       if (confirmsOlderHistoryExhausted(onlyLocal: onlyLocal)) {
         _hasOlderHistory = false;
       }
+      // An empty remote latest page for an empty window means the chat has
+      // no history yet (an unstarted bot, a new DM, empty Saved Messages).
+      // No gap is possible, so live messages must join the transcript —
+      // mirroring loadLatestHistory's empty result.
+      if (confirmsEmptyChatReachesLatest(
+        onlyLocal: onlyLocal,
+        fromMessageId: fromMessageId,
+        offset: offset,
+        anchoredHistory: anchoredHistory,
+        restoredFromSession: _restoredFromSession,
+        windowLatestServerMessageId: latestServerMessageId(_allMessages),
+      )) {
+        _historyReachesLatest = true;
+      }
       return false;
     }
 
