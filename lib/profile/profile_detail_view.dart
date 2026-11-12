@@ -46,6 +46,7 @@ import '../moments/story_viewer_view.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/blocked_user_service.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -171,7 +172,13 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _phone = TDParse.formatPhone(_rawPhone);
           _photo = TDParse.smallPhoto(user.obj('profile_photo'));
           _isOnline = TDParse.isUserOnline(user);
-          _isPremium = user.boolean('is_premium') ?? false;
+          // Our own profile overlays the self-build local-premium switch;
+          // other users keep the raw server value.
+          _isPremium = _isMe
+              ? LocalPremium.shared.premiumForMe(
+                  user.boolean('is_premium') ?? false,
+                )
+              : user.boolean('is_premium') ?? false;
           _isContact = _isMe || (user.boolean('is_contact') ?? false);
           _isBot = user.obj('type')?.type == 'userTypeBot';
           _isDeleted = TDParse.isDeletedUser(user);

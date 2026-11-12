@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -127,7 +128,9 @@ class ChatFolderTagController extends ChangeNotifier {
   /// Reads Premium entitlement, then adopts the server's setting for a Premium
   /// account and this device's for everyone else.
   Future<void> refresh() async {
-    final isPremium = await _optionBool('is_premium') ?? false;
+    final isPremium = LocalPremium.shared.premiumForMe(
+      await _optionBool('is_premium') ?? false,
+    );
     final enabled = isPremium
         ? (_serverEnabled ?? _preferences?.getBool(preferenceKey) ?? false)
         : _preferences?.getBool(preferenceKey) ?? false;

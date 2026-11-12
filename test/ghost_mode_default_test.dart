@@ -19,6 +19,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// enabled-build counterpart lives in ghost_mode_enabled_test.dart.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  if (allowTelegramTosViolations) {
+    // This file pins the flag-OFF variant; the enabled counterpart lives in
+    // ghost_mode_enabled_test.dart / ghost_mode_story_viewer_enabled_test.dart.
+    return;
+  }
 
   final updates = StreamController<Map<String, dynamic>>.broadcast();
   final requests = <Map<String, dynamic>>[];

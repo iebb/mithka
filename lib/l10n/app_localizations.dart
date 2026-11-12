@@ -5298,6 +5298,55 @@ abstract final class AppStringKeys {
       'storyAuthoringAreaUpgradedGift';
   static const profilePhotoBadgeCurrent = 'profilePhotoBadgeCurrent';
   static const profilePhotoBadgePublic = 'profilePhotoBadgePublic';
+  static const chatInfoKeepRecording = 'chatInfoKeepRecording';
+  static const chatInfoStopRecordingConfirmMessage =
+      'chatInfoStopRecordingConfirmMessage';
+  static const chatInfoStopRecordingConfirmTitle =
+      'chatInfoStopRecordingConfirmTitle';
+  static const ghostModeShowSidebarEntry = 'ghostModeShowSidebarEntry';
+  static const ghostModeShowSidebarEntryDescription =
+      'ghostModeShowSidebarEntryDescription';
+  static const historyBadgeStyleBoth = 'historyBadgeStyleBoth';
+  static const historyBadgeStyleIcon = 'historyBadgeStyleIcon';
+  static const historyBadgeStyleText = 'historyBadgeStyleText';
+  static const historyBadgeStyleTitle = 'historyBadgeStyleTitle';
+  static const historyEnableAll = 'historyEnableAll';
+  static const historyExportAction = 'historyExportAction';
+  static const historyExportSubtitle = 'historyExportSubtitle';
+  static const historyExportedToast = 'historyExportedToast';
+  static const historyImportAction = 'historyImportAction';
+  static const historyImportConfirmMessage = 'historyImportConfirmMessage';
+  static const historyImportConfirmTitle = 'historyImportConfirmTitle';
+  static const historyImportFailedToast = 'historyImportFailedToast';
+  static const historyImportSubtitle = 'historyImportSubtitle';
+  static const historyImportedToast = 'historyImportedToast';
+  static const historyRecordBots = 'historyRecordBots';
+  static const historyRecordChannels = 'historyRecordChannels';
+  static const historyRecordDeleted = 'historyRecordDeleted';
+  static const historyRecordEdits = 'historyRecordEdits';
+  static const historyRecordGroups = 'historyRecordGroups';
+  static const historyRecordNote = 'historyRecordNote';
+  static const historyRecordPrivate = 'historyRecordPrivate';
+  static const historyRecordSection = 'historyRecordSection';
+  static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
+  static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';
+  static const historyRenderGhosts = 'historyRenderGhosts';
+  static const historyRevisionsTitle = 'historyRevisionsTitle';
+  static const historySenderLabel = 'historySenderLabel';
+  static const historySnapshotChannels = 'historySnapshotChannels';
+  static const historySnapshotGroups = 'historySnapshotGroups';
+  static const historySnapshotNote = 'historySnapshotNote';
+  static const historySnapshotPrivate = 'historySnapshotPrivate';
+  static const historySnapshotSection = 'historySnapshotSection';
+  static const historyTransferNote = 'historyTransferNote';
+  static const historyTransferSection = 'historyTransferSection';
+  static const historyTransferTitle = 'historyTransferTitle';
+  static const localPremiumTitle = 'localPremiumTitle';
+  static const keptSettingsTitle = 'keptSettingsTitle';
+  static const keptHistorySection = 'keptHistorySection';
+  static const keptGhostSection = 'keptGhostSection';
+  static const keptPremiumSection = 'keptPremiumSection';
+  static const messageActionViewEdits = 'messageActionViewEdits';
 }
 
 abstract final class AppStrings {

@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/gram_amount.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
+import '../history/message_history_models.dart';
 import 'json_helpers.dart';
 import 'message_gift.dart';
 import 'message_gram_transfer.dart';
@@ -790,6 +791,7 @@ class ChatMessage {
     this.blockedByUser = false,
     this.viaBotUserId,
     this.viaBotUsername,
+    this.mirrorEntry,
   }) : commentThreadMetadataKnown =
            commentThreadMetadataKnown ??
            (hasCommentThread ||
@@ -798,6 +800,13 @@ class ChatMessage {
 
   final int id;
   final bool isOutgoing;
+
+  /// Kept-copy mirror entry when this bubble renders a deleted message
+  /// (ghost transcript, Telegram §1.4 self-build feature). Null for every
+  /// live message. Declared on [ChatMessage] so the bubble layer can render
+  /// the ghost styling and the long-press menu can offer mirror actions
+  /// without a store lookup per bubble.
+  MessageHistoryEntry? mirrorEntry;
   String text;
   final int date;
   int? chatId;

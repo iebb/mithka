@@ -57,16 +57,20 @@ enum MessageAction {
   save(HeroAppIcons.solidStar, AppStringKeys.messageActionFavorite),
   saveSticker(HeroAppIcons.circlePlus, AppStringKeys.imageEditAdd),
   viewStickerSet(HeroAppIcons.tableCells, AppStringKeys.messageActionSticker),
+  viewEdits(HeroAppIcons.clock, AppStringKeys.messageActionViewEdits),
+  removeMirror(HeroAppIcons.trash, AppStringKeys.historyRemoveFromMirrorAction),
   delete(HeroAppIcons.trash, AppStringKeys.chatDelete);
 
   const MessageAction(this.glyph, this.label);
+
   final AppIconData glyph;
   final String label;
 
   bool get isDestructive =>
       this == MessageAction.delete ||
       this == MessageAction.report ||
-      this == MessageAction.block;
+      this == MessageAction.block ||
+      this == MessageAction.removeMirror;
 }
 
 enum MessageActionSource { normal, video }
@@ -324,6 +328,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowSuggestedPostOffer = false,
     this.allowHideSender = false,
     this.allowCopyMessageLink = false,
+    this.allowViewEdits = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -346,6 +351,10 @@ class MessageActionMenu extends StatelessWidget {
 
   /// Offer [MessageAction.copyMessageLink] (server-verified availability).
   final bool allowCopyMessageLink;
+
+  /// Offer [MessageAction.viewEdits]: a kept edit trail exists for this
+  /// message in the local mirror (compile-time gated feature).
+  final bool allowViewEdits;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
@@ -479,7 +488,10 @@ class MessageActionMenu extends StatelessWidget {
     required bool isDesktop,
     required bool isMacOS,
   }) {
-    if (message.isCall) return [MessageAction.delete];
+    // Call logs aren't reactable, but their delivery metadata stays useful.
+    if (message.isCall) {
+      return [MessageAction.delete];
+    }
     final result = <MessageAction>[];
     if (_hasCopyableText) {
       result.add(MessageAction.copy);
@@ -558,6 +570,8 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.viewStickerSet);
     }
     if (allowHideSender) result.add(MessageAction.hideSender);
+    if (allowViewEdits) result.add(MessageAction.viewEdits);
+    if (message.mirrorEntry != null) result.add(MessageAction.removeMirror);
     result.add(MessageAction.delete);
     return result;
   }
