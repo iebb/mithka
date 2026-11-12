@@ -9,6 +9,7 @@ import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/chat/gif_item.dart';
 import 'package:mithka/chat/gif_store.dart';
 import 'package:mithka/chat/message_bubble.dart';
+import 'package:mithka/chat/message_send_options.dart';
 import 'package:mithka/chat/sticker_item.dart';
 import 'package:mithka/chat/sticker_store.dart';
 import 'package:mithka/components/app_icons.dart';
@@ -26,10 +27,16 @@ class _ControlledMediaChatViewModel extends ChatViewModel {
   final gifSend = Completer<bool>();
 
   @override
-  Future<bool> sendSticker(StickerItem sticker) => stickerSend.future;
+  Future<bool> sendSticker(
+    StickerItem sticker, {
+    MessageSendConfiguration? sendConfiguration,
+  }) => stickerSend.future;
 
   @override
-  Future<bool> sendGif(GifItem gif) => gifSend.future;
+  Future<bool> sendGif(
+    GifItem gif, {
+    MessageSendConfiguration? sendConfiguration,
+  }) => gifSend.future;
 }
 
 void main() {
