@@ -2216,6 +2216,16 @@
     <string name="mediaSendPreviewValue1ToValue2">{value1}% to {value2}%</string>
     <string name="mediaSendPreviewVideoPresentation">Video presentation</string>
     <string name="mediaSendPreviewVideoTrimRange">Video trim range</string>
+    <string name="mediaTileSend">Send</string>
+    <string name="mediaTileSendWithoutSound">Send without sound</string>
+    <string name="mediaTileSchedule">Schedule</string>
+    <string name="mediaTileAddToFavorites">Add to Favorites</string>
+    <string name="mediaTileRemoveFromFavorites">Remove from Favorites</string>
+    <string name="mediaTileViewStickerSet">View Sticker Set</string>
+    <string name="mediaTileSaveToGallery">Save to Gallery</string>
+    <string name="mediaTileSaveToFile">Save to File</string>
+    <string name="mediaTileCopySticker">Copy Sticker</string>
+    <string name="mediaTileDeleteFromRecent">Delete from Recent</string>
     <string name="messageActionBlock">Block</string>
     <string name="messageActionBlockKeyword">Block keyword</string>
     <string name="messageActionCopy">Copy</string>

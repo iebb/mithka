@@ -2209,6 +2209,16 @@
     <string name="mediaSendPreviewValue1ToValue2">{value1}% 至 {value2}%</string>
     <string name="mediaSendPreviewVideoPresentation">影片示範</string>
     <string name="mediaSendPreviewVideoTrimRange">影片修剪範圍</string>
+    <string name="mediaTileSend">傳送</string>
+    <string name="mediaTileSendWithoutSound">無聲傳送</string>
+    <string name="mediaTileSchedule">定時傳送</string>
+    <string name="mediaTileAddToFavorites">加入收藏</string>
+    <string name="mediaTileRemoveFromFavorites">取消收藏</string>
+    <string name="mediaTileViewStickerSet">檢視貼圖包</string>
+    <string name="mediaTileSaveToGallery">儲存到相簿</string>
+    <string name="mediaTileSaveToFile">儲存為檔案</string>
+    <string name="mediaTileCopySticker">複製貼圖</string>
+    <string name="mediaTileDeleteFromRecent">從最近刪除</string>
     <string name="messageActionBlock">封鎖</string>
     <string name="messageActionBlockKeyword">封鎖詞</string>
     <string name="messageActionCopy">複製</string>

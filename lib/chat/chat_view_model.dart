@@ -2555,8 +2555,14 @@ class ChatViewModel extends ChangeNotifier {
     });
   }
 
-  Future<bool> sendGif(GifItem gif) async {
+  Future<bool> sendGif(
+    GifItem gif, {
+    MessageSendConfiguration? sendConfiguration,
+  }) async {
     if (!canSendMessages) return false;
+    if (sendConfiguration != null) {
+      useNextSendConfiguration(sendConfiguration);
+    }
     try {
       final stamped = _withReplyAnchor(
         gifSendRequest(chatId: chatId, gif: gif),
@@ -2583,8 +2589,14 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> sendSticker(StickerItem sticker) async {
+  Future<bool> sendSticker(
+    StickerItem sticker, {
+    MessageSendConfiguration? sendConfiguration,
+  }) async {
     if (!canSendMessages) return false;
+    if (sendConfiguration != null) {
+      useNextSendConfiguration(sendConfiguration);
+    }
     try {
       final stamped = _withReplyAnchor(stickerMessageRequest(sticker));
       final pendingMessage = await _client.query(stamped.request);
@@ -3499,6 +3511,35 @@ class ChatViewModel extends ChangeNotifier {
     _client.send({
       '@type': 'addFavoriteSticker',
       'sticker': {'@type': 'inputFileId', 'id': fileId},
+    });
+  }
+
+  void removeFavoriteSticker(int fileId) {
+    _client.send({
+      '@type': 'removeFavoriteSticker',
+      'sticker': {'@type': 'inputFileId', 'id': fileId},
+    });
+  }
+
+  void removeRecentSticker(int fileId) {
+    _client.send({
+      '@type': 'removeRecentSticker',
+      'is_attached': false,
+      'sticker': {'@type': 'inputFileId', 'id': fileId},
+    });
+  }
+
+  void addSavedAnimation(GifItem gif) {
+    _client.send({
+      '@type': 'addSavedAnimation',
+      'animation': {'@type': 'inputFileId', 'id': gif.id},
+    });
+  }
+
+  void removeSavedAnimation(GifItem gif) {
+    _client.send({
+      '@type': 'removeSavedAnimation',
+      'animation': {'@type': 'inputFileId', 'id': gif.id},
     });
   }
 
