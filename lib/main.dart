@@ -52,6 +52,7 @@ import 'call/call_overlay_host.dart';
 import 'chat/animated_sticker_view.dart';
 import 'chat/chat_view.dart';
 import 'chat/chat_view_model.dart';
+import 'chat/favorite_sticker_store.dart';
 import 'chat/gift_tint.dart';
 import 'chat/group_remark_controller.dart';
 import 'chat/link_preview_fixer.dart';
@@ -296,6 +297,8 @@ Future<void> _bootstrapAndRunApp() async {
   // preferences; the store is inert (and reads nothing) until its switch is
   // turned on.
   LocalPinStore.shared.initialize(prefs);
+  // Same shape for sticker favorites beyond the server cap.
+  FavoriteStickerStore.shared.initialize(prefs);
   // Preload Telegram blocked-user list so chat filters have data right away.
   unawaited(BlockedUserService.shared.loadBlockedUsers());
   // Firebase + analytics + Sentry tags are several platform-channel round
@@ -593,6 +596,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   void _handleActiveAccountChange() {
     MusicPlayerController.shared.setActiveAccountSlot(_accounts.activeSlot);
     _groupRemarks.setActiveAccountUserId(_accounts.activeUserId);
+    FavoriteStickerStore.shared.setActiveAccountUserId(_accounts.activeUserId);
     unawaited(_folderTags.refresh());
     _theme.setActiveAccountSlot(
       _accounts.activeSlot,

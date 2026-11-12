@@ -411,6 +411,9 @@ abstract final class AppStringKeys {
   static const advancedInput = 'advancedInput';
   static const advancedNetwork = 'advancedNetwork';
   static const advancedTitle = 'advancedTitle';
+  static const advancedUnlimitedFavorites = 'advancedUnlimitedFavorites';
+  static const advancedUnlimitedFavoritesAbout =
+      'advancedUnlimitedFavoritesAbout';
   static const historyChatLabel = 'historyChatLabel';
   static const historyClearedToast = 'historyClearedToast';
   static const historyClearAction = 'historyClearAction';

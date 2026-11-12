@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../chat/favorite_sticker_store.dart';
 import '../chats/local_pin_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
@@ -40,11 +41,13 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
     _refreshTransferBoostStatus();
     _refreshBotApiEndpoint();
     LocalPinStore.shared.addListener(_handleLocalPinStoreChanged);
+    FavoriteStickerStore.shared.addListener(_handleLocalPinStoreChanged);
     unawaited(_refreshServerPinLimit());
   }
 
   @override
   void dispose() {
+    FavoriteStickerStore.shared.removeListener(_handleLocalPinStoreChanged);
     LocalPinStore.shared.removeListener(_handleLocalPinStoreChanged);
     super.dispose();
   }
@@ -172,6 +175,17 @@ class _AdvancedSettingsViewState extends State<AdvancedSettingsView> {
                 ),
                 value: LocalPinStore.shared.unlimitedEnabled,
                 onChanged: (value) => unawaited(_setUnlimitedLocalPins(value)),
+              ),
+              SettingsSwitchRow(
+                key: const ValueKey('fave-stickers-unlimited'),
+                title: AppStringKeys.advancedUnlimitedFavorites.l10n(context),
+                subtitle: AppStringKeys.advancedUnlimitedFavoritesAbout.l10n(
+                  context,
+                ),
+                value: FavoriteStickerStore.shared.unlimitedEnabled,
+                onChanged: (value) => unawaited(
+                  FavoriteStickerStore.shared.setUnlimitedEnabled(value),
+                ),
               ),
             ],
           ),
