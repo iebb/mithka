@@ -34,7 +34,7 @@ class AboutView extends StatefulWidget {
 class _AboutViewState extends State<AboutView> {
   static const _websiteUrl = 'https://mithka.ieb.app';
   static const _channelUrl = 'https://t.me/mithka';
-  static const _githubUrl = 'https://github.com/iebb/mithka';
+  static const _githubUrl = 'https://github.com/TiaraBasori/MithkaX';
   late final Future<AppVersion> _versionFuture = AppVersion.load();
   int _versionTapCount = 0;
   DateTime? _lastVersionTapAt;
@@ -198,7 +198,7 @@ class _AboutViewState extends State<AboutView> {
               SettingsRow(
                 leading: const SettingsLeadingIcon(icon: HeroAppIcons.code),
                 title: 'GitHub',
-                value: 'github.com/iebb/mithka',
+                value: 'github.com/TiaraBasori/MithkaX',
                 onTap: () => openLink(context, _githubUrl),
               ),
             ],

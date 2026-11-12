@@ -69,6 +69,7 @@ ALLOWED_VISIBLE_VALUES = {
     "· · ·",
     "\\u00B7 \\u00B7 \\u00B7",
     "github.com/iebb/mithka",
+    "github.com/TiaraBasori/MithkaX",
     "ieb",
     "mithka.ieb.app",
     "t.me/mithka",
