@@ -281,8 +281,10 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     final canManageProfile =
         widget.accountReady && activeAccount?.isBotApi != true;
     // Emoji statuses are a Premium feature; without it the button could only
-    // open a picker that fails on every choice.
-    final canSetStatus = canManageProfile && activeAccount?.isPremium == true;
+    // open a picker that fails on every choice. premiumForView (not the raw
+    // field) so the self-build local-premium switch unlocks the button too.
+    final canSetStatus =
+        canManageProfile && (activeAccount?.premiumForView ?? false);
     final statusId = activeAccount?.emojiStatusId ?? 0;
     final statusMode = context
         .watch<ThemeController?>()

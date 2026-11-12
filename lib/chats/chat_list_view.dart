@@ -49,6 +49,7 @@ import '../security/local_app_lock_controller.dart';
 import '../settings/chat_folder_management_view.dart';
 import '../settings/chat_folder_service.dart';
 import '../settings/edit_field_view.dart';
+import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -1368,7 +1369,9 @@ class _ChatListViewState extends State<ChatListView>
           _meStatusId = TDParse.emojiStatusCustomEmojiId(
             me.obj('emoji_status'),
           );
-          _meIsPremium = me.boolean('is_premium') ?? false;
+          _meIsPremium = LocalPremium.shared.premiumForMe(
+            me.boolean('is_premium') ?? false,
+          );
           _meId = me.int64('id');
           _model.meId = _meId;
         });

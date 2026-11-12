@@ -55,8 +55,10 @@ import '../settings/country_message_filter.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../settings/developer_mode_controller.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/ghost_mode_controller.dart';
 import '../settings/hidden_sender_store.dart';
 import '../settings/keyword_blocker.dart';
+import '../settings/local_premium.dart';
 import '../settings/rich_message_relay_config.dart';
 import '../settings/safety_notice_controller.dart';
 import '../settings/sensitive_content_controller.dart';
@@ -240,6 +242,12 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
     if (allowTelegramTosViolations) {
       MessageHistorySettings.shared.initialize(widget.prefs);
       MessageHistoryStore.shared.initialize(widget.prefs);
+      // The settings window reaches the kept-messages hub (ghost mode, local
+      // premium) and the edit-profile window reads premium surfaces — both
+      // controllers default to inert without their prefs, so a toggle there
+      // would read wrong and write nothing.
+      GhostModeController.shared.initialize(widget.prefs);
+      LocalPremium.shared.initialize(widget.prefs);
     }
     _autoDownload.initialize(widget.prefs);
     _notificationPreferences.initialize(widget.prefs);
