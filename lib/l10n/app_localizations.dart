@@ -4047,6 +4047,16 @@ abstract final class AppStringKeys {
       'mediaSendPreviewVideoPresentation';
   static const mediaSendPreviewVideoTrimRange =
       'mediaSendPreviewVideoTrimRange';
+  static const mediaTileSend = 'mediaTileSend';
+  static const mediaTileSendWithoutSound = 'mediaTileSendWithoutSound';
+  static const mediaTileSchedule = 'mediaTileSchedule';
+  static const mediaTileAddToFavorites = 'mediaTileAddToFavorites';
+  static const mediaTileRemoveFromFavorites = 'mediaTileRemoveFromFavorites';
+  static const mediaTileViewStickerSet = 'mediaTileViewStickerSet';
+  static const mediaTileSaveToGallery = 'mediaTileSaveToGallery';
+  static const mediaTileSaveToFile = 'mediaTileSaveToFile';
+  static const mediaTileCopySticker = 'mediaTileCopySticker';
+  static const mediaTileDeleteFromRecent = 'mediaTileDeleteFromRecent';
   static const messageBubbleAISummary = 'messageBubbleAISummary';
   static const messageBubbleSummarize = 'messageBubbleSummarize';
   static const messageBubbleSummarizingPrivatelyWithTelegram =

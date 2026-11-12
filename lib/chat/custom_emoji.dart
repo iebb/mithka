@@ -50,6 +50,7 @@ List<StickerItem> parseStickers(List<Map<String, dynamic>>? array) {
         isVideo: isVideo,
         thumb: thumb,
         customEmojiId: sticker.obj('full_type')?.int64('custom_emoji_id') ?? 0,
+        setId: sticker.int64('set_id') ?? 0,
       ),
     );
   }

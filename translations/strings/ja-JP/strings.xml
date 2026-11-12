@@ -2211,6 +2211,16 @@
     <string name="mediaSendPreviewValue1ToValue2">{value1}% ～ {value2}%</string>
     <string name="mediaSendPreviewVideoPresentation">ビデオプレゼンテーション</string>
     <string name="mediaSendPreviewVideoTrimRange">ビデオトリム範囲</string>
+    <string name="mediaTileSend">送信</string>
+    <string name="mediaTileSendWithoutSound">サウンドなしで送信</string>
+    <string name="mediaTileSchedule">日時を指定して送信</string>
+    <string name="mediaTileAddToFavorites">お気に入りに追加</string>
+    <string name="mediaTileRemoveFromFavorites">お気に入りから削除</string>
+    <string name="mediaTileViewStickerSet">ステッカーセットを表示</string>
+    <string name="mediaTileSaveToGallery">ギャラリーに保存</string>
+    <string name="mediaTileSaveToFile">ファイルとして保存</string>
+    <string name="mediaTileCopySticker">ステッカーをコピー</string>
+    <string name="mediaTileDeleteFromRecent">最近の使用から削除</string>
     <string name="messageActionBlock">ブロック</string>
     <string name="messageActionBlockKeyword">語句をブロック</string>
     <string name="messageActionCopy">コピー</string>

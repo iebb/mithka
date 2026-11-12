@@ -2218,6 +2218,16 @@
     <string name="mediaSendPreviewValue1ToValue2">{value1}% à {value2}%</string>
     <string name="mediaSendPreviewVideoPresentation">Présentation vidéo</string>
     <string name="mediaSendPreviewVideoTrimRange">Plage de découpe vidéo</string>
+    <string name="mediaTileSend">Envoyer</string>
+    <string name="mediaTileSendWithoutSound">Envoyer sans son</string>
+    <string name="mediaTileSchedule">Programmer</string>
+    <string name="mediaTileAddToFavorites">Ajouter aux favoris</string>
+    <string name="mediaTileRemoveFromFavorites">Retirer des favoris</string>
+    <string name="mediaTileViewStickerSet">Voir le pack de stickers</string>
+    <string name="mediaTileSaveToGallery">Enregistrer dans la galerie</string>
+    <string name="mediaTileSaveToFile">Enregistrer dans un fichier</string>
+    <string name="mediaTileCopySticker">Copier le sticker</string>
+    <string name="mediaTileDeleteFromRecent">Supprimer des récents</string>
     <string name="messageActionBlock">Bloquer</string>
     <string name="messageActionBlockKeyword">Bloquer mot</string>
     <string name="messageActionCopy">Copier</string>

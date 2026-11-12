@@ -2211,6 +2211,16 @@
     <string name="mediaSendPreviewValue1ToValue2">{value1}% ~ {value2}%</string>
     <string name="mediaSendPreviewVideoPresentation">비디오 프레젠테이션</string>
     <string name="mediaSendPreviewVideoTrimRange">비디오 트림 범위</string>
+    <string name="mediaTileSend">보내기</string>
+    <string name="mediaTileSendWithoutSound">소리 없이 보내기</string>
+    <string name="mediaTileSchedule">예약 전송</string>
+    <string name="mediaTileAddToFavorites">즐겨찾기에 추가</string>
+    <string name="mediaTileRemoveFromFavorites">즐겨찾기에서 제거</string>
+    <string name="mediaTileViewStickerSet">스티커 세트 보기</string>
+    <string name="mediaTileSaveToGallery">갤러리에 저장</string>
+    <string name="mediaTileSaveToFile">파일로 저장</string>
+    <string name="mediaTileCopySticker">스티커 복사</string>
+    <string name="mediaTileDeleteFromRecent">최근 항목에서 삭제</string>
     <string name="messageActionBlock">차단</string>
     <string name="messageActionBlockKeyword">키워드 차단</string>
     <string name="messageActionCopy">복사</string>
