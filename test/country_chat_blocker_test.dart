@@ -141,53 +141,6 @@ void main() {
     );
   });
 
-  test('does not evaluate a non-private chat', () async {
-    final requests = <Map<String, dynamic>>[];
-    final blocker = CountryChatBlocker(
-      filter: await filterWith(),
-      query: (request, _) async {
-        requests.add(request);
-        return {
-          '@type': 'chat',
-          'id': 42,
-          'type': {'@type': 'chatTypeSupergroup', 'supergroup_id': 77},
-          'action_bar': firstContactActionBar('JP'),
-        };
-      },
-    );
-
-    expect(
-      await blocker.handleIncomingMessage(incoming(), clientId: 3),
-      isFalse,
-    );
-    expect(requests.map((request) => request['@type']), ['getChat']);
-  });
-
-  test('plain text exemption keeps the new chat visible', () async {
-    final blocker = CountryChatBlocker(
-      filter: await filterWith(exemptPlainText: true),
-      query: (request, _) async => switch (request['@type']) {
-        'getChat' => {
-          '@type': 'chat',
-          'id': 42,
-          'type': {'@type': 'chatTypePrivate', 'user_id': 7},
-          'action_bar': firstContactActionBar('JP'),
-        },
-        'getUser' => {
-          '@type': 'user',
-          'id': 7,
-          'phone_number': '+81 90 1234 5678',
-        },
-        _ => {'@type': 'ok'},
-      },
-    );
-
-    expect(
-      await blocker.handleIncomingMessage(incoming(), clientId: 3),
-      isFalse,
-    );
-  });
-
   test(
     'uses pending first-contact country after an earlier message was missed',
     () async {

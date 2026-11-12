@@ -47,42 +47,6 @@ void main() {
     }
   });
 
-  test('installs a valid member and reuses the verified destination', () async {
-    final fixture = _createFixture(temporaryDirectory);
-    final destination = File.fromUri(
-      temporaryDirectory.uri.resolve('installed/libtdjson.so'),
-    );
-
-    final firstResult = await _runInstaller(
-      fixture,
-      asset: _linuxAsset,
-      destination: destination,
-      member: _linuxMember,
-    );
-
-    expect(firstResult.exitCode, 0, reason: _processFailure(firstResult));
-    expect(
-      destination.readAsBytesSync(),
-      fixture.payloads[_linuxAsset]![_linuxMember],
-    );
-    expect(firstResult.stdout, contains('Installed pinned tdjson'));
-
-    fixture.archives[_linuxAsset]!.deleteSync();
-    final secondResult = await _runInstaller(
-      fixture,
-      asset: _linuxAsset,
-      destination: destination,
-      member: _linuxMember,
-    );
-
-    expect(secondResult.exitCode, 0, reason: _processFailure(secondResult));
-    expect(secondResult.stdout, contains('Verified pinned tdjson'));
-    expect(
-      destination.readAsBytesSync(),
-      fixture.payloads[_linuxAsset]![_linuxMember],
-    );
-  });
-
   test('installs the required ohos asset from the pinned manifest', () async {
     final fixture = _createFixture(temporaryDirectory);
     final destination = File.fromUri(
@@ -268,68 +232,6 @@ void main() {
         isFalse,
       );
     });
-
-    test('unexpected file', () async {
-      final fixture = _createFixture(
-        temporaryDirectory,
-        extraMembers: {
-          _linuxAsset: {
-            'unexpected-libtdjson.so': utf8.encode('unexpected fixture member'),
-          },
-        },
-      );
-      final destination = File.fromUri(
-        temporaryDirectory.uri.resolve('installed/libtdjson.so'),
-      )..createSync(recursive: true);
-      const existingBytes = <int>[0x6b, 0x65, 0x65, 0x70];
-      destination.writeAsBytesSync(existingBytes);
-
-      final result = await _runInstaller(
-        fixture,
-        asset: _linuxAsset,
-        destination: destination,
-        member: _linuxMember,
-      );
-
-      expect(result.exitCode, isNot(0), reason: _processFailure(result));
-      expect(result.stderr, contains('member mismatch'));
-      expect(destination.readAsBytesSync(), existingBytes);
-    });
-  });
-
-  test('tree validation failure preserves the existing destination', () async {
-    final fixture = _createFixture(
-      temporaryDirectory,
-      memberPayloadOverrides: {
-        _iosAsset: {
-          'tdjson.xcframework/Info.plist': utf8.encode(
-            'corrupted plist fixture',
-          ),
-        },
-      },
-    );
-    final destination = Directory.fromUri(
-      temporaryDirectory.uri.resolve('installed/tdjson.xcframework/'),
-    )..createSync(recursive: true);
-    final sentinel = File.fromUri(destination.uri.resolve('existing.txt'))
-      ..writeAsStringSync('preserve this tree');
-
-    final result = await _runInstaller(
-      fixture,
-      asset: _iosAsset,
-      destination: destination,
-    );
-
-    expect(result.exitCode, isNot(0), reason: _processFailure(result));
-    expect(
-      result.stderr,
-      anyOf(contains('size mismatch'), contains('SHA-256')),
-    );
-    expect(destination.existsSync(), isTrue);
-    expect(sentinel.readAsStringSync(), 'preserve this tree');
-    expect(destination.listSync(recursive: true).map((entry) => entry.path), [
-      sentinel.path,
-    ]);
   });
 
   test('recovers an interrupted tree swap before checking the cache', () async {

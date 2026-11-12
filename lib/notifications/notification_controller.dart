@@ -1237,6 +1237,7 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       messageId: target.messageId,
       accountUserId: target.accountUserId,
       accountSlot: target.accountSlot,
+      fromNotification: true,
     );
   }
 

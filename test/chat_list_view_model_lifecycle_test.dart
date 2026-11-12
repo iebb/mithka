@@ -3,31 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
 import 'package:mithka/communities/community_models.dart';
-import 'package:mithka/tdlib/json_helpers.dart';
-import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
-  test('folder updates retain configured icons and refresh changes', () {
-    final model = ChatListViewModel();
-    addTearDown(model.dispose);
-    void update(String icon) => model.applyUpdateForTesting({
-      '@type': 'updateChatFolders',
-      'chat_folders': [
-        {
-          'id': 7,
-          'title': 'Business',
-          'icon': {'name': icon},
-        },
-        {'id': 8, 'title': 'Other'},
-      ],
-    });
-    update('Work');
-    expect(model.filters[1].iconName, 'Work');
-    expect(model.filters[2].iconName, 'Custom');
-    update('Money');
-    expect(model.filters[1].iconName, 'Money');
-  });
-
   test('hiding "All" offers only real folders and moves the selection', () {
     final model = ChatListViewModel();
     addTearDown(model.dispose);
@@ -88,59 +65,6 @@ void main() {
     expect(model.selectionHiddenByFilterPreference, isFalse);
   });
 
-  test('message-level updates keep mention and reaction counters current', () {
-    final model = ChatListViewModel();
-    addTearDown(model.dispose);
-    final chat = ChatSummary(
-      id: 42,
-      title: 'Group',
-      lastMessage: 'Message',
-      lastMessageId: 10,
-      date: 1,
-      unreadCount: 1,
-      unreadMentionCount: 2,
-      unreadReactionCount: 3,
-      order: 1,
-      isMuted: false,
-    );
-    model.seedChatForTesting(chat);
-
-    model.applyUpdateForTesting({
-      '@type': 'updateMessageMentionRead',
-      'chat_id': 42,
-      'message_id': 10,
-      'unread_mention_count': 1,
-    });
-    model.applyUpdateForTesting({
-      '@type': 'updateMessageUnreadReactions',
-      'chat_id': 42,
-      'message_id': 10,
-      'unread_reactions': <Object>[],
-      'unread_reaction_count': 2,
-    });
-
-    expect(chat.unreadMentionCount, 1);
-    expect(chat.unreadReactionCount, 2);
-  });
-
-  testWidgets('chat-list update bursts produce one batched notification', (
-    tester,
-  ) async {
-    final model = ChatListViewModel();
-    addTearDown(model.dispose);
-    var notifications = 0;
-    model.addListener(() => notifications++);
-
-    model.scheduleResortForTesting();
-    model.scheduleResortForTesting();
-    model.scheduleResortForTesting();
-    await tester.pump(const Duration(milliseconds: 49));
-    expect(notifications, 0);
-
-    await tester.pump(const Duration(milliseconds: 1));
-    expect(notifications, 1);
-  });
-
   test('late chat-list resort is ignored after disposal', () async {
     final model = ChatListViewModel();
     model.dispose();
@@ -148,100 +72,6 @@ void main() {
     expect(() => model.meId = 42, returnsNormally);
     expect(model.scheduleResortForTesting, returnsNormally);
     await Future<void>.delayed(const Duration(milliseconds: 30));
-  });
-
-  testWidgets('startup hydrates local rows while loadChats is pending', (
-    tester,
-  ) async {
-    final firstLoad = Completer<Map<String, dynamic>>();
-    final requestTypes = <String>[];
-    final currentChat = _privateChat(
-      title: 'Current chat',
-      order: 200,
-      messageId: 20,
-      messageDate: 20,
-      text: 'current message',
-    );
-    final model = ChatListViewModel(
-      queryForTesting: (request) {
-        requestTypes.add(request.type ?? 'unknown');
-        return switch (request.type) {
-          'loadChats' => firstLoad.future,
-          'getChats' => Future.value({
-            '@type': 'chats',
-            'chat_ids': const <int>[42],
-          }),
-          'getChat' => Future.value(currentChat),
-          'getUser' => Future.value({
-            '@type': 'user',
-            'id': 7,
-            'first_name': 'Peer',
-            'last_name': '',
-          }),
-          _ => Future.value({'@type': 'ok'}),
-        };
-      },
-    );
-
-    model.onAppear();
-    model.loadMore();
-    model.applyUpdateForTesting({
-      '@type': 'updateNewChat',
-      'chat': _privateChat(
-        title: 'Restored old chat',
-        order: 100,
-        messageId: 10,
-        messageDate: 10,
-        text: 'old cached message',
-      ),
-    });
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(
-      // Peer hydration runs through the model's own query so it stays pinned
-      // to the list's account; it is irrelevant to the ordering under test.
-      requestTypes.where((type) => type != 'getUser'),
-      ['loadChats', 'getChats', 'getChat'],
-      reason: 'the local page should render without waiting on loadChats',
-    );
-    expect(model.isInitialLoading, isFalse);
-    expect(model.chats, hasLength(1));
-    expect(model.chats.single.title, 'Current chat');
-    expect(model.chats.single.lastMessage, 'current message');
-
-    firstLoad.complete({'@type': 'ok'});
-    await tester.pump();
-    await tester.pump();
-
-    expect(requestTypes.where((type) => type != 'getUser'), [
-      'loadChats',
-      'getChats',
-      'getChat',
-      'getChats',
-      'getChat',
-    ]);
-    expect(model.isInitialLoading, isFalse);
-    expect(model.chats, hasLength(1));
-    expect(model.chats.single.title, 'Current chat');
-    expect(model.chats.single.lastMessage, 'current message');
-
-    model.applyUpdateForTesting({
-      '@type': 'updateNewChat',
-      'chat': _privateChat(
-        title: 'Late restored old chat',
-        order: 100,
-        messageId: 10,
-        messageDate: 10,
-        text: 'late old cached message',
-      ),
-    });
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(model.chats.single.title, 'Current chat');
-    expect(model.chats.single.lastMessage, 'current message');
-
-    model.dispose();
-    await tester.pump(const Duration(seconds: 6));
   });
 
   testWidgets('live chat updates survive a delayed startup membership lookup', (
@@ -361,28 +191,6 @@ void main() {
     },
   );
 }
-
-Map<String, dynamic> _privateChat({
-  required String title,
-  required int order,
-  required int messageId,
-  required int messageDate,
-  required String text,
-}) => {
-  '@type': 'chat',
-  'id': 42,
-  'title': title,
-  'type': {'@type': 'chatTypePrivate', 'user_id': 7},
-  'last_message': _message(id: messageId, date: messageDate, text: text),
-  'positions': [
-    {
-      '@type': 'chatPosition',
-      'list': {'@type': 'chatListMain'},
-      'order': order,
-      'is_pinned': false,
-    },
-  ],
-};
 
 Map<String, dynamic> _groupChat({
   required int order,

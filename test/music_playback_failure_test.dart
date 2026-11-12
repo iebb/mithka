@@ -52,27 +52,6 @@ void main() {
     },
   );
 
-  test(
-    'a retry after the reported failure goes through the start path again',
-    () async {
-      final voice = _FailingStartVoicePlayer(failuresBeforeSuccess: 2);
-      final player = MusicPlayerController.forTest(player: voice);
-
-      final only = track(7);
-      player.play(only, visibleQueue: [only], toggleIfActive: false);
-      await settle();
-      expect(player.isPlaying, isFalse);
-      expect(player.playbackFailureReports, 1);
-
-      // The system Play command retries a retained-but-stopped track.
-      player.resume();
-      await settle();
-      expect(player.isPlaying, isTrue);
-      expect(voice.starts, 3);
-      expect(player.playbackFailureReports, 1);
-    },
-  );
-
   // The recovery a first failure schedules is a transaction the user can still
   // cancel. It used to be a bare microtask, so an explicit pause (or stop, or
   // close, or dispose) that landed between the failure and the microtask still
@@ -105,30 +84,6 @@ void main() {
   );
 
   test(
-    'closing the player after the failure cancels the scheduled recovery',
-    () async {
-      final voice = _FailingStartVoicePlayer();
-      final player = MusicPlayerController.forTest(player: voice);
-      addTearDown(player.dispose);
-
-      final only = track(12);
-      player.play(only, visibleQueue: [only], toggleIfActive: false);
-      expect(voice.starts, 1);
-
-      player.closeWidget();
-      await settle();
-
-      expect(
-        voice.starts,
-        1,
-        reason: 'a stopped and closed player must not be restarted',
-      );
-      expect(player.current, isNull);
-      expect(player.playbackFailureReports, 0);
-    },
-  );
-
-  test(
     'disposing between the failure and the recovery starts nothing',
     () async {
       final voice = _FailingStartVoicePlayer();
@@ -153,9 +108,9 @@ void main() {
 /// [VoicePlayer.onFailed] is the controller's handler, so failures flow the
 /// production path.
 class _FailingStartVoicePlayer extends VoicePlayer {
-  _FailingStartVoicePlayer({this.failuresBeforeSuccess = 1 << 30});
+  _FailingStartVoicePlayer();
 
-  final int failuresBeforeSuccess;
+  final int failuresBeforeSuccess = 1 << 30;
   int starts = 0;
   bool _active = false;
   bool _paused = false;

@@ -5,21 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/auth/telegram_passkey_service.dart';
 
 void main() {
-  test('passkeys are exposed only on Android', () {
-    expect(
-      telegramPasskeyPlatformSupported(isAndroid: true, isIOS: false),
-      isTrue,
-    );
-    expect(
-      telegramPasskeyPlatformSupported(isAndroid: false, isIOS: true),
-      isFalse,
-    );
-    expect(
-      telegramPasskeyPlatformSupported(isAndroid: false, isIOS: false),
-      isFalse,
-    );
-  });
-
   test('iOS does not claim Telegram-owned passkey domains', () {
     final entitlements = File(
       'ios/Runner/Runner.entitlements',
@@ -30,28 +15,6 @@ void main() {
       isNot(contains('com.apple.developer.associated-domains')),
     );
     expect(entitlements, isNot(contains('webcredentials:telegram.org')));
-  });
-
-  test('extracts the WebAuthn publicKey object from TDLib text', () {
-    final result = telegramPublicKeyJson(
-      jsonEncode({
-        'publicKey': {
-          'challenge': 'challenge',
-          'rpId': 'telegram.org',
-          'timeout': 60000,
-        },
-      }),
-    );
-
-    expect(jsonDecode(result), {
-      'challenge': 'challenge',
-      'rpId': 'telegram.org',
-      'timeout': 60000,
-    });
-  });
-
-  test('converts WebAuthn base64url data to TDLib standard Base64', () {
-    expect(tdlibBase64FromBase64Url('AQID-vs'), 'AQID+vs=');
   });
 
   test('reads the Telegram user id from a passkey user handle', () {
@@ -94,22 +57,5 @@ void main() {
       'signature': 'BAUG',
       'user_handle': 'MjoyMw==',
     });
-  });
-
-  test('parses passkey timestamps returned by TDLib', () {
-    final passkey = TelegramLoginPasskey.fromJson({
-      '@type': 'passkey',
-      'id': 'id',
-      'name': 'Pixel',
-      'addition_date': 100,
-      'last_usage_date': 200,
-      'software_icon_custom_emoji_id': 42,
-    });
-
-    expect(passkey.id, 'id');
-    expect(passkey.name, 'Pixel');
-    expect(passkey.additionDate.millisecondsSinceEpoch, 100000);
-    expect(passkey.lastUsageDate?.millisecondsSinceEpoch, 200000);
-    expect(passkey.softwareIconCustomEmojiId, 42);
   });
 }

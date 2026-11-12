@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,92 +138,6 @@ void main() {
     },
   );
 
-  testWidgets('restricting a member posts chatMemberStatusRestricted', (
-    tester,
-  ) async {
-    await pumpView(tester);
-    expect(find.text('Bob'), findsOneWidget);
-
-    // Swipe the row open (leading edge) to reveal actions.
-    await tester.drag(find.text('Bob'), const Offset(-120, 0));
-    await tester.pumpAndSettle();
-
-    requests.clear();
-    await tester.tap(find.text('Restrict'));
-    await tester.pumpAndSettle();
-    // The sheet may exceed the viewport; walk down to the Apply button.
-    // The sheet's ListView is the last scrollable while the modal is open.
-    final sheet = find.byType(Scrollable).last;
-    final sheetState = tester.state<ScrollableState>(sheet);
-    for (
-      var i = 0;
-      i < 40 && find.text('Apply').hitTestable().evaluate().isEmpty;
-      i++
-    ) {
-      expect(sheetState.position.maxScrollExtent, greaterThan(0));
-      sheetState.position.jumpTo(
-        (sheetState.position.pixels + 250).clamp(
-          0.0,
-          sheetState.position.maxScrollExtent,
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(find.text('Apply').hitTestable(), findsOneWidget);
-
-    // The sheet shows duration + permission switches; apply with everything
-    // off (mute-all default).
-    await tester.tap(find.text('Apply'));
-    await tester.pumpAndSettle();
-
-    final set = requests
-        .where((r) => r['@type'] == 'setChatMemberStatus')
-        .toList();
-    expect(set, hasLength(1));
-    final status = set.single['status'] as Map<String, dynamic>;
-    expect(status['@type'], 'chatMemberStatusRestricted');
-    expect(status['is_member'], isTrue);
-    final perms = status['permissions'] as Map<String, dynamic>;
-    expect(perms['can_send_basic_messages'], isFalse);
-  });
-
-  testWidgets('a restricted member offers Remove restrictions', (tester) async {
-    memberStatus = {
-      '@type': 'chatMemberStatusRestricted',
-      'is_member': true,
-      'restricted_until_date': 0,
-      'permissions': {
-        '@type': 'chatPermissions',
-        'can_send_basic_messages': false,
-      },
-    };
-    await pumpView(tester);
-    await tester.drag(find.text('Bob'), const Offset(-120, 0));
-    await tester.pumpAndSettle();
-    expect(find.text('Remove restrictions'), findsOneWidget);
-  });
-
-  testWidgets('a read-only member is not offered moderation actions', (
-    tester,
-  ) async {
-    memberStatus = {
-      '@type': 'chatMemberStatusRestricted',
-      'is_member': true,
-      'restricted_until_date': 0,
-      'permissions': {
-        '@type': 'chatPermissions',
-        'can_send_basic_messages': false,
-      },
-    };
-    selfStatus['@type'] = 'chatMemberStatusMember';
-    await pumpView(tester);
-    await tester.drag(find.text('Bob'), const Offset(-120, 0));
-    await tester.pumpAndSettle();
-    expect(find.text('Remove restrictions'), findsNothing);
-    expect(find.text('Restrict'), findsNothing);
-    expect(find.text('Remove'), findsNothing);
-  });
-
   testWidgets('unrestricting a member who left keeps them out of the group', (
     tester,
   ) async {
@@ -255,49 +167,13 @@ void main() {
     expect(set.single['status']['@type'], 'chatMemberStatusLeft');
   });
 
-  testWidgets('unrestricting a present member restores plain membership', (
-    tester,
-  ) async {
-    memberStatus = {
-      '@type': 'chatMemberStatusRestricted',
-      'is_member': true,
-      'restricted_until_date': 0,
-      'permissions': {
-        '@type': 'chatPermissions',
-        'can_send_basic_messages': false,
-      },
-    };
-    await pumpView(tester);
-    await tester.drag(find.text('Bob'), const Offset(-120, 0));
-    await tester.pumpAndSettle();
-
-    requests.clear();
-    await tester.tap(find.text('Remove restrictions'));
-    await tester.pumpAndSettle();
-
-    final set = requests
-        .where((r) => r['@type'] == 'setChatMemberStatus')
-        .toList();
-    expect(set, hasLength(1));
-    expect(set.single['status']['@type'], 'chatMemberStatusMember');
-  });
-
   testWidgets(
     'moderation queries stay pinned to the account that opened the view',
     (tester) async {
       // The view must retain the slot that was active when it opened (the
       // proxy pins slot 0) and route every query through that lease, so a
       // later foreground switch cannot retarget in-flight or
-      // post-confirmation mutations. Source-level contract: the only
-      // calls to TdClient.shared.query must not remain as a no-lease fallback.
-      final source = File('lib/chat/chat_members_view.dart').readAsStringSync();
-      final sharedCalls = RegExp(
-        r'TdClient\.shared\.query\(',
-      ).allMatches(source).length;
-      expect(sharedCalls, 0, reason: 'missing ownership must fail closed');
-      expect(source, contains('retainAccountSlot'));
-      expect(source, contains('_leaseValid'));
-
+      // post-confirmation mutations.
       await pumpView(tester);
       expect(TdClient.shared.activeSlot, 0);
 

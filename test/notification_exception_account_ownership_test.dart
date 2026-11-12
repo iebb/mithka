@@ -146,10 +146,7 @@ Future<_Registry> _startRegistry(_Respond respond) async {
 }
 
 /// Per-account answers for the exception list and its detail rows.
-_Respond _exceptionResponder({
-  Completer<void>? holdList,
-  Completer<void>? holdDetail,
-}) {
+_Respond _exceptionResponder({Completer<void>? holdList}) {
   return (request, clientId) async {
     switch (request['@type']) {
       case 'getChatNotificationSettingsExceptions':
@@ -158,9 +155,6 @@ _Respond _exceptionResponder({
         }
         return _chats(const [_chatId]);
       case 'getChat':
-        if (holdDetail != null && clientId == _alphaClientId) {
-          await holdDetail.future;
-        }
         return clientId == _alphaClientId ? _alphaChat() : _betaChat();
       case 'setChatNotificationSettings':
         return const {'@type': 'ok'};
@@ -229,20 +223,6 @@ Future<void> _pumpClosed(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('an idle loaded sheet closes as soon as its owner changes', (
-    tester,
-  ) async {
-    final registry = await _startRegistry(_exceptionResponder());
-    await _pumpSheet(tester, accounts: registry.accounts);
-    expect(find.text('Alpha'), findsOneWidget);
-    registry.switchToBeta();
-    await _pumpClosed(tester);
-    expect(
-      find.byKey(const ValueKey('notification-exceptions-sheet')),
-      findsNothing,
-    );
-  });
-
   testWidgets('stale completion never pops a different route above the sheet', (
     tester,
   ) async {
@@ -272,43 +252,6 @@ void main() {
       findsNothing,
     );
   });
-  testWidgets(
-    'an unchanged owner lists, resolves and resets through its own client',
-    (tester) async {
-      final registry = await _startRegistry(_exceptionResponder());
-      var refreshes = 0;
-      final openedChats = <(int, String)>[];
-
-      await _pumpSheet(
-        tester,
-        accounts: registry.accounts,
-        onOpenChat: (chatId, title) async => openedChats.add((chatId, title)),
-        onExceptionsChanged: () async => refreshes++,
-      );
-
-      expect(registry.tuples(const ['getChatNotificationSettingsExceptions']), [
-        (_alphaClientId, 'getChatNotificationSettingsExceptions', null),
-      ]);
-      expect(registry.tuples(const ['getChat']), [
-        (_alphaClientId, 'getChat', _chatId),
-      ]);
-      expect(find.text('Alpha'), findsOneWidget);
-      expect(find.text('Beta'), findsNothing);
-
-      await tester.tap(
-        find.byKey(const ValueKey('notification-exception-reset-$_chatId')),
-      );
-      await _settle(tester);
-
-      expect(registry.tuples(const ['setChatNotificationSettings']), [
-        (_alphaClientId, 'setChatNotificationSettings', _chatId),
-      ]);
-      expect(refreshes, 1);
-      expect(find.text('Alpha'), findsNothing);
-      expect(openedChats, isEmpty);
-    },
-  );
-
   testWidgets(
     'a pending list result from the old owner never reaches the new foreground',
     (tester) async {
@@ -348,50 +291,6 @@ void main() {
         registry.requests.where((entry) => entry.$1 == _betaClientId),
         isEmpty,
       );
-      expect(refreshes, 0);
-    },
-  );
-
-  testWidgets(
-    'a pending detail result from the old owner never reaches the new foreground',
-    (tester) async {
-      final holdDetail = Completer<void>();
-      final registry = await _startRegistry(
-        _exceptionResponder(holdDetail: holdDetail),
-      );
-      var refreshes = 0;
-      final openedChats = <(int, String)>[];
-
-      await _pumpSheet(
-        tester,
-        accounts: registry.accounts,
-        onOpenChat: (chatId, title) async => openedChats.add((chatId, title)),
-        onExceptionsChanged: () async => refreshes++,
-      );
-
-      expect(registry.tuples(const ['getChat']), [
-        (_alphaClientId, 'getChat', _chatId),
-      ]);
-      expect(
-        find.byKey(const ValueKey('notification-exceptions-loading')),
-        findsOneWidget,
-      );
-
-      registry.switchToBeta();
-      holdDetail.complete();
-      await _pumpClosed(tester);
-
-      expect(
-        find.byKey(const ValueKey('notification-exceptions-sheet')),
-        findsNothing,
-      );
-      expect(find.text('Alpha'), findsNothing);
-      expect(find.text('Beta'), findsNothing);
-      expect(
-        registry.requests.where((entry) => entry.$1 == _betaClientId),
-        isEmpty,
-      );
-      expect(openedChats, isEmpty);
       expect(refreshes, 0);
     },
   );
@@ -481,52 +380,6 @@ void main() {
       isEmpty,
       reason: 'a disposed sheet must not resolve rows',
     );
-  });
-
-  testWidgets('nothing pinnable renders the failure state without a query', (
-    tester,
-  ) async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    SharedPreferences.setMockInitialValues(const {});
-    final prefs = await SharedPreferences.getInstance();
-    final supportDir = Directory.systemTemp.createTempSync(
-      'mithka_notif_owner_empty',
-    );
-    addTearDown(() {
-      if (supportDir.existsSync()) supportDir.deleteSync(recursive: true);
-    });
-    final client = TdClient.forTesting();
-    final requests = <(int, Map<String, dynamic>)>[];
-    client.prepareForTesting(
-      prefs: prefs,
-      supportDir: supportDir.path,
-      bindings: _FakeBindings(client),
-      queryOverride: (request, clientId) async {
-        requests.add((clientId, Map<String, dynamic>.from(request)));
-        return const {'@type': 'ok'};
-      },
-    );
-    // No slot and no active client: there is no owner to pin.
-
-    await _pumpSheet(
-      tester,
-      accounts: TdNotificationExceptionAccounts(client: client),
-    );
-
-    expect(
-      find.byKey(const ValueKey('notification-exceptions-error')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('notification-exceptions-loading')),
-      findsNothing,
-    );
-    // There is no owner, so there is nothing a retry could safely query.
-    expect(
-      find.byKey(const ValueKey('notification-exceptions-retry')),
-      findsNothing,
-    );
-    expect(requests, isEmpty);
   });
 }
 

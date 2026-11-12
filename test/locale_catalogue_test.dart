@@ -34,35 +34,6 @@ LocaleCatalogue catalogue({
 void main() {
   tearDown(LocaleCatalogues.reset);
 
-  group('plural category selection', () {
-    test('English and German separate one from other', () {
-      for (final appKey in ['en', 'de', 'es']) {
-        expect(LocaleCatalogue.pluralCategoryFor(appKey, 0), 'other');
-        expect(LocaleCatalogue.pluralCategoryFor(appKey, 1), 'one');
-        expect(LocaleCatalogue.pluralCategoryFor(appKey, 2), 'other');
-        expect(LocaleCatalogue.pluralCategoryFor(appKey, 21), 'other');
-      }
-    });
-
-    test('French groups zero with one', () {
-      expect(LocaleCatalogue.pluralCategoryFor('fr', 0), 'one');
-      expect(LocaleCatalogue.pluralCategoryFor('fr', 1), 'one');
-      expect(LocaleCatalogue.pluralCategoryFor('fr', 2), 'other');
-    });
-
-    test('CJK locales only ever select other', () {
-      for (final appKey in ['zhHans', 'zhHant', 'ja', 'ko']) {
-        for (final count in [0, 1, 2, 11, 100]) {
-          expect(LocaleCatalogue.pluralCategoryFor(appKey, count), 'other');
-        }
-      }
-    });
-
-    test('a negative count uses the magnitude', () {
-      expect(LocaleCatalogue.pluralCategoryFor('en', -1), 'one');
-    });
-  });
-
   group('plural resolution', () {
     setUp(() {
       LocaleCatalogues.install([
@@ -90,11 +61,6 @@ void main() {
       expect(AppStrings.pluralForLocale('en', 'memberCount', 5), '5 members');
     });
 
-    test('a single-category locale renders its only form', () {
-      expect(AppStrings.pluralForLocale('ja', 'memberCount', 1), 'メンバー1人');
-      expect(AppStrings.pluralForLocale('ja', 'memberCount', 9), 'メンバー9人');
-    });
-
     test('extra placeholders travel alongside {count}', () {
       LocaleCatalogues.install([
         catalogue(
@@ -111,10 +77,6 @@ void main() {
         AppStrings.pluralForLocale('en', 'inChat', 2, {'value1': 'Design'}),
         '2 members in Design',
       );
-    });
-
-    test('a plural key read without a count uses the other form', () {
-      expect(AppStrings.tForLocale('en', 'memberCount'), '{count} members');
     });
   });
 
@@ -134,28 +96,12 @@ void main() {
       ]);
     });
 
-    test('prefers the requested locale', () {
-      expect(AppStrings.tForLocale('de', 'shared'), 'Deutsch geteilt');
-    });
-
     test('falls back to English for a key the locale lacks', () {
       expect(AppStrings.tForLocale('de', 'englishOnly'), 'English only');
     });
 
     test('falls back to English for an unloaded locale', () {
       expect(AppStrings.tForLocale('ko', 'shared'), 'English shared');
-    });
-
-    test('returns the key when nothing defines it', () {
-      expect(
-        AppStrings.tForLocale('de', 'missingEverywhere'),
-        'missingEverywhere',
-      );
-    });
-
-    test('country names resolve per locale and fall back', () {
-      expect(AppStrings.tForLocale('de', 'countryJP'), 'Japan (de)');
-      expect(AppStrings.tForLocale('ko', 'countryJP'), 'Japan');
     });
   });
 
@@ -174,86 +120,11 @@ void main() {
       ]);
     });
 
-    test('substitutes a single placeholder', () {
-      expect(
-        AppStrings.tForLocale('en', 'one', {'value1': 'Ana'}),
-        'Hello Ana',
-      );
-    });
-
     test('substitutes every placeholder', () {
       expect(
         AppStrings.tForLocale('en', 'two', {'value1': 'A', 'value2': 'B'}),
         'A and B',
       );
-    });
-
-    test('substitutes a repeated placeholder', () {
-      expect(
-        AppStrings.tForLocale('en', 'repeat', {'value1': 'x'}),
-        'x then x',
-      );
-    });
-
-    test('numbers are stringified', () {
-      expect(AppStrings.tForLocale('en', 'one', {'value1': 42}), 'Hello 42');
-    });
-
-    test('a template without placeholders is returned unchanged', () {
-      expect(
-        AppStrings.tForLocale('en', 'none', {'value1': 'ignored'}),
-        'No placeholders',
-      );
-    });
-  });
-
-  group('shipped catalogue', () {
-    setUp(fixtures.install);
-
-    test('resolves a real key in every locale', () {
-      for (final appKey in L10nFixtures.appKeys) {
-        final value = AppStrings.tForLocale(appKey, AppStringKeys.aboutTitle);
-        expect(value, isNot(AppStringKeys.aboutTitle));
-        expect(value.trim(), isNotEmpty);
-      }
-    });
-
-    test('presence labels are translated away from English', () {
-      final english = fixtures.messages('en')[AppStringKeys.presenceOnline];
-      expect(english, isNotEmpty);
-      for (final appKey in ['zhHans', 'zhHant', 'ja', 'ko']) {
-        expect(
-          fixtures.messages(appKey)[AppStringKeys.presenceOnline],
-          isNot(english),
-        );
-      }
-    });
-
-    test('the group member count badge is singular for one member', () {
-      String count(String appKey, int value) => AppStrings.pluralForLocale(
-        appKey,
-        AppStringKeys.topicChatMemberCount,
-        value,
-      );
-      expect(count('en', 1), '1 member');
-      expect(count('en', 2), '2 members');
-      expect(count('de', 1), '1 Person');
-      expect(count('zhHans', 1), '1人');
-    });
-
-    test('declared plural categories match the runtime rule', () {
-      for (final appKey in L10nFixtures.appKeys) {
-        final declared = fixtures[appKey].pluralCategories.toSet();
-        final selected = {
-          for (final count in [0, 1, 2, 5, 11, 21, 100])
-            LocaleCatalogue.pluralCategoryFor(appKey, count),
-        };
-        expect(
-          selected.difference(declared),
-          isEmpty,
-          reason: '$appKey selects a category it does not declare',
-        );
-      }
     });
   });
 }

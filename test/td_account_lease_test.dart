@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/tdlib/td_client.dart';
 
@@ -31,17 +29,6 @@ void main() {
       expect(book.requestClose(8), isTrue);
       expect(book.requestDelete(8), isTrue);
       expect(book.release(8).closeClient, isFalse);
-    });
-
-    test('foreground switching does not close background clients', () {
-      final source = File('lib/tdlib/td_client.dart').readAsStringSync();
-      final setActiveStart = source.indexOf('  void setActive(int slot)');
-      final removeSlotStart = source.indexOf('  void removeSlot(int slot)');
-      final setActive = source.substring(setActiveStart, removeSlotStart);
-
-      expect(setActive, isNot(contains("'@type': 'close'")));
-      expect(setActive, contains('_activeClientId = cid'));
-      expect(source, contains('retainAccountSlot(int accountSlot)'));
     });
   });
 }

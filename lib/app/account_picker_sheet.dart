@@ -14,14 +14,16 @@ import '../theme/theme_controller.dart';
 /// belongs to, instead of the shell silently dropping the request.
 ///
 /// A chat id only means something inside the account that produced it, so a
-/// link naming no account while several are signed in cannot be placed
-/// automatically — but it can be placed by asking. The chosen slot is returned
+/// link naming no account, for a chat the active account does not have, cannot
+/// be placed automatically — but it can be placed by asking. Rows for
+/// [slotsWithChat] are marked as having the chat. The chosen slot is returned
 /// through the future; a dismissed sheet resolves to null and the request is
 /// dropped only because the user declined to disambiguate it.
 Future<int?> showAccountPickerDialog(
   BuildContext context, {
   required List<AccountSummary> accounts,
   int? activeSlot,
+  Set<int> slotsWithChat = const {},
 }) async {
   final c = context.colors;
   return showGeneralDialog<int>(
@@ -92,6 +94,7 @@ Future<int?> showAccountPickerDialog(
                               ),
                               account: account,
                               selected: account.slot == activeSlot,
+                              hasChat: slotsWithChat.contains(account.slot),
                               onTap: () =>
                                   Navigator.of(dialogContext).pop(account.slot),
                             ),
@@ -114,21 +117,26 @@ class _AccountPickerRow extends StatelessWidget {
     super.key,
     required this.account,
     required this.selected,
+    required this.hasChat,
     required this.onTap,
   });
 
   final AccountSummary account;
   final bool selected;
+  final bool hasChat;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final hidePhone = context.watch<ThemeController>().hideSidebarPhone;
+    final hasChatLabel = AppStringKeys.accountPickerHasChat.l10n(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: AppInteractiveSurface(
-        semanticLabel: account.name,
+        semanticLabel: hasChat
+            ? '${account.name}, $hasChatLabel'
+            : account.name,
         selected: selected,
         borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: onTap,
@@ -176,6 +184,31 @@ class _AccountPickerRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (hasChat) ...[
+                const SizedBox(width: 8),
+                ExcludeSemantics(
+                  child: Container(
+                    key: ValueKey('account-picker-has-chat-${account.slot}'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
+                    child: Text(
+                      hasChatLabel,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: AppTheme.brand,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

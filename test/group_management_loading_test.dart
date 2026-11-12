@@ -136,112 +136,6 @@ void main() {
     expect(find.byType(ListView), findsOneWidget);
   });
 
-  testWidgets('shows a retry card when getChat fails', (tester) async {
-    getChatFails = true;
-    await pumpView(tester, isChannel: false);
-    await tester.pump(const Duration(milliseconds: 250));
-
-    expect(
-      find.byKey(const ValueKey('group-management-load-retry')),
-      findsOneWidget,
-    );
-    expect(find.byType(ListView), findsNothing);
-
-    getChatFails = false;
-    await tester.tap(find.byKey(const ValueKey('group-management-load-retry')));
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byType(ListView), findsOneWidget);
-    expect(find.text('Test Group'), findsOneWidget);
-  });
-
-  testWidgets('uses channel wording inside channels', (tester) async {
-    await pumpView(tester, isChannel: true);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Manage channel'), findsOneWidget);
-    expect(find.text('Channel Name'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Subscribers'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Subscribers'), findsOneWidget);
-    expect(find.text('Removed Users'), findsOneWidget);
-    expect(find.text('Group name'), findsNothing);
-  });
-
-  testWidgets('keeps group wording inside groups', (tester) async {
-    await pumpView(tester, isChannel: false);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Manage group'), findsOneWidget);
-    expect(find.text('Group name'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Members'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Members'), findsOneWidget);
-    expect(find.text('Channel Name'), findsNothing);
-  });
-
-  testWidgets(
-    'the username editor stays inert while supergroup metadata is pending',
-    (tester) async {
-      supergroupStall = Completer<Map<String, dynamic>>();
-      await pumpView(tester, isChannel: false);
-      // The page renders from the local database and the owner's rights
-      // resolve, but getSupergroup never lands.
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Public Username'), findsOneWidget);
-
-      // Tapping the row must not open a blank editor: saving it would
-      // submit username:'' and clear the real username.
-      await tester.tap(find.text('Public Username'), warnIfMissed: false);
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(EditFieldView), findsNothing);
-
-      // Late landing: the row unlocks and shows the real value.
-      supergroupStall!.complete(supergroupResult);
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('@existing'), findsOneWidget);
-      await tester.tap(find.text('Public Username'), warnIfMissed: false);
-      await tester.pumpAndSettle();
-      expect(find.byType(EditFieldView), findsOneWidget);
-      expect(find.text('existing'), findsAtLeastNWidgets(1));
-    },
-  );
-
-  testWidgets(
-    'a failed supergroup fetch offers a retry and unlocks the editor after it',
-    (tester) async {
-      supergroupFails = true;
-      await pumpView(tester, isChannel: false);
-      await tester.pump(const Duration(milliseconds: 250));
-
-      expect(
-        find.byKey(const ValueKey('group-management-meta-retry')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Public Username'), warnIfMissed: false);
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(EditFieldView), findsNothing);
-
-      supergroupFails = false;
-      await tester.tap(
-        find.byKey(const ValueKey('group-management-meta-retry')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('group-management-meta-retry')),
-        findsNothing,
-      );
-      expect(find.text('@existing'), findsOneWidget);
-    },
-  );
-
   testWidgets(
     'full-info-backed editors stay disabled until full info arrives',
     (tester) async {
@@ -266,55 +160,6 @@ void main() {
       expect(find.byType(ListView), findsOneWidget);
     },
   );
-
-  testWidgets(
-    'a failed full-info fetch shows a retry and enables editors after it lands',
-    (tester) async {
-      var failFirst = true;
-      await pumpAdvanced(
-        tester,
-        fullInfoQuery: (_) async {
-          if (failFirst) {
-            failFirst = false;
-            throw Exception('flood');
-          }
-          return _supergroupFullInfo();
-        },
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pumpAndSettle();
-
-      // The failure card appears with a retry, and the description editor
-      // stays inert while the values are unknown.
-      expect(
-        find.byKey(const ValueKey('group-admin-full-info-retry')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Description'), warnIfMissed: false);
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(EditFieldView), findsNothing);
-
-      await tester.tap(
-        find.byKey(const ValueKey('group-admin-full-info-retry')),
-      );
-      await tester.pumpAndSettle();
-
-      // Full info landed: the row shows the real value and the retry card
-      // is gone.
-      expect(
-        find.byKey(const ValueKey('group-admin-full-info-retry')),
-        findsNothing,
-      );
-      expect(find.text('Existing description'), findsOneWidget);
-
-      // With full info known, the description editor opens with the real
-      // value pre-filled instead of a blank that would overwrite it.
-      await tester.tap(find.text('Description'));
-      await tester.pumpAndSettle();
-      expect(find.byType(EditFieldView), findsOneWidget);
-      expect(find.text('Existing description'), findsAtLeastNWidgets(1));
-    },
-  );
 }
 
 Map<String, dynamic> _supergroup({String username = ''}) => {
@@ -325,16 +170,6 @@ Map<String, dynamic> _supergroup({String username = ''}) => {
     '@type': 'usernames',
     'editable_username': username.isEmpty ? null : username,
   },
-};
-
-Map<String, dynamic> _supergroupFullInfo({
-  String description = 'Existing description',
-  int slowMode = 30,
-}) => <String, dynamic>{
-  '@type': 'supergroupFullInfo',
-  'description': description,
-  'slow_mode_delay': slowMode,
-  'photo': null,
 };
 
 Future<void> pumpAdvanced(

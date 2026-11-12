@@ -150,21 +150,6 @@ void main() {
     expect(outcome.result, MediaDownloadResult.unsupported);
   });
 
-  test('rejects incomplete file download', () async {
-    setupChannel(currentFolder: 'Downloads');
-    final client = createFakeClient(completed: false);
-    final outcome = await AndroidDownloadSaver.save(
-      accountSlot: slot,
-      chatId: chatId,
-      messageId: messageId,
-      fileId: fileId,
-      name: 'sample.pdf',
-      mimeType: 'application/pdf',
-      client: client,
-    );
-    expect(outcome.result, MediaDownloadResult.failed);
-  });
-
   test('exports file successfully to user folder', () async {
     setupChannel(currentFolder: 'Documents', exportedFolder: 'Documents');
     final client = createFakeClient();

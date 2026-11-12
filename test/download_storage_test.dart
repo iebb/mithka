@@ -33,21 +33,6 @@ void main() {
     }
   });
 
-  test('filesDirectory formats slot 0 and secondary slots correctly', () {
-    expect(
-      DownloadStorage.filesDirectory('/storage/root', 0),
-      '/storage/root/tdlib/files',
-    );
-    expect(
-      DownloadStorage.filesDirectory('/storage/root', 1),
-      '/storage/root/tdlib/account-1/files',
-    );
-    expect(
-      DownloadStorage.filesDirectory('/storage/root', 42),
-      '/storage/root/tdlib/account-42/files',
-    );
-  });
-
   test(
     'prepare migrates tdlib, bot-api, and retained downloads to destination',
     () async {

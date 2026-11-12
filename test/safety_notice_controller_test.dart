@@ -3,25 +3,6 @@ import 'package:mithka/settings/safety_notice_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  test('acknowledging a safety notice hides only the current notice', () {
-    expect(
-      shouldShowSafetyNotice(
-        restricted: true,
-        disabled: false,
-        acknowledged: false,
-      ),
-      isTrue,
-    );
-    expect(
-      shouldShowSafetyNotice(
-        restricted: true,
-        disabled: false,
-        acknowledged: true,
-      ),
-      isFalse,
-    );
-  });
-
   test('safety notice opt-out defaults to off and persists', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

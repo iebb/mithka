@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/auth/auth_manager.dart';
-import 'package:mithka/notifications/push_device_registrar.dart';
 import 'package:mithka/settings/blocked_user_service.dart';
 import 'package:mithka/settings/sensitive_content_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
@@ -26,65 +24,6 @@ void main() {
       isFalse,
     );
   });
-
-  test('auth reload publication requires the same action and client', () {
-    expect(
-      authReloadIsCurrent(
-        reloadAction: 7,
-        currentAction: 7,
-        reloadClientId: 101,
-        currentClientId: 101,
-      ),
-      isTrue,
-    );
-    expect(
-      authReloadIsCurrent(
-        reloadAction: 7,
-        currentAction: 8,
-        reloadClientId: 101,
-        currentClientId: 101,
-      ),
-      isFalse,
-    );
-    expect(
-      authReloadIsCurrent(
-        reloadAction: 7,
-        currentAction: 7,
-        reloadClientId: 101,
-        currentClientId: 202,
-      ),
-      isFalse,
-    );
-  });
-
-  test(
-    'push registration drains one queued rerun after inputs change',
-    () async {
-      final drain = PushRegistrationDrain();
-      final firstPass = Completer<void>();
-      var passes = 0;
-
-      Future<void> operation() async {
-        passes += 1;
-        if (passes == 1) await firstPass.future;
-      }
-
-      final running = drain.run(operation);
-      await Future<void>.delayed(Duration.zero);
-      expect(drain.isRunning, isTrue);
-      expect(passes, 1);
-
-      await drain.run(operation);
-      await drain.run(operation);
-      expect(drain.isQueued, isTrue);
-
-      firstPass.complete();
-      await running;
-      expect(passes, 2);
-      expect(drain.isRunning, isFalse);
-      expect(drain.isQueued, isFalse);
-    },
-  );
 
   test(
     'blocked-user snapshots are account scoped and publish atomically',

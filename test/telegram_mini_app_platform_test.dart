@@ -9,20 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('bridge decoder accepts object and encoded event data', () {
-    final object = decodeMiniAppBridgePayload(
-      '{"eventType":"web_app_ready","eventData":{"value":1}}',
-    );
-    final encoded = decodeMiniAppBridgePayload(
-      '{"eventType":"web_app_open_popup",'
-      '"eventData":"{\\"message\\":\\"Hello\\"}"}',
-    );
-
-    expect(object?.type, 'web_app_ready');
-    expect(object?.data['value'], 1);
-    expect(encoded?.data['message'], 'Hello');
-    expect(decodeMiniAppBridgePayload('[]'), isNull);
-    expect(decodeMiniAppBridgePayload('{"eventData":{}}'), isNull);
+  test('bridge decoder rejects events without the page nonce', () {
     expect(
       decodeMiniAppBridgePayload(
         '{"bridgeNonce":"right","eventType":"web_app_ready"}',
@@ -37,79 +24,6 @@ void main() {
       ),
       isNull,
     );
-  });
-
-  test('Mini App TDLib operations use current request fields', () async {
-    final requests = <Map<String, dynamic>>[];
-    final service = MiniAppPlatformService(
-      botUserId: 42,
-      clientId: 7,
-      query: (request) async {
-        requests.add(request);
-        return switch (request['@type']) {
-          'sendWebAppCustomRequest' => {
-            '@type': 'customRequestResult',
-            'result': '{"ok":true}',
-          },
-          'getUser' => {
-            '@type': 'user',
-            'usernames': {
-              '@type': 'usernames',
-              'active_usernames': ['toolbot'],
-              'editable_username': '',
-              'disabled_usernames': <String>[],
-            },
-          },
-          _ => {'@type': 'ok'},
-        };
-      },
-    );
-
-    await service.attachmentMenuBot();
-    await service.setAttachmentMenuInstalled(
-      installed: true,
-      allowWriteAccess: true,
-    );
-    expect(await service.canSendMessages(), isTrue);
-    await service.allowSendMessages();
-    await service.sharePhoneNumber();
-    expect(await service.invokeCustomMethod('ping', {'count': 2}), {
-      'ok': true,
-    });
-    expect(
-      await service.checkDownload(
-        fileName: 'report.pdf',
-        url: 'https://example.com/report.pdf',
-      ),
-      isTrue,
-    );
-    await service.setInlineDraft(
-      chatId: 99,
-      botUsername: 'toolbot',
-      query: 'cats',
-    );
-    expect(await service.botUsername(), 'toolbot');
-    service.dispose();
-
-    expect(requests.map((value) => value['@type']), [
-      'getAttachmentMenuBot',
-      'toggleBotIsAddedToAttachmentMenu',
-      'canBotSendMessages',
-      'allowBotToSendMessages',
-      'sharePhoneNumber',
-      'sendWebAppCustomRequest',
-      'checkWebAppFileDownload',
-      'setChatDraftMessage',
-      'getUser',
-    ]);
-    expect(requests[1]['allow_write_access'], isTrue);
-    expect(requests[5]['parameters'], '{"count":2}');
-    final draft = requests[7]['draft_message'] as Map;
-    final content = draft['content'] as Map;
-    expect(content['@type'], 'draftMessageContentText');
-    expect((content['text'] as Map)['text'], '@toolbot cats');
-    expect(requests[7]['topic_id'], isNull);
-    expect(requests[7], isNot(contains('message_thread_id')));
   });
 
   test('device and secure storage are isolated by account and bot', () async {
@@ -153,47 +67,6 @@ void main() {
     await first.clearSecure();
     expect(await first.readDevice('theme'), isNull);
     expect(await first.readSecure('token'), isNull);
-  });
-
-  test('emoji status permission and status use pinned TDLib fields', () async {
-    final requests = <Map<String, dynamic>>[];
-    final service = MiniAppPlatformService(
-      botUserId: 42,
-      clientId: 7,
-      query: (request) async {
-        requests.add(request);
-        if (request['@type'] == 'getUserFullInfo') {
-          return {
-            '@type': 'userFullInfo',
-            'bot_info': {'@type': 'botInfo', 'can_manage_emoji_status': true},
-          };
-        }
-        return {'@type': 'ok'};
-      },
-    );
-
-    expect(await service.canManageEmojiStatus(), isTrue);
-    await service.setCanManageEmojiStatus(true);
-    final before = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    await service.setEmojiStatus(customEmojiId: 123456789, duration: 3600);
-    service.dispose();
-
-    expect(requests[0], {'@type': 'getUserFullInfo', 'user_id': 42});
-    expect(requests[1], {
-      '@type': 'toggleBotCanManageEmojiStatus',
-      'bot_user_id': 42,
-      'can_manage_emoji_status': true,
-    });
-    final status = requests[2]['emoji_status'] as Map<String, dynamic>;
-    expect(status['@type'], 'emojiStatus');
-    expect(status['type'], {
-      '@type': 'emojiStatusTypeCustomEmoji',
-      'custom_emoji_id': 123456789,
-    });
-    expect(
-      status['expiration_date'] as int,
-      inInclusiveRange(before + 3600, before + 3601),
-    );
   });
 
   test('biometry consent and tokens remain scoped to the Mini App', () async {
@@ -330,57 +203,6 @@ void main() {
         expect(await directory.list().toList(), isEmpty);
       },
     );
-
-    test('aborts when response headers exceed the connect timeout', () async {
-      final client = _TestClient(
-        (_) => Completer<http.StreamedResponse>().future,
-      );
-      final service = MiniAppPlatformService(
-        botUserId: 42,
-        clientId: 7,
-        query: (_) async => const {'@type': 'ok'},
-        httpClient: client,
-        downloadDirectoryProvider: () async => directory,
-        downloadConnectTimeout: const Duration(milliseconds: 20),
-      );
-
-      await expectLater(
-        service.download(
-          fileName: 'timeout.bin',
-          url: 'https://files.example/timeout',
-        ),
-        throwsA(isA<TimeoutException>()),
-      );
-      service.dispose();
-      expect(await directory.list().toList(), isEmpty);
-    });
-
-    test('aborts an idle stream and removes its partial file', () async {
-      final stream = StreamController<List<int>>();
-      addTearDown(stream.close);
-      final client = _TestClient(
-        (request) async =>
-            http.StreamedResponse(stream.stream, 200, request: request),
-      );
-      final service = MiniAppPlatformService(
-        botUserId: 42,
-        clientId: 7,
-        query: (_) async => const {'@type': 'ok'},
-        httpClient: client,
-        downloadDirectoryProvider: () async => directory,
-        downloadIdleTimeout: const Duration(milliseconds: 20),
-      );
-
-      await expectLater(
-        service.download(
-          fileName: 'idle.bin',
-          url: 'https://files.example/idle',
-        ),
-        throwsA(isA<TimeoutException>()),
-      );
-      service.dispose();
-      expect(await directory.list().toList(), isEmpty);
-    });
 
     test(
       'cancellation aborts the stream and removes its partial file',

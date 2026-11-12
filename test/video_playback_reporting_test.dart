@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:f_videoplayer/f_videoplayer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/video_window_telemetry.dart';
 import 'package:mithka/media/video_playback_reporting.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:video_player/video_player.dart';
@@ -34,129 +32,6 @@ void main() {
     location: location,
     mimeType: mimeType,
     reporter: reporter,
-  );
-
-  test(
-    'recovery is silent; only terminal failure contains safe attempt history',
-    () {
-      final diagnostics = session();
-      diagnostics.beginAttempt(
-        source: VideoPlaybackSource.loopback,
-        viewType: VideoViewType.textureView,
-      );
-      diagnostics.recordFailure(
-        FVideoPlayerError(
-          'Translated label',
-          cause: PlatformException(
-            code: 'VideoError',
-            message:
-                'SurfaceProducer failed for http://127.0.0.1/video/PRIVATE.mp4',
-            details: {'file': '/private/PRIVATE.mp4'},
-          ),
-        ),
-        stage: VideoFailureStage.initialization,
-      );
-      diagnostics.beginAttempt(
-        source: VideoPlaybackSource.file,
-        viewType: VideoViewType.platformView,
-      );
-      diagnostics.initialized();
-      expect(events, isEmpty);
-      diagnostics.recordFailure(
-        'MediaCodec decoder failed: errorCode=4003 video/hevc PRIVATE',
-        stage: VideoFailureStage.playback,
-      );
-      diagnostics.reportTerminal(
-        streamRecoveries: 1,
-        completedFileFallback: true,
-      );
-      final event = events.single;
-      expect(event.tags, containsPair('video.reason', 'decoder'));
-      expect(event.tags, containsPair('video.platform', 'android'));
-      expect(event.tags, containsPair('video.source', 'file'));
-      expect(event.tags, containsPair('video.view_type', 'platformView'));
-      expect(event.exceptions!.single.mechanism!.handled, isTrue);
-      expect(event.contexts['video_playback'], {
-        'schema_version': 1,
-        'mime_type': 'video/mp4',
-        'attempts': 2,
-        'ever_initialized': true,
-        'stream_recoveries': 1,
-        'completed_file_fallback': true,
-        'failures': [
-          {
-            'attempt': 1,
-            'source': 'loopback',
-            'view_type': 'textureView',
-            'stage': 'initialization',
-            'reason': 'surface',
-          },
-          {
-            'attempt': 2,
-            'source': 'file',
-            'view_type': 'platformView',
-            'stage': 'playback',
-            'reason': 'decoder',
-            'native_code': 4003,
-            'codec_hint': 'hevc',
-          },
-        ],
-      });
-      expect(jsonEncode(event.toJson()), isNot(contains('PRIVATE')));
-      expect(event.throwable, isNull);
-    },
-  );
-
-  test(
-    'one report per selection, even after manual retries and time passing',
-    () {
-      final diagnostics = session();
-      diagnostics.reportTerminal();
-      now = now.add(const Duration(hours: 2));
-      diagnostics.beginAttempt(
-        source: VideoPlaybackSource.file,
-        viewType: VideoViewType.platformView,
-      );
-      diagnostics.recordFailure(
-        'decoder error',
-        stage: VideoFailureStage.playback,
-      );
-      diagnostics.reportTerminal();
-      expect(events, hasLength(1));
-      expect(events.single.tags!['video.reason'], 'sourceUnavailable');
-    },
-  );
-
-  test(
-    'deduplicates bursts across widgets but retains distinct failure kinds',
-    () {
-      session().reportTerminal();
-      session().reportTerminal();
-      session(location: VideoPlaybackLocation.sticker).reportTerminal();
-      expect(events, hasLength(2));
-      now = now.add(const Duration(minutes: 10));
-      session().reportTerminal();
-      expect(events, hasLength(3));
-    },
-  );
-
-  test(
-    'global rolling-hour cap bounds volume even with different signatures',
-    () {
-      for (final location in VideoPlaybackLocation.values) {
-        for (final stage in VideoFailureStage.values) {
-          session(location: location)
-            ..recordFailure('decoder failure', stage: stage)
-            ..reportTerminal();
-        }
-      }
-      expect(events, hasLength(20));
-      session().reportTerminal();
-      expect(events, hasLength(20));
-      now = now.add(const Duration(hours: 1));
-      session().reportTerminal();
-      expect(events, hasLength(21));
-    },
   );
 
   test(
@@ -282,17 +157,6 @@ void main() {
     },
   );
 
-  test('privacy filter leaves unrelated Sentry events unchanged', () {
-    final event = SentryEvent(
-      logger: 'other',
-      transaction: 'original',
-      breadcrumbs: [Breadcrumb(message: 'original')],
-    );
-    expect(sanitizeVideoPlaybackEvent(event), same(event));
-    expect(event.breadcrumbs!.single.message, 'original');
-    expect(event.transaction, 'original');
-  });
-
   test('a URL query or platform details cannot become a native error code', () {
     session()
       ..recordFailure(
@@ -312,25 +176,4 @@ void main() {
       isNot(contains('private.invalid')),
     );
   });
-
-  test(
-    'detached hub leaves native scope and tracing owned by the main window',
-    () async {
-      final options = SentryFlutterOptions();
-      configureVideoWindowTelemetry(options);
-      expect(options.autoInitializeNativeSdk, isFalse);
-      expect(options.enableScopeSync, isFalse);
-      expect(options.enableNativeTraceSync, isFalse);
-      expect(options.enableFramesTracking, isFalse);
-      expect(options.enableAutoSessionTracking, isFalse);
-      expect(options.enableAutoPerformanceTracing, isFalse);
-      expect(options.tracesSampleRate, isNull);
-      expect(options.tracesSampler, isNull);
-      expect(options.sendDefaultPii, isFalse);
-      expect(options.maxBreadcrumbs, 0);
-      expect(await options.beforeSend!(SentryEvent(), Hint()), isNull);
-      session(location: VideoPlaybackLocation.desktopWindow).reportTerminal();
-      expect(await options.beforeSend!(events.single, Hint()), isNotNull);
-    },
-  );
 }

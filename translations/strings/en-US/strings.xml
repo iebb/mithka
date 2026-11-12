@@ -67,7 +67,8 @@
     <string name="accountBackupTitle">Account Backup</string>
     <string name="accountBackupUnavailable">Account backup is unavailable on this device or distribution.</string>
         <string name="accountPickerTitle">Choose an account</string>
-    <string name="accountPickerMessage">This link belongs to one of your accounts. Choose which one to open it in.</string>
+    <string name="accountPickerMessage">This chat isn't on the current account. Choose which account to open it in.</string>
+    <string name="accountPickerHasChat">Has this chat</string>
 <string name="accountBackupUserId">User ID: {value1}</string>
     <string name="accountSecurityANewCodeWasSent">A new code was sent.</string>
     <string name="accountSecurityAccountAndContactsWillMove">Your Telegram account and contacts will move to the new number.</string>

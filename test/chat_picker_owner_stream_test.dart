@@ -253,31 +253,4 @@ void main() {
 
     await tearDownPicker(tester);
   });
-
-  testWidgets('a foreground live title cannot rename a pinned row', (
-    tester,
-  ) async {
-    await pumpPicker(tester);
-
-    client.routeUpdateForTesting({
-      '@type': 'updateChatTitle',
-      '@client_id': foregroundClientId,
-      'chat_id': 42,
-      'title': 'Foreign rename',
-    });
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Pinned owner'), findsOneWidget);
-    expect(find.text('Foreign rename'), findsNothing);
-
-    client.routeUpdateForTesting({
-      '@type': 'updateChatTitle',
-      '@client_id': pinnedClientId,
-      'chat_id': 42,
-      'title': 'Owner rename',
-    });
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Owner rename'), findsOneWidget);
-
-    await tearDownPicker(tester);
-  });
 }

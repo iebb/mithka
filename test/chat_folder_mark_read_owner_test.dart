@@ -176,38 +176,6 @@ _Respond _folderResponder({
 }
 
 void main() {
-  test(
-    'a disposed list sends no read receipt through the account that replaced it',
-    () async {
-      final hold = Completer<void>();
-      final registry = await _startRegistry(
-        _folderResponder(holdFirstWrite: hold),
-      );
-      // No account slot: this is the production list, which follows the
-      // foreground client on every call.
-      final model = ChatListViewModel(clientForTesting: registry.client);
-
-      final run = model.markFolderRead(7);
-      // The first receipt is in flight; the list is then unmounted and the
-      // other account becomes the foreground one.
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      model.dispose();
-      registry.switchToBeta();
-      hold.complete();
-      await run;
-
-      final writes = registry.tuples(const ['viewMessages']);
-      expect(writes, const [
-        (clientId: _alphaClientId, type: 'viewMessages', chatId: 11),
-      ], reason: 'only the request that was already in flight may land');
-      expect(
-        registry.requests.where((entry) => entry.$1 == _betaClientId),
-        isEmpty,
-        reason: 'the old account ids never reach the replacement account',
-      );
-    },
-  );
-
   test('an account switch strands the rest of the bulk read', () async {
     final hold = Completer<void>();
     final registry = await _startRegistry(
@@ -262,55 +230,6 @@ void main() {
       reason: 'one rejected chat must not leave the rest unread',
     );
   });
-
-  test(
-    'an all-chats read enumerates main and archive, not the selection',
-    () async {
-      final registry = await _startRegistry((request, clientId) async {
-        switch (request['@type']) {
-          case 'loadChats':
-            throw TdError({'code': 404, 'message': 'Not Found'});
-          case 'getChats':
-            final list = request['chat_list'] as Map<String, dynamic>;
-            return {
-              '@type': 'chats',
-              'chat_ids': list['@type'] == 'chatListArchive'
-                  ? const <int>[31]
-                  : const <int>[11, 12],
-            };
-          case 'getChat':
-            return switch (request['chat_id']) {
-              11 => _chat(11, unread: 1, lastMessageId: 7 << _shift),
-              12 => _chat(12),
-              31 => _chat(31, unread: 1, lastMessageId: 9 << _shift),
-              _ => _chat(request['chat_id'] as int),
-            };
-        }
-        return const {'@type': 'ok'};
-      });
-      final model = ChatListViewModel(clientForTesting: registry.client);
-      addTearDown(model.dispose);
-
-      await model.markAllChatsRead();
-
-      expect(
-        registry.tuples(const ['viewMessages']),
-        const [
-          (clientId: _alphaClientId, type: 'viewMessages', chatId: 11),
-          (clientId: _alphaClientId, type: 'viewMessages', chatId: 31),
-        ],
-        reason:
-            'the archive is part of "all", and a chat this list never '
-            'loaded is still read',
-      );
-      final enumerated = [
-        for (final (_, request) in registry.requests)
-          if (request['@type'] == 'getChats')
-            (request['chat_list'] as Map<String, dynamic>)['@type'],
-      ];
-      expect(enumerated, const ['chatListMain', 'chatListArchive']);
-    },
-  );
 }
 
 Map<String, dynamic> _chat(

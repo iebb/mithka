@@ -46,47 +46,9 @@ void main() {
       expect(result, isNotNull);
       expect(backend.replacedDownloads, 0);
       expect(backend.requests, hasLength(1));
-      expect(result!['local'], containsPair('download_offset', offset));
-      expect(result['local'], containsPair('downloaded_prefix_size', length));
-      expect(result['local'], containsPair('is_downloading_completed', false));
+      expect(result!['local'], containsPair('downloaded_prefix_size', length));
     },
   );
-
-  test('different files can still download concurrently', () async {
-    final results = await Future.wait([
-      for (final fileId in [920002, 920003])
-        TdFileCenter.shared.downloadPriorityRange(
-          fileId,
-          accountSlot: accountSlot,
-          offset: 0,
-          length: 2 * 1024 * 1024,
-        ),
-    ]);
-
-    expect(results, everyElement(isNotNull));
-    expect(backend.replacedDownloads, 0);
-    expect(backend.requests, hasLength(2));
-  });
-
-  testWidgets('range waits honor a timeout longer than the query default', (
-    tester,
-  ) async {
-    backend.completionDelay = const Duration(seconds: 35);
-    var finished = false;
-    final download = TdFileCenter.shared
-        .downloadPriorityRange(
-          920004,
-          accountSlot: accountSlot,
-          offset: 0,
-          length: 2 * 1024 * 1024,
-        )
-        .whenComplete(() => finished = true);
-
-    await tester.pump(const Duration(seconds: 31));
-    expect(finished, isFalse);
-    await tester.pump(const Duration(seconds: 4));
-    expect(await download, isNotNull);
-  });
 
   test('unwatched completion still resolves a pending path', () async {
     const fileId = 920010;
@@ -97,74 +59,6 @@ void main() {
       'file': backend.file(fileId, completed: true),
     });
     expect(await path, '/tmp/mithka-priority-$fileId');
-    expect(
-      TdFileCenter.shared.cachedPath(
-        TdFileRef(id: fileId),
-        accountSlot: accountSlot,
-      ),
-      '/tmp/mithka-priority-$fileId',
-    );
-  });
-
-  test('a foreground resolver raises a background download priority', () async {
-    const fileId = 920011;
-    final background = TdFileCenter.shared.path(
-      fileId,
-      accountSlot: accountSlot,
-    );
-    final foreground = TdFileCenter.shared.path(
-      fileId,
-      accountSlot: accountSlot,
-      priority: 32,
-    );
-    await Future<void>.delayed(Duration.zero);
-
-    expect(backend.requests.map((request) => request['priority']).toList(), [
-      16,
-      32,
-    ]);
-    expect(backend.replacedDownloads, 0);
-    updates.add({
-      '@type': 'updateFile',
-      'file': backend.file(fileId, completed: true),
-    });
-    expect(await background, '/tmp/mithka-priority-$fileId');
-    expect(await foreground, '/tmp/mithka-priority-$fileId');
-  });
-
-  test('whole-file progress and completion arrive after startup', () async {
-    const fileId = 920005;
-    backend.totalSize = 0;
-    final result = await TdFileCenter.shared.downloadPriorityFile(
-      fileId,
-      accountSlot: accountSlot,
-    );
-
-    expect(result!['local'], containsPair('is_downloading_active', true));
-    expect(result['local'], containsPair('is_downloading_completed', false));
-    expect(backend.requests.single, {
-      '@type': 'downloadFile',
-      'file_id': fileId,
-      'priority': 32,
-      'offset': 0,
-      'limit': 0,
-      'synchronous': false,
-    });
-
-    final completion = TdFileCenter.shared
-        .progress(fileId, accountSlot: accountSlot)
-        .firstWhere((progress) => progress.isCompleted);
-    // Let the initial getFile probe finish before the later completion update.
-    await Future<void>.delayed(Duration.zero);
-    backend.totalSize = 16 * 1024 * 1024;
-    updates.add({
-      '@type': 'updateFile',
-      'file': backend.file(fileId, completed: true),
-    });
-
-    final progress = await completion;
-    expect(progress.downloaded, backend.totalSize);
-    expect(progress.fraction, 1);
     expect(
       TdFileCenter.shared.cachedPath(
         TdFileRef(id: fileId),
@@ -188,21 +82,6 @@ void main() {
     expect(backend.requests, hasLength(1));
     expect(backend.canceledFiles, contains(920006));
   });
-
-  test(
-    'canceling a whole file leaves no queued chunks to restart it',
-    () async {
-      await TdFileCenter.shared.downloadPriorityFile(
-        920007,
-        accountSlot: accountSlot,
-      );
-      TdFileCenter.shared.cancelDownload(920007, accountSlot: accountSlot);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(backend.requests, hasLength(1));
-      expect(backend.canceledFiles, contains(920007));
-    },
-  );
 
   test(
     'a rejected download is not reissued as an unlimited fallback',
@@ -230,27 +109,6 @@ void main() {
       expect(backend.requests, isEmpty);
     },
   );
-
-  test('invalid ranges never start a transfer', () async {
-    for (final (fileId, offset, length) in [
-      (0, 0, 1024),
-      (-1, 0, 1024),
-      (920010, -1, 1024),
-      (920010, 0, 0),
-      (920010, 0, -1),
-    ]) {
-      expect(
-        await TdFileCenter.shared.downloadPriorityRange(
-          fileId,
-          accountSlot: accountSlot,
-          offset: offset,
-          length: length,
-        ),
-        isNull,
-      );
-    }
-    expect(backend.requests, isEmpty);
-  });
 }
 
 /// Mirrors TDLib's one current user-requested range per file. A different

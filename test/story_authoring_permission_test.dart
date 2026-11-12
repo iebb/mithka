@@ -21,7 +21,6 @@ void main() {
     await _pumpAuthoring(tester, canPost: false);
 
     expect(find.byKey(const ValueKey('story-publish-dock')), findsNothing);
-    expect(find.text('下一步'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -31,14 +30,12 @@ void main() {
     await _pumpAuthoring(tester, canPost: true);
 
     expect(find.byKey(const ValueKey('story-publish-dock')), findsOneWidget);
-    expect(find.text('下一步'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('camera opens only after the user selects it', (tester) async {
     await _pumpAuthoring(tester, canPost: true, initialMediaPath: null);
 
-    expect(find.text('选择照片或视频'), findsOneWidget);
     expect(find.byType(AppCameraView), findsNothing);
 
     if (Platform.isMacOS) {

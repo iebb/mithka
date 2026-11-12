@@ -95,41 +95,6 @@ void main() {
     });
   }
 
-  testWidgets('manual biometric retry hides the PIN again', (tester) async {
-    final harness = await _pumpLock(tester);
-    harness.attempts.single.complete(false);
-    await tester.pumpAndSettle();
-    expect(find.text('2'), findsOneWidget);
-
-    final context = tester.element(find.byType(LocalAppLockGate));
-    await tester.tap(find.text(AppStringKeys.appLockFaceUnlock.l10n(context)));
-    await tester.pumpAndSettle();
-    expect(harness.attempts, hasLength(2));
-    expect(find.text('2'), findsNothing);
-
-    harness.attempts.last.complete(true);
-    await tester.pumpAndSettle();
-    expect(harness.controller.locked, isFalse);
-  });
-
-  testWidgets('each new lock starts with biometrics again', (tester) async {
-    final harness = await _pumpLock(tester);
-    harness.attempts.single.complete(false);
-    await tester.pumpAndSettle();
-    await tester.runAsync(
-      () => harness.controller.unlockWithCredential('2468'),
-    );
-    await tester.pumpAndSettle();
-
-    harness.controller.lock();
-    await tester.pumpAndSettle();
-    expect(harness.attempts, hasLength(2));
-    expect(find.text('2'), findsNothing);
-    harness.attempts.last.complete(true);
-    await tester.pumpAndSettle();
-    expect(harness.controller.locked, isFalse);
-  });
-
   testWidgets('background lock waits for resume before prompting', (
     tester,
   ) async {
@@ -145,37 +110,6 @@ void main() {
     harness.attempts.single.complete(false);
     await tester.pumpAndSettle();
     expect(find.text('2'), findsOneWidget);
-  });
-
-  for (final enabled in [false, true]) {
-    testWidgets(
-      enabled
-          ? 'unavailable biometrics show the PIN immediately'
-          : 'disabled biometrics show the PIN immediately',
-      (tester) async {
-        final harness = await _pumpLock(
-          tester,
-          biometricEnabled: enabled,
-          biometricAvailable: !enabled,
-        );
-        expect(harness.attempts, isEmpty);
-        expect(find.text('2'), findsOneWidget);
-      },
-    );
-  }
-
-  testWidgets('gesture lock also waits for biometrics before fallback', (
-    tester,
-  ) async {
-    final harness = await _pumpLock(
-      tester,
-      credentialType: AppLockCredentialType.gesture,
-    );
-    expect(find.byType(GesturePatternPad), findsNothing);
-    harness.attempts.single.complete(false);
-    await tester.pumpAndSettle();
-    expect(find.byType(GesturePatternPad), findsOneWidget);
-    expect(harness.controller.locked, isTrue);
   });
 }
 

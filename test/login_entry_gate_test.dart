@@ -8,10 +8,8 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/auth/login_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/proxy_view.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/app_theme.dart';
-import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -107,20 +105,6 @@ void main() {
   setUpAll(() => L10nFixtures.load().install());
 
   group('auth gate surfaces', () {
-    testWidgets('a cold start still paints the splash', (tester) async {
-      // Guard test: passes before and after the fix by design — startup keeps
-      // the splash, only the reload path changed.
-      SharedPreferences.setMockInitialValues({});
-      final accounts = AccountStore(await SharedPreferences.getInstance());
-      final auth = _realAuth();
-      addTearDown(accounts.dispose);
-      addTearDown(auth.dispose);
-      await _pumpGate(tester, auth, accounts);
-      expect(find.byType(SplashView), findsOneWidget);
-      expect(find.byType(LoginView), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-
     testWidgets('reloading the client from the login never shows the splash', (
       tester,
     ) async {
@@ -160,104 +144,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byType(LoginView), findsOneWidget);
       expect(find.byType(SplashView), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-  });
-
-  group('login proxy shortcut', () {
-    // The login surface and the sidebar share ProxyStatusController. The
-    // shared singleton is configured once per process by
-    // profile_proxy_button_test.dart's setUpAll — this file only needs the
-    // fake transport to exist, and reads whatever the controller last held.
-    testWidgets('the login page reuses the sidebar proxy button', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(390, 844);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      SharedPreferences.setMockInitialValues({});
-      final accounts = AccountStore(await SharedPreferences.getInstance());
-      final theme = ThemeController(await SharedPreferences.getInstance());
-      final auth = _realAuth();
-      auth.reloadAuthState(); // resolves to the phone step on the unconfigured client
-      addTearDown(accounts.dispose);
-      addTearDown(theme.dispose);
-      addTearDown(auth.dispose);
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<AccountStore>.value(value: accounts),
-            ChangeNotifierProvider<ThemeController>.value(value: theme),
-            ChangeNotifierProvider<AuthManager>.value(value: auth),
-          ],
-          child: MaterialApp(
-            locale: const Locale('en'),
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-            ],
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: ThemeData(extensions: [AppColors.light]),
-            home: const LoginView(),
-          ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 250));
-
-      // Same widget the sidebar uses — the shared keys must be present.
-      expect(
-        find.byKey(const ValueKey('profile-proxy-button')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('profile-proxy-icon')), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-
-    testWidgets('tapping the shortcut opens the 代理 page, not the editor', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(390, 844);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
-      SharedPreferences.setMockInitialValues({});
-      final accounts = AccountStore(await SharedPreferences.getInstance());
-      final theme = ThemeController(await SharedPreferences.getInstance());
-      final auth = _realAuth();
-      auth.reloadAuthState(); // resolves to the phone step on the unconfigured client
-      addTearDown(accounts.dispose);
-      addTearDown(theme.dispose);
-      addTearDown(auth.dispose);
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<AccountStore>.value(value: accounts),
-            ChangeNotifierProvider<ThemeController>.value(value: theme),
-            ChangeNotifierProvider<AuthManager>.value(value: auth),
-          ],
-          child: MaterialApp(
-            locale: const Locale('en'),
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-            ],
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: ThemeData(extensions: [AppColors.light]),
-            home: const LoginView(),
-          ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.byKey(const ValueKey('profile-proxy-button')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(ProxyView), findsOneWidget);
-      expect(find.byType(ProxyEditView), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });

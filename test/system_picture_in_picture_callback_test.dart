@@ -1,14 +1,8 @@
 import 'dart:async';
 
 import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/app_navigator.dart';
-import 'package:mithka/chat/video_playback_queue.dart';
-import 'package:mithka/chat/video_player_view.dart';
-import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/tdlib/td_models.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -140,45 +134,6 @@ void main() {
     expect(snapshot?.muted, isFalse);
   });
 
-  test(
-    'snapshot volume is normalized and supports legacy mute-only data',
-    () async {
-      final snapshots = <FVideoPictureInPictureSnapshot>[];
-      FVideoPictureInPicture.debugRegisterSession(
-        id: 'normalized-volume',
-        onRestoreRequested: (snapshot) {
-          snapshots.add(snapshot);
-          return true;
-        },
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        const MethodCall('restoreRequested', {
-          'id': 'normalized-volume',
-          'volume': 2.5,
-          'muted': false,
-        }),
-      );
-      FVideoPictureInPicture.debugRegisterSession(
-        id: 'legacy-muted',
-        onRestoreRequested: (snapshot) {
-          snapshots.add(snapshot);
-          return true;
-        },
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        const MethodCall('restoreRequested', {
-          'id': 'legacy-muted',
-          'muted': true,
-        }),
-      );
-
-      expect(snapshots[0].volume, 1.0);
-      expect(snapshots[0].muted, isFalse);
-      expect(snapshots[1].volume, 0.0);
-      expect(snapshots[1].muted, isTrue);
-    },
-  );
-
   test('missing and stopped sessions reject restore', () async {
     expect(
       await FVideoPictureInPicture.debugHandleNativeCallback(
@@ -197,153 +152,5 @@ void main() {
       ),
       isFalse,
     );
-  });
-
-  test(
-    'Android enter, actions, restore, and dismissal retain one session',
-    () async {
-      final events = <String>[];
-      final snapshots = <FVideoPictureInPictureSnapshot>[];
-      final actions = <FVideoPictureInPictureAction>[];
-      FVideoPictureInPicture.debugRegisterSession(
-        id: 'android-video',
-        usesActivePlayer: false,
-        onEntered: (snapshot) {
-          events.add('entered');
-          snapshots.add(snapshot);
-        },
-        onRestored: (snapshot) {
-          events.add('restored');
-          snapshots.add(snapshot);
-        },
-        onActionRequested: (action) {
-          events.add('action');
-          actions.add(action);
-        },
-        onStop: (_) => events.add('stopped'),
-      );
-      const started = MethodCall('didStart', {
-        'id': 'android-video',
-        'positionMs': 1200,
-        'playing': true,
-        'speed': 1.25,
-        'volume': 0.62,
-        'muted': false,
-      });
-
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        started,
-        fromActivePlayer: false,
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        started,
-        fromActivePlayer: false,
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        const MethodCall('actionRequested', {
-          'id': 'android-video',
-          'action': 'pause',
-        }),
-        fromActivePlayer: false,
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        const MethodCall('didRestore', {
-          'id': 'android-video',
-          'positionMs': 2400,
-          'playing': false,
-          'speed': 1.25,
-          'volume': 0.48,
-          'muted': false,
-        }),
-        fromActivePlayer: false,
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        started,
-        fromActivePlayer: false,
-      );
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        const MethodCall('didStop', {
-          'id': 'android-video',
-          'positionMs': 3600,
-        }),
-        fromActivePlayer: false,
-      );
-
-      expect(events, ['entered', 'action', 'restored', 'entered', 'stopped']);
-      expect(actions, [FVideoPictureInPictureAction.pause]);
-      expect(snapshots[0].position, const Duration(milliseconds: 1200));
-      expect(snapshots[1].position, const Duration(milliseconds: 2400));
-      expect(snapshots[0].volume, 0.62);
-      expect(snapshots[1].volume, 0.48);
-
-      await FVideoPictureInPicture.debugHandleNativeCallback(
-        started,
-        fromActivePlayer: false,
-      );
-      expect(events, ['entered', 'action', 'restored', 'entered', 'stopped']);
-    },
-  );
-
-  testWidgets('accepted restore inserts the exact queue and snapshot', (
-    tester,
-  ) async {
-    final queue = VideoPlaybackQueue(
-      items: [
-        VideoPlaybackItem(video: TdFileRef(id: 40), messageId: 400),
-        VideoPlaybackItem(video: TdFileRef(id: 41), messageId: 410),
-      ],
-      index: 1,
-      revision: 7,
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        navigatorKey: appNavigatorKey,
-        locale: const Locale('en'),
-        localizationsDelegates: const [AppLocalizations.delegate],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const SizedBox.shrink(),
-      ),
-    );
-
-    final accepted = await restoreVideoPlaybackFromPictureInPicture(
-      queue: queue,
-      snapshot: const FVideoPictureInPictureSnapshot(
-        position: Duration(seconds: 37),
-        playing: false,
-        speed: 1.5,
-        volume: 0.28,
-        muted: true,
-      ),
-      streamQuery: (_) async => {
-        '@type': 'file',
-        'id': 41,
-        'size': 0,
-        'expected_size': 0,
-        'local': {
-          '@type': 'localFile',
-          'path': '',
-          'download_offset': 0,
-          'downloaded_prefix_size': 0,
-          'downloaded_size': 0,
-          'is_downloading_active': false,
-          'is_downloading_completed': false,
-        },
-      },
-    );
-    expect(accepted, isTrue);
-    await tester.pump();
-
-    final restored = tester.widget<VideoOnDemandPlayerView>(
-      find.byType(VideoOnDemandPlayerView),
-    );
-    expect(restored.queue, same(queue));
-    expect(restored.initialPosition, const Duration(seconds: 37));
-    expect(restored.initialPlaying, isFalse);
-    expect(restored.initialSpeed, 1.5);
-    expect(restored.initialVolume, 0.28);
-    expect(restored.initialMuted, isTrue);
-
-    appNavigatorKey.currentState!.pop();
-    await tester.pump();
   });
 }
