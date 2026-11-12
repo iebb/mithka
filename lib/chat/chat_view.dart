@@ -1978,6 +1978,12 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_continueHistoryIfNearLatest());
       }
     } else if (_initialTranscriptReady) {
+      // A drag starting means the reader is leaving the composer: fold its
+      // open panels the same way the OS folds the keyboard on drag.
+      if (_lastTranscriptUserScrollDirection == ScrollDirection.idle &&
+          notification.direction != ScrollDirection.idle) {
+        _vm.dismissComposerPanels();
+      }
       // Once an older-page request is in flight, a turn toward the latest
       // messages means the user has abandoned the pull. A later model frame
       // must not reveal that page by jumping the viewport back to the oldest
@@ -10084,6 +10090,7 @@ class _ChatViewState extends State<ChatView> {
           child: CustomScrollView(
             key: _transcriptViewportKey,
             controller: _scroll,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             center: _newerTranscriptSliverKey,
             physics: const ClampingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),

@@ -686,6 +686,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   int? _syncedEditingMessageId;
   int _syncedComposerRevision = -1;
   int _syncedComposerFocusTick = 0;
+  int _syncedComposerDismissTick = 0;
   _Panel _panel = _Panel.none;
 
   _MediaKind _mediaKind = _MediaKind.emoji;
@@ -850,6 +851,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _wasEditingMessage = vm.editingMessage != null;
     _syncedEditingMessageId = vm.editingMessage?.id;
     _syncedComposerFocusTick = vm.composerFocusTick;
+    _syncedComposerDismissTick = vm.composerDismissTick;
     _controller.setFormattedText(
       vm.composerFormattedDraft,
       vm.composerDraftEntities,
@@ -1401,6 +1403,12 @@ class _ChatInputBarState extends State<ChatInputBar>
       _syncedComposerFocusTick = focusTick;
       _focusComposerForTranscriptReply();
     }
+    final dismissTick = vm.composerDismissTick;
+    final dismissRequested = dismissTick != _syncedComposerDismissTick;
+    if (dismissRequested) {
+      _syncedComposerDismissTick = dismissTick;
+      _setPanel(_Panel.none);
+    }
     final hadText = _hasText;
     final controllerTextBeforeSync = _controller.text;
     final previousVmState = _syncedVmState;
@@ -1552,6 +1560,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
       _syncedComposerFocusTick = widget.vm.composerFocusTick;
+      _syncedComposerDismissTick = widget.vm.composerDismissTick;
       _cancelVoiceRecording();
       _discardDesktopVoiceDraft();
       _discardVoiceDraft(rebuild: false);

@@ -1062,6 +1062,7 @@ class ChatViewModel extends ChangeNotifier {
   int _composerRevision = 0;
   int _fullViewRevision = 0;
   int _composerFocusTick = 0;
+  int _composerDismissTick = 0;
 
   /// Bumped by every notification except the handful proven not to touch
   /// anything the composer renders, so the input bar can skip those rebuilds.
@@ -1083,6 +1084,17 @@ class ChatViewModel extends ChangeNotifier {
   void requestComposerFocus() {
     if (_isDisposed) return;
     _composerFocusTick++;
+    super.notifyListeners();
+  }
+
+  /// Bumped when the user drags the transcript, so the composer can collapse
+  /// its open panels the same way the OS keyboard folds on drag.
+  int get composerDismissTick => _composerDismissTick;
+
+  /// Collapses any open composer panel without touching the draft or caret.
+  void dismissComposerPanels() {
+    if (_isDisposed) return;
+    _composerDismissTick++;
     super.notifyListeners();
   }
 
