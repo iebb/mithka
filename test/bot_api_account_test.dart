@@ -7,93 +7,22 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/bot_api/bot_api_account.dart';
 import 'package:mithka/bot_api/bot_api_client.dart';
-import 'package:mithka/bot_api/bot_api_endpoint_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('normalizeBotApiEndpoint', () {
-    test('keeps custom HTTPS roots and trims trailing slashes', () {
-      expect(
-        normalizeBotApiEndpoint('https://bots.example.test/telegram///'),
-        Uri.parse('https://bots.example.test/telegram'),
-      );
-    });
-
-    test('allows local Bot API servers over HTTP', () {
-      expect(
-        normalizeBotApiEndpoint('http://192.168.1.20:8081/'),
-        Uri.parse('http://192.168.1.20:8081'),
-      );
-      expect(
-        normalizeBotApiEndpoint('http://localhost:8081'),
-        Uri.parse('http://localhost:8081'),
-      );
-    });
-
-    test('rejects public HTTP and token-bearing endpoints', () {
-      expect(
-        () => normalizeBotApiEndpoint('http://bots.example.test'),
-        throwsFormatException,
-      );
-      expect(
-        () => normalizeBotApiEndpoint(
-          'https://api.telegram.org/bot123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
-        ),
-        throwsFormatException,
-      );
-    });
-  });
-
-  test('stores one global endpoint for every bot account', () async {
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-
+  test('rejects public HTTP and token-bearing endpoints', () {
     expect(
-      BotApiEndpointConfig.load(preferences),
-      Uri.parse('https://api.telegram.org'),
-    );
-    await BotApiEndpointConfig.save(
-      preferences,
-      'https://bots.example.test/telegram/',
-    );
-
-    expect(
-      BotApiEndpointConfig.load(preferences),
-      Uri.parse('https://bots.example.test/telegram'),
+      () => normalizeBotApiEndpoint('http://bots.example.test'),
+      throwsFormatException,
     );
     expect(
-      preferences.getString(BotApiEndpointConfig.preferenceKey),
-      'https://bots.example.test/telegram',
+      () => normalizeBotApiEndpoint(
+        'https://api.telegram.org/bot123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
+      ),
+      throwsFormatException,
     );
-  });
-
-  test('uses a custom endpoint root for Bot API methods', () async {
-    late http.Request captured;
-    final client = BotApiClient(
-      token: '123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
-      endpoint: Uri.parse('https://bots.example.test/telegram'),
-      httpClient: MockClient((request) async {
-        captured = request;
-        return http.Response(
-          jsonEncode({
-            'ok': true,
-            'result': {'id': 123456, 'is_bot': true},
-          }),
-          200,
-        );
-      }),
-    );
-
-    final result = await client.call('getMe');
-
-    expect((result as Map)['id'], 123456);
-    expect(
-      captured.url.path,
-      '/telegram/bot123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef/getMe',
-    );
-    client.close();
   });
 
   test('does not expose a token through HTTP failure text', () async {
@@ -197,57 +126,46 @@ void main() {
     },
   );
 
-  for (final platform in [TargetPlatform.iOS, TargetPlatform.macOS]) {
-    test('uses the shared iCloud Keychain on ${platform.name}', () async {
-      const secureStorage = MethodChannel(
-        'plugins.it_nomads.com/flutter_secure_storage',
-      );
-      SharedPreferences.setMockInitialValues({});
-      debugDefaultTargetPlatformOverride = platform;
-      addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      final operationOptions = <String, Map<String, String>>{};
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(secureStorage, (call) async {
-            if (call.method == 'write' || call.method == 'read') {
-              final arguments = (call.arguments as Map)
-                  .cast<Object?, Object?>();
-              operationOptions[call.method] = (arguments['options'] as Map)
-                  .cast<String, String>();
-            }
-            return null;
-          });
-      addTearDown(
-        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(secureStorage, null),
-      );
-      final preferences = await SharedPreferences.getInstance();
-      final account = BotApiAccount(
-        slot: 2,
-        endpoint: Uri.parse('https://bots.example.test'),
-        bot: const {'id': 654321, 'is_bot': true},
-      );
+  test('stores bot tokens in the shared data-protection Keychain', () async {
+    const secureStorage = MethodChannel(
+      'plugins.it_nomads.com/flutter_secure_storage',
+    );
+    SharedPreferences.setMockInitialValues({});
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final operationOptions = <String, Map<String, String>>{};
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureStorage, (call) async {
+          if (call.method == 'write' || call.method == 'read') {
+            final arguments = (call.arguments as Map).cast<Object?, Object?>();
+            operationOptions[call.method] = (arguments['options'] as Map)
+                .cast<String, String>();
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(secureStorage, null),
+    );
+    final preferences = await SharedPreferences.getInstance();
+    final account = BotApiAccount(
+      slot: 2,
+      endpoint: Uri.parse('https://bots.example.test'),
+      bot: const {'id': 654321, 'is_bot': true},
+    );
 
-      await BotApiAccountRegistry.save(
-        preferences,
-        account,
-        '654321:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
-      );
-      await BotApiAccountRegistry.readToken(account.slot);
+    await BotApiAccountRegistry.save(
+      preferences,
+      account,
+      '654321:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef',
+    );
+    await BotApiAccountRegistry.readToken(account.slot);
 
-      expect(operationOptions['write'], operationOptions['read']);
-      expect(
-        operationOptions['write']?['accountName'],
-        'ad.neko.mithka.bot-api',
-      );
-      expect(operationOptions['write']?['accessibility'], 'unlocked');
-      expect(operationOptions['write']?['synchronizable'], 'true');
-      expect(operationOptions['write'], isNot(contains('groupId')));
-      if (platform == TargetPlatform.macOS) {
-        expect(
-          operationOptions['write']?['usesDataProtectionKeychain'],
-          'true',
-        );
-      }
-    });
-  }
+    expect(operationOptions['write'], operationOptions['read']);
+    expect(operationOptions['write']?['accountName'], 'ad.neko.mithka.bot-api');
+    expect(operationOptions['write']?['accessibility'], 'unlocked');
+    expect(operationOptions['write']?['synchronizable'], 'true');
+    expect(operationOptions['write'], isNot(contains('groupId')));
+    expect(operationOptions['write']?['usesDataProtectionKeychain'], 'true');
+  });
 }

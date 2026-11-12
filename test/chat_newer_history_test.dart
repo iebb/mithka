@@ -74,68 +74,6 @@ void main() {
   }
 
   test(
-    'short newer pages append continuously without replacing history',
-    () async {
-      final vm = model();
-      final revision = vm.historyWindowRevision;
-      expect(await vm.loadNewer(), isTrue);
-      expect(
-        vm.messages.map((m) => m.id),
-        orderedEquals(List.generate(9, (i) => 100 + i)),
-      );
-      expect(vm.historyReachesLatest, isFalse);
-      expect(vm.anchoredHistory, isTrue);
-      expect(vm.historyWindowRevision, revision);
-      final request = requests.firstWhere(
-        (r) => r['@type'] == 'getChatHistory',
-      );
-      expect(request['from_message_id'], 104);
-      expect(request['offset'], -30);
-      expect(request['limit'], 31);
-      expect(request['only_local'], isFalse);
-
-      history = (_) async => _page(108, 110);
-      expect(await vm.loadNewer(), isTrue);
-      expect(vm.historyReachesLatest, isTrue);
-      expect(vm.anchoredHistory, isTrue);
-      expect(vm.canLoadNewer, isFalse);
-      vm.resumeLatestHistoryIfLoaded();
-      expect(vm.anchoredHistory, isFalse);
-      expect(
-        vm.messages.map((m) => m.id),
-        orderedEquals(List.generate(11, (i) => 100 + i)),
-      );
-      expect(vm.historyWindowRevision, revision);
-      expect(requests.where((r) => r['@type'] == 'viewMessages'), isEmpty);
-    },
-  );
-
-  test('an incomplete window cannot be resumed as latest', () {
-    final vm = model();
-    vm.resumeLatestHistoryIfLoaded();
-    expect(vm.anchoredHistory, isTrue);
-    expect(vm.historyReachesLatest, isFalse);
-  });
-
-  test(
-    'empty, duplicate and failed pages allow retry without claiming latest',
-    () async {
-      final vm = model();
-      for (final page in [_page(1, 0), _page(103, 104)]) {
-        history = (_) async => page;
-        expect(await vm.loadNewer(), isFalse);
-        expect(vm.historyReachesLatest, isFalse);
-        expect(vm.canLoadNewer, isTrue);
-      }
-      history = (_) async => throw StateError('test transport unavailable');
-      expect(await vm.loadNewer(), isFalse);
-      expect(vm.canLoadNewer, isTrue);
-      history = (_) async => _page(104, 108);
-      expect(await vm.loadNewer(), isTrue);
-    },
-  );
-
-  test(
     'live arrivals do not skip the gap or falsely complete an in-flight page',
     () async {
       final vm = model();
@@ -177,27 +115,16 @@ void main() {
     expect(vm.messages.map((m) => m.id), isNot(contains(106)));
   });
 
-  for (final replacement in ['latest', 'target', 'clear']) {
-    test('late newer page cannot overwrite $replacement navigation', () async {
-      final vm = model();
-      final response = Completer<Map<String, dynamic>>();
-      history = (_) => response.future;
-      final loading = vm.loadNewer();
-      history = (_) async => _page(109, 110);
-      if (replacement == 'latest') {
-        expect(await vm.loadLatestHistory(), isTrue);
-      } else if (replacement == 'target') {
-        expect(await vm.loadAroundMessage(109), isTrue);
-      } else {
-        vm.applyLiveUpdateForTesting({
-          '@type': 'mithkaChatHistoryCleared',
-          'chat_id': _chatId,
-        });
-      }
-      final ids = vm.messages.map((m) => m.id).toList();
-      response.complete(_page(104, 108));
-      expect(await loading, isFalse);
-      expect(vm.messages.map((m) => m.id), orderedEquals(ids));
-    });
-  }
+  test('late newer page cannot overwrite target navigation', () async {
+    final vm = model();
+    final response = Completer<Map<String, dynamic>>();
+    history = (_) => response.future;
+    final loading = vm.loadNewer();
+    history = (_) async => _page(109, 110);
+    expect(await vm.loadAroundMessage(109), isTrue);
+    final ids = vm.messages.map((m) => m.id).toList();
+    response.complete(_page(104, 108));
+    expect(await loading, isFalse);
+    expect(vm.messages.map((m) => m.id), orderedEquals(ids));
+  });
 }

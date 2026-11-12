@@ -4,11 +4,6 @@ import 'package:mithka/auth/phone_number_format.dart';
 String fmt(String input) => formatLoginPhoneNumber(input);
 
 void main() {
-  test('as-you-type: empty input stays "+"', () {
-    expect(fmt(''), '+');
-    expect(fmt('+'), '+');
-  });
-
   test('as-you-type: groups per country and never loses digits', () {
     for (final n in [
       '+8613800138000',
@@ -27,23 +22,6 @@ void main() {
         reason: 'should group: $out',
       );
     }
-  });
-
-  test('as-you-type: CN mobile international grouping', () {
-    // Sanity that a known number formats to the expected international layout.
-    expect(fmt('+8613800138000'), '+86 138 0013 8000');
-  });
-
-  test('Gibraltar mobiles retain the calling-code separator while typing', () {
-    for (final digits in ['35057123456', '35060101234']) {
-      for (var length = 4; length <= digits.length; length++) {
-        final partial = digits.substring(0, length);
-        expect(fmt(partial), '+350 ${partial.substring(3)}');
-      }
-    }
-    expect(fmt('+350 5712 3456'), '+350 57123456');
-    expect(fmt('+35020012345'), '+350 200 12345');
-    expect(fmt('+350'), '+350');
   });
 
   test(

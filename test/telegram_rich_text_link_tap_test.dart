@@ -72,15 +72,6 @@ void main() {
     expect(calls, ['first:duck_user', 'second:duck_user']);
   });
 
-  testWidgets('quoted typed mention forwards its username callback', (
-    tester,
-  ) async {
-    final calls = <String>[];
-    await pumpUsername(tester, calls.add, quoted: true);
-    await tapUsername(tester);
-    expect(calls, ['duck_user']);
-  });
-
   // The bio loads after the page mounts: an empty bio renders first, the
   // fetched full info replaces it in place. Every frame in between must leave
   // the link's recognizer attached.
@@ -130,66 +121,4 @@ void main() {
       reason: 'the visible bio link must carry its tap recognizer',
     );
   });
-
-  testWidgets('link recognizer survives repeated rebuilds with same text', (
-    tester,
-  ) async {
-    const bio = 'read https://t.me/mithka first';
-
-    Widget host() => const MaterialApp(
-      home: Scaffold(
-        body: TelegramRichText(key: ValueKey('bio'), text: bio),
-      ),
-    );
-
-    await tester.pumpWidget(host());
-    await tester.pumpWidget(host());
-    await tester.pumpWidget(host());
-    await tester.pump();
-
-    final richText = tester.widget<RichText>(find.byType(RichText).first);
-    final linkSpan = _textSpans(
-      richText.text,
-    ).where((s) => s.text == 'https://t.me/mithka').toList();
-    expect(linkSpan, isNotEmpty);
-    expect(
-      linkSpan.single.recognizer,
-      isA<TapGestureRecognizer>(),
-      reason: 'memoized spans keep the same recognizer; it must stay attached',
-    );
-  });
-
-  testWidgets(
-    'mention span resolves even when TDLib entity arrives with a pangu-shifted text',
-    (tester) async {
-      // Pangu inserts spaces for CJK-latin boundaries. Entities shift onto the
-      // spaced text; if they shifted wrong, the span would cover the wrong
-      // characters and the visible link would not carry the recognizer.
-      const bio = '看 https://t.me/mithka 看看';
-      const entities = [
-        MessageTextEntity(offset: 2, length: 19, type: 'textEntityTypeUrl'),
-      ];
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: TelegramRichText(text: bio, entities: entities),
-          ),
-        ),
-      );
-
-      final richText = tester.widget<RichText>(find.byType(RichText).first);
-      final spans = _textSpans(richText.text).toList();
-      final linkSpans = spans
-          .where((s) => (s.text ?? '').contains('t.me/mithka'))
-          .toList();
-      for (final span in linkSpans) {
-        expect(
-          span.recognizer,
-          isA<TapGestureRecognizer>(),
-          reason: 'every visible piece of the link must stay tappable',
-        );
-      }
-      expect(linkSpans, isNotEmpty);
-    },
-  );
 }

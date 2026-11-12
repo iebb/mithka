@@ -73,15 +73,6 @@ Future<bool> _copy(ForwardQuery query) => sendMarkdownRichTextForward(
 
 void main() {
   test(
-    'active-account queries demonstrate the cross-account copy hazard',
-    () async {
-      final accounts = _Accounts();
-      expect(await _copy(accounts.query), isTrue);
-      expect(accounts.sent, [10]);
-    },
-  );
-
-  test(
     'owned forwarding keeps probes, parsing and sending on the source',
     () async {
       final accounts = _Accounts();

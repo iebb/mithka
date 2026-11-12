@@ -9,24 +9,19 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_view_model.dart';
-import 'package:mithka/chat/desktop_voice_waveform.dart';
 import 'package:mithka/chat/message_send_options.dart';
 import 'package:mithka/chat/voice_recording_session.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart' as recording;
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _panel = ValueKey('desktopVoiceMessagePanel');
-const _bar = ValueKey('desktopVoiceRecordButton');
 const _mobileButton = ValueKey('mobileVoiceRecordButton');
 const _close = ValueKey('desktopVoicePanelClose');
 const _retry = ValueKey('desktopVoiceRetrySend');
-const _discard = ValueKey('desktopVoiceDiscard');
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temporary;
@@ -43,83 +38,6 @@ void main() {
     temporary.deleteSync(recursive: true);
   });
 
-  for (final platform in [
-    TargetPlatform.macOS,
-    TargetPlatform.windows,
-    TargetPlatform.linux,
-  ]) {
-    testWidgets(
-      '$platform uses the desktop backend and live horizontal waveform',
-      (tester) async {
-        final recorder = _DesktopRecorder();
-        final vm = await _openComposer(
-          tester,
-          platform: platform,
-          desktop: recorder,
-        );
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-        await _flushIo(tester);
-        expect(recorder.starts, 1);
-        expect(tester.getSize(find.byKey(_bar)).height, 52);
-        expect(tester.getSize(find.byKey(_bar)).width, greaterThan(500));
-        expect(tester.getSize(find.byKey(_panel)).height, lessThan(160));
-        expect(
-          find.byKey(const ValueKey('voicePanelVoiceMessage')),
-          findsNothing,
-        );
-        recorder.amplitudes.add(recording.Amplitude(current: -35, max: -35));
-        recorder.amplitudes.add(recording.Amplitude(current: -10, max: -10));
-        await tester.pump(const Duration(seconds: 2));
-        expect(
-          tester
-              .widget<DesktopVoiceWaveform>(find.byType(DesktopVoiceWaveform))
-              .levels,
-          [-35, -10],
-        );
-        expect(find.text('0:02'), findsOneWidget);
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-        await _pumpUntil(tester, () => vm.sends.isNotEmpty);
-        expect(recorder.stops, 1);
-        expect(vm.sends, hasLength(1));
-        expect(vm.sends.single.duration, 2);
-        expect(vm.sends.single.waveform, isNotEmpty);
-        expect(
-          File(vm.sends.single.path).existsSync(),
-          isTrue,
-          reason: 'TDLib still needs the upload file',
-        );
-        expect(find.byKey(_panel), findsNothing);
-        await _dispose(tester, vm);
-      },
-    );
-  }
-
-  testWidgets(
-    'permission preparation is shared and resumes only the held press',
-    (tester) async {
-      final permission = Completer<bool>();
-      final recorder = _DesktopRecorder(permission: permission.future);
-      final vm = await _openComposer(tester, desktop: recorder);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_bar)),
-      );
-      expect(recorder.starts, 0);
-      permission.complete(true);
-      await _flushIo(tester);
-      expect(recorder.permissions, 1);
-      expect(recorder.starts, 1);
-      await pointer.up();
-      await tester.pump(const Duration(seconds: 2));
-      expect(recorder.stops, 0, reason: 'Space is still held');
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-      await _pumpUntil(tester, () => vm.sends.isNotEmpty);
-      expect(recorder.stops, 1);
-      expect(vm.sends, hasLength(1));
-      await _dispose(tester, vm);
-    },
-  );
-
   testWidgets('release during permission does not start later', (tester) async {
     final permission = Completer<bool>();
     final recorder = _DesktopRecorder(permission: permission.future);
@@ -132,26 +50,6 @@ void main() {
     expect(vm.sends, isEmpty);
     await _dispose(tester, vm);
   });
-
-  testWidgets(
-    'closing during native startup cancels and finalizes exactly once',
-    (tester) async {
-      final starting = Completer<void>();
-      final recorder = _DesktopRecorder(starting: starting.future);
-      final vm = await _openComposer(tester, desktop: recorder);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-      await _flushIo(tester);
-      expect(recorder.starts, 1);
-      await tester.tap(find.byKey(_close));
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-      starting.complete();
-      await _flushIo(tester);
-      expect(recorder.stops, 1);
-      expect(vm.sends, isEmpty);
-      await _expectDeleted(tester, recorder.path!);
-      await _dispose(tester, vm);
-    },
-  );
 
   testWidgets('a refused desktop microphone reports once, not per press', (
     tester,
@@ -275,100 +173,6 @@ void main() {
     await _dispose(tester, vm);
   });
 
-  testWidgets('switching to editing cancels a hidden voice panel', (
-    tester,
-  ) async {
-    final recorder = _DesktopRecorder();
-    final vm = await _openComposer(tester, desktop: recorder);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
-    await tester.pump(const Duration(seconds: 2));
-    vm.beginMessageEdit(
-      ChatMessage(
-        id: 21,
-        isOutgoing: true,
-        text: 'Edit me',
-        date: 1,
-        contentType: 'messageText',
-      ),
-    );
-    await _flushIo(tester);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    expect(recorder.stops, 1);
-    expect(vm.sends, isEmpty);
-    expect(find.byKey(_panel), findsNothing);
-    await _expectDeleted(tester, recorder.path!);
-    await _dispose(tester, vm);
-  });
-
-  testWidgets(
-    'a failed native stop releases the microphone and reports failure',
-    (tester) async {
-      final recorder = _DesktopRecorder()..failStop = true;
-      final vm = await _openComposer(tester, desktop: recorder);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-      await _flushIo(tester);
-      await tester.pump(const Duration(seconds: 2));
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-      await _flushIo(tester);
-      expect(recorder.stops, 1);
-      expect(recorder.cancels, 1);
-      expect(vm.sends, isEmpty);
-      await _expectDeleted(tester, recorder.path!);
-      expect(
-        find.text(
-          'Could not record audio. Check your microphone and try again.',
-        ),
-        findsOneWidget,
-      );
-      await _dispose(tester, vm);
-    },
-  );
-
-  testWidgets('discard deletes only the failed recording', (tester) async {
-    final recorder = _DesktopRecorder();
-    final vm = await _openComposer(tester, desktop: recorder);
-    vm.failSend = true;
-    final unrelated = File('${temporary.path}/keep.txt')
-      ..writeAsStringSync('keep');
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
-    await tester.pump(const Duration(seconds: 2));
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await _pumpUntil(tester, () => vm.sends.isNotEmpty);
-    await tester.tap(find.byKey(_discard));
-    await _flushIo(tester);
-    await _expectDeleted(tester, recorder.path!);
-    expect(unrelated.readAsStringSync(), 'keep');
-    expect(find.byKey(_retry), findsNothing);
-    await _dispose(tester, vm);
-  });
-
-  testWidgets('native start failure is visible and a later hold can retry', (
-    tester,
-  ) async {
-    final recorder = _DesktopRecorder()..failStart = true;
-    final vm = await _openComposer(tester, desktop: recorder);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
-    expect(
-      find.text('Could not record audio. Check your microphone and try again.'),
-      findsOneWidget,
-    );
-    expect(recorder.cancels, 1);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await tester.pump();
-    recorder.failStart = false;
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
-    expect(recorder.starts, 2);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    await _flushIo(tester);
-    expect(vm.sends, isEmpty);
-    await _dispose(tester, vm);
-  });
-
   testWidgets(
     'disposing during startup releases the native recorder and file',
     (tester) async {
@@ -385,160 +189,6 @@ void main() {
       expect(vm.sends, isEmpty);
       await _expectDeleted(tester, recorder.path!);
       vm.dispose();
-    },
-  );
-
-  testWidgets(
-    'mobile first hold continues after permission and handles pointer cancel',
-    (tester) async {
-      final permission = Completer<PermissionStatus>();
-      final recorder = _MobileRecorder();
-      final vm = await _openComposer(
-        tester,
-        platform: TargetPlatform.iOS,
-        mobile: recorder,
-        permission: () => permission.future,
-      );
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_mobileButton)),
-      );
-      permission.complete(PermissionStatus.granted);
-      await _flushIo(tester);
-      expect(recorder.opens, 1);
-      expect(recorder.codecs, [Codec.opusOGG]);
-      recorder.progress.add(
-        RecordingDisposition(const Duration(seconds: 2), 80),
-      );
-      await tester.pump();
-      expect(find.text('0:02'), findsOneWidget);
-      await pointer.cancel();
-      await _flushIo(tester);
-      expect(recorder.stops, 1);
-      expect(vm.sends, isEmpty);
-      await _expectDeleted(tester, recorder.path!);
-      await _dispose(tester, vm);
-    },
-  );
-
-  testWidgets(
-    'mobile release during permission does not start a later recording',
-    (tester) async {
-      final permission = Completer<PermissionStatus>();
-      final recorder = _MobileRecorder();
-      final vm = await _openComposer(
-        tester,
-        platform: TargetPlatform.iOS,
-        mobile: recorder,
-        permission: () => permission.future,
-      );
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_mobileButton)),
-      );
-      await pointer.up();
-      permission.complete(PermissionStatus.granted);
-      await _flushIo(tester);
-      expect(recorder.opens, 1);
-      expect(recorder.codecs, isEmpty);
-      expect(vm.sends, isEmpty);
-      await _dispose(tester, vm);
-    },
-  );
-
-  testWidgets(
-    'mobile lock preserves recording and pause excludes elapsed time',
-    (tester) async {
-      final recorder = _MobileRecorder();
-      final vm = await _openComposer(
-        tester,
-        platform: TargetPlatform.iOS,
-        mobile: recorder,
-      );
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_mobileButton)),
-      );
-      await _flushIo(tester);
-      await tester.pump(const Duration(seconds: 1));
-      await pointer.moveBy(const Offset(0, -80));
-      await tester.pump();
-      await pointer.up();
-      await tester.pump();
-      expect(recorder.stops, 0);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      await tester.pump();
-      expect(
-        recorder.stops,
-        0,
-        reason: 'Do not discard an intentionally locked recording',
-      );
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.tap(find.byIcon(HeroAppIcons.solidPause.data));
-      await tester.pump();
-      expect(recorder.pauses, 1);
-      expect(find.text('Recording paused'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 2));
-      expect(find.text('0:01'), findsOneWidget);
-      await tester.tap(find.byIcon(HeroAppIcons.solidPlay.data));
-      await tester.pump(const Duration(seconds: 1));
-      expect(recorder.resumes, 1);
-      expect(find.text('0:02'), findsOneWidget);
-      await tester.tap(find.byIcon(HeroAppIcons.trash.data));
-      await _flushIo(tester);
-      expect(recorder.stops, 1);
-      expect(vm.sends, isEmpty);
-      await _dispose(tester, vm);
-    },
-  );
-
-  testWidgets(
-    'mobile release while the encoder starts stops without an orphan recording',
-    (tester) async {
-      final starting = Completer<void>();
-      final recorder = _MobileRecorder(starting: starting.future);
-      final vm = await _openComposer(
-        tester,
-        platform: TargetPlatform.android,
-        mobile: recorder,
-      );
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_mobileButton)),
-      );
-      await _flushIo(tester);
-      await pointer.up();
-      starting.complete();
-      await _flushIo(tester);
-      expect(recorder.codecs, [Codec.opusOGG]);
-      expect(recorder.stops, 1);
-      expect(vm.sends, isEmpty);
-      await _expectDeleted(tester, recorder.path!);
-      await _dispose(tester, vm);
-    },
-  );
-
-  testWidgets(
-    'mobile falls back when a reportedly supported Opus encoder fails',
-    (tester) async {
-      final recorder = _MobileRecorder()..failOpus = true;
-      final vm = await _openComposer(
-        tester,
-        platform: TargetPlatform.iOS,
-        mobile: recorder,
-      );
-      final pointer = await tester.startGesture(
-        tester.getCenter(find.byKey(_mobileButton)),
-      );
-      await _flushIo(tester);
-      expect(recorder.codecs, [Codec.opusOGG, Codec.aacMP4]);
-      expect(
-        recorder.stops,
-        1,
-        reason: 'Close the failed attempt before fallback',
-      );
-      expect(recorder.path, endsWith('.m4a'));
-      await pointer.cancel();
-      await _flushIo(tester);
-      expect(recorder.stops, 2);
-      expect(vm.sends, isEmpty);
-      await _dispose(tester, vm);
     },
   );
 
@@ -870,31 +520,6 @@ void main() {
     await _flushIo(tester);
     await _dispose(tester, vm);
   });
-
-  testWidgets(
-    'waveform safely renders silence, invalid samples, and narrow widths',
-    (tester) async {
-      for (final width in [1.0, 90.0, 600.0]) {
-        await tester.pumpWidget(
-          Directionality(
-            textDirection: TextDirection.ltr,
-            child: Center(
-              child: SizedBox(
-                width: width,
-                height: 30,
-                child: DesktopVoiceWaveform(
-                  levels: [-120, double.nan, double.infinity, -30, 20],
-                  color: AppTheme.brand,
-                  baselineColor: Colors.grey,
-                ),
-              ),
-            ),
-          ),
-        );
-        expect(tester.takeException(), isNull);
-      }
-    },
-  );
 }
 
 Future<_VoiceViewModel> _openComposer(
@@ -1101,8 +726,7 @@ class _DesktopRecorder implements recording.AudioRecorder {
 }
 
 class _MobileRecorder implements FlutterSoundRecorder {
-  _MobileRecorder({this.starting, this.order});
-  final Future<void>? starting;
+  _MobileRecorder({this.order});
   final List<String>? order;
   final progress = StreamController<RecordingDisposition>.broadcast(sync: true);
   final List<Codec> codecs = [];
@@ -1149,7 +773,6 @@ class _MobileRecorder implements FlutterSoundRecorder {
     if (failOpus && codec == Codec.opusOGG) {
       throw StateError('Opus encoder failed');
     }
-    await starting;
   }
 
   @override

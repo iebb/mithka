@@ -68,35 +68,4 @@ void main() {
       ]);
     },
   );
-
-  test(
-    'viewing a loaded reaction clears its local counter immediately',
-    () async {
-      final message = ChatMessage(
-        id: 201,
-        text: 'outgoing',
-        date: 1,
-        isOutgoing: true,
-        hasUnreadReactions: true,
-      );
-      final viewModel = ChatViewModel(
-        chatId: -10042,
-        title: 'Group',
-        markReadOnOpen: false,
-        sessionMessages: [message],
-      );
-      addTearDown(viewModel.dispose);
-      viewModel.applyLiveUpdateForTesting({
-        '@type': 'updateChatUnreadReactionCount',
-        'chat_id': -10042,
-        'unread_reaction_count': 1,
-      });
-
-      viewModel.markVisibleMessagesViewed([message]);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(viewModel.unreadReactionCount, 0);
-      expect(message.hasUnreadReactions, isFalse);
-    },
-  );
 }

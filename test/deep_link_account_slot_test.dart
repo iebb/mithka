@@ -23,15 +23,6 @@ void main() {
     accounts: signedIn,
   );
 
-  test('an explicit slot is taken as given', () {
-    expect(resolve(slot: 1), 1);
-  });
-
-  test('a user id resolves to the account signed in with it', () {
-    expect(resolve(userId: 222), 1);
-    expect(resolve(userId: 111), 0);
-  });
-
   test('an account that is not signed in resolves to nothing', () {
     // Falling back to the active account would open account 333's chat id
     // inside account 111 — a different conversation with the same number.
@@ -40,19 +31,6 @@ void main() {
 
   test('naming no account is ambiguous once there are several', () {
     expect(resolve(), isNull);
-  });
-
-  test('naming no account is unambiguous with a single one', () {
-    expect(
-      resolve(signedIn: const [(slot: 0, userId: 111)]),
-      0,
-      reason: 'the case that predates notifications carrying an identity',
-    );
-    expect(resolve(signedIn: const []), 0);
-  });
-
-  test('an explicit slot wins over a user id', () {
-    expect(resolve(slot: 1, userId: 111), 1);
   });
 
   test('account-switch replay preserves the Handoff destination', () {

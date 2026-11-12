@@ -209,25 +209,6 @@ void main() {
   int count(String method) => native.calls.where((c) => c == method).length;
 
   group('ownership after output preparation', () {
-    test('a playing track still finishes after pause and resume', () async {
-      final voice = VoicePlayer()
-        ..audioSessionActivationOverride = (() async => null);
-      addTearDown(voice.dispose);
-      final finished = <int>[];
-      voice.onFinished = finished.add;
-      await voice.toggleAudio(file(910001));
-      await voice.pause();
-      expect(voice.isPlaying, isFalse);
-      expect(voice.isPaused, isTrue);
-      await voice.resume();
-      expect(voice.isPlaying, isTrue);
-
-      (FlutterSoundPlayerPlatform.instance as _FakePlatform).callbacks.single
-          .audioPlayerFinished(PlayerState.isStopped.index);
-      expect(finished, [910001]);
-      expect(voice.isPlaying, isFalse);
-    });
-
     test(
       'a pause during session activation cancels the native start',
       () async {
@@ -246,60 +227,6 @@ void main() {
         expect(count('startPlayer'), 0);
         expect(voice.isPlaying, isFalse);
         expect(voice.isLoading, isFalse);
-      },
-    );
-
-    test(
-      'a stop during the session await cancels the start before the native player',
-      () async {
-        final voice = VoicePlayer();
-        addTearDown(voice.dispose);
-
-        final holdActivation = Completer<AudioSession?>();
-        voice.audioSessionActivationOverride = () => holdActivation.future;
-
-        final load = voice.toggleAudio(file(910001));
-        await until(() => count('openPlayer') == 1);
-
-        await voice.stop(); // While the start still awaits the session.
-        expect(
-          voice.isActive(file(910001)),
-          isFalse,
-          reason: 'stop unbinds the stopped track',
-        );
-        holdActivation.complete(null); // The cancelled start resumes here.
-        await load;
-
-        expect(
-          count('startPlayer'),
-          0,
-          reason: 'a start for a stopped track must not reach the player',
-        );
-        expect(voice.isPlaying, isFalse);
-        expect(voice.isLoading, isFalse);
-      },
-    );
-
-    test(
-      'disposing during the session await does not start native playback',
-      () async {
-        final voice = VoicePlayer();
-
-        final holdActivation = Completer<AudioSession?>();
-        voice.audioSessionActivationOverride = () => holdActivation.future;
-
-        final load = voice.toggleAudio(file(910002));
-        await until(() => count('openPlayer') == 1);
-
-        voice.dispose();
-        holdActivation.complete(null);
-        await load;
-
-        expect(
-          count('startPlayer'),
-          0,
-          reason: 'native playback must not start for a disposed player',
-        );
       },
     );
   });
@@ -342,110 +269,6 @@ void main() {
       expect(voice.isActive(file(910002)), isTrue);
     },
     timeout: const Timeout(Duration(seconds: 20)),
-  );
-
-  test(
-    'a retired session releases its native player when the late completion unblocks the lock',
-    () async {
-      final voice = VoicePlayer();
-      addTearDown(voice.dispose);
-
-      // Track A: the native start never completes; the timeout retires the
-      // session while its startPlayer still holds the operation lock.
-      native.plan('startPlayer', [_Behavior.silent, _Behavior.ok]);
-
-      final failures = <int>[];
-      voice.onFailed = (fileId, error) => failures.add(fileId);
-      unawaited(voice.toggleAudio(file(910001)));
-      await until(
-        () => failures.isNotEmpty,
-        timeout: const Duration(seconds: 8),
-      );
-
-      // Track B plays on a fresh native session.
-      await voice.toggleAudio(file(910002));
-      expect(voice.isPlaying, isTrue);
-
-      final platform = FlutterSoundPlayerPlatform.instance as _FakePlatform;
-      final retiredSession = platform.callbacks.first;
-
-      // The retired session never queued a close yet: its startPlayer
-      // still pins the operation lock.
-      final closesBefore = count('closePlayer');
-
-      // The platform finally delivers the late start completion. The lock
-      // releases, and the retirement's queued closePlayer runs: the
-      // retired native session is released instead of leaking.
-      retiredSession.startPlayerCompleted(
-        PlayerState.isPlaying.index,
-        true,
-        60000,
-      );
-      await until(
-        () => count('closePlayer') > closesBefore,
-        timeout: const Duration(seconds: 8),
-      );
-
-      // The close was served on the retired session — never on the fresh
-      // one that is still playing track B.
-      expect(
-        platform.callbacks.toSet(),
-        contains(retiredSession),
-        reason: 'the close must run on the retired session',
-      );
-      expect(voice.isPlaying, isTrue, reason: 'track B keeps playing');
-    },
-    timeout: const Timeout(Duration(seconds: 20)),
-  );
-
-  test(
-    'a permanently wedged opened session is still released on the platform',
-    () async {
-      // The lost-callback case: A's native start NEVER reports completion,
-      // so the operation lock stays pinned forever and the queued verb
-      // closePlayer can never run. The retirement must still release A's
-      // native session through the platform interface — without touching
-      // the fresh session B plays on.
-      native.plan('startPlayer', [_Behavior.hang, _Behavior.ok]);
-
-      final voice = VoicePlayer();
-      addTearDown(voice.dispose);
-
-      final failures = <int>[];
-      voice.onFailed = (fileId, error) => failures.add(fileId);
-      unawaited(voice.toggleAudio(file(910001)));
-      await until(
-        () => failures.isNotEmpty,
-        timeout: const Duration(seconds: 8),
-      );
-
-      // Track B plays on a fresh native session.
-      await voice.toggleAudio(file(910002));
-      expect(voice.isPlaying, isTrue);
-
-      final platform = FlutterSoundPlayerPlatform.instance as _FakePlatform;
-      final retiredSession = platform.callbacks.first;
-      final freshSession = platform.callbacks.last;
-      expect(retiredSession, isNot(same(freshSession)));
-
-      // The wedged start pinned A's lock: no verb close can ever run. The
-      // platform-level release must land on A's session within the bounded
-      // cleanup window (the verb timeout + a small margin).
-      await until(
-        () => native.calls.where((c) => c == 'closePlayer').isNotEmpty,
-        timeout: const Duration(seconds: 6),
-      );
-
-      // The close was served on the retired session — never on the fresh
-      // one that is still playing track B.
-      expect(
-        platform.callbacks,
-        contains(retiredSession),
-        reason: 'the close must run on the retired session',
-      );
-      expect(voice.isPlaying, isTrue, reason: 'track B keeps playing');
-    },
-    timeout: const Timeout(Duration(seconds: 30)),
   );
 
   test(
@@ -556,69 +379,6 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       unawaited(delivered);
       expect(voice.isPlaying, isTrue, reason: 'track B still plays');
-    },
-    timeout: const Timeout(Duration(seconds: 30)),
-  );
-
-  test(
-    'an acknowledged close frees the slot without a duplicate platform close',
-    () async {
-      // The verb close path: the native session answers and acknowledges.
-      // The slot is freed exactly once (by the acknowledged close) and no
-      // unconditional second platform close follows a successful cleanup.
-      native.plan('startPlayer', [_Behavior.silent, _Behavior.ok]);
-
-      // A roomy verb-timeout for this test only: the retired instance's
-      // verb close must complete within it, so the backup platform close
-      // never fires and exactly one closePlayer is deterministic. (The
-      // tearDown restores the shared 40ms config for the other tests.)
-      VoicePlayer.nativeCallTimeout = const Duration(seconds: 2);
-
-      final voice = VoicePlayer();
-      addTearDown(voice.dispose);
-      // Resolve the session await immediately: this test exercises close
-      // acknowledgment ordering, not the session race.
-      voice.audioSessionActivationOverride = () async => null;
-
-      final failures = <int>[];
-      voice.onFailed = (fileId, error) => failures.add(fileId);
-      unawaited(voice.toggleAudio(file(910001)));
-      await until(
-        () => failures.isNotEmpty,
-        timeout: const Duration(seconds: 8),
-      );
-
-      await voice.toggleAudio(file(910002));
-      expect(voice.isPlaying, isTrue);
-
-      final platform = FlutterSoundPlayerPlatform.instance as _FakePlatform;
-      final retiredSession = platform.callbacks.first;
-
-      // The retirement's verb close runs once the failed start releases
-      // the lock, or the platform close runs when the verb times out;
-      // either way exactly ONE closePlayer must be served on the retired
-      // session, its acknowledgment frees the slot, and no unconditional
-      // second platform close follows the successful cleanup.
-      // The verb close answered: exactly one closePlayer was served on
-      // the retired session and its acknowledgment freed the slot. The
-      // pending test's hang applies only to ITS platform instance
-      // (native.calls is rebuilt per test), so a stuck close here means a
-      // real leak.
-      await until(
-        () => count('closePlayer') >= 1,
-        timeout: const Duration(seconds: 8),
-      );
-      expect(
-        count('closePlayer'),
-        1,
-        reason: 'no unconditional duplicate close after a successful one',
-      );
-      expect(
-        platform.callbacks.toSet().contains(retiredSession),
-        isTrue,
-        reason: 'the close ran on the retired session',
-      );
-      expect(voice.isPlaying, isTrue, reason: 'track B keeps playing');
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );

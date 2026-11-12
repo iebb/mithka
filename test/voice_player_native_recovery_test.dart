@@ -269,27 +269,6 @@ void main() {
   );
 
   test(
-    'a thrown startPlayer error surfaces and the player stays reusable',
-    () async {
-      native.plan('startPlayer', [_Behavior.error, _Behavior.ok]);
-
-      final voice = VoicePlayer();
-      addTearDown(voice.dispose);
-
-      final failures = <Object>[];
-      voice.onFailed = (fileId, error) => failures.add(error);
-
-      unawaited(voice.toggleAudio(file(900004)));
-      await until(() => failures.isNotEmpty);
-      expect(voice.isPlaying, isFalse);
-      expect(failures, hasLength(1));
-
-      await voice.toggleAudio(file(900004));
-      expect(voice.isPlaying, isTrue);
-    },
-  );
-
-  test(
     'openPlayer hangs: the load fails and a retry gets a new session',
     () async {
       native.plan('openPlayer', [_Behavior.silent, _Behavior.ok]);

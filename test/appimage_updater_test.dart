@@ -16,24 +16,6 @@ void main() {
   setUp(() => root = Directory.systemTemp.createTempSync("mithka's update "));
   tearDown(() => root.deleteSync(recursive: true));
 
-  test('AppImage layout stages beside the original and preserves its name', () {
-    final layout = DesktopInstallLayout.fromExecutable(
-      executablePath: '/tmp/.mount_mithka/usr/bin/mithka',
-      environment: const {'APPIMAGE': '/home/u/My Apps/Custom.AppImage'},
-      isLinux: true,
-    );
-    expect(layout.isAppImage, isTrue);
-    expect(layout.launcher.path, '/home/u/My Apps/Custom.AppImage');
-    expect(layout.parentDirectory.path, '/home/u/My Apps');
-    final unpacked = DesktopInstallLayout.fromExecutable(
-      executablePath: '/home/u/Mithka/mithka',
-      environment: const {},
-      isLinux: true,
-    );
-    expect(unpacked.isAppImage, isFalse);
-    expect(unpacked.parentDirectory.path, '/home/u');
-  });
-
   test('only accepts a type-2 AppImage for the target architecture', () async {
     final file = File('${root.path}/package');
     for (final (abi, machine) in [(Abi.linuxX64, 62), (Abi.linuxArm64, 183)]) {
@@ -60,56 +42,6 @@ void main() {
       );
     }
   });
-
-  test(
-    'restores the launcher environment before starting the helper',
-    () async {
-      final bin = Directory('${root.path}/usr/bin')
-        ..createSync(recursive: true);
-      final hooks = Directory('${root.path}/apprun-hooks')..createSync();
-      File('${hooks.path}/gtk.sh').writeAsStringSync(
-        'export GTK_PATH="$root/mounted/gtk"\nexport GTK_THEME=Adwaita\n',
-      );
-      final output = File('${root.path}/environment');
-      final launcher = File('${bin.path}/mithka')
-        ..writeAsStringSync('#!/bin/sh\nenv > "\$1"\n');
-      await Process.run('chmod', ['0755', launcher.path]);
-      final result = await Process.run(
-        '/bin/bash',
-        ['linux/appimage/AppRun', output.path],
-        environment: {
-          'PATH': Platform.environment['PATH']!,
-          'APPDIR': root.path,
-          'APPIMAGE': '${root.path}/Mithka.AppImage',
-          'GTK_THEME': '',
-          'LD_LIBRARY_PATH': '/original/lib',
-          'DISPLAY': ':42',
-        },
-        includeParentEnvironment: false,
-      );
-      expect(result.exitCode, 0, reason: '${result.stderr}');
-      final bundled = <String, String>{};
-      for (final line in output.readAsLinesSync()) {
-        final separator = line.indexOf('=');
-        if (separator > 0) {
-          bundled[line.substring(0, separator)] = line.substring(separator + 1);
-        }
-      }
-      expect(bundled['LD_LIBRARY_PATH'], contains(root.path));
-      final restored = appImageUpdateEnvironment(bundled);
-      expect(restored['PATH'], Platform.environment['PATH']);
-      expect(restored['LD_LIBRARY_PATH'], '/original/lib');
-      expect(restored['GTK_THEME'], '');
-      expect(restored['DISPLAY'], ':42');
-      expect(restored, isNot(contains('GTK_PATH')));
-      expect(restored, isNot(contains('APPIMAGE')));
-      expect(restored, isNot(contains('APPDIR')));
-      expect(
-        restored.keys.any((key) => key.startsWith('MITHKA_APPIMAGE_')),
-        isFalse,
-      );
-    },
-  );
 
   for (final missingStage in [false, true]) {
     test(

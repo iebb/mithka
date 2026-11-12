@@ -13,16 +13,12 @@
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3710E08FDCA600E100CD4F88 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
-		41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */ = {isa = PBXBuildFile; fileRef = 51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */; };
-		51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */ = {isa = PBXBuildFile; fileRef = C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */; };
 		56461556E6B04081CB084252 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 175A52FD9B996D21E7E5A1EC /* Pods_RunnerTests.framework */; };
-		62C9DBE3F5071A2B3C4D5E6F /* MithkaPrism.icon in Resources */ = {isa = PBXBuildFile; fileRef = 73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */; };
 		6C64635A15B20F2FFA6AF6FB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52A009A067E9DA34DF0021A0 /* Foundation.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
-		84EBFD0517293C4D5E6F7081 /* MithkaSignal.icon in Resources */ = {isa = PBXBuildFile; fileRef = 95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */; };
 		8CE983C32FEBFF5D00D0A469 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8CE983C22FEBFF5D00D0A469 /* Pengram.icon */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -31,9 +27,10 @@
 		9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E331E1000100000001 /* MediaDropBridge.swift */; };
 		9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */; };
 		9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E731E1000100000001 /* MithkaProBridge.swift */; };
-		9A4F20F231E1000100000001 /* NowPlayingBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F131E1000100000001 /* NowPlayingBridge.swift */; };
 		9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */; };
 		9A4F20EC31E1000100000001 /* ApplePCCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */; };
+		9A4F20F231E1000100000001 /* NowPlayingBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F131E1000100000001 /* NowPlayingBridge.swift */; };
+		9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F331E1000100000001 /* AppPurchases.swift */; };
 		A17D0FF131E1000100000001 /* HandoffBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF031E1000100000001 /* HandoffBridge.swift */; };
 		A17D0FF731E1000100000001 /* WebProxyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF631E1000100000001 /* WebProxyBridge.swift */; };
 		A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */; };
@@ -41,13 +38,7 @@
 		B45E6836D8D2D05AB2676E08 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5790DB6BBC8220D67CE86B /* NotificationService.swift */; };
 		BD06D3B4F53874C98C6D9618 /* tdjson.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C5B0C022A4F08FF23637352C /* NotificationCommunicationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */; };
-		C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */ = {isa = PBXBuildFile; fileRef = A257B729519AB240FBD5E29F /* MithkaPurple.icon */; };
 		EC5A464C2E585460A7FC0495 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F1053565C108E047425E7C1F /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F331E1000100000001 /* AppPurchases.swift */; };
-		5742E03352565F861BAD0D8B /* MithkaPixelNeutral.icon in Resources */ = {isa = PBXBuildFile; fileRef = CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */; };
-		CE75591296999C3B5485D6DA /* MithkaPixelGradient.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */; };
-		ECD25D7BA036F60AC8DE332A /* MithkaLetterMNeutral.icon in Resources */ = {isa = PBXBuildFile; fileRef = 2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */; };
-		1D52520CFE285107D9FD4BBE /* MithkaLetterMGradient.icon in Resources */ = {isa = PBXBuildFile; fileRef = E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,11 +100,9 @@
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		4722587BC4AC3EEC7575A44C /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaAurora.icon; sourceTree = "<group>"; };
 		52A009A067E9DA34DF0021A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5F21B8A72FEE7A5800F10001 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D9D5A9A2C128EE5009B90FA /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
-		73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPrism.icon; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -121,7 +110,6 @@
 		7AF24ACBEB1466595B72E2DD /* tdjson.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; name = tdjson.xcframework; path = tdjson/tdjson.xcframework; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		8CE983C22FEBFF5D00D0A469 /* Pengram.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Pengram.icon; sourceTree = "<group>"; };
-		95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaSignal.icon; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -133,16 +121,15 @@
 		9A4F20E331E1000100000001 /* MediaDropBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MediaDropBridge.swift; sourceTree = "<group>"; };
 		9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TelegramAccountSecurityBridge.swift; sourceTree = "<group>"; };
 		9A4F20E731E1000100000001 /* MithkaProBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MithkaProBridge.swift; sourceTree = "<group>"; };
-		9A4F20F131E1000100000001 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
 		9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationBridge.swift; sourceTree = "<group>"; };
 		9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ApplePCCBridge.swift; sourceTree = "<group>"; };
+		9A4F20F131E1000100000001 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
+		9A4F20F331E1000100000001 /* AppPurchases.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppPurchases.swift; sourceTree = "<group>"; };
 		9AE1F80607B45379F5468F27 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		A17D0FF031E1000100000001 /* HandoffBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = HandoffBridge.swift; path = ../../apple/HandoffBridge.swift; sourceTree = "<group>"; };
 		A17D0FF631E1000100000001 /* WebProxyBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = WebProxyBridge.swift; path = ../../apple/WebProxyBridge.swift; sourceTree = "<group>"; };
-		A257B729519AB240FBD5E29F /* MithkaPurple.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPurple.icon; sourceTree = "<group>"; };
 		AC39B11331E1000100000001 /* NativeGlassSurface.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NativeGlassSurface.swift; sourceTree = "<group>"; };
 		B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationCommunicationContent.swift; sourceTree = "<group>"; };
-		C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixel.icon; sourceTree = "<group>"; };
 		D20D61E8E4A929586A940D51 /* NotificationService.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; };
 		D63327C430C801C0174C8CDD /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		DB5790DB6BBC8220D67CE86B /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -152,11 +139,6 @@
 		F1053565C108E047425E7C1F /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4C386C258DAFED2D9C5A120 /* RunnerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; name = RunnerUITests.xctest; path = RunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RunnerUITests.swift; sourceTree = "<group>"; };
-		9A4F20F331E1000100000001 /* AppPurchases.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppPurchases.swift; sourceTree = "<group>"; };
-		CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixelNeutral.icon; sourceTree = "<group>"; };
-		0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaPixelGradient.icon; sourceTree = "<group>"; };
-		2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaLetterMNeutral.icon; sourceTree = "<group>"; };
-		E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.iconcomposer.icon; path = MithkaLetterMGradient.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -288,15 +270,6 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				8CE983C22FEBFF5D00D0A469 /* Pengram.icon */,
-				A257B729519AB240FBD5E29F /* MithkaPurple.icon */,
-				C145FCC43A8CB4B5D827E2D6 /* MithkaPixel.icon */,
-				51B8CAD2E4F6091A2B3C4D5E /* MithkaAurora.icon */,
-				73DAECF406182B3C4D5E6F70 /* MithkaPrism.icon */,
-				95FC0E16283A4D5E6F708192 /* MithkaSignal.icon */,
-				CBED8AF95C3D238B8015EF05 /* MithkaPixelNeutral.icon */,
-				0541174401DF9BE0D3C7A5E1 /* MithkaPixelGradient.icon */,
-				2DBBE8C05531DBE674B037C8 /* MithkaLetterMNeutral.icon */,
-				E64C080734EE532751377ED4 /* MithkaLetterMGradient.icon */,
 				B02F5C04823E6F1B8B4DC318 /* NotificationCommunicationContent.swift */,
 			);
 			path = Runner;
@@ -521,15 +494,6 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
-				C77C2C471C478DA557C449E0 /* MithkaPurple.icon in Resources */,
-				51156E1E98CF8CB399FD4072 /* MithkaPixel.icon in Resources */,
-				41A7B9C1D3E5F708192A3B4C /* MithkaAurora.icon in Resources */,
-				62C9DBE3F5071A2B3C4D5E6F /* MithkaPrism.icon in Resources */,
-				84EBFD0517293C4D5E6F7081 /* MithkaSignal.icon in Resources */,
-				5742E03352565F861BAD0D8B /* MithkaPixelNeutral.icon in Resources */,
-				CE75591296999C3B5485D6DA /* MithkaPixelGradient.icon in Resources */,
-				ECD25D7BA036F60AC8DE332A /* MithkaLetterMNeutral.icon in Resources */,
-				1D52520CFE285107D9FD4BBE /* MithkaLetterMGradient.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -834,67 +798,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
-					MithkaWhite,
-					MithkaBlue,
-					MithkaPurple,
-					MithkaPixel,
-					MithkaAurora,
-					MithkaPrism,
-					MithkaSignal,
-					MithkaPilot,
-					MithkaHeadphones,
-					MithkaWinter,
-					MithkaAstronaut,
-					MithkaCrown,
-					MithkaParty,
-					MithkaSleepy,
-					MithkaHeart,
-					MithkaCoffee,
-					MithkaDetective,
-					MithkaGamer,
-					MithkaFishing,
-					MithkaPixelNeutral,
-					MithkaPixelGradient,
-					MithkaLetterMNeutral,
-					MithkaLetterMGradient,
-					MithkaSkateboard,
-					MithkaSurfboard,
-					MithkaBasketball,
-					MithkaFootball,
-					MithkaTennis,
-					MithkaSkiing,
-					MithkaPainter,
-					MithkaGuitar,
-					MithkaDrummer,
-					MithkaPhotographer,
-					MithkaMagician,
-					MithkaChef,
-					MithkaReader,
-					MithkaScientist,
-					MithkaGardener,
-					MithkaMailCarrier,
-					MithkaPirate,
-					MithkaDragon,
-					MithkaBubblegum,
-					MithkaRaincoat,
-					MithkaNoodles,
-					MithkaIceCream,
-					MithkaSunflower,
-					MithkaNinja,
-					MithkaHighFive,
-					MithkaHug,
-					MithkaSeesaw,
-					MithkaDance,
-					MithkaPillowFight,
-					MithkaSnowball,
-					MithkaParade,
-					MithkaChoir,
-					MithkaStack,
-					MithkaPicnic,
-					MithkaPaperPlanes,
-					MithkaStargazing,
-				);
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "MithkaWhite MithkaBlue MithkaPurple MithkaPixel MithkaAurora MithkaPrism MithkaSignal MithkaPilot MithkaHeadphones MithkaWinter MithkaAstronaut MithkaCrown MithkaParty MithkaSleepy MithkaHeart MithkaCoffee MithkaDetective MithkaGamer MithkaFishing MithkaPixelNeutral MithkaPixelGradient MithkaLetterMNeutral MithkaLetterMGradient MithkaSkateboard MithkaSurfboard MithkaBasketball MithkaFootball MithkaTennis MithkaSkiing MithkaPainter MithkaGuitar MithkaDrummer MithkaPhotographer MithkaMagician MithkaChef MithkaReader MithkaScientist MithkaGardener MithkaMailCarrier MithkaPirate MithkaDragon MithkaBubblegum MithkaRaincoat MithkaNoodles MithkaIceCream MithkaSunflower MithkaNinja MithkaHighFive MithkaHug MithkaSeesaw MithkaDance MithkaPillowFight MithkaSnowball MithkaParade MithkaChoir MithkaStack MithkaPicnic MithkaPaperPlanes MithkaStargazing";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;
@@ -1198,67 +1102,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
-					MithkaWhite,
-					MithkaBlue,
-					MithkaPurple,
-					MithkaPixel,
-					MithkaAurora,
-					MithkaPrism,
-					MithkaSignal,
-					MithkaPilot,
-					MithkaHeadphones,
-					MithkaWinter,
-					MithkaAstronaut,
-					MithkaCrown,
-					MithkaParty,
-					MithkaSleepy,
-					MithkaHeart,
-					MithkaCoffee,
-					MithkaDetective,
-					MithkaGamer,
-					MithkaFishing,
-					MithkaPixelNeutral,
-					MithkaPixelGradient,
-					MithkaLetterMNeutral,
-					MithkaLetterMGradient,
-					MithkaSkateboard,
-					MithkaSurfboard,
-					MithkaBasketball,
-					MithkaFootball,
-					MithkaTennis,
-					MithkaSkiing,
-					MithkaPainter,
-					MithkaGuitar,
-					MithkaDrummer,
-					MithkaPhotographer,
-					MithkaMagician,
-					MithkaChef,
-					MithkaReader,
-					MithkaScientist,
-					MithkaGardener,
-					MithkaMailCarrier,
-					MithkaPirate,
-					MithkaDragon,
-					MithkaBubblegum,
-					MithkaRaincoat,
-					MithkaNoodles,
-					MithkaIceCream,
-					MithkaSunflower,
-					MithkaNinja,
-					MithkaHighFive,
-					MithkaHug,
-					MithkaSeesaw,
-					MithkaDance,
-					MithkaPillowFight,
-					MithkaSnowball,
-					MithkaParade,
-					MithkaChoir,
-					MithkaStack,
-					MithkaPicnic,
-					MithkaPaperPlanes,
-					MithkaStargazing,
-				);
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "MithkaWhite MithkaBlue MithkaPurple MithkaPixel MithkaAurora MithkaPrism MithkaSignal MithkaPilot MithkaHeadphones MithkaWinter MithkaAstronaut MithkaCrown MithkaParty MithkaSleepy MithkaHeart MithkaCoffee MithkaDetective MithkaGamer MithkaFishing MithkaPixelNeutral MithkaPixelGradient MithkaLetterMNeutral MithkaLetterMGradient MithkaSkateboard MithkaSurfboard MithkaBasketball MithkaFootball MithkaTennis MithkaSkiing MithkaPainter MithkaGuitar MithkaDrummer MithkaPhotographer MithkaMagician MithkaChef MithkaReader MithkaScientist MithkaGardener MithkaMailCarrier MithkaPirate MithkaDragon MithkaBubblegum MithkaRaincoat MithkaNoodles MithkaIceCream MithkaSunflower MithkaNinja MithkaHighFive MithkaHug MithkaSeesaw MithkaDance MithkaPillowFight MithkaSnowball MithkaParade MithkaChoir MithkaStack MithkaPicnic MithkaPaperPlanes MithkaStargazing";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;
@@ -1299,67 +1143,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = (
-					MithkaWhite,
-					MithkaBlue,
-					MithkaPurple,
-					MithkaPixel,
-					MithkaAurora,
-					MithkaPrism,
-					MithkaSignal,
-					MithkaPilot,
-					MithkaHeadphones,
-					MithkaWinter,
-					MithkaAstronaut,
-					MithkaCrown,
-					MithkaParty,
-					MithkaSleepy,
-					MithkaHeart,
-					MithkaCoffee,
-					MithkaDetective,
-					MithkaGamer,
-					MithkaFishing,
-					MithkaPixelNeutral,
-					MithkaPixelGradient,
-					MithkaLetterMNeutral,
-					MithkaLetterMGradient,
-					MithkaSkateboard,
-					MithkaSurfboard,
-					MithkaBasketball,
-					MithkaFootball,
-					MithkaTennis,
-					MithkaSkiing,
-					MithkaPainter,
-					MithkaGuitar,
-					MithkaDrummer,
-					MithkaPhotographer,
-					MithkaMagician,
-					MithkaChef,
-					MithkaReader,
-					MithkaScientist,
-					MithkaGardener,
-					MithkaMailCarrier,
-					MithkaPirate,
-					MithkaDragon,
-					MithkaBubblegum,
-					MithkaRaincoat,
-					MithkaNoodles,
-					MithkaIceCream,
-					MithkaSunflower,
-					MithkaNinja,
-					MithkaHighFive,
-					MithkaHug,
-					MithkaSeesaw,
-					MithkaDance,
-					MithkaPillowFight,
-					MithkaSnowball,
-					MithkaParade,
-					MithkaChoir,
-					MithkaStack,
-					MithkaPicnic,
-					MithkaPaperPlanes,
-					MithkaStargazing,
-				);
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "MithkaWhite MithkaBlue MithkaPurple MithkaPixel MithkaAurora MithkaPrism MithkaSignal MithkaPilot MithkaHeadphones MithkaWinter MithkaAstronaut MithkaCrown MithkaParty MithkaSleepy MithkaHeart MithkaCoffee MithkaDetective MithkaGamer MithkaFishing MithkaPixelNeutral MithkaPixelGradient MithkaLetterMNeutral MithkaLetterMGradient MithkaSkateboard MithkaSurfboard MithkaBasketball MithkaFootball MithkaTennis MithkaSkiing MithkaPainter MithkaGuitar MithkaDrummer MithkaPhotographer MithkaMagician MithkaChef MithkaReader MithkaScientist MithkaGardener MithkaMailCarrier MithkaPirate MithkaDragon MithkaBubblegum MithkaRaincoat MithkaNoodles MithkaIceCream MithkaSunflower MithkaNinja MithkaHighFive MithkaHug MithkaSeesaw MithkaDance MithkaPillowFight MithkaSnowball MithkaParade MithkaChoir MithkaStack MithkaPicnic MithkaPaperPlanes MithkaStargazing";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Pengram;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;

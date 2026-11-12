@@ -23,8 +23,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // Regression: an account-less deep link (a t.me link tapped from a chat, a
 // desktop handoff that carried no identity, ...) with several signed-in
-// accounts used to be dropped silently — no navigation, no error. It must now
-// offer an account choice, and picking one must open the chat on that account.
+// accounts used to be dropped silently — no navigation, no error. It opens on
+// the active account when that account has the chat; otherwise it offers an
+// account choice, marking the accounts that have it, and picking one opens the
+// chat on that account. A notification switches to that account directly.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -58,6 +60,14 @@ void main() {
           'chat_ids': const <int>[],
         },
         'loadChats' => <String, dynamic>{'@type': 'ok'},
+        'getChat'
+            when request['chat_id'] == -10042 &&
+                !targetChatClients.contains(clientId) =>
+          <String, dynamic>{
+            '@type': 'error',
+            'code': 400,
+            'message': 'Chat not found',
+          },
         'getChat' => <String, dynamic>{
           '@type': 'chat',
           'id': request['chat_id'],
@@ -102,7 +112,14 @@ void main() {
     await client.closeProxy();
     await supportDir.delete(recursive: true);
   });
-  setUp(ChatDeepLinkController.shared.consumePending);
+  setUp(() async {
+    ChatDeepLinkController.shared.consumePending();
+    // Every case starts on Alpha, and only Beta has the target chat.
+    client.setActive(slotA);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('drachma.activeSlot', slotA);
+    targetChatClients = {client.clientId(slotB)!};
+  });
 
   testWidgets('an ambiguous link asks for the account, then opens it', (
     tester,
@@ -211,6 +228,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('account-picker-dialog')), findsOneWidget);
+    // The account probe asked each client; only the replay counts here.
+    getChatClients.clear();
 
     await tester.tap(find.byKey(ValueKey('account-picker-row-$slotB')));
     await tester.pumpAndSettle();
@@ -285,6 +304,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('account-picker-dialog')), findsOneWidget);
+    getChatClients.clear();
 
     // The user switches accounts through another surface while the sheet is
     // still open (drawer, account management — anything but this sheet).
@@ -416,6 +436,144 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
     await tester.pump();
   });
+
+  testWidgets('a chat the active account has opens there without asking', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    targetChatClients = {client.clientId(slotA)!, client.clientId(slotB)!};
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(chatId: -10042, title: 'Target chat');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const ValueKey('account-picker-dialog')), findsNothing);
+    expect(accounts.activeSlot, slotA);
+    expect(
+      tester.widgetList<ChatView>(find.byType(ChatView)).map((v) => v.chatId),
+      contains(-10042),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
+
+  testWidgets('the picker marks the accounts that have the chat', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(chatId: -10042, title: 'Target chat');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const ValueKey('account-picker-dialog')), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('account-picker-has-chat-$slotB')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey('account-picker-has-chat-$slotA')),
+      findsNothing,
+    );
+    expect(find.text('Has this chat'), findsOneWidget);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
+
+  testWidgets('a notification switches to the account that has the chat', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final theme = ThemeController(prefs);
+    final accounts = AccountStore(prefs);
+    final auth = AuthManager();
+    final translation = TranslationController(prefs);
+    final drawer = dc.DrawerController();
+    final deepLinks = ChatDeepLinkController.shared;
+    addTearDown(theme.dispose);
+    addTearDown(accounts.dispose);
+    addTearDown(auth.dispose);
+    addTearDown(translation.dispose);
+    addTearDown(drawer.dispose);
+
+    await tester.pumpWidget(_shell(theme, accounts, auth, translation, drawer));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    deepLinks.openChat(
+      chatId: -10042,
+      title: 'Target chat',
+      messageId: 7 << 20,
+      fromNotification: true,
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('account-picker-dialog')), findsNothing);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(accounts.activeSlot, slotB);
+    expect(
+      tester.widgetList<ChatView>(find.byType(ChatView)).map((v) => v.chatId),
+      contains(-10042),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+  });
 }
 
 Widget _shell(
@@ -464,6 +622,9 @@ late Directory supportDir;
 late TdClient client;
 late int slotA;
 late int slotB;
+
+/// Clients whose account has chat -10042; `getChat` fails on the others.
+Set<int> targetChatClients = {};
 
 class _FakeBindings implements TdBindings {
   _FakeBindings(this._client);

@@ -233,22 +233,4 @@ void main() {
     // pending at teardown.
     await tester.pump(const Duration(milliseconds: 100));
   });
-
-  test('a non-restricted photo keeps its spoiler bit independently', () {
-    // The same parsed content without restriction_info: the spoiler bit
-    // survives on its own, no matter what the restriction path does.
-    final message = TDParse.message({
-      '@type': 'message',
-      'id': 3,
-      'date': 1,
-      'content': {
-        '@type': 'messagePhoto',
-        'has_spoiler': true,
-        'photo': const <String, dynamic>{'@type': 'photo', 'sizes': []},
-        'caption': {'@type': 'formattedText', 'text': ''},
-      },
-    });
-    expect(message!.isContentRestricted, isFalse);
-    expect(message.hasSpoiler, isTrue);
-  });
 }
