@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/deep_link_service.dart';
 import 'package:mithka/auth/auth_manager.dart';
@@ -216,6 +216,50 @@ void main() {
       expect(
         deepLinkGateFor(const AuthReady(), locked: true, needsAccount: true),
         DeepLinkGate.wait,
+      );
+    });
+
+    test('waits until the app is in front, then opens', () {
+      for (final state in const [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.detached,
+      ]) {
+        expect(deepLinkAppInForeground(state), isFalse, reason: '$state');
+        // Notices (needsAccount: false) wait for the foreground too, so they
+        // are not spent while the app is still coming to the front.
+        expect(
+          deepLinkGateFor(
+            const AuthReady(),
+            locked: false,
+            needsAccount: false,
+            foreground: deepLinkAppInForeground(state),
+          ),
+          DeepLinkGate.wait,
+          reason: '$state',
+        );
+        expect(
+          deepLinkGateFor(
+            const AuthWaitPhoneNumber(),
+            locked: false,
+            needsAccount: true,
+            foreground: deepLinkAppInForeground(state),
+          ),
+          DeepLinkGate.wait,
+          reason: '$state',
+        );
+      }
+      expect(deepLinkAppInForeground(AppLifecycleState.resumed), isTrue);
+      expect(deepLinkAppInForeground(null), isTrue);
+      expect(
+        deepLinkGateFor(
+          const AuthReady(),
+          locked: false,
+          needsAccount: true,
+          foreground: deepLinkAppInForeground(AppLifecycleState.resumed),
+        ),
+        DeepLinkGate.open,
       );
     });
 

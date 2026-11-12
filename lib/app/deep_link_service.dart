@@ -34,21 +34,27 @@ enum DeepLinkGate {
   /// Open it now.
   open,
 
-  /// Keep it: the app is starting, switching accounts or locked.
+  /// Keep it: the app is starting, in the background, switching accounts or
+  /// locked.
   wait,
 
   /// Keep it until an account is logged in; the login screen says so.
   logIn,
 }
 
-/// [needsAccount] is false for links that work signed out (proxy links).
+/// [needsAccount] is false for links that work signed out (proxy links) and
+/// for plain notices. [foreground] is false until the app is resumed: a link
+/// usually arrives while the app is still coming to the front, and a notice
+/// shown then runs its timer before any frame is drawn, so it is gone before
+/// the user sees it.
 @visibleForTesting
 DeepLinkGate deepLinkGateFor(
   AuthStep step, {
   required bool locked,
   required bool needsAccount,
+  bool foreground = true,
 }) {
-  if (locked) return DeepLinkGate.wait;
+  if (!foreground || locked) return DeepLinkGate.wait;
   if (step is AuthInitializing ||
       step is AuthReloading ||
       step is AuthLoggingOut ||
@@ -59,7 +65,37 @@ DeepLinkGate deepLinkGateFor(
   return DeepLinkGate.logIn;
 }
 
-class DeepLinkService extends ChangeNotifier {
+/// Whether [state] counts as the app being in front. Null means the platform
+/// has not reported a state yet (early cold start); links then wait for auth
+/// anyway, so treating it as foreground cannot strand them.
+@visibleForTesting
+bool deepLinkAppInForeground(AppLifecycleState? state) =>
+    state == null || state == AppLifecycleState.resumed;
+
+/// One thing an external link asks for, run once the app is in front.
+sealed class _ExternalAction {
+  const _ExternalAction();
+}
+
+/// Open a Telegram link in-app.
+class _OpenTelegramLink extends _ExternalAction {
+  const _OpenTelegramLink(this.link);
+  final String link;
+}
+
+/// Open a page that has nothing in-app (the bare t.me page) in the browser.
+class _OpenInBrowser extends _ExternalAction {
+  const _OpenInBrowser(this.uri);
+  final Uri uri;
+}
+
+/// Show a notice, e.g. linkNotTelegramLink.
+class _ShowNotice extends _ExternalAction {
+  const _ShowNotice(this.messageKey);
+  final String messageKey;
+}
+
+class DeepLinkService extends ChangeNotifier with WidgetsBindingObserver {
   DeepLinkService._();
 
   static final DeepLinkService shared = DeepLinkService._();
@@ -69,9 +105,10 @@ class DeepLinkService extends ChangeNotifier {
   AuthManager? _auth;
   LocalAppLockController? _appLock;
 
-  /// The latest Telegram link waiting for login, unlock or startup. A newer
-  /// link replaces it: only the last thing the user tapped is opened.
-  String? _pending;
+  /// The latest external link waiting for the foreground, login, unlock or
+  /// startup. A newer link replaces it: only the last thing the user tapped
+  /// is acted on.
+  _ExternalAction? _pending;
   bool _draining = false;
 
   /// Whether a link is waiting for the user to log in. The login screen shows
@@ -80,11 +117,13 @@ class DeepLinkService extends ChangeNotifier {
 
   /// Starts listening. Safe to call more than once; later calls are no-ops.
   ///
-  /// Without [auth], links open immediately as before (no sign-in queue).
+  /// Without [auth], links open as soon as the app is in front (no sign-in
+  /// queue).
   void start({AuthManager? auth, LocalAppLockController? appLock}) {
     if (_sub != null) return;
     _auth = auth?..addListener(_stateChanged);
     _appLock = appLock?..addListener(_stateChanged);
+    WidgetsBinding.instance.addObserver(this);
     final links = _links ??= AppLinks();
     // uriLinkStream replays the launch URI, so cold-start links work too.
     _sub = links.uriLinkStream.listen(
@@ -96,6 +135,7 @@ class DeepLinkService extends ChangeNotifier {
   Future<void> stop() async {
     await _sub?.cancel();
     _sub = null;
+    WidgetsBinding.instance.removeObserver(this);
     _auth?.removeListener(_stateChanged);
     _appLock?.removeListener(_stateChanged);
     _auth = null;
@@ -103,14 +143,22 @@ class DeepLinkService extends ChangeNotifier {
     _pending = null;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _stateChanged();
+
   DeepLinkGate _gate() {
-    final auth = _auth;
-    if (auth == null) return DeepLinkGate.open;
-    final link = _pending;
+    final pending = _pending;
     return deepLinkGateFor(
-      auth.step,
+      _auth?.step ?? const AuthReady(),
       locked: _appLock?.locked ?? false,
-      needsAccount: link == null || !_worksSignedOut(link),
+      needsAccount: switch (pending) {
+        _OpenTelegramLink(:final link) => !_worksSignedOut(link),
+        _OpenInBrowser() || _ShowNotice() => false,
+        null => true,
+      },
+      foreground: deepLinkAppInForeground(
+        WidgetsBinding.instance.lifecycleState,
+      ),
     );
   }
 
@@ -128,26 +176,22 @@ class DeepLinkService extends ChangeNotifier {
 
   Future<void> _handle(Uri uri) async {
     final external = classifyExternalLink(uri);
+    final _ExternalAction action;
     switch (external.kind) {
       case ExternalLinkKind.ignored:
         return;
       case ExternalLinkKind.notTelegram:
-        final context = await _navigatorContext();
-        if (context != null && context.mounted) {
-          showToast(context, AppStrings.t(AppStringKeys.linkNotTelegramLink));
-        }
-        return;
+        action = const _ShowNotice(AppStringKeys.linkNotTelegramLink);
       case ExternalLinkKind.telegram:
-        break;
+        final link = external.link!;
+        // The bare t.me home page has nothing to open in-app or to log in
+        // for.
+        final parsed = Uri.tryParse(link);
+        action = parsed != null && isTelegramWebHomePage(parsed)
+            ? _OpenInBrowser(parsed)
+            : _OpenTelegramLink(link);
     }
-    final link = external.link!;
-    // The bare t.me home page has nothing to open in-app or to log in for.
-    final parsed = Uri.tryParse(link);
-    if (parsed != null && isTelegramWebHomePage(parsed)) {
-      await launchInDefaultBrowser(parsed);
-      return;
-    }
-    _pending = link;
+    _pending = action;
     notifyListeners();
     await _drain();
   }
@@ -157,20 +201,29 @@ class DeepLinkService extends ChangeNotifier {
     _draining = true;
     try {
       while (_pending != null && _gate() == DeepLinkGate.open) {
-        final link = _pending!;
+        final action = _pending!;
         _pending = null;
         notifyListeners();
-        // Let the gate's rebuild (login → chat list) land before pushing.
+        // Let the gate's rebuild (login → chat list) and the first frame in
+        // front land before pushing a route or showing a notice.
         await SchedulerBinding.instance.endOfFrame;
         final context = await _navigatorContext();
         if (context == null || !context.mounted) {
-          debugPrint('deep link dropped (no navigator): $link');
+          debugPrint('deep link dropped (no navigator)');
           continue;
         }
         try {
-          // Mithka is itself a tg:// handler now: a tg:// link it cannot
-          // open must not be relaunched externally, or it would come back.
-          await openLink(context, link, keepTelegramInApp: true);
+          switch (action) {
+            case _OpenTelegramLink(:final link):
+              // Mithka is itself a tg:// handler now: a tg:// link it cannot
+              // open must not be relaunched externally, or it would come
+              // back.
+              await openLink(context, link, keepTelegramInApp: true);
+            case _OpenInBrowser(:final uri):
+              await launchInDefaultBrowser(uri);
+            case _ShowNotice(:final messageKey):
+              showToast(context, AppStrings.t(messageKey));
+          }
         } catch (error) {
           debugPrint('deep link failed: $error');
         }
