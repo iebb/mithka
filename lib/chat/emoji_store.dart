@@ -9,6 +9,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../config/build_flags.dart';
 import '../settings/local_premium.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -106,11 +107,11 @@ class EmojiStore extends ChangeNotifier {
       });
       if (!isCurrent()) return;
       // Self-build local premium (Telegram §1.4): the switch unlocks the
-      // premium emoji surfaces for our own account; the server value stays
-      // untouched underneath.
-      isPremium = LocalPremium.shared.premiumForMe(
-        opt.boolean('value') ?? false,
-      );
+      // premium emoji surfaces for our own account; the raw server value
+      // stays untouched underneath.
+      isPremium = allowTelegramTosViolations
+          ? LocalPremium.shared.premiumForMe(opt.boolean('value') ?? false)
+          : (opt.boolean('value') ?? false);
       notifyListeners();
     } catch (_) {
       // A failure for the previous account must not disturb this one.

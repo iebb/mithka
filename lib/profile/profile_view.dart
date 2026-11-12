@@ -60,6 +60,7 @@ class ProfileViewModel extends ChangeNotifier {
   int? savedChatId;
   bool _loaded = false;
   StreamSubscription? _sub;
+  VoidCallback? _premiumListener;
 
   void onAppear() {
     if (_loaded) return;
@@ -71,6 +72,16 @@ class ProfileViewModel extends ChangeNotifier {
       final usr = u.obj('user');
       if (usr != null && usr.int64('id') == user?.id) _applyUser(usr);
     });
+    // The local-premium overlay is applied at read time; flipping the switch
+    // must repaint the drawer's premium affordances without waiting for the
+    // next updateUser.
+    if (allowTelegramTosViolations) {
+      // notifyListeners is not a tearoff-friendly shape here (the listener
+      // must stay removable), so the closure is deliberate.
+      // ignore: unnecessary_lambdas
+      _premiumListener = () => notifyListeners();
+      LocalPremium.shared.addListener(_premiumListener!);
+    }
     _getMe();
   }
 
@@ -83,12 +94,20 @@ class ProfileViewModel extends ChangeNotifier {
       username: usernames.isEmpty ? null : usernames.first,
       photo: TDParse.smallPhoto(me.obj('profile_photo')),
       emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
-      isPremium: LocalPremium.shared.premiumForMe(
-        me.boolean('is_premium') ?? false,
-      ),
+      // Raw server value; the local-premium overlay is applied at read time
+      // (isPremiumForView) so toggling it repaints without a new updateUser.
+      isPremium: me.boolean('is_premium') ?? false,
     );
     notifyListeners();
   }
+
+  /// The premium answer for this profile's display: the raw server value with
+  /// the self-build local-premium overlay on top (our own account only).
+  /// Outside opted-in builds this is plainly false — the overlay is the only
+  /// premium adder.
+  bool isPremiumForView(CurrentUser? candidate) =>
+      allowTelegramTosViolations &&
+      LocalPremium.shared.premiumForMe(candidate?.isPremium ?? false);
 
   Future<void> _getMe() async {
     try {
@@ -107,6 +126,10 @@ class ProfileViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    final premiumListener = _premiumListener;
+    if (premiumListener != null) {
+      LocalPremium.shared.removeListener(premiumListener);
+    }
     super.dispose();
   }
 
@@ -377,7 +400,7 @@ class _ProfileViewState extends State<ProfileView> {
                               ),
                             ),
                             _nameStatusIcon(user),
-                            if (user?.isPremium ?? false) ...[
+                            if (_vm.isPremiumForView(user)) ...[
                               const SizedBox(width: 6),
                               const VipBadge(),
                             ],
@@ -441,7 +464,7 @@ class _ProfileViewState extends State<ProfileView> {
   Widget _nameStatusIcon(CurrentUser? user) {
     final foreground = context.colors.textPrimary;
     final hasStatus = (user?.emojiStatusId ?? 0) != 0;
-    final premium = user?.isPremium ?? false;
+    final premium = _vm.isPremiumForView(user);
     if (!hasStatus && !premium) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(left: 6),

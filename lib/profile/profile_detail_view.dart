@@ -172,6 +172,8 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _phone = TDParse.formatPhone(_rawPhone);
           _photo = TDParse.smallPhoto(user.obj('profile_photo'));
           _isOnline = TDParse.isUserOnline(user);
+          // Our own profile overlays the self-build local-premium switch;
+          // other users keep the raw server value.
           _isPremium = _isMe
               ? LocalPremium.shared.premiumForMe(
                   user.boolean('is_premium') ?? false,
