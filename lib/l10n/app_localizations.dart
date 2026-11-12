@@ -412,10 +412,6 @@ abstract final class AppStringKeys {
   static const advancedNetwork = 'advancedNetwork';
   static const advancedTitle = 'advancedTitle';
   static const historyChatLabel = 'historyChatLabel';
-  static const historyBadgeStyleBoth = 'historyBadgeStyleBoth';
-  static const historyBadgeStyleIcon = 'historyBadgeStyleIcon';
-  static const historyBadgeStyleText = 'historyBadgeStyleText';
-  static const historyBadgeStyleTitle = 'historyBadgeStyleTitle';
   static const historyClearedToast = 'historyClearedToast';
   static const historyClearAction = 'historyClearAction';
   static const historyClearAllConfirmTitle = 'historyClearAllConfirmTitle';
@@ -423,7 +419,6 @@ abstract final class AppStringKeys {
   static const historyDeletedLabel = 'historyDeletedLabel';
   static const historyEditEvent = 'historyEditEvent';
   static const historyEditedLabel = 'historyEditedLabel';
-  static const historyEnableAll = 'historyEnableAll';
   static const historyEmpty = 'historyEmpty';
   static const historyExcludedNote = 'historyExcludedNote';
   static const historyExcludedTitle = 'historyExcludedTitle';
@@ -441,41 +436,10 @@ abstract final class AppStringKeys {
   static const historyKindVideo = 'historyKindVideo';
   static const historyKindVideoNote = 'historyKindVideoNote';
   static const historyKindVoice = 'historyKindVoice';
-  static const historyExportAction = 'historyExportAction';
-  static const historyExportSubtitle = 'historyExportSubtitle';
-  static const historyExportedToast = 'historyExportedToast';
-  static const historyImportAction = 'historyImportAction';
-  static const historyImportConfirmMessage = 'historyImportConfirmMessage';
-  static const historyImportConfirmTitle = 'historyImportConfirmTitle';
-  static const historyImportFailedToast = 'historyImportFailedToast';
-  static const historyImportSubtitle = 'historyImportSubtitle';
-  static const historyImportedToast = 'historyImportedToast';
   static const historyNoExcludedChats = 'historyNoExcludedChats';
-  static const historyRecordDeleted = 'historyRecordDeleted';
-  static const historyRecordEdits = 'historyRecordEdits';
-  static const historyRecordBots = 'historyRecordBots';
-  static const historyRecordChannels = 'historyRecordChannels';
-  static const historyRecordGroups = 'historyRecordGroups';
-  static const historyRecordNote = 'historyRecordNote';
-  static const historyRecordPrivate = 'historyRecordPrivate';
-  static const historyRecordSection = 'historyRecordSection';
-  static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
-  static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';
-  static const historyRenderGhosts = 'historyRenderGhosts';
-  static const historyRenderGhostsNote = 'historyRenderGhostsNote';
   static const historyReincludeAction = 'historyReincludeAction';
-  static const historyRevisionsTitle = 'historyRevisionsTitle';
-  static const historySnapshotChannels = 'historySnapshotChannels';
-  static const historySnapshotGroups = 'historySnapshotGroups';
-  static const historySnapshotNote = 'historySnapshotNote';
-  static const historySnapshotPrivate = 'historySnapshotPrivate';
-  static const historySnapshotSection = 'historySnapshotSection';
-  static const historySenderLabel = 'historySenderLabel';
   static const historySettingsRow = 'historySettingsRow';
   static const historyTitle = 'historyTitle';
-  static const historyTransferNote = 'historyTransferNote';
-  static const historyTransferSection = 'historyTransferSection';
-  static const historyTransferTitle = 'historyTransferTitle';
   static const apiCredentialsCustomClientApi = 'apiCredentialsCustomClientApi';
   static const apiCredentialsDescription = 'apiCredentialsDescription';
   static const apiCredentialsTitle = 'apiCredentialsTitle';
@@ -696,9 +660,6 @@ abstract final class AppStringKeys {
   static const ghostModeChatExceptions = 'ghostModeChatExceptions';
   static const ghostModeAddChatException = 'ghostModeAddChatException';
   static const ghostModeNoChatExceptions = 'ghostModeNoChatExceptions';
-  static const ghostModeShowSidebarEntry = 'ghostModeShowSidebarEntry';
-  static const ghostModeShowSidebarEntryDescription =
-      'ghostModeShowSidebarEntryDescription';
   static const ghostModeExceptionDefault = 'ghostModeExceptionDefault';
   static const ghostModeExceptionForceBlock = 'ghostModeExceptionForceBlock';
   static const ghostModeExceptionForceAllow = 'ghostModeExceptionForceAllow';
@@ -1081,11 +1042,6 @@ abstract final class AppStringKeys {
       'chatInfoDisableExplicitFolderWarning';
   static const chatInfoFolderName = 'chatInfoFolderName';
   static const chatInfoFolderNameLabel = 'chatInfoFolderNameLabel';
-  static const chatInfoKeepRecording = 'chatInfoKeepRecording';
-  static const chatInfoStopRecordingConfirmTitle =
-      'chatInfoStopRecordingConfirmTitle';
-  static const chatInfoStopRecordingConfirmMessage =
-      'chatInfoStopRecordingConfirmMessage';
   static const chatInfoGroupAlbum = 'chatInfoGroupAlbum';
   static const chatInfoGroupApps = 'chatInfoGroupApps';
   static const chatInfoGroupChat = 'chatInfoGroupChat';
@@ -2154,15 +2110,9 @@ abstract final class AppStringKeys {
   static const keywordBlockerRulesAdded = 'keywordBlockerRulesAdded';
   static const keywordBlockerRulesUpToDate = 'keywordBlockerRulesUpToDate';
   static const keywordBlockerTitle = 'keywordBlockerTitle';
-  static const mithkaxSettingsTitle = 'mithkaxSettingsTitle';
-  static const mithkaxHistorySection = 'mithkaxHistorySection';
-  static const mithkaxGhostSection = 'mithkaxGhostSection';
-  static const mithkaxPremiumSection = 'mithkaxPremiumSection';
   static const languageMithkaLanguage = 'languageMithkaLanguage';
   static const languageTitle = 'languageTitle';
   static const linkBrowserAddress = 'linkBrowserAddress';
-  static const localPremiumNote = 'localPremiumNote';
-  static const localPremiumTitle = 'localPremiumTitle';
   static const linkBrowserAskEveryTime = 'linkBrowserAskEveryTime';
   static const linkBrowserAskEveryTimeDescription =
       'linkBrowserAskEveryTimeDescription';
@@ -2283,7 +2233,6 @@ abstract final class AppStringKeys {
   static const messageActionSetTodo = 'messageActionSetTodo';
   static const messageActionSticker = 'messageActionSticker';
   static const messageActionTranslate = 'messageActionTranslate';
-  static const messageActionViewEdits = 'messageActionViewEdits';
   static const messageActionUnsetTodo = 'messageActionUnsetTodo';
   static const messageBubbleCallCanceled = 'messageBubbleCallCanceled';
   static const messageBubbleCallDeclined = 'messageBubbleCallDeclined';
@@ -5331,6 +5280,55 @@ abstract final class AppStringKeys {
       'storyAuthoringAreaUpgradedGift';
   static const profilePhotoBadgeCurrent = 'profilePhotoBadgeCurrent';
   static const profilePhotoBadgePublic = 'profilePhotoBadgePublic';
+  static const chatInfoKeepRecording = 'chatInfoKeepRecording';
+  static const chatInfoStopRecordingConfirmMessage =
+      'chatInfoStopRecordingConfirmMessage';
+  static const chatInfoStopRecordingConfirmTitle =
+      'chatInfoStopRecordingConfirmTitle';
+  static const ghostModeShowSidebarEntry = 'ghostModeShowSidebarEntry';
+  static const ghostModeShowSidebarEntryDescription =
+      'ghostModeShowSidebarEntryDescription';
+  static const historyBadgeStyleBoth = 'historyBadgeStyleBoth';
+  static const historyBadgeStyleIcon = 'historyBadgeStyleIcon';
+  static const historyBadgeStyleText = 'historyBadgeStyleText';
+  static const historyBadgeStyleTitle = 'historyBadgeStyleTitle';
+  static const historyEnableAll = 'historyEnableAll';
+  static const historyExportAction = 'historyExportAction';
+  static const historyExportSubtitle = 'historyExportSubtitle';
+  static const historyExportedToast = 'historyExportedToast';
+  static const historyImportAction = 'historyImportAction';
+  static const historyImportConfirmMessage = 'historyImportConfirmMessage';
+  static const historyImportConfirmTitle = 'historyImportConfirmTitle';
+  static const historyImportFailedToast = 'historyImportFailedToast';
+  static const historyImportSubtitle = 'historyImportSubtitle';
+  static const historyImportedToast = 'historyImportedToast';
+  static const historyRecordBots = 'historyRecordBots';
+  static const historyRecordChannels = 'historyRecordChannels';
+  static const historyRecordDeleted = 'historyRecordDeleted';
+  static const historyRecordEdits = 'historyRecordEdits';
+  static const historyRecordGroups = 'historyRecordGroups';
+  static const historyRecordNote = 'historyRecordNote';
+  static const historyRecordPrivate = 'historyRecordPrivate';
+  static const historyRecordSection = 'historyRecordSection';
+  static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
+  static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';
+  static const historyRenderGhosts = 'historyRenderGhosts';
+  static const historyRevisionsTitle = 'historyRevisionsTitle';
+  static const historySenderLabel = 'historySenderLabel';
+  static const historySnapshotChannels = 'historySnapshotChannels';
+  static const historySnapshotGroups = 'historySnapshotGroups';
+  static const historySnapshotNote = 'historySnapshotNote';
+  static const historySnapshotPrivate = 'historySnapshotPrivate';
+  static const historySnapshotSection = 'historySnapshotSection';
+  static const historyTransferNote = 'historyTransferNote';
+  static const historyTransferSection = 'historyTransferSection';
+  static const historyTransferTitle = 'historyTransferTitle';
+  static const localPremiumTitle = 'localPremiumTitle';
+  static const keptSettingsTitle = 'keptSettingsTitle';
+  static const keptHistorySection = 'keptHistorySection';
+  static const keptGhostSection = 'keptGhostSection';
+  static const keptPremiumSection = 'keptPremiumSection';
+  static const messageActionViewEdits = 'messageActionViewEdits';
 }
 
 abstract final class AppStrings {

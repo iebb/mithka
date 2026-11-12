@@ -10,8 +10,8 @@
 //  Telegram cloud (that would need a live file id, which a deleted message no
 //  longer has).
 //
-//  Ported from AyuGram's AyuMessageUtils.saveDownloadedMedia /
-//  processAttachment semantics (see exteraless's com.radolyn.ayugram).
+//  The copy rules follow the reference kept-message clients: only files
+//  already fully present in local TDLib storage are copied, never fetched.
 //
 
 import 'dart:io';

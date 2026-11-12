@@ -1957,7 +1957,7 @@
     <string name="historyExcludedNote">Les messages des discussions exclues ne sont pas conservés du tout ; les copies existantes ont été supprimées.</string>
     <string name="historyExcludedTitle">Discussions exclues</string>
     <string name="historyExportAction">Exporter l’historique des messages</string>
-    <string name="historyExportSubtitle">Avec instantanés multimédias, en fichier JSON</string>
+    <string name="historyExportSubtitle">Avec le contenu multimédia, en fichier JSON</string>
     <string name="historyExportedToast">%1$s entrées exportées</string>
     <string name="historyFilteredNote">Affiche une seule discussion. Touchez une ligne pour filtrer par sa discussion ; revenez en arrière pour annuler le filtre.</string>
     <string name="historyImportAction">Importer l’historique des messages</string>
@@ -1996,11 +1996,11 @@
     <string name="historySenderLabel">Utilisateur {value1}</string>
     <string name="historyRevisionsTitle">Historique des modifications</string>
     <string name="historySettingsRow">Historique des messages</string>
-    <string name="historySnapshotChannels">Instantanés multimédias dans les chaînes</string>
-    <string name="historySnapshotGroups">Instantanés multimédias dans les groupes</string>
+    <string name="historySnapshotChannels">Enregistrer le contenu multimédia dans les canaux</string>
+    <string name="historySnapshotGroups">Enregistrer le contenu multimédia dans les groupes</string>
     <string name="historySnapshotNote">Un média n'est copié dans le miroir que si le fichier est déjà entièrement sur l'appareil à l'arrivée du message. Sans instantané, la copie conservée n'affiche que le type de contenu.</string>
-    <string name="historySnapshotPrivate">Instantanés multimédias dans les conversations privées</string>
-    <string name="historySnapshotSection">Instantanés multimédias</string>
+    <string name="historySnapshotPrivate">Enregistrer le contenu multimédia dans les conversations privées</string>
+    <string name="historySnapshotSection">Contenu multimédia</string>
     <string name="historyTitle">Historique des messages</string>
 
     <string name="historyTransferNote">L’export couvre toutes les copies conservées et instantanés multimédias de ce compte ; l’import remplace intégralement le miroir de ce compte.</string>
@@ -2121,10 +2121,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Étoiles du télégramme</string>
     <string name="linkHandlerUnsupportedTelegramLink">L’ouverture de ce lien Telegram n’est pas encore prise en charge</string>
     <string name="linkHandlerWritingStyle">Style d'écriture</string>
-    <string name="mithkaxSettingsTitle">Fonctions Ayu</string>
-    <string name="mithkaxHistorySection">Historique des messages</string>
-    <string name="mithkaxGhostSection">Mode fantôme</string>
-    <string name="mithkaxPremiumSection">Premium local</string>
+    <string name="keptSettingsTitle">Fonctions Ayu</string>
+    <string name="keptHistorySection">Historique des messages</string>
+    <string name="keptGhostSection">Mode fantôme</string>
+    <string name="keptPremiumSection">Premium local</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Déverrouille les surfaces premium côté client pour votre propre compte sur cet appareil. Les limites serveur s'appliquent toujours et rien n'est envoyé à Telegram.</string>
     <string name="localPremiumTitle">Premium local</string>

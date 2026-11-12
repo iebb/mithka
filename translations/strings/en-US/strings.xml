@@ -1957,7 +1957,7 @@
     <string name="historyExcludedNote">Messages from excluded chats are not kept at all. Existing copies were removed.</string>
     <string name="historyExcludedTitle">Excluded Chats</string>
     <string name="historyExportAction">Export message history</string>
-    <string name="historyExportSubtitle">With media snapshots, as a JSON file</string>
+    <string name="historyExportSubtitle">With media content, as a JSON file</string>
     <string name="historyExportedToast">Exported %1$s entries</string>
     <string name="historyFilteredNote">Showing one chat. Tap a row to filter by its chat; go back to clear the filter.</string>
     <string name="historyImportAction">Import message history</string>
@@ -1996,11 +1996,11 @@
     <string name="historySenderLabel">User {value1}</string>
     <string name="historyRevisionsTitle">Edit history</string>
     <string name="historySettingsRow">Message History</string>
-    <string name="historySnapshotChannels">Snapshot media in channels</string>
-    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotChannels">Save media content in channels</string>
+    <string name="historySnapshotGroups">Save media content in groups</string>
     <string name="historySnapshotNote">Media is copied to the mirror only when the file is already fully on disk when the message arrives. Without a snapshot the kept copy shows the content type only.</string>
-    <string name="historySnapshotPrivate">Snapshot media in private chats</string>
-    <string name="historySnapshotSection">Media snapshots</string>
+    <string name="historySnapshotPrivate">Save media content in private chats</string>
+    <string name="historySnapshotSection">Media content</string>
     <string name="historyTitle">Message History</string>
 
     <string name="historyTransferNote">Export covers every kept copy and media snapshot of this account; import replaces this account’s mirror wholesale.</string>
@@ -2121,10 +2121,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Opening this Telegram link is not supported yet</string>
     <string name="linkHandlerWritingStyle">Writing style</string>
-    <string name="mithkaxSettingsTitle">Ayu Features</string>
-    <string name="mithkaxHistorySection">Message history</string>
-    <string name="mithkaxGhostSection">Ghost mode</string>
-    <string name="mithkaxPremiumSection">Local premium</string>
+    <string name="keptSettingsTitle">Ayu Features</string>
+    <string name="keptHistorySection">Message history</string>
+    <string name="keptGhostSection">Ghost mode</string>
+    <string name="keptPremiumSection">Local premium</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Unlock the client-side premium surfaces for your own account on this device. Server-side limits still apply and nothing is sent to Telegram.</string>
     <string name="localPremiumTitle">Local Premium</string>

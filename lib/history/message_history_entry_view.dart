@@ -3,7 +3,7 @@
 //
 //  One kept message of the local mirror, rendered like a chat bubble: the
 //  text (or media snapshot), the sender line, and the edit trail. Deleted
-//  entries get the translucent ghost styling known from AyuGram. Long-press
+//  entries get the translucent ghost styling. Long-press
 //  copies the kept text. Part of the Telegram API Terms §1.4 mirror that
 //  exists only in opted-in self-builds.
 //

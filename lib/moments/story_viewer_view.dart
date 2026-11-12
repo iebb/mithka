@@ -278,8 +278,7 @@ class _StoryViewerViewState extends State<StoryViewerView>
     });
 
     // Mark the story as viewed (best-effort). Ghost mode skips the report;
-    // the local seen markers then stay unupdated, the same trade-off
-    // AyuGram accepts.
+    // the local seen markers then stay unupdated — the accepted trade-off.
     if (!(allowTelegramTosViolations &&
         GhostModeController.shared.shouldBlockStories(widget.chatId).isBlock)) {
       TdClient.shared.send({

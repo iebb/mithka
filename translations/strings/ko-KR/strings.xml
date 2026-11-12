@@ -1950,7 +1950,7 @@
     <string name="historyExcludedNote">제외된 채팅의 메시지는 전혀 보관되지 않으며 기존 사본도 삭제됩니다.</string>
     <string name="historyExcludedTitle">제외된 채팅</string>
     <string name="historyExportAction">메시지 기록 내보내기</string>
-    <string name="historyExportSubtitle">미디어 스냅샷 포함 JSON 파일</string>
+    <string name="historyExportSubtitle">미디어 콘텐츠 포함 JSON 파일</string>
     <string name="historyExportedToast">%1$s개 항목 내보냄</string>
     <string name="historyFilteredNote">하나의 채팅만 표시합니다. 행을 탭하면 해당 채팅으로 필터링되고, 뒤로 가면 해제됩니다.</string>
     <string name="historyImportAction">메시지 기록 가져오기</string>
@@ -1989,11 +1989,11 @@
     <string name="historySenderLabel">사용자 {value1}</string>
     <string name="historyRevisionsTitle">편집 기록</string>
     <string name="historySettingsRow">메시지 기록</string>
-    <string name="historySnapshotChannels">채널에서 미디어 스냅샷</string>
-    <string name="historySnapshotGroups">그룹에서 미디어 스냅샷</string>
+    <string name="historySnapshotChannels">채널에서 미디어 콘텐츠 저장</string>
+    <string name="historySnapshotGroups">그룹에서 미디어 콘텐츠 저장</string>
     <string name="historySnapshotNote">메시지 도착 시점에 파일이 이미 기기에 완전히 저장되어 있어야만 미디어가 미러로 복사됩니다. 스냅샷이 없으면 보관된 복사본은 종류만 표시합니다.</string>
-    <string name="historySnapshotPrivate">개인 채팅에서 미디어 스냅샷</string>
-    <string name="historySnapshotSection">미디어 스냅샷</string>
+    <string name="historySnapshotPrivate">개인 채팅에서 미디어 콘텐츠 저장</string>
+    <string name="historySnapshotSection">미디어 콘텐츠</string>
     <string name="historyTitle">메시지 기록</string>
 
     <string name="historyTransferNote">내보내기는 이 계정의 모든 보관 복사본과 미디어 스냅샷을 포함합니다. 가져오기는 이 계정의 미러를 전체 교체합니다.</string>
@@ -2114,10 +2114,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} 텔레그램 스타</string>
     <string name="linkHandlerUnsupportedTelegramLink">이 Telegram 링크 열기는 아직 지원되지 않습니다</string>
     <string name="linkHandlerWritingStyle">글쓰기 스타일</string>
-    <string name="mithkaxSettingsTitle">Ayu 기능</string>
-    <string name="mithkaxHistorySection">메시지 기록</string>
-    <string name="mithkaxGhostSection">고스트 모드</string>
-    <string name="mithkaxPremiumSection">로컬 프리미엄</string>
+    <string name="keptSettingsTitle">Ayu 기능</string>
+    <string name="keptHistorySection">메시지 기록</string>
+    <string name="keptGhostSection">고스트 모드</string>
+    <string name="keptPremiumSection">로컬 프리미엄</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">이 기기에서 내 계정의 클라이언트 측 프리미엄 화면을 잠금 해제합니다. 서버 측 제한은 그대로 적용되며 Telegram으로 아무것도 전송하지 않습니다.</string>
     <string name="localPremiumTitle">로컬 프리미엄</string>

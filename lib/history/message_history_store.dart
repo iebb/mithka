@@ -1,7 +1,7 @@
 //
 //  message_history_store.dart
 //
-//  AyuGram-style local message history: every incoming message is mirrored
+//  Kept-message local history: every incoming message is mirrored
 //  into a small on-device store so messages the counterpart deletes or edits
 //  stay readable afterwards. Nothing here talks to Telegram — the mirror is
 //  written from TDLib updates the account already received, and the kept
@@ -659,7 +659,7 @@ class MessageHistoryStore extends ChangeNotifier {
     // The mirror keeps what the counterpart could take away: only incoming
     // messages. The account's own outgoing ones stay Telegram's business.
     // Saved Messages (chat id == own user id) is incoming from itself and is
-    // still kept, mirroring AyuGram's treatment of the self dialog.
+    // still kept — the self dialog is incoming from this account's other devices.
     final isOutgoing = message.boolean('is_outgoing') ?? false;
     final isSelfChat = chatId == accountUserId;
     if (isOutgoing && !isSelfChat) return;
@@ -760,7 +760,7 @@ class MessageHistoryStore extends ChangeNotifier {
   /// The file object worth snapshotting for a content payload: the biggest
   /// photo size for photos, the document for documents / audio / voice /
   /// video, null for everything else (stickers animate from server data and
-  /// cached copies rarely survive, exactly like AyuGram's scope).
+  /// cached copies rarely survive).
   static Map<String, dynamic>? _contentSnapshotFile(
     Map<String, dynamic>? content,
   ) {
@@ -838,7 +838,7 @@ class MessageHistoryStore extends ChangeNotifier {
 
   /// Bot chats the store has seen an updateChat for, keyed per account.
   /// A bot dialog is a private chat, but recording its service messages is
-  /// a separate exteraless-style opt-in, so the chat type observed from
+  /// a separate opt-in, so the chat type observed from
   /// TDLib is cached here — chat ids alone cannot tell a bot dialog from a
   /// human one.
   final Map<String, bool> _botChats = {};
@@ -905,7 +905,7 @@ class MessageHistoryStore extends ChangeNotifier {
   /// updateChat: remembers per (account, chat) whether the chat is still
   /// openable. A chat the counterpart destroyed (deleted account, gone
   /// secret chat, or a chat that no longer resolves) marks its kept entries
-  /// with `hasLiveChat false`, the AyuGram AyuDeleted semantics.
+  /// with `hasLiveChat false` — nothing live remains behind the copy.
   void _recordChatLiveness(int accountUserId, Map<String, dynamic> update) {
     final chat = update.obj('chat');
     if (chat == null) return;
@@ -1260,11 +1260,11 @@ class MessageHistoryStore extends ChangeNotifier {
 
   // ---------------------------------------------------------------------------
   // Export / import — the whole mirror as one self-describing JSON file
-  // (exteraless's database export/import, without the binary format).
+  // (a portable document, no binary format).
   // ---------------------------------------------------------------------------
 
   static const exportVersion = 1;
-  static const exportFormat = 'mithkax-history';
+  static const exportFormat = 'kept-history';
 
   /// Serializes the ACTIVE account's kept copies (entries, exclusions and
   /// the snapshot media as base64) into a portable JSON document. Media
@@ -1324,7 +1324,7 @@ class MessageHistoryStore extends ChangeNotifier {
       throw const FormatException('History mirror is not compiled in');
     }
     if (document['format'] != exportFormat) {
-      throw const FormatException('Not a Mithka X history export');
+      throw const FormatException('Not a kept-message history export');
     }
     final accountUserId = _activeAccountUserId;
     if (accountUserId == null) {

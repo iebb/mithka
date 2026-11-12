@@ -25,7 +25,7 @@ import '../theme/theme_controller.dart';
 import 'account_security_views.dart';
 import 'auto_delete_view.dart';
 import 'ghost_mode_settings_view.dart';
-import 'mithkax_settings_view.dart';
+import 'kept_messages_settings_view.dart';
 import 'passkeys_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_rule_options.dart';
@@ -327,7 +327,7 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
                 HeroAppIcons.solidStar,
                 AppStrings.t(AppStringKeys.localPremiumTitle),
                 '',
-                () => _open(const MithkaXSettingsView()),
+                () => _open(const KeptMessagesSettingsView()),
               ),
           ]),
           _group(AppStrings.t(AppStringKeys.privacyDangerZone), [

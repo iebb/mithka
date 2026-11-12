@@ -7429,7 +7429,7 @@ class ChatViewModel extends ChangeNotifier {
         }
         continue;
       }
-      // Reply-to-deleted → quote (exteraless): when the target is not in
+      // Reply-to-deleted fill: when the target is not in
       // the transcript, the local mirror may still hold a kept copy of the
       // deleted original; its text fills the reply anchor like a quote.
       if (_applyMirrorReply(m, rid, rChatId)) {

@@ -1,9 +1,9 @@
 //
-//  mithkax_settings_view.dart
+//  kept_messages_settings_view.dart
 //
-//  Mithka X 设置中心：本 fork 的自建功能收拢在这一个入口里，主设置列表
-//  只留一行指进来。Telegram API Terms §1.4 的功能在未 opt-in 的构建里
-//  整页不存在。
+//  Kept-message settings hub: the §1.4 self-build surfaces (message mirror,
+//  ghost mode, local premium) collect behind one entry inside Advanced. The
+//  whole page does not exist in builds without the compile-time opt-in.
 //
 //  开关的依赖关系在这里是可见的：总开关熄灭时全部记录开关变暗；「保存
 //  已删除的消息」再管辖范围与快照两组——它们的记录路径都以它为前提。
@@ -24,16 +24,16 @@ import 'ghost_mode_settings_view.dart';
 import 'local_premium.dart';
 import 'message_history_transfer_view.dart';
 
-/// Hub page for every Mithka X fork feature. Exists only in opted-in
+/// Hub page for every kept-message (§1.4) feature. Exists only in opted-in
 /// self-built binaries; the settings root omits the row otherwise.
-class MithkaXSettingsView extends StatelessWidget {
-  const MithkaXSettingsView({super.key});
+class KeptMessagesSettingsView extends StatelessWidget {
+  const KeptMessagesSettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
     if (!allowTelegramTosViolations) return const SizedBox.shrink();
     return SettingsPageScaffold(
-      title: AppStringKeys.mithkaxSettingsTitle,
+      title: AppStringKeys.keptSettingsTitle,
       onBack: () => Navigator.of(context).pop(),
       child: const SettingsListView(
         children: [
@@ -99,7 +99,7 @@ class _HistoryCoreSection extends StatelessWidget {
       builder: (context, _) {
         final masterOn = settings.enableAll;
         return SettingsSection(
-          titleKey: AppStringKeys.mithkaxHistorySection,
+          titleKey: AppStringKeys.keptHistorySection,
           rows: [
             SettingsSwitchRow(
               key: const ValueKey('history-enable-all'),
@@ -254,7 +254,7 @@ class _TransferSection extends StatelessWidget {
       titleKey: AppStringKeys.historyTransferSection,
       rows: [
         SettingsRow(
-          key: const ValueKey('mithkax-history-transfer'),
+          key: const ValueKey('kept-history-transfer'),
           title: AppStringKeys.historyTransferTitle.l10n(context),
           leading: const SettingsLeadingIcon(icon: HeroAppIcons.share),
           onTap: () => Navigator.of(context).push(
@@ -277,10 +277,10 @@ class _GhostSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SettingsSection(
-      titleKey: AppStringKeys.mithkaxGhostSection,
+      titleKey: AppStringKeys.keptGhostSection,
       rows: [
         SettingsRow(
-          key: const ValueKey('mithkax-ghost-mode'),
+          key: const ValueKey('kept-ghost-mode'),
           title: AppStringKeys.ghostModeTitle,
           leading: const SettingsLeadingIcon(icon: HeroAppIcons.eyeSlash),
           onTap: () => Navigator.of(context).push(
@@ -301,7 +301,7 @@ class _PremiumSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SettingsSection(
-      titleKey: AppStringKeys.mithkaxPremiumSection,
+      titleKey: AppStringKeys.keptPremiumSection,
       rows: [_LocalPremiumRow()],
     );
   }
@@ -315,7 +315,7 @@ class _BadgeStyleRow extends StatelessWidget {
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) => SettingsRow(
-        key: const ValueKey('mithkax-badge-style'),
+        key: const ValueKey('kept-badge-style'),
         title: AppStringKeys.historyBadgeStyleTitle.l10n(context),
         value: _styleLabel(context, settings.badgeStyle),
         leading: const SettingsLeadingIcon(icon: HeroAppIcons.trash),
@@ -346,7 +346,7 @@ class _BadgeStyleRow extends StatelessWidget {
           children: [
             for (final style in GhostBadgeStyle.values)
               ListTile(
-                key: ValueKey('mithkax-badge-style-${style.name}'),
+                key: ValueKey('kept-badge-style-${style.name}'),
                 title: Text(label(style)),
                 trailing: settings.badgeStyle == style
                     ? AppIcon(
@@ -373,7 +373,7 @@ class _LocalPremiumRow extends StatelessWidget {
     return ListenableBuilder(
       listenable: premium,
       builder: (context, _) => SettingsSwitchRow(
-        key: const ValueKey('mithkax-local-premium'),
+        key: const ValueKey('kept-local-premium'),
         title: AppStringKeys.localPremiumTitle.l10n(context),
         value: premium.enabled,
         onChanged: premium.setEnabled,

@@ -1950,7 +1950,7 @@
     <string name="historyExcludedNote">除外したチャットのメッセージは一切保存されず、既存のコピーも削除されます。</string>
     <string name="historyExcludedTitle">除外したチャット</string>
     <string name="historyExportAction">メッセージ履歴をエクスポート</string>
-    <string name="historyExportSubtitle">メディアスナップショット付きの JSON ファイル</string>
+    <string name="historyExportSubtitle">メディア内容を含む JSON ファイル</string>
     <string name="historyExportedToast">%1$s 件をエクスポートしました</string>
     <string name="historyFilteredNote">1つのチャットのみ表示しています。行をタップするとそのチャットで絞り込み、戻ると解除されます。</string>
     <string name="historyImportAction">メッセージ履歴をインポート</string>
@@ -1989,11 +1989,11 @@
     <string name="historySenderLabel">ユーザー {value1}</string>
     <string name="historyRevisionsTitle">編集履歴</string>
     <string name="historySettingsRow">メッセージ履歴</string>
-    <string name="historySnapshotChannels">チャンネルでメディアをスナップショット</string>
-    <string name="historySnapshotGroups">グループでメディアをスナップショット</string>
+    <string name="historySnapshotChannels">チャンネルでメディア内容を保存</string>
+    <string name="historySnapshotGroups">グループでメディア内容を保存</string>
     <string name="historySnapshotNote">メッセージ到着時にファイルが完全に端末へ保存済みの場合のみ、メディアはミラーへコピーされます。スナップショットがない保持コピーは種別のみを表示します。</string>
-    <string name="historySnapshotPrivate">プライベートチャットでメディアをスナップショット</string>
-    <string name="historySnapshotSection">メディアスナップショット</string>
+    <string name="historySnapshotPrivate">プライベートチャットでメディア内容を保存</string>
+    <string name="historySnapshotSection">メディア内容</string>
     <string name="historyTitle">メッセージ履歴</string>
 
     <string name="historyTransferNote">エクスポートはこのアカウントの全保持コピーとメディアスナップショットを含みます。インポートはこのアカウントのミラー全体を置き換えます。</string>
@@ -2115,10 +2115,10 @@
     <string name="linkHandlerUnsupportedTelegramLink">この Telegram リンクを開くことはまだサポートされていません</string>
     <string name="linkHandlerWritingStyle">文体</string>
     <string name="listSeparator">、</string>
-    <string name="mithkaxSettingsTitle">Ayu機能</string>
-    <string name="mithkaxHistorySection">メッセージ履歴</string>
-    <string name="mithkaxGhostSection">ゴーストモード</string>
-    <string name="mithkaxPremiumSection">ローカルプレミアム</string>
+    <string name="keptSettingsTitle">Ayu機能</string>
+    <string name="keptHistorySection">メッセージ履歴</string>
+    <string name="keptGhostSection">ゴーストモード</string>
+    <string name="keptPremiumSection">ローカルプレミアム</string>
     <string name="localPremiumNote">この端末上で自分のアカウントのクライアント側プレミアム機能を解放します。サーバー側の制限はそのまま適用され、Telegram へ何も送信しません。</string>
     <string name="localPremiumTitle">ローカルプレミアム</string>
     <string name="locationDetailFetchingLocation">位置情報を取得中…</string>

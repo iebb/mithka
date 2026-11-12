@@ -152,7 +152,7 @@ class AccountStore extends ChangeNotifier {
       _activeSlot = prefs.getInt('drachma.activeSlot') ?? 0,
       _summaries = _readCachedSummaries(prefs) {
     // The cached identities let the first frame show the right name and
-    // avatar. Without them the window starts as "Mithka X", then remounts when
+    // avatar. Without them the window starts as "Mithka", then remounts when
     // getMe lands, because its identity key changes from no user to a user.
     _selfIds.addAll(_summaries.map((summary) => summary.userId));
     // Restore an add-account that was in progress when the app was killed, so

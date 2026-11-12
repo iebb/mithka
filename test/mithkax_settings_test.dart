@@ -17,8 +17,8 @@ import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/ghost_mode_controller.dart';
 import 'package:mithka/settings/ghost_mode_settings_view.dart';
+import 'package:mithka/settings/kept_messages_settings_view.dart';
 import 'package:mithka/settings/local_premium.dart';
-import 'package:mithka/settings/mithkax_settings_view.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -53,7 +53,7 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 }
 
 Future<void> pumpHub(WidgetTester tester) =>
-    _pump(tester, const MithkaXSettingsView());
+    _pump(tester, const KeptMessagesSettingsView());
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -67,7 +67,7 @@ void main() {
   });
 
   testWidgets('history switches flip on tap', (tester) async {
-    await _pump(tester, const MithkaXSettingsView());
+    await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       // The hub shrinks to nothing in non-opted builds: no row exists.
       expect(
@@ -109,7 +109,7 @@ void main() {
   });
 
   testWidgets('local premium knob answers its own tap', (tester) async {
-    await _pump(tester, const MithkaXSettingsView());
+    await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       expect(find.byKey(const ValueKey('mithkax-local-premium')), findsNothing);
       return;
@@ -124,7 +124,7 @@ void main() {
   });
 
   testWidgets('master switch gates the sub-switches visually', (tester) async {
-    await _pump(tester, const MithkaXSettingsView());
+    await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       expect(find.byKey(const ValueKey('history-enable-all')), findsNothing);
       return;
@@ -151,7 +151,7 @@ void main() {
   });
 
   testWidgets('the transfer entry and badge style row exist', (tester) async {
-    await _pump(tester, const MithkaXSettingsView());
+    await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       expect(
         find.byKey(const ValueKey('mithkax-history-transfer')),
@@ -168,7 +168,7 @@ void main() {
   });
 
   testWidgets('badge style picker updates the settings store', (tester) async {
-    await _pump(tester, const MithkaXSettingsView());
+    await _pump(tester, const KeptMessagesSettingsView());
     if (!_enabled) {
       expect(find.byKey(const ValueKey('mithkax-badge-style')), findsNothing);
       return;

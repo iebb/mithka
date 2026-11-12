@@ -4,13 +4,13 @@
 //  Runtime switches for the kept-message mirror (Telegram API Terms §1.4
 //  feature, only compiled into opted-in self-builds). Everything defaults
 //  to OFF: a fresh build records nothing until the user opts in, matching
-//  exteraless's EnableSaveDeletedMessages / EnableSaveEditsHistory which
+//  the reference kept-message clients' save switches, which
 //  also ship disabled.
 //
 //  The recording switches gate the STORE's write paths; the render switch
 //  gates the IN-CHAT ghost bubbles. Turning a recording switch off does not
 //  delete what was recorded — the data stays browsable in the history
-//  viewer until explicitly cleared, exactly like exteraless.
+//  viewer until explicitly cleared.
 //
 
 import 'package:flutter/foundation.dart';
@@ -64,7 +64,7 @@ class MessageHistorySettings extends ChangeNotifier {
   bool _recordEdits = false;
   // Per-type switches default ON — the master switch and the deleted-record
   // switch remain the primary opt-ins, and the type dims only narrow them
-  // (exteraless semantics). Bot chats are the exception: recording service
+  // Bot chats are the exception: recording service
   // dialogs is an explicit opt-in.
   bool _recordPrivate = true;
   bool _recordGroups = true;
@@ -77,16 +77,16 @@ class MessageHistorySettings extends ChangeNotifier {
   GhostBadgeStyle _badgeStyle = GhostBadgeStyle.icon;
 
   /// Master switch: OFF pauses all recording (deleted, edits and media
-  /// snapshots) without touching what was already kept — the exteraless
-  /// EnableDeletedInformation semantics. Still-off sub-switches stay off
+  /// snapshots) without touching what was already kept — the
+  /// pause semantics. Still-off sub-switches stay off
   /// when it turns back on.
   bool get enableAll => _enableAll && isAvailable;
 
   bool get recordDeleted => _recordDeleted && enableAll;
   bool get recordEdits => _recordEdits && enableAll;
 
-  /// Per conversation-type recording (exteraless SaveDeletedInPrivate /
-  /// InGroups / InChannels). A type that is off records nothing for its
+  /// Per conversation-type recording (private /
+  /// groups / channels). A type that is off records nothing for its
   /// chats — neither text nor media snapshots.
   bool get recordPrivate => _recordPrivate && recordDeleted;
   bool get recordGroups => _recordGroups && recordDeleted;

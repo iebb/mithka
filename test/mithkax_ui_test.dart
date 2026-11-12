@@ -23,8 +23,8 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/profile/profile_proxy_button.dart';
 import 'package:mithka/profile/profile_view.dart';
 import 'package:mithka/settings/advanced_settings_view.dart';
+import 'package:mithka/settings/kept_messages_settings_view.dart';
 import 'package:mithka/settings/message_history_transfer_view.dart';
-import 'package:mithka/settings/mithkax_settings_view.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
@@ -188,7 +188,7 @@ void main() {
       });
 
       testWidgets('hub page lays out without overflow ($name)', (tester) async {
-        await _pump(tester, const MithkaXSettingsView(), size);
+        await _pump(tester, const KeptMessagesSettingsView(), size);
         expect(
           find.byKey(const ValueKey('history-enable-all')),
           findsOneWidget,
@@ -229,12 +229,12 @@ void main() {
       await tester.scrollUntilVisible(entry, 300);
       expect(entry, findsOneWidget);
       expect(
-        find.text(AppStrings.t(AppStringKeys.mithkaxSettingsTitle)),
+        find.text(AppStrings.t(AppStringKeys.keptSettingsTitle)),
         findsWidgets,
       );
       await tester.tap(entry);
       await tester.pumpAndSettle();
-      expect(find.byType(MithkaXSettingsView), findsOneWidget);
+      expect(find.byType(KeptMessagesSettingsView), findsOneWidget);
     });
   });
 

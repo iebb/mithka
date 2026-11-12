@@ -1957,7 +1957,7 @@
     <string name="historyExcludedNote">Los mensajes de los chats excluidos no se guardan en absoluto; las copias existentes se eliminaron.</string>
     <string name="historyExcludedTitle">Chats excluidos</string>
     <string name="historyExportAction">Exportar historial de mensajes</string>
-    <string name="historyExportSubtitle">Con instantáneas de medios, en un archivo JSON</string>
+    <string name="historyExportSubtitle">Con contenido multimedia, en un archivo JSON</string>
     <string name="historyExportedToast">%1$s entradas exportadas</string>
     <string name="historyFilteredNote">Muestra un chat. Toca una fila para filtrar por su chat; vuelve atrás para quitar el filtro.</string>
     <string name="historyImportAction">Importar historial de mensajes</string>
@@ -1996,11 +1996,11 @@
     <string name="historySenderLabel">Usuario {value1}</string>
     <string name="historyRevisionsTitle">Historial de ediciones</string>
     <string name="historySettingsRow">Historial de mensajes</string>
-    <string name="historySnapshotChannels">Guardar multimedia en canales</string>
-    <string name="historySnapshotGroups">Guardar multimedia en grupos</string>
+    <string name="historySnapshotChannels">Guardar contenido multimedia en canales</string>
+    <string name="historySnapshotGroups">Guardar contenido multimedia en grupos</string>
     <string name="historySnapshotNote">El multimedia solo se copia al espejo si el archivo ya está completamente en el dispositivo cuando llega el mensaje. Sin instantáneo, la copia guardada muestra solo el tipo de contenido.</string>
-    <string name="historySnapshotPrivate">Guardar multimedia en chats privados</string>
-    <string name="historySnapshotSection">Instantáneos de multimedia</string>
+    <string name="historySnapshotPrivate">Guardar contenido multimedia en chats privados</string>
+    <string name="historySnapshotSection">Contenido multimedia</string>
     <string name="historyTitle">Historial de mensajes</string>
 
     <string name="historyTransferNote">La exportación cubre todas las copias guardadas e instantáneas de medios de esta cuenta; la importación reemplaza por completo el espejo de esta cuenta.</string>
@@ -2121,10 +2121,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Estrellas de Telegrama</string>
     <string name="linkHandlerUnsupportedTelegramLink">Aún no se admite abrir este enlace de Telegram</string>
     <string name="linkHandlerWritingStyle">Estilo de escritura</string>
-    <string name="mithkaxSettingsTitle">Funciones Ayu</string>
-    <string name="mithkaxHistorySection">Historial de mensajes</string>
-    <string name="mithkaxGhostSection">Modo fantasma</string>
-    <string name="mithkaxPremiumSection">Premium local</string>
+    <string name="keptSettingsTitle">Funciones Ayu</string>
+    <string name="keptHistorySection">Historial de mensajes</string>
+    <string name="keptGhostSection">Modo fantasma</string>
+    <string name="keptPremiumSection">Premium local</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Desbloquea las superficies premium del cliente para tu propia cuenta en este dispositivo. Los límites del servidor se mantienen y no se envía nada a Telegram.</string>
     <string name="localPremiumTitle">Premium local</string>

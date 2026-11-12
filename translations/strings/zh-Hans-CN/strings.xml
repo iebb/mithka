@@ -1950,7 +1950,7 @@
     <string name="historyExcludedNote">被排除的聊天完全不保留消息，已有的副本也会被移除。</string>
     <string name="historyExcludedTitle">排除的聊天</string>
     <string name="historyExportAction">导出消息历史</string>
-    <string name="historyExportSubtitle">含媒体快照，保存为 JSON 文件</string>
+    <string name="historyExportSubtitle">含媒体内容，保存为 JSON 文件</string>
     <string name="historyExportedToast">已导出 %1$s 条</string>
     <string name="historyFilteredNote">只显示一个聊天。点按任意行可按其聊天筛选；返回可清除筛选。</string>
     <string name="historyImportAction">导入消息历史</string>
@@ -1989,14 +1989,14 @@
     <string name="historySenderLabel">用户 {value1}</string>
     <string name="historyRevisionsTitle">编辑历史</string>
     <string name="historySettingsRow">消息历史</string>
-    <string name="historySnapshotChannels">频道消息保存媒体快照</string>
-    <string name="historySnapshotGroups">群聊消息保存媒体快照</string>
-    <string name="historySnapshotNote">只有消息到达时文件已完整落盘的媒体才会复制进镜像。没有快照的留存副本只显示类型。</string>
-    <string name="historySnapshotPrivate">私聊消息保存媒体快照</string>
-    <string name="historySnapshotSection">媒体快照</string>
+    <string name="historySnapshotChannels">频道消息保存媒体内容</string>
+    <string name="historySnapshotGroups">群聊消息保存媒体内容</string>
+    <string name="historySnapshotNote">只有消息到达时文件已完整落盘的媒体才会复制进镜像。没有保存下来的留存副本只显示类型。</string>
+    <string name="historySnapshotPrivate">私聊消息保存媒体内容</string>
+    <string name="historySnapshotSection">媒体内容</string>
     <string name="historyTitle">消息历史</string>
 
-    <string name="historyTransferNote">导出包含当前账号的全部保留副本与媒体快照；导入整库替换当前账号的镜像。</string>
+    <string name="historyTransferNote">导出包含当前账号的全部保留副本与媒体内容；导入整库替换当前账号的镜像。</string>
     <string name="historyTransferSection">数据管理</string>
     <string name="historyTransferTitle">导出与导入</string>
     <string name="imageEditAdd">添加</string>
@@ -2115,10 +2115,10 @@
     <string name="linkHandlerUnsupportedTelegramLink">暂不支持打开此 Telegram 链接</string>
     <string name="linkHandlerWritingStyle">写作风格</string>
     <string name="listSeparator">、</string>
-    <string name="mithkaxSettingsTitle">Ayu 功能</string>
-    <string name="mithkaxHistorySection">消息历史</string>
-    <string name="mithkaxGhostSection">隐身模式</string>
-    <string name="mithkaxPremiumSection">本地大会员</string>
+    <string name="keptSettingsTitle">Ayu 功能</string>
+    <string name="keptHistorySection">消息历史</string>
+    <string name="keptGhostSection">隐身模式</string>
+    <string name="keptPremiumSection">本地大会员</string>
     <string name="localPremiumNote">在本机为自己账号解锁客户端侧的大会员界面。服务端限制照旧，不会向 Telegram 发送任何内容。</string>
     <string name="localPremiumTitle">本地大会员</string>
     <string name="locationDetailFetchingLocation">正在获取位置…</string>

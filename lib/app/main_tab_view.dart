@@ -623,25 +623,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     });
   }
 
-  /// Ghost-mode settings straight from the desktop rail. The view reads
-  /// GhostModeController.shared, whose prefs the primary engine already
-  /// initialized; a plain route keeps it inside the main window (the
-  /// controller is not wired through the TD-proxy child engines).
-  Future<void> _openDesktopProxySettings() async {
-    await Navigator.of(context, rootNavigator: true).push<void>(
-      AppPageRoute<void>(pageBuilder: (_, _, _) => const ProxyView()),
-    );
-    unawaited(ProxyStatusController.shared.refresh());
-  }
-
-  void _openDesktopGhostMode() {
-    Navigator.of(context, rootNavigator: true).push<void>(
-      AppPageRoute<void>(
-        pageBuilder: (_, _, _) => const GhostModeSettingsView(),
-      ),
-    );
-  }
-
   /// The slots, in [slots] order, whose account has [chatId].
   ///
   /// `getChat` is answered from the account's local database, so it only
@@ -678,6 +659,24 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         if (found[i]) others[i],
     ];
   }
+
+  /// Ghost-mode settings straight from the desktop rail. The view reads
+  /// GhostModeController.shared, whose prefs the primary engine already
+  /// initialized; a plain route keeps it inside the main window (the
+  /// controller is not wired through the TD-proxy child engines).
+  Future<void> _openDesktopProxySettings() async {
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      AppPageRoute<void>(pageBuilder: (_, _, _) => const ProxyView()),
+    );
+    unawaited(ProxyStatusController.shared.refresh());
+  }
+
+  void _openDesktopGhostMode() {
+    Navigator.of(context, rootNavigator: true).push<void>(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => const GhostModeSettingsView(),
+      ),
+    );
   }
 
   void _openDesktopUtility(

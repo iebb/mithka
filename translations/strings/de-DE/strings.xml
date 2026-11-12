@@ -1957,7 +1957,7 @@
     <string name="historyExcludedNote">Nachrichten ausgeschlossener Chats werden gar nicht gespeichert; vorhandene Kopien wurden entfernt.</string>
     <string name="historyExcludedTitle">Ausgeschlossene Chats</string>
     <string name="historyExportAction">Nachrichtenverlauf exportieren</string>
-    <string name="historyExportSubtitle">Mit Medien-Snapshots als JSON-Datei</string>
+    <string name="historyExportSubtitle">Mit gesicherten Medieninhalten als JSON-Datei</string>
     <string name="historyExportedToast">%1$s Einträge exportiert</string>
     <string name="historyFilteredNote">Zeigt einen Chat. Tippe auf eine Zeile, um nach dessen Chat zu filtern; zurück hebt den Filter auf.</string>
     <string name="historyImportAction">Nachrichtenverlauf importieren</string>
@@ -1996,11 +1996,11 @@
     <string name="historySenderLabel">Benutzer {value1}</string>
     <string name="historyRevisionsTitle">Bearbeitungsverlauf</string>
     <string name="historySettingsRow">Nachrichtenverlauf</string>
-    <string name="historySnapshotChannels">Medien in Kanälen sichern</string>
-    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotChannels">Medieninhalte in Kanälen sichern</string>
+    <string name="historySnapshotGroups">Medieninhalte in Gruppen sichern</string>
     <string name="historySnapshotNote">Medien werden nur in den Spiegel kopiert, wenn die Datei beim Eintreffen der Nachricht bereits vollständig auf dem Gerät liegt. Ohne Snapshot zeigt die Kopie nur den Inhaltstyp.</string>
-    <string name="historySnapshotPrivate">Medien in privaten Chats sichern</string>
-    <string name="historySnapshotSection">Medien-Snapshots</string>
+    <string name="historySnapshotPrivate">Medieninhalte in privaten Chats sichern</string>
+    <string name="historySnapshotSection">Medieninhalte</string>
     <string name="historyTitle">Nachrichtenverlauf</string>
 
     <string name="historyTransferNote">Der Export umfasst alle aufbewahrten Kopien und Medien-Snapshots dieses Kontos; der Import ersetzt den Spiegel dieses Kontos vollständig.</string>
@@ -2121,10 +2121,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Telegram Stars</string>
     <string name="linkHandlerUnsupportedTelegramLink">Dieser Telegram-Link wird derzeit nicht unterstützt</string>
     <string name="linkHandlerWritingStyle">Schreibstil</string>
-    <string name="mithkaxSettingsTitle">Ayu-Funktionen</string>
-    <string name="mithkaxHistorySection">Nachrichtenverlauf</string>
-    <string name="mithkaxGhostSection">Geistermodus</string>
-    <string name="mithkaxPremiumSection">Lokales Premium</string>
+    <string name="keptSettingsTitle">Ayu-Funktionen</string>
+    <string name="keptHistorySection">Nachrichtenverlauf</string>
+    <string name="keptGhostSection">Geistermodus</string>
+    <string name="keptPremiumSection">Lokales Premium</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Schaltet die clientseitigen Premium-Flächen für dein eigenes Konto auf diesem Gerät frei. Serverseitige Limits bleiben bestehen; nichts wird an Telegram gesendet.</string>
     <string name="localPremiumTitle">Lokales Premium</string>

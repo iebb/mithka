@@ -6,7 +6,7 @@
 //  afterwards. There is NO unified viewer entry any more — the view opens
 //  per chat (chat info row / ghost-bubble actions); opening it without a
 //  chat id falls back to the chat picker so old entry points keep working.
-//  Deleted entries render translucent (the AyuGram ghost style). Telegram
+//  Deleted entries render translucent (the ghost style). Telegram
 //  API Terms §1.4 feature, compile-time gated.
 //
 
