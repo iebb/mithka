@@ -349,6 +349,9 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView>
                   key: const ValueKey('chat-behavior-open-tme-in-mithka'),
                   title: AppStrings.t(AppStringKeys.linkOpenTmeInMithka),
                   subtitle: AppStrings.t(AppStringKeys.linkOpenTmeInMithkaHint),
+                  // Both sentences matter: the second one (turn off
+                  // Telegram's link opening first) must not be cut off.
+                  subtitleMaxLines: null,
                   value: switch (_openByDefault?.tmeApproved) {
                     true => AppStrings.t(AppStringKeys.privacyEnabled),
                     false => AppStrings.t(AppStringKeys.privacyDisabled),
