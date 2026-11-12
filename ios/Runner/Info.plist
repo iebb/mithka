@@ -37,6 +37,11 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Links reach Dart through app_links (DeepLinkService). Flutter's own
+	     deep linking would also push the URL as a named route, stacking a
+	     second home screen over the open chat for tg:// links. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

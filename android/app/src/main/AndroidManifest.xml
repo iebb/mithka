@@ -101,6 +101,13 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Links reach Dart through app_links (DeepLinkService). Flutter's
+                 own deep linking would also push the URL as a named route
+                 (initial route on a cold start, pushRoute on a warm one). -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
             <!-- The app's own deep-link schemes (tg:// grammar), mk:// and
                  mithka://, plus Telegram's tg:// itself. Android shows its
                  "Open with" chooser for tg:// when another Telegram client is
