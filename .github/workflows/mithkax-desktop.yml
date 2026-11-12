@@ -2,7 +2,9 @@ name: MithkaX Desktop Release
 
 # Builds every non-iOS platform from master and attaches the artifacts to a
 # GitHub release. Android has its own workflow (mithkax-android.yml); iOS is
-# intentionally not built by this fork.
+# intentionally not built by this fork, and the macOS leg was dropped
+# (2026-11-12): hosted macOS runners were too flaky to acquire, releases
+# carry no macOS artifacts.
 on:
   workflow_dispatch:
   push:
@@ -80,51 +82,6 @@ jobs:
           path: |
             ${{ runner.temp }}/mithkax-linux-${{ matrix.architecture }}.tar.gz
             ${{ runner.temp }}/MithkaX-linux-${{ matrix.architecture }}.AppImage
-
-  macos:
-    name: macOS universal
-    runs-on: macos-15
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.2'
-          channel: stable
-          cache: true
-      - name: Prepare dependencies and tdjson
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-        run: |
-          : "${TELEGRAM_API_ID:?set TELEGRAM_API_ID}"
-          : "${TELEGRAM_API_HASH:?set TELEGRAM_API_HASH}"
-          mkdir -p lib/config
-          cat > lib/config/secrets.dart <<EOF
-          class Secrets {
-            static const int apiId = ${TELEGRAM_API_ID};
-            static const String apiHash = '${TELEGRAM_API_HASH}';
-            static bool get isConfigured => apiId != 0 && apiHash.isNotEmpty;
-          }
-          EOF
-          flutter config --enable-swift-package-manager
-          flutter pub get
-          scripts/build-tdjson-desktop.sh macos "native-libs/libtdjson.dylib" universal
-          sh scripts/refresh-apple-mdk.sh refresh
-          sh scripts/refresh-apple-mdk.sh check
-      - name: Build macOS release
-        run: |
-          flutter build macos --release --dart-define="I_DONT_FUCKING_CARE_ABOUT_TOS=true"
-          app='build/macos/Build/Products/Release/Mithka X.app'
-          test -f "$app/Contents/MacOS/Mithka X"
-          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/MithkaX-macos-universal.zip"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: mithkax-macos-universal
-          path: ${{ runner.temp }}/MithkaX-macos-universal.zip
 
   windows:
     name: Windows ${{ matrix.architecture }}
