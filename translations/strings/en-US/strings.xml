@@ -3963,7 +3963,7 @@
     <string name="historyBadgeStyleTitle">Deleted badge style</string>
     <string name="historyEnableAll">Enable message history</string>
     <string name="historyExportAction">Export message history</string>
-    <string name="historyExportSubtitle">With media snapshots, as a JSON file</string>
+    <string name="historyExportSubtitle">With media content, as a JSON file</string>
     <string name="historyExportedToast">Exported %1$s entries</string>
     <string name="historyImportAction">Import message history</string>
     <string name="historyImportConfirmMessage">Importing replaces the entire message history of this account</string>
@@ -3984,11 +3984,11 @@
     <string name="historyRenderGhosts">Show deleted messages in chat</string>
     <string name="historyRevisionsTitle">Edit history</string>
     <string name="historySenderLabel">User {value1}</string>
-    <string name="historySnapshotChannels">Snapshot media in channels</string>
-    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotChannels">Save media content in channels</string>
+    <string name="historySnapshotGroups">Save media content in groups</string>
     <string name="historySnapshotNote">Media is copied to the mirror only when the file is already fully on disk when the message arrives. Without a snapshot the kept copy shows the content type only.</string>
-    <string name="historySnapshotPrivate">Snapshot media in private chats</string>
-    <string name="historySnapshotSection">Media snapshots</string>
+    <string name="historySnapshotPrivate">Save media content in private chats</string>
+    <string name="historySnapshotSection">Media content</string>
     <string name="historyTransferNote">Export covers every kept copy and media snapshot of this account; import replaces this account’s mirror wholesale.</string>
     <string name="historyTransferSection">Data management</string>
     <string name="historyTransferTitle">Export and import</string>

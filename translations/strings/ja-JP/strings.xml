@@ -3946,7 +3946,7 @@
     <string name="historyBadgeStyleTitle">削除バッジのスタイル</string>
     <string name="historyEnableAll">メッセージ履歴を有効化</string>
     <string name="historyExportAction">メッセージ履歴をエクスポート</string>
-    <string name="historyExportSubtitle">メディアスナップショット付きの JSON ファイル</string>
+    <string name="historyExportSubtitle">メディア内容を含む JSON ファイル</string>
     <string name="historyExportedToast">%1$s 件をエクスポートしました</string>
     <string name="historyImportAction">メッセージ履歴をインポート</string>
     <string name="historyImportConfirmMessage">インポートするとこのアカウントのメッセージ履歴全体を置き換えます</string>
@@ -3967,11 +3967,11 @@
     <string name="historyRenderGhosts">チャット内に削除されたメッセージを表示</string>
     <string name="historyRevisionsTitle">編集履歴</string>
     <string name="historySenderLabel">ユーザー {value1}</string>
-    <string name="historySnapshotChannels">チャンネルでメディアをスナップショット</string>
-    <string name="historySnapshotGroups">グループでメディアをスナップショット</string>
+    <string name="historySnapshotChannels">チャンネルでメディア内容を保存</string>
+    <string name="historySnapshotGroups">グループでメディア内容を保存</string>
     <string name="historySnapshotNote">メッセージ到着時にファイルが完全に端末へ保存済みの場合のみ、メディアはミラーへコピーされます。スナップショットがない保持コピーは種別のみを表示します。</string>
-    <string name="historySnapshotPrivate">プライベートチャットでメディアをスナップショット</string>
-    <string name="historySnapshotSection">メディアスナップショット</string>
+    <string name="historySnapshotPrivate">プライベートチャットでメディア内容を保存</string>
+    <string name="historySnapshotSection">メディア内容</string>
     <string name="historyTransferNote">エクスポートはこのアカウントの全保持コピーとメディアスナップショットを含みます。インポートはこのアカウントのミラー全体を置き換えます。</string>
     <string name="historyTransferSection">データ管理</string>
     <string name="historyTransferTitle">エクスポートとインポート</string>

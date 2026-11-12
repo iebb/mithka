@@ -3963,7 +3963,7 @@
     <string name="historyBadgeStyleTitle">Estilo de insignia de borrado</string>
     <string name="historyEnableAll">Activar historial de mensajes</string>
     <string name="historyExportAction">Exportar historial de mensajes</string>
-    <string name="historyExportSubtitle">Con instantáneas de medios, en un archivo JSON</string>
+    <string name="historyExportSubtitle">Con contenido multimedia, en un archivo JSON</string>
     <string name="historyExportedToast">%1$s entradas exportadas</string>
     <string name="historyImportAction">Importar historial de mensajes</string>
     <string name="historyImportConfirmMessage">Importar reemplazará todo el historial de mensajes de esta cuenta</string>
@@ -3984,11 +3984,11 @@
     <string name="historyRenderGhosts">Mostrar mensajes eliminados en el chat</string>
     <string name="historyRevisionsTitle">Historial de ediciones</string>
     <string name="historySenderLabel">Usuario {value1}</string>
-    <string name="historySnapshotChannels">Guardar multimedia en canales</string>
-    <string name="historySnapshotGroups">Guardar multimedia en grupos</string>
+    <string name="historySnapshotChannels">Guardar contenido multimedia en canales</string>
+    <string name="historySnapshotGroups">Guardar contenido multimedia en grupos</string>
     <string name="historySnapshotNote">El multimedia solo se copia al espejo si el archivo ya está completamente en el dispositivo cuando llega el mensaje. Sin instantáneo, la copia guardada muestra solo el tipo de contenido.</string>
-    <string name="historySnapshotPrivate">Guardar multimedia en chats privados</string>
-    <string name="historySnapshotSection">Instantáneos de multimedia</string>
+    <string name="historySnapshotPrivate">Guardar contenido multimedia en chats privados</string>
+    <string name="historySnapshotSection">Contenido multimedia</string>
     <string name="historyTransferNote">La exportación cubre todas las copias guardadas e instantáneas de medios de esta cuenta; la importación reemplaza por completo el espejo de esta cuenta.</string>
     <string name="historyTransferSection">Gestión de datos</string>
     <string name="historyTransferTitle">Exportar e importar</string>

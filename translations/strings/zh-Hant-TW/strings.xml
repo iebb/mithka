@@ -3946,7 +3946,7 @@
     <string name="historyBadgeStyleTitle">刪除標記樣式</string>
     <string name="historyEnableAll">啟用訊息歷史</string>
     <string name="historyExportAction">匯出訊息歷史</string>
-    <string name="historyExportSubtitle">含媒體快照，儲存為 JSON 檔案</string>
+    <string name="historyExportSubtitle">含媒體內容，儲存為 JSON 檔案</string>
     <string name="historyExportedToast">已匯出 %1$s 條</string>
     <string name="historyImportAction">匯入訊息歷史</string>
     <string name="historyImportConfirmMessage">匯入將取代目前帳號的全部訊息歷史</string>
@@ -3967,12 +3967,12 @@
     <string name="historyRenderGhosts">在對話內顯示已刪除訊息</string>
     <string name="historyRevisionsTitle">編輯歷史</string>
     <string name="historySenderLabel">使用者 {value1}</string>
-    <string name="historySnapshotChannels">頻道訊息保存媒體快照</string>
-    <string name="historySnapshotGroups">群聊訊息保存媒體快照</string>
-    <string name="historySnapshotNote">只有訊息到達時檔案已完整落盤的媒體才會複製進鏡像。沒有快照的留存副本只顯示類型。</string>
-    <string name="historySnapshotPrivate">私聊訊息保存媒體快照</string>
-    <string name="historySnapshotSection">媒體快照</string>
-    <string name="historyTransferNote">匯出包含目前帳號的全部保留副本與媒體快照；匯入整庫取代目前帳號的鏡像。</string>
+    <string name="historySnapshotChannels">頻道訊息保存媒體內容</string>
+    <string name="historySnapshotGroups">群聊訊息保存媒體內容</string>
+    <string name="historySnapshotNote">只有訊息到達時檔案已完整落盤的媒體才會複製進鏡像。沒有保存下來的留存副本只顯示類型。</string>
+    <string name="historySnapshotPrivate">私聊訊息保存媒體內容</string>
+    <string name="historySnapshotSection">媒體內容</string>
+    <string name="historyTransferNote">匯出包含目前帳號的全部保留副本與媒體內容；匯入整庫取代目前帳號的鏡像。</string>
     <string name="historyTransferSection">資料管理</string>
     <string name="historyTransferTitle">匯出與匯入</string>
     <string name="keptGhostSection">隱身模式</string>

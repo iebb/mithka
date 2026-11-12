@@ -3963,7 +3963,7 @@
     <string name="historyBadgeStyleTitle">Stil des Lösch-Badges</string>
     <string name="historyEnableAll">Nachrichtenverlauf aktivieren</string>
     <string name="historyExportAction">Nachrichtenverlauf exportieren</string>
-    <string name="historyExportSubtitle">Mit Medien-Snapshots als JSON-Datei</string>
+    <string name="historyExportSubtitle">Mit gesicherten Medieninhalten als JSON-Datei</string>
     <string name="historyExportedToast">%1$s Einträge exportiert</string>
     <string name="historyImportAction">Nachrichtenverlauf importieren</string>
     <string name="historyImportConfirmMessage">Der Import ersetzt den gesamten Nachrichtenverlauf dieses Kontos</string>
@@ -3984,11 +3984,11 @@
     <string name="historyRenderGhosts">Gelöschte Nachrichten im Chat anzeigen</string>
     <string name="historyRevisionsTitle">Bearbeitungsverlauf</string>
     <string name="historySenderLabel">Benutzer {value1}</string>
-    <string name="historySnapshotChannels">Medien in Kanälen sichern</string>
-    <string name="historySnapshotGroups">Snapshot media in groups</string>
+    <string name="historySnapshotChannels">Medieninhalte in Kanälen sichern</string>
+    <string name="historySnapshotGroups">Medieninhalte in Gruppen sichern</string>
     <string name="historySnapshotNote">Medien werden nur in den Spiegel kopiert, wenn die Datei beim Eintreffen der Nachricht bereits vollständig auf dem Gerät liegt. Ohne Snapshot zeigt die Kopie nur den Inhaltstyp.</string>
-    <string name="historySnapshotPrivate">Medien in privaten Chats sichern</string>
-    <string name="historySnapshotSection">Medien-Snapshots</string>
+    <string name="historySnapshotPrivate">Medieninhalte in privaten Chats sichern</string>
+    <string name="historySnapshotSection">Medieninhalte</string>
     <string name="historyTransferNote">Der Export umfasst alle aufbewahrten Kopien und Medien-Snapshots dieses Kontos; der Import ersetzt den Spiegel dieses Kontos vollständig.</string>
     <string name="historyTransferSection">Datenverwaltung</string>
     <string name="historyTransferTitle">Export und Import</string>

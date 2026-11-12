@@ -19,7 +19,6 @@ void main() {
     return;
   }
 
-
   final updates = StreamController<Map<String, dynamic>>.broadcast();
   final requests = <Map<String, dynamic>>[];
 

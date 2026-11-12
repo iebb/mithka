@@ -3946,7 +3946,7 @@
     <string name="historyBadgeStyleTitle">삭제 배지 스타일</string>
     <string name="historyEnableAll">메시지 기록 사용</string>
     <string name="historyExportAction">메시지 기록 내보내기</string>
-    <string name="historyExportSubtitle">미디어 스냅샷 포함 JSON 파일</string>
+    <string name="historyExportSubtitle">미디어 콘텐츠 포함 JSON 파일</string>
     <string name="historyExportedToast">%1$s개 항목 내보냄</string>
     <string name="historyImportAction">메시지 기록 가져오기</string>
     <string name="historyImportConfirmMessage">가져오면 이 계정의 전체 메시지 기록이 교체됩니다</string>
@@ -3967,11 +3967,11 @@
     <string name="historyRenderGhosts">채팅 내 삭제된 메시지 표시</string>
     <string name="historyRevisionsTitle">편집 기록</string>
     <string name="historySenderLabel">사용자 {value1}</string>
-    <string name="historySnapshotChannels">채널에서 미디어 스냅샷</string>
-    <string name="historySnapshotGroups">그룹에서 미디어 스냅샷</string>
+    <string name="historySnapshotChannels">채널에서 미디어 콘텐츠 저장</string>
+    <string name="historySnapshotGroups">그룹에서 미디어 콘텐츠 저장</string>
     <string name="historySnapshotNote">메시지 도착 시점에 파일이 이미 기기에 완전히 저장되어 있어야만 미디어가 미러로 복사됩니다. 스냅샷이 없으면 보관된 복사본은 종류만 표시합니다.</string>
-    <string name="historySnapshotPrivate">개인 채팅에서 미디어 스냅샷</string>
-    <string name="historySnapshotSection">미디어 스냅샷</string>
+    <string name="historySnapshotPrivate">개인 채팅에서 미디어 콘텐츠 저장</string>
+    <string name="historySnapshotSection">미디어 콘츠</string>
     <string name="historyTransferNote">내보내기는 이 계정의 모든 보관 복사본과 미디어 스냅샷을 포함합니다. 가져오기는 이 계정의 미러를 전체 교체합니다.</string>
     <string name="historyTransferSection">데이터 관리</string>
     <string name="historyTransferTitle">내보내기 및 가져오기</string>

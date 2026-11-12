@@ -3963,7 +3963,7 @@
     <string name="historyBadgeStyleTitle">Style du badge de suppression</string>
     <string name="historyEnableAll">Activer l’historique des messages</string>
     <string name="historyExportAction">Exporter l’historique des messages</string>
-    <string name="historyExportSubtitle">Avec instantanés multimédias, en fichier JSON</string>
+    <string name="historyExportSubtitle">Avec le contenu multimédia, en fichier JSON</string>
     <string name="historyExportedToast">%1$s entrées exportées</string>
     <string name="historyImportAction">Importer l’historique des messages</string>
     <string name="historyImportConfirmMessage">L’import remplace tout l’historique des messages de ce compte</string>
@@ -3984,11 +3984,11 @@
     <string name="historyRenderGhosts">Afficher les messages supprimés dans la conversation</string>
     <string name="historyRevisionsTitle">Historique des modifications</string>
     <string name="historySenderLabel">Utilisateur {value1}</string>
-    <string name="historySnapshotChannels">Instantanés multimédias dans les chaînes</string>
-    <string name="historySnapshotGroups">Instantanés multimédias dans les groupes</string>
+    <string name="historySnapshotChannels">Enregistrer le contenu multimédia dans les canaux</string>
+    <string name="historySnapshotGroups">Enregistrer le contenu multimédia dans les groupes</string>
     <string name="historySnapshotNote">Un média n'est copié dans le miroir que si le fichier est déjà entièrement sur l'appareil à l'arrivée du message. Sans instantané, la copie conservée n'affiche que le type de contenu.</string>
-    <string name="historySnapshotPrivate">Instantanés multimédias dans les conversations privées</string>
-    <string name="historySnapshotSection">Instantanés multimédias</string>
+    <string name="historySnapshotPrivate">Enregistrer le contenu multimédia dans les conversations privées</string>
+    <string name="historySnapshotSection">Contenu multimédia</string>
     <string name="historyTransferNote">L’export couvre toutes les copies conservées et instantanés multimédias de ce compte ; l’import remplace intégralement le miroir de ce compte.</string>
     <string name="historyTransferSection">Gestion des données</string>
     <string name="historyTransferTitle">Exporter et importer</string>
