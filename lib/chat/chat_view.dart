@@ -1978,6 +1978,12 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_continueHistoryIfNearLatest());
       }
     } else if (_initialTranscriptReady) {
+      // A drag starting means the reader is leaving the composer: fold its
+      // open panels the same way the OS folds the keyboard on drag.
+      if (_lastTranscriptUserScrollDirection == ScrollDirection.idle &&
+          notification.direction != ScrollDirection.idle) {
+        _vm.dismissComposerPanels();
+      }
       // Once an older-page request is in flight, a turn toward the latest
       // messages means the user has abandoned the pull. A later model frame
       // must not reveal that page by jumping the viewport back to the oldest
@@ -8333,6 +8339,7 @@ class _ChatViewState extends State<ChatView> {
   bool _composerBarQuickRepliesEnabled = false;
   bool _composerBarShowCallAction = false;
   bool _composerBarSimpleMode = false;
+  String? _composerBarMediaKind;
 
   Widget _chatInputBar() {
     final themeController = context.watch<ThemeController>();
@@ -8341,13 +8348,15 @@ class _ChatViewState extends State<ChatView> {
     final quickRepliesEnabled = themeController.quickRepliesEnabled;
     final showCallAction = !_usesWideGroupHeader;
     final simpleMode = themeController.simpleMode;
+    final mediaSegment = themeController.mediaPanelSegment;
     final cached = _composerBarCache;
     if (cached != null &&
         _composerBarRequestInitialFocus == requestInitialFocus &&
         _composerBarEnterToSend == enterToSend &&
         _composerBarQuickRepliesEnabled == quickRepliesEnabled &&
         _composerBarShowCallAction == showCallAction &&
-        _composerBarSimpleMode == simpleMode) {
+        _composerBarSimpleMode == simpleMode &&
+        _composerBarMediaKind == mediaSegment) {
       return cached;
     }
     _composerBarRequestInitialFocus = requestInitialFocus;
@@ -8355,6 +8364,7 @@ class _ChatViewState extends State<ChatView> {
     _composerBarQuickRepliesEnabled = quickRepliesEnabled;
     _composerBarShowCallAction = showCallAction;
     _composerBarSimpleMode = simpleMode;
+    _composerBarMediaKind = mediaSegment;
     return _composerBarCache = ChatInputBar(
       vm: _vm,
       requestInitialFocus: requestInitialFocus,
@@ -8362,6 +8372,8 @@ class _ChatViewState extends State<ChatView> {
       quickRepliesEnabled: quickRepliesEnabled,
       showCallAction: showCallAction,
       simpleMode: simpleMode,
+      initialMediaKind: mediaSegment,
+      onMediaKindChanged: (v) => themeController.mediaPanelSegment = v,
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
@@ -10084,6 +10096,7 @@ class _ChatViewState extends State<ChatView> {
           child: CustomScrollView(
             key: _transcriptViewportKey,
             controller: _scroll,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             center: _newerTranscriptSliverKey,
             physics: const ClampingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
