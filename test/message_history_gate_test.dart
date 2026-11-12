@@ -21,7 +21,13 @@ import 'package:mithka/settings/local_premium.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const enabled = allowTelegramTosViolations;
-const expectedEnabled = bool.fromEnvironment('EXPECT_TOS_VIOLATIONS');
+// MithkaX defaults the gate ON (self-build fork); the upstream variant probe
+// only applies where the flag is define-driven. A plain `flutter test` here
+// runs enabled, so the expectation follows the fork's default when no define
+// is given.
+const expectedEnabled = bool.hasEnvironment('EXPECT_TOS_VIOLATIONS')
+    ? const bool.fromEnvironment('EXPECT_TOS_VIOLATIONS')
+    : enabled;
 
 void main() {
   test('build flag matches the expected variant', () {
