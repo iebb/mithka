@@ -1081,6 +1081,8 @@
     <string name="chatListLeaveAndDeleteGroupConfirmation">¿Salir de «{value1}» y eliminar su historial de tu cuenta de Telegram en todos tus dispositivos?</string>
     <string name="chatListLocalPinEnabled">Chats fijados sin límite</string>
     <string name="chatListLocalPinLimitReached">Límite de fijados alcanzado. Activa los fijados locales ilimitados en los ajustes avanzados para mantener más de {value1} chats fijados.</string>
+    <string name="advancedUnlimitedFavorites">Favoritos de stickers ilimitados</string>
+    <string name="advancedUnlimitedFavoritesAbout">Guarda más stickers favoritos que el límite de Telegram. Los extra solo permanecen en este dispositivo.</string>
     <string name="chatListMarkUnread">Marcar como no leído</string>
     <string name="chatListNoChats">Aún no hay chats</string>
     <string name="chatListScanQrCode">Escanear código QR</string>

@@ -1080,6 +1080,8 @@
     <string name="chatListLeaveAndDeleteGroupConfirmation">“{value1}”에서 나가고 Telegram 계정의 기록을 모든 기기에서 삭제할까요?</string>
     <string name="chatListLocalPinEnabled">고정 개수 제한 없음</string>
     <string name="chatListLocalPinLimitReached">고정 한도에 도달했습니다. 고급 설정에서 로컬 고정을 무제한으로 켜면 {value1}개를 초과하는 채팅을 고정할 수 있습니다.</string>
+    <string name="advancedUnlimitedFavorites">스티커 즐겨찾기 무제한</string>
+    <string name="advancedUnlimitedFavoritesAbout">Telegram 한도를 초과해 스티커를 즐겨찾기에 저장. 초과분은 이 기기에만 저장되며 동기화되지 않습니다.</string>
     <string name="chatListMarkUnread">읽지 않음으로 표시</string>
     <string name="chatListNoChats">아직 채팅이 없습니다</string>
     <string name="chatListScanQrCode">QR 코드 스캔</string>

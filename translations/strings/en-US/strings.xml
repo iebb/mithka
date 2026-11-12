@@ -1081,6 +1081,8 @@
     <string name="chatListLeaveAndDeleteGroupConfirmation">Leave “{value1}” and delete its history from your Telegram account on all devices?</string>
     <string name="chatListLocalPinEnabled">Unlimited pinned chats</string>
     <string name="chatListLocalPinLimitReached">Pin limit reached. Enable unlimited local pins in Advanced settings to keep more than {value1} pinned chats.</string>
+    <string name="advancedUnlimitedFavorites">Unlimited sticker favorites</string>
+    <string name="advancedUnlimitedFavoritesAbout">Keep more than the Telegram limit of favorited stickers. Extras stay on this device only and won't sync.</string>
     <string name="chatListMarkUnread">Mark as unread</string>
     <string name="chatListNoChats">No chats yet</string>
     <string name="chatListScanQrCode">Scan QR Code</string>
