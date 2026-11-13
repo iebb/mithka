@@ -138,14 +138,22 @@ bool linkCanOpenExternally(Uri uri) {
       }.contains(scheme);
 }
 
+/// Opens [uri] outside Mithka. Returns false when nothing opened it, including
+/// when handing it over could only reopen Mithka; the caller shows a notice.
 Future<bool> launchInDefaultBrowser(Uri uri) async {
   if (!linkCanOpenExternally(uri)) return false;
-  // Loop guard: once the user lets Mithka open t.me (or picks it for tg://),
-  // a generic VIEW intent for a link Mithka could not open in-app would come
-  // straight back. Target a browser (or another tg:// handler) explicitly.
-  if (externalLaunchMustBypassMithka(uri)) {
-    final opened = await ExternalLinksPlatform.openExternally(uri);
-    if (opened != null) return opened;
+  // Loop guard: Mithka claims tg:// (and on Android, once approved, t.me), so
+  // a generic launch of a link Mithka could not open in-app could come
+  // straight back. See externalLaunchRouteFor.
+  switch (externalLaunchRouteFor(uri)) {
+    case ExternalLaunchRoute.notice:
+      return false;
+    case ExternalLaunchRoute.bridge:
+      // A missing bridge (an engine without the plugin) is not a reason to
+      // fall back to url_launcher: that is exactly the launch that loops.
+      return await ExternalLinksPlatform.openExternally(uri) ?? false;
+    case ExternalLaunchRoute.generic:
+      break;
   }
   // Android 11 package visibility can make canLaunchUrl report a false
   // negative. Attempt the launch directly, retaining the established fallback.

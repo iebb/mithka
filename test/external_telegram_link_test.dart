@@ -142,11 +142,54 @@ void main() {
             Uri.parse(url),
             platform: TargetPlatform.android,
             isWeb: false,
+            onOhos: false,
           ),
           isTrue,
           reason: url,
         );
       }
+    });
+
+    test('macOS hands tg:// to the bridge but keeps t.me generic', () {
+      expect(
+        externalLaunchRouteFor(
+          Uri.parse('tg://unknown_feature?x=1'),
+          platform: TargetPlatform.macOS,
+          isWeb: false,
+          onOhos: false,
+        ),
+        ExternalLaunchRoute.bridge,
+      );
+      expect(
+        externalLaunchRouteFor(
+          Uri.parse('https://t.me/blog'),
+          platform: TargetPlatform.macOS,
+          isWeb: false,
+          onOhos: false,
+        ),
+        ExternalLaunchRoute.generic,
+      );
+    });
+
+    test('iOS and HarmonyOS never relaunch tg://', () {
+      expect(
+        externalLaunchRouteFor(
+          Uri.parse('tg://unknown_feature?x=1'),
+          platform: TargetPlatform.iOS,
+          isWeb: false,
+          onOhos: false,
+        ),
+        ExternalLaunchRoute.notice,
+      );
+      expect(
+        externalLaunchRouteFor(
+          Uri.parse('tg://unknown_feature?x=1'),
+          platform: TargetPlatform.android,
+          isWeb: false,
+          onOhos: true,
+        ),
+        ExternalLaunchRoute.notice,
+      );
     });
 
     test('other links and other platforms keep the generic launch', () {
@@ -155,6 +198,7 @@ void main() {
           Uri.parse('https://example.com/'),
           platform: TargetPlatform.android,
           isWeb: false,
+          onOhos: false,
         ),
         isFalse,
       );
@@ -162,17 +206,43 @@ void main() {
         TargetPlatform.iOS,
         TargetPlatform.macOS,
         TargetPlatform.windows,
+        TargetPlatform.linux,
       ]) {
         expect(
-          externalLaunchMustBypassMithka(
+          externalLaunchRouteFor(
             Uri.parse('https://t.me/blog'),
             platform: platform,
             isWeb: false,
+            onOhos: false,
           ),
-          isFalse,
+          ExternalLaunchRoute.generic,
           reason: '$platform',
         );
       }
+      // Mithka registers no tg:// handler on Linux and Windows.
+      for (final platform in const [
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+      ]) {
+        expect(
+          externalLaunchRouteFor(
+            Uri.parse('tg://unknown_feature?x=1'),
+            platform: platform,
+            isWeb: false,
+            onOhos: false,
+          ),
+          ExternalLaunchRoute.generic,
+          reason: '$platform',
+        );
+      }
+      expect(
+        externalLaunchRouteFor(
+          Uri.parse('tg://unknown_feature?x=1'),
+          platform: TargetPlatform.android,
+          isWeb: true,
+        ),
+        ExternalLaunchRoute.generic,
+      );
     });
   });
 

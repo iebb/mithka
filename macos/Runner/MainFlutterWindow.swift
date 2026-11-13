@@ -58,6 +58,9 @@ class MainFlutterWindow: NSWindow {
     DesktopMediaDropView.register(
       with: flutterViewController.registrar(forPlugin: "DesktopMediaDropView")
     )
+    ExternalLinksPlugin.register(
+      with: flutterViewController.registrar(forPlugin: "ExternalLinksPlugin")
+    )
     MultiWindowManagerPlugin.RegisterGeneratedPlugins = { registry in
       RegisterGeneratedPlugins(registry: registry)
       MacOSAppIconPlugin.register(
@@ -68,6 +71,9 @@ class MainFlutterWindow: NSWindow {
       )
       DesktopMediaDropView.register(
         with: registry.registrar(forPlugin: "DesktopMediaDropView")
+      )
+      ExternalLinksPlugin.register(
+        with: registry.registrar(forPlugin: "ExternalLinksPlugin")
       )
     }
 
