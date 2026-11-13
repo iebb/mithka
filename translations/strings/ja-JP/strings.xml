@@ -2221,6 +2221,7 @@
     <string name="mediaTileSaveToFile">ファイルとして保存</string>
     <string name="mediaTileCopySticker">ステッカーをコピー</string>
     <string name="mediaTileDeleteFromRecent">最近の使用から削除</string>
+    <string name="mediaFavorites">お気に入り</string>
     <string name="messageActionBlock">ブロック</string>
     <string name="messageActionBlockKeyword">語句をブロック</string>
     <string name="messageActionCopy">コピー</string>

@@ -44,6 +44,7 @@ import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
 import '../media/camera_capture.dart';
 import '../media/media_metadata.dart';
+import '../platform/adaptive_platform.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
 import '../platform/keyboard_modifiers.dart';
@@ -81,14 +82,17 @@ import 'emoji_panel_layout.dart';
 import 'emoji_recents_store.dart';
 import 'emoji_store.dart';
 import 'emoji_text_controller.dart';
+import 'favorite_sticker_store.dart';
 import 'gif_item.dart';
 import 'gif_preview.dart';
 import 'gif_store.dart';
 import 'image_edit_view.dart';
 import 'link_handler.dart';
 import 'location_picker_view.dart';
+import 'media_download_service.dart';
 import 'media_library_saver.dart';
 import 'media_send_preview_view.dart';
+import 'media_tile_action_sheet.dart';
 import 'message_send_options.dart';
 import 'outgoing_attachment.dart';
 import 'poll_composer_view.dart';
@@ -96,8 +100,10 @@ import 'rich_message_bot_relay.dart';
 import 'rich_message_source.dart';
 import 'rich_text_composer_view.dart';
 import 'scheduled_messages_view.dart';
+import 'sticker_export_service.dart';
 import 'sticker_item.dart';
 import 'sticker_preview.dart';
+import 'sticker_set_detail_view.dart';
 import 'sticker_set_studio_view.dart';
 import 'sticker_store.dart';
 import 'telegram_ai_editor_view.dart';
@@ -932,6 +938,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     EmojiRecentsStore.shared.addListener(_onStore);
     StickerStore.shared.addListener(_onStore);
     GifStore.shared.addListener(_onStore);
+    FavoriteStickerStore.shared.addListener(_onStore);
     _botPlatformUpdates = TdClient.shared
         .updatesOf('updateNewGuestQuery')
         .listen(_handleBotPlatformUpdate);
@@ -1679,6 +1686,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     EmojiRecentsStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
     GifStore.shared.removeListener(_onStore);
+    FavoriteStickerStore.shared.removeListener(_onStore);
     if (widget.quickReplyLoader == null) {
       BusinessQuickReplyService.shared.removeListener(_syncQuickReplyCache);
     }
@@ -9250,12 +9258,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     ];
   }
 
-  /// STICKER: every pack stacked vertically, the recent pseudo-pack first
-  /// when present. A pack whose contents have not been fetched renders an
-  /// inline progress row while its loadPack runs, never blocking the rest.
+  /// STICKER: favorites first when any exist, then every pack stacked
+  /// vertically, the recent pseudo-pack first when present. A pack whose
+  /// contents have not been fetched renders an inline progress row while its
+  /// loadPack runs, never blocking the rest.
   List<Widget> _stickerSection() {
     final store = StickerStore.shared;
     final packs = store.packs;
+    final favorites = FavoriteStickerStore.shared.items;
     return [
       SliverToBoxAdapter(
         child: _mediaSectionHeader(
@@ -9263,7 +9273,7 @@ class _ChatInputBarState extends State<ChatInputBar>
           AppStrings.t(AppStringKeys.composerStickers),
         ),
       ),
-      if (packs.isEmpty)
+      if (packs.isEmpty && favorites.isEmpty)
         SliverFillRemaining(
           hasScrollBody: false,
           child: Center(
@@ -9278,7 +9288,29 @@ class _ChatInputBarState extends State<ChatInputBar>
             ),
           ),
         )
-      else
+      else ...[
+        if (favorites.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: _mediaSubsectionHeader(
+              const ValueKey('mediaStickerPack-favorites'),
+              AppStrings.t(AppStringKeys.mediaFavorites),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(12),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _stickerTile(favorites[index]),
+                childCount: favorites.length,
+              ),
+            ),
+          ),
+        ],
         for (final pack in packs) ...[
           SliverToBoxAdapter(child: _mediaStickerPackHeader(pack)),
           if (!pack.loaded && pack.stickers.isEmpty)
@@ -9307,12 +9339,16 @@ class _ChatInputBarState extends State<ChatInputBar>
                   crossAxisSpacing: 8,
                 ),
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => _stickerTile(pack.stickers[index]),
+                  (context, index) => _stickerTile(
+                    pack.stickers[index],
+                    recent: pack.id == StickerStore.recentPackId,
+                  ),
                   childCount: pack.stickers.length,
                 ),
               ),
             ),
         ],
+      ],
     ];
   }
 
@@ -10643,9 +10679,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Future<void> _sendStickerItem(StickerItem item) async {
+  Future<void> _sendStickerItem(
+    StickerItem item, {
+    MessageSendConfiguration? config,
+  }) async {
     widget.onMediaSendTapped?.call();
-    final sent = await widget.vm.sendSticker(item);
+    final sent = await widget.vm.sendSticker(item, sendConfiguration: config);
     if (!mounted) return;
     if (sent) {
       _finishPanelSend();
@@ -10654,6 +10693,241 @@ class _ChatInputBarState extends State<ChatInputBar>
         context,
         AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
       );
+    }
+  }
+
+  Future<void> _sendGifItem(
+    GifItem item, {
+    MessageSendConfiguration? config,
+  }) async {
+    widget.onMediaSendTapped?.call();
+    final sent = await widget.vm.sendGif(item, sendConfiguration: config);
+    if (!mounted) return;
+    if (sent) {
+      _finishPanelSend();
+    } else {
+      showToast(context, AppStrings.t(AppStringKeys.composerGifSendFailed));
+    }
+  }
+
+  /// Long-press haptic matching the emoji cell's pattern: a light selection
+  /// tick on touch platforms only.
+  void _mediaTileLongPressHaptic() {
+    final platform = Theme.of(context).platform;
+    if (platform == TargetPlatform.android || platform == TargetPlatform.iOS) {
+      unawaited(HapticFeedback.selectionClick());
+    }
+  }
+
+  /// The composer side of the media-tile action sheet: descriptor plus the
+  /// actions each row performs. A row the caller passes null for is hidden.
+  void _showStickerTileActions(StickerItem item, {required bool isRecentTile}) {
+    _mediaTileLongPressHaptic();
+    unawaited(
+      showMediaTileActionSheet(
+        context,
+        MediaTileDescriptor.sticker(
+          item,
+          FavoriteStickerStore.shared.isFavorite(item.id),
+          isRecentTile,
+        ),
+        MediaTileActions(
+          send: () => unawaited(_sendStickerItem(item)),
+          sendWithoutSound: () => unawaited(
+            _sendStickerItem(
+              item,
+              config: const MessageSendConfiguration(disableNotification: true),
+            ),
+          ),
+          schedule: () => unawaited(_scheduleStickerSend(item)),
+          toggleFavorite: () => unawaited(_toggleStickerFavorite(item)),
+          viewSet: () => _openStickerSet(item.setId),
+          save: () => unawaited(_exportStickerTile(item)),
+          copy: () => unawaited(_copyStickerFile(item)),
+          removeFromRecent: isRecentTile
+              ? () => widget.vm.removeRecentSticker(item.id)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  void _showGifTileActions(GifItem item) {
+    _mediaTileLongPressHaptic();
+    unawaited(
+      showMediaTileActionSheet(
+        context,
+        MediaTileDescriptor.gif(item, false),
+        MediaTileActions(
+          send: () => unawaited(_sendGifItem(item)),
+          sendWithoutSound: () => unawaited(
+            _sendGifItem(
+              item,
+              config: const MessageSendConfiguration(disableNotification: true),
+            ),
+          ),
+          schedule: () => unawaited(_scheduleGifSend(item)),
+          save: () => unawaited(_saveGifTile(item)),
+        ),
+      ),
+    );
+  }
+
+  /// The tile menu's Schedule: the same owned picker the send-options sheet
+  /// opens, pre-armed to send this sticker once a future date is confirmed.
+  Future<void> _scheduleStickerSend(StickerItem item) async {
+    final config = await _pickTileScheduleConfiguration();
+    if (config == null) return;
+    await _sendStickerItem(item, config: config);
+  }
+
+  Future<void> _scheduleGifSend(GifItem item) async {
+    final config = await _pickTileScheduleConfiguration();
+    if (config == null) return;
+    await _sendGifItem(item, config: config);
+  }
+
+  /// Opens the app's owned schedule picker (the one showMessageSendOptionsSheet
+  /// uses) and turns the picked date into a send configuration.
+  Future<MessageSendConfiguration?> _pickTileScheduleConfiguration() async {
+    final now = DateTime.now();
+    final selected = await showOwnedSchedulePicker(
+      context: context,
+      initial: now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 366)),
+    );
+    if (selected == null || !selected.isAfter(now)) return null;
+    return MessageSendConfiguration(scheduleAt: selected);
+  }
+
+  Future<void> _toggleStickerFavorite(StickerItem item) async {
+    final store = FavoriteStickerStore.shared;
+    if (store.isFavorite(item.id)) {
+      await store.remove(item);
+    } else {
+      await store.add(item);
+    }
+  }
+
+  void _openStickerSet(int setId) {
+    if (setId == 0) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+      return;
+    }
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => StickerSetDetailView(setId: setId),
+        ),
+      ),
+    );
+  }
+
+  /// Save/export a panel sticker tile. There is no message to anchor on, so
+  /// the tile's file is wrapped in a synthetic one the way the set export
+  /// already wraps set entries internally.
+  Future<void> _exportStickerTile(StickerItem item) async {
+    final file = TdFileRef(id: item.id);
+    final message = ChatMessage(
+      id: item.id,
+      isOutgoing: false,
+      text: '',
+      date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      image: item.isAnimated || item.isVideo ? null : file,
+      animatedSticker: item.isAnimated ? file : null,
+      videoSticker: item.isVideo ? file : null,
+    );
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
+    final result = await StickerExportService.export(
+      message,
+      format: StickerExportFormat.png,
+      destination: desktop
+          ? StickerExportDestination.files
+          : StickerExportDestination.photos,
+    );
+    if (!mounted) return;
+    if (result != StickerExportResult.cancelled) {
+      showToast(
+        context,
+        AppStrings.t(
+          result == StickerExportResult.saved
+              ? (desktop
+                    ? AppStringKeys.stickerExportSavedToFiles
+                    : AppStringKeys.chatSavedToPhotos)
+              : result == StickerExportResult.permissionDenied
+              ? AppStringKeys.chatSaveToPhotosPermissionDenied
+              : AppStringKeys.stickerExportFailed,
+        ),
+      );
+    }
+  }
+
+  /// Desktop webp sticker copy: puts the resolved local file path on the
+  /// clipboard. The sheet gates the row to static desktop stickers; a vanished
+  /// file reports instead of throwing into the zone.
+  Future<void> _copyStickerFile(StickerItem item) async {
+    try {
+      final path = await TdFileCenter.shared.pathFor(
+        item.thumb ?? TdFileRef(id: item.id),
+      );
+      if (path == null || path.isEmpty) throw StateError('no local file');
+      await Clipboard.setData(ClipboardData(text: path));
+      if (!mounted) return;
+      showToast(context, AppStrings.t(AppStringKeys.profileDetailCopied));
+    } catch (_) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+    }
+  }
+
+  /// Save a panel GIF tile. Mobile adds the downloaded mp4 to the photo
+  /// library like a chat GIF message; a desktop host has no album, so the
+  /// file goes through the same save panel MediaDownloadService already
+  /// uses for chat media.
+  Future<void> _saveGifTile(GifItem item) async {
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
+    if (desktop) {
+      final outcome = await MediaDownloadService.saveMedia(
+        file: item.file,
+        isVideo: true,
+      );
+      if (!mounted) return;
+      final feedback = MediaDownloadService.feedbackFor(outcome);
+      if (feedback != null) showToast(context, feedback);
+      return;
+    }
+    try {
+      final path = await TdFileCenter.shared.pathFor(item.file);
+      if (path == null || path.isEmpty) {
+        throw StateError('no local file');
+      }
+      final file = File(path);
+      if (!await file.exists()) throw StateError('file missing');
+      final result = await MediaLibrarySaver.savePreparedFile(
+        file,
+        isVideo: true,
+      );
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(switch (result) {
+          MediaLibrarySaveResult.saved => AppStringKeys.chatSavedToPhotos,
+          MediaLibrarySaveResult.permissionDenied =>
+            AppStringKeys.chatSaveToPhotosPermissionDenied,
+          MediaLibrarySaveResult.unsupported ||
+          MediaLibrarySaveResult.failed => AppStringKeys.chatSaveToPhotosFailed,
+        }),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showToast(context, AppStrings.t(AppStringKeys.chatSaveToPhotosFailed));
     }
   }
 
@@ -10675,20 +10949,25 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Widget _stickerTile(StickerItem item, {bool search = false}) =>
-      GestureDetector(
-        key: ValueKey(
-          search ? 'stickerSearch-${item.id}' : 'sticker-${item.id}',
-        ),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => unawaited(_sendStickerItem(item)),
-        child: StickerPreview(item: item),
-      );
+  Widget _stickerTile(
+    StickerItem item, {
+    bool search = false,
+    bool recent = false,
+  }) => GestureDetector(
+    key: ValueKey(search ? 'stickerSearch-${item.id}' : 'sticker-${item.id}'),
+    behavior: HitTestBehavior.opaque,
+    onTap: () => unawaited(_sendStickerItem(item)),
+    // Search results are not recents, so only the pack grid passes
+    // recent: true; favorites tiles know their state through the store.
+    onLongPress: () => _showStickerTileActions(item, isRecentTile: recent),
+    child: StickerPreview(item: item),
+  );
 
   Widget _gifTile(GifItem item, {bool search = false}) => GestureDetector(
     key: ValueKey(search ? 'gifSearch-${item.id}' : 'gif-${item.id}'),
     behavior: HitTestBehavior.opaque,
     onTap: () => unawaited(_sendGifItem(item)),
+    onLongPress: () => _showGifTileActions(item),
     child: widget.gifPreviewBuilder?.call(item) ?? GifPreview(item: item),
   );
 
@@ -10725,17 +11004,6 @@ class _ChatInputBarState extends State<ChatInputBar>
       ),
     ),
   );
-
-  Future<void> _sendGifItem(GifItem item) async {
-    widget.onMediaSendTapped?.call();
-    final sent = await widget.vm.sendGif(item);
-    if (!mounted) return;
-    if (sent) {
-      _finishPanelSend();
-    } else {
-      showToast(context, AppStrings.t(AppStringKeys.composerGifSendFailed));
-    }
-  }
 
   // Kept for re-exposing the studio from a more appropriate surface later.
   // ignore: unused_element

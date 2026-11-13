@@ -2221,6 +2221,7 @@
     <string name="mediaTileSaveToFile">파일로 저장</string>
     <string name="mediaTileCopySticker">스티커 복사</string>
     <string name="mediaTileDeleteFromRecent">최근 항목에서 삭제</string>
+    <string name="mediaFavorites">즐겨찾기</string>
     <string name="messageActionBlock">차단</string>
     <string name="messageActionBlockKeyword">키워드 차단</string>
     <string name="messageActionCopy">복사</string>

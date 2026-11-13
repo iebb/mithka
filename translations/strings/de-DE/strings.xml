@@ -2228,6 +2228,7 @@
     <string name="mediaTileSaveToFile">Als Datei speichern</string>
     <string name="mediaTileCopySticker">Sticker kopieren</string>
     <string name="mediaTileDeleteFromRecent">Aus zuletzt verwendet entfernen</string>
+    <string name="mediaFavorites">Favoriten</string>
     <string name="messageActionBlock">Blockieren</string>
     <string name="messageActionBlockKeyword">Wort blockieren</string>
     <string name="messageActionCopy">Kopieren</string>

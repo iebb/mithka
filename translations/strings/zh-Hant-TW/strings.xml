@@ -2221,6 +2221,7 @@
     <string name="mediaTileSaveToFile">儲存為檔案</string>
     <string name="mediaTileCopySticker">複製貼圖</string>
     <string name="mediaTileDeleteFromRecent">從最近刪除</string>
+    <string name="mediaFavorites">收藏</string>
     <string name="messageActionBlock">封鎖</string>
     <string name="messageActionBlockKeyword">封鎖詞</string>
     <string name="messageActionCopy">複製</string>
