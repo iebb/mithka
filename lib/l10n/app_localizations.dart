@@ -4029,6 +4029,7 @@ abstract final class AppStringKeys {
       'loginTelegramPremiumIsRequired';
   static const loginTelegramRequiresAnEmailAddressToFinishSigning =
       'loginTelegramRequiresAnEmailAddressToFinishSigning';
+  static const mediaFavorites = 'mediaFavorites';
   static const mediaMetadataBitrate = 'mediaMetadataBitrate';
   static const mediaMetadataCodec = 'mediaMetadataCodec';
   static const mediaMetadataDuration = 'mediaMetadataDuration';

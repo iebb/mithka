@@ -2228,6 +2228,7 @@
     <string name="mediaTileSaveToFile">Save to File</string>
     <string name="mediaTileCopySticker">Copy Sticker</string>
     <string name="mediaTileDeleteFromRecent">Delete from Recent</string>
+    <string name="mediaFavorites">Favorites</string>
     <string name="messageActionBlock">Block</string>
     <string name="messageActionBlockKeyword">Block keyword</string>
     <string name="messageActionCopy">Copy</string>
