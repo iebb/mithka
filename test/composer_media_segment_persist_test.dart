@@ -136,18 +136,32 @@ void main() {
     );
     await tester.pump();
 
-    // The panel reopens on the restored gif segment.
+    // The panel reopens on the restored gif segment: the gif section is where
+    // the unified scroll starts and the gif segment is selected.
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
     await tester.pump();
-    expect(find.byKey(const ValueKey('gifPanelTabs')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('mediaSection-gif')), findsOneWidget);
     expect(changed, isEmpty);
 
-    // Switching to the sticker segment reports it and swaps the strip.
+    // Switching to the sticker segment reports it and scrolls to the sticker
+    // section of the unified surface.
     await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(changed, ['sticker']);
-    expect(find.byKey(const ValueKey('stickerPanelTabs')), findsOneWidget);
-    expect(find.byKey(const ValueKey('gifPanelTabs')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-sticker')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+      findsNothing,
+    );
   });
 }
 
