@@ -57,6 +57,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var downloadStorage: DownloadStoragePlugin? = null
     private var mithkaPro: MithkaProPlugin? = null
     private var nowPlaying: NowPlayingPlugin? = null
+    private var externalLinks: ExternalLinksPlugin? = null
     private var mediaDropChannel: MethodChannel? = null
     private var shareIntentChannel: MethodChannel? = null
     private var pendingSharePayload: Map<String, Any?>? = null
@@ -199,6 +200,10 @@ class MainActivity : FlutterFragmentActivity() {
         )
         nowPlaying = NowPlayingPlugin(
             applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
+        externalLinks = ExternalLinksPlugin(
+            this,
             flutterEngine.dartExecutor.binaryMessenger,
         )
         val plugin = CallMediaPlugin(
@@ -1387,6 +1392,8 @@ class MainActivity : FlutterFragmentActivity() {
         mithkaPro = null
         nowPlaying?.dispose()
         nowPlaying = null
+        externalLinks?.dispose()
+        externalLinks = null
         callMedia?.dispose()
         callMedia = null
         super.cleanUpFlutterEngine(flutterEngine)

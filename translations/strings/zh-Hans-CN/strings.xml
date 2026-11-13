@@ -2073,6 +2073,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} 电报星星</string>
     <string name="linkHandlerUnsupportedTelegramLink">暂不支持打开此 Telegram 链接</string>
     <string name="linkHandlerWritingStyle">写作风格</string>
+    <string name="linkLogInToOpen">登录后即可打开此链接。</string>
+    <string name="linkNotTelegramLink">Mithka 只能打开 Telegram 链接。</string>
+    <string name="linkOpenTmeInMithka">在 Mithka 中打开 t.me 链接</string>
+    <string name="linkOpenTmeInMithkaHint">在 Android 设置中把 t.me 添加为由 Mithka 打开的链接。如果装了 Telegram，请先关闭它的链接打开功能。</string>
     <string name="listSeparator">、</string>
     <string name="locationDetailFetchingLocation">正在获取位置…</string>
     <string name="locationPickerDragMapToChoose">拖动地图选择位置</string>

@@ -20,6 +20,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/media_metadata.dart';
 import '../platform/adaptive_platform.dart';
+import '../platform/external_links.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
@@ -178,7 +179,35 @@ class ChatBehaviorSettingsView extends StatefulWidget {
       _ChatBehaviorSettingsViewState();
 }
 
-class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
+class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView>
+    with WidgetsBindingObserver {
+  /// Android 12+ only; null until read, and on other platforms.
+  OpenByDefaultState? _openByDefault;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_loadOpenByDefault());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have just added t.me in Android's settings screen.
+    if (state == AppLifecycleState.resumed) unawaited(_loadOpenByDefault());
+  }
+
+  Future<void> _loadOpenByDefault() async {
+    final state = await ExternalLinksPlatform.openByDefaultState();
+    if (mounted) setState(() => _openByDefault = state);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
@@ -313,6 +342,26 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView> {
                 isSelected: (mode) => mode == selectedLinkMode,
                 onSelected: (mode) => theme.linkOpenMode = mode,
               ),
+              // Android 12+: unverified t.me links reach Mithka only after the
+              // user adds t.me under the system's "Open by default" screen.
+              if (_openByDefault?.supported == true)
+                SettingsRow(
+                  key: const ValueKey('chat-behavior-open-tme-in-mithka'),
+                  title: AppStrings.t(AppStringKeys.linkOpenTmeInMithka),
+                  subtitle: AppStrings.t(AppStringKeys.linkOpenTmeInMithkaHint),
+                  // Both sentences matter: the second one (turn off
+                  // Telegram's link opening first) must not be cut off.
+                  subtitleMaxLines: null,
+                  value: switch (_openByDefault?.tmeApproved) {
+                    true => AppStrings.t(AppStringKeys.privacyEnabled),
+                    false => AppStrings.t(AppStringKeys.privacyDisabled),
+                    null => '',
+                  },
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.link),
+                  onTap: () => unawaited(
+                    ExternalLinksPlatform.openOpenByDefaultSettings(),
+                  ),
+                ),
               SettingsRow(
                 key: const ValueKey('chat-behavior-video-playback'),
                 title: AppStringKeys.videoPlaybackSettingsTitle,

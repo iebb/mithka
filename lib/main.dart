@@ -520,7 +520,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     );
     _autoDownload.initialize(widget.prefs);
     _auth.start();
-    DeepLinkService.shared.start();
+    DeepLinkService.shared.start(auth: _auth, appLock: _appLock);
     HandoffService.shared.start(
       accounts: _accounts,
       auth: _auth,

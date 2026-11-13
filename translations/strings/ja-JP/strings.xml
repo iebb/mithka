@@ -2073,6 +2073,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} テレグラムスター</string>
     <string name="linkHandlerUnsupportedTelegramLink">この Telegram リンクを開くことはまだサポートされていません</string>
     <string name="linkHandlerWritingStyle">文体</string>
+    <string name="linkLogInToOpen">ログインするとこのリンクを開けます。</string>
+    <string name="linkNotTelegramLink">Mithka で開けるのは Telegram リンクだけです。</string>
+    <string name="linkOpenTmeInMithka">t.me リンクを Mithka で開く</string>
+    <string name="linkOpenTmeInMithkaHint">Android の設定で、Mithka で開くリンクに t.me を追加します。Telegram が入っている場合は、先に Telegram のリンクを開く設定をオフにしてください。</string>
     <string name="listSeparator">、</string>
     <string name="locationDetailFetchingLocation">位置情報を取得中…</string>
     <string name="locationPickerDragMapToChoose">地図をドラッグして位置を選択</string>

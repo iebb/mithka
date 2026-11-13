@@ -2080,6 +2080,10 @@
     <string name="linkHandlerTelegramStarsCount">{value1} Étoiles du télégramme</string>
     <string name="linkHandlerUnsupportedTelegramLink">L’ouverture de ce lien Telegram n’est pas encore prise en charge</string>
     <string name="linkHandlerWritingStyle">Style d'écriture</string>
+    <string name="linkLogInToOpen">Connectez-vous pour ouvrir ce lien.</string>
+    <string name="linkNotTelegramLink">Mithka ne peut ouvrir que des liens Telegram.</string>
+    <string name="linkOpenTmeInMithka">Ouvrir les liens t.me dans Mithka</string>
+    <string name="linkOpenTmeInMithkaHint">Dans les réglages Android, ajoutez t.me aux liens ouverts par Mithka. Si Telegram est installé, désactivez d’abord l’ouverture de ses liens.</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="locationDetailFetchingLocation">Récupération de la position…</string>
     <string name="locationPickerDragMapToChoose">Faites glisser la carte pour choisir une position</string>
