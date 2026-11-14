@@ -591,6 +591,26 @@ ArchivedChatsDisplayMode effectiveChatListArchiveDisplayMode(
   bool isWeb = kIsWeb,
 }) => requested.effectiveForPlatform(platform: platform, isWeb: isWeb);
 
+/// Scroll physics for the chat list.
+///
+/// With a pull-down archive slot, top overscroll must move the viewport (the
+/// archive row is revealed by the negative offset itself), so the list keeps
+/// elastic physics on every platform. Without the slot there is nothing to
+/// reveal and the list falls back to the platform default — an Android-style
+/// glow with zero content displacement instead of a long rubber-band. This
+/// mirrors how the reference client gates its archive pull-down on
+/// `hasHiddenArchive()`: the elasticity is a property of the interaction being
+/// available, not of the list.
+///
+/// The two branches use different physics *types* on purpose: Scrollable only
+/// rebuilds its ScrollPosition when the physics type chain changes, so a
+/// same-type physics whose flag flipped would keep driving the position with
+/// the stale instance.
+ScrollPhysics _chatListScrollPhysics(bool pullDownArchiveSlot) =>
+    pullDownArchiveSlot
+    ? const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics())
+    : const AlwaysScrollableScrollPhysics();
+
 /// Returns the distance that leading chat-list content must move up to cancel
 /// the viewport's native top overscroll in the same frame.
 double chatListTopOverscrollOffset(
@@ -3200,11 +3220,9 @@ class _ChatListViewState extends State<ChatListView>
               !hasFiltered) {
             list = ListView.builder(
               controller: _scrollController,
-              // Pull-down Archive depends on negative scroll extents, so this
-              // list intentionally keeps elastic physics on every platform.
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
+              // Pull-down Archive depends on negative scroll extents, so the
+              // elastic top overscroll exists only while the slot does.
+              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               itemCount:
                   visibleRows +
@@ -3230,9 +3248,7 @@ class _ChatListViewState extends State<ChatListView>
           } else if (entries.isEmpty && !showInlineArchive && !hasFiltered) {
             list = ListView(
               controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
+              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               children: [
                 if (showLeadingControls) _pinnedSearchPill(),
@@ -3256,9 +3272,7 @@ class _ChatListViewState extends State<ChatListView>
           } else {
             list = ListView.builder(
               controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
+              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               itemCount:
                   (showLeadingControls ? 1 : 0) +
