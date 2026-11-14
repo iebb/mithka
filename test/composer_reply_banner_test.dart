@@ -3,9 +3,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
 import 'package:mithka/chat/chat_view_model.dart';
+import 'package:mithka/chat/composer_reply_options_sheet.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _ReplyBannerViewModel extends ChatViewModel {
   _ReplyBannerViewModel()
@@ -65,6 +67,10 @@ const _bannerKey = ValueKey('composerReplyBanner');
 const _closeKey = ValueKey('composerReplyClose');
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('close button clears a focused reply banner', (tester) async {
     final vm = await _pumpComposer(tester);
 
@@ -156,5 +162,114 @@ void main() {
     await tester.tap(find.text('Reply to Alice'));
     await tester.pump();
     expect(requested, 1);
+  });
+
+  testWidgets('reply options sheet paints an opaque panel with the menu', (
+    tester,
+  ) async {
+    // The sheet must paint its own opaque background — the original bug put
+    // dark menu text straight on the dark scrim.
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: ComposerReplyOptionsSheet(
+            message: _replyTarget(),
+            canQuote: true,
+            canReplyInAnotherChat: true,
+            quoteLengthLimit: 100,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final material = tester.widget<Material>(
+      find.byKey(const ValueKey('composerReplyOptionsSheet')),
+    );
+    expect(material.color, isNot(Colors.transparent));
+
+    expect(find.text('Reply to Message'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionQuote')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionAnotherChat')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionApply')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionCancel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionsPreview')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('quote toggle clears an existing quote', (tester) async {
+    const quote = MessageTextQuote(text: 'Original', position: 0);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: ComposerReplyOptionsSheet(
+            message: _replyTarget(),
+            canQuote: true,
+            canReplyInAnotherChat: false,
+            quoteLengthLimit: 100,
+            initialQuote: quote,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // With a quote attached the header switches to "Update Quote" and the
+    // quote row becomes "Clear Quote".
+    expect(find.text('Update Quote'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('composerReplyOptionClearQuote')),
+    );
+    await tester.pump();
+    expect(find.text('Update Quote'), findsNothing);
+    expect(find.text('Reply to Message'), findsOneWidget);
+  });
+
+  testWidgets('banner alternates the tap hint before the first session', (
+    tester,
+  ) async {
+    final vm = await _pumpComposer(tester);
+    vm.setReply(_replyTarget());
+    await tester.pump();
+
+    expect(find.text('Tap here for reply options'), findsNothing);
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Tap here for reply options'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Original message body'), findsOneWidget);
   });
 }

@@ -11281,11 +11281,10 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _showComposerReplyOptions() async {
     final target = _vm.replyTo;
     if (target == null) return;
-    final canQuote =
-        _vm.canQuoteText &&
-        canQuoteMessageText(target) &&
-        !isDesktopTargetPlatform(Theme.of(context).platform);
+    final canQuote = _vm.canQuoteText && canQuoteMessageText(target);
     final canReplyInAnotherChat = await _vm.canReplyInAnotherChat(target);
+    if (!mounted) return;
+    final limit = await _vm.messageQuoteLengthLimit();
     if (!mounted) return;
     final result = await showAppModalSheet<ComposerReplyOptionsResult>(
       context: context,
@@ -11294,6 +11293,8 @@ class _ChatViewState extends State<ChatView> {
         message: target,
         canQuote: canQuote,
         canReplyInAnotherChat: canReplyInAnotherChat,
+        quoteLengthLimit: limit,
+        initialQuote: _vm.replyQuote,
       ),
     );
     if (result == null || !mounted) return;
@@ -11301,20 +11302,27 @@ class _ChatViewState extends State<ChatView> {
       _vm.setReply(null);
       return;
     }
-    if (composerReplyOptionsWantsQuotePick(result)) {
-      await _quoteMessageText(target);
+    if (result is ComposerReplyOptionsQuote) {
+      final current =
+          _vm.messages.where((m) => m.id == target.id).firstOrNull ?? target;
+      _vm.setReply(current, quote: result.quote);
       return;
     }
-    if (composerReplyOptionsWantsAnotherChat(result)) {
-      await _replyInAnotherChat(target);
+    if (result is ComposerReplyOptionsAnotherChat) {
+      await _replyInAnotherChat(target, quoteParam: result.quote);
       return;
     }
+    // Apply: the reply stays as it is (the sheet may have cleared its quote
+    // locally; nothing to commit).
   }
 
   /// Moves the pending reply into a chat picked from the chat list. The
   /// destination composer receives the reply as a cross-chat reply, so its
   /// send addresses the source message where it actually lives.
-  Future<void> _replyInAnotherChat(ChatMessage message) async {
+  Future<void> _replyInAnotherChat(
+    ChatMessage message, {
+    MessageTextQuote? quoteParam,
+  }) async {
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
         builder: (_) => const ChatPickerView(
@@ -11329,7 +11337,7 @@ class _ChatViewState extends State<ChatView> {
     // Read the composer draft before navigating: the current view model may
     // be disposed once the destination transcript opens.
     final draftText = _vm.composerFormattedDraft;
-    final quote = _vm.replyQuote;
+    final quote = quoteParam ?? _vm.replyQuote;
     ChatDeepLinkController.shared.openChat(
       chatId: targetChat.id,
       title: targetChat.title,

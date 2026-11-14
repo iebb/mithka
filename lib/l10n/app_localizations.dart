@@ -1401,12 +1401,22 @@ abstract final class AppStringKeys {
   static const composerLongMessageTitle = 'composerLongMessageTitle';
   static const composerMarkdownSupportHint = 'composerMarkdownSupportHint';
   static const composerReplyToName = 'composerReplyToName';
+  static const composerReplyToQuoteName = 'composerReplyToQuoteName';
   static const composerReplyToExternalName = 'composerReplyToExternalName';
+  static const composerReplyOptionsTitle = 'composerReplyOptionsTitle';
+  static const composerReplyOptionsSubtitle = 'composerReplyOptionsSubtitle';
+  static const composerReplyOptionsUpdateTitle =
+      'composerReplyOptionsUpdateTitle';
+  static const composerReplyOptionsUpdateSubtitle =
+      'composerReplyOptionsUpdateSubtitle';
   static const composerReplyOptionQuote = 'composerReplyOptionQuote';
   static const composerReplyOptionAnotherChat =
       'composerReplyOptionAnotherChat';
+  static const composerReplyOptionClearQuote = 'composerReplyOptionClearQuote';
+  static const composerReplyOptionApply = 'composerReplyOptionApply';
   static const composerReplyOptionCancel = 'composerReplyOptionCancel';
   static const composerReplyOptionsHint = 'composerReplyOptionsHint';
+  static const composerReplyTapHint = 'composerReplyTapHint';
   static const composerMessageExceedsRichTextLimit =
       'composerMessageExceedsRichTextLimit';
   static const composerMicrophonePermissionRequired =

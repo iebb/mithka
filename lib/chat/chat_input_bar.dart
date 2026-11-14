@@ -72,6 +72,7 @@ import 'channel_direct_messages_service.dart';
 import 'channel_direct_messages_view.dart';
 import 'chat_view_model.dart';
 import 'checklist_composer_view.dart';
+import 'composer_reply_options_sheet.dart';
 import 'contact_share_picker_view.dart';
 import 'custom_emoji.dart';
 import 'desktop_composer_height.dart';
@@ -721,6 +722,15 @@ class _ChatInputBarState extends State<ChatInputBar>
   int _syncedComposerDismissTick = 0;
   _Panel _panel = _Panel.none;
 
+  /// Reply banner hint alternation (reference client parity): until the user
+  /// has opened the reply-options panel once, the banner's preview line
+  /// periodically swaps with a "tap for reply options" hint so the tap
+  /// affordance is discoverable.
+  bool? _replyHintSeen;
+  Timer? _replyHintTimer;
+  bool _replyHintShowing = false;
+  int _replyHintTick = 0;
+
   _MediaKind _mediaKind = _MediaKind.emoji;
   String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
   int? _stickerPack; // active sticker pack id
@@ -922,6 +932,20 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
     _controller.addListener(_onTextChanged);
     _panelSearch.addListener(_queuePanelSearch);
+    _replyHintTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      // Stop alternating once the flag loads as seen; otherwise flip only
+      // while a reply banner is actually showing.
+      if (_replyHintSeen != false || vm.replyTo == null) return;
+      if (!mounted) return;
+      setState(() {
+        _replyHintShowing = !_replyHintShowing;
+        _replyHintTick++;
+      });
+    });
+    composerReplyOptionsHintSeen().then((seen) {
+      if (!mounted) return;
+      setState(() => _replyHintSeen = seen);
+    });
     _focus.addListener(() {
       var needsRebuild = false;
       var panelChanged = false;
@@ -1673,6 +1697,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _replyHintTimer?.cancel();
     _voiceDisposed = true;
     _recordCancelled = true;
     _clearVoicePresses();
@@ -4822,78 +4847,110 @@ class _ChatInputBarState extends State<ChatInputBar>
         : vm.peerTitle;
     final preview = quote?.text ?? _replyPreview(m);
     final title = externalChatId == null
-        ? AppStrings.t(AppStringKeys.composerReplyToName, {'value1': name})
+        ? (quote != null
+              ? AppStrings.t(AppStringKeys.composerReplyToQuoteName, {
+                  'value1': name,
+                })
+              : AppStrings.t(AppStringKeys.composerReplyToName, {
+                  'value1': name,
+                }))
         : AppStrings.t(AppStringKeys.composerReplyToExternalName, {
             'value1': name,
           });
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
-      child: Container(
-        key: const ValueKey('composerReplyBanner'),
-        height: 46,
-        decoration: BoxDecoration(
-          color: c.searchFill,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.onReplyOptionsRequested,
-                onLongPress: () => widget.onReplySourceJump?.call(m),
+    final thumb = m.image?.thumbnail ?? m.image;
+    return SizedBox(
+      key: const ValueKey('composerReplyBanner'),
+      height: 46,
+      child: Row(
+        children: [
+          // Leading icon block: 52x46, matching the reference client's
+          // reply-panel icon slot so the banner reads as one strip.
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: Center(
+              child: AppIcon(
+                quote != null ? HeroAppIcons.quoteLeft : HeroAppIcons.reply,
+                size: 19,
+                color: c.linkBlue,
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onReplyOptionsRequested,
+              onLongPress: () => widget.onReplySourceJump?.call(m),
+              child: SizedBox(
+                height: 46,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 8),
-                  child: Row(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AppIcon(
-                        quote != null
-                            ? HeroAppIcons.quoteLeft
-                            : HeroAppIcons.reply,
-                        size: 17,
-                        color: c.linkBlue,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: c.linkBlue,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              preview,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: c.textSecondary,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.body(
+                          c.linkBlue,
+                          weight: AppTextWeight.semibold,
                         ),
                       ),
+                      if (preview.isNotEmpty)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 150),
+                          child: _replyHintShowing && _replyHintSeen == false
+                              ? Text(
+                                  key: ValueKey(
+                                    'composerReplyHint-$_replyHintTick',
+                                  ),
+                                  AppStrings.t(
+                                    AppStringKeys.composerReplyTapHint,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.body(c.textSecondary),
+                                )
+                              : Text(
+                                  key: ValueKey(
+                                    'composerReplyPreview-$_replyHintTick',
+                                  ),
+                                  preview,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.body(c.textSecondary),
+                                ),
+                        ),
                     ],
                   ),
                 ),
               ),
             ),
-            AppInteractiveSurface(
+          ),
+          if (thumb != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: TDImage(photo: thumb, cacheWidth: 68, cacheHeight: 68),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          // Close: 52x46 with a circular ripple, mirroring the reference
+          // client's reply-close hit target.
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: AppInteractiveSurface(
               key: const ValueKey('composerReplyClose'),
               semanticLabel: AppStringKeys.confirmCancel.l10n(context),
               onTap: () => vm.setReply(null),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              child: Padding(
-                padding: const EdgeInsets.all(7),
+              borderRadius: BorderRadius.circular(19),
+              child: Center(
                 child: AppIcon(
                   HeroAppIcons.xmark,
                   size: 17,
@@ -4901,9 +4958,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
