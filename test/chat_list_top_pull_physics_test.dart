@@ -154,7 +154,7 @@ void main() {
         chats: [
           _chat(1, order: 300),
           _chat(2, order: 200),
-          _chat(3, order: 100),
+          _chat(3),
         ],
       );
       final pixels = await _pullDownFromTop(tester, fingersDown: 200);
@@ -179,7 +179,7 @@ void main() {
         chats: [
           _chat(1, order: 300),
           _chat(2, order: 200),
-          _chat(3, order: 100),
+          _chat(3),
           _chat(101, list: 'chatListArchive', order: 50),
         ],
       );
