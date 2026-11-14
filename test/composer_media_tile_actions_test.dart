@@ -270,12 +270,11 @@ void main() {
     ]);
     await tester.pump();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('gif-200')),
-      300,
-      scrollable: _panelScrollable(),
-    );
-    await tester.pump();
+    // GIFs live in their own panel now: switch the segment, then the gif grid
+    // is right there (no unified scroll to walk down).
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.longPress(
       find.byKey(const ValueKey('gif-200')),
       warnIfMissed: false,
@@ -293,11 +292,18 @@ void main() {
 }
 
 Finder _panelScrollable() => find.descendant(
-  of: find.byKey(const ValueKey('mediaUnifiedScroll')),
+  of: find.byKey(const ValueKey('stickerPanelScroll')),
   matching: find.byType(Scrollable),
 );
 
 Future<void> _pumpComposer(WidgetTester tester, {ChatViewModel? vm}) async {
+  // The docked media panel plus the input row is taller than the default
+  // 600pt test window — give the surface phone height so the segment control
+  // stays hit-testable.
+  tester.view.physicalSize = const Size(800, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   vm ??= ChatViewModel(chatId: 1, title: 'Test', markReadOnOpen: false);
   addTearDown(vm.dispose);
   await tester.pumpWidget(
@@ -331,19 +337,18 @@ Future<void> _pumpComposer(WidgetTester tester, {ChatViewModel? vm}) async {
   await tester.pump();
 }
 
-/// Opens the media panel on the sticker segment and walks the unified scroll
-/// down to the given sticker tile so it is on screen and long-pressable.
+/// Opens the media panel on the sticker segment and walks the sticker
+/// panel scroll down to the given sticker tile so it is long-pressable.
 Future<void> _openPanelAndScrollToSticker(
   WidgetTester tester,
   String tileKey,
 ) async {
   await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-  await tester.pump();
+  await tester.pumpAndSettle();
   _seedStickerPacks();
   await tester.pump();
   await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pumpAndSettle();
   await tester.scrollUntilVisible(
     find.byKey(ValueKey(tileKey)),
     200,

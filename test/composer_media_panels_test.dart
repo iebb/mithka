@@ -1,11 +1,13 @@
 //
-//  composer_media_unified_test.dart
+//  composer_media_panels_test.dart
 //
-//  The composer media panel is one continuously-scrollable surface: emoji
-//  categories, sticker packs and saved GIFs are stacked sections of a single
-//  CustomScrollView, the segment control navigates between section anchors,
-//  and the selected segment follows the scroll. Opening on a persisted
-//  initialMediaKind starts the scroll at that section.
+//  The composer media panel is a three-way selector over per-kind panels:
+//  emoji and stickers each keep a horizontally scrollable strip above ONE
+//  continuously scrollable list (emoji: recents + catalog categories +
+//  custom-emoji packs; stickers: favorites + recents + every installed pack),
+//  GIF is a plain saved-animations grid. The strip anchors into the list in
+//  both directions, the segment switch is instant (no inter-kind scrolling),
+//  and the search button still swaps the panel for the search overlay.
 //
 
 import 'dart:io';
@@ -37,7 +39,7 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final prefs = await SharedPreferences.getInstance();
     final supportDir = await Directory.systemTemp.createTemp(
-      'mithka_media_unified',
+      'mithka_media_panels',
     );
     addTearDown(() {
       if (supportDir.existsSync()) supportDir.deleteSync(recursive: true);
@@ -70,95 +72,115 @@ void main() {
     GifStore.shared.replaceItemsForTest(const []);
   });
 
-  testWidgets('the panel is one scrollable with emoji first', (tester) async {
+  testWidgets('opening shows the emoji panel with its own strip', (
+    tester,
+  ) async {
     await _pumpComposer(tester);
     final icon = find.byIcon(HeroAppIcons.solidFaceSmile.data).first;
 
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsNothing);
+    expect(find.byKey(const ValueKey('mediaKindSegments')), findsNothing);
     await tester.tap(icon);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsOneWidget);
-    expect(find.byKey(const ValueKey('mediaSection-emoji')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelScroll')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-emoji')),
       findsOneWidget,
     );
-    // The old per-kind tab strips are gone from the unified surface.
-    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsNothing);
+    // The unified inter-kind scroll surface is gone.
+    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsNothing);
+    // Only the active kind's strip renders.
     expect(find.byKey(const ValueKey('stickerPanelTabs')), findsNothing);
     expect(find.byKey(const ValueKey('gifPanelTabs')), findsNothing);
   });
 
-  testWidgets('initialMediaKind gif opens scrolled to the gif section', (
-    tester,
-  ) async {
-    await _pumpComposer(tester, initialMediaKind: 'gif');
-    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(
-      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('mediaSection-gif')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('mediaSegmentSelected-emoji')),
-      findsNothing,
-    );
-  });
-
-  testWidgets('scrolling down flips the selected segment to gif', (
-    tester,
-  ) async {
-    await _pumpComposer(tester);
-    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-    await tester.pump();
-    _seedGifs();
-
-    // The emoji catalog alone spans thousands of pixels, so walk the scroll
-    // down to a seeded gif tile instead of one blind drag.
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('gif-200')),
-      300,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('mediaUnifiedScroll')),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(
-      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('mediaSection-gif')), findsOneWidget);
-  });
-
-  testWidgets('tapping the sticker segment scrolls to a seeded sticker', (
+  testWidgets('the sticker panel continuously stacks packs under its strip', (
     tester,
   ) async {
     final changed = <String>[];
     await _pumpComposer(tester, onMediaKindChanged: changed.add);
-    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-    await tester.pump();
     _seedStickerPacks();
-
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('stickerPanelTabs')), findsOneWidget);
+    expect(find.byKey(const ValueKey('stickerPanelScroll')), findsOneWidget);
+    expect(changed, contains('sticker'));
+
+    // The recents pseudo-pack and every installed pack stack in ONE scroller.
+    final scrollable = _stickerScrollable();
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('sticker-4101')),
       200,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('mediaUnifiedScroll')),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: scrollable,
     );
-    expect(changed, contains('sticker'));
+    expect(find.byKey(const ValueKey('sticker-4101')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('sticker-4201')),
+      200,
+      scrollable: scrollable,
+    );
+    expect(find.byKey(const ValueKey('sticker-4201')), findsOneWidget);
+  });
+
+  testWidgets('tapping a pack tab scrolls the sticker panel to that pack', (
+    tester,
+  ) async {
+    await _pumpComposer(tester);
+    _seedStickerPacks();
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('stickerPackTab-3201')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The Beta pack's sticker is on screen without any manual scrolling.
+    expect(find.byKey(const ValueKey('sticker-4201')), findsOneWidget);
+  });
+
+  testWidgets('the gif segment shows the plain saved-animations grid', (
+    tester,
+  ) async {
+    await _pumpComposer(tester);
+    _seedGifs();
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('gif-200')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gifPanelTabs')), findsOneWidget);
+  });
+
+  testWidgets('segment switches are instant with no inter-kind scroller', (
+    tester,
+  ) async {
+    await _pumpComposer(tester);
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
+    await tester.pump();
+    // No animation frames are needed: the gif content is present immediately
+    // (a single pump flushes the post-tap frame only — no settling flight).
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('gifPanelTabs')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsNothing);
+    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsNothing);
   });
 
   testWidgets('the search button swaps the panel and cancel restores it', (
@@ -167,31 +189,31 @@ void main() {
     await _pumpComposer(tester);
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.byKey(const ValueKey('mediaPanelSearchButton')));
     await tester.pump();
     expect(find.byKey(const ValueKey('composerMediaSearch')), findsOneWidget);
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsNothing);
+    expect(find.byKey(const ValueKey('emojiPanelScroll')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('mediaPanelSearchButton')));
     await tester.pump();
     await tester.pump();
     expect(find.byKey(const ValueKey('composerMediaSearch')), findsNothing);
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelScroll')), findsOneWidget);
   });
 
   testWidgets(
     'every seeded pack renders a header, recents use the l10n label',
     (tester) async {
       await _pumpComposer(tester);
-      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-      await tester.pump();
       _seedStickerPacks();
+      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+      await tester.pumpAndSettle();
 
-      final scrollable = find.descendant(
-        of: find.byKey(const ValueKey('mediaUnifiedScroll')),
-        matching: find.byType(Scrollable),
-      );
+      final scrollable = _stickerScrollable();
       await tester.scrollUntilVisible(
         find.text('Alpha'),
         200,
@@ -215,7 +237,35 @@ void main() {
       expect(find.text(recentTitle), findsOneWidget);
     },
   );
+
+  testWidgets('the emoji strip anchors into the continuous category stack', (
+    tester,
+  ) async {
+    await _pumpComposer(tester);
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsOneWidget);
+    // One of the category tabs jumps the stack to that category's emojis.
+    await tester.tap(find.byKey(const ValueKey('emojiCategoryTab-1')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    // The stack scrolled: the second category sits at the top instead of
+    // thousands of pixels down.
+    final position = tester.state<ScrollableState>(_emojiScrollable()).position;
+    expect(position.pixels, greaterThan(0));
+  });
 }
+
+Finder _stickerScrollable() => find.descendant(
+  of: find.byKey(const ValueKey('stickerPanelScroll')),
+  matching: find.byType(Scrollable),
+);
+
+Finder _emojiScrollable() => find.descendant(
+  of: find.byKey(const ValueKey('emojiPanelScroll')),
+  matching: find.byType(Scrollable),
+);
 
 Future<void> _pumpComposer(
   WidgetTester tester, {
@@ -224,6 +274,13 @@ Future<void> _pumpComposer(
 }) async {
   final vm = ChatViewModel(chatId: 1, title: 'Test', markReadOnOpen: false);
   addTearDown(vm.dispose);
+  // The docked media panel plus the input row is taller than the default
+  // 600pt test window, which pushes the segment control out of the hit-test
+  // area — give the surface phone height.
+  tester.view.physicalSize = const Size(800, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
