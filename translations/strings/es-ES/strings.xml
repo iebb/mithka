@@ -2134,6 +2134,10 @@
     <string name="keptHistorySection">Historial de mensajes</string>
     <string name="keptGhostSection">Modo fantasma</string>
     <string name="keptPremiumSection">Premium local</string>
+    <string name="linkLogInToOpen">Inicia sesión para abrir este enlace.</string>
+    <string name="linkNotTelegramLink">Mithka solo puede abrir enlaces de Telegram.</string>
+    <string name="linkOpenTmeInMithka">Abrir enlaces t.me en Mithka</string>
+    <string name="linkOpenTmeInMithkaHint">En los ajustes de Android, añade t.me a los enlaces que abre Mithka. Si tienes Telegram instalado, desactiva antes la apertura de sus enlaces.</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">Desbloquea las superficies premium del cliente para tu propia cuenta en este dispositivo. Los límites del servidor se mantienen y no se envía nada a Telegram.</string>
     <string name="localPremiumTitle">Premium local</string>

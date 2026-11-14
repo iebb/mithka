@@ -28,6 +28,7 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		A17D0FF631E1000100000001 /* MacOSAppIconPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */; };
+		A17D0FFA31E1000100000001 /* ExternalLinksPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FFB31E1000100000001 /* ExternalLinksPlugin.swift */; };
 		A17D0FF331E1000100000001 /* HandoffBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF231E1000100000001 /* HandoffBridge.swift */; };
 		A17D0FF931E1000100000001 /* WebProxyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF831E1000100000001 /* WebProxyBridge.swift */; };
 		A17D0FF431E1000100000001 /* Pengram.icon in Resources */ = {isa = PBXBuildFile; fileRef = A17D0FF531E1000100000001 /* Pengram.icon */; };
@@ -78,6 +79,7 @@
 		33CC10F72044A3C60003C045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Runner/Info.plist; sourceTree = "<group>"; };
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
 		A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOSAppIconPlugin.swift; sourceTree = "<group>"; };
+		A17D0FFB31E1000100000001 /* ExternalLinksPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalLinksPlugin.swift; sourceTree = "<group>"; };
 		A17D0FF231E1000100000001 /* HandoffBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = HandoffBridge.swift; path = ../../apple/HandoffBridge.swift; sourceTree = "<group>"; };
 		A17D0FF831E1000100000001 /* WebProxyBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = WebProxyBridge.swift; path = ../../apple/WebProxyBridge.swift; sourceTree = "<group>"; };
 		A17D0FF531E1000100000001 /* Pengram.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Pengram.icon; path = ../ios/Runner/Pengram.icon; sourceTree = SOURCE_ROOT; };
@@ -191,6 +193,7 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */,
+				A17D0FFB31E1000100000001 /* ExternalLinksPlugin.swift */,
 				A17D0FF231E1000100000001 /* HandoffBridge.swift */,
 				A17D0FF831E1000100000001 /* WebProxyBridge.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
@@ -507,6 +510,7 @@
 			files = (
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				A17D0FF631E1000100000001 /* MacOSAppIconPlugin.swift in Sources */,
+				A17D0FFA31E1000100000001 /* ExternalLinksPlugin.swift in Sources */,
 				A17D0FF331E1000100000001 /* HandoffBridge.swift in Sources */,
 				A17D0FF931E1000100000001 /* WebProxyBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,

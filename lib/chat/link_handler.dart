@@ -144,20 +144,30 @@ bool _isTelegramSchemeLink(String link) =>
 
 /// Opens a Telegram link Mithka could not route in-app with the user's
 /// browser choice, or reports it as unsupported when it must stay in the app.
+///
+/// A tg:// link is offered to other apps only (see externalLaunchRouteFor):
+/// Mithka claims tg:// itself, so when no other app takes it, or the platform
+/// cannot exclude Mithka (iOS), it ends with the same notice instead of a
+/// launch that could reopen Mithka.
 Future<void> _openUnhandledLink(
   BuildContext context,
   String link, {
   required bool keepTelegramInApp,
   String? message,
 }) async {
-  if (keepTelegramInApp && _isTelegramSchemeLink(link)) {
-    showToast(
-      context,
-      message ?? AppStrings.t(AppStringKeys.linkHandlerUnsupportedTelegramLink),
-    );
+  if (!_isTelegramSchemeLink(link)) {
+    await _openBrowserLink(context, link);
     return;
   }
-  await _openBrowserLink(context, link);
+  final uri = Uri.tryParse(link.trim());
+  if (!keepTelegramInApp && uri != null && await launchInDefaultBrowser(uri)) {
+    return;
+  }
+  if (!context.mounted) return;
+  showToast(
+    context,
+    message ?? AppStrings.t(AppStringKeys.linkHandlerUnsupportedTelegramLink),
+  );
 }
 
 Future<void> openInternalLinkType(
@@ -2828,7 +2838,9 @@ Future<void> _openBrowserLink(
     case LinkOpenTarget.internalBrowser:
       if (!internalBrowserCanOpen(uri) ||
           !internalBrowserSupported(platform: platform)) {
-        await launchInDefaultBrowser(uri);
+        if (!await launchInDefaultBrowser(uri) && context.mounted) {
+          _reportTelegramLaunchFailure(context, uri);
+        }
         return;
       }
       await Navigator.of(context).push<void>(
@@ -2840,6 +2852,18 @@ Future<void> _openBrowserLink(
         ),
       );
     case LinkOpenTarget.defaultBrowser:
-      await launchInDefaultBrowser(uri);
+      if (!await launchInDefaultBrowser(uri) && context.mounted) {
+        _reportTelegramLaunchFailure(context, uri);
+      }
   }
+}
+
+/// A Telegram link that neither Mithka nor any other app could open must not
+/// end as a silent tap. Other links keep their existing silent failure.
+void _reportTelegramLaunchFailure(BuildContext context, Uri uri) {
+  if (normalizeTelegramLink(uri.toString()) == null) return;
+  showToast(
+    context,
+    AppStrings.t(AppStringKeys.linkHandlerOpenTelegramLinkFailed),
+  );
 }

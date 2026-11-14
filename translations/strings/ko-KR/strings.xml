@@ -2127,6 +2127,10 @@
     <string name="keptHistorySection">메시지 기록</string>
     <string name="keptGhostSection">고스트 모드</string>
     <string name="keptPremiumSection">로컬 프리미엄</string>
+    <string name="linkLogInToOpen">로그인하면 이 링크를 열 수 있습니다.</string>
+    <string name="linkNotTelegramLink">Mithka에서는 Telegram 링크만 열 수 있습니다.</string>
+    <string name="linkOpenTmeInMithka">t.me 링크를 Mithka에서 열기</string>
+    <string name="linkOpenTmeInMithkaHint">Android 설정에서 t.me를 Mithka로 여는 링크로 추가하세요. Telegram이 설치되어 있다면 먼저 Telegram의 링크 열기를 끄세요.</string>
     <string name="listSeparator" xml:space="preserve">, </string>
     <string name="localPremiumNote">이 기기에서 내 계정의 클라이언트 측 프리미엄 화면을 잠금 해제합니다. 서버 측 제한은 그대로 적용되며 Telegram으로 아무것도 전송하지 않습니다.</string>
     <string name="localPremiumTitle">로컬 프리미엄</string>

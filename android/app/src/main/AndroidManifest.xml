@@ -101,15 +101,46 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <!-- The app's own deep-link schemes (tg:// grammar): mk:// and
-                 mithka://. Registered here instead of tg:// so Mithka never
-                 competes with official Telegram clients for their links. -->
+            <!-- Links reach Dart through app_links (DeepLinkService). Flutter's
+                 own deep linking would also push the URL as a named route
+                 (initial route on a cold start, pushRoute on a warm one). -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
+            <!-- The app's own deep-link schemes (tg:// grammar), mk:// and
+                 mithka://, plus Telegram's tg:// itself. Android shows its
+                 "Open with" chooser for tg:// when another Telegram client is
+                 installed, so the user decides which app opens it. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mk"/>
                 <data android:scheme="mithka"/>
+                <data android:scheme="tg"/>
+            </intent-filter>
+            <!-- t.me, telegram.me and telegram.dog web links. Deliberately no
+                 autoVerify: t.me's assetlinks.json only verifies
+                 org.telegram.* apps, so verification would always fail.
+                 On Android 12+ these links open in the browser until the
+                 user adds t.me under Settings > Apps > Mithka > Open by
+                 default (the row in Mithka's settings opens that screen).
+                 A t.me page Mithka cannot show in-app is sent to an
+                 explicitly resolved browser (ExternalLinksPlugin), never
+                 back through this filter. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"/>
+                <data android:scheme="http"/>
+                <data android:host="t.me"/>
+                <data android:host="www.t.me"/>
+                <data android:host="telegram.me"/>
+                <data android:host="www.telegram.me"/>
+                <data android:host="telegram.dog"/>
+                <data android:host="www.telegram.dog"/>
             </intent-filter>
             <!-- Receive text and files shared from other Android apps. The
                  payload is copied into Mithka's private cache before it is
@@ -873,6 +904,13 @@
             <action android:name="android.intent.action.VIEW"/>
             <category android:name="android.intent.category.BROWSABLE"/>
             <data android:scheme="http"/>
+        </intent>
+        <!-- ExternalLinksPlugin: the other apps that handle tg://, so Mithka
+             can hand an unsupported tg:// link to them without resolving to
+             itself. (Browser resolution uses the https/http queries above.) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tg"/>
         </intent>
         <!-- So open_filex can find an app to open a downloaded file. On Android 11+
              package-visibility filtering hides file-viewer apps from intent

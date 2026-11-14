@@ -2150,6 +2150,10 @@ abstract final class AppStringKeys {
   static const linkHandlerQrLoginWarning = 'linkHandlerQrLoginWarning';
   static const linkHandlerUnsupportedTelegramLink =
       'linkHandlerUnsupportedTelegramLink';
+  static const linkLogInToOpen = 'linkLogInToOpen';
+  static const linkNotTelegramLink = 'linkNotTelegramLink';
+  static const linkOpenTmeInMithka = 'linkOpenTmeInMithka';
+  static const linkOpenTmeInMithkaHint = 'linkOpenTmeInMithkaHint';
   static const listSeparator = 'listSeparator';
   static const locationDetailFetchingLocation =
       'locationDetailFetchingLocation';

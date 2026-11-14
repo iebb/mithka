@@ -76,6 +76,13 @@ String? normalizeTelegramLink(String raw) {
   // The app's own schemes carry tg:// grammar too. Keep the normalization in
   // one place so search candidates and tapped message links agree on what is
   // an in-app Telegram destination.
+  if (lower.startsWith('mk:') || lower.startsWith('mithka:')) {
+    final wrapped = Uri.tryParse(trimmed);
+    if (wrapped != null && wrapped.host.toLowerCase() == mithkaOpenLinkHost) {
+      final inner = unwrapMithkaOpenLink(wrapped);
+      if (inner != null) return inner;
+    }
+  }
   if (lower.startsWith('mk:')) return 'tg:${trimmed.substring(3)}';
   if (lower.startsWith('mithka:')) return 'tg:${trimmed.substring(7)}';
 
@@ -93,4 +100,125 @@ String? normalizeTelegramLink(String raw) {
     return uri.replace(scheme: 'https').toString();
   }
   return null;
+}
+
+/// The http(s) hosts Mithka registers with the OS (the Android VIEW filter).
+const externalTelegramWebHosts = {
+  't.me',
+  'www.t.me',
+  'telegram.me',
+  'www.telegram.me',
+  'telegram.dog',
+  'www.telegram.dog',
+};
+
+/// Whether [uri] is an http(s) link on a host in [externalTelegramWebHosts].
+bool isExternalTelegramWebLink(Uri uri) {
+  final scheme = uri.scheme.toLowerCase();
+  return (scheme == 'https' || scheme == 'http') &&
+      externalTelegramWebHosts.contains(uri.host.toLowerCase());
+}
+
+/// A Telegram web link that names no chat, post or invite (the bare t.me
+/// home page). It goes straight to the browser: there is nothing to open
+/// in-app and nothing to log in for.
+bool isTelegramWebHomePage(Uri uri) =>
+    isExternalTelegramWebLink(uri) &&
+    uri.pathSegments.every((segment) => segment.isEmpty) &&
+    uri.query.isEmpty;
+
+/// Host of Mithka's wrapper link, `mk://open?url=<percent-encoded link>`.
+///
+/// It hands an arbitrary Telegram link (tg://, t.me, telegram.me) to Mithka
+/// through a scheme only Mithka registers, so a share extension or another
+/// app can target Mithka even when an official Telegram client also claims
+/// tg:// and t.me. `mithka://open?url=` is accepted too.
+const mithkaOpenLinkHost = 'open';
+
+/// Builds the wrapper link for [telegramLink]; see [mithkaOpenLinkHost].
+String mithkaOpenLinkFor(String telegramLink) => Uri(
+  scheme: 'mk',
+  host: mithkaOpenLinkHost,
+  queryParameters: {'url': telegramLink.trim()},
+).toString();
+
+/// The Telegram link carried by a `mk://open?url=` wrapper, normalized, or
+/// null when [uri] is not a wrapper or carries anything else. Wrappers never
+/// nest.
+String? unwrapMithkaOpenLink(Uri uri) {
+  final scheme = uri.scheme.toLowerCase();
+  if ((scheme != 'mk' && scheme != 'mithka') ||
+      uri.host.toLowerCase() != mithkaOpenLinkHost) {
+    return null;
+  }
+  String? inner;
+  try {
+    inner = uri.queryParameters['url']?.trim();
+  } on FormatException {
+    return null;
+  }
+  if (inner == null || inner.isEmpty) return null;
+  final lower = inner.toLowerCase();
+  if (lower.startsWith('mk:') || lower.startsWith('mithka:')) return null;
+  return normalizeTelegramLink(inner);
+}
+
+enum ExternalLinkKind {
+  /// Open in-app with the Telegram link handler.
+  telegram,
+
+  /// A `mk://open?url=` wrapper whose payload is not a Telegram link.
+  notTelegram,
+
+  /// Not a link Mithka accepts from outside; drop it silently.
+  ignored,
+}
+
+/// How Mithka treats a URL the OS delivered (Android VIEW intent, iOS/macOS
+/// open-URL, a share extension's wrapper link).
+class ExternalLink {
+  const ExternalLink._(this.kind, [this.link]);
+
+  const ExternalLink.telegram(String link)
+    : this._(ExternalLinkKind.telegram, link);
+  static const notTelegram = ExternalLink._(ExternalLinkKind.notTelegram);
+  static const ignored = ExternalLink._(ExternalLinkKind.ignored);
+
+  final ExternalLinkKind kind;
+
+  /// The link to hand to `openLink`; set only for [ExternalLinkKind.telegram].
+  final String? link;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExternalLink && other.kind == kind && other.link == link;
+
+  @override
+  int get hashCode => Object.hash(kind, link);
+
+  @override
+  String toString() => 'ExternalLink($kind, $link)';
+}
+
+/// Classifies a URL delivered from outside the app.
+///
+/// mk:// and mithka:// keep their tg:// grammar unchanged; the `open` host
+/// unwraps a Telegram link. tg:// and http(s) links on
+/// [externalTelegramWebHosts] are Telegram links. Everything else is ignored.
+ExternalLink classifyExternalLink(Uri uri) {
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme == 'mk' || scheme == 'mithka') {
+    if (uri.host.toLowerCase() == mithkaOpenLinkHost) {
+      final inner = unwrapMithkaOpenLink(uri);
+      return inner == null
+          ? ExternalLink.notTelegram
+          : ExternalLink.telegram(inner);
+    }
+    return ExternalLink.telegram(uri.toString());
+  }
+  if (scheme == 'tg') return ExternalLink.telegram(uri.toString());
+  if (isExternalTelegramWebLink(uri)) {
+    return ExternalLink.telegram(uri.toString());
+  }
+  return ExternalLink.ignored;
 }

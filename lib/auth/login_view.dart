@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/deep_link_service.dart';
 import '../app/ipad_window_chrome.dart';
 import '../bot_api/bot_api_account.dart';
 import '../bot_api/bot_api_client.dart';
@@ -850,7 +851,54 @@ class _LoginViewState extends State<LoginView> {
         const SizedBox(height: 18),
         _errorBanner(auth.errorMessage!),
       ],
+      // A tg:// or t.me link arrived from outside while logged out; it opens
+      // once login completes.
+      ListenableBuilder(
+        listenable: DeepLinkService.shared,
+        builder: (context, _) => DeepLinkService.shared.waitingForLogIn
+            ? Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: _pendingLinkBanner(),
+              )
+            : const SizedBox.shrink(),
+      ),
     ];
+  }
+
+  Widget _pendingLinkBanner() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('login-pending-link'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: c.linkBlue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(
+          color: c.linkBlue.withValues(alpha: 0.28),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: AppIcon(HeroAppIcons.link, size: 15, color: c.linkBlue),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              AppStrings.t(AppStringKeys.linkLogInToOpen),
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: c.textPrimary.withValues(alpha: 0.85),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _backButton(
