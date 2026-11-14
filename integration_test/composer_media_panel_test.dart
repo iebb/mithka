@@ -125,22 +125,21 @@ void main() {
       ),
     );
 
-    // One media button opens the unified panel; the sticker grip entry is gone.
+    // One media button opens the panel; the sticker grip entry is gone.
     expect(find.byIcon(HeroAppIcons.grip.data), findsNothing);
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mediaKindSegments')), findsOneWidget);
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelTabs')), findsOneWidget);
     expect(panelGeometryChanges, 1);
 
-    // Switch to the sticker segment: the unified scroll jumps to the sticker
-    // section and the seeded recent sticker is reachable.
+    // Switch to the sticker segment: the sticker panel with its pack strip
+    // replaces the emoji panel and the seeded recent sticker is reachable.
     final search = find.byKey(const ValueKey('composerMediaSearch'));
     expect(search, findsNothing);
     expect(find.byIcon(HeroAppIcons.palette.data), findsNothing);
     await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-sticker')),
       findsOneWidget,
@@ -161,12 +160,14 @@ void main() {
 
     // Reopening keeps the last-used (sticker) segment; switch it to GIF.
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('mediaSegmentSelected-sticker')),
+      findsOneWidget,
+    );
     expect(panelGeometryChanges, 3);
     await tester.tap(find.byKey(const ValueKey('mediaSegment-gif')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-gif')),
       findsOneWidget,
@@ -186,14 +187,13 @@ void main() {
     expect(panelWasClosedBeforeSendCallback, isTrue);
     expect(panelGeometryChanges, 4);
 
-    // Reopen and switch to the emoji segment; the search button surfaces the
-    // panel search overlay in place of the unified scroll.
+    // Reopen (on the gif segment it last used) and switch to emoji; the
+    // search button surfaces the panel search overlay in place of the panel.
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(panelGeometryChanges, 5);
     await tester.tap(find.byKey(const ValueKey('mediaSegment-emoji')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-emoji')),
       findsOneWidget,
@@ -203,16 +203,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('mediaPanelSearchButton')));
     await tester.pump();
     expect(search, findsOneWidget);
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsNothing);
+    expect(find.byKey(const ValueKey('emojiPanelScroll')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('mediaPanelSearchButton')));
     await tester.pump();
     await tester.pump();
     expect(search, findsNothing);
-    expect(find.byKey(const ValueKey('mediaUnifiedScroll')), findsOneWidget);
+    expect(find.byKey(const ValueKey('emojiPanelScroll')), findsOneWidget);
 
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('mediaKindSegments')), findsNothing);
     expect(panelGeometryChanges, 6);
   });

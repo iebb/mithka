@@ -11,6 +11,8 @@
 //  composer.
 //
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
@@ -84,6 +86,41 @@ const Color _destructive = Color(0xFFFF6961);
 /// Row lead-in for the dividers: 16px padding + 20px icon + 12px gap.
 const double _rowDividerInset = 48;
 
+/// The header preview renders the tile at its natural aspect ratio at the
+/// size the composer grid shows it, so a static or animated sticker reads
+/// full-size instead of as a 44px thumbnail. Tiles carry no reliable pixel
+/// dimensions in every format, so the box clamps to a sane maximum.
+const double _headerPreviewMaxExtent = 160;
+const double _headerPreviewMinExtent = 44;
+
+/// A header box sized from the item's declared dimensions, clamped to the
+/// sheet's sane maximum. Falls back to a square min-extent box when the item
+/// reports nothing usable.
+BoxConstraints _headerPreviewConstraints({double? width, double? height}) {
+  double? w = width;
+  double? h = height;
+  if (w != null && w <= 0) w = null;
+  if (h != null && h <= 0) h = null;
+  if (w == null && h == null) {
+    return const BoxConstraints.tightFor(
+      width: _headerPreviewMinExtent,
+      height: _headerPreviewMinExtent,
+    );
+  }
+  // Scale the longer side down to the cap and keep the aspect ratio.
+  if (w != null && h != null) {
+    final scale = _headerPreviewMaxExtent / math.max(w, h);
+    w = math.min(w * scale, _headerPreviewMaxExtent);
+    h = math.min(h * scale, _headerPreviewMaxExtent);
+    return BoxConstraints.tightFor(width: w, height: h);
+  }
+  final known = w ?? h!;
+  final scaled = math
+      .min(known, _headerPreviewMaxExtent)
+      .clamp(_headerPreviewMinExtent, _headerPreviewMaxExtent);
+  return BoxConstraints.tightFor(width: scaled, height: scaled);
+}
+
 /// Opens the long-press action sheet for a sticker or GIF tile.
 Future<void> showMediaTileActionSheet(
   BuildContext context,
@@ -96,6 +133,12 @@ Future<void> showMediaTileActionSheet(
     backgroundColor: Colors.transparent,
     builder: (context) {
       final c = context.colors;
+      final sticker = descriptor.sticker;
+      final gif = descriptor.gif;
+      final constraints = _headerPreviewConstraints(
+        width: (sticker?.width ?? gif?.width)?.toDouble(),
+        height: (sticker?.height ?? gif?.height)?.toDouble(),
+      );
       return SafeArea(
         child: Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -110,12 +153,14 @@ Future<void> showMediaTileActionSheet(
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Center(
-                  child: SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: descriptor.kind == MediaTileKind.sticker
-                        ? StickerPreview(item: descriptor.sticker!)
-                        : GifPreview(item: descriptor.gif!),
+                  child: ConstrainedBox(
+                    constraints: constraints,
+                    child: KeyedSubtree(
+                      key: const ValueKey('mediaTileHeaderPreview'),
+                      child: descriptor.kind == MediaTileKind.sticker
+                          ? StickerPreview(item: sticker!)
+                          : GifPreview(item: gif!),
+                    ),
                   ),
                 ),
               ),

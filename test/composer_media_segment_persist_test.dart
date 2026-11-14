@@ -136,33 +136,151 @@ void main() {
     );
     await tester.pump();
 
-    // The panel reopens on the restored gif segment: the gif section is where
-    // the unified scroll starts and the gif segment is selected.
     await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    // The panel reopens on the restored gif segment: the gif tab strip is
+    // showing and the gif segment is selected.
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-gif')),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('mediaSection-gif')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gifPanelTabs')), findsOneWidget);
     expect(changed, isEmpty);
 
-    // Switching to the sticker segment reports it and scrolls to the sticker
-    // section of the unified surface.
+    // Switching to the sticker segment reports it and swaps the panel for the
+    // sticker tab strip — no scrolling between kinds anymore.
     await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(changed, ['sticker']);
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-sticker')),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('stickerPanelTabs')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('mediaSegmentSelected-gif')),
       findsNothing,
     );
   });
+
+  testWidgets(
+    'opening on a restored gif segment still holds gif after extra frames',
+    (tester) async {
+      final changed = <String>[];
+      final vm = ChatViewModel(chatId: 1, title: 'Test', markReadOnOpen: false);
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            platform: TargetPlatform.android,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                quickRepliesEnabled: false,
+                initialMediaKind: 'gif',
+                onMediaKindChanged: changed.add,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+        findsOneWidget,
+      );
+
+      // The initial-anchor jump settles over several frames; the scroll-follow
+      // logic must not interpret that settling as the user scrolling back up
+      // and rewrite the persisted segment to emoji.
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.byKey(const ValueKey('mediaSegmentSelected-gif')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('mediaSegmentSelected-emoji')),
+        findsNothing,
+      );
+      expect(changed, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'opening on a restored sticker segment still holds sticker after settle',
+    (tester) async {
+      final changed = <String>[];
+      final vm = ChatViewModel(chatId: 1, title: 'Test', markReadOnOpen: false);
+      addTearDown(vm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            platform: TargetPlatform.android,
+            extensions: [AppColors.light],
+          ),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: ChatInputBar(
+                vm: vm,
+                quickRepliesEnabled: false,
+                initialMediaKind: 'sticker',
+                onMediaKindChanged: changed.add,
+                onStartCall: (_) {},
+                onMessageSent: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+      await tester.pumpAndSettle();
+
+      // The initial-anchor jump clamps to maxScrollExtent when the sticker
+      // section is short; the scroll-follow must not read that programmatic
+      // jump as the user scrolling and rewrite the persisted segment.
+      expect(
+        find.byKey(const ValueKey('mediaSegmentSelected-sticker')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('mediaSegmentSelected-emoji')),
+        findsNothing,
+      );
+      expect(changed, isEmpty);
+    },
+  );
 }
 
 /// Synthetic tdjson bindings: lets [TdClient.prepareForTesting] register a
