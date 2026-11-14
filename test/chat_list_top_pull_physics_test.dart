@@ -151,11 +151,7 @@ void main() {
       await _pump(
         tester,
         updates,
-        chats: [
-          _chat(1, order: 300),
-          _chat(2, order: 200),
-          _chat(3),
-        ],
+        chats: [_chat(1, order: 300), _chat(2, order: 200), _chat(3)],
       );
       final pixels = await _pullDownFromTop(tester, fingersDown: 200);
       expect(
