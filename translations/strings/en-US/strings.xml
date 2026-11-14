@@ -904,6 +904,7 @@
     <string name="chatDeleteUnavailable">This chat can't be deleted.</string>
     <string name="chatDeletedAccountName">Deleted Account</string>
     <string name="chatEditMessageTitle">Edit Message</string>
+    <string name="chatReplyInAnotherChatTitle">Reply in</string>
     <string name="chatEditPlainText">Plain text</string>
     <string name="chatFirstContactNotContact">Not a contact</string>
     <string name="chatFirstContactNotOfficial">Not an official account</string>
@@ -1389,6 +1390,12 @@
     <string name="composerLongMessageRichTextPrompt">This message exceeds Telegram's 4096-character limit. Send it as one rich message instead? Rich messages support up to 32768 UTF-8 characters.</string>
     <string name="composerLongMessageTitle">Message too long</string>
     <string name="composerMarkdownSupportHint">Markdown supported: **bold**, *italic*, `code`, quotes, and more</string>
+    <string name="composerReplyToName">Reply to {value1}</string>
+    <string name="composerReplyToExternalName">Reply to {value1} (other chat)</string>
+    <string name="composerReplyOptionQuote">Quote part of the message</string>
+    <string name="composerReplyOptionAnotherChat">Reply in another chat</string>
+    <string name="composerReplyOptionCancel">Do not reply</string>
+    <string name="composerReplyOptionsHint">Reply options</string>
     <string name="composerMediaSearch">Search emoji, stickers, or GIFs</string>
     <string name="composerMediaSearchEmpty">No results</string>
     <string name="composerMediaSelectionLimit">Select up to {value1} photos or videos.</string>

@@ -504,6 +504,9 @@ typedef _ComposerVmState = ({
   Object? selectedSender,
   bool canChooseSender,
   bool peerIsBot,
+  int? replyToId,
+  int? replyToChatId,
+  int? replyQuoteRevision,
 });
 
 /// Incoming chat updates are frequent while a user is typing. Rebuilding the
@@ -550,6 +553,8 @@ class ChatInputBar extends StatefulWidget {
     this.initialMediaKind,
     this.onMediaKindChanged,
     this.onBotTopicCreated,
+    this.onReplyOptionsRequested,
+    this.onReplySourceJump,
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
@@ -601,6 +606,14 @@ class ChatInputBar extends StatefulWidget {
   /// segment. Fires only on real changes, never on restore.
   final ValueChanged<String>? onMediaKindChanged;
   final ValueChanged<int>? onBotTopicCreated;
+
+  /// Tapping the reply banner's body asks the host to present the reply
+  /// options sheet (quote selection, reply in another chat). Null leaves the
+  /// banner body inert; hosts that cannot present options keep tap-to-nothing.
+  final VoidCallback? onReplyOptionsRequested;
+
+  /// Long-pressing the reply banner jumps to the original message.
+  final ValueChanged<ChatMessage>? onReplySourceJump;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
   @visibleForTesting
@@ -1441,6 +1454,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     selectedSender: vm.selectedMessageSender,
     canChooseSender: vm.canChooseMessageSender,
     peerIsBot: vm.peerIsBot,
+    replyToId: vm.replyTo?.id,
+    replyToChatId: vm.replyToChatId,
+    replyQuoteRevision: vm.replyQuote?.position,
   );
 
   void _syncFromVm() {
@@ -4797,11 +4813,24 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Widget _replyBanner(ChatMessage m) {
     final c = context.colors;
+    final externalChatId = vm.replyToChatId;
+    final quote = vm.replyQuote;
+    final name = m.isOutgoing
+        ? vm.meName
+        : (m.senderName?.isNotEmpty ?? false)
+        ? m.senderName!
+        : vm.peerTitle;
+    final preview = quote?.text ?? _replyPreview(m);
+    final title = externalChatId == null
+        ? AppStrings.t(AppStringKeys.composerReplyToName, {'value1': name})
+        : AppStrings.t(AppStringKeys.composerReplyToExternalName, {
+            'value1': name,
+          });
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        key: const ValueKey('composerReplyBanner'),
+        height: 46,
         decoration: BoxDecoration(
           color: c.searchFill,
           borderRadius: BorderRadius.circular(AppRadius.control),
@@ -4809,35 +4838,74 @@ class _ChatInputBarState extends State<ChatInputBar>
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                _replyLine(m),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: c.textSecondary),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onReplyOptionsRequested,
+                onLongPress: () => widget.onReplySourceJump?.call(m),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10, right: 8),
+                  child: Row(
+                    children: [
+                      AppIcon(
+                        quote != null
+                            ? HeroAppIcons.quoteLeft
+                            : HeroAppIcons.reply,
+                        size: 17,
+                        color: c.linkBlue,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: c.linkBlue,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
+            AppInteractiveSurface(
+              key: const ValueKey('composerReplyClose'),
+              semanticLabel: AppStringKeys.confirmCancel.l10n(context),
               onTap: () => vm.setReply(null),
-              child: AppIcon(
-                HeroAppIcons.xmark,
-                size: 18,
-                color: c.textTertiary,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 17,
+                  color: c.textTertiary,
+                ),
               ),
             ),
+            const SizedBox(width: 4),
           ],
         ),
       ),
     );
-  }
-
-  String _replyLine(ChatMessage m) {
-    final name = m.isOutgoing
-        ? vm.meName
-        : (m.senderName?.isNotEmpty ?? false)
-        ? m.senderName!
-        : vm.peerTitle;
-    return '$name:${vm.replyQuote?.text ?? _replyPreview(m)}';
   }
 
   String _replyPreview(ChatMessage m) {

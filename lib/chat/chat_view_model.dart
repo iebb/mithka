@@ -670,15 +670,25 @@ class ChatViewModel extends ChangeNotifier {
   ChatMessage? _replyTo;
   MessageTextQuote? _replyQuote;
 
+  /// The chat the pending reply targets. Null means the reply lives in this
+  /// transcript's own chat; a different id marks a cross-chat reply, which
+  /// TDLib only accepts as `inputMessageReplyToExternalMessage`.
+  int? _replyToChatId;
+
   /// Bumped every time the pending reply changes. A send stamps the
   /// revision it captured; when it completes, it only consumes the reply
   /// if the user hasn't picked a different one in the meantime.
   int _replyRevision = 0;
 
   ChatMessage? get replyTo => _replyTo;
+
+  /// The chat the pending reply addresses, when it is not this chat.
+  int? get replyToChatId => _replyToChatId;
+
   set replyTo(ChatMessage? message) {
     _replyTo = message;
     _replyQuote = null;
+    _replyToChatId = null;
     _replyRevision++;
   }
 
@@ -690,8 +700,18 @@ class ChatViewModel extends ChangeNotifier {
 
   Map<String, dynamic>? get replyToInput => replyTo == null
       ? null
-      : {
+      : _replyToChatId == null
+      ? {
           '@type': 'inputMessageReplyToMessage',
+          'message_id': replyTo!.id,
+          if (!isSecretChat && _replyQuote != null)
+            'quote': _replyQuote!.toInputJson(),
+        }
+      : {
+          // A cross-chat reply addresses a message outside this transcript;
+          // the same-chat form would point at an unrelated local id.
+          '@type': 'inputMessageReplyToExternalMessage',
+          'chat_id': _replyToChatId,
           'message_id': replyTo!.id,
           if (!isSecretChat && _replyQuote != null)
             'quote': _replyQuote!.toInputJson(),
@@ -2357,6 +2377,25 @@ class ChatViewModel extends ChangeNotifier {
     }
     replyTo = message;
     if (message != null && !isSecretChat && quote != null) {
+      _replyQuote = quote;
+    }
+    notifyListeners();
+  }
+
+  /// Sets a cross-chat reply: the composer answers in this chat while the
+  /// reply banner addresses [message] from [sourceChatId]. TDLib requires
+  /// these to travel as `inputMessageReplyToExternalMessage`.
+  void setExternalReply(
+    ChatMessage message,
+    int sourceChatId, {
+    MessageTextQuote? quote,
+  }) {
+    if (editingMessage != null) {
+      _restoreComposerAfterMessageEdit(notify: false);
+    }
+    replyTo = message;
+    _replyToChatId = sourceChatId;
+    if (!isSecretChat && quote != null) {
       _replyQuote = quote;
     }
     notifyListeners();
@@ -7223,6 +7262,25 @@ class ChatViewModel extends ChangeNotifier {
       canGetLink: properties.boolean('can_get_link') ?? false,
       canBeReplied: properties.boolean('can_be_replied') ?? false,
     );
+  }
+
+  /// Whether the message can be quoted-replied in a different chat
+  /// (`messageProperties.can_be_replied_in_another_chat`). Secret chats never
+  /// accept an external reply, and a plain sendability check keeps the entry
+  /// hidden where the destination composer could not answer anyway.
+  Future<bool> canReplyInAnotherChat(ChatMessage message) async {
+    if (isSecretChat) return false;
+    if (_usesBotApiBackend) return false;
+    try {
+      final properties = await _client.queryTo({
+        '@type': 'getMessageProperties',
+        'chat_id': message.chatId ?? chatId,
+        'message_id': message.id,
+      }, _accountClientId);
+      return properties.boolean('can_be_replied_in_another_chat') ?? false;
+    } on Object {
+      return false;
+    }
   }
 
   /// The HTTPS link TDLib generated for the message. Returns the raw

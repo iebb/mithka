@@ -586,6 +586,7 @@ class _DesktopUtilityMainBridge with WindowListener {
           messageId: request.messageId,
           accountSlot: registered.accountSlot,
           accountUserId: registered.accountUserId,
+          externalReply: request.externalReply,
         );
         try {
           await MultiWindowManager.current.show();

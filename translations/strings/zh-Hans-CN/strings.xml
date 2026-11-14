@@ -904,6 +904,7 @@
     <string name="chatDeleteUnavailable">无法删除此聊天。</string>
     <string name="chatDeletedAccountName">已注销账号</string>
     <string name="chatEditMessageTitle">编辑消息</string>
+    <string name="chatReplyInAnotherChatTitle">回复到</string>
     <string name="chatEditPlainText">普通文本</string>
     <string name="chatFirstContactNotContact">非联系人</string>
     <string name="chatFirstContactNotOfficial">非官方账号</string>
@@ -1382,6 +1383,12 @@
     <string name="composerLongMessageRichTextPrompt">该消息超过 Telegram 的 4096 字符限制。是否改为发送一条富文本消息？富文本最多支持 32768 个 UTF-8 字符。</string>
     <string name="composerLongMessageTitle">消息过长</string>
     <string name="composerMarkdownSupportHint">支持 Markdown：**粗体**、*斜体*、`代码`、引用等</string>
+    <string name="composerReplyToName">回复 {value1}</string>
+    <string name="composerReplyToExternalName">回复 {value1}（其他聊天）</string>
+    <string name="composerReplyOptionQuote">引用部分消息</string>
+    <string name="composerReplyOptionAnotherChat">在另一个聊天中回复</string>
+    <string name="composerReplyOptionCancel">取消回复</string>
+    <string name="composerReplyOptionsHint">回复选项</string>
     <string name="composerMediaSearch">Search emoji, stickers, or GIFs</string>
     <string name="composerMediaSearchEmpty">No results</string>
     <string name="composerMediaSelectionLimit">最多选择 {value1} 张照片或视频。</string>

@@ -1016,6 +1016,7 @@ abstract final class AppStringKeys {
   static const chatForwardProtected = 'chatForwardProtected';
   static const chatForwardRemoveCaption = 'chatForwardRemoveCaption';
   static const chatForwardRemoveSender = 'chatForwardRemoveSender';
+  static const chatReplyInAnotherChatTitle = 'chatReplyInAnotherChatTitle';
   static const chatForwardRenderMarkdown = 'chatForwardRenderMarkdown';
   static const chatForwardRenderMarkdownPremium =
       'chatForwardRenderMarkdownPremium';
@@ -1399,6 +1400,13 @@ abstract final class AppStringKeys {
       'composerLongMessageRichTextPrompt';
   static const composerLongMessageTitle = 'composerLongMessageTitle';
   static const composerMarkdownSupportHint = 'composerMarkdownSupportHint';
+  static const composerReplyToName = 'composerReplyToName';
+  static const composerReplyToExternalName = 'composerReplyToExternalName';
+  static const composerReplyOptionQuote = 'composerReplyOptionQuote';
+  static const composerReplyOptionAnotherChat =
+      'composerReplyOptionAnotherChat';
+  static const composerReplyOptionCancel = 'composerReplyOptionCancel';
+  static const composerReplyOptionsHint = 'composerReplyOptionsHint';
   static const composerMessageExceedsRichTextLimit =
       'composerMessageExceedsRichTextLimit';
   static const composerMicrophonePermissionRequired =

@@ -589,6 +589,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           messageId: replay.messageId,
           accountUserId: replay.accountUserId,
           accountSlot: replay.accountSlot,
+          externalReply: replay.externalReply,
         );
       });
       return;
@@ -617,6 +618,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             chatId: request.chatId,
             title: request.title,
             initialMessageId: request.messageId,
+            externalReplyHandoff: request.externalReply,
           ),
         ),
       );

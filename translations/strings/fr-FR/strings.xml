@@ -904,6 +904,7 @@
     <string name="chatDeleteUnavailable">Ce chat ne peut pas être supprimé.</string>
     <string name="chatDeletedAccountName">Compte supprimé</string>
     <string name="chatEditMessageTitle">Modifier le message</string>
+    <string name="chatReplyInAnotherChatTitle">Répondre dans</string>
     <string name="chatEditPlainText">Texte simple</string>
     <string name="chatFirstContactNotContact">Pas dans vos contacts</string>
     <string name="chatFirstContactNotOfficial">Compte non officiel</string>
@@ -1389,6 +1390,12 @@
     <string name="composerLongMessageRichTextPrompt">Ce message dépasse la limite Telegram de 4096 caractères. L’envoyer plutôt comme un seul message enrichi ? Les messages enrichis acceptent jusqu’à 32768 caractères UTF-8.</string>
     <string name="composerLongMessageTitle">Message trop long</string>
     <string name="composerMarkdownSupportHint">Markdown pris en charge : **gras**, *italique*, `code`, citations, etc.</string>
+    <string name="composerReplyToName">Répondre à {value1}</string>
+    <string name="composerReplyToExternalName">Répondre à {value1} (autre discussion)</string>
+    <string name="composerReplyOptionQuote">Citer une partie du message</string>
+    <string name="composerReplyOptionAnotherChat">Répondre dans une autre discussion</string>
+    <string name="composerReplyOptionCancel">Ne pas répondre</string>
+    <string name="composerReplyOptionsHint">Options de réponse</string>
     <string name="composerMediaSearch">Search emoji, stickers, or GIFs</string>
     <string name="composerMediaSearchEmpty">No results</string>
     <string name="composerMediaSelectionLimit">Sélectionnez jusqu’à {value1} photos ou vidéos.</string>

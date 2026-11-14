@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
 import '../app/app_navigator.dart';
+import '../app/chat_deep_link_controller.dart';
 import '../app/chat_pane.dart';
 import '../app/desktop_video_window.dart';
 import '../app/ipad_window_chrome.dart';
@@ -110,6 +111,7 @@ import 'chat_unread_progress.dart';
 import 'chat_view_model.dart';
 import 'chat_wallpaper.dart';
 import 'checklist_composer_view.dart';
+import 'composer_reply_options_sheet.dart';
 import 'custom_emoji.dart';
 import 'emoji_store.dart';
 import 'forum_topic_transcript.dart';
@@ -992,6 +994,7 @@ class ChatView extends StatefulWidget {
     this.forumTopicId,
     this.initialMessageId,
     this.seedMessage,
+    this.externalReplyHandoff,
     this.showBackButton = true,
     this.headerHeight = 48,
     this.headerColor,
@@ -1018,6 +1021,11 @@ class ChatView extends StatefulWidget {
   final int? forumTopicId;
   final int? initialMessageId;
   final ChatMessage? seedMessage;
+
+  /// A reply carried over from another chat (see
+  /// `ComposerReplyOptionsSheet`'s reply-in-another-chat entry). The
+  /// composer starts with this cross-chat reply pending.
+  final ExternalReplyHandoff? externalReplyHandoff;
   final bool showBackButton;
 
   /// Minimum toolbar height; accessible title/status text can grow it.
@@ -1627,6 +1635,7 @@ class _ChatViewState extends State<ChatView> {
     _vm.addListener(_onModel);
     _vm.addListener(_publishTopicList);
     _setScrollTarget(widget.initialMessageId);
+    _adoptExternalReplyHandoff();
     _vm.onAppear();
     _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && _viewTickerEnabled && _isAtLoadedBottom(80)) {
@@ -8380,6 +8389,8 @@ class _ChatViewState extends State<ChatView> {
       onInputHeightChanged: _onComposerInputHeightChanged,
       onMediaSendTapped: _onComposerMediaSendTapped,
       onBotTopicCreated: _openTopicTranscript,
+      onReplyOptionsRequested: _showComposerReplyOptions,
+      onReplySourceJump: _jumpToReplySource,
     );
   }
 
@@ -11255,6 +11266,111 @@ class _ChatViewState extends State<ChatView> {
       return;
     }
     _vm.setReply(current, quote: validated);
+  }
+
+  /// Long-pressing the reply banner jumps to the original message. A
+  /// cross-chat reply's source lives outside this transcript, so only a
+  /// same-chat target can be jumped to.
+  void _jumpToReplySource(ChatMessage message) {
+    if (_vm.replyToChatId != null) return;
+    unawaited(_jumpToMessage(message.id));
+  }
+
+  /// Tapping the reply banner opens the reply options sheet: quote a range,
+  /// carry the reply into another chat, or drop it.
+  Future<void> _showComposerReplyOptions() async {
+    final target = _vm.replyTo;
+    if (target == null) return;
+    final canQuote =
+        _vm.canQuoteText &&
+        canQuoteMessageText(target) &&
+        !isDesktopTargetPlatform(Theme.of(context).platform);
+    final canReplyInAnotherChat = await _vm.canReplyInAnotherChat(target);
+    if (!mounted) return;
+    final result = await showAppModalSheet<ComposerReplyOptionsResult>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ComposerReplyOptionsSheet(
+        message: target,
+        canQuote: canQuote,
+        canReplyInAnotherChat: canReplyInAnotherChat,
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result is ComposerReplyOptionsRemove) {
+      _vm.setReply(null);
+      return;
+    }
+    if (composerReplyOptionsWantsQuotePick(result)) {
+      await _quoteMessageText(target);
+      return;
+    }
+    if (composerReplyOptionsWantsAnotherChat(result)) {
+      await _replyInAnotherChat(target);
+      return;
+    }
+  }
+
+  /// Moves the pending reply into a chat picked from the chat list. The
+  /// destination composer receives the reply as a cross-chat reply, so its
+  /// send addresses the source message where it actually lives.
+  Future<void> _replyInAnotherChat(ChatMessage message) async {
+    final result = await Navigator.of(context).push<ChatPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatReplyInAnotherChatTitle,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final targetChat = result.chat;
+    final sourceChatId = _vm.replyToChatId ?? _vm.chatId;
+    if (targetChat.id == sourceChatId) return;
+    // Read the composer draft before navigating: the current view model may
+    // be disposed once the destination transcript opens.
+    final draftText = _vm.composerFormattedDraft;
+    final quote = _vm.replyQuote;
+    ChatDeepLinkController.shared.openChat(
+      chatId: targetChat.id,
+      title: targetChat.title,
+      externalReply: ExternalReplyHandoff(
+        sourceChatId: sourceChatId,
+        message: ChatMessagePayload(
+          id: message.id,
+          isOutgoing: message.isOutgoing,
+          date: message.date,
+          senderName: message.senderName,
+          text: message.text,
+        ),
+        quote: quote,
+        draftText: draftText,
+      ),
+    );
+    _vm.setReply(null);
+  }
+
+  /// Installs a reply carried over from another chat ("reply in another
+  /// chat"): the composer starts with the cross-chat reply pending and the
+  /// draft text typed before the move. Consumed once; a later rebuild of the
+  /// same widget re-runs this against an already-cleared handoff field.
+  void _adoptExternalReplyHandoff() {
+    final handoff = widget.externalReplyHandoff;
+    if (handoff == null) return;
+    if (handoff.sourceChatId == widget.chatId) return;
+    _vm.setExternalReply(
+      ChatMessage(
+        id: handoff.message.id,
+        isOutgoing: handoff.message.isOutgoing,
+        date: handoff.message.date,
+        senderName: handoff.message.senderName,
+        text: handoff.message.text,
+      ),
+      handoff.sourceChatId,
+      quote: handoff.quote as MessageTextQuote?,
+    );
+    if (handoff.draftText.isNotEmpty) {
+      _vm.setDraft(handoff.draftText);
+    }
   }
 
   Future<void> _toggleMessageReaction(

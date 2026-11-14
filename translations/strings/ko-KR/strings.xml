@@ -904,6 +904,7 @@
     <string name="chatDeleteUnavailable">이 채팅은 삭제할 수 없습니다.</string>
     <string name="chatDeletedAccountName">삭제된 계정</string>
     <string name="chatEditMessageTitle">메시지 수정</string>
+    <string name="chatReplyInAnotherChatTitle">답장할 채팅</string>
     <string name="chatEditPlainText">일반 텍스트</string>
     <string name="chatFirstContactNotContact">연락처에 없음</string>
     <string name="chatFirstContactNotOfficial">공식 계정이 아님</string>
@@ -1382,6 +1383,12 @@
     <string name="composerLongMessageRichTextPrompt">이 메시지는 Telegram의 4096자 제한을 초과합니다. 하나의 서식 있는 메시지로 보내시겠습니까? 서식 있는 메시지는 최대 32768 UTF-8자를 지원합니다.</string>
     <string name="composerLongMessageTitle">메시지가 너무 깁니다</string>
     <string name="composerMarkdownSupportHint">Markdown 지원: **굵게**, *기울임*, `코드`, 인용 등</string>
+    <string name="composerReplyToName">{value1}님에게 답장</string>
+    <string name="composerReplyToExternalName">{value1}님에게 답장(다른 채팅)</string>
+    <string name="composerReplyOptionQuote">메시지 일부 인용</string>
+    <string name="composerReplyOptionAnotherChat">다른 채팅에서 답장</string>
+    <string name="composerReplyOptionCancel">답장하지 않음</string>
+    <string name="composerReplyOptionsHint">답장 옵션</string>
     <string name="composerMediaSearch">Search emoji, stickers, or GIFs</string>
     <string name="composerMediaSearchEmpty">No results</string>
     <string name="composerMediaSelectionLimit">사진 또는 동영상은 최대 {value1}개까지 선택할 수 있습니다.</string>
