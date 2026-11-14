@@ -33,6 +33,7 @@ import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/app_press_ripple.dart';
@@ -1697,14 +1698,17 @@ class _ChatListViewState extends State<ChatListView>
     await openLink(context, value, keepTelegramInApp: true);
   }
 
-  /// Opens the folder's command sheet.
+  /// Opens the folder's popup menu.
   ///
-  /// The "All chats" tab has no folder to edit or extend, so it offers only the
-  /// list-wide read and order commands.
-  Future<void> _showFolderMenu(ChatFilterOption filter) async {
+  /// The "All chats" tab has no folder to edit, extend or delete, so it
+  /// offers only the list-wide read and order commands. Every real folder
+  /// gains the destructive delete row exteraless shows at the bottom of the
+  /// same popup.
+  Future<void> _showFolderMenu(ChatFilterOption filter, Rect anchor) async {
     final folderId = filter.folderId;
-    await showChatFolderActionSheet(
+    await showChatFolderPopupMenu(
       context: context,
+      anchor: anchor,
       title: filter.title.l10n(context),
       actions: [
         if (folderId != null)
@@ -1733,8 +1737,73 @@ class _ChatListViewState extends State<ChatListView>
           icon: HeroAppIcons.bars,
           onSelected: () => unawaited(_reorderFolders()),
         ),
+        if (folderId != null)
+          ChatFolderMenuAction(
+            key: 'delete',
+            label: AppStrings.t(AppStringKeys.chatFolderManagementDeleteFolder),
+            icon: HeroAppIcons.trash,
+            destructive: true,
+            onSelected: () => unawaited(_deleteFolder(filter)),
+          ),
       ],
     );
+  }
+
+  /// Deletes a folder after a confirmation, offering to also leave chats
+  /// that exist only inside a shared folder — the same flow the management
+  /// screen's delete button runs.
+  Future<void> _deleteFolder(ChatFilterOption filter) async {
+    final id = filter.folderId;
+    if (id == null) return;
+    final client = TdClient.shared;
+    final clientId = client.activeClientId;
+    final service = ChatFolderService(
+      query: (request) => client.queryTo(request, clientId),
+    );
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.passkeysDeleteMessage, {
+        'value1': filter.title.l10n(context),
+      }),
+      confirmText: AppStringKeys.chatInfoRemove,
+    );
+    if (!confirmed || !mounted || client.activeClientId != clientId) return;
+    try {
+      var leaveChatIds = const <int>[];
+      try {
+        final suggested = await service.chatsToLeave(id);
+        if (suggested.isNotEmpty && mounted) {
+          final leave = await showAppConfirmDialog(
+            context,
+            title: AppStrings.t(
+              suggested.length == 1
+                  ? AppStringKeys.chatFolderManagementAlsoLeaveOneChat
+                  : AppStringKeys.chatFolderManagementAlsoLeaveChats,
+              {'value1': suggested.length},
+            ),
+            confirmText: AppStringKeys.chatInfoLeaveGroup,
+            cancelText: AppStrings.t(
+              AppStringKeys.chatFolderManagementKeepChats,
+            ),
+          );
+          if (leave) leaveChatIds = suggested;
+        }
+      } catch (_) {
+        // Ordinary folders don't have chats suggested for leaving.
+      }
+      if (!mounted || client.activeClientId != clientId) return;
+      await service.delete(id, leaveChatIds: leaveChatIds);
+    } catch (error) {
+      if (mounted) {
+        showToast(
+          context,
+          AppStrings.t(
+            AppStringKeys.chatFolderManagementCouldnTDeleteFolderValue1,
+            {'value1': error},
+          ),
+        );
+      }
+    }
   }
 
   /// Opens the full folder editor and writes the returned draft back.
@@ -1900,6 +1969,16 @@ class _ChatListViewState extends State<ChatListView>
         );
       }
     }
+  }
+
+  /// The pressed folder tab's rect in global coordinates, so its popup menu
+  /// can hang off the tab itself; empty when the tab has no render object
+  /// yet (the menu then refuses to open).
+  Rect _folderTabRect(Key key) {
+    final context = (key as GlobalKey).currentContext;
+    final box = context?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return Rect.zero;
+    return box.localToGlobal(Offset.zero) & box.size;
   }
 
   void _selectFilter(ChatFilterOption filter) {
@@ -2743,7 +2822,17 @@ class _ChatListViewState extends State<ChatListView>
           ),
       },
       onSelect: _selectFilter,
-      onMenu: _showFolderMenu,
+      onMenu: (filter) => unawaited(
+        _showFolderMenu(
+          filter,
+          _folderTabRect(
+            (_foldersInSideRail
+                    ? _sideFolderKeys
+                    : _folderTabKeys)[filter.folderId] ??
+                GlobalKey(),
+          ),
+        ),
+      ),
       keyForFolder: (id) => _sideFolderKeys.putIfAbsent(id, GlobalKey.new),
     ),
   );
@@ -2785,7 +2874,7 @@ class _ChatListViewState extends State<ChatListView>
             key: key,
             behavior: HitTestBehavior.opaque,
             onTap: () => _selectFilter(filter),
-            onLongPress: () => _showFolderMenu(filter),
+            onLongPress: () => _showFolderMenu(filter, _folderTabRect(key)),
             child: SizedBox(
               height: tabHeight,
               child: AnimatedBuilder(

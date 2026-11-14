@@ -96,6 +96,9 @@ CONTENT_RENDER_EXPRESSIONS = {
     # DesktopNavigationAction labels are localized at construction
     # (AppStrings.t in main_tab_view), not at render.
     "action.label",
+    # ChatFolderPopupMenu.title arrives already localized (filter.title.l10n
+    # at the call site in chat_list_view).
+    "widget.title",
 }
 
 # Files whose Han/kana/hangul content is classification DATA, not UI copy:

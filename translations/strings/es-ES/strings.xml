@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">No se pudieron marcar todos los chats como leídos: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">No se pudieron reordenar las carpetas: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">No se pudo actualizar la carpeta: {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">¿Eliminar este enlace de invitación?</string>
+        <string name="chatFolderManagementDeleteFolder">Eliminar carpeta</string>
+<string name="chatFolderManagementDeleteThisInviteLink">¿Eliminar este enlace de invitación?</string>
     <string name="chatFolderManagementEditFolder">Editar carpeta</string>
     <string name="chatFolderManagementEditInviteLink">Editar enlace de invitación</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">Habilite las etiquetas de carpeta antes de elegir un color de carpeta</string>

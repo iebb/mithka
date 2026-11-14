@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">Impossible de marquer toutes les discussions comme lues : {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Impossible de réorganiser les dossiers : {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Impossible de mettre à jour le dossier : {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">Supprimer ce lien d'invitation ?</string>
+        <string name="chatFolderManagementDeleteFolder">Supprimer le dossier</string>
+<string name="chatFolderManagementDeleteThisInviteLink">Supprimer ce lien d'invitation ?</string>
     <string name="chatFolderManagementEditFolder">Modifier le dossier</string>
     <string name="chatFolderManagementEditInviteLink">Modifier le lien d'invitation</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">Activer les balises de dossier avant de choisir une couleur de dossier</string>

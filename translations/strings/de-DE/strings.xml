@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">Chats konnten nicht als gelesen markiert werden: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Ordner konnten nicht neu angeordnet werden: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Ordner konnte nicht aktualisiert werden: {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">Diesen Einladungslink löschen?</string>
+        <string name="chatFolderManagementDeleteFolder">Ordner löschen</string>
+<string name="chatFolderManagementDeleteThisInviteLink">Diesen Einladungslink löschen?</string>
     <string name="chatFolderManagementEditFolder">Ordner bearbeiten</string>
     <string name="chatFolderManagementEditInviteLink">Einladungslink bearbeiten</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">Aktivieren Sie Ordner-Tags, bevor Sie eine Ordnerfarbe auswählen</string>

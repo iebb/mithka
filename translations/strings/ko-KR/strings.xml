@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">모든 채팅을 읽음으로 표시할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">폴더를 재정렬할 수 없습니다: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">폴더를 업데이트할 수 없습니다: {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">이 초대 링크를 삭제하시겠습니까?</string>
+        <string name="chatFolderManagementDeleteFolder">폴더 삭제</string>
+<string name="chatFolderManagementDeleteThisInviteLink">이 초대 링크를 삭제하시겠습니까?</string>
     <string name="chatFolderManagementEditFolder">폴더 편집</string>
     <string name="chatFolderManagementEditInviteLink">초대 링크 편집</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">폴더 색상을 선택하기 전에 폴더 태그를 활성화하세요.</string>

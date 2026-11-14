@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">Couldn’t mark all chats as read: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">Couldn’t reorder folders: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">Couldn’t update folder: {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">Delete this invite link?</string>
+        <string name="chatFolderManagementDeleteFolder">Delete folder</string>
+<string name="chatFolderManagementDeleteThisInviteLink">Delete this invite link?</string>
     <string name="chatFolderManagementEditFolder">Edit folder</string>
     <string name="chatFolderManagementEditInviteLink">Edit invite link</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">Enable folder tags before choosing a folder color</string>

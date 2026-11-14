@@ -6,22 +6,28 @@
 //  same command list for the folder under the pointer.
 //
 
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';
 import '../settings/chat_folder_service.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 
-/// One command in a folder tab's action sheet.
+/// One command in a folder tab's popup menu.
 class ChatFolderMenuAction {
   const ChatFolderMenuAction({
     required this.key,
     required this.label,
     required this.icon,
     required this.onSelected,
+    this.destructive = false,
   });
 
   /// Stable suffix for the row's key, e.g. `edit` or `mark-read`.
@@ -31,90 +37,276 @@ class ChatFolderMenuAction {
   final String label;
   final AppIconData icon;
   final VoidCallback onSelected;
+
+  /// Destructive commands render in the danger color, like exteraless's red
+  /// Delete item in a folder tab's popup.
+  final bool destructive;
 }
 
-/// Shows [actions] for the folder named [title] in a single sheet.
+/// Menu chrome metrics shared with the placement math and tests: rows are
+/// 44px on a compact width that hugs its longest label, with an 8px vertical
+/// inset, mirroring exteraless's ActionBarPopupWindow column.
+const double chatFolderMenuRowHeight = 44;
+const double chatFolderMenuVerticalInset = 8;
+const double chatFolderMenuMinWidth = 196;
+
+@visibleForTesting
+double chatFolderMenuHeightFor(int actionCount) =>
+    chatFolderMenuVerticalInset * 2 +
+    math.max(0, actionCount) * chatFolderMenuRowHeight;
+
+/// Where a menu of [menuSize] opens for a tab at [anchor], staying inside the
+/// viewport: below the tab when it fits, above when it does not, horizontally
+/// clamped with the menu's left edge near the tab like exteraless's
+/// ItemOptions with Gravity.LEFT.
+@visibleForTesting
+Offset chatFolderMenuOriginFor({
+  required Rect anchor,
+  required Size viewport,
+  required Size menuSize,
+  double margin = 8,
+}) {
+  final maxLeft = math.max(margin, viewport.width - menuSize.width - margin);
+  final left = anchor.left.clamp(margin, maxLeft).toDouble();
+  final belowTop = anchor.bottom + margin;
+  final aboveTop = anchor.top - margin - menuSize.height;
+  final double top;
+  if (belowTop + menuSize.height <= viewport.height - margin) {
+    top = belowTop;
+  } else if (aboveTop >= margin) {
+    top = aboveTop;
+  } else {
+    // Neither side fits (menu taller than the viewport): pin it to the top
+    // and let the column clip inside the viewport-sized stack.
+    top = margin;
+  }
+  return Offset(left, top);
+}
+
+/// Shows [actions] for the folder named [title] as a popup anchored to the
+/// folder tab.
 ///
-/// Both the mobile tab strip's long press and the desktop rail's secondary
-/// click call this, so a folder offers the same commands on either surface.
-Future<void> showChatFolderActionSheet({
+/// A long press on a mobile folder tab and a secondary click on the desktop
+/// folder rail open the same command list. The menu hangs off the pressed
+/// tab like exteraless's ItemOptions popup instead of a bottom sheet, so it
+/// reads as acting on that folder.
+Future<void> showChatFolderPopupMenu({
   required BuildContext context,
+  required Rect anchor,
   required String title,
   required List<ChatFolderMenuAction> actions,
 }) {
   if (actions.isEmpty) return Future<void>.value();
-  return showAppModalSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (sheetContext) {
-      final c = sheetContext.colors;
-      return SafeArea(
-        child: Container(
-          key: const ValueKey('chat-folder-action-sheet'),
-          margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          decoration: BoxDecoration(
-            color: c.card,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              for (final action in actions) _ChatFolderMenuRow(action: action),
-            ],
-          ),
-        ),
-      );
+  final overlay = Overlay.of(context, rootOverlay: true);
+  final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+  if (overlayBox == null || !overlayBox.hasSize) {
+    return Future<void>.value();
+  }
+  final anchorInOverlay = Rect.fromPoints(
+    overlayBox.globalToLocal(anchor.topLeft),
+    overlayBox.globalToLocal(anchor.bottomRight),
+  );
+  final completer = Completer<void>();
+  var removed = false;
+  void removeEntry(OverlayEntry? entry) {
+    if (removed) return;
+    removed = true;
+    entry?.remove();
+  }
+
+  late final ChatFolderPopupMenu menu;
+  menu = ChatFolderPopupMenu(
+    anchor: anchorInOverlay,
+    title: title,
+    actions: actions,
+    onDismissed: () {
+      removeEntry(menu.entry);
+      completer.complete();
     },
   );
+  final entry = OverlayEntry(builder: (_) => menu);
+  menu.entry = entry;
+  overlay.insert(entry);
+  return completer.future;
 }
 
-class _ChatFolderMenuRow extends StatelessWidget {
-  const _ChatFolderMenuRow({required this.action});
+/// An app-owned anchored popup: a barrier that eats taps and Escape, one
+/// compact menu card, and rows that pop the menu before invoking their
+/// command.
+// The mutable `entry` link is assigned by the factory right after
+// construction, so this widget deliberately forgoes @immutable.
+// ignore: must_be_immutable
+class ChatFolderPopupMenu extends StatefulWidget {
+  ChatFolderPopupMenu({
+    super.key,
+    required this.anchor,
+    required this.title,
+    required this.actions,
+    required this.onDismissed,
+  });
 
-  final ChatFolderMenuAction action;
+  /// The pressed tab's rect in the enclosing overlay's coordinates.
+  final Rect anchor;
+  final String title;
+  final List<ChatFolderMenuAction> actions;
+  final VoidCallback onDismissed;
+
+  /// The overlay entry this menu renders inside; assigned by
+  /// [showChatFolderPopupMenu] so a dismissal can remove it exactly once.
+  OverlayEntry? entry;
+
+  @override
+  State<ChatFolderPopupMenu> createState() => _ChatFolderPopupMenuState();
+}
+
+class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
+  final FocusNode _menuFocus = FocusNode(debugLabel: 'Chat folder popup menu');
+
+  bool _open = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _menuFocus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Torn down with the menu still open (its host route disappeared):
+    // report the dismissal so the caller's future completes.
+    if (_open) widget.onDismissed();
+    _menuFocus.dispose();
+    super.dispose();
+  }
+
+  void dismiss() {
+    if (!mounted || !_open) return;
+    _open = false;
+    widget.onDismissed();
+  }
+
+  void _select(ChatFolderMenuAction action) {
+    final invoke = action.onSelected;
+    dismiss();
+    invoke();
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Semantics(
-      button: true,
-      label: action.label,
-      child: GestureDetector(
-        key: ValueKey('chat-folder-action-${action.key}'),
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          Navigator.of(context).pop();
-          action.onSelected();
-        },
-        child: Container(
-          height: 50,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport = Size(constraints.maxWidth, constraints.maxHeight);
+        final menuSize = Size(
+          chatFolderMenuMinWidth,
+          chatFolderMenuHeightFor(widget.actions.length),
+        );
+        final origin = chatFolderMenuOriginFor(
+          anchor: widget.anchor,
+          viewport: viewport,
+          menuSize: menuSize,
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            GestureDetector(
+              key: const ValueKey('chat-folder-action-barrier'),
+              behavior: HitTestBehavior.opaque,
+              onTap: dismiss,
+              onSecondaryTap: dismiss,
+              child: const ColoredBox(color: Colors.transparent),
+            ),
+            Positioned(
+              left: origin.dx,
+              top: origin.dy,
+              child: CallbackShortcuts(
+                bindings: <ShortcutActivator, VoidCallback>{
+                  const SingleActivator(LogicalKeyboardKey.escape): dismiss,
+                },
+                child: FocusTraversalGroup(
+                  child: Focus(
+                    focusNode: _menuFocus,
+                    child: Container(
+                      key: const ValueKey('chat-folder-action-menu'),
+                      width: menuSize.width,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: chatFolderMenuVerticalInset,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.card,
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        border: Border.all(color: c.divider, width: 0.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                            child: Text(
+                              widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ),
+                          for (final action in widget.actions)
+                            _ChatFolderMenuRow(
+                              action: action,
+                              onTap: () => _select(action),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ChatFolderMenuRow extends StatelessWidget {
+  const _ChatFolderMenuRow({required this.action, required this.onTap});
+
+  final ChatFolderMenuAction action;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final foreground = action.destructive
+        ? const Color(0xFFFF6961)
+        : c.textPrimary;
+    return AppInteractiveSurface(
+      key: ValueKey('chat-folder-action-${action.key}'),
+      semanticLabel: action.label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: SizedBox(
+        height: chatFolderMenuRowHeight - chatFolderMenuVerticalInset,
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: c.divider, width: 0.5)),
-          ),
           child: Row(
             children: [
-              AppIcon(action.icon, size: 19, color: c.textPrimary),
+              AppIcon(action.icon, size: 19, color: foreground),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -124,7 +316,7 @@ class _ChatFolderMenuRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
+                    color: foreground,
                   ),
                 ),
               ),

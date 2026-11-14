@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">無法將所有聊天標為已讀：{value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">無法重新排序資料夾：{value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">無法更新資料夾：{value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">刪除此邀請連結嗎？</string>
+        <string name="chatFolderManagementDeleteFolder">刪除資料夾</string>
+<string name="chatFolderManagementDeleteThisInviteLink">刪除此邀請連結嗎？</string>
     <string name="chatFolderManagementEditFolder">編輯資料夾</string>
     <string name="chatFolderManagementEditInviteLink">編輯邀請連結</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">在選擇資料夾顏色之前啟用資料夾標籤</string>

@@ -3867,6 +3867,8 @@ abstract final class AppStringKeys {
   static const chatAdministratorEditTransferOwnership =
       'chatAdministratorEditTransferOwnership';
   static const chatFolderManagementAllChats = 'chatFolderManagementAllChats';
+  static const chatFolderManagementDeleteFolder =
+      'chatFolderManagementDeleteFolder';
   static const chatFolderManagementDeleteThisInviteLink =
       'chatFolderManagementDeleteThisInviteLink';
   static const chatFolderManagementFolderInviteLinks =

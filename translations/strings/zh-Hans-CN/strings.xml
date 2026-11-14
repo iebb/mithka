@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">无法将所有聊天标为已读：{value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">无法重新排序文件夹：{value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">无法更新文件夹：{value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">删除此邀请链接吗？</string>
+        <string name="chatFolderManagementDeleteFolder">删除文件夹</string>
+<string name="chatFolderManagementDeleteThisInviteLink">删除此邀请链接吗？</string>
     <string name="chatFolderManagementEditFolder">编辑文件夹</string>
     <string name="chatFolderManagementEditInviteLink">编辑邀请链接</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">在选择文件夹颜色之前启用文件夹标签</string>

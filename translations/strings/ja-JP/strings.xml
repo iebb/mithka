@@ -927,7 +927,8 @@
     <string name="chatFolderManagementCouldnTMarkAllReadValue1">すべてのチャットを既読にできませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTReorderFoldersValue1">フォルダーを並べ替えられませんでした: {value1}</string>
     <string name="chatFolderManagementCouldnTUpdateFolderValue1">フォルダーを更新できませんでした: {value1}</string>
-    <string name="chatFolderManagementDeleteThisInviteLink">この招待リンクを削除しますか?</string>
+        <string name="chatFolderManagementDeleteFolder">フォルダを削除</string>
+<string name="chatFolderManagementDeleteThisInviteLink">この招待リンクを削除しますか?</string>
     <string name="chatFolderManagementEditFolder">フォルダーを編集</string>
     <string name="chatFolderManagementEditInviteLink">招待リンクを編集</string>
     <string name="chatFolderManagementEnableFolderTagsBeforeChoosingAFolderColor">フォルダーの色を選択する前にフォルダー タグを有効にしてください</string>
