@@ -180,6 +180,7 @@ class AppDelegate: FlutterAppDelegate {
   private var retainedMainWindow: MainFlutterWindow?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
+    startAirCrashReportsIfAvailable()
     // Flutter's macOS engine tracks right-Control with device bit 0x200, but
     // AppKit reports NX_DEVICERCTLKEYMASK = 0x2000, so the engine never sees
     // the key go down and right-Ctrl shortcuts (e.g. Ctrl+Enter to send) only
@@ -193,6 +194,19 @@ class AppDelegate: FlutterAppDelegate {
     }
     _ = resolveMainWindow()
     installStatusItem()
+  }
+
+  /// AirFeedback crash reports (MetricKit). The key is AirFeedback's public
+  /// ingest key: it can only submit reports.
+  private func startAirCrashReportsIfAvailable() {
+    // Application-hosted native tests never start the app's services.
+    guard !MainFlutterWindow.isNativeTestHost() else { return }
+    guard #available(macOS 13.0, *) else { return }
+    AirCrashReports.start(
+      apiKey: "ak_production_Knmbmr-NVDAz2VycHPJpjcU06Cr73h9T-6qdA9PrW70",
+      endpoint: "https://apps.air.build/v1/ingest/crashes",
+      teamID: "7P8CLHDH5G"
+    )
   }
 
   private func resolveMainWindow() -> MainFlutterWindow? {
