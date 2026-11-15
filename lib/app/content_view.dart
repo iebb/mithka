@@ -24,6 +24,7 @@ import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'active_conversation.dart';
@@ -37,12 +38,53 @@ import 'main_tab_view.dart';
 Key desktopPrimaryWindowIdentityKey(int accountSlot, int? accountUserId) =>
     ValueKey(('desktop-primary-window', accountSlot, accountUserId));
 
-class ContentView extends StatelessWidget {
+/// Pure decision logic for the auth gate's surface switch, extracted so the
+/// animation contract is unit-testable without the full provider tree.
+abstract final class AuthGateTracker {
+  /// Whether [step] maps to the login surface (anything that is neither the
+  /// ready sidebar, the cold-start splash, nor the logout interstitial).
+  static bool sawLoginSurface(AuthStep step) =>
+      step is! AuthReady &&
+      step is! AuthInitializing &&
+      step is! AuthLoggingOut;
+
+  /// Whether the gate animates the transition onto [step]: every departure
+  /// from a non-ready surface crossfades, EXCEPT a cold start landing on the
+  /// sidebar straight from the splash — that first main build stays a jump
+  /// cut because animating it rasterises the launch's most expensive frame.
+  /// A login → ready hand-off (login WAS on screen) always animates.
+  static bool animates(AuthStep step, {required bool seenLoginSurface}) {
+    if (step is! AuthReady) return true;
+    return seenLoginSurface;
+  }
+}
+
+bool gateAnimatesHandOff(
+  AuthStep step, {
+  required bool seenLoginSurface,
+}) => AuthGateTracker.animates(step, seenLoginSurface: seenLoginSurface);
+
+class ContentView extends StatefulWidget {
   const ContentView({super.key});
+
+  @override
+  State<ContentView> createState() => _ContentViewState();
+}
+
+class _ContentViewState extends State<ContentView> {
+  bool _seenLoginSurface = false;
 
   @override
   Widget build(BuildContext context) {
     final step = context.watch<AuthManager>().step;
+    // Only a login → main hand-off earns the crossfade: a login-family step
+    // was on screen and then auth completed. A cold start goes splash → main
+    // without ever showing login, keeping its deliberate jump cut.
+    final animated = gateAnimatesHandOff(
+      step,
+      seenLoginSurface: _seenLoginSurface,
+    );
+    _seenLoginSurface = AuthGateTracker.sawLoginSurface(step);
     final Widget child = switch (step) {
       AuthReady() => const MainTabView(),
       // A real cold start (and a logout) paints the splash. AuthReloading is a
@@ -51,14 +93,21 @@ class ContentView extends StatelessWidget {
       AuthInitializing() || AuthLoggingOut() => const SplashView(),
       _ => const LoginView(),
     };
-    // Entering MainTabView is the one edge where the crossfade lands on the
-    // frames that inflate the tab stack and the first chat rows; wrapping that
-    // in a full-viewport opacity layer for 250 ms is the most expensive
-    // rasterisation of the launch. Splash <-> login still crossfades.
+    // A cold start lands on MainTabView while the launch rasterises its first
+    // frames; wrapping that in a full-viewport opacity layer for 250 ms is the
+    // most expensive rasterisation of the launch, so it stays a jump cut. The
+    // login ⇄ sidebar edge is a user-paced switch (login completing, logout,
+    // account add) with no first-frame cost: there the surfaces crossfade so
+    // the hand-off does not feel like a hard cut.
+
     final content = AnimatedSwitcher(
-      duration: child is MainTabView
-          ? Duration.zero
-          : const Duration(milliseconds: 250),
+      duration: animated
+          ? AppMotion.duration(context, AppMotion.deliberate)
+          : Duration.zero,
+      switchInCurve: AppMotion.standard,
+      switchOutCurve: AppMotion.standard,
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
       child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
     );
     return content;
