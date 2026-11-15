@@ -61,6 +61,7 @@ ChatMessage _replyTarget() => ChatMessage(
   senderName: 'Alice',
   text: 'Original message body',
   date: 1,
+  contentType: 'messageText',
 );
 
 const _bannerKey = ValueKey('composerReplyBanner');
@@ -218,6 +219,85 @@ void main() {
       find.byKey(const ValueKey('composerReplyOptionsPreview')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('opening with a quote highlights the quoted range', (
+    tester,
+  ) async {
+    // Reference parity: the preview re-selects quoteStart..quoteEnd so the
+    // quoted part of the message is visibly marked.
+    const quote = MessageTextQuote(text: 'message body', position: 9);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: ComposerReplyOptionsSheet(
+            message: _replyTarget(), // 'Original message body'
+            canQuote: true,
+            canReplyInAnotherChat: false,
+            quoteLengthLimit: 100,
+            initialQuote: quote,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('composerReplyOptionsPreview')),
+    );
+    final controller = field.controller!;
+    expect(controller.selection.start, 9);
+    expect(controller.selection.end, 9 + 'message body'.length);
+
+    // And the panel is in quote mode with the range marked.
+    expect(find.text('Update Quote'), findsOneWidget);
+  });
+
+  testWidgets('quote row with no selection selects the full text', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: ComposerReplyOptionsSheet(
+            message: _replyTarget(),
+            canQuote: true,
+            canReplyInAnotherChat: false,
+            quoteLengthLimit: 100,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('composerReplyOptionQuote')));
+    await tester.pump();
+    // Full text auto-selected as the quote and the header flipped.
+    expect(find.text('Update Quote'), findsOneWidget);
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('composerReplyOptionsPreview')),
+    );
+    final controller = field.controller!;
+    expect(controller.selection.start, 0);
+    expect(controller.selection.end, 'Original message body'.length);
   });
 
   testWidgets('quote toggle clears an existing quote', (tester) async {
