@@ -335,6 +335,20 @@ class MainActivity : FlutterFragmentActivity() {
                             else -> result.error("invalid_icon", "Unknown app icon", null)
                         }
                     }
+                    "clearTaskAfterIconSwitch" -> {
+                        // The task record in recents is rooted at the alias this
+                        // switch just disabled. The next launcher tap would try
+                        // to resume that dead record once and die — the classic
+                        // one-time crash after changing the icon. Removing the
+                        // task now forces a clean cold start through the newly
+                        // enabled alias instead. The process follows it out.
+                        try {
+                            finishAndRemoveTask()
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
