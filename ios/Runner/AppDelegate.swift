@@ -473,24 +473,11 @@ enum VideoNoteExportError: Error, Sendable {
         result(FlutterMethodNotImplemented)
         return
       }
-      let pasteboard = UIPasteboard.general
-      if let data = pasteboard.data(forPasteboardType: "com.compuserve.gif") {
-        result(["mimeType": "image/gif", "data": FlutterStandardTypedData(bytes: data)])
+      guard let image = KeyboardImagePasteBridge.pasteboardImage() else {
+        result(nil)
         return
       }
-      if let data = pasteboard.data(forPasteboardType: "public.png") {
-        result(["mimeType": "image/png", "data": FlutterStandardTypedData(bytes: data)])
-        return
-      }
-      if let data = pasteboard.data(forPasteboardType: "public.jpeg") {
-        result(["mimeType": "image/jpeg", "data": FlutterStandardTypedData(bytes: data)])
-        return
-      }
-      if let image = pasteboard.image, let data = image.pngData() {
-        result(["mimeType": "image/png", "data": FlutterStandardTypedData(bytes: data)])
-        return
-      }
-      result(nil)
+      result(["mimeType": image.mimeType, "data": FlutterStandardTypedData(bytes: image.data)])
     }
     let mediaEditorChannel = FlutterMethodChannel(
       name: "mithka/media_editor",
@@ -636,6 +623,7 @@ enum VideoNoteExportError: Error, Sendable {
     mediaDropBridge = MediaDropBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
+    KeyboardImagePasteBridge.install(messenger: engineBridge.applicationRegistrar.messenger())
 
     let fontsChannel = FlutterMethodChannel(
       name: "mithka/fonts",
