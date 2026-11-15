@@ -604,12 +604,22 @@ ArchivedChatsDisplayMode effectiveChatListArchiveDisplayMode(
 /// `hasHiddenArchive()`: the elasticity is a property of the interaction being
 /// available, not of the list.
 ///
-/// The two branches use different physics *types* on purpose: Scrollable only
+/// While a folder swipe drag is steering the pager [folderDragActive] the list
+/// is not draggable at all, so a vertical scroll already in flight is cancelled
+/// instead of stacking on top of the horizontal folder travel — the Flutter
+/// counterpart of the reference client calling
+/// requestDisallowInterceptTouchEvent from its pager.
+///
+/// The branches use different physics *types* on purpose: Scrollable only
 /// rebuilds its ScrollPosition when the physics type chain changes, so a
 /// same-type physics whose flag flipped would keep driving the position with
 /// the stale instance.
-ScrollPhysics _chatListScrollPhysics(bool pullDownArchiveSlot) =>
-    pullDownArchiveSlot
+ScrollPhysics _chatListScrollPhysics(
+  bool pullDownArchiveSlot, {
+  bool folderDragActive = false,
+}) => folderDragActive
+    ? const NeverScrollableScrollPhysics()
+    : pullDownArchiveSlot
     ? const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics())
     : const AlwaysScrollableScrollPhysics();
 
@@ -627,11 +637,16 @@ bool chatListShouldRevealPullDownArchive({
 }) => pullOffset >= rowHeight * 0.45;
 
 /// Whether forward scrolling has moved far enough to hide the archive row.
+/// The row collapses only after it has fully scrolled out from under the
+/// pinned search row — not at half travel — so scrolling up dismisses the
+/// archive row first and the search row only follows afterwards, like the
+/// reference client.
 bool chatListShouldHidePullDownArchive({
   required double scrollPixels,
   required double minScrollExtent,
   required double rowHeight,
-}) => scrollPixels - minScrollExtent > rowHeight * 0.5;
+  required double archiveExtent,
+}) => scrollPixels - minScrollExtent > archiveExtent;
 
 /// Keeps leading pull-down content visually fixed while the surrounding list
 /// uses bouncing scroll physics.
@@ -641,11 +656,21 @@ class ChatListTopOverscrollPin extends StatelessWidget {
     required this.controller,
     required this.child,
     this.enabled = true,
+    this.holdExtent = 0,
   });
 
   final ScrollController controller;
   final Widget child;
   final bool enabled;
+
+  /// How far the pinned row keeps cancelling forward (upward) scroll travel
+  /// before it starts following the content. While the leading rows that
+  /// precede real content — the pull-down archive row, when revealed — scroll
+  /// out underneath it, the pinned row stays put; only once they are gone does
+  /// it scroll away with the rest of the list. This mirrors the reference
+  /// client, where the archive row disappears under the search bar first and
+  /// the bar itself only folds after that.
+  final double holdExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -656,16 +681,23 @@ class ChatListTopOverscrollPin extends StatelessWidget {
       builder: (context, child) {
         final positions = controller.positions;
         final position = positions.length == 1 ? positions.single : null;
-        final pullOffset = position != null && position.hasContentDimensions
-            ? chatListTopOverscrollOffset(
-                position.pixels,
-                minScrollExtent: position.minScrollExtent,
-              )
-            : 0.0;
-        return Transform.translate(
-          offset: Offset(0, -pullOffset),
-          child: child,
-        );
+        double pinDy = 0;
+        if (position != null && position.hasContentDimensions) {
+          // Downward overscroll pushes the row down with the viewport; the pin
+          // cancels it. Forward travel (scrolling the top edge away) first
+          // consumes [holdExtent]: the row stays put while the rows beneath
+          // scroll out from under it, then follows the content.
+          final overscroll = chatListTopOverscrollOffset(
+            position.pixels,
+            minScrollExtent: position.minScrollExtent,
+          );
+          final forward = math.max(
+            position.pixels - position.minScrollExtent,
+            0.0,
+          );
+          pinDy = -overscroll + math.min(forward, holdExtent);
+        }
+        return Transform.translate(offset: Offset(0, pinDy), child: child);
       },
     );
   }
@@ -1360,6 +1392,7 @@ class _ChatListViewState extends State<ChatListView>
             scrollPixels: position.pixels,
             minScrollExtent: position.minScrollExtent,
             rowHeight: rowHeight,
+            archiveExtent: _archiveExtent(),
           )) {
         setState(() => _archiveRevealed = false);
       }
@@ -2521,6 +2554,12 @@ class _ChatListViewState extends State<ChatListView>
     }
     _folderDragActive = true;
     _folderDragHandled = true;
+    // Once the folder drag owns this contact the list must stop scrolling in
+    // the same gesture: the reference client cancels the list's scroll via
+    // requestDisallowInterceptTouchEvent, and here swapping to
+    // non-draggable physics makes the Scrollable drop its gesture recognizers
+    // and cancel any drag already in flight.
+    setState(() {});
     // Start from where the gesture was recognised so the list does not jump by
     // the activation distance.
     _folderDragOrigin = travel.dx;
@@ -2565,11 +2604,13 @@ class _ChatListViewState extends State<ChatListView>
     _folderDragActive = false;
     _folderDragVelocity = null;
     _folderSettleTarget = null;
+    setState(() {});
     _startFolderSettle(to: 0, velocity: 0);
   }
 
   void _releaseFolderDrag({required bool canceled}) {
     _folderDragActive = false;
+    setState(() {});
     final velocity =
         _folderDragVelocity?.getVelocity().pixelsPerSecond.dx ?? 0.0;
     _folderDragVelocity = null;
@@ -3563,7 +3604,10 @@ class _ChatListViewState extends State<ChatListView>
               controller: _scrollController,
               // Pull-down Archive depends on negative scroll extents, so the
               // elastic top overscroll exists only while the slot does.
-              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
+              physics: _chatListScrollPhysics(
+                hasPullDownArchiveSlot,
+                folderDragActive: _folderDragActive,
+              ),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               itemCount:
                   visibleRows +
@@ -3589,7 +3633,10 @@ class _ChatListViewState extends State<ChatListView>
           } else if (entries.isEmpty && !showInlineArchive && !hasFiltered) {
             list = ListView(
               controller: _scrollController,
-              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
+              physics: _chatListScrollPhysics(
+                hasPullDownArchiveSlot,
+                folderDragActive: _folderDragActive,
+              ),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               children: [
                 if (showLeadingControls) _pinnedSearchPill(),
@@ -3613,7 +3660,10 @@ class _ChatListViewState extends State<ChatListView>
           } else {
             list = ListView.builder(
               controller: _scrollController,
-              physics: _chatListScrollPhysics(hasPullDownArchiveSlot),
+              physics: _chatListScrollPhysics(
+                hasPullDownArchiveSlot,
+                folderDragActive: _folderDragActive,
+              ),
               padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
               itemCount:
                   (showLeadingControls ? 1 : 0) +
@@ -3714,8 +3764,20 @@ class _ChatListViewState extends State<ChatListView>
   /// cancels that travel so the row stays under the folder strip and the rows
   /// below are what stretch.
   Widget _pinnedSearchPill() {
+    final archiveMode = effectiveChatListArchiveDisplayMode(
+      context.read<ThemeController>().archivedChatsDisplayMode,
+    );
+    final archiveHeld =
+        _model.isAllFilter &&
+        _model.archived.isNotEmpty &&
+        archiveMode == ArchivedChatsDisplayMode.pullDown &&
+        _archiveRevealed;
     return ChatListTopOverscrollPin(
       controller: _scrollController,
+      // While a revealed archive row scrolls out underneath the search row,
+      // the search row holds its place; only after the archive row is gone
+      // does it start scrolling away with the rest of the list.
+      holdExtent: archiveHeld ? _archiveExtent() : 0,
       child: _searchPill(),
     );
   }
