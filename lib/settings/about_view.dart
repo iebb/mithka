@@ -100,20 +100,16 @@ class _AboutViewState extends State<AboutView> {
           Center(
             child: Column(
               children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.brandGradient,
-                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                // No tile behind the penguin: the mark is the identity, drawn
+                // large on its own instead of framed in a rounded box.
+                const Image(
+                  image: ResizeImage(
+                    AssetImage('assets/penguin.png'),
+                    width: 288,
                   ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Image(
-                      image: AssetImage('assets/penguin.png'),
-                      fit: BoxFit.contain,
-                    ),
-                  ),
+                  width: 108,
+                  height: 108,
+                  fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 14),
                 Text(
