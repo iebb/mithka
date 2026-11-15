@@ -1629,6 +1629,10 @@ class _ChatListViewState extends State<ChatListView>
     _dismissDesktopPlusMenu();
     setState(() => _showPlusMenu = false);
     switch (label) {
+      case AppStringKeys.topicChatSearch:
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const SearchView()));
       case AppStringKeys.chatListScanQrCode:
         _openQrScanner();
       case AppStringKeys.chatListCreateGroup:
@@ -4762,6 +4766,7 @@ class PlusMenu extends StatelessWidget {
   final bool showCommunities;
 
   static const _baseItems = [
+    (HeroAppIcons.magnifyingGlass, AppStringKeys.topicChatSearch),
     (HeroAppIcons.qrcode, AppStringKeys.chatListScanQrCode),
     (HeroAppIcons.circlePlus, AppStringKeys.chatListCreateGroup),
     (HeroAppIcons.grip, AppStringKeys.chatListCreateChannel),
