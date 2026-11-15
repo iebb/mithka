@@ -26,6 +26,7 @@ import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
+import 'package:mithka/tdlib/td_image_loader.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -59,6 +60,10 @@ class _SpyChatViewModel extends ChatViewModel {
   }
 }
 
+/// The slot setUpAll registers as the active account; file-cache seeds for
+/// StickerPreview must key off it or the preview waits on a real download.
+int _activeSlot = 0;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -88,7 +93,18 @@ void main() {
         },
         'getFavoriteStickers' => {
           '@type': 'stickers',
-          'stickers': <Map<String, dynamic>>[],
+          'stickers': <Map<String, dynamic>>[
+            {
+              '@type': 'sticker',
+              'set_id': 9001,
+              'sticker': {'@type': 'file', 'id': 8001},
+              'format': {'@type': 'stickerFormatWebp'},
+              'width': 128,
+              'height': 128,
+              'emoji': '⭐',
+              'full_type': {'@type': 'stickerFullTypeRegular'},
+            },
+          ],
         },
         _ => {'@type': 'ok'},
       },
@@ -96,10 +112,18 @@ void main() {
     final slot = TdClient.shared.addSlot();
     final clientId = TdClient.shared.clientId(slot);
     TdClient.shared.debugSetActiveAccountForTesting(slot, clientId ?? 0);
+    _activeSlot = slot;
   });
 
   setUp(() async {
     FavoriteStickerStore.shared.resetForTest();
+    // Server-favorite stickers carry real thumb file ids; seeding the file
+    // cache keeps StickerPreview's TDImage load off the download wait timer.
+    TdFileCenter.shared.rememberForTest(
+      _activeSlot,
+      8001,
+      '/tmp/fav-8001.webp',
+    );
     // The switch on + an extras preference makes the favorites section real:
     // server favorites stay empty (the query override answers none) while the
     // locally saved extras render.
@@ -209,6 +233,30 @@ void main() {
       find.byKey(const ValueKey('mediaTileAction-removeFromRecent')),
       findsNothing,
     );
+  });
+
+  testWidgets('opening the sticker panel loads server favorites first', (
+    tester,
+  ) async {
+    // Server favorites arrive through the panel-open load path, exactly the
+    // way exteraless' MediaDataController batches getFavoriteStickers with
+    // its sticker loads: no local extras, switch off — the section must
+    // still render from the server list alone.
+    await _pumpComposer(tester);
+    await tester.tap(find.byIcon(HeroAppIcons.solidFaceSmile.data).first);
+    await tester.pumpAndSettle();
+    _seedStickerPacks();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('mediaSegment-sticker')));
+    await tester.pumpAndSettle();
+
+    final favoritesHeader = find.byKey(
+      const ValueKey('mediaStickerPack-favorites'),
+      skipOffstage: false,
+    );
+    expect(favoritesHeader, findsOneWidget);
+    // The server-favorited sticker renders in the section grid.
+    expect(find.byKey(const ValueKey('sticker-8001')), findsOneWidget);
   });
 
   testWidgets('tapping send in the sheet pops it and sends via the vm', (

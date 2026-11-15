@@ -2053,6 +2053,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         EmojiStore.shared.loadIfNeeded();
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
+        FavoriteStickerStore.shared.loadIfNeeded();
         final activeId = _activeStickerTab;
         if (activeId == StickerStore.recentPackId ||
             activeId == _stickerSearchTabId) {
@@ -2086,6 +2087,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
         StickerStore.shared.loadIfNeeded();
+        FavoriteStickerStore.shared.loadIfNeeded();
       case _MediaKind.gif:
         GifStore.shared.loadIfNeeded();
     }
@@ -5079,6 +5081,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
         StickerStore.shared.loadIfNeeded();
+        FavoriteStickerStore.shared.loadIfNeeded();
       case _MediaKind.gif:
         GifStore.shared.loadIfNeeded();
     }

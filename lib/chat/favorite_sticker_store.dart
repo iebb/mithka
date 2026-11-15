@@ -52,7 +52,6 @@ class FavoriteStickerStore extends ChangeNotifier {
 
   List<StickerItem> _serverItems = const [];
   final Map<int, StickerItem> _extras = {};
-  bool _loaded = false;
   bool _fetching = false;
 
   /// Identifies the newest server load, like EmojiStore's generation guard:
@@ -121,7 +120,6 @@ class FavoriteStickerStore extends ChangeNotifier {
     _activeUserId = userId;
     _loadAccountExtras();
     _serverItems = const [];
-    _loaded = false;
     notifyListeners();
   }
 
@@ -134,17 +132,19 @@ class FavoriteStickerStore extends ChangeNotifier {
     return _extras.containsKey(fileId);
   }
 
-  /// Loads the server favorites once per account scope.
+  /// Refreshes the server favorites for the current account scope.
+  ///
+  /// Called when the sticker surface opens (the composer sticker panel or
+  /// the store page); re-fetching on open keeps the favorites section in
+  /// sync with other devices, mirroring how exteraless batches
+  /// getFavoriteStickers with its sticker loads.
   void loadIfNeeded() {
-    if (_loaded) return;
-    _loaded = true;
     unawaited(_refreshFromServer());
   }
 
   /// Fetches the server favorites. A fetch a reset, re-scope or newer fetch
   /// supersedes cannot publish.
   Future<void> _refreshFromServer() async {
-    if (!_loaded) return;
     final generation = ++_loadGeneration;
     final slot = TdClient.shared.activeSlot;
     _loadedSlot = slot;
@@ -156,7 +156,8 @@ class FavoriteStickerStore extends ChangeNotifier {
       if (generation != _loadGeneration || _loadedSlot != slot) return;
       _serverItems = parseStickers(response.objects('stickers'));
     } catch (_) {
-      if (generation == _loadGeneration) _loaded = false;
+      // A failed fetch leaves the last good list in place; the next panel
+      // open retries.
     } finally {
       if (generation == _loadGeneration) {
         _fetching = false;
@@ -286,7 +287,6 @@ class FavoriteStickerStore extends ChangeNotifier {
     _loadGeneration++;
     _serverItems = const [];
     _extras.clear();
-    _loaded = false;
     _fetching = false;
     _activeUserId = null;
     _loadedSlot = TdClient.shared.activeSlot;
