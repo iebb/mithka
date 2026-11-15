@@ -203,3 +203,20 @@ void applyWebmLoopingDecoderOverride(VideoPlayerController controller) {
     // The active video_player backend is not FVP.
   }
 }
+
+/// Process-wide FVP decoder order for [platform], or empty to keep FVP's
+/// default. FVP applies it when each player is created, before MDK opens the
+/// first frame; [applyWebmLoopingDecoderOverride] runs too late to avoid it.
+///
+/// On Windows FVP's default prefers Media Foundation over Direct3D 11. Decoding
+/// the VP9 WebM stickers and custom emoji that load right after sign-in
+/// through that path makes NVIDIA's D3D11 driver abort the process (seen on a
+/// GTX 1650 beside an AMD iGPU; the app is stable when forced onto the iGPU).
+/// Software decoding keeps rendering through D3D11 but skips the hardware
+/// decoder that aborts.
+List<String> fvpVideoDecoders(TargetPlatform platform) {
+  return switch (platform) {
+    TargetPlatform.windows => const <String>['FFmpeg', 'dav1d'],
+    _ => const <String>[],
+  };
+}

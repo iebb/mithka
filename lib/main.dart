@@ -63,6 +63,7 @@ import 'firebase_options.dart';
 import 'history/message_history_store.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
+import 'media/looping_media_playback.dart';
 import 'media/video_playback_reporting.dart';
 import 'media/video_view_compatibility.dart';
 import 'notifications/in_app_notification_banner.dart';
@@ -328,6 +329,7 @@ void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
           // video_player has no HarmonyOS implementation of its own.
           FVideoFvpPlatform.ohos,
         },
+        videoDecoders: fvpVideoDecoders(defaultTargetPlatform),
         installGlobalLogHandler: installGlobalLogHandler,
       ),
     );
