@@ -18,7 +18,8 @@ import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/theme/app_theme.dart';
 
-Future<void> _pumpHome(WidgetTester tester) async {
+Future<void> _pumpHome(WidgetTester tester, {bool reduceMotion = false}) async {
+  const Widget home = Scaffold(body: SizedBox.shrink());
   await tester.pumpWidget(
     MaterialApp(
       locale: const Locale('en'),
@@ -30,7 +31,13 @@ Future<void> _pumpHome(WidgetTester tester) async {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: ThemeData(extensions: [AppColors.light]),
-      home: const Scaffold(body: SizedBox.shrink()),
+      builder: (context, child) => reduceMotion
+          ? MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            )
+          : child!,
+      home: home,
     ),
   );
   await tester.pumpAndSettle();
@@ -159,4 +166,112 @@ void main() {
       expect(clamped.dx + menu.width, lessThanOrEqualTo(800 - 8));
     },
   );
+
+  double scrimOpacity(WidgetTester tester) => tester
+      .widget<FadeTransition>(
+        find.ancestor(
+          of: find.byKey(const ValueKey('chat-folder-action-scrim')),
+          matching: find.byType(FadeTransition),
+        ),
+      )
+      .opacity
+      .value;
+
+  testWidgets(
+    'scrim dims the main surface while the menu grows from the tab corner',
+    (tester) async {
+      await _pumpHome(tester);
+      final ctx = tester.element(find.byType(Scaffold));
+      unawaited(
+        showChatFolderPopupMenu(
+          context: ctx,
+          anchor: const Rect.fromLTWH(40, 60, 120, 44),
+          title: 'Work',
+          actions: [
+            ChatFolderMenuAction(
+              key: 'edit',
+              label: 'Edit folder',
+              icon: const AppIconData(Icons.edit),
+              onSelected: () {},
+            ),
+          ],
+        ).then((_) {}),
+      );
+
+      // First frame after the entrance starts: the dim and fade tracks are
+      // still near zero, the menu barely visible over the scrim.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(scrimOpacity(tester), lessThan(0.25));
+      var fade = tester.widget<FadeTransition>(
+        find.ancestor(
+          of: find.byKey(const ValueKey('chat-folder-action-menu')),
+          matching: find.byType(FadeTransition),
+        ),
+      );
+      expect(fade.opacity.value, lessThan(0.4));
+
+      // Fully entered: the scrim settles at exteraless's 0x60 dim and the
+      // menu is opaque; dismissing runs the reverse before the entry goes.
+      await tester.pumpAndSettle();
+      expect(scrimOpacity(tester), 1.0);
+      fade = tester.widget<FadeTransition>(
+        find.ancestor(
+          of: find.byKey(const ValueKey('chat-folder-action-menu')),
+          matching: find.byType(FadeTransition),
+        ),
+      );
+      expect(fade.opacity.value, 1);
+
+      // Dismiss runs the reverse before the overlay entry goes away.
+      await tester.tapAt(const Offset(400, 500));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('chat-folder-action-menu')),
+        findsOneWidget,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-folder-action-menu')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('reduced motion shows the menu and scrim instantly', (
+    tester,
+  ) async {
+    await _pumpHome(tester, reduceMotion: true);
+    final ctx = tester.element(find.byType(Scaffold));
+    unawaited(
+      showChatFolderPopupMenu(
+        context: ctx,
+        anchor: const Rect.fromLTWH(40, 60, 120, 44),
+        title: 'Work',
+        actions: [
+          ChatFolderMenuAction(
+            key: 'edit',
+            label: 'Edit folder',
+            icon: const AppIconData(Icons.edit),
+            onSelected: () {},
+          ),
+        ],
+      ).then((_) {}),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(scrimOpacity(tester), 1.0);
+    final fade = tester.widget<FadeTransition>(
+      find.ancestor(
+        of: find.byKey(const ValueKey('chat-folder-action-menu')),
+        matching: find.byType(FadeTransition),
+      ),
+    );
+    expect(fade.opacity.value, 1);
+    expect(
+      find.byKey(const ValueKey('chat-folder-action-scrim')).evaluate(),
+      isNotEmpty,
+    );
+  });
 }

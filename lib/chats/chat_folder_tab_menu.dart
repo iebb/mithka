@@ -50,6 +50,20 @@ const double chatFolderMenuRowHeight = 44;
 const double chatFolderMenuVerticalInset = 8;
 const double chatFolderMenuMinWidth = 196;
 
+/// The dim layer's opacity, exteraless's folder-tab ItemOptions value
+/// (`setDimAlpha(0x60)` on DialogsActivity's filter tabs).
+const double chatFolderMenuDimOpacity = 0x60 / 0xff;
+
+/// The menu's entrance mirrors exteraless's PopupContextAnimation: fade in
+/// 150ms while scaling 95%→100% over 200ms with a light overshoot from the
+/// corner nearest the pressed tab. Exit reverses both at the same tempo.
+const Duration _menuScaleDuration = Duration(milliseconds: 200);
+
+/// Where the 150ms fade and dim tracks end inside the 200ms entrance.
+const double _menuFastTrack = 150 / 200;
+
+const Curve _menuGrowCurve = Cubic(0.34, 1.56, 0.64, 1.0); // easeOutBack
+
 @visibleForTesting
 double chatFolderMenuHeightFor(int actionCount) =>
     chatFolderMenuVerticalInset * 2 +
@@ -159,10 +173,32 @@ class ChatFolderPopupMenu extends StatefulWidget {
   State<ChatFolderPopupMenu> createState() => _ChatFolderPopupMenuState();
 }
 
-class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
+class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu>
+    with TickerProviderStateMixin {
   final FocusNode _menuFocus = FocusNode(debugLabel: 'Chat folder popup menu');
 
   bool _open = true;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _menuScaleDuration,
+  );
+
+  /// The scrim's fade, the menu's fade, and the menu's grow share one
+  /// controller so all three run in lockstep on the way in and out.
+  late final Animation<double> _dim = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, _menuFastTrack, curve: AppMotion.standard),
+  );
+  late final Animation<double> _menuFade = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, _menuFastTrack),
+  );
+  late final Animation<double> _menuScale = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0, 1, curve: _menuGrowCurve),
+  );
+
+  bool _reducedSeen = false;
 
   @override
   void initState() {
@@ -173,18 +209,36 @@ class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_reducedSeen) return;
+    _reducedSeen = true;
+    if (AppMotion.isReduced(context)) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
+  }
+
+  @override
   void dispose() {
     // Torn down with the menu still open (its host route disappeared):
     // report the dismissal so the caller's future completes.
     if (_open) widget.onDismissed();
     _menuFocus.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   void dismiss() {
     if (!mounted || !_open) return;
     _open = false;
-    widget.onDismissed();
+    if (!AppMotion.isReduced(context) &&
+        _controller.status.isForwardOrCompleted) {
+      unawaited(_controller.reverse().whenComplete(widget.onDismissed));
+    } else {
+      widget.onDismissed();
+    }
   }
 
   void _select(ChatFolderMenuAction action) {
@@ -208,6 +262,16 @@ class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
           viewport: viewport,
           menuSize: menuSize,
         );
+        // The menu grows from the corner nearest the pressed tab, matching
+        // exteraless's pivotX/pivotY on the tab-adjacent corner: below the
+        // tab grows from its bottom-left corner, a flip above grows from
+        // the bottom edge nearest the tab's horizontal side.
+        final growsFromBottom = origin.dy > widget.anchor.bottom;
+        final growsFromRight = origin.dx > widget.anchor.left;
+        final scaleAlignment = Alignment(
+          growsFromRight ? -1 : 1,
+          growsFromBottom ? -1 : 1,
+        );
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -216,7 +280,15 @@ class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
               behavior: HitTestBehavior.opaque,
               onTap: dismiss,
               onSecondaryTap: dismiss,
-              child: const ColoredBox(color: Colors.transparent),
+              child: FadeTransition(
+                opacity: _dim,
+                child: ColoredBox(
+                  key: const ValueKey('chat-folder-action-scrim'),
+                  color: Colors.black.withValues(
+                    alpha: chatFolderMenuDimOpacity,
+                  ),
+                ),
+              ),
             ),
             Positioned(
               left: origin.dx,
@@ -228,48 +300,65 @@ class _ChatFolderPopupMenuState extends State<ChatFolderPopupMenu> {
                 child: FocusTraversalGroup(
                   child: Focus(
                     focusNode: _menuFocus,
-                    child: Container(
-                      key: const ValueKey('chat-folder-action-menu'),
-                      width: menuSize.width,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: chatFolderMenuVerticalInset,
-                      ),
-                      decoration: BoxDecoration(
-                        color: c.card,
-                        borderRadius: BorderRadius.circular(AppRadius.control),
-                        border: Border.all(color: c.divider, width: 0.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 18,
-                            offset: const Offset(0, 6),
+                    child: FadeTransition(
+                      opacity: _menuFade,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.95,
+                          end: 1,
+                        ).animate(_menuScale),
+                        alignment: scaleAlignment,
+                        child: Container(
+                          key: const ValueKey('chat-folder-action-menu'),
+                          width: menuSize.width,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: chatFolderMenuVerticalInset,
                           ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-                            child: Text(
-                              widget.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: c.textSecondary,
+                          decoration: BoxDecoration(
+                            color: c.card,
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.control,
+                            ),
+                            border: Border.all(color: c.divider, width: 0.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6),
                               ),
-                            ),
+                            ],
                           ),
-                          for (final action in widget.actions)
-                            _ChatFolderMenuRow(
-                              action: action,
-                              onTap: () => _select(action),
-                            ),
-                        ],
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  8,
+                                  16,
+                                  6,
+                                ),
+                                child: Text(
+                                  widget.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: c.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              for (final action in widget.actions)
+                                _ChatFolderMenuRow(
+                                  action: action,
+                                  onTap: () => _select(action),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
