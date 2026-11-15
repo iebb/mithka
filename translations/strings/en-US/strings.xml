@@ -1599,6 +1599,7 @@
     <string name="emojiCategorySymbols">Symbols</string>
     <string name="emojiCategoryTravelAndPlaces">Travel &amp; Places</string>
     <string name="emojiFontCatalogSystemDefault">System default</string>
+    <string name="emojiUseSystem">Use system emoji</string>
     <string name="emojiPanelPreview">Emoji preview</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">Face with tears of joy</string>
     <string name="emojiRecentsSection">Recently Used</string>
@@ -2053,7 +2054,7 @@
     <string name="keywordBlockerRulesAdded">Added {value1} rules</string>
     <string name="keywordBlockerRulesUpToDate">Rules are up to date</string>
     <string name="keywordBlockerTitle">Keyword Blocker</string>
-    <string name="languageMithkaLanguage">Mithka X language</string>
+    <string name="languageMithkaLanguage">Language</string>
     <string name="languageTitle">Language</string>
     <string name="linkBrowserAddress">Website address</string>
     <string name="linkBrowserAskEveryTime">Ask every time</string>

@@ -1592,6 +1592,7 @@
     <string name="emojiCategorySymbols">記号</string>
     <string name="emojiCategoryTravelAndPlaces">旅行と場所</string>
     <string name="emojiFontCatalogSystemDefault">システム標準</string>
+    <string name="emojiUseSystem">システムの絵文字を使用</string>
     <string name="emojiPanelPreview">絵文字プレビュー</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">うれし泣きの顔</string>
     <string name="emojiRecentsSection">最近使用</string>
@@ -2046,7 +2047,7 @@
     <string name="keywordBlockerRulesAdded">{value1} 件のルールを追加しました</string>
     <string name="keywordBlockerRulesUpToDate">ルールは最新です</string>
     <string name="keywordBlockerTitle">キーワードブロック</string>
-    <string name="languageMithkaLanguage">Mithka X の言語</string>
+    <string name="languageMithkaLanguage">言語</string>
     <string name="languageTitle">言語</string>
     <string name="linkBrowserAddress">ウェブサイトのアドレス</string>
     <string name="linkBrowserAskEveryTime">毎回確認</string>

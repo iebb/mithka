@@ -1592,6 +1592,7 @@
     <string name="emojiCategorySymbols">기호</string>
     <string name="emojiCategoryTravelAndPlaces">여행 및 장소</string>
     <string name="emojiFontCatalogSystemDefault">시스템 기본값</string>
+    <string name="emojiUseSystem">시스템 이모지 사용</string>
     <string name="emojiPanelPreview">이모지 미리보기</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">기쁨의 눈물 얼굴</string>
     <string name="emojiRecentsSection">최근 사용</string>
@@ -2046,7 +2047,7 @@
     <string name="keywordBlockerRulesAdded">규칙 {value1}개를 추가했습니다</string>
     <string name="keywordBlockerRulesUpToDate">규칙이 최신 상태입니다</string>
     <string name="keywordBlockerTitle">키워드 차단</string>
-    <string name="languageMithkaLanguage">Mithka X 언어</string>
+    <string name="languageMithkaLanguage">언어</string>
     <string name="languageTitle">언어</string>
     <string name="linkBrowserAddress">웹사이트 주소</string>
     <string name="linkBrowserAskEveryTime">항상 묻기</string>
