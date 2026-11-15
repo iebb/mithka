@@ -1086,6 +1086,9 @@
     <string name="advancedUnlimitedFavorites">Unlimited sticker favorites</string>
     <string name="advancedUnlimitedFavoritesAbout">Keep more than the Telegram limit of favorited stickers. Extras stay on this device only and won't sync.</string>
     <string name="chatListMarkUnread">Mark as unread</string>
+    <string name="chatListMarkAllRead">Mark all as read</string>
+    <string name="chatListSelectAll">Select all</string>
+    <string name="chatListSelectedCountValue1">{value1} chats selected</string>
     <string name="chatListNoChats">No chats yet</string>
     <string name="chatListScanQrCode">Scan QR Code</string>
     <string name="chatListArchive">Archive</string>

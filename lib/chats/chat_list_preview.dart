@@ -57,6 +57,21 @@ class ChatListPreviewGeometry {
   final double actionHeight;
 }
 
+/// The compact action menu's row height, matching exteraless's
+/// ActionBarPopupWindowLayout rows (44dp) so a long command list reads as a
+/// popup column, not a settings sheet.
+const double chatListPreviewMenuRowHeight = 44;
+
+/// The menu's content width hugs its longest label between these bounds —
+/// exteraless sets a 160dp minimum on every item; the cap keeps a long
+/// localized label from spanning the whole preview card.
+const double chatListPreviewMenuMinWidth = 196;
+const double chatListPreviewMenuMaxWidth = 300;
+
+double chatListPreviewMenuWidth(double longestLabelWidth) =>
+    (longestLabelWidth + 16 /*icon*/ + 12 /*gap*/ + 16 * 2 /*row padding*/ )
+        .clamp(chatListPreviewMenuMinWidth, chatListPreviewMenuMaxWidth);
+
 ChatListPreviewGeometry chatListPreviewGeometry(
   Size available, {
   required int actionCount,
@@ -452,6 +467,10 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
   bool _failed = false;
   bool _cancelled = false;
 
+  /// The last computed geometry, so [_actionMenu] can cap its height without
+  /// re-deriving the layout. Written during [build]; never read before.
+  ChatListPreviewGeometry? geometryCache;
+
   late final ChatListPreviewLoader _loadMessages =
       widget.loadMessages ??
       () => loadChatListPreviewMessages(
@@ -507,16 +526,17 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
             Size(constraints.maxWidth, constraints.maxHeight),
             actionCount: widget.actions.length,
           );
+          geometryCache = geometry;
           final preview = SizedBox(
             width: geometry.previewWidth,
             height: geometry.previewHeight,
             child: _previewCard(context),
           );
-          final actions = SizedBox(
-            width: geometry.actionWidth,
-            height: geometry.actionHeight,
-            child: _actionMenu(context),
-          );
+          // The command column reads as a popup hanging off the preview, not
+          // a settings sheet: it hugs its content (exteraless's
+          // ActionBarPopupWindowLayout) and, on a phone, starts at the
+          // preview's left edge instead of stretching to the dialog margins.
+          final actions = _actionMenu(context);
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -528,6 +548,7 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
                     )
                   : Column(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [preview, const SizedBox(height: 12), actions],
                     ),
             ),
@@ -710,11 +731,34 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
 
   Widget _actionMenu(BuildContext context) {
     final c = context.colors;
-    return DecoratedBox(
+    // Measure the widest localized label so the menu hugs its content like
+    // exteraless's popup instead of stretching to a fixed sheet width.
+    const labelStyle = TextStyle(
+      fontSize: AppTextSize.body,
+      fontWeight: FontWeight.w500,
+      decoration: TextDecoration.none,
+    );
+    var longestLabel = 0.0;
+    for (final action in widget.actions) {
+      final painter = TextPainter(
+        text: TextSpan(text: action.label.l10n(context), style: labelStyle),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+        textDirection: Directionality.of(context),
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      if (width > longestLabel) longestLabel = width;
+    }
+    return Container(
       key: const ValueKey('chat-list-preview-actions'),
+      width: chatListPreviewMenuWidth(longestLabel),
+      constraints: BoxConstraints(
+        maxHeight: geometryCache?.actionHeight ?? double.infinity,
+      ),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(
           color: c.divider.withValues(alpha: 0.82),
           width: 0.5,
@@ -728,9 +772,10 @@ final class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         child: ListView.separated(
           padding: EdgeInsets.zero,
+          shrinkWrap: true,
           itemCount: widget.actions.length,
           itemBuilder: (context, index) =>
               _ChatListPreviewActionRow(action: widget.actions[index]),
@@ -781,8 +826,8 @@ class _ChatListPreviewActionRowState extends State<_ChatListPreviewActionRow> {
         child: AnimatedContainer(
           duration: duration,
           curve: AppMotion.standard,
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 15),
+          height: chatListPreviewMenuRowHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           color: _pressed
               ? c.textPrimary.withValues(alpha: 0.07)
               : Colors.transparent,

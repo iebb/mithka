@@ -1086,6 +1086,9 @@
     <string name="advancedUnlimitedFavorites">Unbegrenzte Sticker-Favoriten</string>
     <string name="advancedUnlimitedFavoritesAbout">Mehr Sticker favorisieren, als das Telegram-Limit erlaubt. Zusätzliche bleiben nur auf diesem Gerät und werden nicht synchronisiert.</string>
     <string name="chatListMarkUnread">Als ungelesen markieren</string>
+    <string name="chatListMarkAllRead">Alle als gelesen markieren</string>
+    <string name="chatListSelectAll">Alle auswählen</string>
+    <string name="chatListSelectedCountValue1">{value1} Chats ausgewählt</string>
     <string name="chatListNoChats">Noch keine Chats</string>
     <string name="chatListScanQrCode">QR-Code scannen</string>
     <string name="chatListArchive">Archivieren</string>

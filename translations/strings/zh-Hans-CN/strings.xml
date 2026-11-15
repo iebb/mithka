@@ -1085,6 +1085,9 @@
     <string name="advancedUnlimitedFavorites">无限收藏贴纸</string>
     <string name="advancedUnlimitedFavoritesAbout">收藏超过 Telegram 数量上限的贴纸，多出的部分只保存在本设备，不会同步。</string>
     <string name="chatListMarkUnread">标为未读</string>
+    <string name="chatListMarkAllRead">全部标为已读</string>
+    <string name="chatListSelectAll">全选</string>
+    <string name="chatListSelectedCountValue1">已选择 {value1} 个聊天</string>
     <string name="chatListNoChats">还没有聊天</string>
     <string name="chatListScanQrCode">扫描二维码</string>
     <string name="chatListArchive">归档</string>

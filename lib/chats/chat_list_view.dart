@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
@@ -1213,6 +1214,14 @@ class _ChatListViewState extends State<ChatListView>
   OverlayEntry? _desktopChatMenuEntry;
   OverlayEntry? _desktopPlusMenuEntry;
 
+  // Multi-select edit mode (exteraless's dialog action mode): a long press on
+  // a row's body enters selection instead of opening the peek; a long press on
+  // the avatar still peeks. Rows toggle membership, and the header becomes a
+  // command bar over the selected set.
+  final Set<int> _selectedChatIds = {};
+  bool _selectionMode = false;
+  bool _selectionOverflowOpen = false;
+
   static const double _refreshPullThreshold = 72;
 
   ScrollController _newScrollController({double initialScrollOffset = 0}) {
@@ -2408,14 +2417,17 @@ class _ChatListViewState extends State<ChatListView>
         }
       });
     }
-    return Stack(
+    // The system back button leaves edit mode first (exteraless's action mode
+    // consumes back the same way instead of leaving the screen).
+    final Widget contents = Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
           color: c.background,
           child: Column(
             children: [
-              if (!widget.desktopSidebar) _header(),
+              if (!widget.desktopSidebar)
+                if (_selectionMode) _selectionHeader() else _header(),
               if (!sideFolders &&
                   folderMode == ChatFolderDisplayMode.tabs &&
                   _model.filters.length > 1)
@@ -2437,7 +2449,16 @@ class _ChatListViewState extends State<ChatListView>
         _filterMenuOverlay(
           visible: folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
         ),
+        _selectionOverflowOverlay(),
       ],
+    );
+    if (!_selectionMode) return contents;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitSelectionMode();
+      },
+      child: contents,
     );
   }
 
@@ -2836,6 +2857,237 @@ class _ChatListViewState extends State<ChatListView>
       keyForFolder: (id) => _sideFolderKeys.putIfAbsent(id, GlobalKey.new),
     ),
   );
+
+  /// The edit-mode header (exteraless's dialog action mode bar): close button,
+  /// selection count, and direct commands — pin, mute, archive, delete — plus
+  /// an overflow column for the less frequent read/select-all.
+  Widget _selectionHeader() {
+    final c = context.colors;
+    final chats = _selectedChats;
+    final hasSelection = chats.isNotEmpty;
+    final allPinned = _selectionAllPinnedInList(chats);
+    final allMuted = hasSelection && chats.every((chat) => chat.isMuted);
+    return Container(
+      key: const ValueKey('chat-list-selection-header'),
+      color: c.listHeaderTint,
+      padding: headerChromePaddingOf(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            AppInteractiveSurface(
+              key: const ValueKey('chat-list-close-selection'),
+              semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
+              onTap: _exitSelectionMode,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: AppIconSize.lg,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                '${_selectedChatIds.length}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: AppTextSize.bodyLarge,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            _selectionHeaderCommand(
+              key: const ValueKey('chat-list-selection-pin'),
+              label: allPinned
+                  ? AppStringKeys.chatListUnpin
+                  : AppStringKeys.chatInfoPin,
+              icon: HeroAppIcons.thumbtack,
+              onTap: _selectionTogglePin,
+            ),
+            _selectionHeaderCommand(
+              key: const ValueKey('chat-list-selection-mute'),
+              label: allMuted
+                  ? AppStringKeys.chatUnmute
+                  : AppStringKeys.callMute,
+              icon: allMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
+              onTap: _selectionToggleMute,
+            ),
+            _selectionHeaderCommand(
+              key: const ValueKey('chat-list-selection-archive'),
+              label: AppStringKeys.chatListArchive,
+              icon: HeroAppIcons.archiveBox,
+              onTap: _selectionArchive,
+            ),
+            _selectionHeaderCommand(
+              key: const ValueKey('chat-list-selection-delete'),
+              label: AppStringKeys.chatDelete,
+              icon: HeroAppIcons.trash,
+              destructive: true,
+              onTap: () => unawaited(_selectionDelete()),
+            ),
+            _selectionOverflowButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionHeaderCommand({
+    required Key key,
+    required String label,
+    required AppIconData icon,
+    required VoidCallback onTap,
+    bool destructive = false,
+  }) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      key: key,
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: AppIcon(
+          icon,
+          size: AppIconSize.lg,
+          color: destructive ? AppTheme.tagRed : c.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionOverflowButton() {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      key: const ValueKey('chat-list-selection-overflow'),
+      semanticLabel: AppStringKeys.chatMenu.l10n(context),
+      onTap: () => setState(() => _selectionOverflowOpen = true),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: AppIcon(
+          HeroAppIcons.ellipsis,
+          size: AppIconSize.lg,
+          color: c.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionOverflowOverlay() {
+    if (!_selectionMode || !_selectionOverflowOpen) {
+      return const SizedBox.shrink();
+    }
+    return Positioned.fill(
+      key: const ValueKey('chat-list-selection-overflow-layer'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _selectionOverflowOpen = false),
+        child: ColoredBox(
+          color: Colors.black.withValues(alpha: 0.3),
+          child: Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top: AppSpacing.section,
+                right: AppSpacing.lg,
+              ),
+              child: _selectionOverflowMenu(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionOverflowMenu() {
+    final c = context.colors;
+    Widget row({
+      required Key key,
+      required String label,
+      required AppIconData icon,
+      required VoidCallback onTap,
+    }) => AppInteractiveSurface(
+      key: key,
+      semanticLabel: label,
+      onTap: () {
+        setState(() => _selectionOverflowOpen = false);
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: SizedBox(
+        width: 220,
+        height: 44,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+          child: Row(
+            children: [
+              AppIcon(icon, size: 19, color: c.textPrimary),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Text(
+                  AppStrings.t(label),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.body,
+                    fontWeight: FontWeight.w500,
+                    color: c.textPrimary,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: chatFolderMenuVerticalInset,
+      ),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: c.divider, width: 0.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          row(
+            key: const ValueKey('chat-list-selection-overflow-mark-read'),
+            label: AppStrings.t(AppStringKeys.chatListMarkAllRead),
+            icon: HeroAppIcons.circleCheck,
+            onTap: _selectionMarkRead,
+          ),
+          row(
+            key: const ValueKey('chat-list-selection-overflow-select-all'),
+            label: AppStrings.t(AppStringKeys.chatListSelectAll),
+            icon: HeroAppIcons.check,
+            onTap: _selectAllVisible,
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _chatFolderTabs() {
     final c = context.colors;
@@ -3577,10 +3829,12 @@ class _ChatListViewState extends State<ChatListView>
         desktopContextMenu &&
         (platform == TargetPlatform.windows ||
             platform == TargetPlatform.linux);
-    final rowSwipeActionsEnabled = chatListRowSwipeActionsEnabled(
-      mode: swipeMode,
-      multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
-    );
+    final rowSwipeActionsEnabled =
+        !_selectionMode &&
+        chatListRowSwipeActionsEnabled(
+          mode: swipeMode,
+          multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
+        );
     // The pin state of the list the user is looking at, not the Main list's.
     final pinnedInList = _model.isPinnedInSelectedList(chat);
     final actions = pinnedInList
@@ -3623,8 +3877,11 @@ class _ChatListViewState extends State<ChatListView>
       rowId: chat.id,
       openRowId: _openSwipeChat,
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
-      onTap: () => _openChat(chat),
+      onTap: () => _selectionMode ? _toggleSelected(chat) : _openChat(chat),
       onLongPress: desktopContextMenu ? null : () => _showChatPreview(chat),
+      onLongPressAt: desktopContextMenu
+          ? null
+          : (localPosition) => _handleRowLongPress(chat, localPosition),
       onSecondaryTapDown: desktopContextMenu
           ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
           : null,
@@ -3637,7 +3894,7 @@ class _ChatListViewState extends State<ChatListView>
       pressRippleEnabled: !desktopContextMenu,
       actions: actions,
       child: ChatListSelectionHighlight(
-        selected: selected,
+        selected: selected || _selectionTint(chat),
         child: ChatRowView(
           chat: chat,
           selected: selected,
@@ -3650,6 +3907,30 @@ class _ChatListViewState extends State<ChatListView>
         ),
       ),
     );
+  }
+
+  bool _selectionTint(ChatSummary chat) =>
+      _selectionMode && _selectedChatIds.contains(chat.id);
+
+  /// exteraless's hit split: a long press inside the avatar column peeks the
+  /// conversation; anywhere else on the row enters the multi-select edit mode.
+  ///
+  /// The avatar column spans the leading inset plus the avatar (49pt on
+  /// phones) and one row gap, matching the cell's own isPointInsideAvatar.
+  void _handleRowLongPress(ChatSummary chat, Offset localPosition) {
+    if (_selectionMode) {
+      _toggleSelected(chat);
+      return;
+    }
+    final avatarHitExtent =
+        AppMetric.chatRowHorizontalInset() +
+        AppMetric.chatListAvatarSize() +
+        AppSpacing.lg;
+    if (localPosition.dx <= avatarHitExtent) {
+      _showChatPreview(chat);
+    } else {
+      _beginSelectionMode(chat);
+    }
   }
 
   void _dismissDesktopChatMenu() {
@@ -3797,6 +4078,140 @@ class _ChatListViewState extends State<ChatListView>
         ],
       ),
     );
+  }
+
+  // MARK: - Multi-select edit mode
+
+  /// Long-press on a row's body: enter edit mode with that chat selected.
+  void _beginSelectionMode(ChatSummary chat) {
+    if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
+    unawaited(HapticFeedback.mediumImpact());
+    setState(() {
+      _selectionMode = true;
+      _selectedChatIds
+        ..clear()
+        ..add(chat.id);
+    });
+  }
+
+  void _exitSelectionMode() {
+    if (!_selectionMode) return;
+    setState(() {
+      _selectionMode = false;
+      _selectionOverflowOpen = false;
+      _selectedChatIds.clear();
+    });
+  }
+
+  void _toggleSelected(ChatSummary chat) {
+    if (!_selectionMode) return;
+    setState(() {
+      if (!_selectedChatIds.add(chat.id)) _selectedChatIds.remove(chat.id);
+      if (_selectedChatIds.isEmpty) _selectionMode = false;
+    });
+  }
+
+  void _selectAllVisible() {
+    final entries = _model.chatListEntries(
+      communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
+    );
+    setState(() {
+      for (final entry in entries) {
+        if (entry is CommunityChatEntry) _selectedChatIds.add(entry.chat.id);
+      }
+    });
+  }
+
+  List<ChatSummary> get _selectedChats => _model
+      .chatListEntries(
+        communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
+      )
+      .whereType<CommunityChatEntry>()
+      .map((entry) => entry.chat)
+      .where((chat) => _selectedChatIds.contains(chat.id))
+      .toList();
+
+  /// The pin label follows the list being edited: a folder pins inside the
+  /// folder (the same pinnedInList rule the preview uses).
+  bool _selectionAllPinnedInList(Iterable<ChatSummary> chats) =>
+      chats.isNotEmpty && chats.every(_model.isPinnedInSelectedList);
+
+  void _selectionTogglePin() {
+    final chats = _selectedChats;
+    if (chats.isEmpty) return;
+    final pin = !_selectionAllPinnedInList(chats);
+    for (final chat in chats) {
+      // togglePin flips per chat, so drive each row to the shared target.
+      if (_model.isPinnedInSelectedList(chat) != pin) {
+        _model.togglePin(chat);
+      }
+    }
+    _exitSelectionMode();
+  }
+
+  void _selectionToggleMute() {
+    final chats = _selectedChats;
+    if (chats.isEmpty) return;
+    final mute = !chats.every((chat) => chat.isMuted);
+    for (final chat in chats) {
+      if (chat.isMuted != mute) _model.toggleMute(chat);
+    }
+    _exitSelectionMode();
+  }
+
+  void _selectionArchive() {
+    final chats = _selectedChats;
+    if (chats.isEmpty) return;
+    final owner = ChatPreviewAccounts.defaultPreviewAccounts.pinActiveOwner();
+    for (final chat in chats) {
+      _model.archive(chat, owner: owner);
+    }
+    _exitSelectionMode();
+  }
+
+  void _selectionMarkRead() {
+    final chats = _selectedChats;
+    if (chats.isEmpty) return;
+    _model.markChatsRead(chats);
+    _exitSelectionMode();
+  }
+
+  Future<void> _selectionDelete() async {
+    final chats = _selectedChats;
+    if (chats.isEmpty) return;
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStringKeys.chatListDeleteChatQuestion,
+      message: AppStrings.t(AppStringKeys.chatListSelectedCountValue1, {
+        'value1': '${chats.length}',
+      }),
+      confirmText: AppStringKeys.chatDelete.l10n(context),
+      destructive: true,
+    );
+    if (!mounted || !confirmed) return;
+    _exitSelectionMode();
+    for (final chat in chats) {
+      unawaited(_deleteSelectedChat(chat));
+    }
+  }
+
+  /// Single-chat leg of the batch delete: each row walks the same two-step
+  /// capability policy. Groups and channels leave (self scope), everything
+  /// else deletes for self — the row-level toasts already cover singles.
+  Future<void> _deleteSelectedChat(ChatSummary chat) async {
+    try {
+      final isSavedMessages = await _model.resolveIsSavedMessages(chat);
+      if (isSavedMessages == null) return;
+      if (isSavedMessages) {
+        await _model.clearSavedMessages(chat);
+        return;
+      }
+      final capabilities = await _model.deleteCapabilities(chat);
+      if (!capabilities.canDelete) return;
+      await _model.deleteChat(chat);
+    } catch (_) {
+      // A batch must not abort on one stubborn row.
+    }
   }
 
   Future<void> _confirmDeleteChat(ChatSummary chat) async {
@@ -4716,6 +5131,7 @@ class ChatSwipeRow extends StatefulWidget {
     required this.onTap,
     required this.child,
     this.onLongPress,
+    this.onLongPressAt,
     this.onSecondaryTapDown,
     this.requiresLongPressDrag = false,
     this.horizontalSwipeEnabled = true,
@@ -4729,6 +5145,10 @@ class ChatSwipeRow extends StatefulWidget {
   final VoidCallback onTap;
   final Widget child;
   final VoidCallback? onLongPress;
+
+  /// Long-press with the press coordinates, so the host can split the gesture
+  /// by hit region (exteraless peeks only from the avatar).
+  final void Function(Offset localPosition)? onLongPressAt;
   final GestureTapDownCallback? onSecondaryTapDown;
   final bool requiresLongPressDrag;
   final bool horizontalSwipeEnabled;
@@ -4749,6 +5169,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   VoidCallback? _animationListener;
   double _offset = 0;
   double _longPressStartOffset = 0;
+  Offset? _pendingLongPressAt;
   int? _desktopTouchPointer;
   Offset? _desktopTouchOrigin;
   double _desktopTouchStartOffset = 0;
@@ -4856,6 +5277,13 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   void _handleContextRequest() {
     if (_offset != 0) {
       _close();
+      return;
+    }
+    final position = _pendingLongPressAt;
+    _pendingLongPressAt = null;
+    final longPressAt = widget.onLongPressAt;
+    if (longPressAt != null && position != null) {
+      longPressAt(position);
       return;
     }
     widget.onLongPress?.call();
@@ -4977,17 +5405,29 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     final rowGesture = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _offset != 0 ? _close() : widget.onTap(),
-      onLongPress: desktopTouchGestures || widget.requiresLongPressDrag
-          ? null
-          : widget.onLongPress == null
+      onLongPress:
+          desktopTouchGestures ||
+              widget.requiresLongPressDrag ||
+              widget.onLongPress == null
           ? null
           : _handleContextRequest,
       onSecondaryTapDown: widget.onSecondaryTapDown == null
           ? null
           : _handleSecondaryTapDown,
-      onLongPressStart: (_) {
+      onLongPressStart: (details) {
         _stopAnimation();
         _longPressStartOffset = _offset;
+        // exteraless splits the row's long press by hit region: the avatar
+        // peeks, the body selects. The plain onLongPress callback stays for
+        // hosts that did not opt into the split.
+        if (!desktopTouchGestures &&
+            !widget.requiresLongPressDrag &&
+            widget.onLongPress != null &&
+            widget.onLongPressAt != null) {
+          _pendingLongPressAt = details.localPosition;
+        } else {
+          _pendingLongPressAt = null;
+        }
       },
       onLongPressMoveUpdate: widget.requiresLongPressDrag
           ? (details) {

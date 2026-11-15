@@ -1085,6 +1085,9 @@
     <string name="advancedUnlimitedFavorites">ステッカーのお気に入り無制限</string>
     <string name="advancedUnlimitedFavoritesAbout">Telegramの上限を超えてステッカーをお気に入りに保存。超過分はこの端末のみに保存され、同期されません。</string>
     <string name="chatListMarkUnread">未読にする</string>
+    <string name="chatListMarkAllRead">すべて既読にする</string>
+    <string name="chatListSelectAll">すべて選択</string>
+    <string name="chatListSelectedCountValue1">{value1} 件のチャットを選択中</string>
     <string name="chatListNoChats">チャットはまだありません</string>
     <string name="chatListScanQrCode">QRコードをスキャン</string>
     <string name="chatListArchive">アーカイブ</string>

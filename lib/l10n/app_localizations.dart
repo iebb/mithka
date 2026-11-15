@@ -1097,6 +1097,9 @@ abstract final class AppStringKeys {
   static const chatListLocalPinEnabled = 'chatListLocalPinEnabled';
   static const chatListLocalPinLimitReached = 'chatListLocalPinLimitReached';
   static const chatListMarkUnread = 'chatListMarkUnread';
+  static const chatListMarkAllRead = 'chatListMarkAllRead';
+  static const chatListSelectAll = 'chatListSelectAll';
+  static const chatListSelectedCountValue1 = 'chatListSelectedCountValue1';
   static const desktopChatOpenSeparate = 'desktopChatOpenSeparate';
   static const desktopChatWindowUnavailable = 'desktopChatWindowUnavailable';
   static const desktopWindowClose = 'desktopWindowClose';

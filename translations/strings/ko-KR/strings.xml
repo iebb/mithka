@@ -1085,6 +1085,9 @@
     <string name="advancedUnlimitedFavorites">스티커 즐겨찾기 무제한</string>
     <string name="advancedUnlimitedFavoritesAbout">Telegram 한도를 초과해 스티커를 즐겨찾기에 저장. 초과분은 이 기기에만 저장되며 동기화되지 않습니다.</string>
     <string name="chatListMarkUnread">읽지 않음으로 표시</string>
+    <string name="chatListMarkAllRead">모두 읽음으로 표시</string>
+    <string name="chatListSelectAll">모두 선택</string>
+    <string name="chatListSelectedCountValue1">채팅 {value1}개 선택됨</string>
     <string name="chatListNoChats">아직 채팅이 없습니다</string>
     <string name="chatListScanQrCode">QR 코드 스캔</string>
     <string name="chatListArchive">보관</string>
