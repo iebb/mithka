@@ -1,9 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/media/looping_media_playback.dart';
 
 void main() {
   test('muted looping media does not take external audio focus', () {
     expect(mutedLoopingVideoPlayerOptions().mixWithOthers, isTrue);
+  });
+
+  test('Windows FVP avoids the hardware decoders NVIDIA aborts in', () {
+    expect(fvpVideoDecoders(TargetPlatform.windows), ['FFmpeg', 'dav1d']);
+    expect(fvpVideoDecoders(TargetPlatform.macOS), isEmpty);
   });
 
   group('LoopingMediaPlayerPool', () {
