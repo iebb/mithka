@@ -1640,6 +1640,8 @@
     <string name="generalSendMessageWithEnter">Envoyer avec Entrée</string>
     <string name="generalShowSavedMessagesIdentity">Afficher « Messages enregistrés » au lieu de mon profil</string>
     <string name="generalStorage">Stockage</string>
+    <string name="generalSystemPhotoPicker">Utiliser le sélecteur de photos du système</string>
+    <string name="generalSystemPhotoPickerHint">Choisissez des photos et vidéos sans donner à Mithka l’accès à votre photothèque. Les options Original et Live Photo ne sont pas disponibles.</string>
     <string name="generalTitle">Général</string>
     <string name="gesturesChatActions">Actions du chat</string>
     <string name="gesturesChatActionsModeDescription">1 doigt : actions du chat · 2 doigts : dossiers · 3 doigts : comptes</string>
@@ -2547,6 +2549,7 @@
     <string name="passkeysRemoved">Clé d’accès supprimée</string>
     <string name="passkeysTitle">Clés d’accès</string>
     <string name="passkeysUnknownName">Clé d’accès sans nom</string>
+    <string name="pickerSystemPicker">Système</string>
     <string name="pinnedMessagesEmpty">Aucun message épinglé</string>
     <string name="pinnedMessagesSentBy">Envoyé par {value1}</string>
     <string name="pollComposerAddOption">Ajouter une option</string>

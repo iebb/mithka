@@ -1633,6 +1633,8 @@
     <string name="generalSendMessageWithEnter">Enterキーでメッセージを送信</string>
     <string name="generalShowSavedMessagesIdentity">自分のプロフィールの代わりに「保存済みメッセージ」を表示</string>
     <string name="generalStorage">ストレージ</string>
+    <string name="generalSystemPhotoPicker">システムの写真ピッカーを使用</string>
+    <string name="generalSystemPhotoPickerHint">写真ライブラリへのアクセスを許可せずに写真や動画を選べます。オリジナルとLive Photosのオプションは使えません。</string>
     <string name="generalTitle">一般</string>
     <string name="gesturesChatActions">チャット操作</string>
     <string name="gesturesChatActionsModeDescription">1本指：チャット操作・2本指：フォルダー切替・3本指：アカウント切替</string>
@@ -2537,6 +2539,7 @@
     <string name="passkeysRemoved">パスキーを削除しました</string>
     <string name="passkeysTitle">パスキー</string>
     <string name="passkeysUnknownName">名前のないパスキー</string>
+    <string name="pickerSystemPicker">システム</string>
     <string name="pinnedMessagesEmpty">ピン留めメッセージはありません</string>
     <string name="pinnedMessagesSentBy">{value1} が送信</string>
     <string name="pollComposerAddOption">選択肢を追加</string>

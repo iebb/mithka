@@ -14,6 +14,7 @@ import '../components/app_interactive_surface.dart';
 import '../platform/ohos_media_bridge.dart';
 import '../platform/ohos_support.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 
 enum AppAssetPickerType { image, video, imageAndVideo }
 
@@ -117,6 +118,16 @@ abstract final class AppAssetPicker {
     if (isOhos) {
       return pickWithOhosSystemPicker(type: type, maxAssets: maxAssets);
     }
+    Future<AppAssetPickerSelection> systemPicker() => pickWithSystemPicker(
+      type: type,
+      maxAssets: maxAssets,
+      maxVideoDuration: maxVideoDuration,
+    );
+    final mobile = Platform.isIOS || Platform.isAndroid;
+    if (mobile &&
+        (context.read<ThemeController?>()?.useSystemPhotoPicker ?? false)) {
+      return systemPicker();
+    }
     Future<AppAssetPickerSelection> materializeAll(
       List<AssetEntity> assets,
     ) async {
@@ -148,8 +159,8 @@ abstract final class AppAssetPicker {
       );
     }
 
-    try {
-      final assets = await _pickAssets(
+    Future<AppAssetPickerSelection> inAppPicker() async {
+      final result = await _pickAssets(
         context,
         config: buildConfig(
           context,
@@ -159,10 +170,16 @@ abstract final class AppAssetPicker {
         ),
         sendOptions: sendOptions,
       );
+      if (result.useSystemPicker) return systemPicker();
+      final assets = result.assets;
       if (assets == null || assets.isEmpty) {
         return const AppAssetPickerSelection(assets: [], failedCount: 0);
       }
       return materializeAll(assets);
+    }
+
+    try {
+      return await inAppPicker();
     } on StateError {
       // Permission denied — request it and retry.
       final requestType = switch (type) {
@@ -184,23 +201,83 @@ abstract final class AppAssetPicker {
         if (!context.mounted) {
           return const AppAssetPickerSelection(assets: [], failedCount: 0);
         }
-        final assets = await _pickAssets(
-          context,
-          config: buildConfig(
-            context,
-            type: type,
-            maxAssets: maxAssets,
-            maxVideoDuration: maxVideoDuration,
-          ),
-          sendOptions: sendOptions,
-        );
-        if (assets == null || assets.isEmpty) {
-          return const AppAssetPickerSelection(assets: [], failedCount: 0);
-        }
-        return materializeAll(assets);
+        return inAppPicker();
       }
+      // Without library access the in-app grid has nothing to show, but the
+      // system picker needs no permission at all.
+      if (mobile) return systemPicker();
       return const AppAssetPickerSelection(assets: [], failedCount: 0);
     }
+  }
+
+  /// The platform's own picker: PHPicker on iOS, the Photo Picker on Android.
+  /// It runs out of process, so it needs no photo library permission. It
+  /// returns the chosen files as they are, without the in-app picker's
+  /// downscaling, thumbnails or Live Photo video.
+  @visibleForTesting
+  static Future<AppAssetPickerSelection> pickWithSystemPicker({
+    required AppAssetPickerType type,
+    required int maxAssets,
+    Duration? maxVideoDuration,
+    ImagePicker? picker,
+  }) async {
+    final imagePicker = picker ?? ImagePicker();
+    final single = maxAssets == 1;
+    // requestFullMetadata reads EXIF through the photo library on iOS, which
+    // would ask for the very permission this picker exists to avoid.
+    final files = switch (type) {
+      AppAssetPickerType.image when single => [
+        ?await imagePicker.pickImage(
+          source: ImageSource.gallery,
+          requestFullMetadata: false,
+        ),
+      ],
+      AppAssetPickerType.image => await imagePicker.pickMultiImage(
+        limit: maxAssets,
+        requestFullMetadata: false,
+      ),
+      AppAssetPickerType.video when single => [
+        ?await imagePicker.pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: maxVideoDuration,
+        ),
+      ],
+      AppAssetPickerType.video => await imagePicker.pickMultiVideo(
+        limit: maxAssets,
+        maxDuration: maxVideoDuration,
+      ),
+      AppAssetPickerType.imageAndVideo when single => [
+        ?await imagePicker.pickMedia(requestFullMetadata: false),
+      ],
+      AppAssetPickerType.imageAndVideo => await imagePicker.pickMultipleMedia(
+        limit: maxAssets,
+        requestFullMetadata: false,
+      ),
+    };
+    final assets = <AppPickedAsset>[];
+    var failedCount = 0;
+    for (final file in files.take(maxAssets)) {
+      try {
+        final local = File(file.path);
+        final animated =
+            !isPickedAssetVideo(file) &&
+            (await _isGifFile(local, file.mimeType) ||
+                await _isApngFile(local, file.mimeType));
+        assets.add(
+          AppPickedAsset(
+            file: file,
+            originalFile: file,
+            isAnimatedImage: animated,
+          ),
+        );
+      } catch (_) {
+        failedCount++;
+      }
+    }
+    return AppAssetPickerSelection(
+      assets: List.unmodifiable(assets),
+      failedCount: failedCount,
+    );
   }
 
   @visibleForTesting
@@ -229,7 +306,8 @@ abstract final class AppAssetPicker {
     );
   }
 
-  static Future<List<AssetEntity>?> _pickAssets(
+  static Future<({List<AssetEntity>? assets, bool useSystemPicker})>
+  _pickAssets(
     BuildContext context, {
     required AssetPickerConfig config,
     AppAssetSendOptions? sendOptions,
@@ -243,7 +321,7 @@ abstract final class AppAssetPicker {
     final initialPermission = await AssetPicker.permissionCheck(
       requestOption: permissionRequestOption,
     );
-    if (!context.mounted) return null;
+    if (!context.mounted) return (assets: null, useSystemPicker: false);
 
     final provider = DefaultAssetPickerProvider(
       maxAssets: config.maxAssets,
@@ -268,10 +346,11 @@ abstract final class AppAssetPicker {
           AssetPathEntity,
           AppAssetPickerBuilderDelegate
         >(permissionRequestOption: permissionRequestOption, builder: delegate);
-    return Navigator.maybeOf(
+    final assets = await Navigator.maybeOf(
       context,
       rootNavigator: true,
     )?.push(AssetPickerPageRoute<List<AssetEntity>>(builder: (_) => picker));
+    return (assets: assets, useSystemPicker: delegate.systemPickerRequested);
   }
 
   static AssetPickerConfig buildConfig(
@@ -303,6 +382,9 @@ abstract final class AppAssetPicker {
         ),
       ),
       keepScrollOffset: true,
+      // Limited access opens straight on the photos the user already shared;
+      // the grid's bottom bar offers the system sheet to change that set.
+      limitedPermissionOverlayPredicate: (_) => false,
     );
   }
 
@@ -648,10 +730,66 @@ class AppAssetPickerBuilderDelegate
   /// can only be disposed once the route is, which is what [dispose] does.
   final AppAssetSendOptions? sendOptions;
 
+  /// Set when the user leaves the grid for the system picker; the caller
+  /// opens it once this route has closed.
+  bool systemPickerRequested = false;
+
   @override
   void dispose() {
     sendOptions?.dispose();
     super.dispose();
+  }
+
+  @override
+  AssetPickerAppBar appBar(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    final bar = AssetPickerAppBar(
+      title: Semantics(
+        onTapHint: semanticsTextDelegate.sActionSwitchPathLabel,
+        child: pathEntitySelector(context),
+      ),
+      leading: backButton(context),
+      actions: [
+        if (Platform.isIOS || Platform.isAndroid) systemPickerButton(context),
+      ],
+      blurRadius:
+          platform == TargetPlatform.iOS || platform == TargetPlatform.macOS
+          ? appleOSBlurRadius
+          : 0,
+    );
+    appBarPreferredSize ??= bar.preferredSize;
+    return bar;
+  }
+
+  Widget systemPickerButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 8),
+      child: AppInteractiveSurface(
+        key: const ValueKey('pickerUseSystemPicker'),
+        semanticLabel: AppStringKeys.pickerSystemPicker.l10n(context),
+        onTap: () {
+          systemPickerRequested = true;
+          Navigator.maybeOf(context)?.maybePop();
+        },
+        borderRadius: BorderRadius.circular(16),
+        showHover: false,
+        showFocusRing: false,
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.center,
+          child: Text(
+            AppStringKeys.pickerSystemPicker.l10n(context),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: themeColor,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -957,16 +1095,22 @@ class AppAssetPickerBuilderDelegate
   /// The package draws this banner with `Icons.warning` and
   /// `Icons.keyboard_arrow_right`. Without Material Icons bundled those two
   /// codepoints have no glyph and render as tofu boxes at either end of the
-  /// blue bar. Same layout and same tap target, project icons instead.
+  /// blue bar. Same layout, project icons instead, and the tap opens the
+  /// system sheet for choosing which photos are shared rather than sending
+  /// the user off to the Settings app.
   @override
   Widget accessLimitedBottomTip(BuildContext context) {
     final bottomPadding = hasBottomActions
         ? 0.0
         : MediaQuery.paddingOf(context).bottom;
+    final tip =
+        '${textDelegate.viewingLimitedAssetsTip} '
+        '${textDelegate.changeAccessibleLimitedAssets}';
     return GestureDetector(
+      key: const ValueKey('pickerChangeLimitedAccess'),
       onTap: () {
         Feedback.forTap(context);
-        PhotoManager.openSetting();
+        PhotoManager.presentLimited(type: provider.requestType);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(
@@ -985,9 +1129,11 @@ class AppAssetPickerBuilderDelegate
             const SizedBox(width: 15),
             Expanded(
               child: Semantics(
-                label: semanticsTextDelegate.accessAllTip,
+                label:
+                    '${semanticsTextDelegate.viewingLimitedAssetsTip} '
+                    '${semanticsTextDelegate.changeAccessibleLimitedAssets}',
                 child: Text(
-                  textDelegate.accessAllTip,
+                  tip,
                   style: TextStyle(
                     fontSize: 14,
                     color: theme.textTheme.bodySmall?.color,
