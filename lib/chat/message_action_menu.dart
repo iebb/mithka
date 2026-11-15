@@ -529,15 +529,16 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.suggestOffer);
     }
     if (allowReply) {
+      // exteraless parity: quote lives in the text-selection flow (the
+      // reply panel here), not as a separate long-press menu entry — a
+      // desktop transcript selection becomes Quote directly; everywhere else
+      // the single Reply action opens the banner whose panel quotes.
       final canQuote = allowQuote && canQuoteMessageText(message);
       result.add(
         isDesktop && canQuote && hasSelectedQuote
             ? MessageAction.quote
             : MessageAction.reply,
       );
-      if (!isDesktop && canQuote) {
-        result.add(MessageAction.quote);
-      }
     }
     if (message.hasActualReplies) {
       result.add(MessageAction.replies);

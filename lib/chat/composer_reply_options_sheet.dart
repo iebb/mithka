@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'message_text_quote.dart';
+import 'quote_selection_area.dart';
 
 /// The result of a session with [ComposerReplyOptionsSheet].
 sealed class ComposerReplyOptionsResult {
@@ -91,70 +90,68 @@ const _replyOptionsHintSeenKey = 'composer.replyOptionsHintSeen.v1';
 
 class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
   MessageTextQuote? _quote;
-  late final TextEditingController _previewController;
+
+  /// Live selection length for the counter row (0 = hidden).
+  int _selectionLength = 0;
+
+  final GlobalKey<QuoteSelectionAreaState> _previewKey =
+      GlobalKey<QuoteSelectionAreaState>();
 
   @override
   void initState() {
     super.initState();
     _quote = widget.initialQuote;
-    _previewController = TextEditingController(
-      text: widget.message.quoteSourceText,
-    );
-    // Mark the quoted range with the selection highlight (reference parity:
-    // the preview cell re-selects quoteStart..quoteEnd when the panel opens,
-    // so the quoted part of the message is always visible).
-    final quote = _quote;
-    if (quote != null) {
-      _previewController.selection = _selectionForQuote(quote);
+    if (_quote != null) {
+      _selectionLength = _quote!.text.length;
     }
-    _previewController.addListener(_onPreviewSelectionChanged);
-  }
-
-  /// Reference parity (TextSelectionHelper.Callback.onStateChanged): the
-  /// first non-collapsed selection in the preview attaches itself as the
-  /// quote, switching the panel into quote mode. Later drags keep the live
-  /// selection; the quote row / apply commit the current range.
-  void _onPreviewSelectionChanged() {
-    if (!mounted) return;
-    final selection = _previewController.selection;
-    if (!selection.isValid || selection.isCollapsed) return;
-    final quote = _quoteFromSelection();
-    if (quote == null) return;
-    if (_quote == null || _quote!.text != quote.text) {
-      setState(() => _quote = quote);
-    }
-  }
-
-  /// Selection spanning exactly [quote]'s range inside the preview text.
-  TextSelection _selectionForQuote(MessageTextQuote quote) {
-    final text = _previewController.text;
-    final start = quote.position.clamp(0, text.length);
-    final end = (quote.position + quote.text.length).clamp(start, text.length);
-    return TextSelection(baseOffset: start, extentOffset: end);
-  }
-
-  @override
-  void dispose() {
-    _previewController.removeListener(_onPreviewSelectionChanged);
-    _previewController.dispose();
-    super.dispose();
-  }
-
-  MessageTextQuote? _quoteFromSelection() {
-    final selection = _previewController.selection;
-    if (!selection.isValid) return null;
-    final length = selection.end - selection.start;
-    if (length <= 0 || length > widget.quoteLengthLimit) return null;
-    return quoteMessageRange(
-      widget.message,
-      start: selection.start,
-      end: selection.end,
-      maxLength: widget.quoteLengthLimit,
-    );
   }
 
   void _popWith(ComposerReplyOptionsResult result) {
     Navigator.of(context).pop(result);
+  }
+
+  /// A live preview selection becomes the quote immediately (reference
+  /// parity: the reference client's selection callback attaches the quote
+  /// the moment a selection exists).
+  void _onPreviewSelectionChanged(MessageTextQuote? quote) {
+    if (!mounted) return;
+    setState(() {
+      _selectionLength = quote?.text.length ?? 0;
+      if (quote != null) _quote = quote;
+    });
+  }
+
+  void _toggleQuote() {
+    final quote = _quote;
+    if (quote != null) {
+      setState(() {
+        _quote = null;
+        _selectionLength = 0;
+      });
+      _previewKey.currentState?.markRange(null);
+      return;
+    }
+    // No quote yet: the reference client auto-selects the full text (up to
+    // the quote limit); the selection listener then attaches the quote
+    // exactly like a touch selection.
+    final text = widget.message.quoteSourceText;
+    if (text.isEmpty) return;
+    if (text.length <= widget.quoteLengthLimit) {
+      _previewKey.currentState?.selectFullText();
+      return;
+    }
+    final clipped = quoteMessageRange(
+      widget.message,
+      start: 0,
+      end: widget.quoteLengthLimit,
+      maxLength: widget.quoteLengthLimit,
+    );
+    if (clipped == null) return;
+    _previewKey.currentState?.markRange((
+      clipped.position,
+      clipped.position + clipped.text.length,
+    ));
+    setState(() => _quote = clipped);
   }
 
   @override
@@ -216,49 +213,29 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
                     color: colors.searchFill,
                     borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
-                  child: TextField(
-                    key: const ValueKey('composerReplyOptionsPreview'),
-                    controller: _previewController,
-                    readOnly: true,
-                    maxLines: 4,
-                    minLines: 1,
-                    style: AppTextStyle.bodyLarge(colors.textPrimary),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                    ),
-                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
-                    onTap: () => setState(() {}),
+                  child: QuoteSelectionArea(
+                    key: _previewKey,
+                    message: widget.message,
+                    maxLength: widget.quoteLengthLimit,
+                    initialQuote: widget.initialQuote,
+                    onSelectionChanged: _onPreviewSelectionChanged,
                   ),
-                  // Selection state is read on build; the controller does
-                  // not notify listeners for handle drags, so rebuild on
-                  // every tap and rely on the quote row reading the live
-                  // selection when tapped.
                 ),
               ),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _previewController,
-                builder: (context, value, _) {
-                  final selection = value.selection;
-                  final length = selection.isValid
-                      ? selection.end - selection.start
-                      : 0;
-                  if (length <= 0) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
-                    child: Text(
-                      '$length / ${widget.quoteLengthLimit}',
-                      key: const ValueKey('composerReplyOptionsQuoteLength'),
-                      textAlign: TextAlign.end,
-                      style: AppTextStyle.body(
-                        length > widget.quoteLengthLimit
-                            ? AppTheme.tagRed
-                            : colors.textSecondary,
-                      ),
+              if (_selectionLength > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
+                  child: Text(
+                    '$_selectionLength / ${widget.quoteLengthLimit}',
+                    key: const ValueKey('composerReplyOptionsQuoteLength'),
+                    textAlign: TextAlign.end,
+                    style: AppTextStyle.body(
+                      _selectionLength > widget.quoteLengthLimit
+                          ? AppTheme.tagRed
+                          : colors.textSecondary,
                     ),
-                  );
-                },
-              ),
+                  ),
+                ),
             ],
             const SizedBox(height: 6),
             if (quoteSelectable)
@@ -274,37 +251,7 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
                 label: _quote != null
                     ? AppStringKeys.composerReplyOptionClearQuote.l10n(context)
                     : AppStringKeys.composerReplyOptionQuote.l10n(context),
-                onTap: () {
-                  if (_quote != null) {
-                    setState(() => _quote = null);
-                    _previewController.selection = TextSelection.collapsed(
-                      offset: _previewController.text.length,
-                    );
-                    return;
-                  }
-                  var quote = _quoteFromSelection();
-                  if (quote == null) {
-                    // No selection yet: select the full text (up to the quote
-                    // limit) so the quote row has something to apply — the
-                    // reference client auto-selects 0..min(max, fullLength)
-                    // when the preview has no active selection.
-                    final text = _previewController.text;
-                    final end = math.min(widget.quoteLengthLimit, text.length);
-                    if (end <= 0) return;
-                    quote = quoteMessageRange(
-                      widget.message,
-                      start: 0,
-                      end: end,
-                      maxLength: widget.quoteLengthLimit,
-                    );
-                    if (quote == null) return;
-                    _previewController.selection = TextSelection(
-                      baseOffset: 0,
-                      extentOffset: end,
-                    );
-                  }
-                  setState(() => _quote = quote!);
-                },
+                onTap: _toggleQuote,
               ),
             if (widget.canReplyInAnotherChat)
               _ReplyOptionMenuRow(

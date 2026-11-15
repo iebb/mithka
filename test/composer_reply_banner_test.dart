@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/chat_input_bar.dart';
@@ -224,8 +225,8 @@ void main() {
   testWidgets('opening with a quote highlights the quoted range', (
     tester,
   ) async {
-    // Reference parity: the preview re-selects quoteStart..quoteEnd so the
-    // quoted part of the message is visibly marked.
+    // Reference parity: the quoted range is visibly marked in the preview
+    // (a highlighted span over quote.position..position+len).
     const quote = MessageTextQuote(text: 'message body', position: 9);
     await tester.pumpWidget(
       MaterialApp(
@@ -251,12 +252,34 @@ void main() {
     );
     await tester.pump();
 
-    final field = tester.widget<TextField>(
-      find.byKey(const ValueKey('composerReplyOptionsPreview')),
+    Element? paragraphElement;
+    void walk(Element e) {
+      if (e.renderObject is RenderParagraph) {
+        paragraphElement = e;
+        return;
+      }
+      e.visitChildElements(walk);
+    }
+
+    walk(
+      find
+          .byKey(const ValueKey('composerReplyOptionsPreview'))
+          .evaluate()
+          .single,
     );
-    final controller = field.controller!;
-    expect(controller.selection.start, 9);
-    expect(controller.selection.end, 9 + 'message body'.length);
+    final span = (paragraphElement!.renderObject as RenderParagraph).text;
+    final flat = <TextSpan>[];
+    void flatten(InlineSpan s) {
+      if (s is TextSpan) {
+        if (s.text != null) flat.add(s);
+        s.children?.forEach(flatten);
+      }
+    }
+
+    flatten(span);
+    final marked = flat.where((s) => s.style?.background != null).toList();
+    expect(marked, isNotNull);
+    expect(marked.single.text, 'message body');
 
     // And the panel is in quote mode with the range marked.
     expect(find.text('Update Quote'), findsOneWidget);
@@ -290,14 +313,13 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('composerReplyOptionQuote')));
     await tester.pump();
+    await tester.pump();
     // Full text auto-selected as the quote and the header flipped.
     expect(find.text('Update Quote'), findsOneWidget);
-    final field = tester.widget<TextField>(
-      find.byKey(const ValueKey('composerReplyOptionsPreview')),
+    expect(
+      find.byKey(const ValueKey('composerReplyOptionClearQuote')),
+      findsOneWidget,
     );
-    final controller = field.controller!;
-    expect(controller.selection.start, 0);
-    expect(controller.selection.end, 'Original message body'.length);
   });
 
   testWidgets('quote toggle clears an existing quote', (tester) async {

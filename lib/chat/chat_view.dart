@@ -11289,6 +11289,9 @@ class _ChatViewState extends State<ChatView> {
     final result = await showAppModalSheet<ComposerReplyOptionsResult>(
       context: context,
       backgroundColor: Colors.transparent,
+      // The preview's selection handles drag inside the sheet; the
+      // drag-to-dismiss recognizer would fight them ("stuck" handle drags).
+      enableDrag: false,
       builder: (_) => ComposerReplyOptionsSheet(
         message: target,
         canQuote: canQuote,
