@@ -2488,19 +2488,24 @@ class ChatViewModel extends ChangeNotifier {
         const MessageSendConfiguration(),
   }) async {
     if (attachments.isEmpty) return;
+    // Capture the reply before re-encoding can yield to a reply change.
+    final replyRevision = _replyRevision;
+    final replyTo = replyToInput;
+    // The picker hands over measured originals, so composers that skip
+    // resolveAttachmentDimensions still need Telegram's photo limits applied.
+    attachments = await Future.wait(attachments.map(fitPhotoToTelegramLimits));
     final spaced = _spacedOutgoing(caption, captionEntities);
     final allEntities = [
       ...spaced.entities,
       ..._mentionEntitiesFor(spaced.text, spaced.entities),
     ];
-    final replyRevision = _replyRevision;
     final requests = buildAttachmentSendRequests(
       chatId: chatId,
       topicId: _forumTopicRef,
       attachments: attachments,
       caption: spaced.text,
       captionEntities: allEntities,
-      replyTo: replyToInput,
+      replyTo: replyTo,
       sendConfiguration: sendConfiguration,
     );
     _clearDraft();
@@ -3783,6 +3788,7 @@ class ChatViewModel extends ChangeNotifier {
     required String caption,
     List<Map<String, dynamic>> entities = const [],
   }) async {
+    attachment = await fitPhotoToTelegramLimits(attachment);
     await _client.query({
       '@type': 'editMessageMedia',
       'chat_id': chatId,

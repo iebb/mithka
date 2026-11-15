@@ -21,6 +21,7 @@ import '../l10n/app_localizations.dart';
 import '../media/media_metadata.dart';
 import '../platform/adaptive_platform.dart';
 import '../platform/external_links.dart';
+import '../platform/ohos_support.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
@@ -311,6 +312,17 @@ class _ChatBehaviorSettingsViewState extends State<ChatBehaviorSettingsView>
                   value: theme.saveCapturedPhotosToAlbum,
                   leading: const SettingsLeadingIcon(icon: HeroAppIcons.camera),
                   onChanged: (value) => theme.saveCapturedPhotosToAlbum = value,
+                ),
+              // HarmonyOS always uses its system picker.
+              if (!isDesktopTargetPlatform(Theme.of(context).platform) &&
+                  !isOhos)
+                SettingsSwitchRow(
+                  key: const ValueKey('chat-behavior-system-photo-picker'),
+                  title: AppStringKeys.generalSystemPhotoPicker,
+                  subtitle: AppStringKeys.generalSystemPhotoPickerHint,
+                  value: theme.useSystemPhotoPicker,
+                  leading: const SettingsLeadingIcon(icon: HeroAppIcons.image),
+                  onChanged: (value) => theme.useSystemPhotoPicker = value,
                 ),
               SettingsSwitchRow(
                 key: const ValueKey('chat-behavior-quick-replies'),

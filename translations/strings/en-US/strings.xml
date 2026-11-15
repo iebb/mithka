@@ -1661,6 +1661,8 @@
     <string name="generalSendMessageWithEnter">Send messages with Enter</string>
     <string name="generalShowSavedMessagesIdentity">Show “Saved Messages” instead of my profile</string>
     <string name="generalStorage">Storage</string>
+    <string name="generalSystemPhotoPicker">Use the system photo picker</string>
+    <string name="generalSystemPhotoPickerHint">Choose photos and videos without giving Mithka access to your library. Original and Live Photo options are not available.</string>
     <string name="generalTitle">General</string>
     <string name="gesturesChatActions">Chat actions</string>
     <string name="gesturesChatActionsModeDescription">1 finger: chat actions · 2 fingers: folders · 3 fingers: accounts</string>
@@ -2607,6 +2609,7 @@
     <string name="passkeysRemoved">Passkey deleted</string>
     <string name="passkeysTitle">Passkeys</string>
     <string name="passkeysUnknownName">Unnamed passkey</string>
+    <string name="pickerSystemPicker">System Picker</string>
     <string name="pinnedMessagesEmpty">No pinned messages yet</string>
     <string name="pinnedMessagesSentBy">Sent by {value1}</string>
     <string name="pollComposerAddOption">Add option</string>

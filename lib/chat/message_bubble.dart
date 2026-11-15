@@ -88,6 +88,9 @@ const EdgeInsets messageTextBubblePadding = EdgeInsets.symmetric(
 /// Corner radius of an ordinary text message bubble.
 const double messageTextBubbleRadius = 6;
 
+/// Decoded side, in pixels, of the softened fill around a letterboxed photo.
+const int _letterboxFillPx = 12;
+
 /// The widest a message bubble may grow in a conversation lane [layoutWidth]
 /// wide: three quarters of the lane, capped on desktop windows.
 double messageBubbleMaxWidth(double layoutWidth, [TargetPlatform? platform]) {
@@ -5487,32 +5490,20 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     BorderRadius borderRadius,
   ) {
     final blurredSource = image.thumbnail ?? image;
-    final blurredCacheWidth = math.min(_cachePx(frameSize.width), _cachePx(96));
-    final blurredCacheHeight = math.min(
-      _cachePx(frameSize.height),
-      _cachePx(96),
-    );
     return ClipRRect(
       borderRadius: borderRadius,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Its own layer, so the letterbox gaussian is rastered once and
-          // composited afterwards instead of re-running whenever a sibling
-          // (the photo's download progress) dirties the bubble.
-          RepaintBoundary(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Transform.scale(
-                scale: 1.08,
-                child: TDImage(
-                  photo: blurredSource,
-                  cornerRadius: 0,
-                  cacheWidth: blurredCacheWidth,
-                  cacheHeight: blurredCacheHeight,
-                ),
-              ),
-            ),
+          // A few decoded pixels stretched over the frame read as the blur.
+          // A gaussian here needs an image-filter layer inside the bubble's
+          // clip, and on iOS that layer drew the photo and caption shifted
+          // out of the bubble, leaving a blank card.
+          TDImage(
+            photo: blurredSource,
+            cornerRadius: 0,
+            cacheWidth: _letterboxFillPx,
+            cacheHeight: _letterboxFillPx,
           ),
           ColoredBox(color: Colors.black.withValues(alpha: 0.10)),
           Center(

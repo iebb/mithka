@@ -1654,6 +1654,8 @@
     <string name="generalSendMessageWithEnter">回车键发送消息</string>
     <string name="generalShowSavedMessagesIdentity">显示“保存的消息”而不是我的资料</string>
     <string name="generalStorage">存储空间</string>
+    <string name="generalSystemPhotoPicker">使用系统图片选择器</string>
+    <string name="generalSystemPhotoPickerHint">无需授予相册访问权限即可选择照片和视频。不提供原图和实况照片选项。</string>
     <string name="generalTitle">通用</string>
     <string name="gesturesChatActions">聊天操作</string>
     <string name="gesturesChatActionsModeDescription">单指：聊天操作 · 双指：切换文件夹 · 三指：切换账号</string>
@@ -2597,6 +2599,7 @@
     <string name="passkeysRemoved">通行密钥已删除</string>
     <string name="passkeysTitle">通行密钥</string>
     <string name="passkeysUnknownName">未命名的通行密钥</string>
+    <string name="pickerSystemPicker">系统相册</string>
     <string name="pinnedMessagesEmpty">暂无置顶消息</string>
     <string name="pinnedMessagesSentBy">{value1} 发送</string>
     <string name="pollComposerAddOption">添加选项</string>

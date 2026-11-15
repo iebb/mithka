@@ -5,7 +5,9 @@ import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/air_feedback.dart';
 import '../theme/app_theme.dart';
+import 'feedback_report_dispatch.dart';
 
 class FeedbackReportView extends StatefulWidget {
   const FeedbackReportView({super.key});
@@ -39,28 +41,31 @@ class _FeedbackReportViewState extends State<FeedbackReportView> {
     if (message.isEmpty || _sending) return;
     setState(() => _sending = true);
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    try {
-      final id = await Sentry.captureFeedback(SentryFeedback(message: message));
-      if (!mounted) return;
-      if (id == const SentryId.empty()) {
-        setState(() => _sending = false);
-        showToast(context, AppStringKeys.feedbackReportFailed);
-        return;
-      }
-      final shortId = id.toString().substring(0, 8);
-      if (overlay != null) {
-        showToastOverlay(
-          overlay,
-          AppStrings.t(AppStringKeys.feedbackReportSent, {'value1': shortId}),
-          visibleFor: const Duration(seconds: 3),
+    final outcome = await sendFeedbackReport(
+      sentry: () async {
+        final id = await Sentry.captureFeedback(
+          SentryFeedback(message: message),
         );
-      }
-      Navigator.of(context).pop();
-    } catch (_) {
-      if (!mounted) return;
+        return id == const SentryId.empty() ? null : id.toString();
+      },
+      airFeedback: () => AirFeedbackClient().send(message),
+    );
+    if (!mounted) return;
+    if (!outcome.sent) {
       setState(() => _sending = false);
       showToast(context, AppStringKeys.feedbackReportFailed);
+      return;
     }
+    if (overlay != null) {
+      showToastOverlay(
+        overlay,
+        AppStrings.t(AppStringKeys.feedbackReportSent, {
+          'value1': outcome.displayId ?? '',
+        }),
+        visibleFor: const Duration(seconds: 3),
+      );
+    }
+    Navigator.of(context).pop();
   }
 
   @override

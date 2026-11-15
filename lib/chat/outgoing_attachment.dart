@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:image/image.dart' as image_lib;
 import 'package:light_compressor_v2/light_compressor_v2.dart';
 
 import 'message_send_options.dart';
@@ -136,6 +139,10 @@ Map<String, dynamic> attachmentInputFile(OutgoingAttachment attachment) {
 
 Future<OutgoingAttachment> resolveAttachmentDimensions(
   OutgoingAttachment attachment,
+) async => fitPhotoToTelegramLimits(await _measureAttachment(attachment));
+
+Future<OutgoingAttachment> _measureAttachment(
+  OutgoingAttachment attachment,
 ) async {
   if (attachment.kind != OutgoingAttachmentKind.photo &&
       attachment.kind != OutgoingAttachmentKind.animation &&
@@ -179,6 +186,126 @@ Future<OutgoingAttachment> resolveAttachmentDimensions(
 Future<List<OutgoingAttachment>> resolveAttachmentListDimensions(
   Iterable<OutgoingAttachment> attachments,
 ) => Future.wait(attachments.map(resolveAttachmentDimensions));
+
+/// TDLib rejects a photo whose width plus height exceeds 10000 ("Dimensions of
+/// the photo are too big") or whose sides differ more than 20 times; Telegram
+/// also caps photo uploads at 10 MB.
+const telegramPhotoDimensionSumLimit = 10000;
+const telegramPhotoAspectRatioLimit = 20;
+const telegramPhotoByteLimit = 10 * 1000 * 1000;
+
+/// Telegram stores photos at most 2560px on their longest edge, so a larger
+/// upload only costs time.
+const oversizedPhotoMaxEdge = 2560;
+
+/// Makes a photo sendable as a photo. A 48 MP camera original sent with 原图
+/// (8064x6048) is downscaled to [oversizedPhotoMaxEdge]; a panorama beyond the
+/// aspect ratio limit, or one that cannot be decoded, goes as a file instead,
+/// as Telegram Desktop does. Photos within the limits are returned unchanged.
+Future<OutgoingAttachment> fitPhotoToTelegramLimits(
+  OutgoingAttachment attachment,
+) async {
+  if (attachment.kind != OutgoingAttachmentKind.photo ||
+      (attachment.fileId ?? 0) > 0) {
+    return attachment;
+  }
+  final width = attachment.width ?? 0;
+  final height = attachment.height ?? 0;
+  if (width <= 0 || height <= 0) return attachment;
+  final asFile = attachment.copyWith(
+    kind: OutgoingAttachmentKind.document,
+    clearDimensions: true,
+  );
+  if (math.max(width, height) >
+      math.min(width, height) * telegramPhotoAspectRatioLimit) {
+    return asFile;
+  }
+  final int length;
+  try {
+    length = await File(attachment.path).length();
+  } on FileSystemException {
+    return attachment;
+  }
+  if (width + height <= telegramPhotoDimensionSumLimit &&
+      length <= telegramPhotoByteLimit) {
+    return attachment;
+  }
+  try {
+    final scaled = await _downscalePhoto(attachment.path);
+    return attachment.copyWith(
+      path: scaled.path,
+      width: scaled.width,
+      height: scaled.height,
+      clearOriginalPath: true,
+    );
+  } catch (_) {
+    return asFile;
+  }
+}
+
+Future<({String path, int width, int height})> _downscalePhoto(
+  String path,
+) async {
+  final data = await File(path).readAsBytes();
+  final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+  // The codec reports the size it will decode at, after any EXIF rotation, so
+  // scaling from it keeps the target edges in the same orientation.
+  final codec = await ui.instantiateImageCodecWithSize(
+    buffer,
+    getTargetSize: (intrinsicWidth, intrinsicHeight) {
+      final scale = math.min(
+        1.0,
+        oversizedPhotoMaxEdge / math.max(intrinsicWidth, intrinsicHeight),
+      );
+      return ui.TargetImageSize(
+        width: math.max(1, (intrinsicWidth * scale).round()),
+        height: math.max(1, (intrinsicHeight * scale).round()),
+      );
+    },
+  );
+  final ui.Image image;
+  final ByteData? pixels;
+  try {
+    image = (await codec.getNextFrame()).image;
+  } finally {
+    codec.dispose();
+  }
+  final width = image.width;
+  final height = image.height;
+  try {
+    pixels = await image.toByteData();
+  } finally {
+    image.dispose();
+  }
+  if (pixels == null) throw StateError('Unable to read photo pixels');
+  final rgba = pixels.buffer.asUint8List(
+    pixels.offsetInBytes,
+    pixels.lengthInBytes,
+  );
+  final jpeg = await Isolate.run(() => _encodeOpaqueJpeg(rgba, width, height));
+  final directory = await Directory.systemTemp.createTemp('mithka-photo-');
+  final output = File('${directory.path}/photo.jpg');
+  await output.writeAsBytes(jpeg, flush: true);
+  return (path: output.path, width: width, height: height);
+}
+
+/// [rgba] is premultiplied, so compositing onto white is `c + 255 - a`.
+Uint8List _encodeOpaqueJpeg(Uint8List rgba, int width, int height) {
+  final rgb = Uint8List(width * height * 3);
+  for (var i = 0, o = 0; i < rgba.length; i += 4, o += 3) {
+    final inverseAlpha = 255 - rgba[i + 3];
+    rgb[o] = math.min(255, rgba[i] + inverseAlpha);
+    rgb[o + 1] = math.min(255, rgba[i + 1] + inverseAlpha);
+    rgb[o + 2] = math.min(255, rgba[i + 2] + inverseAlpha);
+  }
+  final image = image_lib.Image.fromBytes(
+    width: width,
+    height: height,
+    bytes: rgb.buffer,
+    numChannels: 3,
+  );
+  return image_lib.encodeJpg(image, quality: 90);
+}
 
 class OutgoingAttachmentBatch {
   const OutgoingAttachmentBatch(this.attachments);

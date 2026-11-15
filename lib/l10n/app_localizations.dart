@@ -1887,6 +1887,9 @@ abstract final class AppStringKeys {
   static const generalMediaMetadataHint = 'generalMediaMetadataHint';
   static const generalSaveCapturedPhotos = 'generalSaveCapturedPhotos';
   static const generalSaveCapturedPhotosHint = 'generalSaveCapturedPhotosHint';
+  static const generalSystemPhotoPicker = 'generalSystemPhotoPicker';
+  static const generalSystemPhotoPickerHint = 'generalSystemPhotoPickerHint';
+  static const pickerSystemPicker = 'pickerSystemPicker';
   static const generalSendMessageWithEnter = 'generalSendMessageWithEnter';
   static const generalShowSavedMessagesIdentity =
       'generalShowSavedMessagesIdentity';

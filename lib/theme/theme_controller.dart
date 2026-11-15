@@ -1180,6 +1180,7 @@ class ThemeController extends ChangeNotifier {
     _communitiesEnabled = _prefs.getBool(_communitiesEnabledKey) ?? true;
     _saveCapturedPhotosToAlbum =
         _prefs.getBool(_saveCapturedPhotosToAlbumKey) ?? false;
+    _useSystemPhotoPicker = _prefs.getBool(_useSystemPhotoPickerKey) ?? false;
     final storedArchivedChatsMode = _prefs.getString(
       _archivedChatsDisplayModeKey,
     );
@@ -1293,6 +1294,7 @@ class ThemeController extends ChangeNotifier {
   static const _showShortVideosKey = 'showShortVideos';
   static const _communitiesEnabledKey = 'communitiesEnabled';
   static const _saveCapturedPhotosToAlbumKey = 'saveCapturedPhotosToAlbum';
+  static const _useSystemPhotoPickerKey = 'useSystemPhotoPicker';
   static const _archivedChatsDisplayModeKey = 'archivedChatsDisplayMode';
   static const _unreadBadgeModeKey = 'unreadBadgeMode';
   static const _unreadBadgeOverflowModeKey = 'unreadBadgeOverflowMode';
@@ -1390,6 +1392,7 @@ class ThemeController extends ChangeNotifier {
   bool _showShortVideos = true;
   bool _communitiesEnabled = true;
   bool _saveCapturedPhotosToAlbum = false;
+  bool _useSystemPhotoPicker = false;
   late ArchivedChatsDisplayMode _archivedChatsDisplayMode;
   late UnreadBadgeMode _unreadBadgeMode;
   late UnreadBadgeOverflowMode _unreadBadgeOverflowMode;
@@ -1889,6 +1892,10 @@ class ThemeController extends ChangeNotifier {
   bool get showShortVideos => _showShortVideos;
   bool get communitiesEnabled => _communitiesEnabled;
   bool get saveCapturedPhotosToAlbum => _saveCapturedPhotosToAlbum;
+
+  /// Pick photos and videos with the platform's own picker instead of the
+  /// in-app grid, which needs no photo library permission.
+  bool get useSystemPhotoPicker => _useSystemPhotoPicker;
   ArchivedChatsDisplayMode get archivedChatsDisplayMode =>
       _archivedChatsDisplayMode;
   UnreadBadgeMode get unreadBadgeMode => _unreadBadgeMode;
@@ -2986,6 +2993,13 @@ class ThemeController extends ChangeNotifier {
     if (_saveCapturedPhotosToAlbum == value) return;
     _saveCapturedPhotosToAlbum = value;
     _prefs.setBool(_saveCapturedPhotosToAlbumKey, value);
+    notifyListeners();
+  }
+
+  set useSystemPhotoPicker(bool value) {
+    if (_useSystemPhotoPicker == value) return;
+    _useSystemPhotoPicker = value;
+    _prefs.setBool(_useSystemPhotoPickerKey, value);
     notifyListeners();
   }
 

@@ -1654,6 +1654,8 @@
     <string name="generalSendMessageWithEnter">按 Enter 傳送訊息</string>
     <string name="generalShowSavedMessagesIdentity">顯示「已儲存的訊息」而不是我的個人資料</string>
     <string name="generalStorage">儲存空間</string>
+    <string name="generalSystemPhotoPicker">使用系統圖片選擇器</string>
+    <string name="generalSystemPhotoPickerHint">無需授予相簿存取權限即可選擇照片和影片。不提供原圖和原況照片選項。</string>
     <string name="generalTitle">一般</string>
     <string name="gesturesChatActions">聊天操作</string>
     <string name="gesturesChatActionsModeDescription">單指：聊天操作 · 雙指：切換資料夾 · 三指：切換帳號</string>
@@ -2597,6 +2599,7 @@
     <string name="passkeysRemoved">通行密鑰已刪除</string>
     <string name="passkeysTitle">通行密鑰</string>
     <string name="passkeysUnknownName">未命名的通行密鑰</string>
+    <string name="pickerSystemPicker">系統相簿</string>
     <string name="pinnedMessagesEmpty">暫無置頂訊息</string>
     <string name="pinnedMessagesSentBy">{value1} 傳送</string>
     <string name="pollComposerAddOption">新增選項</string>

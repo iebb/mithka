@@ -33,6 +33,9 @@
 		9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20F331E1000100000001 /* AppPurchases.swift */; };
 		A17D0FF131E1000100000001 /* HandoffBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF031E1000100000001 /* HandoffBridge.swift */; };
 		A17D0FF731E1000100000001 /* WebProxyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17D0FF631E1000100000001 /* WebProxyBridge.swift */; };
+		AF0EED0531E1000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AF0EED0631E1000100000001 /* PrivacyInfo.xcprivacy */; };
+		AF0EED0331E1000100000001 /* AirDeviceProof.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0EED0431E1000100000001 /* AirDeviceProof.swift */; };
+		AF0EED0131E1000100000001 /* AirCrashReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0EED0231E1000100000001 /* AirCrashReports.swift */; };
 		A685F7A8DE8A8339A7CFE48A /* RunnerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FADD48E0FE94429FDE1912 /* RunnerUITests.swift */; };
 		AC39B11231E1000100000001 /* NativeGlassSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC39B11331E1000100000001 /* NativeGlassSurface.swift */; };
 		B45E6836D8D2D05AB2676E08 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5790DB6BBC8220D67CE86B /* NotificationService.swift */; };
@@ -124,6 +127,9 @@
 		9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationBridge.swift; sourceTree = "<group>"; };
 		9A4F20EB31E1000100000001 /* ApplePCCBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ApplePCCBridge.swift; sourceTree = "<group>"; };
 		9A4F20F131E1000100000001 /* NowPlayingBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NowPlayingBridge.swift; sourceTree = "<group>"; };
+		AF0EED0631E1000100000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		AF0EED0431E1000100000001 /* AirDeviceProof.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDeviceProof.swift; sourceTree = "<group>"; };
+		AF0EED0231E1000100000001 /* AirCrashReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirCrashReports.swift; sourceTree = "<group>"; };
 		9A4F20F331E1000100000001 /* AppPurchases.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppPurchases.swift; sourceTree = "<group>"; };
 		9AE1F80607B45379F5468F27 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		A17D0FF031E1000100000001 /* HandoffBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = HandoffBridge.swift; path = ../../apple/HandoffBridge.swift; sourceTree = "<group>"; };
@@ -267,6 +273,9 @@
 				AC39B11331E1000100000001 /* NativeGlassSurface.swift */,
 				A17D0FF031E1000100000001 /* HandoffBridge.swift */,
 				A17D0FF631E1000100000001 /* WebProxyBridge.swift */,
+				AF0EED0631E1000100000001 /* PrivacyInfo.xcprivacy */,
+				AF0EED0431E1000100000001 /* AirDeviceProof.swift */,
+				AF0EED0231E1000100000001 /* AirCrashReports.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				8CE983C22FEBFF5D00D0A469 /* Pengram.icon */,
@@ -494,6 +503,7 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+				AF0EED0531E1000100000001 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -682,6 +692,8 @@
 				AC39B11231E1000100000001 /* NativeGlassSurface.swift in Sources */,
 				A17D0FF131E1000100000001 /* HandoffBridge.swift in Sources */,
 				A17D0FF731E1000100000001 /* WebProxyBridge.swift in Sources */,
+				AF0EED0331E1000100000001 /* AirDeviceProof.swift in Sources */,
+				AF0EED0131E1000100000001 /* AirCrashReports.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				8092FDF4748B19657BE593AF /* NotificationCommunicationContent.swift in Sources */,
