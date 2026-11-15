@@ -107,7 +107,7 @@ Future<ThemeController> _pumpFolderPager(
   }
   updates.add({
     '@type': 'updateNewChat',
-    'chat': {..._chat(201, order: 100), 'title': 'Work chat'},
+    'chat': {..._chat(201), 'title': 'Work chat'},
   });
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 80));
