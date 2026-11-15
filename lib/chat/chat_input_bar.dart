@@ -44,6 +44,7 @@ import '../media/camera_capture.dart';
 import '../media/media_metadata.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/desktop_screenshot.dart';
+import '../platform/keyboard_image_paste.dart';
 import '../platform/keyboard_modifiers.dart';
 import '../platform/ohos_support.dart';
 import '../settings/ai_settings_controller.dart';
@@ -838,6 +839,11 @@ class _ChatInputBarState extends State<ChatInputBar>
       hasFocus: () => _focus.hasFocus,
       isVisible: _isDesktopComposerVisible,
     );
+    KeyboardImagePaste.register(
+      _desktopActionOwner,
+      hasFocus: () => _focus.hasFocus,
+      onImage: _queueKeyboardPastedImage,
+    );
     _desktopScreenshotHotkeyRegistration = DesktopHotkeyRegistry.instance
         .register(
           DesktopHotkeyAction.screenshot,
@@ -1602,6 +1608,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     _desktopComposerHeightLoadGeneration++;
     _desktopScreenshotHotkeyRegistration?.dispose();
     DesktopChatComposerActions._unregister(_desktopActionOwner);
+    KeyboardImagePaste.unregister(_desktopActionOwner);
     // OverlayPortal tears its overlay down with this element. Calling hide()
     // while the portal is already being unmounted asserts because it no
     // longer has a z-order slot, so only clear our logical state here.
@@ -8074,6 +8081,18 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   void _handleInsertedContent(KeyboardInsertedContent content) {
     unawaited(_sendInsertedImage(content));
+  }
+
+  Future<void> _queueKeyboardPastedImage(
+    Uint8List data,
+    String mimeType,
+  ) async {
+    // Same rules as a context-menu paste: an edit keeps its media, and the
+    // field is read-only while a voice draft sends.
+    if (vm.editingMessage != null || (_voiceDraft?.sending ?? false)) return;
+    await _queueClipboardImageData(
+      DesktopClipboardImageData(data: data, mimeType: mimeType),
+    );
   }
 
   Future<void> _sendInsertedImage(KeyboardInsertedContent content) async {
