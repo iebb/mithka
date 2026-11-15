@@ -942,6 +942,12 @@ class ThemeController extends ChangeNotifier {
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
     _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
+    // Android defaults to system emoji (exteraless parity); absent preference
+    // means "never chosen", which keeps that default. Other platforms default
+    // to the selected pack as before.
+    _useSystemEmoji =
+        _prefs.getBool(_useSystemEmojiKey) ??
+        (defaultTargetPlatform == TargetPlatform.android);
     final initialUserId = _activeAccountUserId;
     if (_usePerAccountTheming && initialUserId != null) {
       _migrateLegacyAccountTheme(_activeAccountSlot, initialUserId);
@@ -2004,7 +2010,7 @@ class ThemeController extends ChangeNotifier {
     final textFamilies = _normalFontFamilyChain(base);
     return _effectiveFontFamilyChainCache = dedupeFontFamilies([
       textFamilies.first,
-      ..._emojiFontChoice.fontFamilies,
+      ...effectiveEmojiFontFamilies,
       ...textFamilies.skip(1),
     ]);
   }
@@ -2062,7 +2068,7 @@ class ThemeController extends ChangeNotifier {
         : _googleTextStyle(googleFamily, weightedBase);
     return withPrimary.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
-        ..._emojiFontChoice.fontFamilies,
+        ...effectiveEmojiFontFamilies,
         ...?withPrimary.fontFamilyFallback,
         ...families.skip(1),
       ]),
@@ -2129,7 +2135,7 @@ class ThemeController extends ChangeNotifier {
     return code.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
         ...?code.fontFamilyFallback,
-        ..._emojiFontChoice.fontFamilies,
+        ...effectiveEmojiFontFamilies,
         ..._normalFontFamilyChain(base),
       ]),
     );
@@ -2386,14 +2392,39 @@ class ThemeController extends ChangeNotifier {
   }
 
   void useSystemEmojiFont() {
+    // exteraless semantics: picking the system row turns its switch on and
+    // clears any pack override, rather than keeping a stale pack selected.
     _emojiFontSelectionRevision++;
     _emojiFontChoice = EmojiFontChoice.system;
-    _invalidateFontCaches();
     _prefs.setString(_emojiFontChoiceKey, EmojiFontChoice.system.key);
     _prefs.remove(_emojiFontLabelKey);
     _prefs.remove(_emojiFontLicenseKey);
+    setUseSystemEmoji(true);
+  }
+
+  /// exteraless "EmojiUseDefault": when on, emoji render with the platform
+  /// emoji font no matter which pack is selected. Android defaults to on —
+  /// the fork ships system emoji unless the user opts into a pack, matching
+  /// the reference client. Other platforms keep the previous default (off,
+  /// selected pack wins) so desktop behaviour is unchanged.
+  static const _useSystemEmojiKey = 'emojiUseSystemFont';
+  bool _useSystemEmoji = defaultTargetPlatform == TargetPlatform.android;
+
+  bool get useSystemEmoji => _useSystemEmoji;
+
+  void setUseSystemEmoji(bool value) {
+    if (_useSystemEmoji == value) return;
+    _useSystemEmoji = value;
+    _invalidateFontCaches();
+    _prefs.setBool(_useSystemEmojiKey, value);
     notifyListeners();
   }
+
+  /// The emoji families that actually paint: the platform font while the
+  /// system switch is on, the selected pack otherwise.
+  List<String> get effectiveEmojiFontFamilies => _useSystemEmoji
+      ? EmojiFontChoice.platformEmojiFontFallback()
+      : _emojiFontChoice.fontFamilies;
 
   Future<void> loadSelectedEmojiFontIfAvailable() async {
     final key = _emojiFontChoice.key;
@@ -2428,10 +2459,14 @@ class ThemeController extends ChangeNotifier {
       license: entry.license,
       fontFamily: family,
     );
+    // exteraless setEmojiPack(manually=true): an explicit pack choice always
+    // switches the system-emoji override off.
+    _useSystemEmoji = false;
     _invalidateFontCaches();
     unawaited(_prefs.setString(_emojiFontChoiceKey, entry.key));
     unawaited(_prefs.setString(_emojiFontLabelKey, entry.label));
     unawaited(_prefs.setString(_emojiFontLicenseKey, entry.license));
+    unawaited(_prefs.setBool(_useSystemEmojiKey, false));
     notifyListeners();
   }
 
