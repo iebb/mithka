@@ -5391,9 +5391,16 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     final geometry = _imagePreviewGeometry();
     final imageSize = geometry.contentSize;
     final caption = _caption();
-    final frameSize = geometry.frameSize;
-    final usesBlurredFrame = geometry.needsBlurredFill;
     final grouped = _groupsMediaCaption(caption);
+    final frameSize = Size(
+      grouped
+          ? _groupedMediaWidth(geometry.frameSize.width, caption!)
+          : geometry.frameSize.width,
+      geometry.frameSize.height,
+    );
+    final usesBlurredFrame =
+        geometry.needsBlurredFill ||
+        frameSize.width > geometry.frameSize.width + 0.5;
     final mediaRadius = grouped && _showsMessageBubbleSurface ? 0.0 : 10.0;
     final mediaBorderRadius = _messageBorderRadius(mediaRadius);
     final media = GestureDetector(
@@ -5402,7 +5409,19 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         width: frameSize.width,
         height: frameSize.height,
         child: usesBlurredFrame
-            ? _blurredImageFrame(image, imageSize, frameSize, mediaBorderRadius)
+            ? _letterboxFrame(
+                fillSource: image.thumbnail ?? image,
+                childSize: imageSize,
+                borderRadius: mediaBorderRadius,
+                child: TDImage(
+                  photo: image,
+                  cornerRadius: 0,
+                  fit: BoxFit.contain,
+                  cacheWidth: _cachePx(imageSize.width),
+                  cacheHeight: _cachePx(imageSize.height),
+                  showProgress: true,
+                ),
+              )
             : ClipRRect(
                 key: ValueKey('messageMediaClip-${message.id}'),
                 borderRadius: mediaBorderRadius,
@@ -5483,13 +5502,14 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
     );
   }
 
-  Widget _blurredImageFrame(
-    TdFileRef image,
-    Size imageSize,
-    Size frameSize,
-    BorderRadius borderRadius,
-  ) {
-    final blurredSource = image.thumbnail ?? image;
+  /// Centres [child] in a wider or taller frame over a blurred-looking fill of
+  /// [fillSource], the way official clients pad narrow or small media.
+  Widget _letterboxFrame({
+    required TdFileRef? fillSource,
+    required Size childSize,
+    required BorderRadius borderRadius,
+    required Widget child,
+  }) {
     return ClipRRect(
       borderRadius: borderRadius,
       child: Stack(
@@ -5499,25 +5519,21 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
           // A gaussian here needs an image-filter layer inside the bubble's
           // clip, and on iOS that layer drew the photo and caption shifted
           // out of the bubble, leaving a blank card.
-          TDImage(
-            photo: blurredSource,
-            cornerRadius: 0,
-            cacheWidth: _letterboxFillPx,
-            cacheHeight: _letterboxFillPx,
-          ),
+          if (fillSource != null)
+            TDImage(
+              photo: fillSource,
+              cornerRadius: 0,
+              cacheWidth: _letterboxFillPx,
+              cacheHeight: _letterboxFillPx,
+            )
+          else
+            const ColoredBox(color: Colors.black26),
           ColoredBox(color: Colors.black.withValues(alpha: 0.10)),
           Center(
             child: SizedBox(
-              width: imageSize.width,
-              height: imageSize.height,
-              child: TDImage(
-                photo: image,
-                cornerRadius: 0,
-                fit: BoxFit.contain,
-                cacheWidth: _cachePx(imageSize.width),
-                cacheHeight: _cachePx(imageSize.height),
-                showProgress: true,
-              ),
+              width: childSize.width,
+              height: childSize.height,
+              child: child,
             ),
           ),
         ],
@@ -5527,6 +5543,94 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
 
   bool _groupsMediaCaption(String? caption) =>
       caption != null && _theme.groupImageMessages;
+
+  /// Width of a bubble that groups media with its caption. Like Telegram
+  /// (Desktop `Photo::countCurrentSize`, the mobile clients' blurred side
+  /// fill), the caption and attribution headers widen the bubble beyond a
+  /// narrow or small preview, up to the media box, instead of being squeezed
+  /// into the preview's width.
+  double _groupedMediaWidth(double mediaWidth, String caption) {
+    final maxWidth = _mediaMaxWidth();
+    if (mediaWidth >= maxWidth) return mediaWidth;
+    final direction = Directionality.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    double measure(String text, TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        textWidthBasis: TextWidthBasis.longestLine,
+      )..layout(maxWidth: maxWidth);
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    final replacesOriginal = _translationReplacesOriginalFor(message);
+    final entities = replacesOriginal
+        ? message.translationEntities
+        : _activeTextEntities;
+    final spaced = _displaySpacing(
+      replacesOriginal ? message.translationText ?? '' : caption,
+      entities,
+    );
+    final bodyStyle = DefaultTextStyle.of(context).style.merge(
+      AppTextStyle.messageBody(_incomingTextColor).copyWith(
+        fontSize: _chatFontSize(AppTextSize.messageBody()),
+        // Measure bold runs at their wider weight so they never wrap a word.
+        fontWeight: spaced.entities.any((e) => e.type == 'textEntityTypeBold')
+            ? FontWeight.bold
+            : null,
+      ),
+    );
+    // Caption padding is 6 on each side; headers are padded 10.
+    var width = math.max(mediaWidth, measure(spaced.text, bodyStyle) + 12);
+    const headerStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w500);
+    if (message.hasForwardAttribution) {
+      final label = AppStrings.t(AppStringKeys.messageBubbleForwardedFrom, {
+        'value1': message.forwardDisplayName,
+      });
+      // The 11 pt forward glyph and its 4 pt gap lead the label.
+      width = math.max(width, measure(label, headerStyle) + 15 + 20);
+    }
+    if (message.hasViaBotAttribution) {
+      final label = AppStrings.t(AppStringKeys.messageBubbleViaBot, {
+        'value1': message.viaBotDisplayName,
+      });
+      width = math.max(width, measure(label, headerStyle) + 20);
+    }
+    return math.min(maxWidth, width.ceilToDouble());
+  }
+
+  /// Pads grouped video or animation [media] of [size] out to the grouped
+  /// bubble width; separate media keeps its own width.
+  ({Widget media, double width}) _groupedVideoFrame(
+    Widget media,
+    Size size,
+    String? caption,
+    BorderRadius borderRadius,
+  ) {
+    if (!_groupsMediaCaption(caption)) return (media: media, width: size.width);
+    final width = _groupedMediaWidth(size.width, caption!);
+    if (width <= size.width + 0.5) return (media: media, width: size.width);
+    return (
+      media: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.bubble.onPlayVideo?.call(message),
+        child: SizedBox(
+          width: width,
+          height: size.height,
+          child: _letterboxFrame(
+            fillSource: message.image?.thumbnail ?? message.image,
+            childSize: size,
+            borderRadius: borderRadius,
+            child: media,
+          ),
+        ),
+      ),
+      width: width,
+    );
+  }
 
   Widget _mediaWithCaption({
     required Widget media,
@@ -5845,15 +5949,21 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         ),
       ),
     );
+    final framed = _groupedVideoFrame(
+      media,
+      size,
+      caption,
+      _messageBorderRadius(mediaRadius),
+    );
     return _mediaWithCaption(
       media: MessageMediaSpoiler(
         message: message,
-        width: size.width,
+        width: framed.width,
         height: size.height,
         borderRadius: _messageBorderRadius(mediaRadius),
-        child: media,
+        child: framed.media,
       ),
-      mediaWidth: size.width,
+      mediaWidth: framed.width,
       caption: caption,
       outgoing: outgoing,
     );
@@ -5886,15 +5996,21 @@ class _MessageBubbleState extends State<_ScopedMessageBubble>
         ),
       ),
     );
+    final framed = _groupedVideoFrame(
+      media,
+      size,
+      caption,
+      _messageBorderRadius(mediaRadius),
+    );
     return _mediaWithCaption(
       media: MessageMediaSpoiler(
         message: message,
-        width: size.width,
+        width: framed.width,
         height: size.height,
         borderRadius: _messageBorderRadius(mediaRadius),
-        child: media,
+        child: framed.media,
       ),
-      mediaWidth: size.width,
+      mediaWidth: framed.width,
       caption: caption,
       outgoing: outgoing,
     );
