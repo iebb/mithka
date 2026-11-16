@@ -551,12 +551,14 @@ class ArchivedChatListSelection {
     required this.updates,
     required this.onClearUnread,
     this.onUnarchive,
+    this.onToggleMute,
   });
 
   final List<ChatSummary> Function() chatsProvider;
   final Listenable updates;
   final ValueChanged<ChatSummary> onClearUnread;
   final ValueChanged<ChatSummary>? onUnarchive;
+  final ValueChanged<ChatSummary>? onToggleMute;
 }
 
 bool chatListPreviewSupportsQuickReply(ChatSummary chat) =>
@@ -2907,12 +2909,18 @@ class _ChatListViewState extends State<ChatListView>
   /// The edit-mode header (exteraless's dialog action mode bar): close button,
   /// selection count, and direct commands — pin, mute, archive, delete — plus
   /// an overflow column for the less frequent read/select-all.
+  ///
+  /// Sits in the same slot as [_header], with the same chrome padding and a
+  /// content row exactly one hit-target tall, so entering edit mode does not
+  /// shift the list beneath it. exteraless keeps one ActionBar height for both
+  /// states the same way.
   Widget _selectionHeader() {
     final c = context.colors;
     final chats = _selectedChats;
     final hasSelection = chats.isNotEmpty;
     final allPinned = _selectionAllPinnedInList(chats);
     final allMuted = hasSelection && chats.every((chat) => chat.isMuted);
+    final hitTarget = AppMetric.chatHeaderHitTarget();
     return Container(
       key: const ValueKey('chat-list-selection-header'),
       color: c.listHeaderTint,
@@ -2920,69 +2928,77 @@ class _ChatListViewState extends State<ChatListView>
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+          vertical: AppSpacing.md + AppSpacing.xxs,
         ),
-        child: Row(
-          children: [
-            AppInteractiveSurface(
-              key: const ValueKey('chat-list-close-selection'),
-              semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
-              onTap: _exitSelectionMode,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: AppIcon(
-                  HeroAppIcons.xmark,
-                  size: AppIconSize.lg,
-                  color: c.textPrimary,
+        child: SizedBox(
+          height: hitTarget,
+          child: Row(
+            children: [
+              AppInteractiveSurface(
+                key: const ValueKey('chat-list-close-selection'),
+                semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
+                onTap: _exitSelectionMode,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                child: SizedBox(
+                  width: hitTarget,
+                  height: hitTarget,
+                  child: Center(
+                    child: AppIcon(
+                      HeroAppIcons.chevronLeft,
+                      size: AppIconSize.nav,
+                      color: c.textPrimary,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Expanded(
-              child: Text(
-                '${_selectedChatIds.length}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: AppTextSize.bodyLarge,
-                  fontWeight: FontWeight.w600,
-                  color: c.textPrimary,
-                  decoration: TextDecoration.none,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  '${_selectedChatIds.length}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.bodyLarge,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
-            ),
-            _selectionHeaderCommand(
-              key: const ValueKey('chat-list-selection-pin'),
-              label: allPinned
-                  ? AppStringKeys.chatListUnpin
-                  : AppStringKeys.chatInfoPin,
-              icon: HeroAppIcons.thumbtack,
-              onTap: _selectionTogglePin,
-            ),
-            _selectionHeaderCommand(
-              key: const ValueKey('chat-list-selection-mute'),
-              label: allMuted
-                  ? AppStringKeys.chatUnmute
-                  : AppStringKeys.callMute,
-              icon: allMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
-              onTap: _selectionToggleMute,
-            ),
-            _selectionHeaderCommand(
-              key: const ValueKey('chat-list-selection-archive'),
-              label: AppStringKeys.chatListArchive,
-              icon: HeroAppIcons.archiveBox,
-              onTap: _selectionArchive,
-            ),
-            _selectionHeaderCommand(
-              key: const ValueKey('chat-list-selection-delete'),
-              label: AppStringKeys.chatDelete,
-              icon: HeroAppIcons.trash,
-              destructive: true,
-              onTap: () => unawaited(_selectionDelete()),
-            ),
-            _selectionOverflowButton(),
-          ],
+              _selectionHeaderCommand(
+                key: const ValueKey('chat-list-selection-pin'),
+                label: AppStrings.t(
+                  allPinned
+                      ? AppStringKeys.chatListUnpin
+                      : AppStringKeys.chatInfoPin,
+                ),
+                icon: HeroAppIcons.pin,
+                onTap: _selectionTogglePin,
+              ),
+              _selectionHeaderCommand(
+                key: const ValueKey('chat-list-selection-mute'),
+                label: AppStrings.t(
+                  allMuted ? AppStringKeys.chatUnmute : AppStringKeys.callMute,
+                ),
+                icon: allMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
+                onTap: _selectionToggleMute,
+              ),
+              _selectionHeaderCommand(
+                key: const ValueKey('chat-list-selection-archive'),
+                label: AppStrings.t(AppStringKeys.chatListArchive),
+                icon: HeroAppIcons.archiveBox,
+                onTap: _selectionArchive,
+              ),
+              _selectionHeaderCommand(
+                key: const ValueKey('chat-list-selection-delete'),
+                label: AppStrings.t(AppStringKeys.chatDelete),
+                icon: HeroAppIcons.trash,
+                destructive: true,
+                onTap: () => unawaited(_selectionDelete()),
+              ),
+              _selectionOverflowButton(),
+            ],
+          ),
         ),
       ),
     );
@@ -2996,17 +3012,21 @@ class _ChatListViewState extends State<ChatListView>
     bool destructive = false,
   }) {
     final c = context.colors;
+    final hitTarget = AppMetric.chatHeaderHitTarget();
     return AppInteractiveSurface(
       key: key,
       semanticLabel: label,
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: AppIcon(
-          icon,
-          size: AppIconSize.lg,
-          color: destructive ? AppTheme.tagRed : c.textPrimary,
+      child: SizedBox(
+        width: hitTarget,
+        height: hitTarget,
+        child: Center(
+          child: AppIcon(
+            icon,
+            size: AppIconSize.toolbar,
+            color: destructive ? AppTheme.tagRed : c.textPrimary,
+          ),
         ),
       ),
     );
@@ -3014,45 +3034,35 @@ class _ChatListViewState extends State<ChatListView>
 
   Widget _selectionOverflowButton() {
     final c = context.colors;
+    final hitTarget = AppMetric.chatHeaderHitTarget();
     return AppInteractiveSurface(
       key: const ValueKey('chat-list-selection-overflow'),
       semanticLabel: AppStringKeys.chatMenu.l10n(context),
       onTap: () => setState(() => _selectionOverflowOpen = true),
       borderRadius: BorderRadius.circular(AppRadius.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: AppIcon(
-          HeroAppIcons.ellipsis,
-          size: AppIconSize.lg,
-          color: c.textPrimary,
+      child: SizedBox(
+        width: hitTarget,
+        height: hitTarget,
+        child: Center(
+          child: AppIcon(
+            HeroAppIcons.ellipsisVertical,
+            size: AppIconSize.toolbar,
+            color: c.textPrimary,
+          ),
         ),
       ),
     );
   }
 
+  /// The overflow column opens as the same anchored popup the plus and folder
+  /// menus use (exteraless's ic_ab_other opens an ActionBarPopupWindowLayout,
+  /// not a dialog), hugging its labels instead of spanning the screen.
   Widget _selectionOverflowOverlay() {
-    if (!_selectionMode || !_selectionOverflowOpen) {
-      return const SizedBox.shrink();
-    }
-    return Positioned.fill(
-      key: const ValueKey('chat-list-selection-overflow-layer'),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _selectionOverflowOpen = false),
-        child: ColoredBox(
-          color: Colors.black.withValues(alpha: 0.3),
-          child: Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: AppSpacing.section,
-                right: AppSpacing.lg,
-              ),
-              child: _selectionOverflowMenu(),
-            ),
-          ),
-        ),
-      ),
+    return _AnimatedAnchoredMenuOverlay(
+      visible: _selectionMode && _selectionOverflowOpen,
+      top: MediaQuery.paddingOf(context).top + 48,
+      onDismiss: () => setState(() => _selectionOverflowOpen = false),
+      child: _selectionOverflowMenu(),
     );
   }
 
@@ -3072,21 +3082,24 @@ class _ChatListViewState extends State<ChatListView>
       },
       borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
-        width: 220,
-        height: 44,
+        height: AppMetric.popupMenuRowHeight(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+          padding: EdgeInsets.symmetric(horizontal: AppMetric.popupMenuInset()),
           child: Row(
             children: [
-              AppIcon(icon, size: 19, color: c.textPrimary),
+              AppIcon(
+                icon,
+                size: AppMetric.popupMenuIconSlot(),
+                color: c.textPrimary,
+              ),
               const SizedBox(width: AppSpacing.lg),
               Expanded(
                 child: Text(
-                  AppStrings.t(label),
+                  label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: AppTextSize.body,
+                    fontSize: AppMetric.popupMenuTextSize(),
                     fontWeight: FontWeight.w500,
                     color: c.textPrimary,
                     decoration: TextDecoration.none,
@@ -3098,19 +3111,20 @@ class _ChatListViewState extends State<ChatListView>
         ),
       ),
     );
+    // Same width the plus and folder popups draw at, so the three anchored
+    // menus read as one family.
     return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: chatFolderMenuVerticalInset,
-      ),
+      key: const ValueKey('chat-list-selection-overflow-menu'),
+      width: AppMetric.popupMenuWidth(),
       decoration: BoxDecoration(
         color: c.card,
-        borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(color: c.divider, width: 0.5),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: c.divider, width: 0.75),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 18,
-            offset: Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -3950,6 +3964,9 @@ class _ChatListViewState extends State<ChatListView>
       onLongPressAt: desktopContextMenu
           ? null
           : (localPosition) => _handleRowLongPress(chat, localPosition),
+      dragReorderEnabled: _selectionMode && pinnedInList && !desktopContextMenu,
+      onDragReorderStart: () => unawaited(HapticFeedback.selectionClick()),
+      onDragReorderSlot: (slots) => _handleDragReorderSlot(chat, slots),
       onSecondaryTapDown: desktopContextMenu
           ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
           : null,
@@ -3979,6 +3996,30 @@ class _ChatListViewState extends State<ChatListView>
 
   bool _selectionTint(ChatSummary chat) =>
       _selectionMode && _selectedChatIds.contains(chat.id);
+
+  /// One crossed row of an edit-mode drag: swap the dragged pinned chat with
+  /// the pinned neighbour it just passed (exteraless's ItemTouchHelper onMove
+  /// swaps pinnedNum the same way, one pair at a time).
+  void _handleDragReorderSlot(ChatSummary chat, int slots) {
+    if (slots == 0) return;
+    final entries = _model.chatListEntries(
+      communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
+    );
+    final pinnedChats = entries
+        .whereType<CommunityChatEntry>()
+        .map((entry) => entry.chat)
+        .where(_model.isPinnedInSelectedList)
+        .toList();
+    final index = pinnedChats.indexWhere((c) => c.id == chat.id);
+    if (index < 0) return;
+    final targetIndex = (index + slots).clamp(0, pinnedChats.length - 1);
+    if (targetIndex == index) return;
+    unawaited(HapticFeedback.selectionClick());
+    _model.reorderPinnedChat(
+      chatId: chat.id,
+      targetChatId: pinnedChats[targetIndex].id,
+    );
+  }
 
   /// exteraless's hit split: a long press inside the avatar column peeks the
   /// conversation; anywhere else on the row enters the multi-select edit mode.
@@ -4369,6 +4410,7 @@ class _ChatListViewState extends State<ChatListView>
           updates: _model,
           onClearUnread: _model.markRead,
           onUnarchive: _model.unarchive,
+          onToggleMute: _model.toggleMute,
         ),
       );
       return;
@@ -5202,6 +5244,9 @@ class ChatSwipeRow extends StatefulWidget {
     required this.child,
     this.onLongPress,
     this.onLongPressAt,
+    this.dragReorderEnabled = false,
+    this.onDragReorderStart,
+    this.onDragReorderSlot,
     this.onSecondaryTapDown,
     this.requiresLongPressDrag = false,
     this.horizontalSwipeEnabled = true,
@@ -5219,6 +5264,16 @@ class ChatSwipeRow extends StatefulWidget {
   /// Long-press with the press coordinates, so the host can split the gesture
   /// by hit region (exteraless peeks only from the avatar).
   final void Function(Offset localPosition)? onLongPressAt;
+
+  /// Edit-mode pinned reorder (exteraless's action-mode ItemTouchHelper drag):
+  /// when enabled, a long press that moves vertically drags the row over its
+  /// pinned neighbours, reporting each crossed slot so the host can swap.
+  final bool dragReorderEnabled;
+  final VoidCallback? onDragReorderStart;
+
+  /// [slots] is signed: +1 one slot down, -1 one slot up, reported once per
+  /// crossed row extent.
+  final void Function(int slots)? onDragReorderSlot;
   final GestureTapDownCallback? onSecondaryTapDown;
   final bool requiresLongPressDrag;
   final bool horizontalSwipeEnabled;
@@ -5240,6 +5295,8 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   double _offset = 0;
   double _longPressStartOffset = 0;
   Offset? _pendingLongPressAt;
+  double _dragReorderDy = 0;
+  bool _dragReorderActive = false;
   int? _desktopTouchPointer;
   Offset? _desktopTouchOrigin;
   double _desktopTouchStartOffset = 0;
@@ -5342,6 +5399,34 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   void _close() {
     _animateTo(0);
     if (widget.openRowId == widget.rowId) widget.onOpenChanged(null);
+  }
+
+  void _handleDragReorderMove(LongPressMoveUpdateDetails details) {
+    final dy = details.offsetFromOrigin.dy;
+    if (!_dragReorderActive) {
+      // A long press that has not moved vertically stays a plain long press;
+      // crossing a quarter row makes the drag take over.
+      if (dy.abs() < 12) return;
+      _dragReorderActive = true;
+      _dragReorderDy = 0;
+      widget.onDragReorderStart?.call();
+    }
+    setState(() => _dragReorderDy = dy);
+    final rowExtent = context.size?.height ?? 0;
+    if (rowExtent <= 0) return;
+    final crossed = (_dragReorderDy / rowExtent).round();
+    if (crossed != 0) {
+      widget.onDragReorderSlot?.call(crossed);
+      _dragReorderDy -= crossed * rowExtent;
+    }
+  }
+
+  void _endDragReorder() {
+    if (!_dragReorderActive) return;
+    setState(() {
+      _dragReorderActive = false;
+      _dragReorderDy = 0;
+    });
   }
 
   void _handleContextRequest() {
@@ -5507,10 +5592,18 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                 );
               });
             }
+          : widget.dragReorderEnabled
+          ? _handleDragReorderMove
           : null,
       onLongPressEnd: (details) {
         if (widget.requiresLongPressDrag) {
           _settle(details.velocity.pixelsPerSecond.dx);
+        } else if (_dragReorderActive) {
+          _endDragReorder();
+        } else if (widget.dragReorderEnabled) {
+          // A press that never crossed into a drag still owes its long-press
+          // behaviour (edit mode: toggle membership).
+          widget.onLongPress?.call();
         }
       },
       onHorizontalDragStart: !horizontalDragEnabled
@@ -5540,7 +5633,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     // At rest the row covers the blocks completely, so building them costs one
     // text layout + one paint per action on every row of every list rebuild.
     final actionsRevealed = _offset != 0 || widget.openRowId == widget.rowId;
-    return ClipRect(
+    final Widget self = ClipRect(
       child: Stack(
         children: [
           // Revealed action blocks behind the row.
@@ -5578,15 +5671,31 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                     ),
                   ),
           ),
-          // The row, sliding left to uncover the blocks.
+          // The row, sliding left to uncover the blocks, or lifted and
+          // following the finger while an edit-mode reorder drag is live.
           Transform.translate(
-            offset: Offset(_offset, 0),
-            child: widget.pressRippleEnabled
+            offset: Offset(_offset, _dragReorderDy),
+            child: _dragReorderActive
+                ? DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: context.colors.background,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x40000000),
+                          blurRadius: 16,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: interactiveRow,
+                  )
+                : widget.pressRippleEnabled
                 ? AppPressRipple(child: interactiveRow)
                 : interactiveRow,
           ),
         ],
       ),
     );
+    return self;
   }
 }

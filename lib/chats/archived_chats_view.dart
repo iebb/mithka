@@ -4,17 +4,24 @@
 //  Telegram archived chats folded behind the group assistant entry.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../app/app_navigator.dart';
+import '../app/ipad_window_chrome.dart';
 import '../chat/chat_view.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
+import '../components/app_interactive_surface.dart';
 import '../components/desktop_row_actions.dart';
 import '../components/ui_components.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
+import 'chat_list_view.dart' show ChatListSelectionHighlight;
 import 'chat_row_view.dart';
 
 class ArchivedChatsRow extends StatelessWidget {
@@ -85,6 +92,7 @@ class LiveArchivedChatsView extends StatelessWidget {
     required this.chatsProvider,
     this.onClearUnread,
     this.onUnarchive,
+    this.onToggleMute,
     this.onBack,
     this.onChatSelected,
     this.selectedChatId,
@@ -94,6 +102,7 @@ class LiveArchivedChatsView extends StatelessWidget {
   final List<ChatSummary> Function() chatsProvider;
   final ValueChanged<ChatSummary>? onClearUnread;
   final ValueChanged<ChatSummary>? onUnarchive;
+  final ValueChanged<ChatSummary>? onToggleMute;
   final VoidCallback? onBack;
   final ValueChanged<ChatSummary>? onChatSelected;
   final int? selectedChatId;
@@ -114,12 +123,17 @@ class LiveArchivedChatsView extends StatelessWidget {
   }
 }
 
-class ArchivedChatsView extends StatelessWidget {
+/// The archived list, with the same long-press edit mode exteraless gives its
+/// archive folder (a DialogsActivity with folderId=1 runs the identical action
+/// mode): a body long press selects, the header becomes a command bar, and
+/// every command maps onto the archive's own row actions.
+class ArchivedChatsView extends StatefulWidget {
   const ArchivedChatsView({
     super.key,
     required this.chats,
     this.onClearUnread,
     this.onUnarchive,
+    this.onToggleMute,
     this.onBack,
     this.onChatSelected,
     this.selectedChatId,
@@ -127,47 +141,210 @@ class ArchivedChatsView extends StatelessWidget {
   final List<ChatSummary> chats;
   final ValueChanged<ChatSummary>? onClearUnread;
   final ValueChanged<ChatSummary>? onUnarchive;
+  final ValueChanged<ChatSummary>? onToggleMute;
   final VoidCallback? onBack;
   final ValueChanged<ChatSummary>? onChatSelected;
   final int? selectedChatId;
 
   @override
+  State<ArchivedChatsView> createState() => _ArchivedChatsViewState();
+}
+
+class _ArchivedChatsViewState extends State<ArchivedChatsView> {
+  final Set<int> _selectedChatIds = {};
+
+  bool get _selectionMode => _selectedChatIds.isNotEmpty;
+
+  List<ChatSummary> get _selectedChats =>
+      widget.chats.where((chat) => _selectedChatIds.contains(chat.id)).toList();
+
+  void _beginSelection(ChatSummary chat) {
+    unawaited(HapticFeedback.mediumImpact());
+    setState(() => _selectedChatIds.add(chat.id));
+  }
+
+  void _exitSelection() {
+    setState(_selectedChatIds.clear);
+  }
+
+  void _toggleSelected(ChatSummary chat) => setState(() {
+    if (!_selectedChatIds.add(chat.id)) _selectedChatIds.remove(chat.id);
+  });
+
+  void _runOverSelection(void Function(ChatSummary chat) action) {
+    final chats = _selectedChats;
+    _exitSelection();
+    for (final chat in chats) {
+      action(chat);
+    }
+  }
+
+  Future<void> _deleteSelection() async {
+    final count = _selectedChats.length;
+    if (count == 0) return;
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStringKeys.chatListDeleteChatQuestion,
+      message: AppStrings.t(AppStringKeys.chatListSelectedCountValue1, {
+        'value1': '$count',
+      }),
+      confirmText: AppStringKeys.chatDelete.l10n(context),
+      destructive: true,
+    );
+    if (!confirmed) return;
+    // exteraless's archive delete only clears the archive's own rows; the
+    // host owns the actual removal, and clearing read state is not it.
+    final onUnarchive = widget.onUnarchive;
+    _runOverSelection((chat) => onUnarchive?.call(chat));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      backgroundColor: c.background,
-      body: Column(
-        children: [
-          NavHeader(
-            title: AppStrings.t(AppStringKeys.archivedChatsGroupAssistant),
-            onBack: onBack ?? () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: chats.length,
-              itemBuilder: (context, i) {
-                final chat = chats[i];
-                return _ArchivedChatSwipeRow(
-                  key: ValueKey(chat.id),
-                  chat: chat,
-                  selected: chat.id == selectedChatId,
-                  onTap: () => _openChat(context, chat),
-                  onClearUnread: () => onClearUnread?.call(chat),
-                  onUnarchive: onUnarchive == null
-                      ? null
-                      : () => onUnarchive!(chat),
-                );
-              },
+    final selectionMode = _selectionMode;
+    return PopScope(
+      canPop: !selectionMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitSelection();
+      },
+      child: Scaffold(
+        backgroundColor: c.background,
+        body: Column(
+          children: [
+            if (selectionMode) _selectionHeader(context) else _normalHeader(),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: widget.chats.length,
+                itemBuilder: (context, i) {
+                  final chat = widget.chats[i];
+                  return _ArchivedChatSwipeRow(
+                    key: ValueKey(chat.id),
+                    chat: chat,
+                    selected: chat.id == widget.selectedChatId,
+                    selectionTint: _selectedChatIds.contains(chat.id),
+                    onTap: () => selectionMode
+                        ? _toggleSelected(chat)
+                        : _openChat(context, chat),
+                    onLongPress: () => selectionMode
+                        ? _toggleSelected(chat)
+                        : _beginSelection(chat),
+                    onClearUnread: () => widget.onClearUnread?.call(chat),
+                    onUnarchive: widget.onUnarchive == null
+                        ? null
+                        : () => widget.onUnarchive!(chat),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _normalHeader() => NavHeader(
+    title: AppStrings.t(AppStringKeys.archivedChatsGroupAssistant),
+    onBack: widget.onBack ?? () => Navigator.of(context).pop(),
+  );
+
+  /// Same command bar as the main list's edit mode, trimmed to the archive's
+  /// own actions: unarchive replaces pin (an archive row cannot pin), mute
+  /// and delete stay, read moves to the overflow column.
+  Widget _selectionHeader(BuildContext context) {
+    final c = context.colors;
+    final chats = _selectedChats;
+    final allMuted = chats.isNotEmpty && chats.every((chat) => chat.isMuted);
+    Widget command({
+      required Key key,
+      required String label,
+      required AppIconData icon,
+      required VoidCallback onTap,
+      bool destructive = false,
+    }) => AppInteractiveSurface(
+      key: key,
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: AppIcon(
+          icon,
+          size: AppIconSize.lg,
+          color: destructive ? AppTheme.tagRed : c.textPrimary,
+        ),
+      ),
+    );
+    return Container(
+      key: const ValueKey('chat-list-selection-header'),
+      color: c.listHeaderTint,
+      padding: headerChromePaddingOf(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            AppInteractiveSurface(
+              key: const ValueKey('chat-list-close-selection'),
+              semanticLabel: AppStringKeys.countryPickerCancel.l10n(context),
+              onTap: _exitSelection,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: AppIconSize.lg,
+                  color: c.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                '${_selectedChatIds.length}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: AppTextSize.bodyLarge,
+                  fontWeight: FontWeight.w600,
+                  color: c.textPrimary,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ),
+            command(
+              key: const ValueKey('chat-list-selection-unarchive'),
+              label: AppStrings.t(AppStringKeys.chatListUnarchive),
+              icon: HeroAppIcons.inbox,
+              onTap: () =>
+                  _runOverSelection((chat) => widget.onUnarchive?.call(chat)),
+            ),
+            command(
+              key: const ValueKey('chat-list-selection-mute'),
+              label: AppStrings.t(
+                allMuted ? AppStringKeys.chatUnmute : AppStringKeys.callMute,
+              ),
+              icon: allMuted ? HeroAppIcons.bell : HeroAppIcons.bellSlash,
+              onTap: () =>
+                  _runOverSelection((chat) => widget.onToggleMute?.call(chat)),
+            ),
+            command(
+              key: const ValueKey('chat-list-selection-delete'),
+              label: AppStrings.t(AppStringKeys.chatDelete),
+              icon: HeroAppIcons.trash,
+              destructive: true,
+              onTap: () => unawaited(_deleteSelection()),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void _openChat(BuildContext context, ChatSummary chat) {
-    final selectionHandler = onChatSelected;
+    final selectionHandler = widget.onChatSelected;
     if (selectionHandler != null) {
       selectionHandler(chat);
       return;
@@ -189,6 +366,8 @@ class _ArchivedChatSwipeRow extends StatefulWidget {
     required this.onTap,
     required this.onClearUnread,
     this.onUnarchive,
+    this.onLongPress,
+    this.selectionTint = false,
   });
 
   final ChatSummary chat;
@@ -196,6 +375,10 @@ class _ArchivedChatSwipeRow extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onClearUnread;
   final VoidCallback? onUnarchive;
+  final VoidCallback? onLongPress;
+
+  /// Edit-mode membership tint, drawn over the row like the main list.
+  final bool selectionTint;
 
   @override
   State<_ArchivedChatSwipeRow> createState() => _ArchivedChatSwipeRowState();
@@ -214,6 +397,9 @@ class _ArchivedChatSwipeRowState extends State<_ArchivedChatSwipeRow> {
       selected: widget.selected,
       onClearUnread: widget.onClearUnread,
     );
+    final tintedRow = widget.selectionTint
+        ? ChatListSelectionHighlight(selected: true, child: row)
+        : row;
     // Match the main list: macOS uses secondary-click commands, never a
     // horizontal swipe tray (including trackpad drags).
     if (!kIsWeb && Theme.of(context).platform == TargetPlatform.macOS) {
@@ -237,13 +423,17 @@ class _ArchivedChatSwipeRowState extends State<_ArchivedChatSwipeRow> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
-          child: row,
+          onLongPress: widget.onLongPress,
+          child: tintedRow,
         ),
       );
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _offset == 0 ? widget.onTap : () => setState(() => _offset = 0),
+      onLongPress: widget.selectionTint || _offset == 0
+          ? widget.onLongPress
+          : null,
       onHorizontalDragUpdate: action == null
           ? null
           : (details) => setState(() {
@@ -285,7 +475,10 @@ class _ArchivedChatSwipeRowState extends State<_ArchivedChatSwipeRow> {
               ),
             Transform.translate(
               offset: Offset(_offset, 0),
-              child: ColoredBox(color: context.colors.background, child: row),
+              child: ColoredBox(
+                color: context.colors.background,
+                child: tintedRow,
+              ),
             ),
           ],
         ),

@@ -24,11 +24,7 @@ void main() {
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(extensions: [AppColors.light]),
-        home: Scaffold(
-          body: PlusMenu(
-            onSelect: (_) {},
-          ),
-        ),
+        home: Scaffold(body: PlusMenu(onSelect: (_) {})),
       ),
     );
     await tester.pump();
@@ -54,9 +50,7 @@ void main() {
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(extensions: [AppColors.light]),
-        home: Scaffold(
-          body: PlusMenu(onSelect: selected.add),
-        ),
+        home: Scaffold(body: PlusMenu(onSelect: selected.add)),
       ),
     );
     await tester.pump();
@@ -90,9 +84,7 @@ void main() {
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(extensions: [AppColors.light]),
-        home: Scaffold(
-          body: PlusMenu(onSelect: (_) {}, showCommunities: true),
-        ),
+        home: Scaffold(body: PlusMenu(onSelect: (_) {}, showCommunities: true)),
       ),
     );
     await tester.pump();

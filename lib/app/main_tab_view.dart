@@ -1576,6 +1576,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             selectedChatId: _selectedMessageChat?.chatId,
             onClearUnread: archivedSelection.onClearUnread,
             onUnarchive: archivedSelection.onUnarchive,
+            onToggleMute: archivedSelection.onToggleMute,
             onBack: () => setState(() => _selectedArchivedChats = null),
             onChatSelected: (chat) {
               _showMessageChat(ChatListSelection.fromChat(chat));

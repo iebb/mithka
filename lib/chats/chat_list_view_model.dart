@@ -843,6 +843,117 @@ class ChatListViewModel extends ChangeNotifier {
         : _client.queryForSlot(request, slot);
   }
 
+  /// Test-only: pushes [chats] through the same ingestion the update stream
+  /// uses, then resorts.
+  @visibleForTesting
+  void debugIngestChatsForTest(List<ChatSummary> chats) {
+    for (final chat in chats) {
+      _map[chat.id] = chat;
+    }
+    _resort();
+  }
+
+  /// Test-only: installs a folder selection with the given pinned ids.
+  @visibleForTesting
+  void debugSelectFolderForTest(int folderId, {Set<int>? pinnedIds}) {
+    _filters = [
+      const ChatFilterOption(title: AppStringKeys.topicChatAllFilter),
+      ChatFilterOption(title: 'Folder', folderId: folderId),
+    ];
+    _selectedFilter = _filters.last;
+    final orders = _folderOrders.putIfAbsent(folderId, () => {});
+    final pins = _folderPins.putIfAbsent(folderId, () => {});
+    var order = (pinnedIds?.length ?? 0) + 1;
+    for (final id in pinnedIds ?? const <int>{}) {
+      orders[id] = order--;
+      pins[id] = true;
+    }
+    _resort();
+  }
+
+  // MARK: - Pinned order (edit-mode drag)
+
+  /// Reorders the pinned band by moving [chatId] onto [targetId]'s slot, like
+  /// exteraless's edit-mode drag that swaps two dialogs' pinnedNum and commits
+  /// reorderPinnedDialogs on leave.
+  ///
+  /// The local order maps flip immediately so the list follows the finger;
+  /// `setPinnedChats` then writes the full pinned order for the list the user
+  /// is editing. A server refusal restores TDLib's own ordering on the next
+  /// position update, which every chat in the band receives.
+  void reorderPinnedChat({required int chatId, required int targetChatId}) {
+    if (_disposed || chatId == targetChatId) return;
+    final folderId = _selectedFilter.folderId;
+    if (folderId == null) {
+      final pinned = _chats.where((c) => c.isPinned).toList();
+      final from = pinned.indexWhere((c) => c.id == chatId);
+      final to = pinned.indexWhere((c) => c.id == targetChatId);
+      if (from < 0 || to < 0) return;
+      _swapMainPinOrders(pinned, from, to);
+    } else {
+      final orders = _folderOrders[folderId];
+      if (orders == null) return;
+      final pinnedIds = _chats
+          .map((c) => c.id)
+          .where((id) => (orders[id] ?? 0) > 0)
+          .toList();
+      final from = pinnedIds.indexOf(chatId);
+      final to = pinnedIds.indexOf(targetChatId);
+      if (from < 0 || to < 0) return;
+      final moving = pinnedIds.removeAt(from);
+      pinnedIds.insert(to, moving);
+      _rewriteFolderPinOrders(folderId, pinnedIds);
+    }
+    _resort();
+    _commitPinnedOrder();
+  }
+
+  /// Exchanges the TDLib position orders of the two pinned rows so the local
+  /// sort lands exactly where the drag dropped them.
+  void _swapMainPinOrders(List<ChatSummary> pinned, int from, int to) {
+    final pinnedIds = pinned.map((c) => c.id).toList();
+    final moving = pinnedIds.removeAt(from);
+    pinnedIds.insert(to, moving);
+    // Main-list orders live on the summary; rewrite them in the new sequence.
+    final orders = pinned.map((c) => c.order).toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (var i = 0; i < pinnedIds.length; i++) {
+      _mutate(pinnedIds[i], (s) => s.order = orders[i]);
+    }
+  }
+
+  /// Reassigns a folder's pin orders so [pinnedIds]' sequence is descending.
+  void _rewriteFolderPinOrders(int folderId, List<int> pinnedIds) {
+    final orders = _folderOrders[folderId];
+    if (orders == null) return;
+    final values = orders.values.toList()..sort((a, b) => b.compareTo(a));
+    for (var i = 0; i < pinnedIds.length; i++) {
+      orders[pinnedIds[i]] = values[i];
+    }
+  }
+
+  /// Sends the visible list's full pinned order through `setPinnedChats`,
+  /// the TDLib counterpart of exteraless's reorderPinnedDialogs commit.
+  void _commitPinnedOrder() {
+    final folderId = _selectedFilter.folderId;
+    final List<int> pinnedIds;
+    if (folderId == null) {
+      pinnedIds = _chats.where((c) => c.isPinned).map((c) => c.id).toList();
+    } else {
+      final orders = _folderOrders[folderId] ?? const <int, int>{};
+      pinnedIds = _chats
+          .map((c) => c.id)
+          .where((id) => (orders[id] ?? 0) > 0)
+          .toList();
+    }
+    if (pinnedIds.isEmpty) return;
+    _chatListQuery({
+      'chat_list': _activeChatList,
+      '@type': 'setPinnedChats',
+      'chat_ids': pinnedIds,
+    }).catchError((Object _) => <String, dynamic>{});
+  }
+
   // MARK: - Row actions (swipe)
 
   void togglePin(ChatSummary chat) {

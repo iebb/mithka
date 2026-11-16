@@ -122,6 +122,52 @@ void main() {
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
+
+  testWidgets(
+    'edit header rows keep the default header height',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      final normal = tester
+          .getSize(find.byKey(const ValueKey('chat-list-header-avatar-hit')))
+          .height;
+      final bodyCenter = rowBodyCenter(tester, 'Chat 1');
+      await tester.startGesture(bodyCenter);
+      await tester.pump(kLongPressTimeout);
+      await tester.pumpAndSettle();
+      final editRow = tester
+          .getSize(find.byKey(const ValueKey('chat-list-selection-pin')))
+          .height;
+      expect(editRow, moreOrLessEquals(normal, epsilon: 0.1));
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
+    'overflow menu opens as a compact anchored popup and select-all works',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      final bodyCenter = rowBodyCenter(tester, 'Chat 1');
+      await tester.startGesture(bodyCenter);
+      await tester.pump(kLongPressTimeout);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('chat-list-selection-overflow')),
+      );
+      await tester.pumpAndSettle();
+      final menu = tester.getSize(
+        find.byKey(const ValueKey('chat-list-selection-overflow-menu')),
+      );
+      expect(menu.width, lessThan(280), reason: 'popup hugs its labels');
+      await tester.tap(
+        find.byKey(const ValueKey('chat-list-selection-overflow-select-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2'), findsWidgets);
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 }
 
 Offset rowAvatarCenter(WidgetTester tester, String title) {
