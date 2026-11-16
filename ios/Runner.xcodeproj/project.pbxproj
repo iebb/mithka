@@ -25,6 +25,7 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		9A4F20E231E1000100000001 /* TelegramGroupCallMediaBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E131E1000100000001 /* TelegramGroupCallMediaBridge.swift */; };
 		9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E331E1000100000001 /* MediaDropBridge.swift */; };
+		7C1D0A0231F2000100000001 /* KeyboardImagePasteBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1D0A0131F2000100000001 /* KeyboardImagePasteBridge.swift */; };
 		9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */; };
 		9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E731E1000100000001 /* MithkaProBridge.swift */; };
 		9A4F20EA31E1000100000001 /* CommunicationNotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */; };
@@ -122,6 +123,7 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9A4F20E131E1000100000001 /* TelegramGroupCallMediaBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TelegramGroupCallMediaBridge.swift; sourceTree = "<group>"; };
 		9A4F20E331E1000100000001 /* MediaDropBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MediaDropBridge.swift; sourceTree = "<group>"; };
+		7C1D0A0131F2000100000001 /* KeyboardImagePasteBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KeyboardImagePasteBridge.swift; sourceTree = "<group>"; };
 		9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TelegramAccountSecurityBridge.swift; sourceTree = "<group>"; };
 		9A4F20E731E1000100000001 /* MithkaProBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MithkaProBridge.swift; sourceTree = "<group>"; };
 		9A4F20E931E1000100000001 /* CommunicationNotificationBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CommunicationNotificationBridge.swift; sourceTree = "<group>"; };
@@ -264,6 +266,7 @@
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				9A4F20E131E1000100000001 /* TelegramGroupCallMediaBridge.swift */,
 				9A4F20E331E1000100000001 /* MediaDropBridge.swift */,
+				7C1D0A0131F2000100000001 /* KeyboardImagePasteBridge.swift */,
 				9A4F20E531E1000100000001 /* TelegramAccountSecurityBridge.swift */,
 				9A4F20E731E1000100000001 /* MithkaProBridge.swift */,
 				9A4F20F331E1000100000001 /* AppPurchases.swift */,
@@ -683,6 +686,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				9A4F20E231E1000100000001 /* TelegramGroupCallMediaBridge.swift in Sources */,
 				9A4F20E431E1000100000001 /* MediaDropBridge.swift in Sources */,
+				7C1D0A0231F2000100000001 /* KeyboardImagePasteBridge.swift in Sources */,
 				9A4F20E631E1000100000001 /* TelegramAccountSecurityBridge.swift in Sources */,
 				9A4F20E831E1000100000001 /* MithkaProBridge.swift in Sources */,
 				9A4F20F431E1000100000001 /* AppPurchases.swift in Sources */,
