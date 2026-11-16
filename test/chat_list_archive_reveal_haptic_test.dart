@@ -130,10 +130,20 @@ void main() {
         reason: 'fixture must mount the pull-down archive slot',
       );
       expect(haptics, isNotEmpty, reason: 'the reveal must fire a haptic');
+      final hapticCalls = haptics
+          .where((c) => c.method == 'HapticFeedback.vibrate')
+          .toList();
       expect(
-        haptics.where((c) => c.method == 'HapticFeedback.vibrate').length,
+        hapticCalls.length,
         1,
         reason: 'exactly one haptic when the archive reveal latches',
+      );
+      expect(
+        hapticCalls.single.arguments,
+        'HapticFeedbackType.mediumImpact',
+        reason:
+            'the reveal uses KEYBOARD_TAP strength (mediumImpact) — the '
+            'CLOCK_TICK selection haptic is too faint to feel mid-gesture',
       );
 
       await tester.pumpWidget(const SizedBox.shrink());

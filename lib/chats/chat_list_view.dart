@@ -1390,9 +1390,11 @@ class _ChatListViewState extends State<ChatListView>
             pullOffset: pullOffset,
             rowHeight: rowHeight,
           )) {
-        // The reference client fires a KEYBOARD_TAP haptic the moment the
-        // pull crosses the snap threshold and the archive becomes showable.
-        unawaited(HapticFeedback.selectionClick());
+        // The reference client fires a KEYBOARD_TAP haptic the moment the pull
+        // crosses the snap threshold and the archive becomes showable.
+        // mediumImpact() maps to KEYBOARD_TAP on Android — selectionClick's
+        // CLOCK_TICK is too faint to feel mid-gesture on many devices.
+        unawaited(HapticFeedback.mediumImpact());
         setState(() => _archiveRevealed = true);
       } else if (_archiveRevealed &&
           chatListShouldHidePullDownArchive(
