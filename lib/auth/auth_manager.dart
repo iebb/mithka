@@ -132,6 +132,32 @@ class AuthCodeInfo {
 
   bool get isNumeric => numericOnly;
 
+  /// Field-equality for the auth manager's redundant-notification guard: a
+  /// re-delivery of the same code info must not re-notify listeners.
+  @override
+  bool operator ==(Object other) =>
+      other is AuthCodeInfo &&
+      other.method == method &&
+      other.length == length &&
+      other.numericOnly == numericOnly &&
+      other.phoneNumber == phoneNumber &&
+      other.phoneNumberPrefix == phoneNumberPrefix &&
+      other.pattern == pattern &&
+      other.url == url &&
+      other.timeout == timeout;
+
+  @override
+  int get hashCode => Object.hash(
+    method,
+    length,
+    numericOnly,
+    phoneNumber,
+    phoneNumberPrefix,
+    pattern,
+    url,
+    timeout,
+  );
+
   static const fallback = AuthCodeInfo(
     method: AuthCodeDeliveryMethod.unknown,
     length: 5,
@@ -628,8 +654,36 @@ class AuthManager extends ChangeNotifier {
   }
 
   void _set(AuthStep step) {
+    // The login surface maps several states to the same phone form
+    // (AuthReloading on add-account → AuthWaitPhoneNumber a few frames
+    // later). Re-notifying on an equivalent step re-keyed the phone form's
+    // AnimatedSwitcher child and the whole column flickered — the "text
+    // flicker" on entering add-account. Only a real step change notifies.
+    final sameKind = step.runtimeType == _step.runtimeType;
+    if (sameKind) {
+      final same = switch (step) {
+        AuthWaitQrCode(:final link) => (_step as AuthWaitQrCode).link == link,
+        AuthWaitCode(:final info) => (_step as AuthWaitCode).info == info,
+        AuthWaitPassword(:final hint) =>
+          (_step as AuthWaitPassword).hint == hint,
+        _ => true,
+      };
+      if (same) return;
+    }
     _step = step;
     notifyListeners();
+  }
+
+  /// Test seam for the redundant-notification guard: routes through the same
+  /// [_set] the state machine uses and reports whether listeners fired.
+  @visibleForTesting
+  bool debugSetStepForTesting(AuthStep step) {
+    var notified = false;
+    void listener() => notified = true;
+    addListener(listener);
+    _set(step);
+    removeListener(listener);
+    return notified;
   }
 
   void _run(Map<String, dynamic> request) {
