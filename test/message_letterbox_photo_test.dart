@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/media_spoiler.dart';
 import 'package:mithka/chat/message_bubble.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/tdlib/td_client.dart';
@@ -89,6 +90,21 @@ void main() {
         find.descendant(of: bubble, matching: find.byType(ImageFiltered)),
         findsNothing,
       );
+      final frame = tester.getRect(
+        find.descendant(of: bubble, matching: find.byType(MessageMediaSpoiler)),
+      );
+      final photo = tester.getRect(
+        find.byWidgetPredicate((w) => w is TDImage && w.photo?.id == 9),
+      );
+      if (grouped) {
+        // Like Telegram, the caption widens the bubble past the narrow photo,
+        // which stays centred over the side fill.
+        expect(frame.width, greaterThan(200));
+        expect(photo.center.dx, moreOrLessEquals(frame.center.dx));
+      } else {
+        // Media shown apart from its caption keeps the minimum preview box.
+        expect(frame.width, lessThanOrEqualTo(100));
+      }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       // Outlast the file loader's longest download wait.
