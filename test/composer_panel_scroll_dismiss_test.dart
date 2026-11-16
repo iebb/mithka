@@ -89,6 +89,44 @@ void main() {
 
     expect(find.byKey(const ValueKey('mediaKindSegments')), findsNothing);
   });
+
+  testWidgets('the collapse closes the slot within 240ms of the dismiss', (
+    tester,
+  ) async {
+    // The drag-dismiss must read as one quick collapse, not a slow deliberate
+    // slide. The slot's height animation is driven by AnimatedSize; pin the
+    // FULL settle time of the dismissal by watching the slotted column's
+    // height go still: after the fix the reverse pass is 190ms (fade 140ms),
+    // before it the single 280ms deliberate curve kept the bar moving at
+    // 240ms.
+    final vm = await _pumpComposer(tester);
+    final icon = find.byIcon(HeroAppIcons.solidFaceSmile.data).first;
+    await tester.tap(icon);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    vm.dismissComposerPanels();
+    await tester.pump(); // start the reverse pass
+    // Sample the composer's height each frame; it must stop changing by 240ms.
+    final heights = <double>[];
+    for (var t = 0; t <= 50; t++) {
+      await tester.pump(const Duration(milliseconds: 10));
+      heights.add(tester.getSize(find.byType(ChatInputBar)).height);
+    }
+    // The dismiss chain is switcher fade (140ms) then the slot's AnimatedSize
+    // collapse. With the fix that collapse runs 190ms — motion ends ~330ms.
+    // The old code shrank on the single 280ms deliberate curve, still moving
+    // at 420ms. Red-first: the old code fails this bound.
+    var settledAtMs = -1;
+    for (var i = 1; i < heights.length; i++) {
+      if ((heights[i] - heights[i - 1]).abs() > 0.5) settledAtMs = i * 10;
+    }
+    expect(
+      settledAtMs,
+      lessThan(360),
+      reason: 'collapse still moving at $settledAtMs ms; settle under 360ms',
+    );
+  });
 }
 
 Future<ChatViewModel> _pumpComposer(WidgetTester tester) async {

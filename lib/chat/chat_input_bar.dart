@@ -9348,10 +9348,17 @@ class _ChatInputBarState extends State<ChatInputBar>
     required Widget Function() builder,
   }) {
     final reduceMotion = AppMotion.isReduced(context);
+    // Collapse runs on the accelerate curve (content leaving gets out of the
+    // way quickly — the drag-dismiss the user called "not clean"), expansion
+    // keeps the standard decelerate. AnimatedSize has no reverseCurve, so the
+    // snappier collapse comes from the shorter reverseDuration alone.
     return AnimatedSize(
       duration: reduceMotion
           ? Duration.zero
-          : AppMotion.duration(context, AppMotion.deliberate),
+          : AppMotion.duration(context, AppMotion.responsive),
+      reverseDuration: reduceMotion
+          ? Duration.zero
+          : AppMotion.duration(context, AppMotion.quick),
       curve: AppMotion.standard,
       alignment: Alignment.topCenter,
       clipBehavior: Clip.none,
