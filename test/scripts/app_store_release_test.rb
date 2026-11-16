@@ -17,6 +17,8 @@ class AppStoreReleaseTest < Minitest::Test
   SUBMISSION_ID = "51460acf-3238-49cc-bf75-1f4687bb73cd"
   UPLOADED_BUILD_ID = "28ad1b06-7884-4482-ae22-5c1b315e97c9"
   GITHUB_RUN_ID = "31586409622"
+  DESCRIPTION = "Description\nTerms of Use: #{MithkaAppStoreRelease::TERMS_OF_USE_URL}\n" \
+                "EULA: #{MithkaAppStoreRelease::APPLE_EULA_URL}"
   # Mithka Pro as Apple reports it inside an open iOS review submission.
   PLAN_ITEMS = [
     ["group-item", "subscriptionGroupVersion", "group-version"],
@@ -192,7 +194,7 @@ class AppStoreReleaseTest < Minitest::Test
     notes = MithkaAppStoreRelease::DEFAULT_RELEASE_NOTES
     locales = notes.map do |locale, text|
       { "id" => locale, "attributes" => { "locale" => locale, "whatsNew" => text,
-        "description" => "Description", "keywords" => "chat", "supportUrl" => "https://example.com" } }
+        "description" => DESCRIPTION, "keywords" => "chat", "supportUrl" => "https://example.com" } }
     end
     locales += [
       { "id" => "canada", "attributes" => { "locale" => "en-CA", "whatsNew" => nil } },
@@ -221,6 +223,28 @@ class AppStoreReleaseTest < Minitest::Test
     assert_equal 1, client.writes.length
     assert_equal "/appStoreVersionLocalizations/canada", client.writes.first[1]
     assert_equal({ "whatsNew" => MithkaAppStoreRelease::DEFAULT_RELEASE_NOTES.fetch("en-US") }, client.writes.first.last.dig("data", "attributes"))
+  end
+
+  def test_descriptions_without_terms_of_use_links_gain_them
+    routes = inherited_locale_routes
+    localizations = routes[["/appStoreVersions/#{TARGET_VERSION_ID}/appStoreVersionLocalizations", { "limit" => "200" }]]["data"]
+    localizations.find { |item| item["id"] == "zh-Hans" }["attributes"]["description"] = "介绍"
+    localizations.find { |item| item["id"] == "canada" }["attributes"]["description"] =
+      "About\n\nTerms of Use: #{MithkaAppStoreRelease::TERMS_OF_USE_URL}"
+    client = FakeClient.new(routes)
+    client.define_singleton_method(:patch) do |path, body|
+      writes << [:patch, path, body]
+      { "data" => body.fetch("data") }
+    end
+    build_runner(client, StringIO.new, apply: true).send(:sync_version_metadata, TARGET_VERSION_ID, MithkaAppStoreRelease::DEFAULT_RELEASE_NOTES)
+    descriptions = client.writes.to_h { |_, path, body| [path, body.dig("data", "attributes", "description")] }
+    assert_equal "介绍\n\n使用条款：#{MithkaAppStoreRelease::TERMS_OF_USE_URL}\n" \
+                 "Apple 标准最终用户许可协议：#{MithkaAppStoreRelease::APPLE_EULA_URL}",
+                 descriptions.fetch("/appStoreVersionLocalizations/zh-Hans")
+    assert_equal "About\n\nTerms of Use: #{MithkaAppStoreRelease::TERMS_OF_USE_URL}\n" \
+                 "Apple Standard EULA: #{MithkaAppStoreRelease::APPLE_EULA_URL}",
+                 descriptions.fetch("/appStoreVersionLocalizations/canada")
+    refute descriptions.key?("/appStoreVersionLocalizations/en-US")
   end
 
   def draft_routes(states: ["PREPARE_FOR_SUBMISSION"], version: "0.7.40")
@@ -668,7 +692,7 @@ class AppStoreReleaseTest < Minitest::Test
             "id" => "target-localization-#{locale}",
             "attributes" => {
               "locale" => locale,
-              "description" => "Description",
+              "description" => DESCRIPTION,
               "keywords" => "chat,messaging",
               "supportUrl" => "https://example.com/support",
               "whatsNew" => "Old notes"
@@ -914,7 +938,7 @@ class AppStoreReleaseTest < Minitest::Test
         "id" => "target-localization-#{locale}",
         "attributes" => {
           "locale" => locale,
-          "description" => "Description",
+          "description" => DESCRIPTION,
           "keywords" => "chat,messaging",
           "supportUrl" => "https://example.com/support",
           "whatsNew" => notes
@@ -1045,7 +1069,7 @@ class AppStoreReleaseTest < Minitest::Test
             "id" => "localization-#{locale}",
             "attributes" => {
               "locale" => locale,
-              "description" => "Description",
+              "description" => DESCRIPTION,
               "keywords" => "chat,messaging",
               "supportUrl" => "https://example.com/support"
             }
