@@ -71,7 +71,7 @@ class ComposerReplyOptionsSheet extends StatefulWidget {
 
   @override
   State<ComposerReplyOptionsSheet> createState() =>
-      _ComposerReplyOptionsSheetState();
+      ComposerReplyOptionsSheetState();
 }
 
 /// Whether the banner still alternates its preview line with the
@@ -88,11 +88,15 @@ Future<void> _markReplyOptionsHintSeen() async {
 
 const _replyOptionsHintSeenKey = 'composer.replyOptionsHintSeen.v1';
 
-class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
+/// Public state handle so tests can drive selection callbacks.
+class ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
   MessageTextQuote? _quote;
 
-  /// Live selection length for the counter row (0 = hidden).
+  /// Live selection length for the counter row. The row keeps its height
+  /// whenever a quote CAN exist (initial quote or any selection), so the
+  /// layout below it never shifts while the finger crosses the counter row.
   int _selectionLength = 0;
+  bool _counterRowActive = false;
 
   final GlobalKey<QuoteSelectionAreaState> _previewKey =
       GlobalKey<QuoteSelectionAreaState>();
@@ -103,6 +107,7 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
     _quote = widget.initialQuote;
     if (_quote != null) {
       _selectionLength = _quote!.text.length;
+      _counterRowActive = true;
     }
   }
 
@@ -113,10 +118,18 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
   /// A live preview selection becomes the quote immediately (reference
   /// parity: the reference client's selection callback attaches the quote
   /// the moment a selection exists).
-  void _onPreviewSelectionChanged(MessageTextQuote? quote) {
+  @visibleForTesting
+  void debugSimulateSelection(MessageTextQuote? quote, int selectedLength) =>
+      _onPreviewSelectionChanged(quote, selectedLength);
+
+  void _onPreviewSelectionChanged(MessageTextQuote? quote, int selectedLength) {
     if (!mounted) return;
     setState(() {
-      _selectionLength = quote?.text.length ?? 0;
+      _selectionLength = selectedLength;
+      // Once any selection has existed the counter row stays laid out —
+      // toggling its height mid-drag makes the menu jump up/down when the
+      // finger passes over the row.
+      if (selectedLength > 0) _counterRowActive = true;
       if (quote != null) _quote = quote;
     });
   }
@@ -151,7 +164,11 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
       clipped.position,
       clipped.position + clipped.text.length,
     ));
-    setState(() => _quote = clipped);
+    setState(() {
+      _quote = clipped;
+      _selectionLength = clipped.text.length;
+      _counterRowActive = true;
+    });
   }
 
   @override
@@ -222,17 +239,22 @@ class _ComposerReplyOptionsSheetState extends State<ComposerReplyOptionsSheet> {
                   ),
                 ),
               ),
-              if (_selectionLength > 0)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
-                  child: Text(
-                    '$_selectionLength / ${widget.quoteLengthLimit}',
-                    key: const ValueKey('composerReplyOptionsQuoteLength'),
-                    textAlign: TextAlign.end,
-                    style: AppTextStyle.body(
-                      _selectionLength > widget.quoteLengthLimit
-                          ? AppTheme.tagRed
-                          : colors.textSecondary,
+              // The counter keeps a stable slot once active; only its text
+              // changes, so drags near the row cannot oscillate the layout.
+              if (_counterRowActive)
+                SizedBox(
+                  height: 24,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '$_selectionLength / ${widget.quoteLengthLimit}',
+                      key: const ValueKey('composerReplyOptionsQuoteLength'),
+                      textAlign: TextAlign.end,
+                      style: AppTextStyle.body(
+                        _selectionLength > widget.quoteLengthLimit
+                            ? AppTheme.tagRed
+                            : colors.textSecondary,
+                      ),
                     ),
                   ),
                 ),

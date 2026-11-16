@@ -322,6 +322,71 @@ void main() {
     );
   });
 
+  testWidgets('counter row keeps its height when the selection empties', (
+    tester,
+  ) async {
+    // Regression: dragging over the counter row used to collapse the
+    // selection for a frame; the row's disappearance shifted the menu and
+    // the layout oscillated ("menu flickers up and down"). The row must
+    // keep a stable slot once a selection has existed.
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: ComposerReplyOptionsSheet(
+            message: _replyTarget(),
+            canQuote: true,
+            canReplyInAnotherChat: false,
+            quoteLengthLimit: 100,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    const counterKey = ValueKey('composerReplyOptionsQuoteLength');
+    expect(find.byKey(counterKey), findsNothing);
+    final applyBefore = tester.getTopLeft(
+      find.byKey(const ValueKey('composerReplyOptionApply')),
+    );
+
+    // Start a selection via the quote row (auto full-select).
+    await tester.tap(find.byKey(const ValueKey('composerReplyOptionQuote')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(counterKey), findsOneWidget);
+    final applyWithCounter = tester.getTopLeft(
+      find.byKey(const ValueKey('composerReplyOptionApply')),
+    );
+    expect(applyWithCounter.dy, greaterThan(applyBefore.dy));
+
+    // A transient empty selection must NOT remove the row.
+    final state = tester.state<ComposerReplyOptionsSheetState>(
+      find.byType(ComposerReplyOptionsSheet),
+    );
+    state.debugSimulateSelection(null, 0);
+    await tester.pump();
+    expect(find.byKey(counterKey), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('composerReplyOptionApply'))),
+      applyWithCounter,
+    );
+
+    // An over-limit selection keeps the row and shows the raw length.
+    state.debugSimulateSelection(null, 120);
+    await tester.pump();
+    expect(find.byKey(counterKey), findsOneWidget);
+    expect(find.text('120 / 100'), findsOneWidget);
+  });
+
   testWidgets('quote toggle clears an existing quote', (tester) async {
     const quote = MessageTextQuote(text: 'Original', position: 0);
     await tester.pumpWidget(

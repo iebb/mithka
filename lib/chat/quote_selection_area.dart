@@ -33,9 +33,11 @@ class QuoteSelectionArea extends StatefulWidget {
   /// marked when the area first builds.
   final MessageTextQuote? initialQuote;
 
-  /// Reports the quote built from the current selection: null when the
-  /// selection is empty, or a range that cannot form a valid quote.
-  final ValueChanged<MessageTextQuote?>? onSelectionChanged;
+  /// Reports the quote built from the current selection and the RAW selected
+  /// length: (null, 0) when empty; (null, n) when the selection cannot form
+  /// a valid quote (e.g. over the limit); (quote, n) when it can.
+  final void Function(MessageTextQuote? quote, int selectedLength)?
+  onSelectionChanged;
 
   @override
   State<QuoteSelectionArea> createState() => QuoteSelectionAreaState();
@@ -61,7 +63,7 @@ class QuoteSelectionAreaState extends State<QuoteSelectionArea> {
   void _handleSelectionChanged(SelectedContent? content) {
     final plain = content?.plainText;
     if (plain == null || plain.isEmpty) {
-      widget.onSelectionChanged?.call(null);
+      widget.onSelectionChanged?.call(null, 0);
       return;
     }
     // SelectionArea reports content, not offsets; resolve the selected plain
@@ -70,9 +72,12 @@ class QuoteSelectionAreaState extends State<QuoteSelectionArea> {
     final text = widget.message.quoteSourceText;
     final start = text.indexOf(plain);
     if (start < 0) {
-      widget.onSelectionChanged?.call(null);
+      widget.onSelectionChanged?.call(null, plain.length);
       return;
     }
+    // Report the raw length even when the range cannot form a quote (over
+    // the limit): the counter row must not change SIZE mid-drag or the panel
+    // layout oscillates while the finger crosses the counter row.
     widget.onSelectionChanged?.call(
       quoteMessageRange(
         widget.message,
@@ -80,6 +85,7 @@ class QuoteSelectionAreaState extends State<QuoteSelectionArea> {
         end: start + plain.length,
         maxLength: widget.maxLength,
       ),
+      plain.length,
     );
   }
 
