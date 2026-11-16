@@ -203,7 +203,9 @@ void main() {
       expect(sent.where((r) => r['@type'] == 'setPinnedChats'), isEmpty);
       await gesture.up();
       await tester.pumpAndSettle();
-      final commits = sent.where((r) => r['@type'] == 'setPinnedChats').toList();
+      final commits = sent
+          .where((r) => r['@type'] == 'setPinnedChats')
+          .toList();
       expect(commits, hasLength(1));
       expect(commits.single['chat_ids'], [202, 201, 203]);
 
@@ -242,7 +244,9 @@ void main() {
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
-      final commits = sent.where((r) => r['@type'] == 'setPinnedChats').toList();
+      final commits = sent
+          .where((r) => r['@type'] == 'setPinnedChats')
+          .toList();
       expect(commits, hasLength(1));
       expect(commits.single['chat_ids'], [212, 211]);
       await _dispose(tester);

@@ -11,10 +11,7 @@ void main() {
       // Failing-first: before the hand-off fix, EVERY switch onto MainTabView
       // ran Duration.zero, so finishing login hard-cut into the sidebar.
       expect(
-        AuthGateTracker.animates(
-          const AuthReady(),
-          seenLoginSurface: false,
-        ),
+        AuthGateTracker.animates(const AuthReady(), seenLoginSurface: false),
         isFalse,
         reason: 'cold launch must keep its deliberate jump cut',
       );
@@ -46,7 +43,10 @@ void main() {
     });
 
     test('sawLoginSurface only counts login-family steps', () {
-      expect(AuthGateTracker.sawLoginSurface(const AuthInitializing()), isFalse);
+      expect(
+        AuthGateTracker.sawLoginSurface(const AuthInitializing()),
+        isFalse,
+      );
       expect(AuthGateTracker.sawLoginSurface(const AuthLoggingOut()), isFalse);
       expect(AuthGateTracker.sawLoginSurface(const AuthReady()), isFalse);
       expect(
