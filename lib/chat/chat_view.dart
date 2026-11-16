@@ -51,6 +51,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../config/build_flags.dart';
 import '../history/message_history_revision_view.dart';
+import '../history/message_history_settings.dart';
 import '../history/message_history_store.dart';
 import '../media/app_asset_picker.dart';
 import '../media/media_metadata.dart';
@@ -142,6 +143,7 @@ import 'music_player_controller.dart';
 import 'openai_compatible_unread_summary_provider.dart';
 import 'outgoing_attachment.dart';
 import 'poll_results_view.dart';
+import 'protected_forward.dart';
 import 'quick_reaction_choice.dart';
 import 'shared_contact_sheet.dart';
 import 'sticker_set_detail_view.dart';
@@ -4491,10 +4493,30 @@ class _ChatViewState extends State<ChatView> {
     return ForwardMarkdownOffer(available: available, suggested: false);
   }
 
+  /// Protected-source forwarding entry. When the kept-messages toggle is on,
+  /// the regular flow runs and ChatViewModel.forwardMany internally re-sends
+  /// as a copy; the UI only swaps the failure toast for the migration toast.
+  bool get _protectedCopyEnabled =>
+      _vm.hasProtectedContent &&
+      MessageHistorySettings.shared.forwardProtectedAsCopy;
+
+  void _showProtectedCopyResult(ProtectedForwardPlan? plan) {
+    if (!mounted || plan == null) return;
+    if (plan.skippedIds.isNotEmpty) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.keptForwardCopyPartToast, {
+          'value1': plan.copiedCount,
+          'value2': plan.skippedIds.length,
+        }),
+      );
+    }
+  }
+
   Future<void> _forwardSelected() async {
     final ids = _orderedSelectedIds();
     if (ids.isEmpty) return;
-    if (!_vm.canForwardContent) {
+    if (!_vm.canForwardContent && !_protectedCopyEnabled) {
       _showForwardFailure(const ForwardBlockedException());
       return;
     }
@@ -4512,6 +4534,11 @@ class _ChatViewState extends State<ChatView> {
     try {
       await _vm.forwardMany(ids, target.id, options: result.forwardOptions);
       if (!mounted) return;
+      if (_protectedCopyEnabled) {
+        _showProtectedCopyResult(_vm.protectedForwardLastPlan);
+        _exitSelection();
+        return;
+      }
       showToast(
         context,
         AppStrings.t(AppStringKeys.chatMessagesForwardedCount, {
@@ -7067,7 +7094,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
-    if (!_vm.canForwardContent) {
+    if (!_vm.canForwardContent && !_protectedCopyEnabled) {
       _showForwardFailure(const ForwardBlockedException());
       return;
     }

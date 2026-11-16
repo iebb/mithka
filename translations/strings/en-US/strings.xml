@@ -2147,7 +2147,11 @@
     <string name="linkHandlerWritingStyle">Writing style</string>
     <string name="keptSettingsTitle">Ayu Features</string>
     <string name="keptHistorySection">Message history</string>
+    <string name="keptForwardSection">Forwarding</string>
     <string name="keptGhostSection">Ghost mode</string>
+    <string name="keptForwardCopyPartToast">Migrated {value1}; {value2} of unsupported types (polls, locations…) were not</string>
+    <string name="keptForwardProtected">Forward from protected chats</string>
+    <string name="keptForwardProtectedHint">Sends a copy instead of a forward. Media must already be downloaded, and the copy carries no author.</string>
     <string name="keptPremiumSection">Local premium</string>
     <string name="linkLogInToOpen">Log in to open this link.</string>
     <string name="linkNotTelegramLink">Only Telegram links can be opened in Mithka.</string>

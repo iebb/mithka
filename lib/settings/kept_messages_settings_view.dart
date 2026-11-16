@@ -43,6 +43,7 @@ class KeptMessagesSettingsView extends StatelessWidget {
           _SnapshotNote(),
           _TransferSection(),
           SettingsNote(text: AppStringKeys.historyRecordNote),
+          _ForwardingSection(),
           _GhostSection(),
           _PremiumSection(),
         ],
@@ -265,6 +266,33 @@ class _TransferSection extends StatelessWidget {
         ),
         _BadgeStyleRow(),
       ],
+    );
+  }
+}
+
+/// Forwarding out of protected chats as a copy — exteraless
+/// ForwardProtectedAsCopy parity. Ships ON: the copy path only re-sends
+/// what the account can already read.
+class _ForwardingSection extends StatelessWidget {
+  const _ForwardingSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = MessageHistorySettings.shared;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => SettingsSection(
+        titleKey: AppStringKeys.keptForwardSection,
+        rows: [
+          SettingsSwitchRow(
+            key: const ValueKey('kept-forward-protected'),
+            title: AppStringKeys.keptForwardProtected.l10n(context),
+            subtitle: AppStringKeys.keptForwardProtectedHint,
+            value: settings.forwardProtectedAsCopy,
+            onChanged: settings.setForwardProtectedAsCopy,
+          ),
+        ],
+      ),
     );
   }
 }

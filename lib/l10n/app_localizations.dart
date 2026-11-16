@@ -5372,6 +5372,10 @@ abstract final class AppStringKeys {
   static const keptSettingsTitle = 'keptSettingsTitle';
   static const keptHistorySection = 'keptHistorySection';
   static const keptGhostSection = 'keptGhostSection';
+  static const keptForwardSection = 'keptForwardSection';
+  static const keptForwardProtected = 'keptForwardProtected';
+  static const keptForwardProtectedHint = 'keptForwardProtectedHint';
+  static const keptForwardCopyPartToast = 'keptForwardCopyPartToast';
   static const keptPremiumSection = 'keptPremiumSection';
   static const messageActionViewEdits = 'messageActionViewEdits';
 }

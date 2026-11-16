@@ -57,6 +57,8 @@ class MessageHistorySettings extends ChangeNotifier {
   static const _snapshotGroupsKey = 'message_history.snapshot_groups';
   static const _snapshotChannelsKey = 'message_history.snapshot_channels';
   static const _renderGhostsKey = 'message_history.render_ghosts';
+  static const _forwardProtectedAsCopyKey =
+      'message_history.forward_protected_as_copy';
   static const _badgeStyleKey = 'message_history.badge_style';
 
   bool _enableAll = false;
@@ -74,6 +76,9 @@ class MessageHistorySettings extends ChangeNotifier {
   bool _snapshotGroups = false;
   bool _snapshotChannels = false;
   bool _renderGhosts = false;
+  // exteraless ForwardProtectedAsCopy parity, except this fork ships it ON:
+  // the copy path only ever re-sends what the account can already read.
+  bool _forwardProtectedAsCopy = true;
   GhostBadgeStyle _badgeStyle = GhostBadgeStyle.icon;
 
   /// Master switch: OFF pauses all recording (deleted, edits and media
@@ -115,6 +120,10 @@ class MessageHistorySettings extends ChangeNotifier {
   /// what was already kept.
   bool get renderGhosts => _renderGhosts && isAvailable;
 
+  /// Forwarding out of a has_protected_content chat re-sends the content as
+  /// a copy instead of failing with the server's restriction error.
+  bool get forwardProtectedAsCopy => _forwardProtectedAsCopy && isAvailable;
+
   SharedPreferences? _prefs;
 
   /// Called from the app bootstrap; a no-op in builds without the feature.
@@ -132,6 +141,7 @@ class MessageHistorySettings extends ChangeNotifier {
     _snapshotGroups = prefs.getBool(_snapshotGroupsKey) ?? false;
     _snapshotChannels = prefs.getBool(_snapshotChannelsKey) ?? false;
     _renderGhosts = prefs.getBool(_renderGhostsKey) ?? false;
+    _forwardProtectedAsCopy = prefs.getBool(_forwardProtectedAsCopyKey) ?? true;
     _badgeStyle = GhostBadgeStyle.fromPrefs(prefs.getString(_badgeStyleKey));
     notifyListeners();
   }
@@ -217,6 +227,13 @@ class MessageHistorySettings extends ChangeNotifier {
     if (!isAvailable || _renderGhosts == value) return;
     _renderGhosts = value;
     _prefs?.setBool(_renderGhostsKey, value);
+    notifyListeners();
+  }
+
+  void setForwardProtectedAsCopy(bool value) {
+    if (!isAvailable || _forwardProtectedAsCopy == value) return;
+    _forwardProtectedAsCopy = value;
+    _prefs?.setBool(_forwardProtectedAsCopyKey, value);
     notifyListeners();
   }
 }

@@ -2145,7 +2145,11 @@
     <string name="listSeparator">、</string>
     <string name="keptSettingsTitle">Ayu 功能</string>
     <string name="keptHistorySection">消息历史</string>
+    <string name="keptForwardSection">转发</string>
     <string name="keptGhostSection">隐身模式</string>
+    <string name="keptForwardCopyPartToast">已迁移 {value1} 条；{value2} 条为投票、位置等类型，未迁移</string>
+    <string name="keptForwardProtected">从受保护的聊天转发</string>
+    <string name="keptForwardProtectedHint">以副本形式重新发送而不是转发。媒体需已下载完成，副本不带原作者。</string>
     <string name="keptPremiumSection">本地大会员</string>
     <string name="localPremiumNote">在本机为自己账号解锁客户端侧的大会员界面。服务端限制照旧，不会向 Telegram 发送任何内容。</string>
     <string name="localPremiumTitle">本地大会员</string>

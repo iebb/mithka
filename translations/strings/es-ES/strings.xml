@@ -2147,7 +2147,11 @@
     <string name="linkHandlerWritingStyle">Estilo de escritura</string>
     <string name="keptSettingsTitle">Funciones Ayu</string>
     <string name="keptHistorySection">Historial de mensajes</string>
+    <string name="keptForwardSection">Reenvío</string>
     <string name="keptGhostSection">Modo fantasma</string>
+    <string name="keptForwardCopyPartToast">Migradas {value1}; {value2} de tipos no compatibles (encuestas, ubicaciones…) no se migraron</string>
+    <string name="keptForwardProtected">Reenviar desde chats protegidos</string>
+    <string name="keptForwardProtectedHint">Envía una copia en lugar de un reenvío. Los medios deben estar descargados y la copia no incluye autor.</string>
     <string name="keptPremiumSection">Premium local</string>
     <string name="linkLogInToOpen">Inicia sesión para abrir este enlace.</string>
     <string name="linkNotTelegramLink">Mithka solo puede abrir enlaces de Telegram.</string>

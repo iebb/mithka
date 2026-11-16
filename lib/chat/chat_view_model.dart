@@ -52,6 +52,7 @@ import 'message_text_quote.dart';
 import 'outgoing_attachment.dart';
 import 'pangu_spacing.dart';
 import 'poll_composer_view.dart';
+import 'protected_forward.dart';
 import 'quick_reaction_choice.dart';
 import 'rich_message_source.dart';
 import 'secret_chat_service.dart';
@@ -803,6 +804,10 @@ class ChatViewModel extends ChangeNotifier {
   bool isPeerPornographicRestricted = false;
   String peerRestrictionText = '';
   bool hasProtectedContent = false;
+
+  /// The plan from the most recent protected-content copy forward, for the
+  /// UI's partial-migration toast. Null until a copy forward has run.
+  ProtectedForwardPlan? protectedForwardLastPlan;
   bool _chatCanSend = true; // chat-wide default can_send_basic_messages
 
   /// Topic moderation rights for forum chats. Creating needs the
@@ -3463,6 +3468,23 @@ class ChatViewModel extends ChangeNotifier {
     int targetChatId, {
     ForwardOptions options = const ForwardOptions(),
   }) async {
+    // Protected source + the kept-messages toggle: re-send as a copy
+    // (exteraless ForwardProtectedAsCopy). The plan's counts surface
+    // through ProtectedForwardResult below; a fully-uncopyable selection
+    // still throws so the UI keeps its single failure path.
+    if (hasProtectedContent &&
+        MessageHistorySettings.shared.forwardProtectedAsCopy) {
+      final plan = await forwardProtectedAsCopy(
+        query: _client.query,
+        fromChatId: chatId,
+        messageIds: messageIds,
+        targetChatId: targetChatId,
+        topicId: targetChatId == chatId ? _forumTopicRef : null,
+      );
+      protectedForwardLastPlan = plan;
+      if (plan.anythingSent) return;
+      throw const ForwardBlockedException();
+    }
     if (hasProtectedContent) throw const ForwardBlockedException();
     final forwardQuery = forwardQueryForOwner(
       _client,

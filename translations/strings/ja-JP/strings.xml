@@ -2145,7 +2145,11 @@
     <string name="listSeparator">、</string>
     <string name="keptSettingsTitle">Ayu機能</string>
     <string name="keptHistorySection">メッセージ履歴</string>
+    <string name="keptForwardSection">転送</string>
     <string name="keptGhostSection">ゴーストモード</string>
+    <string name="keptForwardCopyPartToast">{value1} 件を移行しました。投票や位置情報など未対応の {value2} 件は移行していません</string>
+    <string name="keptForwardProtected">保護されたチャットから転送</string>
+    <string name="keptForwardProtectedHint">転送の代わりにコピーとして再送信します。メディアはダウンロード済みである必要があり、コピーに送信者は含まれません。</string>
     <string name="keptPremiumSection">ローカルプレミアム</string>
     <string name="localPremiumNote">この端末上で自分のアカウントのクライアント側プレミアム機能を解放します。サーバー側の制限はそのまま適用され、Telegram へ何も送信しません。</string>
     <string name="localPremiumTitle">ローカルプレミアム</string>

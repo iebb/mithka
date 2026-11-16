@@ -2140,7 +2140,11 @@
     <string name="linkHandlerWritingStyle">글쓰기 스타일</string>
     <string name="keptSettingsTitle">Ayu 기능</string>
     <string name="keptHistorySection">메시지 기록</string>
+    <string name="keptForwardSection">전달</string>
     <string name="keptGhostSection">고스트 모드</string>
+    <string name="keptForwardCopyPartToast">{value1}개를 이전했습니다. 투표·위치 등 지원되지 않는 {value2}개는 이전되지 않았습니다</string>
+    <string name="keptForwardProtected">보호된 채팅에서 전달</string>
+    <string name="keptForwardProtectedHint">전달 대신 사본으로 다시 보냅니다. 미디어는 이미 다운로드되어 있어야 하며 사본에 작성자는 표시되지 않습니다.</string>
     <string name="keptPremiumSection">로컬 프리미엄</string>
     <string name="linkLogInToOpen">로그인하면 이 링크를 열 수 있습니다.</string>
     <string name="linkNotTelegramLink">Mithka에서는 Telegram 링크만 열 수 있습니다.</string>

@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/settings/app_icon_controller.dart';
 import 'package:mithka/theme/emoji_font_catalog.dart';
 import 'package:mithka/theme/theme_controller.dart';
@@ -115,7 +115,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
-    const channel = const MethodChannel('mithka/app_icon');
+    const channel = MethodChannel('mithka/app_icon');
     final calls = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -135,7 +135,6 @@ void main() {
 
     final controller = AppIconController(
       prefs,
-      proService: null,
       platform: TargetPlatform.android,
     );
     addTearDown(controller.dispose);

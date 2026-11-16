@@ -2147,7 +2147,11 @@
     <string name="linkHandlerWritingStyle">Schreibstil</string>
     <string name="keptSettingsTitle">Ayu-Funktionen</string>
     <string name="keptHistorySection">Nachrichtenverlauf</string>
+    <string name="keptForwardSection">Weiterleiten</string>
     <string name="keptGhostSection">Geistermodus</string>
+    <string name="keptForwardCopyPartToast">{value1} migriert; {value2} nicht unterstützter Typen (Umfragen, Orte …) wurden nicht migriert</string>
+    <string name="keptForwardProtected">Aus geschützten Chats weiterleiten</string>
+    <string name="keptForwardProtectedHint">Sendet eine Kopie statt einer Weiterleitung. Medien müssen bereits geladen sein; die Kopie nennt keinen Autor.</string>
     <string name="keptPremiumSection">Lokales Premium</string>
     <string name="linkLogInToOpen">Melde dich an, um diesen Link zu öffnen.</string>
     <string name="linkNotTelegramLink">Mithka kann nur Telegram-Links öffnen.</string>

@@ -2147,7 +2147,11 @@
     <string name="linkHandlerWritingStyle">Style d'écriture</string>
     <string name="keptSettingsTitle">Fonctions Ayu</string>
     <string name="keptHistorySection">Historique des messages</string>
+    <string name="keptForwardSection">Transfert</string>
     <string name="keptGhostSection">Mode fantôme</string>
+    <string name="keptForwardCopyPartToast">{value1} migrés ; {value2} de types non pris en charge (sondages, positions…) ne l’ont pas été</string>
+    <string name="keptForwardProtected">Transférer depuis les chats protégés</string>
+    <string name="keptForwardProtectedHint">Envoie une copie au lieu d’un transfert. Les médias doivent déjà être téléchargés ; la copie ne cite aucun auteur.</string>
     <string name="keptPremiumSection">Premium local</string>
     <string name="linkLogInToOpen">Connectez-vous pour ouvrir ce lien.</string>
     <string name="linkNotTelegramLink">Mithka ne peut ouvrir que des liens Telegram.</string>
