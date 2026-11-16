@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">停用側滑操作</string>
     <string name="appearanceDownloadFailed">下載失敗</string>
     <string name="appearanceEmojiFont">emoji 字型</string>
-    <string name="appearanceEmojiFontCatalogDescription">字型列表來自 iebb/emojifonts manifest；選取後會從 GitHub Releases 下載。預覽圖來自 Emojipedia。</string>
     <string name="appearanceEnableTheming">啟用主題</string>
     <string name="appearanceFileCount">{value1} 個</string>
     <string name="appearanceFont">字型</string>

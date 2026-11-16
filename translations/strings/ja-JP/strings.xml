@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">スワイプ操作を無効化</string>
     <string name="appearanceDownloadFailed">ダウンロードに失敗しました</string>
     <string name="appearanceEmojiFont">emoji フォント</string>
-    <string name="appearanceEmojiFontCatalogDescription">フォント一覧は iebb/emojifonts manifest から取得します。選択時に GitHub Releases からダウンロードします。プレビュー画像は Emojipedia 提供です。</string>
     <string name="appearanceEnableTheming">テーマを有効にする</string>
     <string name="appearanceFileCount">{value1} 個</string>
     <string name="appearanceFont">フォント</string>

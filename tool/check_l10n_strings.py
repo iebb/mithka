@@ -50,6 +50,7 @@ ALLOWED_VISIBLE_VALUES = {
     "",
     "A",
     "AI",
+    "Apple Color Emoji",
     "GitHub",
     "H",
     "H$level",

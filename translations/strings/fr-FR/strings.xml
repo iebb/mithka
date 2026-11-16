@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">Désactiver les balayages</string>
     <string name="appearanceDownloadFailed">Téléchargement échoué</string>
     <string name="appearanceEmojiFont">Police emoji</string>
-    <string name="appearanceEmojiFontCatalogDescription">La liste des polices provient du manifeste iebb/emojifonts ; le téléchargement se fait depuis GitHub Releases lors de la sélection. Les aperçus proviennent d’Emojipedia.</string>
     <string name="appearanceEnableTheming">Activer les thèmes</string>
     <string name="appearanceFileCount">{value1}</string>
     <string name="appearanceFont">Police</string>

@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">Wischaktionen deaktivieren</string>
     <string name="appearanceDownloadFailed">Download fehlgeschlagen</string>
     <string name="appearanceEmojiFont">Emoji-Schrift</string>
-    <string name="appearanceEmojiFontCatalogDescription">Die Schriftliste stammt aus dem iebb/emojifonts-Manifest; ausgewählte Schriftarten werden aus GitHub Releases geladen. Vorschaubilder stammen von Emojipedia.</string>
     <string name="appearanceEnableTheming">Designs aktivieren</string>
     <string name="appearanceFileCount">{value1} Dateien</string>
     <string name="appearanceFont">Schriftart</string>

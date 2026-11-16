@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">Desactivar gestos laterales</string>
     <string name="appearanceDownloadFailed">Error al descargar</string>
     <string name="appearanceEmojiFont">Fuente de emoji</string>
-    <string name="appearanceEmojiFontCatalogDescription">La lista de fuentes proviene del manifiesto iebb/emojifonts; se descargan desde GitHub Releases al seleccionarlas. Las vistas previas provienen de Emojipedia.</string>
     <string name="appearanceEnableTheming">Activar temas</string>
     <string name="appearanceFileCount">{value1}</string>
     <string name="appearanceFont">Fuente</string>

@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">스와이프 동작 끄기</string>
     <string name="appearanceDownloadFailed">다운로드 실패</string>
     <string name="appearanceEmojiFont">emoji 글꼴</string>
-    <string name="appearanceEmojiFontCatalogDescription">글꼴 목록은 iebb/emojifonts manifest를 사용하며, 선택 시 GitHub Releases에서 다운로드합니다. 미리보기 이미지는 Emojipedia에서 가져옵니다.</string>
     <string name="appearanceEnableTheming">테마 사용</string>
     <string name="appearanceFileCount">{value1}개</string>
     <string name="appearanceFont">글꼴</string>

@@ -475,7 +475,6 @@
     <string name="appearanceDisableChatListSwipeActions">Disable swipe actions</string>
     <string name="appearanceDownloadFailed">Download failed</string>
     <string name="appearanceEmojiFont">Emoji Font</string>
-    <string name="appearanceEmojiFontCatalogDescription">The font list comes from the iebb/emojifonts manifest. Selected fonts are downloaded from GitHub Releases. Previews come from Emojipedia.</string>
     <string name="appearanceEnableTheming">Enable Theming</string>
     <string name="appearanceFileCount">{value1}</string>
     <string name="appearanceFont">Font</string>

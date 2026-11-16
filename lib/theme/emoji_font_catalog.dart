@@ -256,10 +256,40 @@ class EmojiFontCatalog {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     final fonts = decoded['fonts'] as List? ?? const [];
     return [
-      for (final item in fonts)
-        if (item is Map) tryParseEntry(item.cast<String, dynamic>()),
-    ].whereType<EmojiFontManifestEntry>().toList();
+        // Apple leads the list: the platform set every reference client puts
+        // first, and iebb/emojifonts does not build it (its binaries are for
+        // macOS Core Text; the upstream AppleColorEmoji CBDT table renders
+        // fine through Skia on every platform MithkaX ships).
+        EmojiFontCatalog.appleEntry,
+        for (final item in fonts)
+          if (item is Map) tryParseEntry(item.cast<String, dynamic>()),
+      ].whereType<EmojiFontManifestEntry>().toList()
+      // The pinned Apple row owns its slot even if a future manifest ships
+      // its own apple key — one row, the fork's.
+      ..retainAfterFirstByKey();
   }
+
+  /// Apple Color Emoji, pinned to the community CBDT build of the system
+  /// font. Not in the iebb/emojifonts manifest — this fork carries the entry
+  /// itself so the picker's first row matches the reference clients.
+  static const appleEntry = EmojiFontManifestEntry(
+    key: 'apple',
+    label: 'Apple Color Emoji',
+    license: 'Apple',
+    kind: 'color',
+    url:
+        'https://raw.githubusercontent.com/GORAlexComp/AppleColorEmojiFont'
+        '/main/fonts/AppleColorEmoji.ttf',
+    format: 'cbdt',
+    coveragePct: 100,
+    emojiVersion: '18.0',
+    updated: '2026-10',
+  );
+
+  /// Test seam: run the same parse the manifest loader uses.
+  @visibleForTesting
+  List<EmojiFontManifestEntry> parseManifestForTesting(String body) =>
+      _parseManifest(body);
 
   EmojiFontManifestEntry? tryParseEntry(Map<String, dynamic> json) {
     try {
@@ -303,5 +333,13 @@ class EmojiFontCatalog {
     loader.addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
     _loadedFamilies.add(family);
+  }
+}
+
+extension _EmojiFontEntryDedupe on List<EmojiFontManifestEntry> {
+  /// Keep the first entry per key (the pinned Apple row wins its slot).
+  void retainAfterFirstByKey() {
+    final seen = <String>{};
+    removeWhere((entry) => !seen.add(entry.key));
   }
 }

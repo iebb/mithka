@@ -618,8 +618,6 @@ abstract final class AppStringKeys {
   static const appearanceGestures = 'appearanceGestures';
   static const appearanceDownloadFailed = 'appearanceDownloadFailed';
   static const appearanceEmojiFont = 'appearanceEmojiFont';
-  static const appearanceEmojiFontCatalogDescription =
-      'appearanceEmojiFontCatalogDescription';
   static const appearanceEnableTheming = 'appearanceEnableTheming';
   static const appearancePerAccountTheming = 'appearancePerAccountTheming';
   static const appearanceFileCount = 'appearanceFileCount';

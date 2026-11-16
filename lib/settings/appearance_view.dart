@@ -3645,6 +3645,7 @@ class EmojiFontPickerView extends StatefulWidget {
 class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
   static const _fallbackPreviewAsset = 'assets/emoji_preview/noto.svg';
   static const _previewAssets = {
+    'apple': 'assets/emoji_preview/apple.png',
     'noto': 'assets/emoji_preview/noto.svg',
     'noto-mono': 'assets/emoji_preview/noto-mono.svg',
     'blobmoji': 'assets/emoji_preview/blobmoji.svg',
@@ -3707,11 +3708,6 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
                   for (final entry in entries) _entryRow(context, entry, theme),
                 ],
               ),
-              SettingsNote(
-                text: AppStrings.t(
-                  AppStringKeys.appearanceEmojiFontCatalogDescription,
-                ),
-              ),
             ],
           );
         },
@@ -3749,10 +3745,6 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
     return _row(
       context,
       title: entry.label,
-      subtitle: [
-        entry.license,
-        if (entry.emojiVersion.isNotEmpty) 'Emoji ${entry.emojiVersion}',
-      ].where((part) => part.isNotEmpty).join(' · '),
       preview: _EmojiPreviewImage(asset: _previewAssetForKey(entry.key)),
       selected: !theme.useSystemEmoji && theme.emojiFontChoice.key == entry.key,
       loading: _loadingKey == entry.key,
@@ -3777,7 +3769,7 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
   Widget _row(
     BuildContext context, {
     required String title,
-    required String subtitle,
+    String? subtitle,
     required Widget preview,
     required bool selected,
     required bool loading,
@@ -3820,21 +3812,28 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      failed
-                          ? AppStrings.t(
-                              AppStringKeys.appearanceFontDownloadFailedName,
-                              {'value1': subtitle},
-                            )
-                          : subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: AppTextSize.footnote,
-                        color: c.textSecondary,
+                    // A row only carries a second line when it has something
+                    // to say (the system row's caption, a download failure).
+                    // Pack rows show just their name — the picker reads like
+                    // the reference clients' set list.
+                    if (failed ||
+                        (subtitle != null && subtitle.isNotEmpty)) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        failed
+                            ? AppStrings.t(
+                                AppStringKeys.appearanceFontDownloadFailedName,
+                                {'value1': subtitle ?? ''},
+                              )
+                            : subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: AppTextSize.footnote,
+                          color: c.textSecondary,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

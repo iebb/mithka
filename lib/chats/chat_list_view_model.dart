@@ -858,7 +858,10 @@ class ChatListViewModel extends ChangeNotifier {
   void debugSelectFolderForTest(int folderId, {Set<int>? pinnedIds}) {
     _filters = [
       const ChatFilterOption(title: AppStringKeys.topicChatAllFilter),
-      ChatFilterOption(title: 'Folder', folderId: folderId),
+      ChatFilterOption(
+        title: AppStringKeys.appearanceChatFolders,
+        folderId: folderId,
+      ),
     ];
     _selectedFilter = _filters.last;
     final orders = _folderOrders.putIfAbsent(folderId, () => {});
