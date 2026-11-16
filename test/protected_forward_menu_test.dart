@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/message_action_menu.dart';
-import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:provider/provider.dart';
@@ -86,11 +86,7 @@ void main() {
   ) async {
     // Failing-first: the menu used to decide on allowForwarding alone, so a
     // protected chat with the copy route live still showed nothing.
-    await pumpMenu(
-      tester,
-      allowForwarding: false,
-      allowProtectedCopyForward: false,
-    );
+    await pumpMenu(tester, allowForwarding: false);
     expect(find.text('Forward'), findsNothing);
     expect(find.text('Repeat'), findsNothing);
   });

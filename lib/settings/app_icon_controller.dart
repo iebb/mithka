@@ -973,19 +973,7 @@ class AppIconController extends ChangeNotifier {
       await _channel.invokeMethod<void>('setIcon', {'name': next.key});
       _variant = next;
       _retainedUnknownState = null;
-      await _prefs.setString(_selectedKey, next.key);
-      // The old alias just went disabled; drop the task record it roots so
-      // the next launcher tap cold-starts cleanly instead of trying to
-      // resume a dead record once (the historical one-time crash). Android
-      // only; other platforms no-op and the prefs write above still wins.
-      if (_platform == TargetPlatform.android && !_disposed) {
-        try {
-          await _channel.invokeMethod<bool>('clearTaskAfterIconSwitch');
-        } catch (_) {
-          // Older native builds without the method: the switch itself held.
-        }
-      }
-      return true;
+      return await _prefs.setString(_selectedKey, next.key);
     } catch (_) {
       // A rejected native change does not persist or optimistically select it.
       return false;

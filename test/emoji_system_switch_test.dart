@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/app_icon_controller.dart';
 import 'package:mithka/theme/emoji_font_catalog.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,41 +103,5 @@ void main() {
       theme.effectiveEmojiFontFamilies,
       EmojiFontChoice.platformEmojiFontFallback(),
     );
-  });
-
-  test('icon switch clears the stale task on android', () async {
-    // The controller-side half of the post-icon-switch crash fix: after a
-    // successful setIcon, the old alias-rooted task record must be dropped.
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-
-    const channel = MethodChannel('mithka/app_icon');
-    final calls = <String>[];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          calls.add(call.method);
-          return switch (call.method) {
-            'isSupported' => true,
-            'currentIcon' => 'blue',
-            'setIcon' => null,
-            'clearTaskAfterIconSwitch' => true,
-            _ => throw MissingPluginException(),
-          };
-        });
-    addTearDown(
-      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, null),
-    );
-
-    final controller = AppIconController(
-      prefs,
-      platform: TargetPlatform.android,
-    );
-    addTearDown(controller.dispose);
-    await controller.initialize();
-    expect(await controller.setVariant(AppIconVariant.signal), isTrue);
-    expect(calls, contains('clearTaskAfterIconSwitch'));
   });
 }

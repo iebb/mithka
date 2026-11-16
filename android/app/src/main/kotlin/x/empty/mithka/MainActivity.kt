@@ -75,38 +75,6 @@ class MainActivity : FlutterFragmentActivity() {
         super.onCreate(savedInstanceState)
         requestHighestRefreshRate()
         pendingSharePayload = parseIncomingShareIntent(intent)
-        // Telegram-family self-heal (LauncherIconController.tryFixLauncherIcon
-        // in exteraless): a launcher update or a crash mid-icon-switch can
-        // leave EVERY alias disabled — the launcher then resolves the launch
-        // intent against a dead component and the app dies on the splash once
-        // before the system falls back. If nothing is enabled, restore the
-        // default alias so this launch is already rooted at a live component.
-        try {
-            ensureLauncherAliasEnabled()
-        } catch (_: Exception) {
-            // Never block startup on package-manager self-heal.
-        }
-    }
-
-    private fun ensureLauncherAliasEnabled() {
-        // The manifest ships exactly one alias enabled (letter_m_neutral), so
-        // its DEFAULT state already resolves as live; every other alias must
-        // have been explicitly ENABLED to count.
-        val aliases = launcherAliases()
-        for ((key, className) in aliases) {
-            val state = packageManager.getComponentEnabledSetting(
-                ComponentName(packageName, className),
-            )
-            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return
-            if (key == "letter_m_neutral" &&
-                state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-            ) return
-        }
-        packageManager.setComponentEnabledSetting(
-            ComponentName(packageName, aliases.getValue("letter_m_neutral")),
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            PackageManager.DONT_KILL_APP,
-        )
     }
 
     /**
@@ -365,20 +333,6 @@ class MainActivity : FlutterFragmentActivity() {
                             // MithkaX: every icon ships free; no supporter check.
                             in paidIcons -> applyIcon()
                             else -> result.error("invalid_icon", "Unknown app icon", null)
-                        }
-                    }
-                    "clearTaskAfterIconSwitch" -> {
-                        // The task record in recents is rooted at the alias this
-                        // switch just disabled. The next launcher tap would try
-                        // to resume that dead record once and die — the classic
-                        // one-time crash after changing the icon. Removing the
-                        // task now forces a clean cold start through the newly
-                        // enabled alias instead. The process follows it out.
-                        try {
-                            finishAndRemoveTask()
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.success(false)
                         }
                     }
                     else -> result.notImplemented()
