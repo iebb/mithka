@@ -242,6 +242,14 @@ class AccountStore extends ChangeNotifier {
   List<AccountSummary> get summaries => _summaries;
   bool get activeIsBotApi => TdClient.shared.isBotApiSlot(_activeSlot);
 
+  /// Test seam: flip the active slot the way [addAccount]/[switchTo] do,
+  /// without touching the TDLib client.
+  @visibleForTesting
+  void debugSetActiveSlotForTesting(int slot) {
+    _activeSlot = slot;
+    notifyListeners();
+  }
+
   void _localPremiumChanged() => notifyListeners();
 
   /// The summary for the active slot, when one has been recorded.

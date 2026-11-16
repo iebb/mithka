@@ -59,10 +59,8 @@ abstract final class AuthGateTracker {
   }
 }
 
-bool gateAnimatesHandOff(
-  AuthStep step, {
-  required bool seenLoginSurface,
-}) => AuthGateTracker.animates(step, seenLoginSurface: seenLoginSurface);
+bool gateAnimatesHandOff(AuthStep step, {required bool seenLoginSurface}) =>
+    AuthGateTracker.animates(step, seenLoginSurface: seenLoginSurface);
 
 class ContentView extends StatefulWidget {
   const ContentView({super.key});
@@ -85,8 +83,17 @@ class _ContentViewState extends State<ContentView> {
       seenLoginSurface: _seenLoginSurface,
     );
     _seenLoginSurface = AuthGateTracker.sawLoginSurface(step);
+    // The account identity gates what the ready surface shows (and the
+    // upstream shell keys on it via main.dart's KeyedSubtree); rebinding the
+    // ready surface per identity keeps its inner state scoped to one account
+    // WITHOUT tearing down this gate — the AnimatedSwitcher below must
+    // survive the slot change to crossfade the add-account hand-off.
+    final account = context.watch<AccountStore>();
     final Widget child = switch (step) {
-      AuthReady() => const MainTabView(),
+      AuthReady() => KeyedSubtree(
+        key: ValueKey((account.activeSlot, account.activeUserId)),
+        child: const MainTabView(),
+      ),
       // A real cold start (and a logout) paints the splash. AuthReloading is a
       // re-read of an already-running client — account switch or add account —
       // and the login surface is what the user asked for, so it stays on screen.
@@ -108,6 +115,10 @@ class _ContentViewState extends State<ContentView> {
       switchOutCurve: AppMotion.standard,
       transitionBuilder: (child, animation) =>
           FadeTransition(opacity: animation, child: child),
+      // Keyed on the surface type, not the account identity: an add-account
+      // slot change rekeys the READY child above while the gate itself keeps
+      // its state, so login → (new account's) ready still crossfades through
+      // this switcher instead of the whole subtree being replaced upstream.
       child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
     );
     return content;

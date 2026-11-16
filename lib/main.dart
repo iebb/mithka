@@ -1010,11 +1010,11 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
                 ),
               );
             },
-            // Rebuild the whole tree when the active account changes.
-            home: KeyedSubtree(
-              key: ValueKey((accounts.activeSlot, accounts.activeUserId)),
-              child: const ContentView(),
-            ),
+            // Rebuild the tree when the active account changes; the
+            // identity key lives INSIDE ContentView's ready surface now, so
+            // the auth gate (and its add-account crossfade) survives the
+            // slot change instead of being torn down with this subtree.
+            home: const ContentView(),
           );
         },
       ),
