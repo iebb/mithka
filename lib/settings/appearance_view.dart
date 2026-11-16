@@ -160,6 +160,22 @@ class AppearanceView extends StatelessWidget {
                 icon: HeroAppIcons.font.data,
               ),
             ),
+            KeyedSubtree(
+              key: const ValueKey('appearance-emoji-font-row'),
+              child: _navigationRow(
+                context,
+                AppStrings.t(AppStringKeys.appearanceEmojiFont),
+                theme.useSystemEmoji
+                    ? AppStrings.t(AppStringKeys.emojiUseSystem)
+                    : theme.emojiFontChoice.label,
+                () => Navigator.of(context).push(
+                  AppPageRoute<void>(
+                    pageBuilder: (_, _, _) => const EmojiFontPickerView(),
+                  ),
+                ),
+                icon: HeroAppIcons.faceSmile.data,
+              ),
+            ),
           ]),
           _label(context, AppStrings.t(AppStringKeys.appearanceSectionChat)),
           // Message Bubbles used to sit alone in an unlabelled card;

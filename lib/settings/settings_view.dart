@@ -851,6 +851,7 @@ class _SettingsViewState extends State<SettingsView> {
           'theme',
           'font',
           'icon',
+          'emoji',
           'wallpaper',
           'bubbles',
           'message bubbles',
