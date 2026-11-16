@@ -4380,6 +4380,7 @@ class _ChatListViewState extends State<ChatListView>
           chatsProvider: () => _model.archived,
           onClearUnread: _model.markRead,
           onUnarchive: _model.unarchive,
+          onToggleMute: _model.toggleMute,
         ),
       ),
     );
@@ -4776,9 +4777,9 @@ class PlusMenu extends StatelessWidget {
   ];
 
   List<(AppIconData, String)> get _items => [
+    ..._baseItems,
     if (showCommunities)
       (HeroAppIcons.objectGroup, AppStringKeys.communityTitle),
-    ..._baseItems,
   ];
 
   @override

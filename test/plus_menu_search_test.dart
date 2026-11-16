@@ -75,4 +75,37 @@ void main() {
     final qrRect = tester.getTopLeft(find.text('Scan QR Code'));
     expect(searchRect.dy, lessThan(qrRect.dy));
   });
+
+  testWidgets('community renders below search when shown', (tester) async {
+    // Failing-first: the community entry used to prepend, pushing search out
+    // of the first slot the user asked to keep.
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: Scaffold(
+          body: PlusMenu(onSelect: (_) {}, showCommunities: true),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final searchRect = tester.getTopLeft(find.text('Search'));
+    final communityRect = tester.getTopLeft(find.text('Community'));
+    expect(
+      searchRect.dy,
+      lessThan(communityRect.dy),
+      reason: 'search stays first; community follows the base items',
+    );
+    // And it stays the last row, below every base item.
+    final qrRect = tester.getTopLeft(find.text('Scan QR Code'));
+    expect(qrRect.dy, lessThan(communityRect.dy));
+  });
 }
