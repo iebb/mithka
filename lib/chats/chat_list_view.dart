@@ -4823,10 +4823,13 @@ class PlusMenu extends StatelessWidget {
     (HeroAppIcons.userPlus, AppStringKeys.chatListAddFriendOrGroup),
   ];
 
+  /// Community sits right after search (the user's pinned ordering), ahead
+  /// of every create action, and only when the section has content.
   List<(AppIconData, String)> get _items => [
-    ..._baseItems,
+    _baseItems.first,
     if (showCommunities)
       (HeroAppIcons.objectGroup, AppStringKeys.communityTitle),
+    ..._baseItems.skip(1),
   ];
 
   @override

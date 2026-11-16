@@ -70,9 +70,9 @@ void main() {
     expect(searchRect.dy, lessThan(qrRect.dy));
   });
 
-  testWidgets('community renders below search when shown', (tester) async {
-    // Failing-first: the community entry used to prepend, pushing search out
-    // of the first slot the user asked to keep.
+  testWidgets('community renders second, right after search', (tester) async {
+    // The user's ordering: search first, community immediately after it,
+    // ahead of every create action (it used to append last).
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('en'),
@@ -94,10 +94,14 @@ void main() {
     expect(
       searchRect.dy,
       lessThan(communityRect.dy),
-      reason: 'search stays first; community follows the base items',
+      reason: 'search stays first',
     );
-    // And it stays the last row, below every base item.
+    // Community is the SECOND row: below search, above the QR entry.
     final qrRect = tester.getTopLeft(find.text('Scan QR Code'));
-    expect(qrRect.dy, lessThan(communityRect.dy));
+    expect(
+      communityRect.dy,
+      lessThan(qrRect.dy),
+      reason: 'community sits between search and the create actions',
+    );
   });
 }
