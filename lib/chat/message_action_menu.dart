@@ -329,6 +329,7 @@ class MessageActionMenu extends StatelessWidget {
     this.allowHideSender = false,
     this.allowCopyMessageLink = false,
     this.allowViewEdits = false,
+    this.allowProtectedCopyForward = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -355,6 +356,12 @@ class MessageActionMenu extends StatelessWidget {
   /// Offer [MessageAction.viewEdits]: a kept edit trail exists for this
   /// message in the local mirror (compile-time gated feature).
   final bool allowViewEdits;
+
+  /// Offer 转发 inside a protected chat: the kept-messages copy-forward
+  /// toggle is on, so the selection re-sends as a copy instead of a forward
+  /// (the route _forwardMessage takes). Repeat stays hidden — a re-send to
+  /// the same protected chat is not a copy out.
+  final bool allowProtectedCopyForward;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
@@ -546,6 +553,8 @@ class MessageActionMenu extends StatelessWidget {
     if (allowForwarding) {
       result.add(MessageAction.forward);
       result.add(MessageAction.repeat);
+    } else if (allowProtectedCopyForward && !message.isService) {
+      result.add(MessageAction.forward);
     }
     if (message.video != null && source == MessageActionSource.video) {
       result.add(MessageAction.playMuted);
