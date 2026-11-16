@@ -881,7 +881,11 @@ class ChatListViewModel extends ChangeNotifier {
   /// `setPinnedChats` then writes the full pinned order for the list the user
   /// is editing. A server refusal restores TDLib's own ordering on the next
   /// position update, which every chat in the band receives.
-  void reorderPinnedChat({required int chatId, required int targetChatId}) {
+  void reorderPinnedChat({
+    required int chatId,
+    required int targetChatId,
+    bool commit = true,
+  }) {
     if (_disposed || chatId == targetChatId) return;
     final folderId = _selectedFilter.folderId;
     if (folderId == null) {
@@ -905,7 +909,14 @@ class ChatListViewModel extends ChangeNotifier {
       _rewriteFolderPinOrders(folderId, pinnedIds);
     }
     _resort();
-    _commitPinnedOrder();
+    if (commit) _commitPinnedOrder();
+  }
+
+  /// Pushes the current pinned order of the selected list to the server.
+  /// Called once per drag on drop — per-slot commits triggered a storm of
+  /// updateChatPosition callbacks that fought the in-flight drag.
+  void commitPinnedOrder() {
+    if (!_disposed) _commitPinnedOrder();
   }
 
   /// Exchanges the TDLib position orders of the two pinned rows so the local

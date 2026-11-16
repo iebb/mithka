@@ -1256,6 +1256,15 @@ class _ChatListViewState extends State<ChatListView>
   // command bar over the selected set.
   final Set<int> _selectedChatIds = {};
   bool _selectionMode = false;
+
+  /// The chat whose long press opened edit mode. Its row is drag-enabled
+  /// from that same gesture, before the mode flag rebuilds the list.
+  int? _pendingSelectionModeChatId;
+
+  /// Edit-mode pinned drag: the dragged chat and the net slots it has
+  /// crossed, shown as row shifts until the drop commits one reorder.
+  int? _draggedChatId;
+  final Map<int, int> _dragSlotsById = {};
   bool _selectionOverflowOpen = false;
 
   static const double _refreshPullThreshold = 72;
@@ -2497,11 +2506,13 @@ class _ChatListViewState extends State<ChatListView>
         _selectionOverflowOverlay(),
       ],
     );
-    if (!_selectionMode) return contents;
+    // Wrapping conditionally would swap the subtree root between modes and
+    // dispose every row's gesture recognizers mid-press — the drag dies the
+    // moment edit mode begins. The wrapper stays; only the flag flips.
     return PopScope(
-      canPop: false,
+      canPop: !_selectionMode,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _exitSelectionMode();
+        if (!didPop && _selectionMode) _exitSelectionMode();
       },
       child: contents,
     );
@@ -3735,7 +3746,10 @@ class _ChatListViewState extends State<ChatListView>
                     : listIndex;
                 final entry = entries[entryIndex];
                 return switch (entry) {
-                  CommunityChatEntry(:final chat) => _swipeRow(chat),
+                  CommunityChatEntry(:final chat) => _dragShiftWrapper(
+                    chat,
+                    _swipeRow(chat),
+                  ),
                   CommunityGroupEntry() => _communityRow(entry),
                 };
               },
@@ -3965,13 +3979,28 @@ class _ChatListViewState extends State<ChatListView>
       openRowId: _openSwipeChat,
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _selectionMode ? _toggleSelected(chat) : _openChat(chat),
-      onLongPress: desktopContextMenu ? null : () => _showChatPreview(chat),
+      onLongPress: desktopContextMenu
+          ? null
+          : () {
+              if (_selectionMode) {
+                _toggleSelected(chat);
+              } else {
+                _showChatPreview(chat);
+              }
+            },
       onLongPressAt: desktopContextMenu
           ? null
           : (localPosition) => _handleRowLongPress(chat, localPosition),
-      dragReorderEnabled: _selectionMode && pinnedInList && !desktopContextMenu,
-      onDragReorderStart: () => unawaited(HapticFeedback.selectionClick()),
+      dragReorderEnabled:
+          (_selectionMode || _pendingSelectionModeChatId == chat.id) &&
+          pinnedInList &&
+          !desktopContextMenu,
+      onDragReorderStart: () {
+        _draggedChatId = chat.id;
+        unawaited(HapticFeedback.mediumImpact());
+      },
       onDragReorderSlot: (slots) => _handleDragReorderSlot(chat, slots),
+      onDragReorderEnd: () => _commitPinnedOrder(chatId: chat.id),
       onSecondaryTapDown: desktopContextMenu
           ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
           : null,
@@ -4002,28 +4031,99 @@ class _ChatListViewState extends State<ChatListView>
   bool _selectionTint(ChatSummary chat) =>
       _selectionMode && _selectedChatIds.contains(chat.id);
 
-  /// One crossed row of an edit-mode drag: swap the dragged pinned chat with
-  /// the pinned neighbour it just passed (exteraless's ItemTouchHelper onMove
-  /// swaps pinnedNum the same way, one pair at a time).
+  /// One crossed row of an edit-mode drag. The list does not reorder yet:
+  /// the dragged row's own translate shows the motion, its neighbours slide
+  /// aside through [_dragShiftWrapper], and the whole move lands on the model
+  /// in one piece when the finger lifts. (exteraless's ItemTouchHelper swaps
+  /// pairs live, but its RecyclerView never rebuilds the recognizer mid-drag;
+  //  deferring the reorder keeps this list's gesture alive.)
   void _handleDragReorderSlot(ChatSummary chat, int slots) {
     if (slots == 0) return;
+    final band = _pinnedBand();
+    final index = band.indexWhere((c) => c.id == chat.id);
+    if (index < 0) return;
+    final projected = index + (_dragSlotsById[chat.id] ?? 0) + slots;
+    if (projected < 0 || projected >= band.length) return;
+    _dragSlotsById[chat.id] = (_dragSlotsById[chat.id] ?? 0) + slots;
+    // KEYBOARD_TAP strength on Android — selectionClick maps to CLOCK_TICK,
+    // which most devices render as barely there and the system touch-vibration
+    // toggle silences outright.
+    unawaited(HapticFeedback.mediumImpact());
+    setState(() {});
+  }
+
+  /// The drag ended: apply the accumulated slot moves to the model as one
+  /// reorder and push the pinned order once, the way exteraless commits
+  /// reorderPinnedDialogs when the action-mode drag finishes.
+  void _commitPinnedOrder({int? chatId}) {
+    final id = chatId ?? _draggedChatId;
+    final slots = id == null ? 0 : (_dragSlotsById[id] ?? 0);
+    if (_draggedChatId != null) {
+      setState(() {
+        _dragSlotsById.clear();
+        _draggedChatId = null;
+      });
+    } else {
+      _dragSlotsById.clear();
+      _draggedChatId = null;
+    }
+    if (id == null || slots == 0) return;
+    final band = _pinnedBand();
+    final index = band.indexWhere((c) => c.id == id);
+    if (index < 0) return;
+    final target = (index + slots).clamp(0, band.length - 1);
+    if (target == index) return;
+    _model.reorderPinnedChat(
+      chatId: id,
+      targetChatId: band[target].id,
+    );
+  }
+
+  /// During an edit-mode pinned drag, the neighbours the dragged row has
+  /// passed slide one row extent in the opposite direction, so the band reads
+  /// reordered without any list mutation until the drop.
+  ///
+  /// Always wraps — a wrapper that appears only mid-drag swaps the row's
+  /// subtree root, deactivates its state, and kills the live gesture.
+  Widget _dragShiftWrapper(ChatSummary chat, Widget child) {
+    final draggedId = _draggedChatId;
+    var shift = 0.0;
+    if (draggedId != null && draggedId != chat.id) {
+      final slots = _dragSlotsById[draggedId] ?? 0;
+      if (slots != 0) {
+        final band = _pinnedBand();
+        final draggedFrom = band.indexWhere((c) => c.id == draggedId);
+        final myIndex = band.indexWhere((c) => c.id == chat.id);
+        if (draggedFrom >= 0 && myIndex >= 0) {
+          final draggedTo = (draggedFrom + slots).clamp(0, band.length - 1);
+          final inBetween = myIndex > math.min(draggedFrom, draggedTo) &&
+              myIndex <= math.max(draggedFrom, draggedTo);
+          if (inBetween) {
+            final rowExtent = AppMetric.chatListRowExtent(context);
+            shift = (slots > 0 ? -1.0 : 1.0) * rowExtent;
+          }
+        }
+      }
+    }
+    // Unconditional: an early `return child` for un-shifted rows would swap
+    // the subtree root mid-drag (bare row vs wrapped row) and unmount the
+    // row's gesture recognizer while the drag is live.
+    return Transform.translate(
+      offset: Offset(0, shift),
+      child: child,
+    );
+  }
+
+  /// The pinned chats of the list being edited, top to bottom.
+  List<ChatSummary> _pinnedBand() {
     final entries = _model.chatListEntries(
       communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
     );
-    final pinnedChats = entries
+    return entries
         .whereType<CommunityChatEntry>()
         .map((entry) => entry.chat)
         .where(_model.isPinnedInSelectedList)
         .toList();
-    final index = pinnedChats.indexWhere((c) => c.id == chat.id);
-    if (index < 0) return;
-    final targetIndex = (index + slots).clamp(0, pinnedChats.length - 1);
-    if (targetIndex == index) return;
-    unawaited(HapticFeedback.selectionClick());
-    _model.reorderPinnedChat(
-      chatId: chat.id,
-      targetChatId: pinnedChats[targetIndex].id,
-    );
   }
 
   /// exteraless's hit split: a long press inside the avatar column peeks the
@@ -4202,6 +4302,7 @@ class _ChatListViewState extends State<ChatListView>
     unawaited(HapticFeedback.mediumImpact());
     setState(() {
       _selectionMode = true;
+      _pendingSelectionModeChatId = chat.id;
       _selectedChatIds
         ..clear()
         ..add(chat.id);
@@ -4210,6 +4311,7 @@ class _ChatListViewState extends State<ChatListView>
 
   void _exitSelectionMode() {
     if (!_selectionMode) return;
+    _pendingSelectionModeChatId = null;
     setState(() {
       _selectionMode = false;
       _selectionOverflowOpen = false;
@@ -5255,6 +5357,7 @@ class ChatSwipeRow extends StatefulWidget {
     this.dragReorderEnabled = false,
     this.onDragReorderStart,
     this.onDragReorderSlot,
+    this.onDragReorderEnd,
     this.onSecondaryTapDown,
     this.requiresLongPressDrag = false,
     this.horizontalSwipeEnabled = true,
@@ -5282,6 +5385,11 @@ class ChatSwipeRow extends StatefulWidget {
   /// [slots] is signed: +1 one slot down, -1 one slot up, reported once per
   /// crossed row extent.
   final void Function(int slots)? onDragReorderSlot;
+
+  /// The finger came up: the host commits the accumulated swaps here (one
+  /// setPinnedChats per drag, like exteraless commits reorderPinnedDialogs on
+  /// drop — never per crossed slot).
+  final VoidCallback? onDragReorderEnd;
   final GestureTapDownCallback? onSecondaryTapDown;
   final bool requiresLongPressDrag;
   final bool horizontalSwipeEnabled;
@@ -5304,6 +5412,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   double _longPressStartOffset = 0;
   Offset? _pendingLongPressAt;
   double _dragReorderDy = 0;
+  double _dragConsumed = 0;
   bool _dragReorderActive = false;
   int? _desktopTouchPointer;
   Offset? _desktopTouchOrigin;
@@ -5413,20 +5522,30 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
     final dy = details.offsetFromOrigin.dy;
     if (!_dragReorderActive) {
       // A long press that has not moved vertically stays a plain long press;
-      // crossing a quarter row makes the drag take over.
+      // a small threshold makes the drag take over.
       if (dy.abs() < 12) return;
       _dragReorderActive = true;
       _dragReorderDy = 0;
+      _dragConsumed = 0;
       widget.onDragReorderStart?.call();
     }
-    setState(() => _dragReorderDy = dy);
     final rowExtent = context.size?.height ?? 0;
-    if (rowExtent <= 0) return;
-    final crossed = (_dragReorderDy / rowExtent).round();
-    if (crossed != 0) {
-      widget.onDragReorderSlot?.call(crossed);
-      _dragReorderDy -= crossed * rowExtent;
+    if (rowExtent > 0) {
+      // Hysteresis: a slot swaps once the finger has travelled half a row
+      // past the last consumed slot, and only one slot per event. Consuming
+      // a full row extent per swap keeps the next swap a full row away, so
+      // jitter around the midpoint cannot re-fire and cascade the row to the
+      // end of the band.
+      final residual = dy - _dragConsumed;
+      if (residual.abs() > rowExtent / 2) {
+        final slots = residual > 0 ? 1 : -1;
+        _dragConsumed += slots * rowExtent;
+        widget.onDragReorderSlot?.call(slots);
+      }
     }
+    // The visual shift accumulates on the row itself; the list reorders only
+    // when the drag commits, so no rebuild interrupts the gesture.
+    setState(() => _dragReorderDy = dy - _dragConsumed);
   }
 
   void _endDragReorder() {
@@ -5435,6 +5554,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
       _dragReorderActive = false;
       _dragReorderDy = 0;
     });
+    widget.onDragReorderEnd?.call();
   }
 
   void _handleContextRequest() {
@@ -5565,7 +5685,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
         widget.horizontalSwipeEnabled &&
         !widget.requiresLongPressDrag &&
         !desktopTouchGestures;
-    final rowGesture = GestureDetector(
+    final rowGestureRaw = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _offset != 0 ? _close() : widget.onTap(),
       onLongPress:
@@ -5592,17 +5712,22 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           _pendingLongPressAt = null;
         }
       },
-      onLongPressMoveUpdate: widget.requiresLongPressDrag
-          ? (details) {
-              setState(() {
-                _offset = _rubberBandOffset(
-                  _longPressStartOffset + details.localOffsetFromOrigin.dx,
-                );
-              });
-            }
-          : widget.dragReorderEnabled
-          ? _handleDragReorderMove
-          : null,
+      // Wired unconditionally: the recognizer keeps the closure from the
+      // build that saw the pointer down, but the State's widget is always
+      // the latest — the handler re-reads the flags on every event, so a
+      // long press that enters edit mode at its deadline can still drag in
+      // the same gesture.
+      onLongPressMoveUpdate: (details) {
+        if (widget.requiresLongPressDrag) {
+          setState(() {
+            _offset = _rubberBandOffset(
+              _longPressStartOffset + details.localOffsetFromOrigin.dx,
+            );
+          });
+        } else if (widget.dragReorderEnabled) {
+          _handleDragReorderMove(details);
+        }
+      },
       onLongPressEnd: (details) {
         if (widget.requiresLongPressDrag) {
           _settle(details.velocity.pixelsPerSecond.dx);
@@ -5635,9 +5760,9 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
             onPointerMove: _handleDesktopTouchPointerMove,
             onPointerUp: _handleDesktopTouchPointerUp,
             onPointerCancel: _handleDesktopTouchPointerCancel,
-            child: rowGesture,
+            child: rowGestureRaw,
           )
-        : rowGesture;
+        : rowGestureRaw;
     // At rest the row covers the blocks completely, so building them costs one
     // text layout + one paint per action on every row of every list rebuild.
     final actionsRevealed = _offset != 0 || widget.openRowId == widget.rowId;
@@ -5681,25 +5806,33 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           ),
           // The row, sliding left to uncover the blocks, or lifted and
           // following the finger while an edit-mode reorder drag is live.
+          // The subtree shape stays constant across that flip: swapping
+          // AppPressRipple for DecoratedBox mid-drag unmounts the row's
+          // GestureDetector and kills the live gesture.
           Transform.translate(
             offset: Offset(_offset, _dragReorderDy),
-            child: _dragReorderActive
-                ? DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: context.colors.background,
-                      boxShadow: const [
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _dragReorderActive
+                    ? context.colors.background
+                    : null,
+                boxShadow: _dragReorderActive
+                    ? const [
                         BoxShadow(
                           color: Color(0x40000000),
                           blurRadius: 16,
                           offset: Offset(0, 4),
                         ),
-                      ],
-                    ),
-                    child: interactiveRow,
-                  )
-                : widget.pressRippleEnabled
-                ? AppPressRipple(child: interactiveRow)
-                : interactiveRow,
+                      ]
+                    : null,
+              ),
+              // The ripple wrapper never leaves the tree mid-drag: dropping
+              // it when the lift starts would swap the subtree and unmount
+              // the row's gesture recognizer while the drag is live.
+              child: widget.pressRippleEnabled
+                  ? AppPressRipple(child: interactiveRow)
+                  : interactiveRow,
+            ),
           ),
         ],
       ),

@@ -24,10 +24,13 @@ void main() {
     TdClient.shared.configureProxy(
       TdClientProxyTransport(
         accountSlot: 0,
-        query: (request) async => switch (request['@type']) {
-          'getMe' => {'@type': 'user', 'id': 1, 'first_name': 'Test'},
-          'getConnectionState' => {'@type': 'connectionStateReady'},
-          _ => {'@type': 'ok'},
+        query: (request) async {
+          sent.add(request);
+          return switch (request['@type']) {
+            'getMe' => {'@type': 'user', 'id': 1, 'first_name': 'Test'},
+            'getConnectionState' => {'@type': 'connectionStateReady'},
+            _ => {'@type': 'ok'},
+          };
         },
         send: (request) async {
           sent.add(request);
@@ -168,6 +171,84 @@ void main() {
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
+
+  testWidgets(
+    'dragging a pinned row in edit mode reorders it and commits once on drop',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      updates.add(pinnedChatFixture(201, 'Pinned A', 300));
+      updates.add(pinnedChatFixture(202, 'Pinned B', 200));
+      updates.add(pinnedChatFixture(203, 'Pinned C', 100));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+      sent.clear();
+
+      // Enter edit mode via body long press on Pinned A.
+      final start = rowBodyCenter(tester, 'Pinned A');
+      final gesture = await tester.startGesture(start);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-list-selection-header')),
+        findsOneWidget,
+      );
+      // Drag down past Pinned B: the lifted row swaps slots once, and only a
+      // single setPinnedChats goes out — on drop, never per crossed slot.
+      final rowHeight = tester.getSize(find.text('Pinned A')).height + 28;
+      await gesture.moveBy(Offset(0, rowHeight * 1.2));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveBy(Offset(0, rowHeight * 0.4));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(sent.where((r) => r['@type'] == 'setPinnedChats'), isEmpty);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final commits = sent.where((r) => r['@type'] == 'setPinnedChats').toList();
+      expect(commits, hasLength(1));
+      expect(commits.single['chat_ids'], [202, 201, 203]);
+
+      // Order visibly changed: Pinned B now leads the band.
+      expect(
+        tester.getTopLeft(find.text('Pinned B')).dy <
+            tester.getTopLeft(find.text('Pinned A')).dy,
+        isTrue,
+      );
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
+    'a selected pinned row can also be dragged',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      updates.add(pinnedChatFixture(211, 'Sel A', 300));
+      updates.add(pinnedChatFixture(212, 'Sel B', 200));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+      sent.clear();
+
+      // Enter edit mode on Sel A (now selected), then long press it again and
+      // drag: membership must not block the drag.
+      final start = rowBodyCenter(tester, 'Sel A');
+      final gesture = await tester.startGesture(start);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      expect(find.text('1'), findsWidgets);
+
+      final rowHeight = tester.getSize(find.text('Sel A')).height + 28;
+      await gesture.moveBy(Offset(0, rowHeight * 1.2));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final commits = sent.where((r) => r['@type'] == 'setPinnedChats').toList();
+      expect(commits, hasLength(1));
+      expect(commits.single['chat_ids'], [212, 211]);
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 }
 
 Offset rowAvatarCenter(WidgetTester tester, String title) {
@@ -282,3 +363,33 @@ Future<void> _dispose(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(seconds: 6));
 }
+
+/// Chat payloads with pinned positions, for the drag-reorder tests.
+Map<String, dynamic> pinnedChatFixture(int id, String title, int order) => {
+  '@type': 'updateNewChat',
+  'chat': {
+    '@type': 'chat',
+    'id': id,
+    'title': title,
+    'type': {'@type': 'chatTypePrivate', 'user_id': id},
+    'last_message': {
+      '@type': 'message',
+      'id': order,
+      'chat_id': id,
+      'date': order,
+      'is_outgoing': false,
+      'content': {
+        '@type': 'messageText',
+        'text': {'@type': 'formattedText', 'text': 'm$id', 'entities': []},
+      },
+    },
+    'positions': [
+      {
+        '@type': 'chatPosition',
+        'list': {'@type': 'chatListMain'},
+        'order': order,
+        'is_pinned': true,
+      },
+    ],
+  },
+};
