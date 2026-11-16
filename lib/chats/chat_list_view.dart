@@ -639,13 +639,10 @@ bool chatListShouldRevealPullDownArchive({
 }) => pullOffset >= rowHeight * 0.45;
 
 /// Whether forward scrolling has moved far enough to collapse the revealed
-/// archive row. The collapse starts early — half a row of travel — so the row
-/// folds shut underneath the pinned search row; the pin's hold budget (the
-/// archive row's extent) is what keeps the search row stalled while that
-/// happens and for the rest of the archive row's travel, and only after it is
-/// spent does the search row start scrolling away. Collapsing late (at the
-/// full archive extent) would fire the collapse exactly when the hold runs out
-/// and the two rows would leave together.
+/// archive row. The travel threshold is half a row; the actual departure is a
+/// single collapse animation that folds the archive row and the search row
+/// away together (see [_pinnedSearchPill] and [ChatListPullDownArchiveSlot],
+/// which share one AnimatedSize clock).
 bool chatListShouldHidePullDownArchive({
   required double scrollPixels,
   required double minScrollExtent,
@@ -660,21 +657,11 @@ class ChatListTopOverscrollPin extends StatelessWidget {
     required this.controller,
     required this.child,
     this.enabled = true,
-    this.holdExtent = 0,
   });
 
   final ScrollController controller;
   final Widget child;
   final bool enabled;
-
-  /// How far the pinned row keeps cancelling forward (upward) scroll travel
-  /// before it starts following the content. While the leading rows that
-  /// precede real content — the pull-down archive row, when revealed — scroll
-  /// out underneath it, the pinned row stays put; only once they are gone does
-  /// it scroll away with the rest of the list. This mirrors the reference
-  /// client, where the archive row disappears under the search bar first and
-  /// the bar itself only folds after that.
-  final double holdExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -685,23 +672,16 @@ class ChatListTopOverscrollPin extends StatelessWidget {
       builder: (context, child) {
         final positions = controller.positions;
         final position = positions.length == 1 ? positions.single : null;
-        double pinDy = 0;
-        if (position != null && position.hasContentDimensions) {
-          // Downward overscroll pushes the row down with the viewport; the pin
-          // cancels it. Forward travel (scrolling the top edge away) first
-          // consumes [holdExtent]: the row stays put while the rows beneath
-          // scroll out from under it, then follows the content.
-          final overscroll = chatListTopOverscrollOffset(
-            position.pixels,
-            minScrollExtent: position.minScrollExtent,
-          );
-          final forward = math.max(
-            position.pixels - position.minScrollExtent,
-            0.0,
-          );
-          pinDy = -overscroll + math.min(forward, holdExtent);
-        }
-        return Transform.translate(offset: Offset(0, pinDy), child: child);
+        final pullOffset = position != null && position.hasContentDimensions
+            ? chatListTopOverscrollOffset(
+                position.pixels,
+                minScrollExtent: position.minScrollExtent,
+              )
+            : 0.0;
+        return Transform.translate(
+          offset: Offset(0, -pullOffset),
+          child: child,
+        );
       },
     );
   }
@@ -1234,6 +1214,11 @@ class _ChatListViewState extends State<ChatListView>
   int _pendingScrollAttempts = 0;
   bool _toggleUnreadTargetNext = true;
   bool _archiveRevealed = false;
+
+  /// Latched when forward scrolling dismisses the leading rows. One latch
+  /// drives both collapses so the search row and the revealed archive row
+  /// leave in a single shared animation; it releases again near the top.
+  bool _leadingControlsDismissed = false;
   double _refreshPullDistance = 0;
   bool _isRefreshing = false;
   bool _viewTickerEnabled = true;
@@ -1404,15 +1389,30 @@ class _ChatListViewState extends State<ChatListView>
         // mediumImpact() maps to KEYBOARD_TAP on Android — selectionClick's
         // CLOCK_TICK is too faint to feel mid-gesture on many devices.
         unawaited(HapticFeedback.mediumImpact());
-        setState(() => _archiveRevealed = true);
+        setState(() {
+          _archiveRevealed = true;
+          _leadingControlsDismissed = false;
+        });
       } else if (_archiveRevealed &&
           chatListShouldHidePullDownArchive(
             scrollPixels: position.pixels,
             minScrollExtent: position.minScrollExtent,
             rowHeight: rowHeight,
           )) {
-        setState(() => _archiveRevealed = false);
+        // One setState flips both rows: the archive slot and the search row
+        // collapse on the same shared clock and leave as a single animation.
+        setState(() {
+          _archiveRevealed = false;
+          _leadingControlsDismissed = true;
+        });
       }
+    }
+    if (_leadingControlsDismissed &&
+        position.hasContentDimensions &&
+        position.pixels - position.minScrollExtent <= rowHeight * 0.25) {
+      // Hysteresis against the dismiss threshold: returning near the top
+      // brings the search row back.
+      setState(() => _leadingControlsDismissed = false);
     }
     if (position.extentAfter < rowHeight * 8) {
       _model.loadMore();
@@ -2101,6 +2101,7 @@ class _ChatListViewState extends State<ChatListView>
       _folderPeek = null;
       _openSwipeChat = null;
       _archiveRevealed = false;
+      _leadingControlsDismissed = false;
       _refreshPullDistance = 0;
     });
     _model.selectFilter(filter);
@@ -3805,34 +3806,43 @@ class _ChatListViewState extends State<ChatListView>
     final archiveMode = effectiveChatListArchiveDisplayMode(
       context.read<ThemeController>().archivedChatsDisplayMode,
     );
-    final archiveHeld =
+    final archiveEnabled =
         _model.isAllFilter &&
         _model.archived.isNotEmpty &&
         archiveMode == ArchivedChatsDisplayMode.pullDown;
     return ChatListTopOverscrollPin(
       controller: _scrollController,
-      // The hold budget is the archive row's extent and lives as long as the
-      // pull-down slot does — independent of whether the row is currently
-      // revealed. Scrolling up first collapses the revealed row under this
-      // pinned search row (the collapse animates through the stall), and the
-      // search row only starts scrolling away once the whole budget is spent.
-      holdExtent: archiveHeld ? _archiveExtent() : 0,
-      child: _searchPill(),
+      child: AnimatedSize(
+        duration: _chatListLeadingCollapseDuration(context),
+        curve: Curves.easeOutCubic,
+        // The search row folds upward out of view: with bottom alignment the
+        // row's bottom edge stays put and the top edge collapses down past the
+        // viewport's top, so the row slides up behind the folder strip.
+        alignment: Alignment.bottomCenter,
+        child: archiveEnabled && _leadingControlsDismissed
+            ? const SizedBox(width: double.infinity)
+            : _searchPill(),
+      ),
     );
+  }
+
+  /// One shared clock for the search row and the archive row's collapse, so
+  /// the two rows leave in a single animation instead of two staged moves.
+  Duration _chatListLeadingCollapseDuration(BuildContext context) {
+    return MediaQuery.maybeOf(context)?.disableAnimations ?? false
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
   }
 
   Widget _pullDownArchiveSlot({
     required double rowHeight,
     required bool visible,
   }) {
-    final duration = MediaQuery.maybeOf(context)?.disableAnimations ?? false
-        ? Duration.zero
-        : const Duration(milliseconds: 180);
     return ChatListPullDownArchiveSlot(
       controller: _scrollController,
       rowHeight: _archiveExtent(),
       visible: visible,
-      duration: duration,
+      duration: _chatListLeadingCollapseDuration(context),
       child: _assistantRow(),
     );
   }
@@ -4073,10 +4083,7 @@ class _ChatListViewState extends State<ChatListView>
     if (index < 0) return;
     final target = (index + slots).clamp(0, band.length - 1);
     if (target == index) return;
-    _model.reorderPinnedChat(
-      chatId: id,
-      targetChatId: band[target].id,
-    );
+    _model.reorderPinnedChat(chatId: id, targetChatId: band[target].id);
   }
 
   /// During an edit-mode pinned drag, the neighbours the dragged row has
@@ -4096,7 +4103,8 @@ class _ChatListViewState extends State<ChatListView>
         final myIndex = band.indexWhere((c) => c.id == chat.id);
         if (draggedFrom >= 0 && myIndex >= 0) {
           final draggedTo = (draggedFrom + slots).clamp(0, band.length - 1);
-          final inBetween = myIndex > math.min(draggedFrom, draggedTo) &&
+          final inBetween =
+              myIndex > math.min(draggedFrom, draggedTo) &&
               myIndex <= math.max(draggedFrom, draggedTo);
           if (inBetween) {
             final rowExtent = AppMetric.chatListRowExtent(context);
@@ -4108,10 +4116,7 @@ class _ChatListViewState extends State<ChatListView>
     // Unconditional: an early `return child` for un-shifted rows would swap
     // the subtree root mid-drag (bare row vs wrapped row) and unmount the
     // row's gesture recognizer while the drag is live.
-    return Transform.translate(
-      offset: Offset(0, shift),
-      child: child,
-    );
+    return Transform.translate(offset: Offset(0, shift), child: child);
   }
 
   /// The pinned chats of the list being edited, top to bottom.
@@ -5813,9 +5818,7 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
             offset: Offset(_offset, _dragReorderDy),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: _dragReorderActive
-                    ? context.colors.background
-                    : null,
+                color: _dragReorderActive ? context.colors.background : null,
                 boxShadow: _dragReorderActive
                     ? const [
                         BoxShadow(

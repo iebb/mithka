@@ -187,7 +187,7 @@ void main() {
   );
 
   testWidgets(
-    'scrolling up dismisses the archive row before the search row moves',
+    'scrolling up collapses the archive row and the search row in one animation',
     (tester) async {
       await _pumpFolderPager(
         tester,
@@ -252,8 +252,8 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       // The collapse fires at half a row of travel (~36px at this fixture's
-      // row height), which this drag has passed — while the search row is
-      // still inside its hold budget (the archive row's full extent, ~72px).
+      // row height), which this drag has passed. Both rows now leave in ONE
+      // shared 180ms animation — no stall between them.
       final slotElement = find
           .byType(ChatListPullDownArchiveSlot)
           .evaluate()
@@ -266,36 +266,26 @@ void main() {
             'by now the revealed archive row has started collapsing '
             '(travel is past half a row)',
       );
-      final held = tester.getTopLeft(searchFinder).dy;
+      // Mid-animation on the shared clock: the search row is already leaving
+      // with the archive row instead of being held in place.
+      await tester.pump(const Duration(milliseconds: 60));
+      final midTop = searchFinder.evaluate().isEmpty
+          ? double.negativeInfinity
+          : tester.getTopLeft(searchFinder).dy;
       expect(
-        held,
-        moreOrLessEquals(searchTop, epsilon: 0.5),
+        midTop,
+        lessThan(searchTop - 0.5),
         reason:
-            'while the archive row collapses the search row stalls in place '
-            'instead of leaving with it',
+            'the search row departs in the same animation as the archive '
+            'row — no stall between them',
       );
-      // Keep scrolling past the archive row: once it is gone the search row
-      // follows the content, so it starts moving up.
-      // Keep scrolling past the archive row: once it is gone the search row
-      // follows the content, so it starts moving up (or leaves the lazy
-      // viewport entirely — both mean it stopped being held).
-      var released = false;
-      for (var i = 0; i < 12 && !released; i++) {
-        await gesture.moveBy(const Offset(0, -24));
-        await tester.pump(const Duration(milliseconds: 16));
-        final candidates = find.byKey(
-          const ValueKey('chat-list-inline-search'),
-        );
-        if (candidates.evaluate().isEmpty) {
-          released = true;
-        } else {
-          released = tester.getTopLeft(candidates).dy < searchTop - 0.5;
-        }
-      }
+      // By the end of the shared clock the search row is folded away.
+      await tester.pumpAndSettle();
       expect(
-        released,
+        searchFinder.evaluate().isEmpty ||
+            tester.getTopLeft(searchFinder).dy < 0,
         isTrue,
-        reason: 'after the archive row is gone the search row scrolls away',
+        reason: 'after the collapse the search row is folded away',
       );
       await gesture.up();
       await tester.pumpAndSettle();
