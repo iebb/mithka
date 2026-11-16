@@ -247,24 +247,32 @@ void main() {
       // row while the search row holds its place.
       gesture = await tester.startGesture(Offset(200, firstRow + 60));
       await tester.pump(const Duration(milliseconds: 40));
-      for (var i = 0; i < 2; i++) {
+      for (var i = 0; i < 4; i++) {
         await gesture.moveBy(const Offset(0, -20));
         await tester.pump(const Duration(milliseconds: 16));
       }
-      // The pinned search row may have already scrolled out of the lazy
-      // viewport's cache extent while holding its place — that is the pin
-      // working, not a regression; the archive row left first.
-      final held = searchFinder.evaluate().isEmpty
-          ? double.negativeInfinity
-          : tester.getTopLeft(searchFinder).dy;
+      // The collapse fires at half a row of travel (~36px at this fixture's
+      // row height), which this drag has passed — while the search row is
+      // still inside its hold budget (the archive row's full extent, ~72px).
+      final slotElement = find
+          .byType(ChatListPullDownArchiveSlot)
+          .evaluate()
+          .single;
+      final slot = (slotElement.widget as ChatListPullDownArchiveSlot);
+      expect(
+        slot.visible,
+        isFalse,
+        reason:
+            'by now the revealed archive row has started collapsing '
+            '(travel is past half a row)',
+      );
+      final held = tester.getTopLeft(searchFinder).dy;
       expect(
         held,
-        predicate<double>(
-          (v) => v == double.negativeInfinity || (v - searchTop).abs() <= 0.5,
-        ),
+        moreOrLessEquals(searchTop, epsilon: 0.5),
         reason:
-            'the search row holds still (or is already scrolled past, held by '
-            'the pin) while the archive row scrolls out beneath it',
+            'while the archive row collapses the search row stalls in place '
+            'instead of leaving with it',
       );
       // Keep scrolling past the archive row: once it is gone the search row
       // follows the content, so it starts moving up.

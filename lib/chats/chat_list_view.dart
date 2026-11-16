@@ -636,17 +636,19 @@ bool chatListShouldRevealPullDownArchive({
   required double rowHeight,
 }) => pullOffset >= rowHeight * 0.45;
 
-/// Whether forward scrolling has moved far enough to hide the archive row.
-/// The row collapses only after it has fully scrolled out from under the
-/// pinned search row — not at half travel — so scrolling up dismisses the
-/// archive row first and the search row only follows afterwards, like the
-/// reference client.
+/// Whether forward scrolling has moved far enough to collapse the revealed
+/// archive row. The collapse starts early — half a row of travel — so the row
+/// folds shut underneath the pinned search row; the pin's hold budget (the
+/// archive row's extent) is what keeps the search row stalled while that
+/// happens and for the rest of the archive row's travel, and only after it is
+/// spent does the search row start scrolling away. Collapsing late (at the
+/// full archive extent) would fire the collapse exactly when the hold runs out
+/// and the two rows would leave together.
 bool chatListShouldHidePullDownArchive({
   required double scrollPixels,
   required double minScrollExtent,
   required double rowHeight,
-  required double archiveExtent,
-}) => scrollPixels - minScrollExtent > archiveExtent;
+}) => scrollPixels - minScrollExtent > rowHeight * 0.5;
 
 /// Keeps leading pull-down content visually fixed while the surrounding list
 /// uses bouncing scroll physics.
@@ -1392,7 +1394,6 @@ class _ChatListViewState extends State<ChatListView>
             scrollPixels: position.pixels,
             minScrollExtent: position.minScrollExtent,
             rowHeight: rowHeight,
-            archiveExtent: _archiveExtent(),
           )) {
         setState(() => _archiveRevealed = false);
       }
@@ -3774,13 +3775,14 @@ class _ChatListViewState extends State<ChatListView>
     final archiveHeld =
         _model.isAllFilter &&
         _model.archived.isNotEmpty &&
-        archiveMode == ArchivedChatsDisplayMode.pullDown &&
-        _archiveRevealed;
+        archiveMode == ArchivedChatsDisplayMode.pullDown;
     return ChatListTopOverscrollPin(
       controller: _scrollController,
-      // While a revealed archive row scrolls out underneath the search row,
-      // the search row holds its place; only after the archive row is gone
-      // does it start scrolling away with the rest of the list.
+      // The hold budget is the archive row's extent and lives as long as the
+      // pull-down slot does — independent of whether the row is currently
+      // revealed. Scrolling up first collapses the revealed row under this
+      // pinned search row (the collapse animates through the stall), and the
+      // search row only starts scrolling away once the whole budget is spent.
       holdExtent: archiveHeld ? _archiveExtent() : 0,
       child: _searchPill(),
     );
