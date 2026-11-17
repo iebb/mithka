@@ -211,34 +211,31 @@ void main() {
     expect(plan.missingMediaIds, [5]);
   });
 
-  test(
-    'can_be_copied=false no longer blocks the copy (regression)',
-    () async {
-      // TDLib derives can_be_copied from has_protected_content itself —
-      // inside a protected chat the probe is false for EVERY message. The
-      // old gate fail-closed on it and killed the whole copy path; the
-      // probe is now deliberately ignored (permission lives in the user's
-      // opt-in toggle that routed the selection here).
-      final sent = <Map<String, dynamic>>[];
-      final messages = [message(id: 6)];
-      final base = responses(messages);
-      final plan = await forwardProtectedAsCopy(
-        query: (request) async {
-          if (request['@type'] == 'getMessageProperties') {
-            return {'@type': 'messageProperties', 'can_be_copied': false};
-          }
-          if (request['@type'] == 'sendMessage') sent.add(request);
-          return base(request);
-        },
-        fromChatId: 100,
-        messageIds: [6],
-        targetChatId: 200,
-      );
-      expect(plan.copiedCount, 1);
-      expect(plan.skippedIds, isEmpty);
-      expect(sent, hasLength(1));
-    },
-  );
+  test('can_be_copied=false no longer blocks the copy (regression)', () async {
+    // TDLib derives can_be_copied from has_protected_content itself —
+    // inside a protected chat the probe is false for EVERY message. The
+    // old gate fail-closed on it and killed the whole copy path; the
+    // probe is now deliberately ignored (permission lives in the user's
+    // opt-in toggle that routed the selection here).
+    final sent = <Map<String, dynamic>>[];
+    final messages = [message(id: 6)];
+    final base = responses(messages);
+    final plan = await forwardProtectedAsCopy(
+      query: (request) async {
+        if (request['@type'] == 'getMessageProperties') {
+          return {'@type': 'messageProperties', 'can_be_copied': false};
+        }
+        if (request['@type'] == 'sendMessage') sent.add(request);
+        return base(request);
+      },
+      fromChatId: 100,
+      messageIds: [6],
+      targetChatId: 200,
+    );
+    expect(plan.copiedCount, 1);
+    expect(plan.skippedIds, isEmpty);
+    expect(sent, hasLength(1));
+  });
 
   group('settings', () {
     test('ships ON and persists the opt-out', () async {
