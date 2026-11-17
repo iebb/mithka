@@ -59,4 +59,28 @@ void main() {
       isNot('phone'),
     );
   });
+
+  test(
+    'mounting mid-reload seeds the phone identity, never the literal',
+    () async {
+      // Add-account mounts LoginView while the gate rides the splash→login
+      // hand-off through AuthReloading. Seeding the literal "AuthReloading"
+      // identity here made the key flip to "phone" when the real form arrived
+      // a few hundred ms later — the switcher cross-faded the same form
+      // against itself (the entry flicker). The mount must seed the phone
+      // column instead; the sticky branch only governs reloads that happen
+      // AFTER a real form was shown.
+      final source = await File('lib/auth/login_view.dart').readAsString();
+      expect(
+        source,
+        contains('_lastStepIdentity = initialStep is AuthReloading'),
+        reason: 'initState must special-case the reload mount',
+      );
+      expect(
+        source,
+        contains('if (auth.step is AuthReloading) return _lastStepIdentity;'),
+        reason: 'the sticky branch must stay a fallback to the last identity',
+      );
+    },
+  );
 }

@@ -187,9 +187,16 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
-    _lastStepIdentity = LoginView.debugStepIdentityForTesting(
-      context.read<AuthManager>().step,
-    );
+    final initialStep = context.read<AuthManager>().step;
+    // Mounting mid-reload (add-account rides the gate's splash→login
+    // hand-off through AuthReloading) must not seed the literal
+    // "AuthReloading" identity: a few hundred ms later the real phone form
+    // arrives, the key flips, and the switcher cross-fades the same form
+    // against itself — the add-account entry flicker. Seed the phone
+    // column; the sticky branch keeps later reloads on what's on screen.
+    _lastStepIdentity = initialStep is AuthReloading
+        ? 'phone'
+        : LoginView.debugStepIdentityForTesting(initialStep);
     ProxyStatusController.shared.ensureTracking();
     unawaited(_loadBotEndpoint());
     if (isMobilePlatform) {
