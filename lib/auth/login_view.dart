@@ -130,6 +130,20 @@ abstract final class _DesktopLoginMetrics {
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
+  /// The pure core of the login step identity: the step-family mapping that
+  /// keeps same-form states (the phone column, including the logout chain
+  /// AuthInitializing → AuthWaitPhoneNumber → AuthClosed hops) on one key so
+  /// the step's AnimatedSwitcher never cross-fades a form against itself.
+  /// The instance method layers the bot/phone-override identities on top.
+  @visibleForTesting
+  static String debugStepIdentityForTesting(AuthStep step) => switch (step) {
+    AuthInitializing() ||
+    AuthReloading() ||
+    AuthWaitPhoneNumber() ||
+    AuthClosed() => 'phone',
+    _ => step.runtimeType.toString(),
+  };
+
   @override
   State<LoginView> createState() => _LoginViewState();
 }
@@ -1209,15 +1223,15 @@ class _LoginViewState extends State<LoginView> {
   /// runtime type mounted a second copy of the form and cross-faded it
   /// against itself, the "renders twice" flicker on add-account.
   /// AuthMissingCredentials renders its own notice, so it keeps a distinct
-  /// identity from the working phone form.
+  /// identity from the working phone form. AuthClosed maps to the phone
+  /// form too: the logout chain LoggingOut → Closed → Initializing →
+  /// WaitPhoneNumber bounces between the gate's splash and login surfaces
+  /// (each a deliberate crossfade there), and re-keying the phone form at
+  /// the last hop would fade the freshly mounted form against itself.
   String _stepIdentity(AuthManager auth) {
     if (_showBotLogin) return 'bot';
     if (_forcePhone) return 'phone';
-    return switch (auth.step) {
-      // These states all render the same phone-number column.
-      AuthInitializing() || AuthReloading() || AuthWaitPhoneNumber() => 'phone',
-      _ => auth.step.runtimeType.toString(),
-    };
+    return LoginView.debugStepIdentityForTesting(auth.step);
   }
 
   // MARK: Steps
