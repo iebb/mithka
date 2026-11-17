@@ -276,19 +276,22 @@ class EmojiFontCatalog {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     final fonts = decoded['fonts'] as List? ?? const [];
     return [
-        // Apple leads the list: the platform set every reference client puts
-        // first, and iebb/emojifonts does not build it (its binaries are for
-        // macOS Core Text; the upstream AppleColorEmoji CBDT table renders
-        // fine through Skia on every platform MithkaX ships).
-        EmojiFontCatalog.appleEntry,
-        EmojiFontCatalog.fluentEntry,
-        for (final item in fonts)
-          if (item is Map) tryParseEntry(item.cast<String, dynamic>()),
-      ].whereType<EmojiFontManifestEntry>().toList()
+          // Apple leads the list: the platform set every reference client puts
+          // first, and iebb/emojifonts does not build it (its binaries are for
+          // macOS Core Text; the upstream AppleColorEmoji CBDT table renders
+          // fine through Skia on every platform MithkaX ships).
+          EmojiFontCatalog.appleEntry,
+          for (final item in fonts)
+            if (item is Map) tryParseEntry(item.cast<String, dynamic>()),
+        ]
+        .whereType<EmojiFontManifestEntry>()
+        // The Fluent pack is deliberately absent (its release binary is
+        // mis-built and the user removed the set): drop the manifest's
+        // own fluent rows, any spelling, instead of shipping broken rows.
+        .where((entry) => entry.key != 'fluent')
+        .toList()
       // The pinned Apple row owns its slot even if a future manifest ships
-      // its own apple key — one row, the fork's. Fluent is pinned the same
-      // way: the manifest's fluent.ttc binary is mis-built (Apple glyphs),
-      // the fork's community build carries the real 3D set.
+      // its own apple key — one row, the fork's.
       ..retainAfterFirstByKey();
   }
 
@@ -310,25 +313,6 @@ class EmojiFontCatalog {
     coveragePct: 100,
     emojiVersion: '18.0',
     updated: '2026-10',
-  );
-
-  /// Microsoft Fluent 3D, pinned to the upstream project's own CBDT
-  /// webfont. The iebb/emojifonts release only publishes a .ttc whose
-  /// binary content is mis-built (it renders as Apple Color Emoji), so the
-  /// fork serves the real glyphs from the font's home repository. Metadata
-  /// otherwise mirrors the manifest row.
-  static const fluentEntry = EmojiFontManifestEntry(
-    key: 'fluent',
-    label: 'Microsoft Fluent 3D',
-    license: 'MIT',
-    kind: 'color',
-    url:
-        'https://raw.githubusercontent.com/tetunori/fluent-emoji-webfont'
-        '/main/dist/FluentEmojiColor.ttf',
-    format: 'cbdt',
-    coveragePct: 98,
-    emojiVersion: '15.0',
-    updated: '2026-07-20',
   );
 
   /// Test seam: run the same parse the manifest loader uses.
@@ -467,8 +451,7 @@ class EmojiFontCatalog {
 }
 
 extension _EmojiFontEntryDedupe on List<EmojiFontManifestEntry> {
-  /// Keep the first entry per key (the pinned Apple and Fluent rows win
-  /// their slots).
+  /// Keep the first entry per key (the pinned Apple row wins its slot).
   void retainAfterFirstByKey() {
     final seen = <String>{};
     removeWhere((entry) => !seen.add(entry.key));

@@ -31,9 +31,42 @@ void main() {
     expect(entries[0].label, 'Apple Color Emoji');
     expect(entries[0].url, contains('AppleColorEmoji.ttf'));
     expect(entries[0].format, 'cbdt');
-    // The pinned Fluent row rides along right after Apple.
-    expect(entries[1].key, 'fluent');
-    expect(entries[2].key, 'noto');
+    expect(entries[1].key, 'noto');
+  });
+
+  test('fluent never appears in the parsed manifest', () {
+    // The user removed the Fluent pack: the manifest's fluent row is
+    // dropped at parse time (its .ttc binary is mis-built anyway) and no
+    // pinned entry replaces it.
+    const body = '''
+{
+  "fonts": [
+    {
+      "key": "fluent",
+      "label": "Microsoft Fluent 3D",
+      "license": "MIT",
+      "kind": "color",
+      "emoji_version": "15.0",
+      "formats": {
+        "ttc": "https://github.com/iebb/emojifonts/releases/download/latest/fluent.ttc"
+      }
+    },
+    {
+      "key": "noto",
+      "label": "Google Noto Color Emoji",
+      "license": "Apache-2.0 / OFL-1.1",
+      "kind": "color",
+      "emoji_version": "18.0",
+      "formats": {
+        "sbix": "https://example.com/noto.ttf"
+      }
+    }
+  ]
+}
+''';
+    final entries = EmojiFontCatalog.shared.parseManifestForTesting(body);
+    expect(entries.where((e) => e.key.startsWith('fluent')), isEmpty);
+    expect(entries.map((e) => e.key), ['apple', 'noto']);
   });
 
   test('apple entry is not duplicated when the manifest carries one', () {
@@ -60,32 +93,5 @@ void main() {
     expect(appleRows, hasLength(1));
     // The pinned fork entry wins (label without the manifest suffix).
     expect(appleRows.single.label, 'Apple Color Emoji');
-  });
-
-  test('fluent is pinned to the community CBDT build', () {
-    // The iebb/emojifonts fluent.ttc binary is mis-built (its glyphs render
-    // as Apple Color Emoji), so the fork pins the upstream project's own
-    // webfont and the manifest's fluent row must never win its slot back.
-    const body = '''
-{
-  "fonts": [
-    {
-      "key": "fluent",
-      "label": "Microsoft Fluent 3D",
-      "license": "MIT",
-      "kind": "color",
-      "emoji_version": "15.0",
-      "formats": {
-        "ttc": "https://github.com/iebb/emojifonts/releases/download/latest/fluent.ttc"
-      }
-    }
-  ]
-}
-''';
-    final entries = EmojiFontCatalog.shared.parseManifestForTesting(body);
-    final fluentRows = entries.where((e) => e.key == 'fluent').toList();
-    expect(fluentRows, hasLength(1));
-    expect(fluentRows.single.url, contains('FluentEmojiColor.ttf'));
-    expect(fluentRows.single.format, 'cbdt');
   });
 }
