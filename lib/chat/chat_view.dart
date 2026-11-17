@@ -4854,7 +4854,9 @@ class _ChatViewState extends State<ChatView> {
       meName: _vm.meName,
       mePhoto: _vm.mePhoto,
       meId: _vm.meId,
-      showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
+      showRepeat:
+          (_vm.canForwardContent || _protectedCopyEnabled) &&
+          _isRepeatTail(messageIndex),
       onRepeat: () => _vm.repeatMessage(message),
       onLongPress: _isSelecting ? null : _showActionMenuForMessage,
       onDesktopQuoteChanged: _handleDesktopQuoteChanged,
@@ -5821,6 +5823,8 @@ class _ChatViewState extends State<ChatView> {
         unawaited(_forwardMessage(message));
       case MessageAction.repeat:
         try {
+          // In a protected chat this rides the copy-forward route: a
+          // no-quote re-send of the message into the CURRENT chat.
           final preserveSender = context
               .read<ThemeController>()
               .preserveSenderWhenRepeating;
@@ -5831,6 +5835,7 @@ class _ChatViewState extends State<ChatView> {
           );
           if (!mounted) return;
           _scrollToBottom();
+          _showProtectedCopyResult(_vm.protectedForwardLastPlan);
         } catch (e) {
           if (!mounted) return;
           _showForwardFailure(e);
@@ -9472,7 +9477,7 @@ class _ChatViewState extends State<ChatView> {
             button(
               HeroAppIcons.forward.data,
               _forwardSelected,
-              actionEnabled: _vm.canForwardContent,
+              actionEnabled: _vm.canForwardContent || _protectedCopyEnabled,
             ),
             button(
               HeroAppIcons.star.data,
@@ -11513,6 +11518,7 @@ class _ChatViewState extends State<ChatView> {
       message: target,
       isPinned: _vm.pinnedMessage?.id == target.id,
       allowForwarding: _vm.canForwardContent,
+      allowProtectedCopyForward: _protectedCopyEnabled && !target.isService,
       allowTranslation:
           _hasAvailableTranslationOption &&
           _translationSourceText(target).trim().isNotEmpty,

@@ -1203,11 +1203,21 @@ class _LoginViewState extends State<LoginView> {
   }
 
   /// Stable identity of the visible step, so [AnimatedSwitcher] cross-fades
-  /// only when the flow actually moves between steps.
+  /// only when the flow actually moves between FORMS. Several auth states
+  /// render the same phone form (AuthReloading and AuthInitializing both
+  /// hand the default branch to the phone step) — re-keying on the raw
+  /// runtime type mounted a second copy of the form and cross-faded it
+  /// against itself, the "renders twice" flicker on add-account.
+  /// AuthMissingCredentials renders its own notice, so it keeps a distinct
+  /// identity from the working phone form.
   String _stepIdentity(AuthManager auth) {
     if (_showBotLogin) return 'bot';
     if (_forcePhone) return 'phone';
-    return auth.step.runtimeType.toString();
+    return switch (auth.step) {
+      // These states all render the same phone-number column.
+      AuthInitializing() || AuthReloading() || AuthWaitPhoneNumber() => 'phone',
+      _ => auth.step.runtimeType.toString(),
+    };
   }
 
   // MARK: Steps

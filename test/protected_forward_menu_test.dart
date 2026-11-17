@@ -76,9 +76,9 @@ void main() {
       allowProtectedCopyForward: true,
     );
     expect(find.text('Forward'), findsOneWidget);
-    // Repeat re-sends in the same protected chat — not a copy out. It stays
-    // hidden so the menu does not promise a second path.
-    expect(find.text('Repeat'), findsNothing);
+    // Repeat rides the same copy route in a protected chat: it re-sends the
+    // message as a no-quote copy into the CURRENT chat.
+    expect(find.text('Repeat'), findsOneWidget);
   });
 
   testWidgets('protected chat without the toggle hides forward entirely', (

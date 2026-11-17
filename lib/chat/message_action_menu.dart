@@ -359,8 +359,9 @@ class MessageActionMenu extends StatelessWidget {
 
   /// Offer 转发 inside a protected chat: the kept-messages copy-forward
   /// toggle is on, so the selection re-sends as a copy instead of a forward
-  /// (the route _forwardMessage takes). Repeat stays hidden — a re-send to
-  /// the same protected chat is not a copy out.
+  /// (the route _forwardMessage takes). Repeat rides the same copy route —
+  /// in a protected chat it is a no-quote copy re-send into the CURRENT
+  /// chat, which is exactly what the toggle enables.
   final bool allowProtectedCopyForward;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
@@ -555,6 +556,7 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.repeat);
     } else if (allowProtectedCopyForward && !message.isService) {
       result.add(MessageAction.forward);
+      result.add(MessageAction.repeat);
     }
     if (message.video != null && source == MessageActionSource.video) {
       result.add(MessageAction.playMuted);

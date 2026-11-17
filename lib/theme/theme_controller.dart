@@ -942,12 +942,12 @@ class ThemeController extends ChangeNotifier {
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
     _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
-    // Android defaults to system emoji (exteraless parity); absent preference
-    // means "never chosen", which keeps that default. Other platforms default
-    // to the selected pack as before.
+    // The bundled Apple emoji font is the fork default; its bytes ship in
+    // the APK, so a first selection is always instantly loadable.
     _useSystemEmoji =
         _prefs.getBool(_useSystemEmojiKey) ??
-        (defaultTargetPlatform == TargetPlatform.android);
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
     final initialUserId = _activeAccountUserId;
     if (_usePerAccountTheming && initialUserId != null) {
       _migrateLegacyAccountTheme(_activeAccountSlot, initialUserId);
@@ -1021,10 +1021,24 @@ class ThemeController extends ChangeNotifier {
     _customMonospaceFontFamily =
         _prefs.getString(_customMonospaceFontFamilyKey)?.trim() ?? '';
     final storedEmojiFontKey = _prefs.getString(_emojiFontChoiceKey);
-    final emojiFontKey = _normalizeEmojiFontKey(
+    var emojiFontKey = _normalizeEmojiFontKey(
       storedEmojiFontKey,
       migrated: _emojiFontKeysAreMigrated,
     );
+    // Bundled-apple is the new default: a stored "system" that only ever
+    // meant "no explicit pack choice" (Android's old system-emoji default
+    // wrote no key at all) migrates to apple so every install starts on the
+    // built-in font. The system-emoji switch is gone, so ANY stored switch
+    // value (on or off) marks a pre-switch install whose "system" key was
+    // the old default sentinel rather than a deliberate pick; only the
+    // schema stamp (written by useSystemEmojiFont since the catalog era)
+    // proves a real system selection.
+    if (!_prefs.containsKey(_emojiFontChoiceKey) ||
+        (emojiFontKey == EmojiFontChoice.system.key &&
+            !_prefs.containsKey(_useSystemEmojiKey) &&
+            (_prefs.getInt(_emojiFontSchemaKey) ?? 0) < 1)) {
+      emojiFontKey = EmojiFontCatalog.appleEntry.key;
+    }
     if (emojiFontKey != storedEmojiFontKey?.trim()) {
       unawaited(_prefs.setString(_emojiFontChoiceKey, emojiFontKey));
     }
@@ -1033,6 +1047,8 @@ class ThemeController extends ChangeNotifier {
       key: emojiFontKey,
       label: emojiFontKey == EmojiFontChoice.system.key
           ? EmojiFontChoice.system.label
+          : emojiFontKey == EmojiFontCatalog.appleEntry.key
+          ? EmojiFontCatalog.appleEntry.label
           : _prefs.getString(_emojiFontLabelKey) ?? emojiFontKey,
       license: _prefs.getString(_emojiFontLicenseKey),
       fontFamily: _emojiFontCatalog.loadedFamilyForKey(emojiFontKey),
@@ -2008,10 +2024,15 @@ class ThemeController extends ChangeNotifier {
     final cached = _effectiveFontFamilyChainCache;
     if (cached != null) return cached;
     final textFamilies = _normalFontFamilyChain(base);
+    // Emoji families go LAST: every emoji pack font carries its own ASCII
+    // digits, spaces and punctuation at emoji-scale metrics, and any position
+    // ahead of a text face lets those glyphs claim characters the text font
+    // did not cover — inflating number spacing and word gaps app-wide. At the
+    // tail only true emoji (codepoints no text face has) fall through, which
+    // is exactly "render emoji with the emoji font".
     return _effectiveFontFamilyChainCache = dedupeFontFamilies([
-      textFamilies.first,
+      ...textFamilies,
       ...effectiveEmojiFontFamilies,
-      ...textFamilies.skip(1),
     ]);
   }
 
@@ -2068,7 +2089,6 @@ class ThemeController extends ChangeNotifier {
         : _googleTextStyle(googleFamily, weightedBase);
     return withPrimary.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
-        ...effectiveEmojiFontFamilies,
         ...?withPrimary.fontFamilyFallback,
         ...families.skip(1),
       ]),
@@ -2135,8 +2155,8 @@ class ThemeController extends ChangeNotifier {
     return code.copyWith(
       fontFamilyFallback: dedupeFontFamilies([
         ...?code.fontFamilyFallback,
-        ...effectiveEmojiFontFamilies,
         ..._normalFontFamilyChain(base),
+        ...effectiveEmojiFontFamilies,
       ]),
     );
   }
@@ -2392,26 +2412,46 @@ class ThemeController extends ChangeNotifier {
   }
 
   void useSystemEmojiFont() {
-    // exteraless semantics: picking the system row turns its switch on and
-    // clears any pack override, rather than keeping a stale pack selected.
+    // Picking the system row clears any pack override — the stored selection
+    // IS the render policy now, so a stale pack must not survive it. The
+    // schema stamp marks this as a deliberate catalog-era selection so the
+    // apple migration never drags it back.
     _emojiFontSelectionRevision++;
     _emojiFontChoice = EmojiFontChoice.system;
+    _invalidateFontCaches();
     _prefs.setString(_emojiFontChoiceKey, EmojiFontChoice.system.key);
     _prefs.remove(_emojiFontLabelKey);
     _prefs.remove(_emojiFontLicenseKey);
-    setUseSystemEmoji(true);
+    _prefs.setInt(_emojiFontSchemaKey, _emojiFontSchemaVersion);
+    notifyListeners();
   }
 
-  /// exteraless "EmojiUseDefault": when on, emoji render with the platform
-  /// emoji font no matter which pack is selected. Android defaults to on —
-  /// the fork ships system emoji unless the user opts into a pack, matching
-  /// the reference client. Other platforms keep the previous default (off,
-  /// selected pack wins) so desktop behaviour is unchanged.
-  static const _useSystemEmojiKey = 'emojiUseSystemFont';
-  bool _useSystemEmoji = defaultTargetPlatform == TargetPlatform.android;
+  /// Test seam: pretend the selected pack's font family has registered, so
+  /// chain-order assertions do not depend on the FontLoader asset pipeline.
+  @visibleForTesting
+  void debugSetEmojiFontFamilyForTesting(String family) {
+    _emojiFontChoice = EmojiFontChoice(
+      key: _emojiFontChoice.key,
+      label: _emojiFontChoice.label,
+      license: _emojiFontChoice.license,
+      fontFamily: family,
+    );
+    _invalidateFontCaches();
+  }
 
+  /// The "use system emoji" switch was removed from the picker: the system
+  /// row is just another choice now. The pref key survives only so old
+  /// installs migrate off it (see the constructor); this setter exists for
+  /// tests that still exercise the migration and is a no-op render-wise.
+  static const _useSystemEmojiKey = 'emojiUseSystemFont';
+  bool _useSystemEmoji =
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
+  @Deprecated('the system-emoji switch is gone; pick the system row instead')
   bool get useSystemEmoji => _useSystemEmoji;
 
+  @Deprecated('the system-emoji switch is gone; pick the system row instead')
   void setUseSystemEmoji(bool value) {
     if (_useSystemEmoji == value) return;
     _useSystemEmoji = value;
@@ -2420,11 +2460,9 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The emoji families that actually paint: the platform font while the
-  /// system switch is on, the selected pack otherwise.
-  List<String> get effectiveEmojiFontFamilies => _useSystemEmoji
-      ? EmojiFontChoice.platformEmojiFontFallback()
-      : _emojiFontChoice.fontFamilies;
+  /// The emoji families that actually paint: the selected pack, or the
+  /// platform emoji font when the system row is selected.
+  List<String> get effectiveEmojiFontFamilies => _emojiFontChoice.fontFamilies;
 
   Future<void> loadSelectedEmojiFontIfAvailable() async {
     final key = _emojiFontChoice.key;
@@ -2433,7 +2471,7 @@ class ThemeController extends ChangeNotifier {
       return;
     }
     final revision = _emojiFontSelectionRevision;
-    final family = await _emojiFontCatalog.loadCachedOrDownload(key);
+    final family = await _emojiFontCatalog.loadCached(key);
     if (family == null ||
         revision != _emojiFontSelectionRevision ||
         _emojiFontChoice.key != key) {
@@ -2459,26 +2497,34 @@ class ThemeController extends ChangeNotifier {
       license: entry.license,
       fontFamily: family,
     );
-    // exteraless setEmojiPack(manually=true): an explicit pack choice always
-    // switches the system-emoji override off.
     _useSystemEmoji = false;
     _invalidateFontCaches();
     unawaited(_prefs.setString(_emojiFontChoiceKey, entry.key));
     unawaited(_prefs.setString(_emojiFontLabelKey, entry.label));
     unawaited(_prefs.setString(_emojiFontLicenseKey, entry.license));
     unawaited(_prefs.setBool(_useSystemEmojiKey, false));
+    unawaited(_prefs.setInt(_emojiFontSchemaKey, _emojiFontSchemaVersion));
     notifyListeners();
   }
 
   /// Registers an already-cached selected emoji font before the first frame.
-  /// Missing cache entries are intentionally not downloaded on the launch
-  /// path; the normal idle loader can fetch those without delaying startup.
+  /// The bundled Apple font ships in the APK, so it loads on every startup;
+  /// downloaded packs only load from the local cache — missing entries are
+  /// intentionally not downloaded on the launch path, the normal idle loader
+  /// fetches those without delaying startup.
   static Future<void> preloadCachedEmojiFont(SharedPreferences prefs) async {
     final storedKey = prefs.getString(_emojiFontChoiceKey);
     final migrated =
         (prefs.getInt(_emojiFontSchemaKey) ?? 0) >= _emojiFontSchemaVersion ||
         prefs.getString(_emojiFontLabelKey) != null;
-    final key = _normalizeEmojiFontKey(storedKey, migrated: migrated);
+    var key = _normalizeEmojiFontKey(storedKey, migrated: migrated);
+    // Fresh installs (and pre-switch installs whose stored key was only the
+    // old "no pack chosen" sentinel) start on the bundled Apple font.
+    if (key == EmojiFontChoice.system.key &&
+        (!prefs.containsKey(_emojiFontChoiceKey) ||
+            !prefs.containsKey(_useSystemEmojiKey))) {
+      key = EmojiFontCatalog.appleEntry.key;
+    }
     if (key == EmojiFontChoice.system.key) return;
     try {
       await EmojiFontCatalog.shared.loadCached(key);

@@ -165,9 +165,7 @@ class AppearanceView extends StatelessWidget {
               child: _navigationRow(
                 context,
                 AppStrings.t(AppStringKeys.appearanceEmojiFont),
-                theme.useSystemEmoji
-                    ? AppStrings.t(AppStringKeys.emojiUseSystem)
-                    : theme.emojiFontChoice.label,
+                theme.emojiFontChoice.label,
                 () => Navigator.of(context).push(
                   AppPageRoute<void>(
                     pageBuilder: (_, _, _) => const EmojiFontPickerView(),
@@ -3694,18 +3692,8 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
               SettingsCard.rows(
                 dividerInset: AppMetric.settingsTextDividerInset,
                 rows: [
-                  // exteraless "EmojiUseDefault": the system-emoji switch,
-                  // exactly where its emoji settings page keeps it.
-                  SettingsSwitchRow(
-                    key: const ValueKey('emoji-use-system-switch'),
-                    title: AppStrings.t(AppStringKeys.emojiUseSystem),
-                    value: theme.useSystemEmoji,
-                    onChanged: (value) => context
-                        .read<ThemeController>()
-                        .setUseSystemEmoji(value),
-                  ),
-                  _systemRow(context, theme),
                   for (final entry in entries) _entryRow(context, entry, theme),
+                  _systemRow(context, theme),
                 ],
               ),
             ],
@@ -3721,10 +3709,8 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
       title: EmojiFontChoice.system.label,
       subtitle: AppStrings.t(AppStringKeys.appearanceSystemEmojiFont),
       preview: const _SystemEmojiPreview(),
-      // The system switch supersedes the pack selection: while it is on,
-      // nothing here reads as chosen (exteraless keeps its pack rows
-      // unchecked the same way).
-      selected: !theme.useSystemEmoji && theme.emojiFontChoice.isSystem,
+      // The selection itself is the render policy — no override switch.
+      selected: theme.emojiFontChoice.isSystem,
       loading: false,
       failed: false,
       onTap: () {
@@ -3746,7 +3732,7 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
       context,
       title: entry.label,
       preview: _EmojiPreviewImage(asset: _previewAssetForKey(entry.key)),
-      selected: !theme.useSystemEmoji && theme.emojiFontChoice.key == entry.key,
+      selected: theme.emojiFontChoice.key == entry.key,
       loading: _loadingKey == entry.key,
       failed: _failedKey == entry.key,
       onTap: () async {

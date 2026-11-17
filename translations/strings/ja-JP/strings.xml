@@ -1591,7 +1591,6 @@
     <string name="emojiCategorySymbols">記号</string>
     <string name="emojiCategoryTravelAndPlaces">旅行と場所</string>
     <string name="emojiFontCatalogSystemDefault">システム標準</string>
-    <string name="emojiUseSystem">システムの絵文字を使用</string>
     <string name="emojiPanelPreview">絵文字プレビュー</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">うれし泣きの顔</string>
     <string name="emojiRecentsSection">最近使用</string>

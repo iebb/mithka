@@ -98,6 +98,7 @@ import 'settings/translation_controller.dart';
 import 'tdlib/td_client.dart';
 import 'theme/app_motion.dart';
 import 'theme/app_theme.dart';
+import 'theme/emoji_font_catalog.dart';
 import 'theme/theme_controller.dart';
 
 /// Loads the locale catalogue before the first frame.
@@ -537,7 +538,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     // so it waits for a gap in the scheduler instead of the launch frames.
     unawaited(
       SchedulerBinding.instance.scheduleTask<void>(
-        _theme.loadSelectedEmojiFontIfAvailable,
+        // The bundled Apple font is the default selection; registering a
+        // 45 MB colour font is a UI-thread cost that must never ride the
+        // launch frames.
+        () async {
+          await EmojiFontCatalog.shared.loadBundledAppleFont();
+          await _theme.loadSelectedEmojiFontIfAvailable();
+        },
         Priority.idle,
       ),
     );

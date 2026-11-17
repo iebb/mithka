@@ -1822,7 +1822,6 @@ abstract final class AppStringKeys {
   static const emojiCategorySymbols = 'emojiCategorySymbols';
   static const emojiCategoryTravelAndPlaces = 'emojiCategoryTravelAndPlaces';
   static const emojiFontCatalogSystemDefault = 'emojiFontCatalogSystemDefault';
-  static const emojiUseSystem = 'emojiUseSystem';
   static const emojiPanelPreview = 'emojiPanelPreview';
   static const emojiPreviewFaceWithTearsOfJoy =
       'emojiPreviewFaceWithTearsOfJoy';

@@ -27,6 +27,11 @@ class EmojiFontChoice {
     label: AppStringKeys.emojiFontCatalogSystemDefault,
   );
 
+  /// The family the bundled Apple Color Emoji asset registers under. Same
+  /// deterministic namespace the downloaded catalog fonts use, so every
+  /// consumer (theme chains, previews) treats it like any loaded pack.
+  static const bundledAppleFamily = 'MithkaEmoji_apple';
+
   final String key;
   final String label;
   final String? license;
@@ -142,11 +147,16 @@ class EmojiFontCatalog {
   static const cacheRevision = 2;
   static const cacheDirectoryName = 'emoji_fonts_v$cacheRevision';
 
+  /// The asset path of the Apple Color Emoji font bundled with the app. The
+  /// picker's pinned first row selects it; it never downloads.
+  static const bundledAppleAsset = 'assets/fonts/AppleColorEmoji.ttf';
+
   static const manifestUrl =
       'https://github.com/iebb/emojifonts/releases/download/latest/manifest.json';
 
   final Set<String> _loadedFamilies = {};
   final Map<String, Future<String>> _inFlightFontLoads = {};
+  final Map<String, Future<void>> _inFlightBundledLoads = {};
 
   /// Returns the deterministic runtime family once this process has registered
   /// it with Flutter. New ThemeController instances can therefore retain the
@@ -156,6 +166,31 @@ class EmojiFontCatalog {
     if (key == EmojiFontChoice.system.key) return null;
     final family = EmojiFontChoice.runtimeFamilyForKey(key);
     return _loadedFamilies.contains(family) ? family : null;
+  }
+
+  /// Registers the bundled Apple Color Emoji asset under the deterministic
+  /// runtime family. Cheap once loaded; safe to call on every startup path.
+  Future<void> loadBundledAppleFont() async {
+    const family = EmojiFontChoice.bundledAppleFamily;
+    if (_loadedFamilies.contains(family)) return;
+    final pending = _inFlightBundledLoads[family];
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    final operation = Future<void>(() async {
+      final data = await rootBundle.load(bundledAppleAsset);
+      final loader = FontLoader(family);
+      loader.addFont(Future.value(ByteData.sublistView(data)));
+      await loader.load();
+      _loadedFamilies.add(family);
+    });
+    _inFlightBundledLoads[family] = operation;
+    await operation.whenComplete(() {
+      if (identical(_inFlightBundledLoads[family], operation)) {
+        _inFlightBundledLoads.remove(family);
+      }
+    });
   }
 
   Future<List<EmojiFontManifestEntry>> loadManifest({
@@ -186,6 +221,11 @@ class EmojiFontCatalog {
 
   Future<String?> loadCached(String key) async {
     if (key == EmojiFontChoice.system.key) return null;
+    // The bundled Apple font never touches the download cache.
+    if (key == EmojiFontCatalog.appleEntry.key) {
+      await loadBundledAppleFont();
+      return EmojiFontChoice.bundledAppleFamily;
+    }
     final file = await _cachedFontFileForKey(key);
     if (file == null) return null;
     final family = EmojiFontChoice.runtimeFamilyForKey(key);
@@ -217,6 +257,12 @@ class EmojiFontCatalog {
   }
 
   Future<String> downloadAndLoad(EmojiFontManifestEntry entry) {
+    // The bundled Apple row never downloads — the bytes ship in the APK.
+    if (entry.key == appleEntry.key) {
+      return loadBundledAppleFont().then(
+        (_) => EmojiFontChoice.bundledAppleFamily,
+      );
+    }
     final pending = _inFlightFontLoads[entry.key];
     if (pending != null) return pending;
     final operation = _downloadAndLoad(entry);
@@ -270,8 +316,10 @@ class EmojiFontCatalog {
   }
 
   /// Apple Color Emoji, pinned to the community CBDT build of the system
-  /// font. Not in the iebb/emojifonts manifest — this fork carries the entry
-  /// itself so the picker's first row matches the reference clients.
+  /// font — and bundled inside the app (assets/fonts/AppleColorEmoji.ttf),
+  /// so selecting it never touches the network. Not in the iebb/emojifonts
+  /// manifest — this fork carries the entry itself so the picker's first
+  /// row matches the reference clients.
   static const appleEntry = EmojiFontManifestEntry(
     key: 'apple',
     label: 'Apple Color Emoji',
