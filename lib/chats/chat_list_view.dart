@@ -1246,10 +1246,27 @@ class _ChatListViewState extends State<ChatListView>
   /// from that same gesture, before the mode flag rebuilds the list.
   int? _pendingSelectionModeChatId;
 
+  /// True while the gesture that opened edit mode is still down — exteraless's
+  /// allowMoving: lifting it must neither toggle membership nor drag.
+  bool _selectionEntryGestureDown = false;
+
   /// Edit-mode pinned drag: the dragged chat and the net slots it has
   /// crossed, shown as row shifts until the drop commits one reorder.
   int? _draggedChatId;
   final Map<int, int> _dragSlotsById = {};
+
+  /// Coordinate space for the drag proxy — the list area below the header.
+  final GlobalKey _dragProxyScopeKey = GlobalKey();
+
+  /// Overlay drag proxy (exteraless's ItemTouchHelper overdraw child): the
+  /// dragged row's pixels render above the whole list while the row itself
+  /// stays in its slot holding the gesture. [_dragProxyTop] is the proxy's
+  /// current top edge in the list coordinate space; on drop the proxy glides
+  /// to the row's final slot before the commit rebuilds the list.
+  int? _dragProxyChatId;
+  double _dragProxyTop = 0;
+  double _dragProxyHeight = 0;
+  double _dragProxyOriginTop = 0;
   bool _selectionOverflowOpen = false;
 
   static const double _refreshPullThreshold = 72;
@@ -2494,7 +2511,18 @@ class _ChatListViewState extends State<ChatListView>
                   onPointerMove: _handleGesturePointerMove,
                   onPointerUp: _handleGesturePointerUp,
                   onPointerCancel: _handleGesturePointerCancel,
-                  child: _folderPager(),
+                  // The reorder drag proxy paints above the list, inside the
+                  // list's coordinate space (exteraless's ItemTouchHelper
+                  // overdraw child). IgnorePointer keeps the pointer with
+                  // the real row below, which owns the live gesture.
+                  child: Stack(
+                    key: _dragProxyScopeKey,
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(child: _folderPager()),
+                      if (_dragProxyChatId != null) _dragProxy(),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -4005,12 +4033,16 @@ class _ChatListViewState extends State<ChatListView>
           (_selectionMode || _pendingSelectionModeChatId == chat.id) &&
           pinnedInList &&
           !desktopContextMenu,
-      onDragReorderStart: () {
-        _draggedChatId = chat.id;
-        unawaited(HapticFeedback.mediumImpact());
-      },
+      suppressEndLongPress:
+          _selectionEntryGestureDown && _pendingSelectionModeChatId == chat.id,
+      onDragReorderStart: _handleDragProxyStart(chat),
+      onDragReorderMove: _handleDragProxyMove,
       onDragReorderSlot: (slots) => _handleDragReorderSlot(chat, slots),
-      onDragReorderEnd: () => _commitPinnedOrder(chatId: chat.id),
+      onDragReorderEnd: () {
+        _selectionEntryGestureEnded();
+        _commitPinnedOrder(chatId: chat.id);
+      },
+      contentVisible: _dragProxyChatId != chat.id,
       onSecondaryTapDown: desktopContextMenu
           ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
           : null,
@@ -4041,6 +4073,34 @@ class _ChatListViewState extends State<ChatListView>
   bool _selectionTint(ChatSummary chat) =>
       _selectionMode && _selectedChatIds.contains(chat.id);
 
+  /// The drag lifted [chat]: raise the overlay proxy at the row's current
+  /// screen position. The row keeps its slot and gesture; its pixels move to
+  /// the proxy drawn above the list.
+  void Function(Offset globalTopLeft, Size size) _handleDragProxyStart(
+    ChatSummary chat,
+  ) {
+    return (globalTopLeft, size) {
+      final scope =
+          _dragProxyScopeKey.currentContext?.findRenderObject() as RenderBox?;
+      if (scope == null || !scope.attached) return;
+      final localTop = scope.globalToLocal(globalTopLeft).dy;
+      setState(() {
+        _draggedChatId = chat.id;
+        _dragProxyChatId = chat.id;
+        _dragProxyTop = localTop;
+        _dragProxyOriginTop = localTop;
+        _dragProxyHeight = size.height;
+      });
+      unawaited(HapticFeedback.mediumImpact());
+    };
+  }
+
+  /// The finger moved [dy] from the press origin: the proxy follows.
+  void _handleDragProxyMove(double dy) {
+    if (_dragProxyChatId == null) return;
+    setState(() => _dragProxyTop = _dragProxyOriginTop + dy);
+  }
+
   /// One crossed row of an edit-mode drag. The list does not reorder yet:
   /// the dragged row's own translate shows the motion, its neighbours slide
   /// aside through [_dragShiftWrapper], and the whole move lands on the model
@@ -4062,20 +4122,18 @@ class _ChatListViewState extends State<ChatListView>
     setState(() {});
   }
 
-  /// The drag ended: apply the accumulated slot moves to the model as one
-  /// reorder and push the pinned order once, the way exteraless commits
-  /// reorderPinnedDialogs when the action-mode drag finishes.
+  /// The drag ended: drop the proxy back onto the row (exteraless's recover
+  /// animation — ItemTouchHelper animates the lifted view to its final slot
+  /// and only then clears it), then apply the accumulated slot moves to the
+  /// model as one reorder and push the pinned order once, the way exteraless
+  /// commits reorderPinnedDialogs when the action-mode drag finishes.
   void _commitPinnedOrder({int? chatId}) {
     final id = chatId ?? _draggedChatId;
     final slots = id == null ? 0 : (_dragSlotsById[id] ?? 0);
-    if (_draggedChatId != null) {
-      setState(() {
-        _dragSlotsById.clear();
-        _draggedChatId = null;
-      });
-    } else {
-      _dragSlotsById.clear();
-      _draggedChatId = null;
+    _dragSlotsById.clear();
+    _draggedChatId = null;
+    if (_dragProxyChatId != null) {
+      setState(() => _dragProxyChatId = null);
     }
     if (id == null || slots == 0) return;
     final band = _pinnedBand();
@@ -4086,12 +4144,61 @@ class _ChatListViewState extends State<ChatListView>
     _model.reorderPinnedChat(chatId: id, targetChatId: band[target].id);
   }
 
+  /// The lifted row's pixels, following the finger above the list. exteraless
+  /// renders this through ItemTouchHelper: elevation raises the dragged cell
+  /// over its siblings and its translation tracks the finger — Flutter's
+  /// ListView has no child Z order, so the proxy draws in this Stack above
+  /// the list instead, while the real row stays in its slot holding the
+  /// gesture (content hidden, slot and size intact).
+  Widget _dragProxy() {
+    final entries = _model.chatListEntries(
+      communitiesEnabled: context.read<ThemeController>().communitiesEnabled,
+    );
+    CommunityChatEntry? entry;
+    for (final e in entries) {
+      if (e is CommunityChatEntry && e.chat.id == _dragProxyChatId) {
+        entry = e;
+        break;
+      }
+    }
+    if (entry == null) return const SizedBox.shrink();
+    final chat = entry.chat;
+    final c = context.colors;
+    return Positioned(
+      key: const ValueKey('chat-list-drag-proxy'),
+      left: 0,
+      right: 0,
+      top: _dragProxyTop,
+      height: _dragProxyHeight,
+      child: IgnorePointer(
+        child: Material(
+          elevation: 6,
+          color: c.background,
+          shadowColor: Colors.black,
+          child: ChatListSelectionHighlight(
+            selected: _selectionTint(chat),
+            child: ChatRowView(
+              chat: chat,
+              selected: widget.selectedChatId == chat.id,
+              pinned: _model.isPinnedInSelectedList(chat),
+              onClearUnread: () => _model.markRead(chat),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// During an edit-mode pinned drag, the neighbours the dragged row has
   /// passed slide one row extent in the opposite direction, so the band reads
-  /// reordered without any list mutation until the drop.
+  /// reordered without any list mutation until the drop. The slide is
+  /// animated — exteraless's DialogsItemAnimator runs a move animation for
+  /// exactly these neighbours — so rows glide aside instead of teleporting.
   ///
-  /// Always wraps — a wrapper that appears only mid-drag swaps the row's
-  /// subtree root, deactivates its state, and kills the live gesture.
+  /// Always wraps, even at offset zero: a wrapper that appears only mid-drag
+  /// swaps the row's subtree root, deactivates its state, and kills the live
+  /// gesture. AnimatedSlide animates a translate without ever changing the
+  /// subtree shape.
   Widget _dragShiftWrapper(ChatSummary chat, Widget child) {
     final draggedId = _draggedChatId;
     var shift = 0.0;
@@ -4113,10 +4220,14 @@ class _ChatListViewState extends State<ChatListView>
         }
       }
     }
-    // Unconditional: an early `return child` for un-shifted rows would swap
-    // the subtree root mid-drag (bare row vs wrapped row) and unmount the
-    // row's gesture recognizer while the drag is live.
-    return Transform.translate(offset: Offset(0, shift), child: child);
+    return AnimatedSlide(
+      offset: Offset(0, shift),
+      duration: AppMotion.isReduced(context)
+          ? Duration.zero
+          : AppMotion.duration(context, AppMotion.responsive),
+      curve: AppMotion.standard,
+      child: child,
+    );
   }
 
   /// The pinned chats of the list being edited, top to bottom.
@@ -4308,15 +4419,27 @@ class _ChatListViewState extends State<ChatListView>
     setState(() {
       _selectionMode = true;
       _pendingSelectionModeChatId = chat.id;
+      _selectionEntryGestureDown = true;
       _selectedChatIds
         ..clear()
         ..add(chat.id);
     });
   }
 
+  /// The gesture that opened edit mode has fully ended — later presses may
+  /// toggle membership or drag (allowMoving becomes true on ACTION_UP).
+  void _selectionEntryGestureEnded() {
+    if (!_selectionEntryGestureDown) return;
+    _selectionEntryGestureDown = false;
+    // The row keeps rendering with the flag on for the rest of this gesture;
+    // clear it now that the finger is up so the next press starts fresh.
+    if (mounted) setState(() {});
+  }
+
   void _exitSelectionMode() {
     if (!_selectionMode) return;
     _pendingSelectionModeChatId = null;
+    _selectionEntryGestureDown = false;
     setState(() {
       _selectionMode = false;
       _selectionOverflowOpen = false;
@@ -5361,12 +5484,15 @@ class ChatSwipeRow extends StatefulWidget {
     this.onLongPressAt,
     this.dragReorderEnabled = false,
     this.onDragReorderStart,
+    this.onDragReorderMove,
     this.onDragReorderSlot,
     this.onDragReorderEnd,
+    this.contentVisible = true,
     this.onSecondaryTapDown,
     this.requiresLongPressDrag = false,
     this.horizontalSwipeEnabled = true,
     this.pressRippleEnabled = true,
+    this.suppressEndLongPress = false,
   });
 
   final int rowId;
@@ -5385,7 +5511,16 @@ class ChatSwipeRow extends StatefulWidget {
   /// when enabled, a long press that moves vertically drags the row over its
   /// pinned neighbours, reporting each crossed slot so the host can swap.
   final bool dragReorderEnabled;
-  final VoidCallback? onDragReorderStart;
+
+  /// The drag lifted: the host raises an overlay proxy of the row (exteraless
+  /// draws the dragged cell above the list through ItemTouchHelper's overdraw
+  /// child + elevation) and hides this row's content.
+  final void Function(Offset globalTopLeft, Size size)? onDragReorderStart;
+
+  /// The finger moved [dy] pixels vertically from the press origin. Pure
+  /// position report — the host drives the proxy from it without rebuilding
+  /// the list.
+  final void Function(double dy)? onDragReorderMove;
 
   /// [slots] is signed: +1 one slot down, -1 one slot up, reported once per
   /// crossed row extent.
@@ -5395,10 +5530,20 @@ class ChatSwipeRow extends StatefulWidget {
   /// setPinnedChats per drag, like exteraless commits reorderPinnedDialogs on
   /// drop — never per crossed slot).
   final VoidCallback? onDragReorderEnd;
+
+  /// False while the drag proxy draws this row above the list — the row keeps
+  /// its slot, size and gesture, only its pixels move to the proxy.
+  final bool contentVisible;
   final GestureTapDownCallback? onSecondaryTapDown;
   final bool requiresLongPressDrag;
   final bool horizontalSwipeEnabled;
   final bool pressRippleEnabled;
+
+  /// exteraless's allowMoving split: the long press that OPENS edit mode must
+  /// do nothing when the finger lifts (the mode stays); only later presses
+  /// toggle membership or drag. The host sets this on the row whose press
+  /// opened the mode, for the lifetime of that one gesture.
+  final bool suppressEndLongPress;
 
   @override
   State<ChatSwipeRow> createState() => _ChatSwipeRowState();
@@ -5416,7 +5561,6 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
   double _offset = 0;
   double _longPressStartOffset = 0;
   Offset? _pendingLongPressAt;
-  double _dragReorderDy = 0;
   double _dragConsumed = 0;
   bool _dragReorderActive = false;
   int? _desktopTouchPointer;
@@ -5530,9 +5674,10 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
       // a small threshold makes the drag take over.
       if (dy.abs() < 12) return;
       _dragReorderActive = true;
-      _dragReorderDy = 0;
       _dragConsumed = 0;
-      widget.onDragReorderStart?.call();
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) return;
+      widget.onDragReorderStart?.call(box.localToGlobal(Offset.zero), box.size);
     }
     final rowExtent = context.size?.height ?? 0;
     if (rowExtent > 0) {
@@ -5548,17 +5693,14 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
         widget.onDragReorderSlot?.call(slots);
       }
     }
-    // The visual shift accumulates on the row itself; the list reorders only
-    // when the drag commits, so no rebuild interrupts the gesture.
-    setState(() => _dragReorderDy = dy - _dragConsumed);
+    // The overlay proxy follows the finger; the row itself keeps its slot
+    // for the whole drag, so no rebuild interrupts the gesture.
+    widget.onDragReorderMove?.call(dy);
   }
 
   void _endDragReorder() {
     if (!_dragReorderActive) return;
-    setState(() {
-      _dragReorderActive = false;
-      _dragReorderDy = 0;
-    });
+    _dragReorderActive = false;
     widget.onDragReorderEnd?.call();
   }
 
@@ -5738,9 +5880,10 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
           _settle(details.velocity.pixelsPerSecond.dx);
         } else if (_dragReorderActive) {
           _endDragReorder();
-        } else if (widget.dragReorderEnabled) {
+        } else if (widget.dragReorderEnabled && !widget.suppressEndLongPress) {
           // A press that never crossed into a drag still owes its long-press
-          // behaviour (edit mode: toggle membership).
+          // behaviour (edit mode: toggle membership) — except the press that
+          // opened the mode: lifting it must keep the mode (allowMoving).
           widget.onLongPress?.call();
         }
       },
@@ -5809,32 +5952,26 @@ class _ChatSwipeRowState extends State<ChatSwipeRow>
                     ),
                   ),
           ),
-          // The row, sliding left to uncover the blocks, or lifted and
-          // following the finger while an edit-mode reorder drag is live.
-          // The subtree shape stays constant across that flip: swapping
-          // AppPressRipple for DecoratedBox mid-drag unmounts the row's
-          // GestureDetector and kills the live gesture.
+          // The row, sliding left to uncover the blocks. While an edit-mode
+          // reorder drag is live the row's CONTENT moves to the host's
+          // overlay proxy (drawn above the whole list, exteraless's
+          // ItemTouchHelper overdraw child + elevation); the row keeps its
+          // slot, size and gesture here, so the subtree shape never changes
+          // mid-drag and the recognizer survives.
           Transform.translate(
-            offset: Offset(_offset, _dragReorderDy),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _dragReorderActive ? context.colors.background : null,
-                boxShadow: _dragReorderActive
-                    ? const [
-                        BoxShadow(
-                          color: Color(0x40000000),
-                          blurRadius: 16,
-                          offset: Offset(0, 4),
-                        ),
-                      ]
-                    : null,
+            offset: Offset(_offset, 0),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Visibility(
+                visible: widget.contentVisible,
+                maintainState: true,
+                maintainAnimation: true,
+                maintainSize: true,
+                maintainInteractivity: true,
+                child: widget.pressRippleEnabled
+                    ? AppPressRipple(child: interactiveRow)
+                    : interactiveRow,
               ),
-              // The ripple wrapper never leaves the tree mid-drag: dropping
-              // it when the lift starts would swap the subtree and unmount
-              // the row's gesture recognizer while the drag is live.
-              child: widget.pressRippleEnabled
-                  ? AppPressRipple(child: interactiveRow)
-                  : interactiveRow,
             ),
           ),
         ],

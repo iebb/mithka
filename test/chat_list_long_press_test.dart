@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderFractionalTranslation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/chats/chat_list_preview.dart';
@@ -215,6 +216,120 @@ void main() {
             tester.getTopLeft(find.text('Pinned A')).dy,
         isTrue,
       );
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
+    'the drag proxy follows the finger above the list while the row hides',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      updates.add(pinnedChatFixture(231, 'Proxy A', 300));
+      updates.add(pinnedChatFixture(232, 'Proxy B', 200));
+      updates.add(pinnedChatFixture(233, 'Proxy C', 100));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+
+      final start = rowBodyCenter(tester, 'Proxy A');
+      final gesture = await tester.startGesture(start);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      final rowHeight = tester.getSize(find.text('Proxy A')).height + 28;
+
+      // The row's slot position before the drag — the proxy must lift from
+      // exactly here.
+      // The row's top edge = the text's top minus the row's leading padding
+      // (the title sits 13.5pt below the row's top edge in this row style).
+      final rowTopBeforeLift =
+          tester.getTopLeft(find.text('Proxy A').first).dy - 13.5;
+
+      // Past the lift threshold the proxy exists, lifted from the row's slot
+      // and already carrying the 20px the finger moved — glued from frame one.
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      final proxyFinder = find.byKey(const ValueKey('chat-list-drag-proxy'));
+      expect(proxyFinder, findsOneWidget, reason: 'drag lifts a proxy');
+      final proxyTopAfterLift = tester.getTopLeft(proxyFinder).dy;
+      expect(
+        proxyTopAfterLift,
+        moreOrLessEquals(rowTopBeforeLift + 20, epsilon: 2),
+        reason: 'proxy lifts from the row position and tracks the finger',
+      );
+
+      // Move further: the proxy moves by the same delta — glued to finger.
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump();
+      final proxyTopAfterMove = tester.getTopLeft(proxyFinder).dy;
+      expect(
+        proxyTopAfterMove - proxyTopAfterLift,
+        moreOrLessEquals(30, epsilon: 1),
+        reason: 'proxy must track the finger 1:1',
+      );
+
+      // Cross Pinned B's midpoint: the NEIGHBOUR begins an animated slide,
+      // its on-screen position is BETWEEN old and new slot mid-drag (no
+      // teleport flash), and it never leaves the screen (no blank band).
+      await gesture.moveBy(Offset(0, rowHeight * 0.5 + 6));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      // The neighbour slides — mid-animation its pixel rise is strictly
+      // between 0 and the full row extent: 0 means the animation never ran
+      // (dead), the full extent means it teleported (zero duration). Both
+      // flash; neither may happen.
+      final neighbourText = find.text('Proxy B');
+      expect(neighbourText, findsOneWidget);
+      final slide = find
+          .ancestor(of: neighbourText, matching: find.byType(AnimatedSlide))
+          .first;
+      final renderSlide =
+          tester.renderObject(slide) as RenderFractionalTranslation;
+      final rise = -renderSlide.translation.dy;
+      expect(rise, greaterThan(1), reason: 'neighbour must leave its slot');
+      expect(
+        rise,
+        lessThan(rowHeight - 1),
+        reason: 'neighbour must still be animating, not landed',
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(proxyFinder, findsNothing, reason: 'drop removes the proxy');
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
+    'lifting the finger after entering edit mode keeps the mode',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      updates.add(pinnedChatFixture(221, 'Keep A', 300));
+      updates.add(pinnedChatFixture(222, 'Keep B', 200));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+
+      // Long press enters edit mode; lifting the SAME finger must keep it —
+      // exteraless's allowMoving: the opening gesture never toggles or drags.
+      final gesture = await tester.startGesture(
+        rowBodyCenter(tester, 'Keep A'),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-list-selection-header')),
+        findsOneWidget,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-list-selection-header')),
+        findsOneWidget,
+        reason: 'releasing the opening long press must stay in edit mode',
+      );
+      expect(find.text('1'), findsWidgets);
       await _dispose(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
