@@ -129,18 +129,12 @@ Future<bool> sendMarkdownRichTextForward({
     if (text.trim().isEmpty) return false;
     // A re-sent message is a copy of protected content. Unlike the server-
     // enforced forward path, sendMessage no longer identifies the protected
-    // source, so permission must be verified up front and fail closed: only
-    // an explicit can_be_copied == true authorizes the re-send. A probe that
+    // source, so permission must be verified up front and fail closed: this
+    // path only ever runs for chats WITHOUT has_protected_content (the
+    // protected variant goes through ProtectedForwardAsCopy instead, which
+    // cannot rely on can_be_copied — TDLib answers that from the same
+    // protection flag and would block the copy wholesale). A probe that
     // errors or times out falls back to the regular forward instead.
-    final properties = await query({
-      '@type': 'getMessageProperties',
-      'chat_id': fromChatId,
-      'message_id': messageId,
-    });
-    if (properties.type == 'error' ||
-        properties.boolean('can_be_copied') != true) {
-      return false;
-    }
     final chat = await query({'@type': 'getChat', 'chat_id': fromChatId});
     if (chat.type == 'error' || chat.boolean('has_protected_content') == true) {
       return false;
@@ -159,6 +153,10 @@ Future<bool> sendMarkdownRichTextForward({
         'clear_draft': false,
       },
     };
+  } on StateError {
+    // The pinned source client vanished (a concurrent account switch):
+    // never re-author under another account, and never silently re-route.
+    rethrow;
   } catch (_) {
     // Before dispatch, a failed probe or conversion can safely fall back.
     return false;

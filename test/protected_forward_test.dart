@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Forward-from-protected-chats (exteraless ForwardProtectedAsCopy parity):
 /// the copy path re-sends text/media instead of calling forwardMessages,
-/// verifies can_be_copied up front (fail closed), skips uncopiable kinds,
-/// and defers media whose file has not finished downloading.
+/// skips uncopiable kinds, and defers media whose file has not finished
+/// downloading. The server's can_be_copied probe is NOT consulted — inside a
+/// protected chat TDLib answers it from the protection flag itself (is_copy
+/// grants no exemption), so gating on it would block every copy.
 
 Map<String, dynamic> mediaSpread(Map<String, dynamic>? media) =>
     media ?? const <String, dynamic>{};
@@ -63,8 +65,6 @@ void main() {
         case 'getMessage':
           final id = request['message_id'] as int;
           return byId[id] ?? {'@type': 'error', 'code': 400, 'message': 'x'};
-        case 'getMessageProperties':
-          return {'@type': 'messageProperties', 'can_be_copied': true};
         case 'getFile':
           return {
             '@type': 'file',
@@ -211,22 +211,34 @@ void main() {
     expect(plan.missingMediaIds, [5]);
   });
 
-  test('a probe that refuses can_be_copied fails closed', () async {
-    final messages = [message(id: 6)];
-    final plan = await forwardProtectedAsCopy(
-      query: (request) async {
-        if (request['@type'] == 'getMessageProperties') {
-          return {'@type': 'messageProperties', 'can_be_copied': false};
-        }
-        return responses(messages)(request);
-      },
-      fromChatId: 100,
-      messageIds: [6],
-      targetChatId: 200,
-    );
-    expect(plan.copiedCount, 0);
-    expect(plan.skippedIds, [6]);
-  });
+  test(
+    'can_be_copied=false no longer blocks the copy (regression)',
+    () async {
+      // TDLib derives can_be_copied from has_protected_content itself —
+      // inside a protected chat the probe is false for EVERY message. The
+      // old gate fail-closed on it and killed the whole copy path; the
+      // probe is now deliberately ignored (permission lives in the user's
+      // opt-in toggle that routed the selection here).
+      final sent = <Map<String, dynamic>>[];
+      final messages = [message(id: 6)];
+      final base = responses(messages);
+      final plan = await forwardProtectedAsCopy(
+        query: (request) async {
+          if (request['@type'] == 'getMessageProperties') {
+            return {'@type': 'messageProperties', 'can_be_copied': false};
+          }
+          if (request['@type'] == 'sendMessage') sent.add(request);
+          return base(request);
+        },
+        fromChatId: 100,
+        messageIds: [6],
+        targetChatId: 200,
+      );
+      expect(plan.copiedCount, 1);
+      expect(plan.skippedIds, isEmpty);
+      expect(sent, hasLength(1));
+    },
+  );
 
   group('settings', () {
     test('ships ON and persists the opt-out', () async {

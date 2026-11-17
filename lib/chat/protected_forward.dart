@@ -100,9 +100,16 @@ int? copyContentFileId(Map<String, dynamic> content) {
 typedef ProtectedForwardQuery =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> request);
 
-/// Reads each source message fresh via `getMessage`, verifies
-/// `can_be_copied` (fail closed — an erroring probe disqualifies the
-/// message), and re-sends everything copyable to [targetChatId].
+/// Reads each source message fresh via `getMessage` and re-sends everything
+/// copyable to [targetChatId].
+///
+/// The server's `can_be_copied` probe is deliberately NOT consulted: TDLib's
+/// MessagesManager answers it from the same has_protected_content check that
+/// blocks forwardMessages (is_copy grants no exemption), so inside a
+/// protected chat it is false for every message — gating on it would kill
+/// the copy path wholesale. Permission lives in the user's opt-in toggle
+/// that routed the selection here; the copyable-kind filter below carries
+/// the rest, exactly like exteraless ForwardProtectedAsCopy.
 ///
 /// Returns the plan describing what was sent, what was skipped and which
 /// media still needs a download. Never throws for restricted content; only
@@ -128,18 +135,6 @@ Future<ProtectedForwardPlan> forwardProtectedAsCopy({
       'message_id': id,
     });
     if (message.type == 'error') {
-      skipped.add(id);
-      continue;
-    }
-    // Only an explicit can_be_copied authorizes the re-send; a missing or
-    // erroring probe fails closed (the source knows the rules better).
-    final properties = await query({
-      '@type': 'getMessageProperties',
-      'chat_id': fromChatId,
-      'message_id': id,
-    });
-    if (properties.type == 'error' ||
-        properties.boolean('can_be_copied') != true) {
       skipped.add(id);
       continue;
     }
