@@ -279,13 +279,22 @@ void main() {
             'the search row departs in the same animation as the archive '
             'row — no stall between them',
       );
-      // By the end of the shared clock the search row is folded away.
-      await tester.pumpAndSettle();
+      // By the end of the shared clock the compensation has returned the
+      // offset to the top and the first chat row sits fully visible at the
+      // top of the viewport — not half-clipped by leftover offset.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_chatListPixels(tester), moreOrLessEquals(0, epsilon: 1));
+      final firstChatTop = tester.getTopLeft(find.text('Chat 999')).dy;
+      // The folder strip's bottom edge (~108) plus the list's top padding
+      // (~13.5) is where a fully visible first row starts. Leftover
+      // un-compensated offset clipped it mid-row before the fix; a premature
+      // latch release pushed it down further.
       expect(
-        searchFinder.evaluate().isEmpty ||
-            tester.getTopLeft(searchFinder).dy < 0,
-        isTrue,
-        reason: 'after the collapse the search row is folded away',
+        firstChatTop,
+        moreOrLessEquals(121.5, epsilon: 3),
+        reason:
+            'after the collapse the first chat row is fully at the top, not '
+            'half-clipped',
       );
       await gesture.up();
       await tester.pumpAndSettle();

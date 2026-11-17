@@ -1441,14 +1441,6 @@ class _ChatListViewState extends State<ChatListView>
         _startLeadingCollapseCompensation(theme);
       }
     }
-    if (!compensating &&
-        _leadingControlsDismissed &&
-        position.hasContentDimensions &&
-        position.pixels - position.minScrollExtent <= rowHeight * 0.25) {
-      // Hysteresis against the dismiss threshold: returning near the top
-      // brings the search row back.
-      setState(() => _leadingControlsDismissed = false);
-    }
     if (position.extentAfter < rowHeight * 8) {
       _model.loadMore();
     }
