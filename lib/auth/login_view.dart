@@ -134,13 +134,12 @@ class LoginView extends StatefulWidget {
   /// keeps same-form states (the phone column, including the logout chain
   /// AuthInitializing → AuthWaitPhoneNumber → AuthClosed hops) on one key so
   /// the step's AnimatedSwitcher never cross-fades a form against itself.
-  /// The instance method layers the bot/phone-override identities on top.
+  /// The instance method layers the bot/phone-override identities on top,
+  /// and AuthReloading is handled BEFORE this mapping (it sticks to the
+  /// previous identity — see _LoginViewState._stepIdentity).
   @visibleForTesting
   static String debugStepIdentityForTesting(AuthStep step) => switch (step) {
-    AuthInitializing() ||
-    AuthReloading() ||
-    AuthWaitPhoneNumber() ||
-    AuthClosed() => 'phone',
+    AuthInitializing() || AuthWaitPhoneNumber() || AuthClosed() => 'phone',
     _ => step.runtimeType.toString(),
   };
 
@@ -188,6 +187,9 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
+    _lastStepIdentity = LoginView.debugStepIdentityForTesting(
+      context.read<AuthManager>().step,
+    );
     ProxyStatusController.shared.ensureTracking();
     unawaited(_loadBotEndpoint());
     if (isMobilePlatform) {
@@ -1231,8 +1233,19 @@ class _LoginViewState extends State<LoginView> {
   String _stepIdentity(AuthManager auth) {
     if (_showBotLogin) return 'bot';
     if (_forcePhone) return 'phone';
-    return LoginView.debugStepIdentityForTesting(auth.step);
+    // AuthReloading is a re-read of the SAME client, not a form change:
+    // cancel-add-account / logout run form → AuthReloading → (gate takes
+    // over: splash or another account's ready sidebar). Mapping it to the
+    // phone column swapped the code/2FA form for the phone form mid-flight —
+    // the outgoing form cross-faded against a different incoming form while
+    // both stacked in the switcher's centered overlap ("a displaced form
+    // that vanishes last"). Stick to the identity already on screen; the
+    // gate's own crossfade takes it from there.
+    if (auth.step is AuthReloading) return _lastStepIdentity;
+    return _lastStepIdentity = LoginView.debugStepIdentityForTesting(auth.step);
   }
+
+  late String _lastStepIdentity;
 
   // MARK: Steps
 
