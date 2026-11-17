@@ -4067,7 +4067,11 @@ class _ChatListViewState extends State<ChatListView>
           ? null
           : () {
               if (_selectionMode) {
-                _toggleSelected(chat);
+                // Pinned rows in edit mode: drag-only gesture (no toggle on
+                // lift) — mirrors _handleRowLongPress and exteraless.
+                if (!_model.isPinnedInSelectedList(chat)) {
+                  _toggleSelected(chat);
+                }
               } else {
                 _showChatPreview(chat);
               }
@@ -4312,7 +4316,13 @@ class _ChatListViewState extends State<ChatListView>
   /// phones) and one row gap, matching the cell's own isPointInsideAvatar.
   void _handleRowLongPress(ChatSummary chat, Offset localPosition) {
     if (_selectionMode) {
-      _toggleSelected(chat);
+      // In edit mode a pinned row's long-press belongs to the drag alone:
+      // exteraless's onItemLongClick returns early (no toggle) when the
+      // action mode is showing AND the dialog is pinned — the gesture can
+      // only reorder, so lifting it without crossing rows changes nothing.
+      if (!_model.isPinnedInSelectedList(chat)) {
+        _toggleSelected(chat);
+      }
       return;
     }
     final avatarHitExtent =

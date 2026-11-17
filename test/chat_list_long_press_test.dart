@@ -339,6 +339,52 @@ void main() {
   );
 
   testWidgets(
+    'a long press on a selected pinned row keeps it selected',
+    (tester) async {
+      await pumpChatList(tester, updates);
+      updates.add(pinnedChatFixture(221, 'Keep A', 300));
+      updates.add(pinnedChatFixture(222, 'Keep B', 200));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+
+      // Enter edit mode on Keep A (it becomes selected)...
+      final first = await tester.startGesture(rowBodyCenter(tester, 'Keep A'));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      await first.up();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-list-selection-header')),
+        findsOneWidget,
+      );
+      expect(find.text('1'), findsWidgets, reason: 'Keep A is selected');
+
+      // ...then long press the SAME selected pinned row again and lift
+      // without dragging: the gesture belongs to reorder only, so it must
+      // NOT toggle the membership off (exteraless onItemLongClick returns
+      // early for a pinned row while the action mode is showing).
+      final second = await tester.startGesture(rowBodyCenter(tester, 'Keep A'));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+      await second.up();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('chat-list-selection-header')),
+        findsOneWidget,
+        reason: 'edit mode must survive',
+      );
+      expect(
+        find.text('1'),
+        findsWidgets,
+        reason: 'still exactly one selected',
+      );
+      await _dispose(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
     'a selected pinned row can also be dragged',
     (tester) async {
       await pumpChatList(tester, updates);
