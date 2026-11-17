@@ -249,8 +249,3 @@ flutter:
     - assets/app_icons/picker/
     - assets/emoji_preview/
     - assets/message_bubbles/
-    # The built-in emoji font. Registered at runtime through FontLoader under
-    # the deterministic `MithkaEmoji_apple` family, the same runtime namespace
-    # the downloaded catalog fonts use — declared as an asset only so the
-    # bytes ship inside the APK instead of downloading on first use.
-    - path: assets/fonts/AppleColorEmoji.ttf

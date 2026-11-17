@@ -942,8 +942,8 @@ class ThemeController extends ChangeNotifier {
     // so both new installs and migrated users retain the established behavior.
     _themingEnabled = _prefs.getBool(_themingEnabledKey) ?? true;
     _usePerAccountTheming = _prefs.getBool(_usePerAccountThemingKey) ?? false;
-    // The bundled Apple emoji font is the fork default; its bytes ship in
-    // the APK, so a first selection is always instantly loadable.
+    // The bundled Apple emoji font is the fork default; its bytes are
+    // downloaded on first use, so a first selection needs the network.
     _useSystemEmoji =
         _prefs.getBool(_useSystemEmojiKey) ??
         (defaultTargetPlatform == TargetPlatform.iOS ||
@@ -2471,12 +2471,20 @@ class ThemeController extends ChangeNotifier {
       return;
     }
     final revision = _emojiFontSelectionRevision;
-    final family = await _emojiFontCatalog.loadCached(key);
+    // Cache first, then one download attempt: the selected pack is missing
+    // on disk exactly once (fresh install / cleared cache). Until it lands
+    // the chain renders the platform emoji face — never tofu. A failed
+    // download returns null and retries on the next launch.
+    final family = await _emojiFontCatalog.loadCachedOrDownload(key);
     if (family == null ||
         revision != _emojiFontSelectionRevision ||
         _emojiFontChoice.key != key) {
       return;
     }
+    _applyEmojiFontFamily(key, family);
+  }
+
+  void _applyEmojiFontFamily(String key, String family) {
     _emojiFontChoice = EmojiFontChoice(
       key: key,
       label: _emojiFontChoice.label,
@@ -2508,10 +2516,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   /// Registers an already-cached selected emoji font before the first frame.
-  /// The bundled Apple font ships in the APK, so it loads on every startup;
-  /// downloaded packs only load from the local cache — missing entries are
-  /// intentionally not downloaded on the launch path, the normal idle loader
-  /// fetches those without delaying startup.
+  /// Downloaded packs (Apple included) load from the local cache — missing
+  /// entries are intentionally not downloaded on the launch path, the normal
+  /// idle loader fetches those without delaying startup.
   static Future<void> preloadCachedEmojiFont(SharedPreferences prefs) async {
     final storedKey = prefs.getString(_emojiFontChoiceKey);
     final migrated =
@@ -2519,7 +2526,7 @@ class ThemeController extends ChangeNotifier {
         prefs.getString(_emojiFontLabelKey) != null;
     var key = _normalizeEmojiFontKey(storedKey, migrated: migrated);
     // Fresh installs (and pre-switch installs whose stored key was only the
-    // old "no pack chosen" sentinel) start on the bundled Apple font.
+    // old "no pack chosen" sentinel) start on the pinned Apple row.
     if (key == EmojiFontChoice.system.key &&
         (!prefs.containsKey(_emojiFontChoiceKey) ||
             !prefs.containsKey(_useSystemEmojiKey))) {

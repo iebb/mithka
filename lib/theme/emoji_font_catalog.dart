@@ -27,7 +27,7 @@ class EmojiFontChoice {
     label: AppStringKeys.emojiFontCatalogSystemDefault,
   );
 
-  /// The family the bundled Apple Color Emoji asset registers under. Same
+  /// The runtime family the Apple Color Emoji font registers under. Same
   /// deterministic namespace the downloaded catalog fonts use, so every
   /// consumer (theme chains, previews) treats it like any loaded pack.
   static const bundledAppleFamily = 'MithkaEmoji_apple';
@@ -147,16 +147,11 @@ class EmojiFontCatalog {
   static const cacheRevision = 2;
   static const cacheDirectoryName = 'emoji_fonts_v$cacheRevision';
 
-  /// The asset path of the Apple Color Emoji font bundled with the app. The
-  /// picker's pinned first row selects it; it never downloads.
-  static const bundledAppleAsset = 'assets/fonts/AppleColorEmoji.ttf';
-
   static const manifestUrl =
       'https://github.com/iebb/emojifonts/releases/download/latest/manifest.json';
 
   final Set<String> _loadedFamilies = {};
   final Map<String, Future<String>> _inFlightFontLoads = {};
-  final Map<String, Future<void>> _inFlightBundledLoads = {};
 
   /// Returns the deterministic runtime family once this process has registered
   /// it with Flutter. New ThemeController instances can therefore retain the
@@ -166,31 +161,6 @@ class EmojiFontCatalog {
     if (key == EmojiFontChoice.system.key) return null;
     final family = EmojiFontChoice.runtimeFamilyForKey(key);
     return _loadedFamilies.contains(family) ? family : null;
-  }
-
-  /// Registers the bundled Apple Color Emoji asset under the deterministic
-  /// runtime family. Cheap once loaded; safe to call on every startup path.
-  Future<void> loadBundledAppleFont() async {
-    const family = EmojiFontChoice.bundledAppleFamily;
-    if (_loadedFamilies.contains(family)) return;
-    final pending = _inFlightBundledLoads[family];
-    if (pending != null) {
-      await pending;
-      return;
-    }
-    final operation = Future<void>(() async {
-      final data = await rootBundle.load(bundledAppleAsset);
-      final loader = FontLoader(family);
-      loader.addFont(Future.value(ByteData.sublistView(data)));
-      await loader.load();
-      _loadedFamilies.add(family);
-    });
-    _inFlightBundledLoads[family] = operation;
-    await operation.whenComplete(() {
-      if (identical(_inFlightBundledLoads[family], operation)) {
-        _inFlightBundledLoads.remove(family);
-      }
-    });
   }
 
   Future<List<EmojiFontManifestEntry>> loadManifest({
@@ -221,10 +191,10 @@ class EmojiFontCatalog {
 
   Future<String?> loadCached(String key) async {
     if (key == EmojiFontChoice.system.key) return null;
-    // The bundled Apple font never touches the download cache.
+    // The pinned Apple font has its own loader (cache first, optional
+    // download) — it shares the cache directory with the catalog packs.
     if (key == EmojiFontCatalog.appleEntry.key) {
-      await loadBundledAppleFont();
-      return EmojiFontChoice.bundledAppleFamily;
+      return loadAppleFont();
     }
     final file = await _cachedFontFileForKey(key);
     if (file == null) return null;
@@ -236,6 +206,9 @@ class EmojiFontCatalog {
   Future<String?> loadCachedOrDownload(String key) async {
     final cached = await loadCached(key);
     if (cached != null) return cached;
+    if (key == EmojiFontCatalog.appleEntry.key) {
+      return loadAppleFont(download: true);
+    }
     try {
       final entries = await loadManifest(forceRefresh: true);
       EmojiFontManifestEntry? selected;
@@ -256,12 +229,15 @@ class EmojiFontCatalog {
     }
   }
 
+  /// Downloads (if needed) and registers an entry. The pinned Apple row is
+  /// routed to its own cache-first loader with optional download.
   Future<String> downloadAndLoad(EmojiFontManifestEntry entry) {
-    // The bundled Apple row never downloads — the bytes ship in the APK.
+    // The pinned Apple row has its own cache-first loader with optional
+    // download — never route it through the manifest flow.
     if (entry.key == appleEntry.key) {
-      return loadBundledAppleFont().then(
-        (_) => EmojiFontChoice.bundledAppleFamily,
-      );
+      return loadAppleFont(
+        download: true,
+      ).then((family) => family ?? EmojiFontChoice.bundledAppleFamily);
     }
     final pending = _inFlightFontLoads[entry.key];
     if (pending != null) return pending;
@@ -275,23 +251,21 @@ class EmojiFontCatalog {
   }
 
   Future<String> _downloadAndLoad(EmojiFontManifestEntry entry) async {
-    final file = await _fontFile(entry);
-    if (!await file.exists()) {
-      await file.parent.create(recursive: true);
-      final response = await http.get(Uri.parse(entry.url));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException(
-          'HTTP ${response.statusCode}',
-          uri: response.request?.url,
-        );
-      }
-      final tmp = File('${file.path}.tmp');
-      await tmp.writeAsBytes(response.bodyBytes, flush: true);
-      if (await file.exists()) await file.delete();
-      await tmp.rename(file.path);
-    }
-    await _loadFontFile(entry.runtimeFamily, file);
+    await ensureFontDownloaded(entry);
+    await _loadFontFile(entry.runtimeFamily, await _fontFile(entry));
     return entry.runtimeFamily;
+  }
+
+  /// Brings the entry's cached file to a verified, complete state: downloads
+  /// when missing or size-mismatched, records the size either way so later
+  /// loads can detect truncation.
+  Future<void> ensureFontDownloaded(EmojiFontManifestEntry entry) async {
+    final file = await _fontFile(entry);
+    if (await _verifyFontFile(entry, file)) return;
+    final bytes = await _downloadFontTo(entry, file);
+    final sizes = await _readSizeIndex();
+    sizes[entry.key] = bytes;
+    await _writeSizeIndex(sizes);
   }
 
   Future<List<EmojiFontManifestEntry>> _readManifest(File file) async {
@@ -316,10 +290,11 @@ class EmojiFontCatalog {
   }
 
   /// Apple Color Emoji, pinned to the community CBDT build of the system
-  /// font — and bundled inside the app (assets/fonts/AppleColorEmoji.ttf),
-  /// so selecting it never touches the network. Not in the iebb/emojifonts
-  /// manifest — this fork carries the entry itself so the picker's first
-  /// row matches the reference clients.
+  /// font. The fork's default emoji face: selected out of the box, but its
+  /// 45 MB binary is downloaded on first use and cached like any other
+  /// pack — the APK stays lean. Not in the iebb/emojifonts manifest — this
+  /// fork carries the entry itself so the picker's first row matches the
+  /// reference clients.
   static const appleEntry = EmojiFontManifestEntry(
     key: 'apple',
     label: 'Apple Color Emoji',
@@ -338,6 +313,54 @@ class EmojiFontCatalog {
   @visibleForTesting
   List<EmojiFontManifestEntry> parseManifestForTesting(String body) =>
       _parseManifest(body);
+
+  /// Cached font bytes are loaded straight into the engine — a truncated
+  /// file would register as a broken family or crash the loader, so every
+  /// write goes through a temp file + atomic rename and every read checks
+  /// the recorded size.
+  static const _sizeIndexFileName = 'sizes.json';
+
+  Future<File> _sizeIndexFile() async {
+    final dir = await _cacheDir();
+    return File('${dir.path}/$_sizeIndexFileName');
+  }
+
+  Future<Map<String, int>> _readSizeIndex() async {
+    try {
+      final file = await _sizeIndexFile();
+      if (!await file.exists()) return {};
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return {};
+      return decoded.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<File> _writeSizeIndex(Map<String, int> sizes) async {
+    final file = await _sizeIndexFile();
+    await file.parent.create(recursive: true);
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsString(jsonEncode(sizes), flush: true);
+    if (await file.exists()) await file.delete();
+    return tmp.rename(file.path);
+  }
+
+  Future<int> _downloadFontTo(EmojiFontManifestEntry entry, File file) async {
+    final response = await http.get(Uri.parse(entry.url));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+        'HTTP ${response.statusCode}',
+        uri: response.request?.url,
+      );
+    }
+    await file.parent.create(recursive: true);
+    final tmp = File('${file.path}.tmp');
+    await tmp.writeAsBytes(response.bodyBytes, flush: true);
+    if (await file.exists()) await file.delete();
+    await tmp.rename(file.path);
+    return response.bodyBytes.length;
+  }
 
   EmojiFontManifestEntry? tryParseEntry(Map<String, dynamic> json) {
     try {
@@ -369,6 +392,9 @@ class EmojiFontCatalog {
     return null;
   }
 
+  /// The downloaded font files live under the app-support directory in this
+  /// revision-tagged cache folder. The Apple font is cached here too — it is
+  /// downloaded on demand like every other pack, never shipped in the APK.
   Future<Directory> _cacheDir() async {
     final support = await getApplicationSupportDirectory();
     return Directory('${support.path}/$cacheDirectoryName');
@@ -381,6 +407,40 @@ class EmojiFontCatalog {
     loader.addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
     _loadedFamilies.add(family);
+  }
+
+  /// A font file is valid when its on-disk size matches the size recorded
+  /// at download time. Files without an index entry (legacy caches from
+  /// before the size index, or the previous bundled-apple release that
+  /// never wrote one) are trusted by existence alone.
+  Future<bool> _verifyFontFile(EmojiFontManifestEntry entry, File file) async {
+    if (!await file.exists()) return false;
+    final sizes = await _readSizeIndex();
+    final recorded = sizes[entry.key];
+    if (recorded == null) return true;
+    return await file.length() == recorded;
+  }
+
+  /// Loads the pinned Apple font from the cache. With [download], a missing
+  /// or broken cache file is fetched first; a failed fetch returns null so
+  /// callers keep rendering the platform emoji face (never tofu) until the
+  /// next attempt succeeds.
+  Future<String?> loadAppleFont({bool download = false}) async {
+    final file = await _fontFile(appleEntry);
+    if (!await _verifyFontFile(appleEntry, file)) {
+      if (!download) return null;
+      try {
+        await ensureFontDownloaded(appleEntry);
+      } catch (error) {
+        debugPrint(
+          '[emoji_font_catalog] apple font download failed '
+          'type=${error.runtimeType}',
+        );
+        return null;
+      }
+    }
+    await _loadFontFile(appleEntry.runtimeFamily, file);
+    return appleEntry.runtimeFamily;
   }
 }
 

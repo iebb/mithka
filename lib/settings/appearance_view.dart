@@ -3733,6 +3733,11 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
       title: entry.label,
       preview: _EmojiPreviewImage(asset: _previewAssetForKey(entry.key)),
       selected: theme.emojiFontChoice.key == entry.key,
+      // The Apple row explains its own delivery: first selection downloads
+      // the 45 MB pack, later launches read the cache.
+      subtitle: entry.key == EmojiFontCatalog.appleEntry.key
+          ? entry.label
+          : null,
       loading: _loadingKey == entry.key,
       failed: _failedKey == entry.key,
       onTap: () async {
