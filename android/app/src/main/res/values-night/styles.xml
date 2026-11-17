@@ -6,7 +6,7 @@
     <style name="LaunchTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
-        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowBackground">@drawable/launch_penguin_background</item>
         <!-- Android 12+ builds the system splash screen from this attribute
              instead of windowBackground (a layer-list is not a single colour,
              so it would fall back to the theme's grey colorBackground). Naming

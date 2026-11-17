@@ -8,7 +8,7 @@
          carries the penguin at 2/3 of the 240dp icon circle so the system's
          mask does not clip it. Ignored below API 31. -->
     <style name="LaunchTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowBackground">@drawable/launch_penguin_background</item>
         <item name="android:windowSplashScreenBackground">@color/launch_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/penguin_splash</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

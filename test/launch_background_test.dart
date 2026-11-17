@@ -153,15 +153,15 @@ void main() {
           return match!.group(0)!;
         }
 
-        // LaunchTheme paints the splash drawable, whose only layer is the
-        // night-qualified colour checked above.
+        // LaunchTheme paints the splash drawable, whose bottom layer is the
+        // night-qualified colour checked above (top layer: the penguin).
         final launchTheme = style('LaunchTheme');
         expect(
           launchTheme,
           contains(
-            '<item name="android:windowBackground">@drawable/launch_background</item>',
+            '<item name="android:windowBackground">@drawable/launch_penguin_background</item>',
           ),
-          reason: 'LaunchTheme in $path must paint the splash drawable',
+          reason: 'LaunchTheme in $path must paint the penguin splash drawable',
         );
         // NormalTheme is the window behind Flutter's first frame. It must not
         // resolve to AppCompat's grey colorBackground, or removing the splash
@@ -213,13 +213,7 @@ void main() {
         reason: 'the Android 12+ system splash must show the penguin mark',
       );
       // The drawable exists in every density bucket.
-      for (final bucket in [
-        'mdpi',
-        'hdpi',
-        'xhdpi',
-        'xxhdpi',
-        'xxxhdpi',
-      ]) {
+      for (final bucket in ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
         expect(
           File('$_androidRes/drawable-$bucket/penguin_splash.png').existsSync(),
           isTrue,
@@ -237,8 +231,9 @@ void main() {
     setUpAll(() {
       colorSet =
           jsonDecode(
-            _read('$_iosAssets/LaunchBackground.colorset/Contents.json'),
-          ) as Map<String, dynamic>;
+                _read('$_iosAssets/LaunchBackground.colorset/Contents.json'),
+              )
+              as Map<String, dynamic>;
     });
 
     test('launch color set matches the app surfaces in both appearances', () {
@@ -249,8 +244,9 @@ void main() {
     test('color set is registered by its intended name', () {
       final contents =
           jsonDecode(
-            _read('$_iosAssets/LaunchBackground.colorset/Contents.json'),
-          ) as Map<String, dynamic>;
+                _read('$_iosAssets/LaunchBackground.colorset/Contents.json'),
+              )
+              as Map<String, dynamic>;
       expect(contents['info']['author'], 'xcode');
       expect(contents['colors'], isNotEmpty);
       // Guard against renaming the set without updating the storyboard.

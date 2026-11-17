@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cold-start splash artwork: the fork's penguin mark, centered on the
+     launch background colour at a comfortable size. Shared by the legacy
+     windowBackground drawable (API < 31) and referenced from every
+     LaunchTheme; on Android 12+ the system splash uses the same artwork
+     through windowSplashScreenAnimatedIcon, so the penguin shows regardless
+     of which launcher icon is active. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background" />
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/penguin_launch"
+            android:gravity="center" />
+    </item>
+</layer-list>
