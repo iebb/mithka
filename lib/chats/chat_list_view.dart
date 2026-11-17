@@ -1167,7 +1167,7 @@ class ChatListView extends StatefulWidget {
 }
 
 class _ChatListViewState extends State<ChatListView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _searchPillExtent =
       AppSpacing.md + AppMetric.searchHeight + AppSpacing.sm;
 
@@ -1219,6 +1219,16 @@ class _ChatListViewState extends State<ChatListView>
   /// drives both collapses so the search row and the revealed archive row
   /// leave in a single shared animation; it releases again near the top.
   bool _leadingControlsDismissed = false;
+
+  /// Scroll-offset compensation for the leading rows' collapse. The collapse
+  /// removes the search row's and the archive row's extent from the layout
+  /// above the first chat; without handing that height back to the offset the
+  /// viewport would land mid-way through the first chat row. The ticker
+  /// subtracts the removed height over the same 180ms clock the AnimatedSize
+  /// collapses run on, so the content stays anchored while the rows fold.
+  AnimationController? _leadingCollapseTicker;
+  double _leadingCollapseTotal = 0;
+  double _leadingCollapseApplied = 0;
   double _refreshPullDistance = 0;
   bool _isRefreshing = false;
   bool _viewTickerEnabled = true;
@@ -1253,6 +1263,10 @@ class _ChatListViewState extends State<ChatListView>
   /// Edit-mode pinned drag: the dragged chat and the net slots it has
   /// crossed, shown as row shifts until the drop commits one reorder.
   int? _draggedChatId;
+
+  /// True only for the build that clears the drag shifts together with the
+  /// reorder — see [_dragShiftWrapper].
+  bool _shiftsClearInstantly = false;
   final Map<int, int> _dragSlotsById = {};
 
   /// Coordinate space for the drag proxy — the list area below the header.
@@ -1391,7 +1405,9 @@ class _ChatListViewState extends State<ChatListView>
         _model.isAllFilter &&
         _model.archived.isNotEmpty &&
         archiveMode == ArchivedChatsDisplayMode.pullDown;
-    if (archiveEnabled && position.hasContentDimensions) {
+    final compensating =
+        _leadingCollapseTicker != null && _leadingCollapseTicker!.isAnimating;
+    if (archiveEnabled && position.hasContentDimensions && !compensating) {
       final pullOffset = chatListTopOverscrollOffset(
         position.pixels,
         minScrollExtent: position.minScrollExtent,
@@ -1422,9 +1438,11 @@ class _ChatListViewState extends State<ChatListView>
           _archiveRevealed = false;
           _leadingControlsDismissed = true;
         });
+        _startLeadingCollapseCompensation(theme);
       }
     }
-    if (_leadingControlsDismissed &&
+    if (!compensating &&
+        _leadingControlsDismissed &&
         position.hasContentDimensions &&
         position.pixels - position.minScrollExtent <= rowHeight * 0.25) {
       // Hysteresis against the dismiss threshold: returning near the top
@@ -1439,6 +1457,7 @@ class _ChatListViewState extends State<ChatListView>
   @override
   void dispose() {
     widget.controller?.clearSideFolders(this);
+    _leadingCollapseTicker?.dispose();
     _dismissDesktopChatMenu();
     _dismissDesktopPlusMenu();
     _userSub?.cancel();
@@ -2119,6 +2138,7 @@ class _ChatListViewState extends State<ChatListView>
       _openSwipeChat = null;
       _archiveRevealed = false;
       _leadingControlsDismissed = false;
+      _leadingCollapseTicker?.stop();
       _refreshPullDistance = 0;
     });
     _model.selectFilter(filter);
@@ -3862,6 +3882,40 @@ class _ChatListViewState extends State<ChatListView>
         : const Duration(milliseconds: 180);
   }
 
+  /// Runs alongside the shared collapse clock, handing the removed leading
+  /// height back to the scroll offset frame by frame: [ScrollPosition
+  /// .setPixels] mutates the offset without idling the position, so a drag
+  /// still in flight keeps its own deltas on top of the compensation.
+  void _startLeadingCollapseCompensation(ThemeController theme) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final removed = _leadingListControlsExtent(theme) + _archiveExtent();
+    final travel = position.pixels - position.minScrollExtent;
+    final amount = math.min(travel, removed);
+    if (amount <= 0) return;
+    _leadingCollapseTicker?.dispose();
+    _leadingCollapseTotal = amount;
+    _leadingCollapseApplied = 0;
+    _leadingCollapseTicker = AnimationController(
+      vsync: this,
+      duration: _chatListLeadingCollapseDuration(context),
+    )..addListener(_onLeadingCollapseTick);
+    _leadingCollapseTicker!.forward();
+  }
+
+  void _onLeadingCollapseTick() {
+    final ticker = _leadingCollapseTicker;
+    if (ticker == null || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final target =
+        _leadingCollapseTotal * Curves.easeOutCubic.transform(ticker.value);
+    final delta = target - _leadingCollapseApplied;
+    if (delta <= 0) return;
+    _leadingCollapseApplied = target;
+    final next = math.max(position.minScrollExtent, position.pixels - delta);
+    if (next < position.pixels) position.setPixels(next);
+  }
+
   Widget _pullDownArchiveSlot({
     required double rowHeight,
     required bool visible,
@@ -4130,12 +4184,21 @@ class _ChatListViewState extends State<ChatListView>
   void _commitPinnedOrder({int? chatId}) {
     final id = chatId ?? _draggedChatId;
     final slots = id == null ? 0 : (_dragSlotsById[id] ?? 0);
+    final willReorder = id != null && slots != 0;
     _dragSlotsById.clear();
     _draggedChatId = null;
+    // The reorder lands in the same build that clears the neighbour shifts;
+    // that frame must not animate the clear (the slot change already carries
+    // the motion — exteraless's animator never sees this pass because its
+    // adapter already held the final order during the drag).
+    _shiftsClearInstantly = willReorder;
     if (_dragProxyChatId != null) {
       setState(() => _dragProxyChatId = null);
     }
-    if (id == null || slots == 0) return;
+    if (!willReorder) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _shiftsClearInstantly = false);
+    });
     final band = _pinnedBand();
     final index = band.indexWhere((c) => c.id == id);
     if (index < 0) return;
@@ -4214,15 +4277,23 @@ class _ChatListViewState extends State<ChatListView>
               myIndex > math.min(draggedFrom, draggedTo) &&
               myIndex <= math.max(draggedFrom, draggedTo);
           if (inBetween) {
-            final rowExtent = AppMetric.chatListRowExtent(context);
-            shift = (slots > 0 ? -1.0 : 1.0) * rowExtent;
+            // AnimatedSlide's offset is a FRACTION of the child's own
+            // height, and the band's rows share one extent — one row aside
+            // is exactly 1.0. (Passing the pixel extent here multiplied the
+            // painted shift by the row height: neighbours flew ~extent² off
+            // the viewport instead of gliding one row, the way exteraless's
+            // DialogsItemAnimator.animateMove moves them 180ms old→new.)
+            shift = slots > 0 ? -1.0 : 1.0;
           }
         }
       }
     }
     return AnimatedSlide(
       offset: Offset(0, shift),
-      duration: AppMotion.isReduced(context)
+      // The commit frame re-slots the neighbours AND clears their offsets in
+      // one build; animating that clear would stack both motions (a one-row
+      // jump that glides back), so that one frame snaps instead.
+      duration: _shiftsClearInstantly
           ? Duration.zero
           : AppMotion.duration(context, AppMotion.responsive),
       curve: AppMotion.standard,

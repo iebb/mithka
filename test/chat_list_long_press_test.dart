@@ -285,11 +285,14 @@ void main() {
           .first;
       final renderSlide =
           tester.renderObject(slide) as RenderFractionalTranslation;
+      // translation.dy is a fraction of the child's height: gliding ONE row
+      // aside is exactly -1.0. Mid-animation it sits strictly between 0
+      // (dead — never left the slot) and 1.0 (teleport/landed).
       final rise = -renderSlide.translation.dy;
-      expect(rise, greaterThan(1), reason: 'neighbour must leave its slot');
+      expect(rise, greaterThan(0.05), reason: 'neighbour must leave its slot');
       expect(
         rise,
-        lessThan(rowHeight - 1),
+        lessThan(0.95),
         reason: 'neighbour must still be animating, not landed',
       );
 
