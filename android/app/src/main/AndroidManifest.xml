@@ -45,10 +45,19 @@
         android:label="Mithka X"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher_letter_m_neutral"
+        android:theme="@style/LaunchTheme"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- The launch theme must ALSO live at the application level: cold
+             starts launched through an activity-alias (i.e. every launcher
+             entry after an icon switch) resolve the starting window's theme
+             from the ALIAS, which falls back to the application theme — the
+             target activity's android:theme is never consulted on that path.
+             Without this, Android 12+ shows the platform default splash,
+             which is the current launcher icon. -->
+
         <service
             android:name="com.gurfdev.light_compressor_v2.CompressionForegroundService"
             tools:node="remove" />
