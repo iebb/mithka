@@ -8,6 +8,7 @@ on:
         type: string
   pull_request:
     paths:
+      - '.github/workflows/appgallery-submit.yml'
       - '.github/workflows/app-store-submit.yml'
       - '.github/workflows/google-play.yml'
       - '.github/workflows/ios-testflight.yml'
@@ -29,6 +30,7 @@ on:
   push:
     branches: [master]
     paths:
+      - '.github/workflows/appgallery-submit.yml'
       - '.github/workflows/app-store-submit.yml'
       - '.github/workflows/google-play.yml'
       - '.github/workflows/ios-testflight.yml'
@@ -78,12 +80,14 @@ jobs:
           python -m unittest discover -s test/scripts -p 'quality_release_source_test.py' -v
           python -m unittest discover -s test/scripts -p 'release_snapshot_workflow_test.py' -v
           python -m unittest discover -s test/scripts -p 'publish_store_github_release_test.py' -v
+          python -m unittest discover -s test/scripts -p 'appgallery_store_release_test.py' -v
       - name: Validate the store workflows
         run: |
           # actionlint 1.7.12 predates GitHub's documented concurrency.queue.
           # Keep all other lint checks; GitHub validates queue: max itself.
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 \
             -ignore 'unexpected key "queue" for "concurrency" section' \
+            .github/workflows/appgallery-submit.yml \
             .github/workflows/app-store-submit.yml \
             .github/workflows/google-play.yml \
             .github/workflows/ios-testflight.yml \

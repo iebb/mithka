@@ -840,6 +840,26 @@ def github_release(tag):
     return json.loads(result.stdout)
 
 
+def request_appgallery_submission(plan):
+    """Ask AppGallery to take the HarmonyOS hap from the verified GitHub release.
+
+    The AppGallery workflow skips a version AppGallery already has, so a resumed
+    release may request it again. Its outcome never blocks the other stores.
+    """
+    release = github_release(f"v{plan['version']}")
+    if not release or not any(
+        asset["name"].endswith("-ohos-arm64.hap") for asset in release["assets"]
+    ):
+        print("The GitHub release has no HarmonyOS hap; AppGallery skipped.", flush=True)
+        return False
+    api(
+        "actions/workflows/appgallery-submit.yml/dispatches",
+        {"ref": "master", "inputs": {"version": plan["version"], "operation": "submit"}},
+    )
+    print(f"Requested the AppGallery submission of {plan['version']}.", flush=True)
+    return True
+
+
 def package_intent(plan, publication_run=None, retry_controller=None):
     kind = (
         "github_packages" if publication_run is None else "github_package_publication"
@@ -1121,6 +1141,11 @@ def main():
         advance_development_version(plan)
         request_immediate_update()
         publish_github_release(plan)
+        try:
+            appgallery = request_appgallery_submission(plan)
+        except Error as error:
+            print(f"AppGallery request failed: {error}", flush=True)
+            appgallery = False
         record_completion(plan, result)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
@@ -1140,6 +1165,11 @@ def main():
                         "Release remains unfinished; resume the same release key "
                         "after that review clears.\n"
                     )
+                output.write(
+                    "AppGallery submission requested.\n"
+                    if appgallery
+                    else "AppGallery not requested; see the log.\n"
+                )
     return 0
 
 
