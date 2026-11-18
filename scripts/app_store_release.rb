@@ -59,25 +59,26 @@ module MithkaAppStoreRelease
   SUBSCRIPTION_GROUP_NAME = "Mithka Pro"
   SUBSCRIPTION_RELATIONSHIPS = %w[subscriptionVersion subscriptionGroupVersion].freeze
   # App Review stops a listing that sells Mithka Pro unless every
-  # localization's description links a working Terms of Use (EULA). Mithka uses
-  # Apple's standard EULA, so the listing links it next to the site's terms.
+  # localization's description links a working Terms of Use (EULA).
   TERMS_OF_USE_URL = "https://mithka.ieb.app/terms"
-  APPLE_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
-  TERMS_OF_USE_LINES = {
-    "en" => ["Terms of Use: #{TERMS_OF_USE_URL}", "Apple Standard EULA: #{APPLE_EULA_URL}"],
-    "zh" => ["使用条款：#{TERMS_OF_USE_URL}", "Apple 标准最终用户许可协议：#{APPLE_EULA_URL}"]
+  TERMS_OF_USE_LINE = {
+    "en" => "Terms of Use: #{TERMS_OF_USE_URL}",
+    "zh" => "使用条款：#{TERMS_OF_USE_URL}"
   }.freeze
+  # Earlier listings also linked Apple's standard EULA; that line is dropped.
+  APPLE_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
 
-  # [description] with any missing Terms of Use or EULA link appended.
+  # [description] with the Terms of Use link appended when missing and any
+  # Apple standard EULA line removed.
   def self.description_with_terms(locale, description)
-    text = description.to_s.rstrip
-    lines = TERMS_OF_USE_LINES.fetch(locale.to_s.start_with?("zh") ? "zh" : "en")
-    missing = [TERMS_OF_USE_URL, APPLE_EULA_URL].zip(lines).reject { |url, _| text.include?(url) }.map(&:last)
-    return description if missing.empty?
+    text = description.to_s
+    if text.include?(APPLE_EULA_URL)
+      text = text.lines.reject { |line| line.include?(APPLE_EULA_URL) }.join.rstrip
+    end
+    return text if text.include?(TERMS_OF_USE_URL)
 
-    # Keep the links together when the terms line already ends the text.
-    separator = text.include?(TERMS_OF_USE_URL) ? "\n" : "\n\n"
-    "#{text}#{separator}#{missing.join("\n")}"
+    line = TERMS_OF_USE_LINE.fetch(locale.to_s.start_with?("zh") ? "zh" : "en")
+    "#{text.rstrip}\n\n#{line}"
   end
 
   class Error < StandardError; end
@@ -706,7 +707,7 @@ module MithkaAppStoreRelease
         changes["whatsNew"] = notes unless localization.dig("attributes", "whatsNew").to_s == notes
         changes.merge!(terms_change(locale, localization))
         next log("#{locale} release notes already match") if changes.empty?
-        fields = changes.keys.map { |key| key == "whatsNew" ? "release notes" : "Terms of Use links" }.join(" and ")
+        fields = changes.keys.map { |key| key == "whatsNew" ? "release notes" : "Terms of Use link" }.join(" and ")
         unless @apply
           log("PLAN update #{locale} #{fields}")
           next
@@ -737,11 +738,11 @@ module MithkaAppStoreRelease
         next if changes.empty?
         unless @apply
           log("PLAN fill empty #{locale} release notes with the en-US text") if changes.key?("whatsNew")
-          log("PLAN add the Terms of Use links to the #{locale} description") if changes.key?("description")
+          log("PLAN update the Terms of Use link in the #{locale} description") if changes.key?("description")
           next
         end
         log("FILL empty #{locale} release notes with the en-US text") if changes.key?("whatsNew")
-        log("ADD the Terms of Use links to the #{locale} description") if changes.key?("description")
+        log("UPDATE the Terms of Use link in the #{locale} description") if changes.key?("description")
         @client.patch(
           "/appStoreVersionLocalizations/#{localization.fetch('id')}",
           "data" => {
@@ -753,7 +754,7 @@ module MithkaAppStoreRelease
     end
 
     # The description update a localization needs to carry the Terms of Use
-    # links, if any. An inherited locale without a description is left alone.
+    # link, if any. An inherited locale without a description is left alone.
     def terms_change(locale, localization)
       description = localization.dig("attributes", "description").to_s
       return {} if description.strip.empty?
@@ -1106,9 +1107,9 @@ module MithkaAppStoreRelease
       end
       localizations.each do |locale, actual|
         description = actual.dig("attributes", "description").to_s
-        next if [TERMS_OF_USE_URL, APPLE_EULA_URL].all? { |url| description.include?(url) }
+        next if description.include?(TERMS_OF_USE_URL) && !description.include?(APPLE_EULA_URL)
 
-        raise Error, "verification failed: #{locale} description lacks the Terms of Use links"
+        raise Error, "verification failed: #{locale} description lacks the Terms of Use link"
       end
 
       return unless @submit && @apply
