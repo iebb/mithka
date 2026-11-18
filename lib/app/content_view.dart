@@ -15,17 +15,19 @@ import 'package:provider/provider.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../auth/login_view.dart';
-import '../chat/custom_emoji.dart';
-import '../chat/link_handler.dart';
+import '../chat/links_search/link_handler.dart';
+import '../chat/stickers/custom_emoji.dart';
 import '../chats/search_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
+import '../components/vip_badge.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import 'account_picker_sheet.dart';
 import 'active_conversation.dart';
 import 'app_navigator.dart';
 import 'desktop_chat_list_title_bar_anchors.dart';
@@ -110,6 +112,7 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
   Timer? _profileDismissTimer;
   DesktopHotkeyRegistration? _focusSearchRegistration;
   bool _profileVisible = false;
+  bool _accountPickerVisible = false;
   bool _statusPickerVisible = false;
   NavigatorState? _statusPickerNavigator;
 
@@ -195,12 +198,19 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
 
   void _showProfile() {
     _profileDismissTimer?.cancel();
-    if (!widget.accountReady || _profileVisible || _statusPickerVisible) return;
+    if (!widget.accountReady ||
+        _profileVisible ||
+        _statusPickerVisible ||
+        _accountPickerVisible) {
+      return;
+    }
     setState(() => _profileVisible = true);
   }
 
   Future<void> _showStatusPicker(int currentStatusId) async {
-    if (!widget.accountReady || _statusPickerVisible) return;
+    if (!widget.accountReady || _statusPickerVisible || _accountPickerVisible) {
+      return;
+    }
     // This frame is above the app Navigator. Its overlay supplies a context
     // that can present the picker without replacing the current workspace.
     final navigator =
@@ -247,6 +257,30 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
         dark: Theme.of(context).brightness == Brightness.dark,
       ),
     );
+  }
+
+  Future<void> _switchAccount() async {
+    if (!widget.accountReady || _accountPickerVisible) return;
+    _hideProfile();
+    final accounts = context.read<AccountStore?>();
+    final auth = context.read<AuthManager?>();
+    final navigator =
+        appNavigatorKey.currentState ?? Navigator.maybeOf(context);
+    final pickerContext = navigator?.overlay?.context;
+    if (accounts == null || auth == null || pickerContext == null) return;
+    setState(() => _accountPickerVisible = true);
+    try {
+      final slot = await showAccountPickerDialog(
+        pickerContext,
+        accounts: accounts.summaries,
+        activeSlot: accounts.activeSlot,
+        forSwitching: true,
+      );
+      if (!mounted || !widget.accountReady || slot == null) return;
+      accounts.switchTo(slot, auth);
+    } finally {
+      if (mounted) setState(() => _accountPickerVisible = false);
+    }
   }
 
   void _scheduleProfileDismiss() {
@@ -406,7 +440,9 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                                 key: const ValueKey('desktop-title-bar-status'),
                                 semanticLabel: AppStringKeys.emojiStatusSetTitle
                                     .l10n(context),
-                                enabled: !_statusPickerVisible,
+                                enabled:
+                                    !_statusPickerVisible &&
+                                    !_accountPickerVisible,
                                 onTap: () =>
                                     unawaited(_showStatusPicker(statusId)),
                                 borderRadius: BorderRadius.circular(
@@ -433,6 +469,10 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                                           ),
                                   ),
                                 ),
+                              ),
+                              const SizedBox(width: 4),
+                              const VipBadge(
+                                key: ValueKey('desktop-title-bar-vip'),
                               ),
                             ],
                           ],
@@ -466,6 +506,9 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
                     avatarPath: avatarPath,
                     onEdit: canManageProfile
                         ? () => unawaited(_openEditProfile())
+                        : null,
+                    onSwitchAccount: accounts != null
+                        ? () => unawaited(_switchAccount())
                         : null,
                   ),
                 ),
@@ -676,12 +719,14 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
     required this.phone,
     required this.avatarPath,
     required this.onEdit,
+    required this.onSwitchAccount,
   });
 
   final String name;
   final String? phone;
   final String? avatarPath;
   final VoidCallback? onEdit;
+  final VoidCallback? onSwitchAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -756,37 +801,64 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
           ),
           if (onEdit != null) ...[
             const SizedBox(height: 12),
-            AppInteractiveSurface(
+            _action(
+              context,
               key: const ValueKey('desktop-title-bar-profile-edit'),
-              semanticLabel: AppStringKeys.editProfileTitle.l10n(context),
-              onTap: onEdit,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              child: Container(
-                height: 32,
-                decoration: BoxDecoration(
-                  color: c.searchFill,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AppIcon(HeroAppIcons.pen, size: 16, color: c.linkBlue),
-                    const SizedBox(width: 6),
-                    Text(
-                      AppStringKeys.editProfileTitle.l10n(context),
-                      style: TextStyle(
-                        color: c.linkBlue,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              label: AppStringKeys.editProfileTitle.l10n(context),
+              icon: HeroAppIcons.pen,
+              onTap: onEdit!,
+            ),
+          ],
+          if (onSwitchAccount != null) ...[
+            SizedBox(height: onEdit != null ? 6 : 12),
+            _action(
+              context,
+              key: const ValueKey('desktop-title-bar-profile-switch-account'),
+              label: AppStringKeys.loginSwitchAccount.l10n(context),
+              icon: HeroAppIcons.arrowsRightLeft,
+              onTap: onSwitchAccount!,
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _action(
+    BuildContext context, {
+    required Key key,
+    required String label,
+    required AppIconData icon,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return AppInteractiveSurface(
+      key: key,
+      semanticLabel: label,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: c.searchFill,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Row(
+          children: [
+            AppIcon(icon, size: 16, color: c.linkBlue),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: c.linkBlue,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/channels/topic_chat_view.dart';
-import 'package:mithka/chat/channel_direct_messages_service.dart';
+import 'package:mithka/chat/admin/channel_direct_messages_service.dart';
 import 'package:mithka/chat/chat_view_model.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/settings/country_chat_blocker.dart';

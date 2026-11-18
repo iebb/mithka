@@ -4,10 +4,10 @@ import 'package:flutter/foundation.dart';
 
 import '../config/build_flags.dart';
 import '../notifications/notification_settings_payload.dart';
-import '../settings/ghost_mode_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'country_message_filter.dart';
+import 'ghost_mode_controller.dart';
 
 typedef CountryBlockerQuery =
     Future<Map<String, dynamic>> Function(

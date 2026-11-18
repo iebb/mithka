@@ -12,7 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
-import '../chat/chat_members_cache.dart';
+import '../chat/admin/chat_members_cache.dart';
 import '../config/secrets.dart';
 import '../settings/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
@@ -209,6 +209,7 @@ class AuthManager extends ChangeNotifier {
   bool _subscribed = false;
   bool _credentialsMissing = false;
   Timer? _startupWatchdog;
+  StreamSubscription<Map<String, dynamic>>? _updatesSubscription;
 
   AuthStep _step = const AuthInitializing();
   String? _errorMessage;
@@ -225,6 +226,9 @@ class AuthManager extends ChangeNotifier {
   @override
   void dispose() {
     _cancelStartupWatchdog();
+    unawaited(_updatesSubscription?.cancel());
+    _updatesSubscription = null;
+    _subscribed = false;
     super.dispose();
   }
 
@@ -246,7 +250,7 @@ class AuthManager extends ChangeNotifier {
       // Subscribe before start so no early update is missed.
       if (!_subscribed) {
         _subscribed = true;
-        _client
+        _updatesSubscription = _client
             .updatesOfAny(const ['updateOption', 'updateAuthorizationState'])
             .listen((update) {
               if (update.type == 'updateOption' &&

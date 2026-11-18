@@ -3,8 +3,8 @@ import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
-import '../chat/chat_wallpaper.dart';
-import '../chat/chat_wallpaper_color_view.dart';
+import '../chat/appearance/chat_wallpaper.dart';
+import '../chat/appearance/chat_wallpaper_color_view.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';

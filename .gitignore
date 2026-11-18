@@ -82,7 +82,9 @@ android/app/src/main/jniLibs/
 .tdlib-build/
 /native-libs/
 
-# One-time working notes (not part of the app)
+# One-time working notes and local agent directories (not part of the app)
+/.claude/
+/.kilo/
 /CLAUDE.md
 /SESSION.md
 /TODO.md

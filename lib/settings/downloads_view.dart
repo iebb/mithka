@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../chat/file_opener.dart';
-import '../chat/media_download_service.dart';
-import '../chat/shared_media_view.dart';
+import '../chat/media/file_opener.dart';
+import '../chat/media/media_download_service.dart';
+import '../chat/media/shared_media_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/toast.dart';

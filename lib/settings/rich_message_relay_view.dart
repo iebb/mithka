@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../chat/link_handler.dart';
-import '../chat/rich_message_bot_relay.dart';
+import '../chat/composer/rich_message_bot_relay.dart';
+import '../chat/links_search/link_handler.dart';
 import '../components/app_icons.dart';
 import '../components/app_text_selection_toolbar.dart';
 import '../components/toast.dart';

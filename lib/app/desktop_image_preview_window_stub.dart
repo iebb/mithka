@@ -24,3 +24,20 @@ Future<void> publishDesktopImagePreviewPath(
 ) async {}
 
 Future<void> closeCurrentDesktopImagePreviewWindow() async {}
+
+Future<int?> currentDesktopImagePreviewOriginWindowId() async => null;
+
+Future<Set<int>> activeDesktopImagePreviewWindowIds() async => const {};
+
+void setDesktopImagePreviewActionHandler(
+  DesktopImagePreviewActionHandler handler,
+) {}
+
+Future<bool> requestDesktopImagePreviewAction(
+  int originWindowId,
+  DesktopImagePreviewActionRequest request,
+) async => false;
+
+Future<void> focusCurrentDesktopImagePreviewOrigin() async {}
+
+void detachDesktopImagePreviewBridgeIfIdle() {}

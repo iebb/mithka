@@ -9,8 +9,8 @@
 //  across the whole account it is the people the chat list already knows.
 //
 
-import '../chat/chat_search_query.dart';
-import '../chat/telegram_link.dart';
+import '../chat/links_search/chat_search_query.dart';
+import '../chat/links_search/telegram_link.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';

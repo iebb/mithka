@@ -7,13 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../call/call_manager.dart';
 import '../call/call_overlay_host.dart';
-import '../chat/chat_info_view.dart';
-import '../chat/chat_members_view.dart';
+import '../chat/admin/chat_info_view.dart';
+import '../chat/admin/chat_members_view.dart';
+import '../chat/admin/group_remark_controller.dart';
 import '../chat/chat_view.dart';
 import '../chat/desktop_chat_context_pane.dart';
-import '../chat/group_remark_controller.dart';
-import '../chat/link_preview_fixer.dart';
-import '../chat/music_player_controller.dart';
+import '../chat/links_search/link_preview_fixer.dart';
+import '../chat/media/music_player_controller.dart';
 import '../chats/chat_folder_tag_controller.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';

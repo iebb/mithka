@@ -1,5 +1,5 @@
-import '../chat/custom_emoji.dart';
-import '../chat/sticker_item.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/sticker_item.dart';
 import '../tdlib/json_helpers.dart';
 
 /// Extracts the display sticker from each profile-visible received gift.

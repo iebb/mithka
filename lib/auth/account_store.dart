@@ -12,8 +12,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../chat/custom_emoji.dart';
-import '../chat/emoji_store.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/emoji_store.dart';
 import '../config/build_flags.dart';
 import '../history/message_history_store.dart';
 import '../notifications/notification_preferences.dart';
@@ -155,7 +155,7 @@ class AccountStore extends ChangeNotifier {
     // Refresh the switcher when one of our own accounts changes (e.g. after a
     // name edit) — TDLib emits updateUser for us. Filtered to known self-ids so
     // it doesn't fire for every contact seen in chats.
-    TdClient.shared
+    _updatesSubscription = TdClient.shared
         .updatesOfAny(const ['updateAuthorizationState', 'updateUser'])
         .listen((u) {
           if (u.type == 'updateAuthorizationState') {
@@ -201,9 +201,17 @@ class AccountStore extends ChangeNotifier {
   }
 
   final SharedPreferences _prefs;
+  StreamSubscription<Map<String, dynamic>>? _updatesSubscription;
   int _activeSlot;
   List<AccountSummary> _summaries;
   final Set<int> _selfIds = {}; // our own user ids across accounts
+
+  @override
+  void dispose() {
+    unawaited(_updatesSubscription?.cancel());
+    _updatesSubscription = null;
+    super.dispose();
+  }
 
   // An in-progress "add account": the freshly-created slot whose login has not
   // completed, and the slot we should fall back to if the user aborts. While

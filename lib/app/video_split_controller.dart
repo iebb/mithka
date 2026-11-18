@@ -7,7 +7,7 @@
 
 import 'package:flutter/foundation.dart';
 
-import '../chat/video_playback_queue.dart';
+import '../chat/media/video_playback_queue.dart';
 import '../tdlib/td_models.dart';
 
 class VideoSplitSession {

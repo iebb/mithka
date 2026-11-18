@@ -82,8 +82,8 @@
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
 		A17D0FF731E1000100000001 /* MacOSAppIconPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOSAppIconPlugin.swift; sourceTree = "<group>"; };
 		A17D0FFB31E1000100000001 /* ExternalLinksPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalLinksPlugin.swift; sourceTree = "<group>"; };
-		AF0EED1431E1000100000001 /* AirDeviceProof.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDeviceProof.swift; sourceTree = "<group>"; };
-		AF0EED1231E1000100000001 /* AirCrashReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirCrashReports.swift; sourceTree = "<group>"; };
+		AF0EED1431E1000100000001 /* AirDeviceProof.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AirDeviceProof.swift; path = ../../apple/AirDeviceProof.swift; sourceTree = "<group>"; };
+		AF0EED1231E1000100000001 /* AirCrashReports.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AirCrashReports.swift; path = ../../apple/AirCrashReports.swift; sourceTree = "<group>"; };
 		A17D0FF231E1000100000001 /* HandoffBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = HandoffBridge.swift; path = ../../apple/HandoffBridge.swift; sourceTree = "<group>"; };
 		A17D0FF831E1000100000001 /* WebProxyBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = WebProxyBridge.swift; path = ../../apple/WebProxyBridge.swift; sourceTree = "<group>"; };
 		A17D0FF531E1000100000001 /* Pengram.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Pengram.icon; path = ../ios/Runner/Pengram.icon; sourceTree = SOURCE_ROOT; };

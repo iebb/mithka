@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
-import '../chat/custom_emoji.dart';
-import '../chat/emoji_store.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/emoji_store.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';

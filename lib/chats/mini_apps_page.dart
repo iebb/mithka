@@ -8,8 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../chat/telegram_mini_app_recents.dart';
-import '../chat/telegram_mini_app_view.dart';
+import '../chat/mini_apps/telegram_mini_app_recents.dart';
+import '../chat/mini_apps/telegram_mini_app_view.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../theme/app_theme.dart';

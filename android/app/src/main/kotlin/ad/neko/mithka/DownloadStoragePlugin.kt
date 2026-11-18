@@ -190,7 +190,9 @@ class DownloadStoragePlugin(
             activity.contentResolver, parent, mimeType, name,
         ) ?: throw IOException("Cannot create the saved file")
         try {
-            activity.contentResolver.openOutputStream(destination, "w")!!.use { output ->
+            val stream = activity.contentResolver.openOutputStream(destination, "w")
+                ?: throw IOException("Cannot open the saved file")
+            stream.use { output ->
                 source.inputStream().use { input -> input.copyTo(output) }
             }
         } catch (error: Exception) {

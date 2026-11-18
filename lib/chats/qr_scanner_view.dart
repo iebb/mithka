@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../chat/link_handler.dart';
+import '../chat/links_search/link_handler.dart';
 import '../components/app_icons.dart';
 import '../components/scanner_circle_button.dart';
 import '../components/toast.dart';

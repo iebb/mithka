@@ -1,13 +1,14 @@
 //
 //  confirm_dialog.dart
 //
-//  iOS-native confirm sheet (CupertinoAlertDialog) replacing Material's
-//  AlertDialog app-wide. Returns true when the confirm action is chosen.
+//  Shared confirmation dialog entry point delegating to the project-owned
+//  showAppConfirmDialog surface. Returns true when the confirm action is chosen.
 //
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 
 import '../l10n/app_localizations.dart';
+import 'app_confirm_dialog.dart';
 
 Future<bool> confirmDialog(
   BuildContext context, {
@@ -16,25 +17,11 @@ Future<bool> confirmDialog(
   String confirmText = AppStringKeys.confirmOk,
   String cancelText = AppStringKeys.countryPickerCancel,
   bool destructive = false,
-}) async {
-  final ok = await showCupertinoDialog<bool>(
-    context: context,
-    builder: (ctx) => CupertinoAlertDialog(
-      title: Text(title.l10n(ctx)),
-      content: message == null ? null : Text(message.l10n(ctx)),
-      actions: [
-        CupertinoDialogAction(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: Text(cancelText.l10n(ctx)),
-        ),
-        CupertinoDialogAction(
-          isDestructiveAction: destructive,
-          isDefaultAction: !destructive,
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: Text(confirmText.l10n(ctx)),
-        ),
-      ],
-    ),
-  );
-  return ok ?? false;
-}
+}) => showAppConfirmDialog(
+  context,
+  title: title,
+  message: message,
+  confirmText: confirmText,
+  cancelText: cancelText,
+  destructive: destructive,
+);

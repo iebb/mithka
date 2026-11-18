@@ -5,7 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../chat/telegram_mini_app_view.dart';
+import '../chat/mini_apps/telegram_mini_app_view.dart';
 import '../components/keyboard_dismiss_on_tap.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/td_client.dart';

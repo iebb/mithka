@@ -4,9 +4,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/sticker_item.dart';
-import '../chat/sticker_preview.dart';
-import '../chat/sticker_store.dart';
+import '../chat/stickers/sticker_item.dart';
+import '../chat/stickers/sticker_preview.dart';
+import '../chat/stickers/sticker_store.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/toast.dart';

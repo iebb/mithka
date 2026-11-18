@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../chat/chat_wallpaper.dart';
+import '../chat/appearance/chat_wallpaper.dart';
 import '../theme/app_theme.dart';
 
 ChatWallpaper? selectProfileThemeWallpaper({

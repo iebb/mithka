@@ -19,9 +19,9 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
-import 'image_preview.dart';
-import 'video_playback_queue.dart';
-import 'video_player_view.dart';
+import 'media/image_preview.dart';
+import 'media/video_playback_queue.dart';
+import 'media/video_player_view.dart';
 
 class PinnedMessagesView extends StatefulWidget {
   const PinnedMessagesView({

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../chat/outgoing_attachment.dart';
+import '../chat/composer/outgoing_attachment.dart';
 
 /// The data Android provides for an ACTION_SEND or ACTION_SEND_MULTIPLE
 /// launch. Provider URIs stay native; Dart receives private cache paths only

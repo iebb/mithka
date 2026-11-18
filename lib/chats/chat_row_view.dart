@@ -10,8 +10,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../chat/custom_emoji.dart';
-import '../chat/group_remark_controller.dart';
+import '../chat/admin/group_remark_controller.dart';
+import '../chat/stickers/custom_emoji.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';

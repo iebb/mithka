@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import '../chat/chat_wallpaper.dart';
+import '../chat/appearance/chat_wallpaper.dart';
 import '../components/app_confirm_dialog.dart';
 import '../l10n/app_localizations.dart';
 import 'app_theme.dart';

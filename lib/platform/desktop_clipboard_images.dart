@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screen_capturer/screen_capturer.dart';
 
-import '../chat/outgoing_attachment.dart';
+import '../chat/composer/outgoing_attachment.dart';
 
 class DesktopClipboardImageReadResult {
   const DesktopClipboardImageReadResult({

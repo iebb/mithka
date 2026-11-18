@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../chat/video_playback_preferences.dart';
+import '../chat/media/video_playback_preferences.dart';
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';

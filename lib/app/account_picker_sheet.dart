@@ -19,11 +19,15 @@ import '../theme/theme_controller.dart';
 /// [slotsWithChat] are marked as having the chat. The chosen slot is returned
 /// through the future; a dismissed sheet resolves to null and the request is
 /// dropped only because the user declined to disambiguate it.
+///
+/// [forSwitching] uses the switch-account title and omits the deep-link prompt
+/// when opened as an ordinary account switcher.
 Future<int?> showAccountPickerDialog(
   BuildContext context, {
   required List<AccountSummary> accounts,
   int? activeSlot,
   Set<int> slotsWithChat = const {},
+  bool forSwitching = false,
 }) async {
   final c = context.colors;
   return showGeneralDialog<int>(
@@ -66,9 +70,10 @@ Future<int?> showAccountPickerDialog(
                           Semantics(
                             header: true,
                             child: Text(
-                              AppStringKeys.accountPickerTitle.l10n(
-                                dialogContext,
-                              ),
+                              (forSwitching
+                                      ? AppStringKeys.loginSwitchAccount
+                                      : AppStringKeys.accountPickerTitle)
+                                  .l10n(dialogContext),
                               textAlign: TextAlign.center,
                               style: AppTextStyle.title(
                                 c.textPrimary,
@@ -76,16 +81,18 @@ Future<int?> showAccountPickerDialog(
                               ),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            AppStringKeys.accountPickerMessage.l10n(
-                              dialogContext,
+                          if (!forSwitching) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              AppStringKeys.accountPickerMessage.l10n(
+                                dialogContext,
+                              ),
+                              textAlign: TextAlign.center,
+                              style: AppTextStyle.body(
+                                c.textSecondary,
+                              ).copyWith(height: 1.35),
                             ),
-                            textAlign: TextAlign.center,
-                            style: AppTextStyle.body(
-                              c.textSecondary,
-                            ).copyWith(height: 1.35),
-                          ),
+                          ],
                           const SizedBox(height: 14),
                           for (final account in accounts)
                             _AccountPickerRow(

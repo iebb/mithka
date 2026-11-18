@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-import '../chat/custom_emoji.dart';
+import '../chat/stickers/custom_emoji.dart';
 import '../settings/accent_color_picker_view.dart';
 import '../tdlib/json_helpers.dart';
 

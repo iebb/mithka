@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import '../chat/media_download_service.dart';
+import '../chat/media/media_download_service.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'download_storage.dart';

@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../app/primary_chat_launcher.dart';
-import '../chat/bot_button_presentation.dart';
 import '../chat/chat_picker_view.dart';
-import '../chat/file_detail_view.dart';
-import '../chat/link_handler.dart';
-import '../chat/telegram_rich_text.dart';
+import '../chat/links_search/link_handler.dart';
+import '../chat/media/file_detail_view.dart';
+import '../chat/messages/bot_button_presentation.dart';
+import '../chat/messages/telegram_rich_text.dart';
 import '../components/app_icons.dart';
 import '../components/document_file_icon.dart';
 import '../components/photo_avatar.dart';

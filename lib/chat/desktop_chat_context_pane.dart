@@ -15,7 +15,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
-import 'chat_info_view.dart';
+import 'admin/chat_info_view.dart';
 
 /// Read-only group context intended for the trailing pane in a wide chat.
 ///

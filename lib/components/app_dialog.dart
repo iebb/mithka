@@ -141,96 +141,158 @@ Future<String?> showAppTextEntryDialog(
   bool obscureText = false,
   bool allowEmpty = true,
   String? emptyError,
-}) async {
+}) {
   // Callers pass already-resolved copy; only the two defaults resolve here.
   final cancel = cancelLabel ?? AppStrings.t(AppStringKeys.confirmCancel);
-  final required =
+  final requiredMessage =
       emptyError ?? AppStrings.t(AppStringKeys.appDialogRequiredField);
-  final controller = TextEditingController(text: initial);
-  String? validationMessage;
-  final value = await showGeneralDialog<String>(
+  return showGeneralDialog<String>(
     context: context,
     barrierDismissible: true,
     barrierLabel: cancel,
     barrierColor: Colors.black.withValues(alpha: 0.52),
     transitionDuration: AppMotion.duration(context, AppMotion.responsive),
     transitionBuilder: AppMotion.dialogTransition,
-    pageBuilder: (dialogContext, _, _) => StatefulBuilder(
-      builder: (dialogContext, setDialogState) {
-        void submit() {
-          final text = controller.text.trim();
-          if (!allowEmpty && text.isEmpty) {
-            setDialogState(() => validationMessage = required);
-            return;
-          }
-          Navigator.of(dialogContext).pop(text);
-        }
-
-        return AppDialogSurface(
-          title: title,
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (description != null && description.isNotEmpty) ...[
-                Text(
-                  description,
-                  style: AppTextStyle.body(dialogContext.colors.textSecondary),
-                ),
-                const SizedBox(height: 14),
-              ],
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: dialogContext.colors.searchFill,
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: Border.all(color: dialogContext.colors.divider),
-                ),
-                child: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  maxLength: maxLength,
-                  minLines: obscureText ? 1 : minLines,
-                  maxLines: obscureText ? 1 : maxLines,
-                  obscureText: obscureText,
-                  keyboardType: keyboardType,
-                  textInputAction: maxLines == 1
-                      ? TextInputAction.done
-                      : TextInputAction.newline,
-                  onSubmitted: maxLines == 1 ? (_) => submit() : null,
-                  onChanged: validationMessage == null
-                      ? null
-                      : (_) => setDialogState(() => validationMessage = null),
-                  style: AppTextStyle.body(dialogContext.colors.dialogText),
-                  decoration: InputDecoration(
-                    labelText: label.isEmpty ? null : label,
-                    hintText: hint,
-                    errorText: validationMessage,
-                    hintStyle: AppTextStyle.body(
-                      dialogContext.colors.textTertiary,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            AppDialogAction(
-              label: cancel,
-              onTap: () => Navigator.of(dialogContext).pop(),
-            ),
-            AppDialogAction(label: actionLabel, primary: true, onTap: submit),
-          ],
-        );
-      },
+    pageBuilder: (dialogContext, _, _) => _AppTextEntryDialog(
+      title: title,
+      actionLabel: actionLabel,
+      cancelLabel: cancel,
+      hint: hint,
+      label: label,
+      description: description,
+      initial: initial,
+      maxLength: maxLength,
+      minLines: minLines,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      allowEmpty: allowEmpty,
+      requiredMessage: requiredMessage,
     ),
   );
-  controller.dispose();
-  return value;
+}
+
+class _AppTextEntryDialog extends StatefulWidget {
+  const _AppTextEntryDialog({
+    required this.title,
+    required this.actionLabel,
+    required this.cancelLabel,
+    required this.hint,
+    required this.label,
+    required this.description,
+    required this.initial,
+    required this.maxLength,
+    required this.minLines,
+    required this.maxLines,
+    required this.keyboardType,
+    required this.obscureText,
+    required this.allowEmpty,
+    required this.requiredMessage,
+  });
+
+  final String title;
+  final String actionLabel;
+  final String cancelLabel;
+  final String hint;
+  final String label;
+  final String? description;
+  final String initial;
+  final int? maxLength;
+  final int minLines;
+  final int maxLines;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+  final bool allowEmpty;
+  final String requiredMessage;
+
+  @override
+  State<_AppTextEntryDialog> createState() => _AppTextEntryDialogState();
+}
+
+class _AppTextEntryDialogState extends State<_AppTextEntryDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+  String? _validationMessage;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    if (!widget.allowEmpty && text.isEmpty) {
+      setState(() => _validationMessage = widget.requiredMessage);
+      return;
+    }
+    Navigator.of(context).pop(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final description = widget.description;
+    return AppDialogSurface(
+      title: widget.title,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (description != null && description.isNotEmpty) ...[
+            Text(
+              description,
+              style: AppTextStyle.body(context.colors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+          ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 2),
+            decoration: BoxDecoration(
+              color: context.colors.searchFill,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(color: context.colors.divider),
+            ),
+            child: TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLength: widget.maxLength,
+              minLines: widget.obscureText ? 1 : widget.minLines,
+              maxLines: widget.obscureText ? 1 : widget.maxLines,
+              obscureText: widget.obscureText,
+              keyboardType: widget.keyboardType,
+              textInputAction: widget.maxLines == 1
+                  ? TextInputAction.done
+                  : TextInputAction.newline,
+              onSubmitted: widget.maxLines == 1 ? (_) => _submit() : null,
+              onChanged: _validationMessage == null
+                  ? null
+                  : (_) => setState(() => _validationMessage = null),
+              style: AppTextStyle.body(context.colors.dialogText),
+              decoration: InputDecoration(
+                labelText: widget.label.isEmpty ? null : widget.label,
+                hintText: widget.hint,
+                errorText: _validationMessage,
+                hintStyle: AppTextStyle.body(context.colors.textTertiary),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        AppDialogAction(
+          label: widget.cancelLabel,
+          onTap: () => Navigator.of(context).pop(),
+        ),
+        AppDialogAction(
+          label: widget.actionLabel,
+          primary: true,
+          onTap: _submit,
+        ),
+      ],
+    );
+  }
 }

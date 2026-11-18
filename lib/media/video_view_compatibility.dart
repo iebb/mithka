@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
-import '../chat/video_playback_preferences.dart';
+import '../chat/media/video_playback_preferences.dart';
 
 VideoViewType _preferredVideoViewType = VideoViewType.textureView;
 
