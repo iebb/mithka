@@ -310,6 +310,7 @@
     <string name="appIconFishing">釣り</string>
     <string name="appIconFootball">サッカー</string>
     <string name="appIconFreeCaption">いつでも無料で選べます。</string>
+    <string name="appIconFirstChangeNote">アイコンを初めて変更すると、アプリが一度終了して再起動します。</string>
     <string name="appIconFreeHeading">標準アイコン</string>
     <string name="appIconFreeToday">今日は無料</string>
     <string name="appIconGamer">ゲーマー</string>
@@ -1591,6 +1592,8 @@
     <string name="emojiCategorySymbols">記号</string>
     <string name="emojiCategoryTravelAndPlaces">旅行と場所</string>
     <string name="emojiFontCatalogSystemDefault">システム標準</string>
+    <string name="emojiFontDownloaded">ダウンロード済み</string>
+    <string name="emojiFontNotDownloaded">未ダウンロード</string>
     <string name="emojiPanelPreview">絵文字プレビュー</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">うれし泣きの顔</string>
     <string name="emojiRecentsSection">最近使用</string>

@@ -893,6 +893,7 @@ class AppIconController extends ChangeNotifier {
   AppIconVariant _variant = AppIconVariant.letterMNeutral;
   bool _supported = false;
   bool _loading = false;
+  bool _everChoseExplicitly = false;
 
   /// Compatibility getter only. UI selected traits MUST use isCurrent;
   /// currentVariant is null when the bridge/preference supplies an unknown ID.
@@ -930,6 +931,12 @@ class AppIconController extends ChangeNotifier {
   bool get supported => _supported;
   bool get loading => _loading;
 
+  /// True until the user's first explicit icon choice lands. Android closes
+  /// the app exactly once — when the manifest-enabled launcher alias is first
+  /// disabled at runtime; the picker shows the notice below the standard
+  /// choices until then.
+  bool get firstChangePending => supported && !_everChoseExplicitly;
+
   Future<void> initialize() async {
     final saved = _prefs.getString(_selectedKey);
     // MithkaX ships the neutral letter mark as its default identity; the
@@ -947,6 +954,14 @@ class AppIconController extends ChangeNotifier {
       }
       // Startup is read-only for known AND unknown identities. Native-current
       // precedence is in memory; only an explicit successful choice writes prefs.
+      // A saved explicit choice (or a native current that is not the shipped
+      // default) means the manifest-enabled alias was already disabled once, so
+      // the one-time close on first change is behind us.
+      _everChoseExplicitly =
+          saved != null ||
+          (current != null &&
+              current.isNotEmpty &&
+              current != 'letter_m_neutral');
     } catch (_) {
       _supported = false;
     }
@@ -973,6 +988,7 @@ class AppIconController extends ChangeNotifier {
       await _channel.invokeMethod<void>('setIcon', {'name': next.key});
       _variant = next;
       _retainedUnknownState = null;
+      _everChoseExplicitly = true;
       return await _prefs.setString(_selectedKey, next.key);
     } catch (_) {
       // A rejected native change does not persist or optimistically select it.

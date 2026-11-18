@@ -356,7 +356,10 @@ class AppIconSettingsView extends StatefulWidget {
 
 class _AppIconSettingsViewState extends State<AppIconSettingsView>
     with WidgetsBindingObserver {
-  bool _selecting = false;
+  // The key of the tile whose switch is in flight; null when idle. Null means
+  // every tile is enabled; a key disables all tiles (one switch at a time) and
+  // paints the spinner on exactly that tile.
+  String? _switchingKey;
   bool _changeFailed = false;
 
   @override
@@ -381,7 +384,7 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
   }
 
   Future<void> _select(AppIconVariant icon) async {
-    if (_selecting) return;
+    if (_switchingKey != null) return;
     final controller = context.read<AppIconController>();
     if (!controller.supported || controller.loading) return;
     // Retaining the actual applied icon is never a purchase or native change,
@@ -389,7 +392,7 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
     // controller's unchanged entitlement-first verification below.
     if (controller.isCurrent(icon)) return;
     setState(() {
-      _selecting = true;
+      _switchingKey = icon.key;
       _changeFailed = false;
     });
     try {
@@ -400,7 +403,7 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
         showToast(context, AppStringKeys.appIconChangeFailed);
       }
     } finally {
-      if (mounted) setState(() => _selecting = false);
+      if (mounted) setState(() => _switchingKey = null);
     }
   }
 
@@ -476,7 +479,8 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
                         enabled:
                             controller.supported &&
                             !controller.loading &&
-                            !_selecting,
+                            _switchingKey == null,
+                        switching: _switchingKey == icons[start + column].key,
                         horizontal: columns == 1,
                         onTap: () => unawaited(_select(icons[start + column])),
                       ),
@@ -513,7 +517,9 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
                     ? 2
                     : 3;
                 final enabled =
-                    controller.supported && !controller.loading && !_selecting;
+                    controller.supported &&
+                    !controller.loading &&
+                    _switchingKey == null;
                 return ListView(
                   key: const ValueKey('app-icon-scroll'),
                   primary: false,
@@ -551,6 +557,21 @@ class _AppIconSettingsViewState extends State<AppIconSettingsView>
                       columns,
                       null,
                     ),
+                    // Android closes the app exactly once — when the shipped
+                    // (manifest-enabled) launcher alias is disabled by the
+                    // user's first explicit choice. Every later switch runs
+                    // through manifest-disabled aliases and stays alive.
+                    // Warn once, before that first switch, not after.
+                    // iOS/macOS never close the app for an icon change.
+                    if (controller.firstChangePending &&
+                        !kIsWeb &&
+                        defaultTargetPlatform == TargetPlatform.android) ...[
+                      const SizedBox(height: 8),
+                      const SettingsNote(
+                        key: ValueKey('app-icon-first-change-note'),
+                        text: AppStringKeys.appIconFirstChangeNote,
+                      ),
+                    ],
                     if (controller.supported &&
                         controller.supporterAvailable &&
                         icons.any((icon) => icon.requiresSupporter)) ...[
@@ -879,6 +900,7 @@ class _AppIconArt extends StatelessWidget {
     required this.variant,
     required this.selected,
     required this.locked,
+    this.switching = false,
     this.badgeBorder,
     this.keyPrefix = 'icon',
   });
@@ -886,6 +908,9 @@ class _AppIconArt extends StatelessWidget {
   final AppIconVariant variant;
   final bool selected;
   final bool locked;
+  // The switch on this tile is in flight: its badge slot shows a spinner
+  // instead of the check/lock glyph, same pattern as the emoji-font rows.
+  final bool switching;
   final Color? badgeBorder;
   final String keyPrefix;
 
@@ -932,20 +957,22 @@ class _AppIconArt extends StatelessWidget {
               ),
             ),
           ),
-          if (selected || locked)
+          if (selected || locked || switching)
             PositionedDirectional(
               end: 0,
               bottom: 0,
               child: Container(
                 key: ValueKey(
-                  selected
+                  switching
+                      ? '$keyPrefix-switching-${variant.key}'
+                      : selected
                       ? '$keyPrefix-selected-${variant.key}'
                       : '$keyPrefix-locked-${variant.key}',
                 ),
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: selected
+                  color: selected || switching
                       ? AppTheme.brand
                       : dark
                       ? const Color(0xFFEDEDED)
@@ -957,13 +984,19 @@ class _AppIconArt extends StatelessWidget {
                   ),
                 ),
                 alignment: Alignment.center,
-                child: AppIcon(
-                  selected ? HeroAppIcons.check : HeroAppIcons.lock,
-                  size: 13,
-                  color: selected || !dark
-                      ? Colors.white
-                      : const Color(0xFF1A1A1A),
-                ),
+                child: switching
+                    ? const SizedBox(
+                        width: 13,
+                        height: 13,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : AppIcon(
+                        selected ? HeroAppIcons.check : HeroAppIcons.lock,
+                        size: 13,
+                        color: selected || !dark
+                            ? Colors.white
+                            : const Color(0xFF1A1A1A),
+                      ),
               ),
             ),
         ],
@@ -1155,6 +1188,7 @@ class _AppIconVariantTile extends StatelessWidget {
     required this.enabled,
     required this.horizontal,
     required this.onTap,
+    this.switching = false,
   });
 
   final AppIconVariant variant;
@@ -1165,6 +1199,9 @@ class _AppIconVariantTile extends StatelessWidget {
   final bool enabled;
   final bool horizontal;
   final VoidCallback onTap;
+  // The switch on this tile is in flight: its badge slot shows a spinner
+  // instead of the check/lock glyph, same pattern as the emoji-font rows.
+  final bool switching;
 
   @override
   Widget build(BuildContext context) {
@@ -1182,6 +1219,7 @@ class _AppIconVariantTile extends StatelessWidget {
       variant: variant,
       selected: selected,
       locked: locked,
+      switching: switching,
     );
     // Final copy 699 / design 712: background label at every adaptive width,
     // full motif + background name in semantics; natural wrapping, never ellipsis.

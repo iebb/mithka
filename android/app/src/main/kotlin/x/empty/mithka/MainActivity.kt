@@ -254,7 +254,28 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isSupported" -> result.success(true)
-                    "currentIcon" -> result.success(currentLauncherIcon())
+                    // Up to 61 serialized PackageManager binder reads; on the
+                    // cold start right after the first icon switch these land
+                    // while PackageManager is still churning through the 60
+                    // component-state writes and their PACKAGE_CHANGED
+                    // broadcasts, which froze the loading page's main thread
+                    // until ANR (crash-once-then-fine). Off the main thread,
+                    // the loading page keeps painting and the Dart future just
+                    // resolves a few ms later.
+                    "currentIcon" -> Thread {
+                        try {
+                            val current = currentLauncherIcon()
+                            runOnUiThread { result.success(current) }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.error(
+                                    "app_icon_failed",
+                                    e.localizedMessage,
+                                    null,
+                                )
+                            }
+                        }
+                    }.start()
                     "setIcon" -> {
                         val args = call.arguments as? Map<*, *>
                         val name = args?.get("name") as? String ?: "default"
@@ -312,14 +333,27 @@ class MainActivity : FlutterFragmentActivity() {
                             "stargazing",
                         )
                         fun applyIcon() {
-                            runOnUiThread {
+                            // All 61 component writes go through the package
+                            // manager's serialized write lock. Doing them on the
+                            // platform main thread freezes every frame while the
+                            // writes land — and, right after the first switch,
+                            // while PACKAGE_CHANGED broadcasts storm every
+                            // launcher. A background thread keeps the switch UI
+                            // (and its result callback) off that lock.
+                            Thread {
                                 try {
                                     setLauncherIcon(name)
-                                    result.success(null)
+                                    runOnUiThread { result.success(null) }
                                 } catch (e: Exception) {
-                                    result.error("app_icon_failed", e.localizedMessage, null)
+                                    runOnUiThread {
+                                        result.error(
+                                            "app_icon_failed",
+                                            e.localizedMessage,
+                                            null,
+                                        )
+                                    }
                                 }
-                            }
+                            }.start()
                         }
                         // Today's penguin is free without Play billing evidence and on
                         // every distribution. Compute the UTC day here at apply time,
@@ -919,7 +953,7 @@ class MainActivity : FlutterFragmentActivity() {
         "fishing" to "$packageName.MainActivityFishing",
         "pixel_neutral" to "$packageName.MainActivityPixelNeutral",
         "pixel_gradient" to "$packageName.MainActivityPixelGradient",
-        "letter_m_neutral" to "$packageName.MainActivityLetterMNeutral",
+        "letter_m_neutral" to "$packageName.MainActivityLetterMNeutralAlt",
         "letter_m_gradient" to "$packageName.MainActivityLetterMGradient",
         "skateboard" to "$packageName.MainActivitySkateboard",
         "surfboard" to "$packageName.MainActivitySurfboard",
@@ -959,19 +993,28 @@ class MainActivity : FlutterFragmentActivity() {
         "stargazing" to "$packageName.MainActivityStargazing",
     )
 
+    // The manifest-enabled alias MithkaX ships with (the neutral letter mark).
+    // It lives OUTSIDE launcherAliases(): after the first explicit choice it is
+    // always DISABLED, and re-selecting the neutral icon routes through the
+    // LetterMNeutralAlt clone instead (manifest-disabled, so leaving it again
+    // is a STATE_DEFAULT transition that does not force-close the task).
+    private val primordialNeutralAlias: ComponentName
+        get() = ComponentName(packageName, "$packageName.MainActivityLetterMNeutral")
+
     private fun currentLauncherIcon(): String {
         val aliases = launcherAliases()
-        // Choosing any icon explicitly disables the default alias, so one that
-        // is still in its manifest state means no icon was ever chosen. That is
-        // the common case, and without this check it costs one binder call per
-        // alias on the main thread during launch before falling through.
-        val defaultState = packageManager.getComponentEnabledSetting(
-            ComponentName(packageName, aliases.getValue("default")),
+        // The manifest ships exactly one enabled alias (the primordial neutral
+        // letter mark); it still being in its manifest state means no icon was
+        // ever chosen. That is the common case, and without this check it
+        // costs one binder call per alias during launch before falling
+        // through.
+        val primordialState = packageManager.getComponentEnabledSetting(
+            primordialNeutralAlias,
         )
-        if (defaultState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
-            defaultState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        if (primordialState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+            primordialState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
         ) {
-            return "default"
+            return "letter_m_neutral"
         }
         for ((key, className) in aliases) {
             val component = ComponentName(packageName, className)
@@ -999,12 +1042,30 @@ class MainActivity : FlutterFragmentActivity() {
             PackageManager.DONT_KILL_APP,
         )
 
+        // The manifest-enabled primordial neutral alias must be explicitly
+        // disabled whenever another alias (including the neutral clone) is
+        // the target — STATE_DEFAULT would resolve it back to ENABLED and
+        // put a second launcher icon on the home screen. This transition
+        // (ENABLED -> DISABLED at runtime) is the one and only switch that
+        // Android answers by closing the app: it happens exactly once, on
+        // the user's first icon choice away from the shipped default.
+        packageManager.setComponentEnabledSetting(
+            primordialNeutralAlias,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+
         for ((key, className) in aliases) {
             if (key == target) continue
             val component = ComponentName(packageName, className)
+            // Every alias in the map ships disabled in the manifest. Returning
+            // a non-target alias to STATE_DEFAULT resolves to the same disabled
+            // alias but keeps the runtime transition off the ENABLED ->
+            // DISABLED path Android uses to force-close the task, so switches
+            // after the first never visibly close the app.
             packageManager.setComponentEnabledSetting(
                 component,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
                 PackageManager.DONT_KILL_APP,
             )
         }

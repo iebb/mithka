@@ -310,6 +310,7 @@
     <string name="appIconFishing">Pesca</string>
     <string name="appIconFootball">Fútbol</string>
     <string name="appIconFreeCaption">Siempre disponibles gratis.</string>
+    <string name="appIconFirstChangeNote">La primera vez que cambies el icono de la app, esta se cerrará una vez y se reiniciará.</string>
     <string name="appIconFreeHeading">Iconos estándar</string>
     <string name="appIconFreeToday">Gratis hoy</string>
     <string name="appIconGamer">Videojugador</string>
@@ -1598,6 +1599,8 @@
     <string name="emojiCategorySymbols">Símbolos</string>
     <string name="emojiCategoryTravelAndPlaces">Viajes y lugares</string>
     <string name="emojiFontCatalogSystemDefault">Predeterminado del sistema</string>
+    <string name="emojiFontDownloaded">Descargada</string>
+    <string name="emojiFontNotDownloaded">No descargada</string>
     <string name="emojiPanelPreview">Vista previa del emoji</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">Cara llorando de risa</string>
     <string name="emojiRecentsSection">Usados recientemente</string>

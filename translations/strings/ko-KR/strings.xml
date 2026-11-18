@@ -310,6 +310,7 @@
     <string name="appIconFishing">낚시</string>
     <string name="appIconFootball">축구</string>
     <string name="appIconFreeCaption">언제든 무료로 선택할 수 있어요.</string>
+    <string name="appIconFirstChangeNote">앱 아이콘을 처음 변경하면 앱이 한 번 종료되고 다시 시작됩니다.</string>
     <string name="appIconFreeHeading">기본 아이콘</string>
     <string name="appIconFreeToday">오늘 무료</string>
     <string name="appIconGamer">게이머</string>
@@ -1591,6 +1592,8 @@
     <string name="emojiCategorySymbols">기호</string>
     <string name="emojiCategoryTravelAndPlaces">여행 및 장소</string>
     <string name="emojiFontCatalogSystemDefault">시스템 기본값</string>
+    <string name="emojiFontDownloaded">다운로드됨</string>
+    <string name="emojiFontNotDownloaded">다운로드 안 됨</string>
     <string name="emojiPanelPreview">이모지 미리보기</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">기쁨의 눈물 얼굴</string>
     <string name="emojiRecentsSection">최근 사용</string>

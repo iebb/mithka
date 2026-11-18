@@ -310,6 +310,7 @@
     <string name="appIconFishing">釣魚</string>
     <string name="appIconFootball">足球</string>
     <string name="appIconFreeCaption">隨時免費選擇。</string>
+    <string name="appIconFirstChangeNote">首次更換應用程式圖示時，應用程式會關閉一次並重新啟動。</string>
     <string name="appIconFreeHeading">標準圖示</string>
     <string name="appIconFreeToday">今日免費</string>
     <string name="appIconGamer">玩家</string>
@@ -1591,6 +1592,8 @@
     <string name="emojiCategorySymbols">符號</string>
     <string name="emojiCategoryTravelAndPlaces">旅行與地點</string>
     <string name="emojiFontCatalogSystemDefault">系統預設</string>
+    <string name="emojiFontDownloaded">已下載</string>
+    <string name="emojiFontNotDownloaded">未下載</string>
     <string name="emojiPanelPreview">表情符號預覽</string>
     <string name="emojiPreviewFaceWithTearsOfJoy">笑到流淚表情</string>
     <string name="emojiRecentsSection">最近使用</string>

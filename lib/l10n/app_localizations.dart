@@ -134,6 +134,7 @@ abstract final class AppStringKeys {
   static const appIconBackgroundPinkPurple = 'appIconBackgroundPinkPurple';
   static const appIconBackgroundTelegramBlue = 'appIconBackgroundTelegramBlue';
   static const appIconFreeCaption = 'appIconFreeCaption';
+  static const appIconFirstChangeNote = 'appIconFirstChangeNote';
   static const appIconFreeHeading = 'appIconFreeHeading';
   static const appIconFreeToday = 'appIconFreeToday';
   static const appIconLetterMNeutral = 'appIconLetterMNeutral';
@@ -1822,6 +1823,8 @@ abstract final class AppStringKeys {
   static const emojiCategorySymbols = 'emojiCategorySymbols';
   static const emojiCategoryTravelAndPlaces = 'emojiCategoryTravelAndPlaces';
   static const emojiFontCatalogSystemDefault = 'emojiFontCatalogSystemDefault';
+  static const emojiFontDownloaded = 'emojiFontDownloaded';
+  static const emojiFontNotDownloaded = 'emojiFontNotDownloaded';
   static const emojiPanelPreview = 'emojiPanelPreview';
   static const emojiPreviewFaceWithTearsOfJoy =
       'emojiPreviewFaceWithTearsOfJoy';

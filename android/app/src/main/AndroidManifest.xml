@@ -878,6 +878,27 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity-alias>
+        <!-- Same letter-m_neutral art, but shipped DISABLED like every other
+             alternative: re-selecting the shipped default then routes through
+             this clone, whose manifest state is disabled, so de-selecting it
+             later is a STATE_DEFAULT transition that Android does not treat
+             as "the launcher component went away" (which force-closes the
+             task). Only the very first switch away from the manifest-enabled
+             alias ever closes the app — the same trick Discord/Twitter use.
+             Never enable both letter-m aliases at once: two home-screen
+             icons would appear. -->
+        <activity-alias
+            android:name=".MainActivityLetterMNeutralAlt"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_letter_m_neutral"
+            android:label="Mithka X"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <activity-alias
             android:name=".MainActivityLetterMGradient"
             android:enabled="false"
