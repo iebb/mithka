@@ -15,7 +15,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/tdlib/json_helpers.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'emoji_channel_source.dart';
 
 class EmojiFontChoice {
   const EmojiFontChoice({
@@ -83,7 +86,33 @@ class EmojiFontManifestEntry {
     required this.updated,
     this.sha256,
     this.sizeBytes,
+    this.chatId,
+    this.channelMessageId,
   });
+
+  /// A pack served as a document in the @mithka_metadata channel. The url
+  /// stays empty — this entry downloads through TDLib, never HTTP.
+  const EmojiFontManifestEntry.channel({
+    required String key,
+    required String label,
+    required String license,
+    required int chatId,
+    required int messageId,
+    int? sizeBytes,
+  }) : this(
+         key: key,
+         label: label,
+         license: license,
+         kind: 'color',
+         url: '',
+         format: 'ttf',
+         coveragePct: 0,
+         emojiVersion: '',
+         updated: '',
+         sizeBytes: sizeBytes,
+         chatId: chatId,
+         channelMessageId: messageId,
+       );
 
   final String key;
   final String label;
@@ -103,9 +132,19 @@ class EmojiFontManifestEntry {
   /// picker before the pack is fetched.
   final int? sizeBytes;
 
+  /// @mithka_metadata chat id when this pack is served from the channel.
+  final int? chatId;
+
+  /// Message id of this pack's font document inside the channel.
+  final int? channelMessageId;
+
+  bool get isChannelServed => channelMessageId != null && channelMessageId! > 0;
+
   String get runtimeFamily => EmojiFontChoice.runtimeFamilyForKey(key);
 
   String get extension {
+    // Channel documents always arrive as .ttf binaries.
+    if (isChannelServed) return 'ttf';
     final path = Uri.tryParse(url)?.path ?? '';
     final name = path.split('/').last;
     final dot = name.lastIndexOf('.');
@@ -166,8 +205,22 @@ class EmojiFontCatalog {
 
   /// The MithkaX emoji font source. The manifest carries sha256 hashes for
   /// every font binary, so cached files are verified by content, not size.
+  /// Primary source is the @mithka_metadata Telegram channel (no external
+  /// host once signed in); this URL is the HTTP fallback for TDLib-less
+  /// environments (widget tests, demo builds).
   static const manifestUrl =
       'https://dl.mintabyss.eu.org/emojifonts/manifest.json';
+
+  /// Pluggable channel source; production shares one instance so the
+  /// channel chat id resolves once per process. Tests inject a fake.
+  @visibleForTesting
+  EmojiChannelSource? debugChannelSource;
+
+  final EmojiChannelSource _channelSource = EmojiChannelSource();
+
+  /// Last chat id the channel source resolved, for cache-rehydrated entries
+  /// whose serialized chat_id predates a process restart.
+  int? _channelLastChatId;
 
   final Set<String> _loadedFamilies = {};
   final Map<String, Future<String>> _inFlightFontLoads = {};
@@ -190,6 +243,36 @@ class EmojiFontCatalog {
       final cached = await _readManifest(cacheFile);
       if (cached.isNotEmpty) return cached;
     }
+
+    // Primary: the @mithka_metadata channel catalog via TDLib.
+    try {
+      final source = debugChannelSource ?? _channelSource;
+      final entries = await source.fetchCatalog();
+      if (entries != null && entries.isNotEmpty) {
+        _channelLastChatId = entries.first.chatId;
+        await cacheFile.parent.create(recursive: true);
+        await cacheFile.writeAsString(
+          jsonEncode({
+            'generated': DateTime.now().toIso8601String(),
+            'source': 'channel',
+            'fonts': [
+              for (final e in entries)
+                {
+                  'key': e.key,
+                  'label': e.label,
+                  'license': e.license,
+                  'kind': e.kind,
+                  'chat_id': e.chatId,
+                  'message_id': e.channelMessageId,
+                  'bytes': e.sizeBytes,
+                },
+            ],
+          }),
+          flush: true,
+        );
+        return entries;
+      }
+    } catch (_) {}
 
     try {
       final response = await http.get(Uri.parse(manifestUrl));
@@ -310,6 +393,19 @@ class EmojiFontCatalog {
 
   List<EmojiFontManifestEntry> _parseManifest(String body) {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
+    // The channel-source cache: entries carry the channel message id instead
+    // of an HTTP url.
+    if (decoded['source'] == 'channel') {
+      final fonts = decoded['fonts'] as List? ?? const [];
+      return [
+            for (final item in fonts)
+              if (item is Map) _tryParseChannelEntry(item),
+          ]
+          .whereType<EmojiFontManifestEntry>()
+          .where((entry) => entry.key != 'fluent')
+          .toList()
+        ..retainAfterFirstByKey();
+    }
     final fonts = decoded['fonts'] as List? ?? const [];
     return [
           for (final item in fonts)
@@ -322,6 +418,24 @@ class EmojiFontCatalog {
         .where((entry) => entry.key != 'fluent')
         .toList()
       ..retainAfterFirstByKey();
+  }
+
+  EmojiFontManifestEntry? _tryParseChannelEntry(Map<dynamic, dynamic> json) {
+    final key = (json['key'] as String?)?.trim() ?? '';
+    final label = (json['label'] as String?)?.trim() ?? '';
+    final chatId = jsonInt(json['chat_id']);
+    final messageId = jsonInt(json['message_id']);
+    if (key.isEmpty || label.isEmpty || messageId == null || messageId <= 0) {
+      return null;
+    }
+    return EmojiFontManifestEntry.channel(
+      key: key,
+      label: label,
+      license: (json['license'] as String?)?.trim() ?? '',
+      chatId: chatId ?? 0,
+      messageId: messageId,
+      sizeBytes: jsonInt(json['bytes']),
+    );
   }
 
   /// Test seam: run the same parse the manifest loader uses.
@@ -362,6 +476,25 @@ class EmojiFontCatalog {
   }
 
   Future<int> _downloadFontTo(EmojiFontManifestEntry entry, File file) async {
+    // Channel-served packs come through TDLib, not HTTP.
+    if (entry.isChannelServed) {
+      final chatId = entry.chatId ?? _channelLastChatId;
+      final messageId = entry.channelMessageId!;
+      if (chatId != null && chatId > 0) {
+        final bytes = await (debugChannelSource ?? _channelSource)
+            .downloadFont(
+              chatId: chatId,
+              messageId: messageId,
+              destPath: '${file.path}.tmp',
+            );
+        if (bytes != null && bytes > 0) {
+          if (await file.exists()) await file.delete();
+          await File('${file.path}.tmp').rename(file.path);
+          return bytes;
+        }
+      }
+      throw const FileSystemException('channel emoji font unavailable');
+    }
     final response = await http.get(Uri.parse(entry.url));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
