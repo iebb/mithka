@@ -3,8 +3,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chat/custom_emoji.dart';
+import 'package:mithka/components/vip_badge.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/moments/moments_view.dart';
+import 'package:mithka/profile/profile_header_background.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -70,6 +73,7 @@ void main() {
   late Directory supportDir;
   late List<Map<String, dynamic>> requests;
   late List<Map<String, dynamic>> history;
+  late Map<String, dynamic> me;
   var firstPageServed = false;
 
   setUpAll(() async {
@@ -106,7 +110,7 @@ void main() {
                   .toList(),
             };
           case 'getMe':
-            return {'@type': 'user', 'id': 42, 'first_name': 'Me'};
+            return me;
           case 'getChatMember':
             return {
               '@type': 'chatMember',
@@ -128,6 +132,7 @@ void main() {
 
   setUp(() {
     requests = [];
+    me = {'@type': 'user', 'id': 42, 'first_name': 'Me'};
     firstPageServed = false;
     history = [
       _text(1, 1000, 'Recent meals'),
@@ -198,6 +203,94 @@ void main() {
       await tester.pump(const Duration(seconds: 30));
     },
   );
+
+  testWidgets('Moments uses profile colors and keeps profile icons in sync', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final theme = ThemeController(await SharedPreferences.getInstance());
+    addTearDown(theme.dispose);
+    me = {
+      ...me,
+      'accent_color_id': 2,
+      'profile_accent_color_id': 19,
+      'profile_background_custom_emoji_id': '812',
+      'is_premium': true,
+      'emoji_status': {
+        '@type': 'emojiStatus',
+        'type': {
+          '@type': 'emojiStatusTypeCustomEmoji',
+          'custom_emoji_id': '813',
+        },
+      },
+    };
+    final client = TdClient.shared;
+    client.routeUpdateForTesting({
+      '@type': 'updateProfileAccentColors',
+      '@client_id': client.activeClientId,
+      'colors': [
+        {
+          'id': 19,
+          'light_theme_colors': {
+            'background_colors': [0xA34F74, 0x874060],
+          },
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          theme: ThemeData(extensions: [AppColors.light]),
+          locale: const Locale('en'),
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChannelMomentsView(),
+        ),
+      ),
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final header = tester.widget<ProfileHeaderBackground>(
+      find.byType(ProfileHeaderBackground),
+    );
+    expect(header.colors, [const Color(0xFFA34F74), const Color(0xFF874060)]);
+    expect(header.patternEmojiId, 812);
+    expect(find.byType(VipBadge), findsOneWidget);
+    expect(
+      tester.widget<StatusEmojiView>(find.byType(StatusEmojiView)).id,
+      813,
+    );
+    expect(
+      requests.map((request) => request['@type']),
+      isNot(contains('getCurrentState')),
+    );
+
+    // A profile edit updates the pattern and status without reopening Moments.
+    client.routeUpdateForTesting({
+      '@type': 'updateUser',
+      '@client_id': client.activeClientId,
+      'user': {
+        ...me,
+        'profile_background_custom_emoji_id': '814',
+        'emoji_status': null,
+      },
+    });
+    await tester.pump();
+    expect(
+      tester
+          .widget<ProfileHeaderBackground>(find.byType(ProfileHeaderBackground))
+          .patternEmojiId,
+      814,
+    );
+    expect(find.byType(StatusEmojiView), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 30));
+  });
 }
 
 /// Synthetic tdjson bindings: lets [TdClient.prepareForTesting] register a
