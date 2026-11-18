@@ -140,6 +140,63 @@ void main() {
     },
   );
 
+  test('a download that finishes mid-response keeps streaming', () async {
+    late _RelocatingBackend backend;
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      readChunkBytes: 16,
+      queryBuilder: (file) {
+        backend = _RelocatingBackend(partialFile: file, totalBytes: 64);
+        return backend.query;
+      },
+    );
+    try {
+      backend.holdRangesFrom(16);
+      final response = await fixture.get(range: 'bytes=0-');
+      final received = <int>[];
+      final body = response.forEach(received.addAll);
+      body.ignore();
+      await _waitFor(() => received.length == 16);
+
+      await backend.finishDownload();
+      backend.releaseRanges();
+
+      await body;
+      expect(
+        received,
+        fixture.bytes,
+        reason: 'the rest of the video is in the file TDLib moved',
+      );
+    } finally {
+      backend.releaseRanges();
+      await fixture.close();
+    }
+  });
+
+  test('a range requested after the download finished is served', () async {
+    late _RelocatingBackend backend;
+    final fixture = await _VideoServerFixture.create(
+      bytes: List<int>.generate(64, (index) => index),
+      totalBytes: 64,
+      readChunkBytes: 16,
+      queryBuilder: (file) {
+        backend = _RelocatingBackend(partialFile: file, totalBytes: 64);
+        return backend.query;
+      },
+    );
+    try {
+      // TDLib renames the file first and publishes the new path afterwards.
+      await backend.finishDownload(stalePathAnswers: 2);
+
+      final response = await fixture.get(range: 'bytes=16-47');
+      expect(response.statusCode, HttpStatus.partialContent);
+      expect(await _readBody(response), fixture.bytes.sublist(16, 48));
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test('closing during a bounded range prevents background restart', () async {
     late _ControlledRangeBackend backend;
     final fixture = await _VideoServerFixture.create(
@@ -495,6 +552,70 @@ final class _ControlledRangeBackend {
       'is_downloading_completed': false,
     },
   };
+}
+
+/// A fully downloaded file that TDLib moves the way it does when the last part
+/// lands: the partial file is renamed out of the temporary directory, and the
+/// file object starts reporting the new path.
+final class _RelocatingBackend {
+  _RelocatingBackend({required this.partialFile, required this.totalBytes})
+    : finishedFile = File('${partialFile.parent.path}/finished.mp4');
+
+  final File partialFile;
+  final File finishedFile;
+  final int totalBytes;
+  var _finished = false;
+  var _stalePathAnswers = 0;
+  int? _heldFrom;
+  final _release = Completer<void>();
+
+  /// Keeps ranges starting at or after [offset] unanswered until released.
+  void holdRangesFrom(int offset) => _heldFrom = offset;
+
+  void releaseRanges() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  Future<void> finishDownload({int stalePathAnswers = 0}) async {
+    await partialFile.rename(finishedFile.path);
+    _finished = true;
+    _stalePathAnswers = stalePathAnswers;
+  }
+
+  Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
+    switch (request['@type']) {
+      case 'getFile':
+      case 'downloadFile':
+        return _fileInfo();
+      case 'getFileDownloadedPrefixSize':
+        final offset = request['offset'] as int? ?? 0;
+        final heldFrom = _heldFrom;
+        if (heldFrom != null && offset >= heldFrom) await _release.future;
+        return {
+          '@type': 'fileDownloadedPrefixSize',
+          'size': (totalBytes - offset).clamp(0, totalBytes),
+        };
+      default:
+        throw UnsupportedError('Unexpected TDLib query ${request['@type']}');
+    }
+  }
+
+  Map<String, dynamic> _fileInfo() {
+    final published = _finished && _stalePathAnswers-- <= 0;
+    return {
+      '@type': 'file',
+      'id': 42,
+      'size': totalBytes,
+      'expected_size': totalBytes,
+      'local': {
+        '@type': 'localFile',
+        'path': published ? finishedFile.path : partialFile.path,
+        'download_offset': 0,
+        'downloaded_prefix_size': totalBytes,
+        'is_downloading_completed': published,
+      },
+    };
+  }
 }
 
 final class _DelayedStartBackend {
