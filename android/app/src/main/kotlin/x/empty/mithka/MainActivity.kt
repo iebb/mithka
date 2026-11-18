@@ -75,6 +75,42 @@ class MainActivity : FlutterFragmentActivity() {
         super.onCreate(savedInstanceState)
         requestHighestRefreshRate()
         pendingSharePayload = parseIncomingShareIntent(intent)
+        // Telegram-family self-heal (exteraless LauncherIconController
+        // .tryFixLauncherIconIfNeeded): an app update that removes the alias
+        // the user had chosen can leave EVERY alias disabled — the launcher
+        // then resolves the launch intent against a dead component and the
+        // app vanishes from the home screen. Repair on a background thread
+        // (up to 62 serialized PackageManager reads must never ride the
+        // launch frames).
+        Thread { ensureLauncherAliasEnabled() }.start()
+    }
+
+    private fun ensureLauncherAliasEnabled() {
+        // The common case is answered by ONE binder read: the primordial
+        // manifest-enabled alias still in (or explicitly) its DEFAULT state
+        // resolves as live — either the user never chose an icon, or the
+        // choice was made through this build's own switcher.
+        val primordialState = packageManager.getComponentEnabledSetting(
+            primordialNeutralAlias,
+        )
+        if (primordialState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+            primordialState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        ) {
+            return
+        }
+        for ((_, className) in launcherAliases()) {
+            val state = packageManager.getComponentEnabledSetting(
+                ComponentName(packageName, className),
+            )
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return
+        }
+        // Nothing is live: re-root the launcher at the shipped default so this
+        // launch already resolves, and the home screen gets its icon back.
+        packageManager.setComponentEnabledSetting(
+            primordialNeutralAlias,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP,
+        )
     }
 
     /**

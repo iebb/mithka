@@ -163,6 +163,33 @@ void main() {
       );
     });
 
+    test('cold start self-heals when every alias is dead', () {
+      // An update that removed the chosen alias can disable everything; the
+      // app then vanishes from the launcher. exteraless runs the same repair.
+      expect(
+        kt.contains('private fun ensureLauncherAliasEnabled()'),
+        isTrue,
+        reason: 'the self-heal must exist',
+      );
+      expect(
+        kt.contains('Thread { ensureLauncherAliasEnabled() }.start()'),
+        isTrue,
+        reason: 'the repair makes up to 62 PMS reads; on the main thread that '
+            'is the same launch freeze this round removed',
+      );
+      // The repair must re-root at the shipped default, which resolves live
+      // from its manifest state.
+      expect(
+        kt.contains(
+          'packageManager.setComponentEnabledSetting(\n' +
+          '            primordialNeutralAlias,\n' +
+          '            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,',
+        ),
+        isTrue,
+        reason: 'repair targets the primordial alias',
+      );
+    });
+
     test('non-target aliases return to STATE_DEFAULT, not DISABLED', () {
       expect(
         kt.contains(
