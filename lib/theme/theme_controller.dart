@@ -1037,7 +1037,7 @@ class ThemeController extends ChangeNotifier {
         (emojiFontKey == EmojiFontChoice.system.key &&
             !_prefs.containsKey(_useSystemEmojiKey) &&
             (_prefs.getInt(_emojiFontSchemaKey) ?? 0) < 1)) {
-      emojiFontKey = EmojiFontCatalog.appleEntry.key;
+      emojiFontKey = _appleEmojiFontKey;
     }
     if (emojiFontKey != storedEmojiFontKey?.trim()) {
       unawaited(_prefs.setString(_emojiFontChoiceKey, emojiFontKey));
@@ -1047,8 +1047,8 @@ class ThemeController extends ChangeNotifier {
       key: emojiFontKey,
       label: emojiFontKey == EmojiFontChoice.system.key
           ? EmojiFontChoice.system.label
-          : emojiFontKey == EmojiFontCatalog.appleEntry.key
-          ? EmojiFontCatalog.appleEntry.label
+          : emojiFontKey == _appleEmojiFontKey
+          ? _appleEmojiFontLabel
           : _prefs.getString(_emojiFontLabelKey) ?? emojiFontKey,
       license: _prefs.getString(_emojiFontLicenseKey),
       fontFamily: _emojiFontCatalog.loadedFamilyForKey(emojiFontKey),
@@ -2530,7 +2530,7 @@ class ThemeController extends ChangeNotifier {
     if (key == EmojiFontChoice.system.key &&
         (!prefs.containsKey(_emojiFontChoiceKey) ||
             !prefs.containsKey(_useSystemEmojiKey))) {
-      key = EmojiFontCatalog.appleEntry.key;
+      key = _appleEmojiFontKey;
     }
     if (key == EmojiFontChoice.system.key) return;
     try {
@@ -2544,6 +2544,13 @@ class ThemeController extends ChangeNotifier {
   }
 
   /// Bumped when stored emoji font keys need another one-shot migration.
+  /// The Apple Color Emoji row's identity. The pack itself now comes from
+  /// the MithkaX emoji font source's manifest like every other set — the
+  /// entry is pinned here only so the default selection and the pre-catalog
+  /// migrations can name it without a manifest fetch.
+  static const _appleEmojiFontKey = 'apple';
+  static const _appleEmojiFontLabel = 'Apple Color Emoji';
+
   static const _emojiFontSchemaVersion = 1;
 
   /// Names of the pre-catalog `EmojiFontChoice` enum mapped onto catalog keys.

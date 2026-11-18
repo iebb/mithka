@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/theme/emoji_font_catalog.dart';
 
-/// The Apple font downloads on first use instead of shipping in the APK.
-/// This suite drives the full cache lifecycle through the production code
-/// paths (no FontLoader involvement — families only register on a real
-/// engine, so every assertion reads the on-disk cache).
+/// The MithkaX emoji font source round: the manifest comes from
+/// dl.mintabyss.eu.org, entries carry sha256 + bytes, cached files verify by
+/// content hash, and downloaded packs can be deleted from the cache.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -22,6 +21,9 @@ void main() {
   late List<Uri> requested;
   late EmojiFontCatalog catalog;
 
+  // A tiny valid-ish font body: contents only matter for the hash check.
+  final appleBytes = List<int>.filled(1024, 7);
+
   Future<void> serveFonts(Map<String, List<int>> fonts) async {
     messenger.setMockMethodCallHandler(paths, (call) async => temporary.path);
     HttpOverrides.global = _FontHttpOverrides(fonts, requested.add);
@@ -32,11 +34,8 @@ void main() {
     requested = [];
     catalog = EmojiFontCatalog.forTesting();
     await serveFonts({
-      'https://raw.githubusercontent.com/GORAlexComp/AppleColorEmojiFont'
-          '/main/fonts/AppleColorEmoji.ttf': List.filled(
-        1024,
-        7,
-      ),
+      'https://dl.mintabyss.eu.org/emojifonts/apple.ttf': appleBytes,
+      'https://dl.mintabyss.eu.org/emojifonts/twemoji.ttf': List.filled(512, 3),
     });
     cacheDir = Directory(
       '${temporary.path}/${EmojiFontCatalog.cacheDirectoryName}',
@@ -46,46 +45,154 @@ void main() {
   tearDown(() async {
     messenger.setMockMethodCallHandler(paths, null);
     HttpOverrides.global = null;
-    debugDefaultTargetPlatformOverride = null;
     try {
       await temporary.delete(recursive: true);
     } catch (_) {}
   });
 
-  test('loadAppleFont without download reports a missing cache file', () async {
-    final family = await catalog.loadAppleFont();
-    expect(family, isNull);
-    expect(requested, isEmpty);
-  });
+  List<EmojiFontManifestEntry> parse(String body) =>
+      catalog.parseManifestForTesting(body);
 
-  test('first use downloads the Apple font into the shared cache', () async {
-    await catalog.ensureFontDownloaded(EmojiFontCatalog.appleEntry);
-
-    final file = File('${cacheDir.path}/apple.ttf');
-    expect(await file.exists(), isTrue);
-    expect(await file.length(), 1024);
-    expect(requested, hasLength(1));
-    expect(requested.single.toString(), contains('AppleColorEmoji.ttf'));
-    // The size index records the download for truncation checks.
-    final index = File('${cacheDir.path}/sizes.json');
-    expect(await index.exists(), isTrue);
-  });
-
-  test('a cached font is not downloaded again', () async {
-    await catalog.ensureFontDownloaded(EmojiFontCatalog.appleEntry);
-    await catalog.ensureFontDownloaded(EmojiFontCatalog.appleEntry);
-    expect(requested, hasLength(1));
-  });
-
-  test('a truncated cache file is re-downloaded', () async {
-    await catalog.ensureFontDownloaded(EmojiFontCatalog.appleEntry);
-    final file = File('${cacheDir.path}/apple.ttf');
-    await file.writeAsBytes(List.filled(10, 7), flush: true);
-    await catalog.ensureFontDownloaded(EmojiFontCatalog.appleEntry);
-    expect(requested, hasLength(2));
-    expect(await file.length(), 1024);
-  });
+  const manifestBody = '''
+{
+  "generated": "2026-11-18",
+  "fonts": [
+    {
+      "key": "apple",
+      "label": "Apple Color Emoji",
+      "license": "Apple",
+      "kind": "color",
+      "format": "ttf",
+      "url": "https://dl.mintabyss.eu.org/emojifonts/apple.ttf",
+      "bytes": 1024
+    },
+    {
+      "key": "twemoji",
+      "label": "Twemoji",
+      "license": "CC-BY-4.0",
+      "kind": "color",
+      "format": "ttf",
+      "url": "https://dl.mintabyss.eu.org/emojifonts/twemoji.ttf"
+    }
+  ]
 }
+''';
+
+  test('the MithkaX manifest parses with url/format/sha256/bytes', () {
+    final entries = parse(manifestBody);
+    expect(entries, hasLength(2));
+    final apple = entryFor(entries, 'apple');
+    expect(apple.url, 'https://dl.mintabyss.eu.org/emojifonts/apple.ttf');
+    expect(apple.format, 'ttf');
+    expect(apple.sizeBytes, 1024);
+    expect(apple.extension, 'ttf');
+  });
+
+  test('the legacy iebb formats map still resolves', () {
+    const body = '''
+{
+  "fonts": [
+    {
+      "key": "twemoji",
+      "label": "Twemoji (jdecked)",
+      "formats": {
+        "sbix": "https://example.com/twemoji.ttf",
+        "colrv0": "https://example.com/twemoji-colrv0.ttf"
+      }
+    }
+  ]
+}
+''';
+    final entries = parse(body);
+    expect(entries.single.url, 'https://example.com/twemoji.ttf');
+    expect(entries.single.format, 'sbix');
+  });
+
+  test('fluent rows are dropped from any manifest', () {
+    const body = '''
+{
+  "fonts": [
+    {"key": "fluent", "label": "Microsoft Fluent 3D", "url": "https://example.com/fluent.ttc"},
+    {"key": "twemoji", "label": "Twemoji", "url": "https://example.com/twemoji.ttf"}
+  ]
+}
+''';
+    final entries = parse(body);
+    expect(entries.map((e) => e.key), ['twemoji']);
+  });
+
+  test(
+    'a hash-bearing entry verifies by sha256 and redownloads on mismatch',
+    () async {
+      final digest = crypto.sha256.convert(appleBytes).toString();
+      final entries = parse(manifestBody);
+      final raw = entryFor(entries, 'apple');
+      final apple = EmojiFontManifestEntry(
+        key: raw.key,
+        label: raw.label,
+        license: raw.license,
+        kind: raw.kind,
+        url: raw.url,
+        format: raw.format,
+        coveragePct: raw.coveragePct,
+        emojiVersion: raw.emojiVersion,
+        updated: raw.updated,
+        sha256: digest,
+      );
+
+      await catalog.ensureFontDownloaded(apple);
+      expect(requested, hasLength(1));
+
+      // Corrupt the cached file: the hash no longer matches, so the next
+      // ensure downloads again.
+      final file = File('${cacheDir.path}/apple.ttf');
+      await file.writeAsBytes(List.filled(16, 1), flush: true);
+      await catalog.ensureFontDownloaded(apple);
+      expect(requested, hasLength(2));
+      expect(await file.length(), 1024);
+    },
+  );
+
+  test('a hash-less entry falls back to the size index', () async {
+    final entries = parse(manifestBody);
+    final twemoji = entryFor(entries, 'twemoji');
+    expect(twemoji.sha256, isNull);
+
+    await catalog.ensureFontDownloaded(twemoji);
+    final file = File('${cacheDir.path}/twemoji.ttf');
+    expect(await file.length(), 512);
+
+    await file.writeAsBytes(List.filled(8, 3), flush: true);
+    await catalog.ensureFontDownloaded(twemoji);
+    expect(requested.last.toString(), contains('twemoji.ttf'));
+    expect(await file.length(), 512);
+  });
+
+  test(
+    'deleteCachedFont removes the file and reports size correctly',
+    () async {
+      final entries = parse(manifestBody);
+      final apple = entryFor(entries, 'apple');
+
+      expect(await catalog.cachedFontSize('apple'), isNull);
+      await catalog.ensureFontDownloaded(apple);
+      expect(await catalog.cachedFontSize('apple'), 1024);
+
+      expect(await catalog.deleteCachedFont('apple'), isTrue);
+      expect(await catalog.cachedFontSize('apple'), isNull);
+      expect(await File('${cacheDir.path}/apple.ttf').exists(), isFalse);
+      // Second delete is a safe no-op.
+      expect(await catalog.deleteCachedFont('apple'), isFalse);
+      // System is never deletable.
+      expect(await catalog.deleteCachedFont('system'), isFalse);
+    },
+  );
+}
+
+EmojiFontManifestEntry entryFor(
+  List<EmojiFontManifestEntry> entries,
+  String key,
+) => entries.firstWhere((e) => e.key == key);
 
 class _FontHttpOverrides extends HttpOverrides {
   _FontHttpOverrides(this._fonts, this._onRequest);

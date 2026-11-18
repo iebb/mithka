@@ -1,13 +1,16 @@
 //
 //  emoji_font_catalog.dart
 //
-//  Runtime emoji font catalog backed by iebb/emojifonts' release manifest.
-//  Font binaries are downloaded on demand and loaded with Flutter's FontLoader.
+//  Runtime emoji font catalog backed by the MithkaX emoji font source
+//  (dl.mintabyss.eu.org/emojifonts). Font binaries are downloaded on demand,
+//  integrity-checked against the manifest's sha256, and loaded with Flutter's
+//  FontLoader.
 //
 
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -78,6 +81,8 @@ class EmojiFontManifestEntry {
     required this.coveragePct,
     required this.emojiVersion,
     required this.updated,
+    this.sha256,
+    this.sizeBytes,
   });
 
   final String key;
@@ -90,6 +95,14 @@ class EmojiFontManifestEntry {
   final String emojiVersion;
   final String updated;
 
+  /// Content hash from the manifest. When present, a cached file is only
+  /// trusted when its sha256 matches — stronger than the legacy size check.
+  final String? sha256;
+
+  /// Byte size from the manifest, used to show the download size in the
+  /// picker before the pack is fetched.
+  final int? sizeBytes;
+
   String get runtimeFamily => EmojiFontChoice.runtimeFamilyForKey(key);
 
   String get extension {
@@ -100,36 +113,40 @@ class EmojiFontManifestEntry {
   }
 
   factory EmojiFontManifestEntry.fromJson(Map<String, dynamic> json) {
-    final formats = (json['formats'] as Map?)?.cast<String, dynamic>() ?? {};
-    final selected = _selectFormat(formats);
-    if (selected == null) {
+    // Both manifest generations are accepted: the MithkaX source lists a
+    // flat `url` + `format` (preferred), while the legacy shapes —
+    // iebb/emojifonts' `formats: {sbix|colrv0|svginot|glyf: url}` map and
+    // a top-level `ttc` url — still resolve.
+    var url = (json['url'] as String?)?.trim() ?? '';
+    var format = (json['format'] as String?)?.trim() ?? '';
+    if (url.isEmpty) {
+      final formats = (json['formats'] as Map?)?.cast<String, dynamic>() ?? {};
+      const preferredFormats = ['sbix', 'glyf', 'colrv0', 'svginot', 'ttc'];
+      for (final candidate in preferredFormats) {
+        final value = formats[candidate];
+        if (value is String && value.startsWith('https://')) {
+          url = value;
+          format = candidate;
+          break;
+        }
+      }
+    }
+    if (url.isEmpty || !url.startsWith('https://')) {
       throw const FormatException('emoji font has no supported format');
     }
-    final MapEntry(:key, :value) = selected;
     return EmojiFontManifestEntry(
       key: (json['key'] as String?)?.trim() ?? '',
       label: (json['label'] as String?)?.trim() ?? '',
       license: (json['license'] as String?)?.trim() ?? '',
       kind: (json['kind'] as String?)?.trim() ?? '',
-      url: value.toString(),
-      format: key,
+      url: url,
+      format: format,
       coveragePct: (json['coverage_pct'] as num?)?.round() ?? 0,
       emojiVersion: (json['emoji_version'] as String?)?.trim() ?? '',
       updated: (json['updated'] as String?)?.trim() ?? '',
+      sha256: (json['sha256'] as String?)?.trim(),
+      sizeBytes: (json['bytes'] as num?)?.toInt(),
     );
-  }
-
-  static MapEntry<String, dynamic>? _selectFormat(
-    Map<String, dynamic> formats,
-  ) {
-    const preferredFormats = ['sbix', 'glyf', 'colrv0', 'svginot'];
-    for (final format in preferredFormats) {
-      final url = formats[format];
-      if (url is String && url.startsWith('https://')) {
-        return MapEntry(format, url);
-      }
-    }
-    return null;
   }
 }
 
@@ -147,8 +164,10 @@ class EmojiFontCatalog {
   static const cacheRevision = 2;
   static const cacheDirectoryName = 'emoji_fonts_v$cacheRevision';
 
+  /// The MithkaX emoji font source. The manifest carries sha256 hashes for
+  /// every font binary, so cached files are verified by content, not size.
   static const manifestUrl =
-      'https://github.com/iebb/emojifonts/releases/download/latest/manifest.json';
+      'https://dl.mintabyss.eu.org/emojifonts/manifest.json';
 
   final Set<String> _loadedFamilies = {};
   final Map<String, Future<String>> _inFlightFontLoads = {};
@@ -191,11 +210,6 @@ class EmojiFontCatalog {
 
   Future<String?> loadCached(String key) async {
     if (key == EmojiFontChoice.system.key) return null;
-    // The pinned Apple font has its own loader (cache first, optional
-    // download) — it shares the cache directory with the catalog packs.
-    if (key == EmojiFontCatalog.appleEntry.key) {
-      return loadAppleFont();
-    }
     final file = await _cachedFontFileForKey(key);
     if (file == null) return null;
     final family = EmojiFontChoice.runtimeFamilyForKey(key);
@@ -206,9 +220,6 @@ class EmojiFontCatalog {
   Future<String?> loadCachedOrDownload(String key) async {
     final cached = await loadCached(key);
     if (cached != null) return cached;
-    if (key == EmojiFontCatalog.appleEntry.key) {
-      return loadAppleFont(download: true);
-    }
     try {
       final entries = await loadManifest(forceRefresh: true);
       EmojiFontManifestEntry? selected;
@@ -229,16 +240,8 @@ class EmojiFontCatalog {
     }
   }
 
-  /// Downloads (if needed) and registers an entry. The pinned Apple row is
-  /// routed to its own cache-first loader with optional download.
+  /// Downloads (if needed) and registers an entry.
   Future<String> downloadAndLoad(EmojiFontManifestEntry entry) {
-    // The pinned Apple row has its own cache-first loader with optional
-    // download — never route it through the manifest flow.
-    if (entry.key == appleEntry.key) {
-      return loadAppleFont(
-        download: true,
-      ).then((family) => family ?? EmojiFontChoice.bundledAppleFamily);
-    }
     final pending = _inFlightFontLoads[entry.key];
     if (pending != null) return pending;
     final operation = _downloadAndLoad(entry);
@@ -257,8 +260,8 @@ class EmojiFontCatalog {
   }
 
   /// Brings the entry's cached file to a verified, complete state: downloads
-  /// when missing or size-mismatched, records the size either way so later
-  /// loads can detect truncation.
+  /// when missing, hash-mismatched (manifest sha256) or size-mismatched
+  /// (legacy installs whose manifest carried no hash).
   Future<void> ensureFontDownloaded(EmojiFontManifestEntry entry) async {
     final file = await _fontFile(entry);
     if (await _verifyFontFile(entry, file)) return;
@@ -266,6 +269,39 @@ class EmojiFontCatalog {
     final sizes = await _readSizeIndex();
     sizes[entry.key] = bytes;
     await _writeSizeIndex(sizes);
+  }
+
+  /// Deletes a pack's cached font file (the picker's swipe-to-delete). Safe
+  /// for any key: missing files are a no-op, the running family registration
+  /// is only in-memory and dies with the process. Returns whether a file was
+  /// removed.
+  Future<bool> deleteCachedFont(String key) async {
+    if (key == EmojiFontChoice.system.key) return false;
+    final file = await _cachedFontFileForKey(key);
+    if (file == null) return false;
+    try {
+      await file.delete();
+    } catch (_) {
+      return false;
+    }
+    final sizes = await _readSizeIndex();
+    if (sizes.containsKey(key)) {
+      sizes.remove(key);
+      await _writeSizeIndex(sizes);
+    }
+    return true;
+  }
+
+  /// On-disk size of a cached pack, or null when it is not downloaded.
+  Future<int?> cachedFontSize(String key) async {
+    if (key == EmojiFontChoice.system.key) return null;
+    final file = await _cachedFontFileForKey(key);
+    if (file == null) return null;
+    try {
+      return await file.length();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<EmojiFontManifestEntry>> _readManifest(File file) async {
@@ -276,44 +312,17 @@ class EmojiFontCatalog {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     final fonts = decoded['fonts'] as List? ?? const [];
     return [
-          // Apple leads the list: the platform set every reference client puts
-          // first, and iebb/emojifonts does not build it (its binaries are for
-          // macOS Core Text; the upstream AppleColorEmoji CBDT table renders
-          // fine through Skia on every platform MithkaX ships).
-          EmojiFontCatalog.appleEntry,
           for (final item in fonts)
-            if (item is Map) tryParseEntry(item.cast<String, dynamic>()),
+            if (item is Map) tryParseEntry(Map<String, dynamic>.from(item)),
         ]
         .whereType<EmojiFontManifestEntry>()
         // The Fluent pack is deliberately absent (its release binary is
-        // mis-built and the user removed the set): drop the manifest's
-        // own fluent rows, any spelling, instead of shipping broken rows.
+        // mis-built and the user removed the set): drop any manifest's
+        // fluent rows, any spelling, instead of shipping broken rows.
         .where((entry) => entry.key != 'fluent')
         .toList()
-      // The pinned Apple row owns its slot even if a future manifest ships
-      // its own apple key — one row, the fork's.
       ..retainAfterFirstByKey();
   }
-
-  /// Apple Color Emoji, pinned to the community CBDT build of the system
-  /// font. The fork's default emoji face: selected out of the box, but its
-  /// 45 MB binary is downloaded on first use and cached like any other
-  /// pack — the APK stays lean. Not in the iebb/emojifonts manifest — this
-  /// fork carries the entry itself so the picker's first row matches the
-  /// reference clients.
-  static const appleEntry = EmojiFontManifestEntry(
-    key: 'apple',
-    label: 'Apple Color Emoji',
-    license: 'Apple',
-    kind: 'color',
-    url:
-        'https://raw.githubusercontent.com/GORAlexComp/AppleColorEmojiFont'
-        '/main/fonts/AppleColorEmoji.ttf',
-    format: 'cbdt',
-    coveragePct: 100,
-    emojiVersion: '18.0',
-    updated: '2026-10',
-  );
 
   /// Test seam: run the same parse the manifest loader uses.
   @visibleForTesting
@@ -322,8 +331,8 @@ class EmojiFontCatalog {
 
   /// Cached font bytes are loaded straight into the engine — a truncated
   /// file would register as a broken family or crash the loader, so every
-  /// write goes through a temp file + atomic rename and every read checks
-  /// the recorded size.
+  /// write goes through a temp file + atomic rename and every read verifies
+  /// the recorded size (and the manifest's sha256 when it has one).
   static const _sizeIndexFileName = 'sizes.json';
 
   Future<File> _sizeIndexFile() async {
@@ -399,59 +408,57 @@ class EmojiFontCatalog {
   }
 
   /// The downloaded font files live under the app-support directory in this
-  /// revision-tagged cache folder. The Apple font is cached here too — it is
-  /// downloaded on demand like every other pack, never shipped in the APK.
+  /// revision-tagged cache folder. Every pack is downloaded on demand — none
+  /// ships in the APK.
   Future<Directory> _cacheDir() async {
     final support = await getApplicationSupportDirectory();
     return Directory('${support.path}/$cacheDirectoryName');
   }
 
+  /// FontLoader.load() blocks forever on the widget-test engine (the
+  /// platform channel never answers). Tests set this to register the family
+  /// without the engine call.
+  @visibleForTesting
+  static bool debugSkipEngineFontLoad = false;
+
   Future<void> _loadFontFile(String family, File file) async {
     if (_loadedFamilies.contains(family)) return;
     final bytes = await file.readAsBytes();
-    final loader = FontLoader(family);
-    loader.addFont(Future.value(ByteData.sublistView(bytes)));
-    await loader.load();
+    if (!debugSkipEngineFontLoad) {
+      final loader = FontLoader(family);
+      loader.addFont(Future.value(ByteData.sublistView(bytes)));
+      await loader.load();
+    }
     _loadedFamilies.add(family);
   }
 
-  /// A font file is valid when its on-disk size matches the size recorded
-  /// at download time. Files without an index entry (legacy caches from
-  /// before the size index, or the previous bundled-apple release that
-  /// never wrote one) are trusted by existence alone.
+  /// A font file is valid when its content matches what the manifest says it
+  /// should be: the sha256 when the manifest carries one, otherwise the size
+  /// recorded at download time. Files without any recorded expectation
+  /// (legacy caches from before the size index) are trusted by existence
+  /// alone.
   Future<bool> _verifyFontFile(EmojiFontManifestEntry entry, File file) async {
     if (!await file.exists()) return false;
+    final hash = entry.sha256;
+    if (hash != null && hash.isNotEmpty) {
+      try {
+        return _sha256Of(await file.readAsBytes()) == hash.toLowerCase();
+      } catch (_) {
+        return false;
+      }
+    }
     final sizes = await _readSizeIndex();
     final recorded = sizes[entry.key];
     if (recorded == null) return true;
     return await file.length() == recorded;
   }
 
-  /// Loads the pinned Apple font from the cache. With [download], a missing
-  /// or broken cache file is fetched first; a failed fetch returns null so
-  /// callers keep rendering the platform emoji face (never tofu) until the
-  /// next attempt succeeds.
-  Future<String?> loadAppleFont({bool download = false}) async {
-    final file = await _fontFile(appleEntry);
-    if (!await _verifyFontFile(appleEntry, file)) {
-      if (!download) return null;
-      try {
-        await ensureFontDownloaded(appleEntry);
-      } catch (error) {
-        debugPrint(
-          '[emoji_font_catalog] apple font download failed '
-          'type=${error.runtimeType}',
-        );
-        return null;
-      }
-    }
-    await _loadFontFile(appleEntry.runtimeFamily, file);
-    return appleEntry.runtimeFamily;
-  }
+  static String _sha256Of(List<int> bytes) =>
+      crypto.sha256.convert(bytes).toString();
 }
 
 extension _EmojiFontEntryDedupe on List<EmojiFontManifestEntry> {
-  /// Keep the first entry per key (the pinned Apple row wins its slot).
+  /// Keep the first entry per key.
   void retainAfterFirstByKey() {
     final seen = <String>{};
     removeWhere((entry) => !seen.add(entry.key));
