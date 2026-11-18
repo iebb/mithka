@@ -160,20 +160,6 @@ class AppearanceView extends StatelessWidget {
                 icon: HeroAppIcons.font.data,
               ),
             ),
-            KeyedSubtree(
-              key: const ValueKey('appearance-emoji-font-row'),
-              child: _navigationRow(
-                context,
-                AppStrings.t(AppStringKeys.appearanceEmojiFont),
-                theme.emojiFontChoice.label,
-                () => Navigator.of(context).push(
-                  AppPageRoute<void>(
-                    pageBuilder: (_, _, _) => const EmojiFontPickerView(),
-                  ),
-                ),
-                icon: HeroAppIcons.faceSmile.data,
-              ),
-            ),
           ]),
           _label(context, AppStrings.t(AppStringKeys.appearanceSectionChat)),
           // Message Bubbles used to sit alone in an unlabelled card;
@@ -3672,7 +3658,11 @@ class TextFontView extends StatelessWidget {
 }
 
 class EmojiFontPickerView extends StatefulWidget {
-  const EmojiFontPickerView({super.key});
+  const EmojiFontPickerView({super.key, this.manifestOverride});
+
+  /// Test seam: serve the picker from a fixed manifest instead of the
+  /// network. Production always leaves this null.
+  final Future<List<EmojiFontManifestEntry>>? manifestOverride;
 
   @override
   State<EmojiFontPickerView> createState() => _EmojiFontPickerViewState();
@@ -3690,12 +3680,44 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
     'emojitwo': 'assets/emoji_preview/emojitwo.svg',
     'tossface': 'assets/emoji_preview/tossface.svg',
   };
+  static const _appleKey = 'apple';
 
-  late final Future<List<EmojiFontManifestEntry>> _fonts = EmojiFontCatalog
-      .shared
-      .loadManifest(forceRefresh: true);
+  late final Future<List<EmojiFontManifestEntry>> _fonts =
+      widget.manifestOverride ??
+      EmojiFontCatalog.shared.loadManifest(forceRefresh: true);
   String? _loadingKey;
   String? _failedKey;
+  // Cache sizes per key, refreshed after every download/delete so the row
+  // captions flip between 未下载 / 已下载 · size live.
+  Map<String, int>? _downloadedSizes;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshDownloadedSizes();
+  }
+
+  Future<void> _refreshDownloadedSizes() async {
+    final entries = await _fonts;
+    final sizes = <String, int>{};
+    for (final entry in entries) {
+      final size = await EmojiFontCatalog.shared.cachedFontSize(entry.key);
+      if (size != null) sizes[entry.key] = size;
+    }
+    if (mounted) setState(() => _downloadedSizes = sizes);
+  }
+
+  /// 系统默认 first, Apple second (the fork's default face), everything else
+  /// alphabetically by label.
+  List<EmojiFontManifestEntry> _sorted(List<EmojiFontManifestEntry> entries) {
+    final apple = <EmojiFontManifestEntry>[];
+    final rest = <EmojiFontManifestEntry>[];
+    for (final entry in entries) {
+      (entry.key == _appleKey ? apple : rest).add(entry);
+    }
+    rest.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return [...apple, ...rest];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3721,14 +3743,16 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
               ),
             );
           }
-          final entries = snapshot.data ?? const <EmojiFontManifestEntry>[];
+          final entries = _sorted(
+            snapshot.data ?? const <EmojiFontManifestEntry>[],
+          );
           return SettingsListView(
             children: [
               SettingsCard.rows(
                 dividerInset: AppMetric.settingsTextDividerInset,
                 rows: [
-                  for (final entry in entries) _entryRow(context, entry, theme),
                   _systemRow(context, theme),
+                  for (final entry in entries) _entryRow(context, entry, theme),
                 ],
               ),
             ],
@@ -3741,6 +3765,7 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
   Widget _systemRow(BuildContext context, ThemeController theme) {
     return _row(
       context,
+      key: 'system',
       title: EmojiFontChoice.system.label,
       subtitle: AppStrings.t(AppStringKeys.appearanceSystemEmojiFont),
       preview: const _SystemEmojiPreview(),
@@ -3748,6 +3773,8 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
       selected: theme.emojiFontChoice.isSystem,
       loading: false,
       failed: false,
+      downloadedBytes: null,
+      deletable: false,
       onTap: () {
         context.read<ThemeController>().useSystemEmojiFont();
         setState(() {
@@ -3763,18 +3790,20 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
     EmojiFontManifestEntry entry,
     ThemeController theme,
   ) {
+    final downloadedBytes = _downloadedSizes?[entry.key];
     return _row(
       context,
+      key: entry.key,
       title: entry.label,
       preview: _EmojiPreviewImage(asset: _previewAssetForKey(entry.key)),
       selected: theme.emojiFontChoice.key == entry.key,
-      // The Apple row explains its own delivery: first selection downloads
-      // the 45 MB pack, later launches read the cache.
-      subtitle: entry.key == EmojiFontCatalog.appleEntry.key
-          ? entry.label
-          : null,
       loading: _loadingKey == entry.key,
       failed: _failedKey == entry.key,
+      // Every pack except the system row downloads on demand: the caption
+      // carries 未下载 / 已下载 · size so the storage cost is visible before
+      // the tap.
+      downloadedBytes: downloadedBytes,
+      deletable: downloadedBytes != null,
       onTap: () async {
         if (_loadingKey != null) return;
         setState(() {
@@ -3783,107 +3812,274 @@ class _EmojiFontPickerViewState extends State<EmojiFontPickerView> {
         });
         try {
           await context.read<ThemeController>().setEmojiFont(entry);
+          await _refreshDownloadedSizes();
         } catch (_) {
           if (mounted) setState(() => _failedKey = entry.key);
         } finally {
           if (mounted) setState(() => _loadingKey = null);
         }
       },
+      onSwipeDelete: downloadedBytes == null
+          ? null
+          : () async {
+              await EmojiFontCatalog.shared.deleteCachedFont(entry.key);
+              await _refreshDownloadedSizes();
+            },
     );
   }
 
   Widget _row(
     BuildContext context, {
+    required String key,
     required String title,
     String? subtitle,
     required Widget preview,
     required bool selected,
     required bool loading,
     required bool failed,
+    required int? downloadedBytes,
+    required bool deletable,
     required VoidCallback onTap,
+    VoidCallback? onSwipeDelete,
   }) {
     final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        height: AppMetric.menuRowHeight + AppSpacing.md,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 30,
-                child: Semantics(
-                  label: AppStringKeys.emojiPreviewFaceWithTearsOfJoy.l10n(
-                    context,
-                  ),
-                  image: true,
-                  child: ExcludeSemantics(child: preview),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title.l10n(context),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: AppTextSize.bodyLarge,
-                        color: c.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
+    late final String caption;
+    if (failed) {
+      caption = AppStrings.t(AppStringKeys.appearanceFontDownloadFailedName, {
+        'value1': title,
+      });
+    } else if (subtitle != null && subtitle.isNotEmpty) {
+      caption = subtitle;
+    } else if (downloadedBytes != null) {
+      caption = _bytesLabel(downloadedBytes);
+    } else {
+      caption = AppStrings.t(AppStringKeys.emojiFontNotDownloaded);
+    }
+    final swipeRow = _EmojiFontSwipeRow(
+      rowKey: key,
+      deleteEnabled: onSwipeDelete != null,
+      onDelete: onSwipeDelete,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          height: AppMetric.menuRowHeight + AppSpacing.md,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Semantics(
+                    label: AppStringKeys.emojiPreviewFaceWithTearsOfJoy.l10n(
+                      context,
                     ),
-                    // A row only carries a second line when it has something
-                    // to say (the system row's caption, a download failure).
-                    // Pack rows show just their name — the picker reads like
-                    // the reference clients' set list.
-                    if (failed ||
-                        (subtitle != null && subtitle.isNotEmpty)) ...[
-                      const SizedBox(height: 2),
+                    image: true,
+                    child: ExcludeSemantics(child: preview),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        failed
-                            ? AppStrings.t(
-                                AppStringKeys.appearanceFontDownloadFailedName,
-                                {'value1': subtitle ?? ''},
-                              )
-                            : subtitle!,
+                        title.l10n(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: AppTextSize.footnote,
-                          color: c.textSecondary,
+                          fontSize: AppTextSize.bodyLarge,
+                          color: c.textPrimary,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (caption.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.footnote,
+                            color: c.textSecondary,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (loading)
-                const SizedBox(
-                  width: AppIconSize.lg,
-                  height: AppIconSize.lg,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (selected)
-                AppIcon(
-                  HeroAppIcons.check,
-                  size: AppIconSize.lg,
-                  color: AppTheme.brand,
-                ),
-            ],
+                if (loading)
+                  const SizedBox(
+                    width: AppIconSize.lg,
+                    height: AppIconSize.lg,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (selected)
+                  AppIcon(
+                    HeroAppIcons.check,
+                    size: AppIconSize.lg,
+                    color: AppTheme.brand,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
+    return swipeRow;
+  }
+
+  String _bytesLabel(int bytes) {
+    final downloaded = AppStrings.t(AppStringKeys.emojiFontDownloaded);
+    final size = formatByteSize(bytes);
+    return '$downloaded · $size';
   }
 
   String _previewAssetForKey(String key) =>
       _previewAssets[key] ?? _fallbackPreviewAsset;
+}
+
+/// Formats a byte count the way the update dialog does (1 KB / 9.8 MB …).
+String formatByteSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
+  final mb = kb / 1024;
+  if (mb < 1024) return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  final gb = mb / 1024;
+  return '${gb.toStringAsFixed(gb < 10 ? 1 : 0)} GB';
+}
+
+/// One row of the emoji font list: swipe LEFT on a downloaded pack to reveal
+/// a 删除 block that clears its cached font file. Reuses the chat-list swipe
+/// geometry (flush full-height block, snaps open/closed) at a smaller width.
+class _EmojiFontSwipeRow extends StatefulWidget {
+  const _EmojiFontSwipeRow({
+    required this.rowKey,
+    required this.deleteEnabled,
+    required this.onDelete,
+    required this.child,
+  });
+
+  final String rowKey;
+  final bool deleteEnabled;
+  final VoidCallback? onDelete;
+  final Widget child;
+
+  @override
+  State<_EmojiFontSwipeRow> createState() => _EmojiFontSwipeRowState();
+}
+
+class _EmojiFontSwipeRowState extends State<_EmojiFontSwipeRow>
+    with SingleTickerProviderStateMixin {
+  static const double _buttonWidth = 72;
+  // Created eagerly in initState so the Ticker is bound while the context is
+  // active (a lazy late initializer would run first in dispose and crash on
+  // a deactivated-ancestor TickerMode lookup).
+  late final AnimationController _controller;
+  double _offset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppMotion.responsive,
+    );
+  }
+
+  void _animateTo(double target) {
+    _controller
+      ..stop()
+      ..value = 0
+      ..addStatusListener(_onceCompleted);
+    _controller.animateTo(target == 0 ? 0 : 1, curve: Curves.easeOutCubic);
+  }
+
+  void _onceCompleted(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _controller.removeStatusListener(_onceCompleted);
+      if (!mounted) return;
+      setState(() => _offset = _targetFor(_controller.value));
+    }
+  }
+
+  double _targetFor(double t) => -_buttonWidth * t;
+
+  void _settle(double velocity) {
+    if (velocity < -520 ||
+        (velocity <= 360 && _offset < -_buttonWidth * 0.38)) {
+      _animateTo(-_buttonWidth);
+    } else {
+      _animateTo(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.deleteEnabled) return widget.child;
+    final actionsRevealed = _offset != 0;
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: actionsRevealed
+                ? Align(
+                    alignment: Alignment.centerRight,
+                    child: SizedBox(
+                      width: _buttonWidth,
+                      child: GestureDetector(
+                        onTap: () {
+                          widget.onDelete?.call();
+                          _animateTo(0);
+                        },
+                        child: Container(
+                          width: _buttonWidth,
+                          color: const Color(0xFFFA5151),
+                          alignment: Alignment.center,
+                          child: Text(
+                            AppStrings.t(AppStringKeys.chatDelete),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: AppTextSize.body,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (_) {},
+            onHorizontalDragUpdate: (details) {
+              setState(
+                () => _offset = (_offset + details.delta.dx).clamp(
+                  -_buttonWidth,
+                  0.0,
+                ),
+              );
+            },
+            onHorizontalDragEnd: (details) =>
+                _settle(details.primaryVelocity ?? 0),
+            child: Transform.translate(
+              offset: Offset(_offset, 0),
+              child: widget.child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Draws the preview glyph with the platform emoji font itself, so the row

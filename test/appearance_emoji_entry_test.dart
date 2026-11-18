@@ -11,14 +11,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/l10n_fixtures.dart';
 
-/// The emoji-font entry must live directly on the Appearance page — the user
-/// could not find it behind 外观 → 字体 → 表情字体.
+/// The emoji-font picker lives BEHIND 外观 → 字体 only: the appearance page
+/// itself must not carry a direct emoji row (the user removed the duplicate
+/// entry; the font-settings second-level row is the single entry).
 void main() {
   setUpAll(() => L10nFixtures.load().install());
 
-  testWidgets('appearance page shows the emoji font row directly', (
-    tester,
-  ) async {
+  testWidgets('appearance page has no direct emoji font row', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final theme = ThemeController(prefs);
@@ -46,30 +45,35 @@ void main() {
         ),
       ),
     );
-    // The page keeps running animations (previews, spinner), so settle by
-    // fixed frames instead of pumpAndSettle.
     await tester.pump(const Duration(milliseconds: 400));
-    // Failing-first: the row did not exist on the appearance page; the picker
-    // was only reachable three levels deep through FontSettingsView.
-    final row = find.byKey(const ValueKey('appearance-emoji-font-row'));
-    final fontRow = find.byKey(const ValueKey('appearance-font-settings-row'));
-    await tester.scrollUntilVisible(row, 200);
-    expect(row, findsOneWidget);
-    // Both rows are adjacent in the same card, so both are live here.
-    final fontRect = tester.getCenter(fontRow);
-    final emojiRect = tester.getCenter(row);
-    expect(emojiRect.dy, greaterThan(fontRect.dy));
-
-    // Tapping it opens the emoji picker surface. The tappable surface is the
-    // row's title text (the row widget itself spans a KeyedSubtree whose
-    // parent surface eats the tap position finder).
-    final emojiTitle = find.descendant(
-      of: row,
-      matching: find.text('Emoji Font'),
+    // The removed row must stay gone no matter how far the list scrolls.
+    await tester.scrollUntilVisible(
+      find.byType(ColoredBox).first,
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
-    expect(emojiTitle, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('appearance-emoji-font-row')),
+      findsNothing,
+    );
+
+    // The second-level entry survives: 外观 → 字体 → 表情字体.
+    final fontRow = find.byKey(const ValueKey('appearance-font-settings-row'));
+    await tester.scrollUntilVisible(fontRow, -200);
     await tester.pump(const Duration(milliseconds: 200));
-    await tester.tap(emojiTitle);
+    final fontTitle = find.descendant(of: fontRow, matching: find.text('Font'));
+    expect(fontTitle, findsOneWidget);
+    await tester.tap(fontTitle, warnIfMissed: false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byType(FontSettingsView), findsOneWidget);
+
+    // And the picker still carries its own emoji row there.
+    final emojiTitle = find.text('Emoji Font');
+    await tester.scrollUntilVisible(emojiTitle, 200);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(emojiTitle, findsOneWidget);
+    await tester.tap(emojiTitle, warnIfMissed: false);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.byType(EmojiFontPickerView), findsWidgets);
