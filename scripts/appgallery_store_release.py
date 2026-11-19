@@ -469,8 +469,19 @@ def already_submitted(info, version, code):
     return None
 
 
-def sync_listing(connect, listing_dir, notes, chinese_mainland=False):
-    """Copy the Google Play listing and the release notes to AppGallery."""
+def device_types(info):
+    """The device types the app supports, phone first; each needs its own icon."""
+    types = {int(device["deviceType"]) for device in info.get("deviceTypes") or []}
+    return [PHONE, *sorted(types - {PHONE})]
+
+
+def sync_listing(connect, listing_dir, notes, chinese_mainland=False, devices=(PHONE,)):
+    """Copy the Google Play listing and the release notes to AppGallery.
+
+    Every supported device type gets the icon; only the phone gets the Play
+    phone screenshots, since no Play image fits the tablet (3:2) or PC (16:9)
+    screenshot ratios.
+    """
     listing_dir = Path(listing_dir)
     listings = json.loads((listing_dir / "listing.json").read_text())
     infos = {info["lang"]: info for info in language_infos(listings, notes)}
@@ -482,8 +493,9 @@ def sync_listing(connect, listing_dir, notes, chinese_mainland=False):
                 continue
             connect.update_language(infos[lang])
             icon = appgallery_icon(listing_dir / listing["icon"][0], Path(directory) / f"{lang}-icon.png")
+            icon_id = connect.upload(icon, chinese_mainland)
             icons.append({"lang": lang, "fileInfoList": [
-                {"deviceType": PHONE, "objectIdList": [connect.upload(icon, chinese_mainland)], "showType": PORTRAIT},
+                {"deviceType": device, "objectIdList": [icon_id], "showType": PORTRAIT} for device in devices
             ]})
             screenshots.append({"lang": lang, "fileInfoList": [{
                 "deviceType": PHONE,
@@ -510,7 +522,7 @@ def submit(connect, app, version, code, chinese_mainland=False, apply=True, list
         print(f"PLAN upload {Path(app).name} and submit {version} ({code}) for review", flush=True)
         return False
     if listing_dir:
-        sync_listing(connect, listing_dir, notes or {}, chinese_mainland)
+        sync_listing(connect, listing_dir, notes or {}, chinese_mainland, device_types(info))
     object_id = connect.upload(app, chinese_mainland)
     package_id = connect.call(
         "PUT",
