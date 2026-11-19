@@ -1,1 +1,2 @@
 google-auth[requests]==2.62.0
+pillow==13.0.0
