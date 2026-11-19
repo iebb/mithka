@@ -1,6 +1,8 @@
+import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -11,6 +13,37 @@ SOURCE = Path(__file__).resolve().parents[2] / "scripts/appgallery_store_release
 SPEC = importlib.util.spec_from_file_location("appgallery_store_release", SOURCE)
 AGC = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(AGC)
+
+
+def write_png(path, size=(64, 64), mode="RGBA"):
+    from PIL import Image
+
+    Image.new(mode, size, (10, 20, 30, 255)[: len(mode)]).save(path)
+
+
+def write_listing(directory, languages=("en-US", "zh-CN"), screenshots=3):
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    listings = []
+    for lang in languages:
+        write_png(directory / f"{lang}-icon-1.png", (512, 512))
+        shots = []
+        for index in range(1, screenshots + 1):
+            write_png(directory / f"{lang}-phoneScreenshots-{index}.png", (90, 160), "RGB")
+            shots.append(f"{lang}-phoneScreenshots-{index}.png")
+        listings.append({
+            "language": lang,
+            "title": "Mithka",
+            "shortDescription": f"A Telegram client ({lang})",
+            "fullDescription": f"Mithka is a fast Telegram client. ({lang})",
+            "icon": [f"{lang}-icon-1.png"],
+            "phoneScreenshots": shots,
+        })
+    (directory / "listing.json").write_text(json.dumps(listings))
+    return listings
+
+
+NOTES = {"en-US": "Bug fixes.", "zh-CN": "错误修复。"}
 
 
 def write_hap(path, bundle="ad.neko.mithka", name="1.13.1", code=310, pack_info=True):
@@ -44,7 +77,9 @@ class FakeConnect:
     def __call__(self, request, timeout=None):
         url = request.full_url
         self.requests.append((request.get_method(), url, request.headers, request.data))
-        if "/oauth2/v1/token" in url:
+        if "/app-language-info" in url or "/app-file-info" in url:
+            body = {"ret": {"code": 0}}
+        elif "/oauth2/v1/token" in url:
             body = {"access_token": "token", "expires_in": 3600}
         elif "/app-info" in url:
             body = {"ret": {"code": 0}, "appInfo": self.info}
@@ -112,10 +147,127 @@ class AppGalleryReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(AGC.Error, "2 HarmonyOS haps"):
             AGC.release_hap_asset({"assets": release["assets"] * 2}, "1.13.1")
 
-    def test_tools_must_match_their_pinned_digests(self):
+    def extract(self, contents, fail=None):
+        """Run extract_tools against a fake docker that copies [contents]."""
+        commands = []
+
+        def run(command, capture_output, text):
+            commands.append(command)
+            verb = command[1]
+            if verb == fail:
+                return subprocess.CompletedProcess(command, 1, "", "denied")
+            if verb == "cp":
+                name = command[2].rsplit("/", 1)[1]
+                Path(command[3]).write_bytes(contents[name])
+            return subprocess.CompletedProcess(command, 0, "c0ffee\n" if verb == "create" else "", "")
+
         tools = Path(self.directory.name) / "tools"
-        with self.assertRaisesRegex(AGC.Error, "pinned SHA-256"):
-            AGC.fetch_tools(tools, opener=lambda url, timeout=None: Response(b"tampered"))
+        with patch("sys.stdout", io.StringIO()):
+            try:
+                AGC.extract_tools(tools, run=run)
+            finally:
+                self.commands = commands
+        return tools
+
+    def test_tools_come_from_the_pinned_image_and_match_their_digests(self):
+        contents = {"hap-sign-tool.jar": b"sign", "app_packing_tool.jar": b"pack"}
+        digests = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+        with patch.dict(AGC.TOOLS, digests, clear=True):
+            tools = self.extract(contents)
+            self.assertEqual((tools / "hap-sign-tool.jar").read_bytes(), b"sign")
+            self.assertEqual(self.commands[0][:4], ["docker", "create", "--platform", "linux/amd64"])
+            self.assertIn("@sha256:", self.commands[0][4])
+            self.assertEqual(self.commands[1][2], f"c0ffee:{AGC.TOOLCHAIN_LIB}/hap-sign-tool.jar")
+            self.assertEqual(self.commands[-1], ["docker", "rm", "--force", "c0ffee"])
+
+            with self.assertRaisesRegex(AGC.Error, "pinned SHA-256"):
+                self.extract({**contents, "app_packing_tool.jar": b"tampered"})
+            self.assertEqual(self.commands[-1], ["docker", "rm", "--force", "c0ffee"])
+
+            with self.assertRaisesRegex(AGC.Error, "docker cp failed: denied"):
+                self.extract(contents, fail="cp")
+            self.assertEqual(self.commands[-1], ["docker", "rm", "--force", "c0ffee"])
+
+    def test_listing_fills_each_language_from_google_play(self):
+        listings = write_listing(Path(self.directory.name) / "listing")
+        infos = AGC.language_infos(listings, NOTES)
+        self.assertEqual([info["lang"] for info in infos], ["en-US", "zh-CN"])
+        self.assertEqual(infos[1], {
+            "lang": "zh-CN",
+            "appName": "Mithka",
+            "appDesc": "Mithka is a fast Telegram client. (zh-CN)",
+            "briefInfo": "A Telegram client (zh-CN)",
+            "newFeatures": "错误修复。",
+        })
+
+    def test_listing_rejects_what_appgallery_would_refuse(self):
+        def broken(**changes):
+            listing = write_listing(Path(self.directory.name) / "listing", ("en-US",))[0]
+            return [{**listing, **changes}]
+
+        cases = [
+            (broken(shortDescription="x" * 81), "briefInfo exceeds 80"),
+            (broken(shortDescription="Same", fullDescription="Same"), "must differ"),
+            (broken(title=" "), "appName is empty"),
+            (broken(phoneScreenshots=["a.png", "b.png"]), "3-10 phone screenshots"),
+            (broken(language="zh-CN"), "no en-US"),
+        ]
+        for listings, message in cases:
+            with self.subTest(message), self.assertRaisesRegex(AGC.Error, message):
+                AGC.language_infos(listings, NOTES)
+        with self.assertRaisesRegex(AGC.Error, "newFeatures is empty"):
+            AGC.language_infos(broken(), {})
+
+    def test_release_notes_map_store_locales(self):
+        root = Path(self.directory.name)
+        (root / "distribution/app-store").mkdir(parents=True)
+        (root / "distribution/app-store/release-notes-1.13.1.json").write_text(
+            json.dumps({"en-US": " Fixes. ", "zh-Hans": "修复。", "ja": "修正。"})
+        )
+        self.assertEqual(AGC.release_notes("1.13.1", root), {"en-US": "Fixes.", "zh-CN": "修复。"})
+        with self.assertRaisesRegex(AGC.Error, "release-notes-1.13.2.json is missing"):
+            AGC.release_notes("1.13.2", root)
+
+    def test_play_listing_is_read_through_an_edit_that_is_always_deleted(self):
+        requests = []
+
+        def opener(request, timeout=None):
+            if isinstance(request, str):
+                requests.append(("GET", request))
+                return Response(b"png")
+            method, url = request.get_method(), request.full_url
+            requests.append((method, url))
+            if method == "POST":
+                return Response(b'{"id": "e1"}')
+            if method == "DELETE":
+                return Response(b"")
+            if url.endswith("/listings"):
+                return Response(json.dumps({"listings": [
+                    {"language": "en-US", "title": "Mithka", "shortDescription": "s", "fullDescription": "f"},
+                    {"language": "ja-JP", "title": "Mithka"},
+                ]}).encode())
+            if url.endswith("/phoneScreenshots") and fail:
+                raise AGC.urllib.error.HTTPError(url, 500, "", {}, None)
+            return Response(json.dumps({"images": [
+                {"url": "https://play.example/i", "sha256": hashlib.sha256(b"png").hexdigest()}
+            ]}).encode())
+
+        out = Path(self.directory.name) / "play"
+        fail = False
+        with patch("sys.stdout", io.StringIO()):
+            listings = AGC.fetch_play_listing(out, "token", opener=opener)
+        self.assertEqual([l["language"] for l in listings], ["en-US"])
+        self.assertEqual(listings[0]["phoneScreenshots"], ["en-US-phoneScreenshots-1.png"])
+        self.assertIn(("GET", "https://play.example/i=s0"), requests)
+        self.assertEqual(json.loads((out / "listing.json").read_text()), listings)
+        self.assertEqual(requests[-1][0], "DELETE")
+        self.assertFalse(any(method == "POST" and ":commit" in url for method, url in requests))
+
+        requests.clear()
+        fail = True
+        with self.assertRaisesRegex(AGC.Error, "HTTP 500"):
+            AGC.fetch_play_listing(out, "token", opener=opener)
+        self.assertEqual(requests[-1][0], "DELETE")
 
     def test_signing_needs_every_secret_and_reuses_the_keystore_password(self):
         with self.assertRaisesRegex(AGC.Error, "keystore, keystore_password"):
@@ -155,6 +307,41 @@ class AppGalleryReleaseTest(unittest.TestCase):
         self.assertEqual(json.loads(fake.requests[7][3]), {"releaseType": 1})
         self.assertIn("state 4", output)
 
+    def test_submission_syncs_the_play_listing_before_the_package(self):
+        listing = Path(self.directory.name) / "listing"
+        write_listing(listing)
+        fake = FakeConnect({"releaseState": 0, "versionNumber": "1.12.8", "onShelfVersionCode": 304})
+        uploads = []
+        upload = AGC.Connect.upload
+
+        def record(connect, path, chinese_mainland):
+            uploads.append(Path(path).name)
+            if Path(path).name.endswith("-icon.png"):
+                from PIL import Image
+
+                with Image.open(path) as image:
+                    self.assertEqual((image.size, image.mode), ((216, 216), "RGB"))
+            return upload(connect, path, chinese_mainland)
+
+        with patch.object(AGC.Connect, "upload", record):
+            submitted, output = self.run_submit(fake, listing_dir=listing, notes=NOTES)
+        self.assertTrue(submitted)
+        paths = fake.paths()
+        self.assertEqual(paths.count(("PUT", "/publish/v3/app-language-info")), 2)
+        files = paths.index(("PUT", "/publish/v3/app-file-info"))
+        self.assertLess(files, paths.index(("PUT", "/publish/v3/app-package-info")))
+        self.assertEqual(uploads[:4], ["en-US-icon.png", "en-US-phoneScreenshots-1.png",
+                                       "en-US-phoneScreenshots-2.png", "en-US-phoneScreenshots-3.png"])
+        self.assertEqual(uploads[-1], "mithka.app")
+        body = json.loads(fake.requests[files][3])
+        self.assertEqual([icon["lang"] for icon in body["appIconList"]], ["en-US", "zh-CN"])
+        self.assertEqual(body["screenShotList"][1]["fileInfoList"], [
+            {"deviceType": 4, "objectIdList": ["CN/obj.app"] * 3, "showType": 0}
+        ])
+        zh = [json.loads(data) for method, url, _, data in fake.requests if "/app-language-info" in url][1]
+        self.assertEqual((zh["lang"], zh["newFeatures"]), ("zh-CN", "错误修复。"))
+        self.assertIn("Synced the Google Play listing to AppGallery: en-US, zh-CN", output)
+
     def test_a_version_already_in_review_or_on_shelf_is_not_resubmitted(self):
         for info in (
             {"releaseState": 4, "versionNumber": "1.13.1", "onShelfVersionCode": 304},
@@ -171,6 +358,13 @@ class AppGalleryReleaseTest(unittest.TestCase):
         submitted, output = self.run_submit(fake, apply=False)
         self.assertFalse(submitted)
         self.assertIn("PLAN upload", output)
+        self.assertEqual(len(fake.paths()), 2)
+
+        listing = Path(self.directory.name) / "listing"
+        write_listing(listing)
+        fake = FakeConnect({"releaseState": 7, "versionNumber": "", "onShelfVersionCode": 0})
+        _, output = self.run_submit(fake, apply=False, listing_dir=listing, notes=NOTES)
+        self.assertIn("PLAN sync the Google Play listing for en-US, zh-CN", output)
         self.assertEqual(len(fake.paths()), 2)
 
     def test_a_rejected_package_is_never_submitted(self):

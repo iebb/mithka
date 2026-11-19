@@ -4,6 +4,8 @@ run-name: AppGallery ${{ inputs.operation }} ${{ inputs.version }}
 # Signs the HarmonyOS hap that the store release published on the stable
 # GitHub release v<version> and submits it to Huawei AppGallery. The store
 # release dispatches this after its GitHub release; it can also be run by hand.
+# The packing and signing jars come from the digest-pinned toolchain image the
+# hap was built in, and the store listing reuses the Google Play one.
 
 on:
   workflow_dispatch:
@@ -41,15 +43,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Fetch the hap and the pinned HarmonyOS tools
+      - run: python -m pip install -r scripts/requirements-store-checks.txt
+      - name: Fetch the hap and the HarmonyOS tools
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          # Only copies files out of the image; no container runs and no
+          # signing secret is present in this step.
           python scripts/appgallery_store_release.py tools --out "$RUNNER_TEMP/ohos-tools"
           python scripts/appgallery_store_release.py download --version "$VERSION" \
             --out "$RUNNER_TEMP/mithka.hap"
+      - name: Read the Google Play listing
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/appgallery_store_release.py listing --out "$RUNNER_TEMP/listing"
       - name: Pack and sign the AppGallery package
         env:
           VERSION: ${{ inputs.version }}
@@ -86,7 +95,8 @@ jobs:
           AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          arguments=(--version "$VERSION" --app "dist/mithka-$VERSION-appgallery.app")
+          arguments=(--version "$VERSION" --app "dist/mithka-$VERSION-appgallery.app"
+            --listing "$RUNNER_TEMP/listing")
           if [ "$OPERATION" != submit ]; then
             arguments+=(--plan)
           fi

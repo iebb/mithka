@@ -6,10 +6,14 @@ release ``v<version>``. This script turns that exact hap into the signed
 ``.app`` AppGallery accepts and submits it through the AppGallery Connect
 Publishing API (HarmonyOS 5+, API client authentication).
 
-  tools     fetch the pinned HarmonyOS packing and signing jars
+The store listing reuses the Google Play one: its text, icon and phone
+screenshots per language, with the release notes the other stores get.
+
+  tools     copy the pinned packing and signing jars out of the toolchain image
   download  fetch the release hap from GitHub
+  listing   read the Google Play listing and its images
   package   pack the hap into an .app and sign it with the release profile
-  submit    upload the signed .app and submit it for review
+  submit    sync the listing, upload the signed .app and submit it for review
 
 Credentials come from the environment only and are never printed.
 """
@@ -20,7 +24,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
@@ -37,13 +40,28 @@ CONNECT_API = "https://connect-api.cloud.huawei.com/api"
 # 0 on shelf, 3 scheduled, 4 in review, 5 update in review, 12 pre-review.
 SUBMITTED_STATES = {0, 3, 4, 5, 12}
 STORE_VERSION = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.([1-9]\d*)$")
-# Official HarmonyOS command-line tools SDK 26.0.0.105 jars (OpenHarmony
-# developtools, Apache-2.0), republished on a tools-only GitHub release.
-TOOLS_RELEASE = "ohos-signing-tools-26.0.0.105"
+# The digest-pinned toolchain image release.yml builds the hap in. Its
+# HarmonyOS command-line tools (6.0.2.642) carry the packing and signing jars,
+# so the jars are copied out of the image rather than hosted anywhere. The
+# container never runs, and the signing secrets never enter it.
+TOOLCHAIN_IMAGE = (
+    "ghcr.io/niuhuan/harmony-next-flutter-pipeline-docker/image"
+    "@sha256:2ec15fafd8f57ff74ea58e4ca934266eb11409169d39ef99b038be07db54e2a9"
+)
+TOOLCHAIN_LIB = "/opt/harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib"
 TOOLS = {
-    "hap-sign-tool.jar": "a434b6747e6c5d0b14e73837a46b39f4816ab25b42d1833d6f767bf867cf616d",
-    "app_packing_tool.jar": "7aff2a4737e3b240addc7bd03e1c9c4ba050cd332a3b478f080cf223b904ed3d",
+    "hap-sign-tool.jar": "bb820486777cc28cf3f8a53365fe41ffe6fcd05c31de3387e6ede0ed03a11702",
+    "app_packing_tool.jar": "5149d9748cea95e2511f51e6dce8a2e9eac95106537703cee74d234f09098171",
 }
+ROOT = Path(__file__).resolve().parents[1]
+PLAY_API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
+# Google Play listing languages and the AppGallery languages they fill.
+LISTING_LANGUAGES = {"en-US": "en-US", "zh-CN": "zh-CN"}
+# Release-notes locales (shared with App Store Connect) per AppGallery language.
+NOTES_LANGUAGES = {"en-US": "en-US", "zh-Hans": "zh-CN"}
+PHONE = 4
+PORTRAIT = 0
+ICON_SIZE = 216
 
 
 class Error(Exception):
@@ -112,16 +130,149 @@ def download(version, out, token):
     print(f"Downloaded {asset['name']} ({asset['size']} bytes)", flush=True)
 
 
-def fetch_tools(directory, opener=urllib.request.urlopen):
-    Path(directory).mkdir(parents=True, exist_ok=True)
+def verify_tools(directory):
     for name, expected in TOOLS.items():
-        url = f"https://github.com/{REPO}/releases/download/{TOOLS_RELEASE}/{name}"
-        with opener(url, timeout=600) as response:
-            data = response.read()
-        if hashlib.sha256(data).hexdigest() != expected:
+        path = Path(directory) / name
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise Error(f"{name} does not match its pinned SHA-256")
-        (Path(directory) / name).write_bytes(data)
-    print(f"Fetched the pinned HarmonyOS tools from {TOOLS_RELEASE}", flush=True)
+
+
+def extract_tools(directory, run=subprocess.run):
+    """Copy the packing and signing jars out of the pinned toolchain image."""
+    Path(directory).mkdir(parents=True, exist_ok=True)
+
+    def docker(*args):
+        result = run(["docker", *args], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Error(f"docker {args[0]} failed: {result.stderr.strip()[-300:]}")
+        return result.stdout.strip()
+
+    container = docker("create", "--platform", "linux/amd64", TOOLCHAIN_IMAGE, "/bin/true")
+    try:
+        for name in TOOLS:
+            docker("cp", f"{container}:{TOOLCHAIN_LIB}/{name}", str(Path(directory) / name))
+    finally:
+        docker("rm", "--force", container)
+    verify_tools(directory)
+    print("Copied the pinned HarmonyOS tools out of the toolchain image", flush=True)
+
+
+# --- Google Play listing -----------------------------------------------------
+
+
+def play_token(service_account):
+    from google.auth.transport.requests import Request
+    from google.oauth2.service_account import Credentials
+
+    credentials = Credentials.from_service_account_info(
+        service_account, scopes=["https://www.googleapis.com/auth/androidpublisher"]
+    )
+    credentials.refresh(Request())
+    return credentials.token
+
+
+def fetch_play_listing(out, token, opener=urllib.request.urlopen):
+    """Save the Google Play listing text and images under [out].
+
+    Reads through a temporary edit that is always deleted, never committed.
+    """
+    edits = f"{PLAY_API}/{BUNDLE_NAME}/edits"
+
+    def call(method, url, body=None):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method=method,
+        )
+        try:
+            with opener(request, timeout=120) as response:
+                data = response.read()
+        except urllib.error.HTTPError as error:
+            raise Error(f"Google Play {method} returned HTTP {error.code}") from None
+        return json.loads(data) if data else {}
+
+    Path(out).mkdir(parents=True, exist_ok=True)
+    edit = call("POST", edits, {})["id"]
+    listings = []
+    try:
+        for listing in call("GET", f"{edits}/{edit}/listings").get("listings", []):
+            lang = listing["language"]
+            if lang not in LISTING_LANGUAGES:
+                continue
+            images = {}
+            for kind in ("icon", "phoneScreenshots"):
+                paths = []
+                for index, image in enumerate(
+                    call("GET", f"{edits}/{edit}/listings/{lang}/{kind}").get("images", []), 1
+                ):
+                    url = image["url"] if "=" in image["url"] else image["url"] + "=s0"
+                    with opener(url, timeout=120) as response:
+                        data = response.read()
+                    if image.get("sha256") and hashlib.sha256(data).hexdigest() != image["sha256"]:
+                        raise Error(f"Google Play {lang} {kind} {index} does not match its SHA-256")
+                    path = Path(out) / f"{lang}-{kind}-{index}.png"
+                    path.write_bytes(data)
+                    paths.append(path.name)
+                images[kind] = paths
+            listings.append({
+                "language": lang,
+                "title": listing.get("title", ""),
+                "shortDescription": listing.get("shortDescription", ""),
+                "fullDescription": listing.get("fullDescription", ""),
+                **images,
+            })
+    finally:
+        call("DELETE", f"{edits}/{edit}")
+    (Path(out) / "listing.json").write_text(json.dumps(listings, ensure_ascii=False, indent=1))
+    print("Read the Google Play listing: " + ", ".join(l["language"] for l in listings), flush=True)
+    return listings
+
+
+def release_notes(version, root=ROOT):
+    path = Path(root) / f"distribution/app-store/release-notes-{version}.json"
+    try:
+        notes = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise Error(f"{path.relative_to(root)} is missing") from None
+    return {lang: notes[locale].strip() for locale, lang in NOTES_LANGUAGES.items() if notes.get(locale)}
+
+
+def language_infos(listings, notes):
+    """The AppGallery language information each Play listing language fills."""
+    infos = []
+    for listing in listings:
+        lang = LISTING_LANGUAGES.get(listing["language"])
+        if not lang:
+            continue
+        info = {
+            "lang": lang,
+            "appName": listing["title"].strip(),
+            "appDesc": listing["fullDescription"].strip(),
+            "briefInfo": listing["shortDescription"].strip(),
+            "newFeatures": notes.get(lang, ""),
+        }
+        for field, limit in (("appName", 64), ("appDesc", 8000), ("briefInfo", 80), ("newFeatures", 1000)):
+            if not info[field]:
+                raise Error(f"{lang} {field} is empty")
+            if len(info[field]) > limit:
+                raise Error(f"{lang} {field} exceeds {limit} characters")
+        if len({info["appDesc"], info["briefInfo"], info["newFeatures"]}) != 3:
+            raise Error(f"{lang} description, brief and release notes must differ")
+        if not listing.get("icon") or not 3 <= len(listing.get("phoneScreenshots", [])) <= 10:
+            raise Error(f"{lang} needs an icon and 3-10 phone screenshots")
+        infos.append(info)
+    if "en-US" not in {info["lang"] for info in infos}:
+        raise Error("the Google Play listing has no en-US language")
+    return infos
+
+
+def appgallery_icon(source, out):
+    from PIL import Image
+
+    with Image.open(source) as image:
+        image.convert("RGB").resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS).save(out, optimize=True)
+    return out
 
 
 # --- Packaging and signing ---------------------------------------------------
@@ -144,6 +295,7 @@ def java_tool(toolchains, jar, *args, secrets=()):
 
 def package(hap, out, version, toolchains, signing):
     code = check_hap(hap, version)
+    verify_tools(toolchains)
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         # pack.info names the module package entry-default.
@@ -259,6 +411,17 @@ class Connect:
     def app_info(self):
         return self.call("GET", "/publish/v3/app-info", {"appId": self.app_id}).get("appInfo") or {}
 
+    def update_language(self, info):
+        self.call("PUT", "/publish/v3/app-language-info", {"appId": self.app_id}, info)
+
+    def update_files(self, icons, screenshots):
+        self.call(
+            "PUT",
+            "/publish/v3/app-file-info",
+            {"appId": self.app_id},
+            {"appIconList": icons, "screenShotList": screenshots},
+        )
+
     def upload(self, path, chinese_mainland):
         data = Path(path).read_bytes()
         target = self.call(
@@ -278,9 +441,9 @@ class Connect:
         try:
             with self.opener(request, timeout=1800) as response:
                 if response.status != 200:
-                    raise Error(f"package upload returned HTTP {response.status}")
+                    raise Error(f"upload of {Path(path).name} returned HTTP {response.status}")
         except urllib.error.HTTPError as error:
-            raise Error(f"package upload returned HTTP {error.code}") from None
+            raise Error(f"upload of {Path(path).name} returned HTTP {error.code}") from None
         return target["objectId"]
 
     def wait_for_package(self, package_id, attempts=60, interval=30):
@@ -306,15 +469,48 @@ def already_submitted(info, version, code):
     return None
 
 
-def submit(connect, app, version, code, chinese_mainland=False, apply=True):
+def sync_listing(connect, listing_dir, notes, chinese_mainland=False):
+    """Copy the Google Play listing and the release notes to AppGallery."""
+    listing_dir = Path(listing_dir)
+    listings = json.loads((listing_dir / "listing.json").read_text())
+    infos = {info["lang"]: info for info in language_infos(listings, notes)}
+    icons, screenshots = [], []
+    with tempfile.TemporaryDirectory() as directory:
+        for listing in listings:
+            lang = LISTING_LANGUAGES.get(listing["language"])
+            if lang not in infos:
+                continue
+            connect.update_language(infos[lang])
+            icon = appgallery_icon(listing_dir / listing["icon"][0], Path(directory) / f"{lang}-icon.png")
+            icons.append({"lang": lang, "fileInfoList": [
+                {"deviceType": PHONE, "objectIdList": [connect.upload(icon, chinese_mainland)], "showType": PORTRAIT},
+            ]})
+            screenshots.append({"lang": lang, "fileInfoList": [{
+                "deviceType": PHONE,
+                "objectIdList": [
+                    connect.upload(listing_dir / name, chinese_mainland) for name in listing["phoneScreenshots"]
+                ],
+                "showType": PORTRAIT,
+            }]})
+    connect.update_files(icons, screenshots)
+    print("Synced the Google Play listing to AppGallery: " + ", ".join(infos), flush=True)
+
+
+def submit(connect, app, version, code, chinese_mainland=False, apply=True, listing_dir=None, notes=None):
     info = connect.app_info()
     reason = already_submitted(info, version, code)
     if reason:
         print(f"Skipping AppGallery: {reason}", flush=True)
         return False
     if not apply:
+        if listing_dir:
+            listings = json.loads((Path(listing_dir) / "listing.json").read_text())
+            langs = [info["lang"] for info in language_infos(listings, notes or {})]
+            print(f"PLAN sync the Google Play listing for {', '.join(langs)}", flush=True)
         print(f"PLAN upload {Path(app).name} and submit {version} ({code}) for review", flush=True)
         return False
+    if listing_dir:
+        sync_listing(connect, listing_dir, notes or {}, chinese_mainland)
     object_id = connect.upload(app, chinese_mainland)
     package_id = connect.call(
         "PUT",
@@ -343,6 +539,8 @@ def main(argv=None):
     fetch = commands.add_parser("download")
     fetch.add_argument("--version", required=True, type=store_version)
     fetch.add_argument("--out", required=True)
+    listing = commands.add_parser("listing")
+    listing.add_argument("--out", required=True)
     pack = commands.add_parser("package")
     pack.add_argument("--version", required=True, type=store_version)
     pack.add_argument("--hap", required=True)
@@ -351,13 +549,19 @@ def main(argv=None):
     send = commands.add_parser("submit")
     send.add_argument("--version", required=True, type=store_version)
     send.add_argument("--app", required=True)
+    send.add_argument("--listing", help="Google Play listing directory to sync first")
     send.add_argument("--plan", action="store_true", help="report without uploading or submitting")
     args = parser.parse_args(argv)
 
     if args.command == "tools":
-        fetch_tools(args.out)
+        extract_tools(args.out)
     elif args.command == "download":
         download(args.version, args.out, os.environ["GITHUB_TOKEN"])
+    elif args.command == "listing":
+        account = os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "")
+        if not account:
+            raise Error("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is required")
+        fetch_play_listing(args.out, play_token(json.loads(account)))
     elif args.command == "package":
         package(args.hap, args.out, args.version, args.toolchains, signing_from_env(os.environ))
     else:
@@ -378,6 +582,8 @@ def main(argv=None):
             code,
             chinese_mainland=os.environ.get("AGC_CHINESE_MAINLAND") == "1",
             apply=not args.plan,
+            listing_dir=args.listing,
+            notes=release_notes(args.version) if args.listing else None,
         )
     return 0
 
