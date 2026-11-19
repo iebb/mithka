@@ -19,10 +19,10 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
-import 'forward_markdown.dart';
-import 'forward_options.dart';
-import 'internal_chat_link_router.dart';
-import 'telegram_link.dart';
+import 'links_search/internal_chat_link_router.dart';
+import 'links_search/telegram_link.dart';
+import 'messages/forward_markdown.dart';
+import 'messages/forward_options.dart';
 
 class ChatPickerResult {
   const ChatPickerResult({required this.chat, required this.forwardOptions});

@@ -330,6 +330,11 @@ class TdClient {
   final Map<int, Map<String, dynamic>> _latestChatFoldersByClient = {};
   final Map<int, Map<String, dynamic>> _latestEmojiChatThemesByClient = {};
 
+  /// Last `updateAccentColors` and `updateProfileAccentColors` per client.
+  /// TDLib pushes both once at login and asking again needs `getCurrentState`.
+  final Map<int, Map<String, dynamic>> _latestAccentColorsByClient = {};
+  final Map<int, Map<String, dynamic>> _latestProfileAccentColorsByClient = {};
+
   /// Last `updateConnectionState` per client. TDLib pushes that update only
   /// when the state actually changes and the pinned TDLib has no
   /// `getConnectionState` request to ask for it again, so a view mounted later
@@ -437,6 +442,10 @@ class TdClient {
       _latestEmojiChatThemesByClient[_activeClientId];
   Map<String, dynamic>? latestEmojiChatThemesUpdateForClient(int clientId) =>
       _latestEmojiChatThemesByClient[clientId];
+  Map<String, dynamic>? get latestAccentColorsUpdate =>
+      _latestAccentColorsByClient[_activeClientId];
+  Map<String, dynamic>? get latestProfileAccentColorsUpdate =>
+      _latestProfileAccentColorsByClient[_activeClientId];
   Map<String, dynamic>? get latestConnectionStateUpdate =>
       _latestConnectionStateByClient[_activeClientId];
   Map<String, dynamic>? latestConnectionStateUpdateForClient(int clientId) =>
@@ -490,6 +499,12 @@ class TdClient {
     }
     if (object.type == 'updateEmojiChatThemes') {
       _latestEmojiChatThemesByClient[_activeClientId] = object;
+    }
+    if (object.type == 'updateAccentColors') {
+      _latestAccentColorsByClient[_activeClientId] = object;
+    }
+    if (object.type == 'updateProfileAccentColors') {
+      _latestProfileAccentColorsByClient[_activeClientId] = object;
     }
     if (object.type == 'updateConnectionState') {
       _latestConnectionStateByClient[_activeClientId] = object;
@@ -1207,6 +1222,8 @@ class TdClient {
     _slotForClient.remove(oldClientId);
     _latestChatFoldersByClient.remove(oldClientId);
     _latestEmojiChatThemesByClient.remove(oldClientId);
+    _latestAccentColorsByClient.remove(oldClientId);
+    _latestProfileAccentColorsByClient.remove(oldClientId);
     _latestConnectionStateByClient.remove(oldClientId);
     _latestCommunitiesByClient.remove(oldClientId);
     _proxyAppliedClients.remove(oldClientId);
@@ -1910,6 +1927,8 @@ class TdClient {
       ForumTopicIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
+      _latestAccentColorsByClient.remove(cid);
+      _latestProfileAccentColorsByClient.remove(cid);
       _latestConnectionStateByClient.remove(cid);
       _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
@@ -1941,6 +1960,8 @@ class TdClient {
       ForumTopicIndex.shared.clearSlot(slot);
       _latestChatFoldersByClient.remove(cid);
       _latestEmojiChatThemesByClient.remove(cid);
+      _latestAccentColorsByClient.remove(cid);
+      _latestProfileAccentColorsByClient.remove(cid);
       _latestConnectionStateByClient.remove(cid);
       _latestTextCompositionStylesByClient.remove(cid);
       _latestCommunitiesByClient.remove(cid);
@@ -2046,6 +2067,12 @@ class TdClient {
     }
     if (object.type == 'updateEmojiChatThemes') {
       _latestEmojiChatThemesByClient[clientId] = object;
+    }
+    if (object.type == 'updateAccentColors') {
+      _latestAccentColorsByClient[clientId] = object;
+    }
+    if (object.type == 'updateProfileAccentColors') {
+      _latestProfileAccentColorsByClient[clientId] = object;
     }
     if (object.type == 'updateConnectionState') {
       _latestConnectionStateByClient[clientId] = object;

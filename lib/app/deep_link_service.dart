@@ -20,9 +20,9 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../auth/auth_manager.dart';
-import '../chat/link_browser.dart';
-import '../chat/link_handler.dart';
-import '../chat/telegram_link.dart';
+import '../chat/links_search/link_browser.dart';
+import '../chat/links_search/link_handler.dart';
+import '../chat/links_search/telegram_link.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
 import '../security/local_app_lock_controller.dart';

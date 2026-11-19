@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/image_edit_view.dart';
+import '../chat/media/image_edit_view.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';

@@ -13,7 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../app/app_version.dart';
 import '../app/telemetry_config.dart';
-import '../chat/link_handler.dart';
+import '../chat/links_search/link_handler.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';

@@ -1,14 +1,13 @@
 //
 //  profile_detail_view.dart
 //
-//  A user's profile page (个人资料), reached by tapping a contact: a blurred
-//  profile-photo cover with the avatar overlapping the bottom-left, name beside
+//  A user's profile page (个人资料), reached by tapping a contact: a profile
+//  color cover with the avatar overlapping the bottom-left, name beside
 //  it, compact detail rows, and a fixed bottom bar (音视频通话 / 发消息).
 //
 
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -22,18 +21,18 @@ import '../app/desktop_image_preview_window.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../call/call_manager.dart';
-import '../chat/audio_search_view.dart';
+import '../chat/appearance/chat_wallpaper.dart';
 import '../chat/chat_first_contact_info.dart';
-import '../chat/chat_search_view.dart';
-import '../chat/chat_wallpaper.dart';
-import '../chat/custom_emoji.dart';
-import '../chat/full_image_viewer.dart';
-import '../chat/link_handler.dart';
-import '../chat/music_player_controller.dart';
+import '../chat/links_search/chat_search_view.dart';
+import '../chat/links_search/link_handler.dart';
+import '../chat/media/audio_search_view.dart';
+import '../chat/media/full_image_viewer.dart';
+import '../chat/media/music_player_controller.dart';
+import '../chat/messages/telegram_rich_text.dart';
 import '../chat/secret_chat_service.dart';
-import '../chat/sticker_item.dart';
-import '../chat/sticker_preview.dart';
-import '../chat/telegram_rich_text.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/sticker_item.dart';
+import '../chat/stickers/sticker_preview.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
@@ -55,6 +54,7 @@ import '../theme/theme_controller.dart';
 import 'profile_contact_management_view.dart';
 import 'profile_contact_service.dart';
 import 'profile_gifts.dart';
+import 'profile_header_background.dart';
 import 'profile_identity_summary.dart';
 import 'profile_link.dart';
 import 'profile_username_pill.dart';
@@ -99,6 +99,10 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
   bool _isOnline = false;
   bool _isPremium = false;
   int _emojiStatusId = 0;
+  int _accentColorId = -1;
+  int _profileAccentColorId = -1;
+  int _profileIconId = 0;
+  StreamSubscription<Map<String, dynamic>>? _appearanceSubscription;
   String _statusText = '';
   int? _chatId;
   List<_FeaturedProfilePhoto> _photos = []; // 精选照片 — profile-photo history
@@ -133,17 +137,42 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     super.initState();
     _wallpaperController.addListener(_onWallpaperChanged);
     _name = widget.name;
+    _appearanceSubscription = TdClient.shared
+        .updatesOfAny(const [
+          'updateUser',
+          'updateAccentColors',
+          'updateProfileAccentColors',
+        ])
+        .listen((update) {
+          if (!mounted) return;
+          if (update.type == 'updateUser') {
+            final user = update.obj('user');
+            if (user == null || user.int64('id') != widget.userId) return;
+            setState(() => _applyAppearance(user));
+          } else {
+            setState(() {});
+          }
+        });
     _load();
   }
 
   @override
   void dispose() {
     _wallpaperController.removeListener(_onWallpaperChanged);
+    _appearanceSubscription?.cancel();
     super.dispose();
   }
 
   void _onWallpaperChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _applyAppearance(Map<String, dynamic> user) {
+    _accentColorId = user.integer('accent_color_id') ?? -1;
+    _profileAccentColorId = user.integer('profile_accent_color_id') ?? -1;
+    _profileIconId = user.int64('profile_background_custom_emoji_id') ?? 0;
+    _emojiStatusId = TDParse.emojiStatusCustomEmojiId(user.obj('emoji_status'));
+    _isPremium = user.boolean('is_premium') ?? false;
   }
 
   Future<void> _load() async {
@@ -171,15 +200,12 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
           _phone = TDParse.formatPhone(_rawPhone);
           _photo = TDParse.smallPhoto(user.obj('profile_photo'));
           _isOnline = TDParse.isUserOnline(user);
-          _isPremium = user.boolean('is_premium') ?? false;
+          _applyAppearance(user);
           _isContact = _isMe || (user.boolean('is_contact') ?? false);
           _isBot = user.obj('type')?.type == 'userTypeBot';
           _isDeleted = TDParse.isDeletedUser(user);
           _isRegularUser = user.obj('type')?.type == 'userTypeRegular';
           _hasLoadedUser = true;
-          _emojiStatusId = TDParse.emojiStatusCustomEmojiId(
-            user.obj('emoji_status'),
-          );
           _statusText = TDParse.userStatus(user);
         });
       }
@@ -863,7 +889,7 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
     } catch (_) {}
   }
 
-  /// Cover (blurred profile photo, gradient fallback) + overlapping avatar +
+  /// Cover in Telegram's profile colors + overlapping avatar +
   /// name/username/status.
   Widget _header() {
     final top = topChromeInsetOf(context);
@@ -1187,29 +1213,29 @@ class _ProfileDetailViewState extends State<ProfileDetailView> {
         ),
       );
     }
-    if (_photo != null) {
-      return SizedBox(
-        height: h,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Own layer, so scrolling the profile does not re-record the
-            // gaussian with the header.
-            RepaintBoundary(
-              child: ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                child: TDImage(photo: _photo, cornerRadius: 0),
-              ),
-            ),
-            Container(color: Colors.black.withValues(alpha: 0.18)),
-          ],
-        ),
-      );
-    }
-    return Container(
+    final client = TdClient.shared;
+    final colors =
+        profileHeaderColors(
+          profileAccentColorId: _profileAccentColorId,
+          accentColorId: _accentColorId >= 0
+              ? _accentColorId
+              : widget.userId % 7,
+          dark: Theme.of(context).brightness == Brightness.dark,
+          profileAccentColors: client.latestProfileAccentColorsUpdate,
+          accentColors: client.latestAccentColorsUpdate,
+        ) ??
+        [AppTheme.brand];
+    return SizedBox(
       height: h,
-      decoration: BoxDecoration(gradient: AppTheme.brandGradient),
+      width: double.infinity,
+      child: LayoutBuilder(
+        builder: (context, constraints) => ProfileHeaderBackground(
+          colors: colors,
+          photoCenter: Offset(constraints.maxWidth / 2, h * 0.58),
+          photoRadius: 40,
+          patternEmojiId: _profileIconId,
+        ),
+      ),
     );
   }
 

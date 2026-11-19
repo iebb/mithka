@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,11 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
 
-import '../chat/image_edit_view.dart';
+import '../chat/media/full_image_viewer.dart' show ImageViewerMessageActions;
+import '../chat/media/image_edit_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../media/media_metadata.dart';
+import '../media/media_metadata_dialog.dart';
 import '../platform/desktop_clipboard_images.dart';
 import '../platform/keyboard_modifiers.dart';
 import '../platform/ohos_support.dart';
@@ -53,41 +57,85 @@ class DesktopImagePreviewWindowService {
   static final DesktopImagePreviewWindowService instance =
       DesktopImagePreviewWindowService._();
 
-  bool get isSupported => implementation.supportsDesktopImagePreviewWindows;
+  /// Lets widget tests of chat galleries keep the in-app viewer on desktop
+  /// hosts, where the native window plugin never answers.
+  @visibleForTesting
+  bool? debugSupportedOverride;
+
+  bool get isSupported =>
+      debugSupportedOverride ??
+      implementation.supportsDesktopImagePreviewWindows;
 
   /// Keeps one window per image, so opening the same one again raises that
   /// window instead of stacking a duplicate on top of it.
   final DesktopMediaWindowRegistry _windows = DesktopMediaWindowRegistry();
 
+  /// Message actions of the open previews, by session. The message ids stay
+  /// here; a preview window only sends back its session and gallery index.
+  final Map<String, _PreviewActionSession> _sessions = {};
+  final Random _random = Random.secure();
+  int _sessionCount = 0;
+
   Future<void> broadcastBrightness(bool dark) =>
       implementation.broadcastDesktopImagePreviewBrightness(dark);
 
+  /// Opens [images] in an independent window. [metadata] and the message ids
+  /// in [messageActions] line up with [images], as in the in-app viewer.
   Future<bool> open(
     List<TdFileRef> images, {
     int startIndex = 0,
     required bool dark,
+    List<MediaMetadata?> metadata = const [],
+    ImageViewerMessageActions? messageActions,
   }) async {
     if (!isSupported || images.isEmpty) return false;
     final slice = desktopImagePreviewWindowSlice(images.length, startIndex);
-    final safeImages = images
-        .skip(slice.first)
-        .take(slice.count)
-        .toList(growable: false);
+    T? at<T>(List<T?> source, int index) =>
+        index < source.length ? source[index] : null;
+    final range = [for (var i = 0; i < slice.count; i++) slice.first + i];
+    final safeImages = [for (final i in range) images[i]];
+    final safeMetadata = [for (final i in range) at(metadata, i)];
+    final messageIds = [
+      for (final i in range)
+        at(messageActions?.messageIds ?? const <int?>[], i),
+    ];
     final initialIndex = slice.initialIndex;
-    final imageId = safeImages[initialIndex].id;
-    if (_windows.isOpening(imageId)) return true;
-    final existing = _windows.windowFor(imageId);
+    int? originWindowId;
+    if (messageActions != null && messageIds.any((id) => id != null)) {
+      originWindowId = await implementation
+          .currentDesktopImagePreviewOriginWindowId();
+    }
+    final hasActions = originWindowId != null;
+    // A preview with chat actions and one without them are different windows.
+    final windowKey = (safeImages[initialIndex].id, hasActions);
+    if (_windows.isOpening(windowKey)) return true;
+    final existing = _windows.windowFor(windowKey);
     if (existing != null) {
       if (await implementation.focusDesktopImagePreviewWindow(existing)) {
         return true;
       }
-      _windows.forget(imageId);
+      _windows.forget(windowKey);
+    }
+    String? sessionId;
+    if (hasActions) {
+      await _pruneSessions();
+      implementation.setDesktopImagePreviewActionHandler(_handleAction);
+      sessionId =
+          'image-${++_sessionCount}-${_random.nextInt(1 << 32).toRadixString(36)}';
+      _sessions[sessionId] = _PreviewActionSession(
+        messageIds: messageIds,
+        onViewInChat: messageActions!.onViewInChat,
+        onReply: messageActions.onReply,
+      );
     }
     final arguments = DesktopImagePreviewWindowArguments(
       title: AppStrings.t(AppStringKeys.imagePreviewTitle),
       localeTag: Intl.getCurrentLocale(),
       dark: dark,
       startIndex: initialIndex,
+      canReply: hasActions && messageActions?.onReply != null,
+      actionSession: sessionId,
+      originWindowId: originWindowId,
       items: [
         for (var index = 0; index < safeImages.length; index++)
           DesktopImagePreviewItemArguments(
@@ -96,18 +144,58 @@ class DesktopImagePreviewWindowService {
             miniThumb: index == initialIndex
                 ? safeImages[index].miniThumb
                 : null,
+            metadata: safeMetadata[index],
+            hasMessage: hasActions && messageIds[index] != null,
           ),
       ],
     );
-    _windows.beginOpening(imageId);
+    _windows.beginOpening(windowKey);
     int? windowId;
     try {
       windowId = await implementation.openDesktopImagePreviewWindow(arguments);
     } finally {
-      _windows.finishOpening(imageId, windowId: windowId);
+      _windows.finishOpening(windowKey, windowId: windowId);
     }
-    if (windowId == null) return false;
+    if (windowId == null) {
+      _sessions.remove(sessionId);
+      return false;
+    }
+    _sessions[sessionId]?.windowId = windowId;
     unawaited(_resolveAndPublish(windowId, safeImages));
+    return true;
+  }
+
+  /// Drops the actions of previews that were closed, so their chat callbacks
+  /// are not kept alive for the rest of the app session.
+  Future<void> _pruneSessions() async {
+    if (_sessions.isEmpty) return;
+    final active = await implementation.activeDesktopImagePreviewWindowIds();
+    _sessions.removeWhere(
+      (_, session) =>
+          session.windowId != null && !active.contains(session.windowId),
+    );
+  }
+
+  Future<bool> _handleAction(
+    int fromWindowId,
+    DesktopImagePreviewActionRequest request,
+  ) async {
+    final session = _sessions[request.session];
+    // Only the window the session was created for may use it.
+    if (session == null || session.windowId != fromWindowId) return false;
+    if (request.index >= session.messageIds.length) return false;
+    final messageId = session.messageIds[request.index];
+    final action = switch (request.action) {
+      DesktopImagePreviewAction.viewInChat => session.onViewInChat,
+      DesktopImagePreviewAction.reply => session.onReply,
+    };
+    if (messageId == null || action == null) return false;
+    await implementation.focusCurrentDesktopImagePreviewOrigin();
+    try {
+      await action(messageId);
+    } on Object {
+      return false;
+    }
     return true;
   }
 
@@ -122,6 +210,19 @@ class DesktopImagePreviewWindowService {
       );
     }
   }
+}
+
+class _PreviewActionSession {
+  _PreviewActionSession({
+    required this.messageIds,
+    required this.onViewInChat,
+    required this.onReply,
+  });
+
+  final List<int?> messageIds;
+  final Future<void> Function(int messageId) onViewInChat;
+  final Future<void> Function(int messageId)? onReply;
+  int? windowId;
 }
 
 class DesktopImagePreviewWindowApp extends StatelessWidget {
@@ -191,10 +292,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
       final current = _items[update.index];
       if (current.path == update.path) return;
       setState(() {
-        _items[update.index] = DesktopImagePreviewItemArguments(
-          path: update.path,
-          miniThumb: current.miniThumb,
-        );
+        _items[update.index] = current.withPath(update.path);
       });
     });
     _brightnessSubscription = implementation
@@ -205,10 +303,19 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
   }
 
   @override
+  void didUpdateWidget(covariant _DesktopImagePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.arguments.dark != oldWidget.arguments.dark) {
+      _dark = widget.arguments.dark;
+    }
+  }
+
+  @override
   void dispose() {
     _statusTimer?.cancel();
     unawaited(_pathSubscription?.cancel());
     unawaited(_brightnessSubscription?.cancel());
+    implementation.detachDesktopImagePreviewBridgeIfIdle();
     _transformation.removeListener(_handleTransformationChanged);
     _transformation.dispose();
     super.dispose();
@@ -281,16 +388,10 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
   Future<void> _editCurrentImage() async {
     final path = _items[_index].path;
     if (path == null) return;
-    final colors = _dark ? AppColors.dark : AppColors.light;
     final result = await Navigator.of(context).push<ImageEditResult>(
       PageRouteBuilder<ImageEditResult>(
         pageBuilder: (context, _, _) => Theme(
-          data: ThemeData(
-            brightness: _dark ? Brightness.dark : Brightness.light,
-            useMaterial3: true,
-            scaffoldBackgroundColor: colors.background,
-            extensions: [colors],
-          ),
+          data: _theme(),
           child: ImageEditView(sourcePath: path),
         ),
       ),
@@ -298,12 +399,8 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
     if (!mounted || result == null) return;
     final editedPath = normalizeDesktopImagePath(result.path);
     if (editedPath == null) return;
-    final current = _items[_index];
     setState(() {
-      _items[_index] = DesktopImagePreviewItemArguments(
-        path: editedPath,
-        miniThumb: current.miniThumb,
-      );
+      _items[_index] = _items[_index].withPath(editedPath);
       _quarterTurns = 0;
       _showMore = false;
     });
@@ -362,6 +459,58 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
     if (mounted) setState(() => _showMore = false);
   }
 
+  bool get _currentHasMessage =>
+      widget.arguments.hasMessageActions && _items[_index].hasMessage;
+
+  /// Asks the opening window to run [action] on the current image's message,
+  /// then closes this preview so the chat it jumped to is in view.
+  Future<void> _runMessageAction(DesktopImagePreviewAction action) async {
+    final session = widget.arguments.actionSession;
+    final origin = widget.arguments.originWindowId;
+    setState(() => _showMore = false);
+    if (session == null || origin == null) return;
+    final done = await implementation.requestDesktopImagePreviewAction(
+      origin,
+      DesktopImagePreviewActionRequest(
+        session: session,
+        action: action,
+        index: _index,
+      ),
+    );
+    if (!mounted) return;
+    if (done) {
+      await implementation.closeCurrentDesktopImagePreviewWindow();
+    } else {
+      _showStatus(AppStrings.t(AppStringKeys.chatInputBarActionFailed));
+    }
+  }
+
+  Future<void> _showCurrentInfo() async {
+    final metadata = _items[_index].metadata;
+    setState(() => _showMore = false);
+    if (metadata == null) return;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: AppStrings.t(AppStringKeys.mediaMetadataTitle),
+      barrierColor: const Color(0x85000000),
+      pageBuilder: (_, _, _) => Theme(
+        data: _theme(),
+        child: MediaMetadataDialog(metadata: metadata),
+      ),
+    );
+  }
+
+  ThemeData _theme() {
+    final colors = _dark ? AppColors.dark : AppColors.light;
+    return ThemeData(
+      brightness: _dark ? Brightness.dark : Brightness.light,
+      useMaterial3: true,
+      scaffoldBackgroundColor: colors.background,
+      extensions: [colors],
+    );
+  }
+
   void _showStatus(String message) {
     _statusTimer?.cancel();
     if (mounted) setState(() => _status = message);
@@ -371,129 +520,149 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
   }
 
   @override
-  Widget build(BuildContext context) => Focus(
-    autofocus: true,
-    onKeyEvent: _handleKey,
-    child: ColoredBox(
-      color: _dark ? const Color(0xFF0C0D0F) : const Color(0xFFF0F1F3),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onDoubleTap: _toggleZoom,
-              child: InteractiveViewer(
-                transformationController: _transformation,
-                minScale: 0.75,
-                maxScale: 5,
-                trackpadScrollCausesScale: true,
-                child: Center(
-                  child: RotatedBox(
-                    quarterTurns: _quarterTurns,
-                    child: _image(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (_items.length > 1) ...[
-            Positioned(
-              left: 12,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: _GalleryArrow(
-                  key: const ValueKey('desktop-image-previous'),
-                  icon: HeroAppIcons.chevronLeft,
-                  label: AppStrings.t(AppStringKeys.videoPlayerPreviousVideo),
-                  enabled: _index > 0,
-                  onTap: () => _move(-1),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 12,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: _GalleryArrow(
-                  key: const ValueKey('desktop-image-next'),
-                  icon: HeroAppIcons.chevronRight,
-                  label: AppStrings.t(AppStringKeys.videoPlayerNextVideo),
-                  enabled: _index < _items.length - 1,
-                  onTap: () => _move(1),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xB816171A),
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 4,
-                    ),
-                    child: Text(
-                      '${_index + 1} / ${_items.length}',
-                      style: const TextStyle(
-                        color: Color(0xFFFFFFFF),
-                        fontSize: 12,
-                        decoration: TextDecoration.none,
+  Widget build(BuildContext context) {
+    return Theme(
+      data: _theme(),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _handleKey,
+        child: ColoredBox(
+          color: _dark ? const Color(0xFF0C0D0F) : const Color(0xFFF0F1F3),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: _toggleZoom,
+                  child: InteractiveViewer(
+                    transformationController: _transformation,
+                    minScale: 0.75,
+                    maxScale: 5,
+                    trackpadScrollCausesScale: true,
+                    child: Center(
+                      child: RotatedBox(
+                        quarterTurns: _quarterTurns,
+                        child: _image(),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-          if (_status case final status?)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 66,
-              child: Center(
-                child: _PreviewStatus(message: status, dark: _dark),
+              if (_items.length > 1) ...[
+                Positioned(
+                  left: 12,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _GalleryArrow(
+                      key: const ValueKey('desktop-image-previous'),
+                      icon: HeroAppIcons.chevronLeft,
+                      label: AppStrings.t(
+                        AppStringKeys.videoPlayerPreviousVideo,
+                      ),
+                      enabled: _index > 0,
+                      onTap: () => _move(-1),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 12,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _GalleryArrow(
+                      key: const ValueKey('desktop-image-next'),
+                      icon: HeroAppIcons.chevronRight,
+                      label: AppStrings.t(AppStringKeys.videoPlayerNextVideo),
+                      enabled: _index < _items.length - 1,
+                      onTap: () => _move(1),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xB816171A),
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          '${_index + 1} / ${_items.length}',
+                          style: const TextStyle(
+                            color: Color(0xFFFFFFFF),
+                            fontSize: 12,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (_status case final status?)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 66,
+                  child: Center(
+                    child: _PreviewStatus(message: status, dark: _dark),
+                  ),
+                ),
+              if (_showMore)
+                Positioned(
+                  right: 12,
+                  bottom: 62,
+                  child: _PreviewMoreMenu(
+                    dark: _dark,
+                    onViewInChat: _currentHasMessage
+                        ? () => _runMessageAction(
+                            DesktopImagePreviewAction.viewInChat,
+                          )
+                        : null,
+                    onReply: _currentHasMessage && widget.arguments.canReply
+                        ? () =>
+                              _runMessageAction(DesktopImagePreviewAction.reply)
+                        : null,
+                    onInfo: _items[_index].metadata != null
+                        ? _showCurrentInfo
+                        : null,
+                    onCopy: _copyCurrent,
+                    onClose:
+                        implementation.closeCurrentDesktopImagePreviewWindow,
+                  ),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _PreviewToolbar(
+                  dark: _dark,
+                  scale: _scale,
+                  canSave: _items[_index].path != null,
+                  canEdit: _items[_index].path != null,
+                  onZoomOut: () => _setScale(_scale - 0.25),
+                  onZoomIn: () => _setScale(_scale + 0.25),
+                  onReset: _resetTransform,
+                  onRotate: _rotate,
+                  onEdit: _editCurrentImage,
+                  onSave: _saveCurrentImage,
+                  onMore: () => setState(() => _showMore = !_showMore),
+                ),
               ),
-            ),
-          if (_showMore)
-            Positioned(
-              right: 12,
-              bottom: 62,
-              child: _PreviewMoreMenu(
-                dark: _dark,
-                onCopy: _copyCurrent,
-                onClose: implementation.closeCurrentDesktopImagePreviewWindow,
-              ),
-            ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _PreviewToolbar(
-              dark: _dark,
-              scale: _scale,
-              canSave: _items[_index].path != null,
-              canEdit: _items[_index].path != null,
-              onZoomOut: () => _setScale(_scale - 0.25),
-              onZoomIn: () => _setScale(_scale + 0.25),
-              onReset: _resetTransform,
-              onRotate: _rotate,
-              onEdit: _editCurrentImage,
-              onSave: _saveCurrentImage,
-              onMore: () => setState(() => _showMore = !_showMore),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _image() {
     final item = _items[_index];
@@ -790,11 +959,19 @@ class _PreviewMoreMenu extends StatelessWidget {
     required this.dark,
     required this.onCopy,
     required this.onClose,
+    this.onViewInChat,
+    this.onReply,
+    this.onInfo,
   });
 
   final bool dark;
   final VoidCallback onCopy;
   final VoidCallback onClose;
+
+  /// Null hides the entry: the image has no message, or no media facts.
+  final VoidCallback? onViewInChat;
+  final VoidCallback? onReply;
+  final VoidCallback? onInfo;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -818,6 +995,27 @@ class _PreviewMoreMenu extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onViewInChat case final onTap?)
+          _PreviewMoreAction(
+            icon: HeroAppIcons.arrowRight,
+            label: AppStrings.t(AppStringKeys.messageViewInChat),
+            dark: dark,
+            onTap: onTap,
+          ),
+        if (onReply case final onTap?)
+          _PreviewMoreAction(
+            icon: HeroAppIcons.quoteLeft,
+            label: AppStrings.t(AppStringKeys.chatInputBarReply),
+            dark: dark,
+            onTap: onTap,
+          ),
+        if (onInfo case final onTap?)
+          _PreviewMoreAction(
+            icon: HeroAppIcons.circleInfo,
+            label: AppStrings.t(AppStringKeys.mediaMetadataViewInfo),
+            dark: dark,
+            onTap: onTap,
+          ),
         _PreviewMoreAction(
           icon: HeroAppIcons.clipboard,
           label: AppStrings.t(

@@ -17,7 +17,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/preview_texts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../chat/quick_reaction_choice.dart';
+import '../chat/messages/quick_reaction_choice.dart';
 import '../components/app_icons.dart';
 import '../platform/adaptive_platform.dart';
 import 'app_theme.dart';

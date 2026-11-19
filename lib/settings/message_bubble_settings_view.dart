@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_view.dart';
-import '../chat/link_handler.dart';
-import '../chat/message_bubble_chat_preview.dart';
-import '../chat/message_bubble_repository_view.dart';
+import '../chat/links_search/link_handler.dart';
+import '../chat/messages/message_bubble_chat_preview.dart';
+import '../chat/messages/message_bubble_repository_view.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';

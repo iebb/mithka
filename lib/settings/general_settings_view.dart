@@ -11,8 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/account_store.dart';
-import '../chat/link_browser.dart';
-import '../chat/link_preview_fixer.dart';
+import '../chat/links_search/link_browser.dart';
+import '../chat/links_search/link_preview_fixer.dart';
 import '../components/app_icons.dart';
 import '../components/settings_selection_row.dart';
 import '../components/toast.dart';

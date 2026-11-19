@@ -18,26 +18,26 @@ import 'package:provider/provider.dart';
 import '../app/app_navigator.dart';
 import '../app/bottom_bar_layout.dart';
 import '../app/ipad_window_chrome.dart';
-import '../chat/animated_sticker_view.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
-import '../chat/custom_emoji.dart';
-import '../chat/forward_options.dart';
-import '../chat/image_preview.dart';
-import '../chat/media_album_layout.dart';
-import '../chat/media_spoiler.dart';
-import '../chat/message_reaction_availability.dart';
-import '../chat/music_player_controller.dart';
-import '../chat/outgoing_attachment.dart';
-import '../chat/pangu_spacing.dart';
-import '../chat/quick_reaction_choice.dart';
-import '../chat/rich_text_composer_view.dart';
-import '../chat/rich_text_format.dart';
-import '../chat/shared_media_view.dart';
-import '../chat/telegram_rich_text.dart';
-import '../chat/video_playback_queue.dart';
-import '../chat/video_player_view.dart';
-import '../chat/video_sticker_view.dart';
+import '../chat/composer/outgoing_attachment.dart';
+import '../chat/composer/rich_text_composer_view.dart';
+import '../chat/composer/rich_text_format.dart';
+import '../chat/media/image_preview.dart';
+import '../chat/media/music_player_controller.dart';
+import '../chat/media/shared_media_view.dart';
+import '../chat/media/video_playback_queue.dart';
+import '../chat/media/video_player_view.dart';
+import '../chat/messages/forward_options.dart';
+import '../chat/messages/media_album_layout.dart';
+import '../chat/messages/media_spoiler.dart';
+import '../chat/messages/message_reaction_availability.dart';
+import '../chat/messages/pangu_spacing.dart';
+import '../chat/messages/quick_reaction_choice.dart';
+import '../chat/messages/telegram_rich_text.dart';
+import '../chat/stickers/animated_sticker_view.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/video_sticker_view.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -46,11 +46,12 @@ import '../components/desktop_content_constraint.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../components/vip_badge.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/adaptive_profile_launcher.dart';
-import '../settings/accent_color_picker_view.dart';
+import '../profile/profile_header_background.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/display_text.dart';
 import '../tdlib/json_helpers.dart';
@@ -980,6 +981,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   TdFileRef? _mePhoto;
   int _meAccentColorId = -1;
   int _meProfileAccentColorId = -1;
+  int _meProfileIconId = 0;
+  int _meEmojiStatusId = 0;
+  bool _meIsPremium = false;
   bool _loadingPosts = false;
   bool _loadingPostableChannels = false;
   bool _refreshingLiveUpdates = false;
@@ -1046,6 +1050,9 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           'updateDeleteMessages',
           'updateChatAddedToList',
           'updateChatRemovedFromList',
+          'updateUser',
+          'updateAccentColors',
+          'updateProfileAccentColors',
         ])
         .listen(_handleTdUpdate);
     if (_scopedChannel == null) _model.onAppear();
@@ -1209,22 +1216,30 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
   Future<void> _loadMe() async {
     try {
       final me = await TdClient.shared.query({'@type': 'getMe'});
-      final name = TDParse.userName(me).trim();
-      final userId = me.int64('id');
       if (!mounted) return;
-      setState(() {
-        _meUserId = userId;
-        if (name.isNotEmpty) _meName = name;
-        _mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
-        _meAccentColorId = me.integer('accent_color_id') ?? -1;
-        _meProfileAccentColorId = me.integer('profile_accent_color_id') ?? -1;
-      });
+      setState(() => _applyMe(me));
       unawaited(_loadPostableChannels());
     } catch (_) {}
   }
 
+  void _applyMe(Map<String, dynamic> me) {
+    final name = TDParse.userName(me).trim();
+    _meUserId = me.int64('id');
+    if (name.isNotEmpty) _meName = name;
+    _mePhoto = TDParse.smallPhoto(me.obj('profile_photo'));
+    _meAccentColorId = me.integer('accent_color_id') ?? -1;
+    _meProfileAccentColorId = me.integer('profile_accent_color_id') ?? -1;
+    _meProfileIconId = me.int64('profile_background_custom_emoji_id') ?? 0;
+    _meEmojiStatusId = TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status'));
+    _meIsPremium = me.boolean('is_premium') ?? false;
+  }
+
   void _handleTdUpdate(Map<String, dynamic> update) {
     switch (update.type) {
+      case 'updateAccentColors':
+      case 'updateProfileAccentColors':
+        if (mounted) setState(() {});
+
       case 'updateNewMessage':
       case 'updateMessageContent':
       case 'updateMessageEdited':
@@ -1252,6 +1267,14 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           _loadedSinceByChannel.remove(chatId);
           if (mounted) setState(() {});
         }
+
+      // A color, profile icon or status changed in another view or on another
+      // device repaints the header straight away.
+      case 'updateUser':
+        final user = update.obj('user');
+        if (user == null || _meUserId == null) return;
+        if (user.int64('id') != _meUserId || !mounted) return;
+        setState(() => _applyMe(user));
     }
   }
 
@@ -2394,20 +2417,21 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
     _loadChannelPosts();
   }
 
-  Color _profileHeaderColor(BuildContext context) {
-    final colorId = _scopedChannel != null
-        ? -1
-        : _meProfileAccentColorId >= 0
-        ? _meProfileAccentColorId
-        : _meAccentColorId;
-    if (colorId >= 0 && colorId < kAccentColors.length) {
-      return kAccentColors[colorId].withValues(
-        alpha: Theme.of(context).brightness == Brightness.dark ? 0.30 : 0.17,
-      );
-    }
-    return AppTheme.brand.withValues(
-      alpha: Theme.of(context).brightness == Brightness.dark ? 0.25 : 0.13,
-    );
+  /// Telegram's profile color for the signed-in user, or their name color when
+  /// no profile color is set. A single channel keeps its photo background.
+  List<Color>? _profileHeaderColors(BuildContext context) {
+    if (_scopedChannel != null) return null;
+    final client = TdClient.shared;
+    return profileHeaderColors(
+          profileAccentColorId: _meProfileAccentColorId,
+          accentColorId: _meAccentColorId >= 0
+              ? _meAccentColorId
+              : (_meUserId ?? 0) % 7,
+          dark: Theme.of(context).brightness == Brightness.dark,
+          profileAccentColors: client.latestProfileAccentColorsUpdate,
+          accentColors: client.latestAccentColorsUpdate,
+        ) ??
+        [AppTheme.brand];
   }
 
   @override
@@ -2497,7 +2521,15 @@ class _ChannelMomentsViewState extends State<ChannelMomentsView> {
           final composer = _MomentsComposerHeader(
             name: scoped?.title ?? _meName,
             photo: scoped == null ? _mePhoto : scoped.photo,
-            backgroundColor: _profileHeaderColor(context),
+            backgroundColor: AppTheme.brand.withValues(
+              alpha: Theme.of(context).brightness == Brightness.dark
+                  ? 0.25
+                  : 0.13,
+            ),
+            profileColors: _profileHeaderColors(context),
+            profileIconId: scoped == null ? _meProfileIconId : 0,
+            emojiStatusId: scoped == null ? _meEmojiStatusId : 0,
+            isPremium: scoped == null && _meIsPremium,
             canCompose: _postableChannels.isNotEmpty,
             onCompose: _openNewPostComposer,
           );
@@ -2720,6 +2752,10 @@ class _MomentsComposerHeader extends StatelessWidget {
     required this.name,
     this.photo,
     required this.backgroundColor,
+    this.profileColors,
+    this.profileIconId = 0,
+    this.emojiStatusId = 0,
+    this.isPremium = false,
     required this.canCompose,
     required this.onCompose,
   });
@@ -2727,12 +2763,19 @@ class _MomentsComposerHeader extends StatelessWidget {
   final String name;
   final TdFileRef? photo;
   final Color backgroundColor;
+  final List<Color>? profileColors;
+  final int profileIconId;
+  final int emojiStatusId;
+  final bool isPremium;
   final bool canCompose;
   final VoidCallback onCompose;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final foreground = profileColors != null || photo != null
+        ? Colors.white
+        : c.textPrimary;
     return Container(
       color: c.background,
       child: Column(
@@ -2742,7 +2785,14 @@ class _MomentsComposerHeader extends StatelessWidget {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: photo == null
+                  child: profileColors != null
+                      ? ProfileHeaderBackground(
+                          colors: profileColors!,
+                          photoCenter: const Offset(55, 109),
+                          photoRadius: 37,
+                          patternEmojiId: profileIconId,
+                        )
+                      : photo == null
                       ? ColoredBox(color: backgroundColor)
                       : Stack(
                           fit: StackFit.expand,
@@ -2778,16 +2828,34 @@ class _MomentsComposerHeader extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 25,
-                                  height: 1.08,
-                                  fontWeight: FontWeight.w600,
-                                  color: c.textPrimary,
-                                ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 25,
+                                        height: 1.08,
+                                        fontWeight: FontWeight.w600,
+                                        color: foreground,
+                                      ),
+                                    ),
+                                  ),
+                                  if (emojiStatusId != 0) ...[
+                                    const SizedBox(width: 6),
+                                    StatusEmojiView(
+                                      id: emojiStatusId,
+                                      size: 22,
+                                      color: foreground,
+                                    ),
+                                  ],
+                                  if (isPremium) ...[
+                                    const SizedBox(width: 6),
+                                    const VipBadge(),
+                                  ],
+                                ],
                               ),
                             ],
                           ),

@@ -17,7 +17,7 @@ import '../app/bottom_bar_layout.dart';
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
 import '../chat/chat_view.dart';
-import '../chat/telegram_link.dart';
+import '../chat/links_search/telegram_link.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
@@ -224,59 +224,62 @@ class _ContactsViewState extends State<ContactsView> {
     final query = rawQuery.trim().toLowerCase();
     final contactQuery = query.replaceFirst(RegExp(r'^@+'), '');
     final lookupUserId = telegramUserIdFromQuery(rawQuery);
-    return Container(
-      color: c.groupedBackground,
-      child: Column(
-        children: [
-          if (!widget.desktopSidebar) _header(),
-          Expanded(
-            // Only the selected tab is filtered, and its rows are built lazily.
-            // The indexes are network-sized — 300 contacts, every joined group
-            // and channel — and the old Column inflated all of them on every
-            // keystroke and every view-model notification.
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: widget.desktopSidebar
-                      ? _desktopToolbar()
-                      : _searchPill(),
-                ),
-                SliverToBoxAdapter(child: _tabs()),
-                switch (_tab) {
-                  0 => _contactSliver(
-                    _filterContacts(
-                      _vm.contacts,
-                      contactQuery,
-                      lookupUserId: lookupUserId,
-                      includeBots: false,
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        color: c.groupedBackground,
+        child: Column(
+          children: [
+            if (!widget.desktopSidebar) _header(),
+            Expanded(
+              // Only the selected tab is filtered, and its rows are built lazily.
+              // The indexes are network-sized — 300 contacts, every joined group
+              // and channel — and the old Column inflated all of them on every
+              // keystroke and every view-model notification.
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: widget.desktopSidebar
+                        ? _desktopToolbar()
+                        : _searchPill(),
+                  ),
+                  SliverToBoxAdapter(child: _tabs()),
+                  switch (_tab) {
+                    0 => _contactSliver(
+                      _filterContacts(
+                        _vm.contacts,
+                        contactQuery,
+                        lookupUserId: lookupUserId,
+                        includeBots: false,
+                      ),
+                      loading: _vm.contactsLoading || _resolvingUserById,
                     ),
-                    loading: _vm.contactsLoading || _resolvingUserById,
-                  ),
-                  1 => _chatSliver(
-                    _filterChats(_vm.groups, query),
-                    loading: _vm.chatsLoading,
-                  ),
-                  2 => _chatSliver(
-                    _filterChats(_vm.channels, query),
-                    loading: _vm.chatsLoading,
-                  ),
-                  _ => _contactSliver(
-                    _filterContacts(
-                      _vm.bots,
-                      contactQuery,
-                      lookupUserId: lookupUserId,
-                      includeBots: true,
+                    1 => _chatSliver(
+                      _filterChats(_vm.groups, query),
+                      loading: _vm.chatsLoading,
                     ),
-                    loading: _vm.contactsLoading || _resolvingUserById,
+                    2 => _chatSliver(
+                      _filterChats(_vm.channels, query),
+                      loading: _vm.chatsLoading,
+                    ),
+                    _ => _contactSliver(
+                      _filterContacts(
+                        _vm.bots,
+                        contactQuery,
+                        lookupUserId: lookupUserId,
+                        includeBots: true,
+                      ),
+                      loading: _vm.contactsLoading || _resolvingUserById,
+                    ),
+                  },
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: BottomBarInset.of(context)),
                   ),
-                },
-                SliverToBoxAdapter(
-                  child: SizedBox(height: BottomBarInset.of(context)),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -377,6 +380,7 @@ class _ContactsViewState extends State<ContactsView> {
 
   Widget _header() {
     final c = context.colors;
+    final canPop = Navigator.maybeOf(context)?.canPop() ?? false;
     return Container(
       key: const ValueKey('contacts-root-header'),
       color: c.listHeaderTint,
@@ -385,12 +389,28 @@ class _ContactsViewState extends State<ContactsView> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            AppInteractiveSurface(
-              semanticLabel: _meName.l10n(context),
-              onTap: () => context.read<dc.DrawerController>().open(),
-              borderRadius: BorderRadius.circular(17),
-              child: PhotoAvatar(title: _meName, photo: _mePhoto, size: 34),
-            ),
+            if (canPop)
+              AppInteractiveSurface(
+                key: const ValueKey('contacts-back-button'),
+                semanticLabel: AppStringKeys.confirmCancel.l10n(context),
+                onTap: () => unawaited(Navigator.of(context).maybePop()),
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: AppIcon(
+                    HeroAppIcons.chevronLeft,
+                    size: 22,
+                    color: c.textPrimary,
+                  ),
+                ),
+              )
+            else
+              AppInteractiveSurface(
+                semanticLabel: _meName.l10n(context),
+                onTap: () => context.read<dc.DrawerController>().open(),
+                borderRadius: BorderRadius.circular(17),
+                child: PhotoAvatar(title: _meName, photo: _mePhoto, size: 34),
+              ),
             const SizedBox(width: 12),
             Text(
               AppStringKeys.tabContacts.l10n(context),

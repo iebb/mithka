@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../chat/custom_emoji.dart';
-import '../chat/emoji_store.dart';
-import '../chat/quick_reaction_choice.dart';
+import '../chat/messages/quick_reaction_choice.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/emoji_store.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';

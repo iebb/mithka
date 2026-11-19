@@ -6,8 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import '../chat/group_remark_controller.dart';
-import '../chat/message_bubble.dart';
+import '../chat/admin/group_remark_controller.dart';
+import '../chat/messages/message_bubble.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';

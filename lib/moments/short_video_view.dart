@@ -8,7 +8,7 @@ import '../app/app_navigator.dart';
 import '../app/ipad_window_chrome.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
-import '../chat/video_player_view.dart';
+import '../chat/media/video_player_view.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../tdlib/json_helpers.dart';

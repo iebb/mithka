@@ -15,7 +15,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/image_edit_view.dart';
+import '../chat/media/image_edit_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/confirm_dialog.dart';

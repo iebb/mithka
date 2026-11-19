@@ -10,7 +10,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../chat/custom_emoji.dart';
+import '../chat/stickers/custom_emoji.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../l10n/app_localizations.dart';

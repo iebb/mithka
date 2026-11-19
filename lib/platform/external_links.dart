@@ -10,7 +10,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../chat/telegram_link.dart';
+import '../chat/links_search/telegram_link.dart';
 import 'ohos_support.dart';
 
 /// How a link leaving Mithka is handed to the system.

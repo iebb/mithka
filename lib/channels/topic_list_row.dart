@@ -11,7 +11,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../chat/custom_emoji.dart';
+import '../chat/stickers/custom_emoji.dart';
 import '../chats/chat_row_metrics.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';

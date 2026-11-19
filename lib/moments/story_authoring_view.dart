@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../chat/chat_picker_view.dart';
-import '../chat/image_edit_view.dart';
-import '../chat/location_picker_view.dart';
+import '../chat/composer/location_picker_view.dart';
+import '../chat/media/image_edit_view.dart';
 import '../components/app_icons.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';

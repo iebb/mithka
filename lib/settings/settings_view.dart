@@ -19,7 +19,7 @@ import '../app/ipad_window_chrome.dart';
 import '../app/top_corner_cluster.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
-import '../chat/chat_sticker_packs_view.dart';
+import '../chat/stickers/chat_sticker_packs_view.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';

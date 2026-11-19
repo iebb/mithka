@@ -20,13 +20,14 @@ class SensitiveClipboard {
     SensitiveClipboardSchedule? schedule,
   }) : _read = read ?? _defaultRead,
        _write = write ?? _defaultWrite,
-       _schedule = schedule ?? _defaultSchedule;
+       _customSchedule = schedule;
 
   static final SensitiveClipboard shared = SensitiveClipboard();
 
   final SensitiveClipboardRead _read;
   final SensitiveClipboardWrite _write;
-  final SensitiveClipboardSchedule _schedule;
+  final SensitiveClipboardSchedule? _customSchedule;
+  Timer? _clearTimer;
 
   Future<void> copy(
     String value, {
@@ -34,7 +35,21 @@ class SensitiveClipboard {
   }) async {
     await _write(value);
     final expectedDigest = _digest(value);
-    _schedule(clearAfter, () => _clearIfUnchanged(expectedDigest));
+    final schedule = _customSchedule;
+    if (schedule != null) {
+      schedule(clearAfter, () => _clearIfUnchanged(expectedDigest));
+      return;
+    }
+    _clearTimer?.cancel();
+    _clearTimer = Timer(
+      clearAfter,
+      () => unawaited(_clearIfUnchanged(expectedDigest)),
+    );
+  }
+
+  void cancelPendingClear() {
+    _clearTimer?.cancel();
+    _clearTimer = null;
   }
 
   Future<void> _clearIfUnchanged(String expectedDigest) async {
@@ -56,11 +71,4 @@ class SensitiveClipboard {
 
   static Future<void> _defaultWrite(String value) =>
       Clipboard.setData(ClipboardData(text: value));
-
-  static void _defaultSchedule(
-    Duration delay,
-    Future<void> Function() callback,
-  ) {
-    Timer(delay, () => unawaited(callback()));
-  }
 }

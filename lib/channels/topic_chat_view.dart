@@ -9,23 +9,24 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../app/chat_pane.dart';
 import '../app/ipad_window_chrome.dart';
-import '../chat/chat_members_view.dart';
+import '../chat/admin/chat_members_view.dart';
+import '../chat/admin/group_remark_controller.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
+import '../chat/composer/outgoing_attachment.dart';
+import '../chat/composer/rich_text_composer_view.dart';
+import '../chat/composer/rich_text_format.dart';
 import '../chat/forum_topic_transcript.dart';
-import '../chat/forward_options.dart';
-import '../chat/group_remark_controller.dart';
-import '../chat/link_preview_fixer.dart';
-import '../chat/message_replies_sheet.dart';
-import '../chat/outgoing_attachment.dart';
-import '../chat/pangu_spacing.dart';
-import '../chat/rich_text_composer_view.dart';
-import '../chat/rich_text_format.dart';
+import '../chat/links_search/link_preview_fixer.dart';
+import '../chat/messages/forward_options.dart';
+import '../chat/messages/message_replies_sheet.dart';
+import '../chat/messages/pangu_spacing.dart';
 import '../components/app_icons.dart';
 import '../components/confirm_dialog.dart';
 import '../components/photo_avatar.dart';
@@ -2969,6 +2970,8 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
   final _members = <_TopicMemberInfo>[];
   int _memberCount = 0;
   bool _loadingMembers = true;
+  String _myProfileName = '';
+  String? _shareLink;
   late bool _topicPinned = widget.currentTopic?.isPinned ?? false;
   late bool _topicMuted = widget.currentTopic?.isMuted ?? false;
 
@@ -2982,11 +2985,19 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
 
   Future<void> _loadMembers() async {
     try {
+      try {
+        final me = await TdClient.shared.query({'@type': 'getMe'});
+        final name = TDParse.userName(me).trim();
+        if (mounted && name.isNotEmpty) {
+          setState(() => _myProfileName = name);
+        }
+      } catch (_) {}
       final chat = await TdClient.shared.query({
         '@type': 'getChat',
         'chat_id': widget.chat.id,
       });
       final type = chat.obj('type');
+      String? resolvedShareLink;
       List<Map<String, dynamic>> raw = [];
       if (type?.type == 'chatTypeBasicGroup') {
         final gid = type?.int64('basic_group_id');
@@ -2997,10 +3008,31 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
           });
           raw = full.objects('members') ?? const <Map<String, dynamic>>[];
           _memberCount = raw.length;
+          resolvedShareLink = full.obj('invite_link')?.str('invite_link');
         }
       } else if (type?.type == 'chatTypeSupergroup') {
         final sgid = type?.int64('supergroup_id');
         if (sgid != null) {
+          try {
+            final sg = await TdClient.shared.query({
+              '@type': 'getSupergroup',
+              'supergroup_id': sgid,
+            });
+            final username =
+                TDParse.activeUsernames(sg).firstOrNull ?? sg.str('username');
+            if (username != null && username.isNotEmpty) {
+              resolvedShareLink = 'https://t.me/$username';
+            }
+          } catch (_) {}
+          if (resolvedShareLink == null || resolvedShareLink.isEmpty) {
+            try {
+              final full = await TdClient.shared.query({
+                '@type': 'getSupergroupFullInfo',
+                'supergroup_id': sgid,
+              });
+              resolvedShareLink = full.obj('invite_link')?.str('invite_link');
+            } catch (_) {}
+          }
           final result = await TdClient.shared.query({
             '@type': 'getSupergroupMembers',
             'supergroup_id': sgid,
@@ -3014,6 +3046,11 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
               result.integer('total_count') ??
               raw.length;
         }
+      }
+      if (mounted &&
+          resolvedShareLink != null &&
+          resolvedShareLink.trim().isNotEmpty) {
+        setState(() => _shareLink = resolvedShareLink!.trim());
       }
       await _resolveMembers(raw);
     } catch (_) {
@@ -3178,10 +3215,19 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: AppIcon(HeroAppIcons.share, color: c.textPrimary),
-                  ),
+                  if (_shareLink case final link?)
+                    IconButton(
+                      key: const ValueKey('topic-settings-share'),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: link));
+                        if (context.mounted) {
+                          showToast(context, AppStringKeys.qrScannerCopied);
+                        }
+                      },
+                      icon: AppIcon(HeroAppIcons.share, color: c.textPrimary),
+                    )
+                  else
+                    const SizedBox(width: 48),
                 ],
               ),
             ),
@@ -3252,15 +3298,17 @@ class _TopicChannelSettingsViewState extends State<_TopicChannelSettingsView> {
                       _memberStrip(c),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const SettingsCard(
-                    children: [
-                      SettingsRow(
-                        title: AppStringKeys.topicChatMyProfile,
-                        value: 'ieb',
-                      ),
-                    ],
-                  ),
+                  if (_myProfileName.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    SettingsCard(
+                      children: [
+                        SettingsRow(
+                          title: AppStringKeys.topicChatMyProfile,
+                          value: _myProfileName,
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SettingsCard(
                     children: [

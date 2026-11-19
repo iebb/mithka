@@ -22,7 +22,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../chat/media_library_saver.dart';
+import '../chat/media/media_library_saver.dart';
 import '../platform/ohos_support.dart';
 import 'app_camera_view.dart';
 

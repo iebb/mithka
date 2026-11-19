@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../chat/stretchable_message_bubble_background.dart';
+import '../chat/messages/stretchable_message_bubble_background.dart';
 import '../theme/app_theme.dart';
 import '../theme/message_bubble_background.dart';
 

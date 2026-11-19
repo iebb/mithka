@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import '../chat/message_bubble.dart';
+import '../chat/messages/message_bubble.dart';
 import '../chats/chat_row_view.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';

@@ -1,0 +1,94 @@
+name: AppGallery Submission
+run-name: AppGallery ${{ inputs.operation }} ${{ inputs.version }}
+
+# Signs the HarmonyOS hap that the store release published on the stable
+# GitHub release v<version> and submits it to Huawei AppGallery. The store
+# release dispatches this after its GitHub release; it can also be run by hand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Store version X.Y.Z (nonzero patch) whose GitHub release carries the HarmonyOS hap
+        required: true
+        type: string
+      operation:
+        description: Plan only, or upload and submit for review
+        type: choice
+        options: [plan, submit]
+        default: plan
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appgallery-submit
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    if: github.repository == 'iebb/mithka'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Fetch the hap and the pinned HarmonyOS tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python scripts/appgallery_store_release.py tools --out "$RUNNER_TEMP/ohos-tools"
+          python scripts/appgallery_store_release.py download --version "$VERSION" \
+            --out "$RUNNER_TEMP/mithka.hap"
+      - name: Pack and sign the AppGallery package
+        env:
+          VERSION: ${{ inputs.version }}
+          OHOS_RELEASE_P12_BASE64: ${{ secrets.OHOS_RELEASE_P12_BASE64 }}
+          OHOS_RELEASE_CERT_BASE64: ${{ secrets.OHOS_RELEASE_CERT_BASE64 }}
+          OHOS_RELEASE_PROFILE_BASE64: ${{ secrets.OHOS_RELEASE_PROFILE_BASE64 }}
+          OHOS_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.OHOS_RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          signing="$RUNNER_TEMP/ohos-signing"
+          mkdir -p "$signing" dist
+          trap 'rm -rf "$signing"' EXIT
+          printf '%s' "$OHOS_RELEASE_P12_BASE64" | base64 -d > "$signing/release.p12"
+          printf '%s' "$OHOS_RELEASE_CERT_BASE64" | base64 -d > "$signing/release.cer"
+          printf '%s' "$OHOS_RELEASE_PROFILE_BASE64" | base64 -d > "$signing/release.p7b"
+          OHOS_RELEASE_KEYSTORE="$signing/release.p12" \
+          OHOS_RELEASE_CERTIFICATE="$signing/release.cer" \
+          OHOS_RELEASE_PROFILE="$signing/release.p7b" \
+            python scripts/appgallery_store_release.py package --version "$VERSION" \
+              --hap "$RUNNER_TEMP/mithka.hap" --toolchains "$RUNNER_TEMP/ohos-tools" \
+              --out "dist/mithka-$VERSION-appgallery.app"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: appgallery-${{ inputs.version }}
+          path: dist/mithka-${{ inputs.version }}-appgallery.app
+          if-no-files-found: error
+          retention-days: 30
+      - name: Submit to AppGallery
+        env:
+          VERSION: ${{ inputs.version }}
+          OPERATION: ${{ inputs.operation }}
+          AGC_CLIENT_ID: ${{ secrets.AGC_CLIENT_ID }}
+          AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          arguments=(--version "$VERSION" --app "dist/mithka-$VERSION-appgallery.app")
+          if [ "$OPERATION" != submit ]; then
+            arguments+=(--plan)
+          fi
+          python scripts/appgallery_store_release.py submit "${arguments[@]}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

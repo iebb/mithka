@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../chat/video_player_view.dart';
+
+import '../chat/media/video_player_view.dart';
 import 'app_navigator.dart';
 import 'video_split_controller.dart';
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
-import '../chat/custom_emoji.dart';
-import '../chat/emoji_store.dart';
+import '../chat/stickers/custom_emoji.dart';
+import '../chat/stickers/emoji_store.dart';
 import '../components/app_icons.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';

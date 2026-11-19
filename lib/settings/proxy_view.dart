@@ -25,12 +25,12 @@
 
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_confirm_dialog.dart';
+import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/settings_selection_row.dart';
@@ -755,43 +755,14 @@ class _ProxyViewState extends State<ProxyView> {
     final owner = _owner;
     if (owner == null || !owner.isCurrent) return;
     final ownerGeneration = _ownerGeneration;
-    final ctrl = TextEditingController();
-    final result = await showCupertinoDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return CupertinoAlertDialog(
-              title: Text(AppStrings.t(AppStringKeys.proxyAddFromLinkTitle)),
-              content: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: CupertinoTextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  placeholder: AppStrings.t(AppStringKeys.proxyAddFromLinkHint),
-                  onChanged: (_) => setDialogState(() {}),
-                  clearButtonMode: OverlayVisibilityMode.editing,
-                ),
-              ),
-              actions: [
-                CupertinoDialogAction(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(AppStrings.t(AppStringKeys.countryPickerCancel)),
-                ),
-                CupertinoDialogAction(
-                  isDefaultAction: true,
-                  onPressed: ctrl.text.trim().isNotEmpty
-                      ? () => Navigator.of(ctx).pop(ctrl.text.trim())
-                      : null,
-                  child: Text(AppStrings.t(AppStringKeys.proxyAddProxy)),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    final result = await showAppTextEntryDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.proxyAddFromLinkTitle),
+      actionLabel: AppStrings.t(AppStringKeys.proxyAddProxy),
+      cancelLabel: AppStrings.t(AppStringKeys.countryPickerCancel),
+      hint: AppStrings.t(AppStringKeys.proxyAddFromLinkHint),
+      allowEmpty: false,
     );
-    ctrl.dispose();
     if (result == null || result.isEmpty) return;
     if (!_isOwnerCurrent(owner, ownerGeneration)) return;
 

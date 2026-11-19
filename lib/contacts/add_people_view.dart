@@ -15,7 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../app/ipad_window_chrome.dart';
 import '../app/primary_chat_launcher.dart';
-import '../chat/telegram_link.dart';
+import '../chat/links_search/telegram_link.dart';
 import '../components/app_icons.dart';
 import '../components/icon_grid.dart';
 import '../components/photo_avatar.dart';

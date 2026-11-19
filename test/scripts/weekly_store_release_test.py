@@ -231,6 +231,25 @@ class WeeklyReleaseTest(unittest.TestCase):
             RELEASE.ensure_master_quality("a" * 40)
             self.assertEqual(api.call_count, 1)
 
+    def test_appgallery_is_requested_only_for_a_release_with_a_harmonyos_hap(self):
+        plan = {"version": "1.13.1"}
+        hap = {"assets": [{"name": "mithka-1.13.1-20261201-ohos-arm64.hap"}]}
+        with patch.object(RELEASE, "github_release", return_value=hap), patch.object(
+            RELEASE, "api"
+        ) as api, patch("sys.stdout", io.StringIO()):
+            self.assertTrue(RELEASE.request_appgallery_submission(plan))
+        api.assert_called_once_with(
+            "actions/workflows/appgallery-submit.yml/dispatches",
+            {"ref": "master", "inputs": {"version": "1.13.1", "operation": "submit"}},
+        )
+        no_hap = {"assets": [{"name": "mithka-1.13.1-20261201-android-arm64-v8a.apk"}]}
+        for release in (no_hap, None):
+            with patch.object(RELEASE, "github_release", return_value=release), patch.object(
+                RELEASE, "api"
+            ) as api, patch("sys.stdout", io.StringIO()):
+                self.assertFalse(RELEASE.request_appgallery_submission(plan))
+            api.assert_not_called()
+
     def test_failed_base_quality_cannot_reserve_another_store_snapshot(self):
         with patch.object(
             RELEASE,
