@@ -31,13 +31,16 @@ Windows、Linux 与 HarmonyOS Next，兼顾手机单手操作与平板、桌面�
 | --- | --- | --- |
 | **Android** | [Google Play 公开测试](https://play.google.com/apps/testing/ad.neko.mithka) · [GitHub APK](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) · [GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 | **iOS & iPadOS** | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
-| **macOS** (`arm64`, `x64`) | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) · [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
+| **macOS 12+** (`arm64`, `x64`) | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) · [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Mac App Store](https://apps.apple.com/us/app/mithka/id6783830742?platform=mac) · [GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 | **Windows** (`x64`, `arm64`) | [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 | **Linux** (`x64`, `arm64`) | [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 | **HarmonyOS Next** (`.hap`) | [GitHub 预发布版](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [最新 GitHub 正式版](https://github.com/iebb/mithka/releases/latest) |
 
+iPhone、iPad 与 Mac 共用同一个 App Store 页面，TestFlight 链接同样适用于这三种设备。
+
 ### 桌面端安装包说明
 
+- **macOS** 推荐通过 Mac App Store 安装，并由 App Store 自动更新。GitHub 正式版另提供按架构区分的 `.zip` 包；该版本仅做临时签名（ad-hoc）且未经公证，首次启动需在 **系统设置 → 隐私与安全性** 中允许打开。
 - **Windows** 同时提供当前用户级 `setup.exe` 安装程序（无需管理员权限，自动注册开始菜单快捷方式与“已安装的应用”）以及 `x64` / `arm64` 便携 ZIP 包。
 - **Linux** 同时提供 `x64` / `arm64` AppImage 与便携 tar 包，CI 基于 Ubuntu 24.04 验证启动（执行 `chmod +x Mithka.AppImage` 后在可写目录运行）。
 - **Windows 与 Linux 应用内更新**：通过 **设置 → 关于 → 检查更新** 下载对应架构的最新 GitHub 正式版安装包，校验 SHA-256 摘要后原子替换当前安装并自动重启；由系统包管理器、Flatpak 或 Snap 管理的安装会打开下载页而不会直接覆盖外部管理的文件。
@@ -204,7 +207,7 @@ flutter test --concurrency=4
 
 - **`master` 分支维护下一完整次版本号（`X.Y.0`）**：每次推送与 PR 均通过 `Quality` 与各平台构建验证，不直接对外发布安装包。
 - **每日自动构建（`sync-nightly.yml`，00:00 UTC / 09:00 东京时间）**：当 `master` 有新提交时，GitHub Actions 将其合并至 `nightly`，将修订号递增一次（`X.Y.1`、`X.Y.2`……；若刚进入新次版本则首次直接发布 `X.Y.0`），并触发多平台 GitHub 预发布版、Google Play 公开测试以及 iOS / macOS TestFlight 上传，绝不将修订号重置为 `.0`。
-- **每月两次正式版发布（`weekly-store-release.yml`，每月 1 日与 15 日 09:00 东京时间）**：分配高于当前次版本所有已用版本号的 `store-vX.Y.Z` 标签，使用该确切版本号提交至 App Store Connect、Google Play 与 GitHub Releases；随后将 `master` 推进至 `X.(Y+1).0` 并立即触发 `sync-nightly.yml`，使测试渠道当天即可收到 `X.(Y+1).0` 更新。
+- **每月两次正式版发布（`weekly-store-release.yml`，每月 1 日与 15 日 09:00 东京时间）**：分配高于当前次版本所有已用版本号的 `store-vX.Y.Z` 标签，使用该确切版本号提交至 App Store（iOS 与 macOS）、Google Play 与 GitHub Releases，并将 HarmonyOS hap 交由华为应用市场 AppGallery 提交（`appgallery-submit.yml`）；随后将 `master` 推进至 `X.(Y+1).0` 并立即触发 `sync-nightly.yml`，使测试渠道当天即可收到 `X.(Y+1).0` 更新。
 
 ---
 
