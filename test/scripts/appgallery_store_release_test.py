@@ -310,7 +310,11 @@ class AppGalleryReleaseTest(unittest.TestCase):
     def test_submission_syncs_the_play_listing_before_the_package(self):
         listing = Path(self.directory.name) / "listing"
         write_listing(listing)
-        fake = FakeConnect({"releaseState": 0, "versionNumber": "1.12.8", "onShelfVersionCode": 304})
+        fake = FakeConnect({
+            "releaseState": 0, "versionNumber": "1.12.8", "onShelfVersionCode": 304,
+            # Phone, PC/2in1 and tablet, as AppGallery lists them.
+            "deviceTypes": [{"deviceType": 19}, {"deviceType": 4}, {"deviceType": 5}],
+        })
         uploads = []
         upload = AGC.Connect.upload
 
@@ -335,6 +339,12 @@ class AppGalleryReleaseTest(unittest.TestCase):
         self.assertEqual(uploads[-1], "mithka.app")
         body = json.loads(fake.requests[files][3])
         self.assertEqual([icon["lang"] for icon in body["appIconList"]], ["en-US", "zh-CN"])
+        # Every supported device gets the icon; AppGallery blocks submission
+        # while any of them lacks one.
+        self.assertEqual(body["appIconList"][0]["fileInfoList"], [
+            {"deviceType": device, "objectIdList": ["CN/obj.app"], "showType": 0} for device in (4, 5, 19)
+        ])
+        self.assertEqual([files["deviceType"] for files in body["screenShotList"][0]["fileInfoList"]], [4])
         self.assertEqual(body["screenShotList"][1]["fileInfoList"], [
             {"deviceType": 4, "objectIdList": ["CN/obj.app"] * 3, "showType": 0}
         ])
