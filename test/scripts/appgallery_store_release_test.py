@@ -196,9 +196,12 @@ class AppGalleryReleaseTest(unittest.TestCase):
             "lang": "zh-CN",
             "appName": "Mithka",
             "appDesc": "Mithka is a fast Telegram client. (zh-CN)",
-            "briefInfo": "A Telegram client (zh-CN)",
+            # AppGallery caps a Chinese brief at 17 characters.
+            "briefInfo": "基于TDLib的轻快消息客户端",
             "newFeatures": "错误修复。",
         })
+        self.assertLessEqual(len(infos[1]["briefInfo"]), 17)
+        self.assertEqual(infos[0]["briefInfo"], "A Telegram client (en-US)")
 
     def test_listing_rejects_what_appgallery_would_refuse(self):
         def broken(**changes):
@@ -316,15 +319,18 @@ class AppGalleryReleaseTest(unittest.TestCase):
             "deviceTypes": [{"deviceType": 19}, {"deviceType": 4}, {"deviceType": 5}],
         })
         uploads = []
+        sizes = {}
         upload = AGC.Connect.upload
 
         def record(connect, path, chinese_mainland):
             uploads.append(Path(path).name)
-            if Path(path).name.endswith("-icon.png"):
+            if Path(path).suffix in (".png", ".jpg"):
                 from PIL import Image
 
                 with Image.open(path) as image:
-                    self.assertEqual((image.size, image.mode), ((216, 216), "RGB"))
+                    sizes[Path(path).name] = image.size
+                    if Path(path).name.endswith("-icon.png"):
+                        self.assertEqual((image.size, image.mode), ((216, 216), "RGB"))
             return upload(connect, path, chinese_mainland)
 
         with patch.object(AGC.Connect, "upload", record):
@@ -344,10 +350,16 @@ class AppGalleryReleaseTest(unittest.TestCase):
         self.assertEqual(body["appIconList"][0]["fileInfoList"], [
             {"deviceType": device, "objectIdList": ["CN/obj.app"], "showType": 0} for device in (4, 5, 19)
         ])
-        self.assertEqual([files["deviceType"] for files in body["screenShotList"][0]["fileInfoList"]], [4])
+        # AppGallery blocks submission while a supported device lacks
+        # screenshots: the tablet (3:2) and PC (16:9) get landscape canvases
+        # composed from the phone screenshots.
         self.assertEqual(body["screenShotList"][1]["fileInfoList"], [
-            {"deviceType": 4, "objectIdList": ["CN/obj.app"] * 3, "showType": 0}
+            {"deviceType": 4, "objectIdList": ["CN/obj.app"] * 3, "showType": 0},
+            {"deviceType": 5, "objectIdList": ["CN/obj.app"] * 3, "showType": 1},
+            {"deviceType": 19, "objectIdList": ["CN/obj.app"] * 3, "showType": 1},
         ])
+        self.assertEqual(sizes["en-US-5-1.jpg"], (2400, 1600))
+        self.assertEqual(sizes["zh-CN-19-3.jpg"], (2560, 1440))
         zh = [json.loads(data) for method, url, _, data in fake.requests if "/app-language-info" in url][1]
         self.assertEqual((zh["lang"], zh["newFeatures"]), ("zh-CN", "错误修复。"))
         self.assertIn("Synced the Google Play listing to AppGallery: en-US, zh-CN", output)

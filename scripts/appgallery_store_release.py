@@ -59,9 +59,22 @@ PLAY_API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applicat
 LISTING_LANGUAGES = {"en-US": "en-US", "zh-CN": "zh-CN"}
 # Release-notes locales (shared with App Store Connect) per AppGallery language.
 NOTES_LANGUAGES = {"en-US": "en-US", "zh-Hans": "zh-CN"}
+# AppGallery caps a Chinese brief introduction at 17 characters, shorter than
+# the Play short description, so that language uses its own brief.
+BRIEF_LIMITS = {"zh-CN": 17}
+BRIEF_INFO = {"zh-CN": "基于TDLib的轻快消息客户端"}
 PHONE = 4
+TABLET = 5
+PC = 19
 PORTRAIT = 0
+LANDSCAPE = 1
 ICON_SIZE = 216
+# AppGallery refuses to submit while a supported device lacks screenshots, and
+# no Play image fits the tablet (3:2) or PC/2in1 (16:9) ratios. Those devices
+# get landscape canvases of real phone screenshots side by side:
+# device -> (canvas size, phones per image).
+COMPOSED_SCREENSHOTS = {TABLET: ((2400, 1600), 2), PC: ((2560, 1440), 3)}
+COMPOSED_COUNT = 3
 
 
 class Error(Exception):
@@ -249,10 +262,11 @@ def language_infos(listings, notes):
             "lang": lang,
             "appName": listing["title"].strip(),
             "appDesc": listing["fullDescription"].strip(),
-            "briefInfo": listing["shortDescription"].strip(),
+            "briefInfo": BRIEF_INFO.get(lang, listing["shortDescription"].strip()),
             "newFeatures": notes.get(lang, ""),
         }
-        for field, limit in (("appName", 64), ("appDesc", 8000), ("briefInfo", 80), ("newFeatures", 1000)):
+        brief_limit = BRIEF_LIMITS.get(lang, 80)
+        for field, limit in (("appName", 64), ("appDesc", 8000), ("briefInfo", brief_limit), ("newFeatures", 1000)):
             if not info[field]:
                 raise Error(f"{lang} {field} is empty")
             if len(info[field]) > limit:
@@ -272,6 +286,32 @@ def appgallery_icon(source, out):
 
     with Image.open(source) as image:
         image.convert("RGB").resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS).save(out, optimize=True)
+    return out
+
+
+def composed_screenshots(phone_shots, device, out_dir, prefix):
+    """Landscape screenshots for a tablet or PC, built from phone screenshots."""
+    from PIL import Image
+
+    (width, height), per_image = COMPOSED_SCREENSHOTS[device]
+    phones = [Image.open(path).convert("RGB") for path in phone_shots]
+    # The Play screenshots sit on a solid backdrop; reuse its colour.
+    background = phones[0].getpixel((0, phones[0].height // 2))
+    shot_height = int(height * 0.94)
+    shot_width = int(shot_height * phones[0].width / phones[0].height)
+    gap = (width - shot_width * per_image) // (per_image + 1)
+    out = []
+    for index in range(COMPOSED_COUNT):
+        canvas = Image.new("RGB", (width, height), background)
+        for slot in range(per_image):
+            phone = phones[(index * per_image + slot) % len(phones)]
+            canvas.paste(
+                phone.resize((shot_width, shot_height), Image.LANCZOS),
+                (gap + slot * (shot_width + gap), (height - shot_height) // 2),
+            )
+        path = Path(out_dir) / f"{prefix}-{device}-{index + 1}.jpg"
+        canvas.save(path, quality=90)
+        out.append(path)
     return out
 
 
@@ -478,9 +518,9 @@ def device_types(info):
 def sync_listing(connect, listing_dir, notes, chinese_mainland=False, devices=(PHONE,)):
     """Copy the Google Play listing and the release notes to AppGallery.
 
-    Every supported device type gets the icon; only the phone gets the Play
-    phone screenshots, since no Play image fits the tablet (3:2) or PC (16:9)
-    screenshot ratios.
+    Every supported device type gets the icon. The phone gets the Play phone
+    screenshots; a supported tablet or PC gets them composed onto landscape
+    canvases of its ratio.
     """
     listing_dir = Path(listing_dir)
     listings = json.loads((listing_dir / "listing.json").read_text())
@@ -497,13 +537,21 @@ def sync_listing(connect, listing_dir, notes, chinese_mainland=False, devices=(P
             icons.append({"lang": lang, "fileInfoList": [
                 {"deviceType": device, "objectIdList": [icon_id], "showType": PORTRAIT} for device in devices
             ]})
-            screenshots.append({"lang": lang, "fileInfoList": [{
+            phone_shots = [listing_dir / name for name in listing["phoneScreenshots"]]
+            files = [{
                 "deviceType": PHONE,
-                "objectIdList": [
-                    connect.upload(listing_dir / name, chinese_mainland) for name in listing["phoneScreenshots"]
-                ],
+                "objectIdList": [connect.upload(path, chinese_mainland) for path in phone_shots],
                 "showType": PORTRAIT,
-            }]})
+            }]
+            for device in devices:
+                if device in COMPOSED_SCREENSHOTS:
+                    composed = composed_screenshots(phone_shots, device, directory, lang)
+                    files.append({
+                        "deviceType": device,
+                        "objectIdList": [connect.upload(path, chinese_mainland) for path in composed],
+                        "showType": LANDSCAPE,
+                    })
+            screenshots.append({"lang": lang, "fileInfoList": files})
     connect.update_files(icons, screenshots)
     print("Synced the Google Play listing to AppGallery: " + ", ".join(infos), flush=True)
 
