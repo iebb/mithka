@@ -31,6 +31,9 @@ jobs:
   submit:
     if: github.repository == 'iebb/mithka'
     runs-on: ubuntu-latest
+    # The listing step reads Google Play with the service account that lives
+    # in this environment, not in the repository secrets.
+    environment: google-play-production
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
