@@ -37,13 +37,20 @@ mockups rather than live screenshots.*
 | --- | --- | --- |
 | **Android** | [Google Play Open testing](https://play.google.com/apps/testing/ad.neko.mithka) · [GitHub APKs](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Google Play](https://play.google.com/store/apps/details?id=ad.neko.mithka) · [GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | **iOS & iPadOS** | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) | [App Store](https://apps.apple.com/us/app/mithka/id6783830742) |
-| **macOS** (`arm64`, `x64`) | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) · [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
+| **macOS 12+** (`arm64`, `x64`) | [TestFlight](https://testflight.apple.com/join/tVC8WkbW) · [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Mac App Store](https://apps.apple.com/us/app/mithka/id6783830742?platform=mac) · [GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | **Windows** (`x64`, `arm64`) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | **Linux** (`x64`, `arm64`) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 | **HarmonyOS Next** (`.hap`) | [GitHub prereleases](https://github.com/iebb/mithka/releases?q=prerelease%3Atrue) | [Latest GitHub release](https://github.com/iebb/mithka/releases/latest) |
 
+iPhone, iPad, and Mac share one App Store listing, and the TestFlight link
+covers all three.
+
 ### Desktop packaging notes
 
+- **macOS**: The Mac App Store build is the recommended install; it updates
+  through the App Store. The GitHub release also ships per-architecture `.zip`
+  archives. They are ad-hoc signed and not notarized, so macOS asks you to
+  approve the first launch in **System Settings → Privacy & Security**.
 - **Windows** ships both per-user `setup.exe` installers (no administrator
   rights required; registers Start Menu shortcuts and Installed Apps) and
   portable ZIP archives for `x64` and `arm64`.
@@ -262,10 +269,11 @@ in [docs/localization.md](docs/localization.md), test organization in
   numbers are never rewritten back to `.0`.
 - **Twice-monthly store releases (`weekly-store-release.yml`, 1st & 15th at
   09:00 Tokyo)**: Tags an immutable `store-vX.Y.Z` release above every patch
-  used on that minor, submits that exact version to App Store Connect, Google
-  Play, and GitHub Releases, advances `master` to `X.(Y+1).0`, and immediately
-  dispatches `sync-nightly.yml` so beta testers receive `X.(Y+1).0` the same
-  day.
+  used on that minor, submits that exact version to the App Store (iOS and
+  macOS), Google Play, and GitHub Releases, then hands the HarmonyOS hap to
+  Huawei AppGallery (`appgallery-submit.yml`). It then advances `master` to
+  `X.(Y+1).0` and immediately dispatches `sync-nightly.yml` so beta testers
+  receive `X.(Y+1).0` the same day.
 
 ---
 

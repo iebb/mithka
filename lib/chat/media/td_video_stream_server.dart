@@ -128,6 +128,9 @@ class TdVideoStreamServer {
   static const _defaultReadChunkBytes = 2 * 1024 * 1024;
   static const _openingReadChunkBytes = 256 * 1024;
   static const _metadataTailSize = 4 * 1024 * 1024;
+  // One lookup follows a relocated file; the rest cover the moment in which
+  // TDLib has moved it and not yet published the new path.
+  static const _relocatedFileLookups = 3;
 
   Future<Uri?> start() async {
     if (_closed) return null;
@@ -529,16 +532,37 @@ class TdVideoStreamServer {
     int end, {
     required bool Function() isCancelled,
   }) async {
-    if (isCancelled() ||
-        !await _ensureRange(start, end, isCancelled: isCancelled) ||
-        isCancelled() ||
-        _path == null) {
-      return null;
+    for (var lookups = 0; ; lookups++) {
+      if (isCancelled() ||
+          !await _ensureRange(start, end, isCancelled: isCancelled) ||
+          isCancelled()) {
+        return null;
+      }
+      final bytes = await _readRange(start, end);
+      if (isCancelled()) return null;
+      if (bytes.length == end - start + 1) {
+        _rememberDownloadedRange(start, end + 1);
+        return bytes;
+      }
+      // TDLib has the range, but not at the path this server remembers. A
+      // finished download is renamed out of TDLib's temporary directory, so
+      // the first read after the background download completes lands here.
+      // Only the file object carries the new path, and it can still name the
+      // old one for a moment after the rename.
+      if (lookups == _relocatedFileLookups) return null;
+      if (lookups > 0) await Future<void>.delayed(rangePollInterval);
+      await _refreshFileInfo();
     }
-    final bytes = await _readRange(start, end);
-    if (isCancelled() || bytes.length != end - start + 1) return null;
-    _rememberDownloadedRange(start, end + 1);
-    return bytes;
+  }
+
+  Future<void> _refreshFileInfo() async {
+    if (_closed) return;
+    try {
+      final file = await _query({'@type': 'getFile', 'file_id': fileId});
+      if (!_closed) _updateFileInfo(file);
+    } catch (_) {
+      // The next read retries with the path already known.
+    }
   }
 
   (int, int)? _requestedRange(String header) {
@@ -735,19 +759,27 @@ class TdVideoStreamServer {
       ..addAll(merged);
   }
 
+  /// Reads the range from the remembered path, or fewer bytes than asked for
+  /// when the file no longer holds it there.
   Future<List<int>> _readRange(int start, int end) async {
     final path = _path;
     if (path == null || path.isEmpty) return const [];
-    final file = File(path);
-    final available = await file.length();
-    if (available <= start) return const [];
-    final readableEnd = math.min(end, available - 1);
-    final raf = await file.open();
     try {
-      await raf.setPosition(start);
-      return await raf.read(readableEnd - start + 1);
-    } finally {
-      await raf.close();
+      final file = File(path);
+      final available = await file.length();
+      if (available <= start) return const [];
+      final readableEnd = math.min(end, available - 1);
+      final raf = await file.open();
+      try {
+        await raf.setPosition(start);
+        return await raf.read(readableEnd - start + 1);
+      } finally {
+        await raf.close();
+      }
+    } on FileSystemException {
+      // The file was moved or deleted under this path. That is a miss the
+      // caller can recover from, not a reason to abort the response.
+      return const [];
     }
   }
 }
