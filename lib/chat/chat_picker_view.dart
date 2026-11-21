@@ -3,8 +3,11 @@
 //
 //  A searchable chat chooser. Pushed when the user forwards a message or shares
 //  content; returns the picked `ChatSummary` via Navigator.pop. Reuses
-//  `ChatListViewModel` so it shows the same live, sorted chat list as 消息.
+//  `ChatListViewModel` so it shows the same live, sorted chat list as 消息,
+//  and, when forwarding, the same chat folders to narrow it by.
 //
+
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -13,10 +16,12 @@ import 'package:provider/provider.dart';
 import '../app/ipad_window_chrome.dart';
 import '../chats/chat_list_view_model.dart';
 import '../components/app_icons.dart';
+import '../components/chat_folder_icons.dart';
 import '../components/photo_avatar.dart';
 import '../contacts/contact_users.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'links_search/internal_chat_link_router.dart';
@@ -36,6 +41,7 @@ class ChatPickerView extends StatefulWidget {
     super.key,
     this.title = AppStringKeys.chatPickerChooseChat,
     this.showForwardOptions = false,
+    this.showFolders,
     this.markdownOffer = const ForwardMarkdownOffer.none(),
     this.allowChannels = true,
     this.allowedKinds,
@@ -46,6 +52,11 @@ class ChatPickerView extends StatefulWidget {
   });
   final String title;
   final bool showForwardOptions;
+
+  /// Whether the account's chat folders are offered as tabs above the list, so
+  /// a destination can be found inside one folder instead of the whole account.
+  /// Null follows [showForwardOptions]: every forward picker offers them.
+  final bool? showFolders;
 
   /// Markdown detected in the forwarded text: the picker offers a "render
   /// Markdown" chip, pre-checked only when the offer is strong.
@@ -79,6 +90,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   late final int? _accountSlot;
   final TdClient _client = TdClient.shared;
   final _controller = TextEditingController();
+  final _listController = ScrollController();
   final List<Contact> _contacts = [];
   bool _contactsLoading = false;
   String _query = '';
@@ -94,6 +106,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         InternalChatLinkScope.targetOf(context)?.accountSlot;
     _vm = ChatListViewModel(accountSlot: _accountSlot);
     _vm.addListener(_onModel);
+    _listController.addListener(_onListScroll);
     _vm.onAppear();
     _loadContacts();
   }
@@ -107,11 +120,33 @@ class _ChatPickerViewState extends State<ChatPickerView> {
     _vm.removeListener(_onModel);
     _vm.dispose();
     _controller.dispose();
+    _listController.dispose();
     super.dispose();
   }
 
+  /// The folder tabs appear once the account has a folder besides "All".
+  bool get _offersFolders =>
+      (widget.showFolders ?? widget.showForwardOptions) &&
+      _vm.filters.length > 1;
+
+  /// A folder is paged in as it is scrolled, like the chat list it mirrors, so
+  /// one larger than the first page still reaches its last chat.
+  void _onListScroll() {
+    if (!_listController.hasClients) return;
+    if (_listController.position.extentAfter < 600) _vm.loadMore();
+  }
+
+  void _selectFolder(ChatFilterOption filter) {
+    if (filter.folderId == _vm.selectedFilter.folderId) return;
+    _vm.selectFilter(filter);
+    if (_listController.hasClients) _listController.jumpTo(0);
+  }
+
   List<_PickerEntry> get _filtered {
-    final chats = [..._vm.chats, ..._vm.archived];
+    // A folder's own list already carries its archived members. Contacts
+    // without a chat belong to no folder, so they are offered under "All" only.
+    final inFolder = !_vm.isAllFilter;
+    final chats = inFolder ? _vm.chats : [..._vm.chats, ..._vm.archived];
     final chatPeerUserIds = chats
         .map((chat) => chat.peerUserId)
         .whereType<int>()
@@ -122,7 +157,8 @@ class _ChatPickerViewState extends State<ChatPickerView> {
             (widget.allowedChatIds?.contains(chat.id) ?? true))
           _PickerEntry.chat(chat),
       for (final contact in _contacts)
-        if (widget.allowContacts &&
+        if (!inFolder &&
+            widget.allowContacts &&
             _allowsKind(ChatKind.privateChat) &&
             !chatPeerUserIds.contains(contact.id))
           _PickerEntry.contact(contact),
@@ -234,6 +270,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
                     ),
                   )
                 : ListView.builder(
+                    controller: _listController,
                     padding: EdgeInsets.zero,
                     itemCount: filtered.length,
                     itemBuilder: (context, i) => _row(filtered[i]),
@@ -320,8 +357,110 @@ class _ChatPickerViewState extends State<ChatPickerView> {
             ),
           ),
           if (widget.showForwardOptions) _forwardOptions(),
+          if (_offersFolders) _folderTabs(),
         ],
       ),
+    );
+  }
+
+  /// One tab per folder, "All" first. Each is a 17 px glyph and a 14 px title
+  /// above a 38 x 4 px indicator that fills with the brand colour on the
+  /// selected folder; the strip scrolls sideways when the folders overflow.
+  Widget _folderTabs() {
+    final selectedFolderId = _vm.selectedFilter.folderId;
+    final filters = _vm.filters;
+    final tabHeight = AppMetric.rowExtentFor(
+      context,
+      base: 40,
+      lines: const [AppTextSize.callout],
+    );
+    final scrollBehavior = ScrollConfiguration.of(context);
+    return SizedBox(
+      height: tabHeight,
+      child: ScrollConfiguration(
+        // A desktop pointer drags the strip the same way a finger does.
+        behavior: scrollBehavior.copyWith(
+          dragDevices: {...scrollBehavior.dragDevices, PointerDeviceKind.mouse},
+        ),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+          itemCount: filters.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 24),
+          itemBuilder: (_, index) => _folderTab(
+            filters[index],
+            selected: filters[index].folderId == selectedFolderId,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _folderTab(ChatFilterOption filter, {required bool selected}) {
+    final c = context.colors;
+    final accent = selected ? AppTheme.brand : c.textSecondary;
+    // The Builder hands the tap this tab's own position in the strip, which is
+    // what scrolls a half-hidden tab fully into view once it is chosen.
+    return Builder(
+      builder: (context) {
+        return Semantics(
+          button: true,
+          selected: selected,
+          child: GestureDetector(
+            key: ValueKey('chat-picker-folder-${filter.folderId ?? 'all'}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              _selectFolder(filter);
+              Scrollable.ensureVisible(
+                context,
+                alignment: 0.5,
+                duration: AppMotion.responsive,
+                curve: AppMotion.standard,
+              );
+            },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ChatFolderIcon(
+                      filter.isAll ? 'All' : filter.iconName,
+                      size: 17,
+                      color: accent,
+                    ),
+                    const SizedBox(width: AppSpacing.xs + 1),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 168),
+                      child: Text(
+                        filter.title.l10n(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: AppTextSize.callout,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: selected ? AppTheme.brand : null,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
