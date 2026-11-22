@@ -23,6 +23,9 @@ dependencies:
 
   # Native interactive region screenshots on desktop composer surfaces.
   screen_capturer: ^0.2.3
+  # screen_capturer's Linux command runner; the AppImage swaps its global
+  # executor so host screenshot tools never inherit the bundle environment.
+  shell_executor: ^0.1.6
   # System-wide configurable shortcuts on macOS and Windows.
   hotkey_manager: ^0.2.3
 

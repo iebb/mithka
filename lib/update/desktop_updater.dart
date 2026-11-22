@@ -25,6 +25,7 @@ import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../platform/appimage_host_environment.dart';
 import 'release_feed.dart';
 
 /// What the updater is doing, for the progress sheet.
@@ -170,8 +171,10 @@ class PreparedDesktopUpdate {
       Platform.isWindows ? ['/c', script.path] : [script.path],
       mode: ProcessStartMode.detached,
       workingDirectory: script.parent.path,
+      // The helper's shell utilities must not load shared objects from a
+      // mount that disappears when Mithka exits.
       environment: _layout.isAppImage
-          ? appImageUpdateEnvironment(Platform.environment)
+          ? appImageHostEnvironment(Platform.environment)
           : null,
       includeParentEnvironment: !_layout.isAppImage,
     );
@@ -289,30 +292,6 @@ rm -rf "\$backup_dir" "\$work_dir"
 relaunch
 exit 0
 ''';
-}
-
-/// Restores the environment saved by linux/appimage/AppRun before it loads
-/// bundled GTK libraries. Otherwise even the helper's shell utilities can try
-/// to load shared objects from a mount that disappears when Mithka exits.
-@visibleForTesting
-Map<String, String> appImageUpdateEnvironment(Map<String, String> current) {
-  final result = Map<String, String>.of(current);
-  const prefix = 'MITHKA_APPIMAGE_ORIGINAL_';
-  for (final key in (result.remove('MITHKA_APPIMAGE_ENV_KEYS') ?? '').split(
-    ' ',
-  )) {
-    if (key.isEmpty) continue;
-    final original = result.remove('$prefix$key');
-    if (original == null) {
-      result.remove(key);
-    } else {
-      result[key] = original;
-    }
-  }
-  for (final key in ['APPDIR', 'APPIMAGE', 'ARGV0', 'OWD']) {
-    result.remove(key);
-  }
-  return result;
 }
 
 /// Replaces only the AppImage file, keeping its filename (including portable
