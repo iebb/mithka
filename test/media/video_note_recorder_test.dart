@@ -312,8 +312,17 @@ void main() {
       final gate = Completer<void>();
       final platform = _FakeCameraPlatform()..prepareGate = gate;
       await openRecorder(tester, platform);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // A real trip to the background, not a prompt over the app.
+      for (final state in const [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
       await tester.pump();
       expect(platform.opens, 1);
       gate.complete();
@@ -325,6 +334,89 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       expect(platform.disposals, 2);
+    },
+  );
+
+  testWidgets(
+    'going back while recording detaches the preview before the camera is released',
+    (tester) async {
+      final previous = CameraPlatform.instance;
+      final platform = _FakeCameraPlatform();
+      CameraPlatform.instance = platform;
+      addTearDown(() => CameraPlatform.instance = previous);
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          home: const SizedBox(key: ValueKey('recorder-home')),
+        ),
+      );
+      unawaited(
+        navigator.currentState!.push<VideoNoteCaptureResult>(
+          MaterialPageRoute(builder: (_) => const VideoNoteRecorderView()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // A tap starts a locked recording, so the close button would cancel
+      // instead of leaving; system Back is what pops the route here.
+      await tester.tap(find.byKey(const ValueKey('videoNoteRecordButton')));
+      await tester.pump();
+      expect(platform.starts, 1);
+
+      navigator.currentState!.pop();
+      // The route stays mounted for its reverse transition while the stop and
+      // release complete; every frame of it must build without the camera.
+      // The release does real file I/O, which only advances inside runAsync.
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 8));
+        expect(tester.takeException(), isNull, reason: 'frame $frame');
+      }
+      expect(platform.stopCalls, 1);
+      expect(platform.disposals, 1);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(VideoNoteRecorderView), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a permission prompt over a starting camera does not open it twice',
+    (tester) async {
+      final gate = Completer<void>();
+      final platform = _FakeCameraPlatform()..prepareGate = gate;
+      await openRecorder(tester, platform);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(platform.opens, 1);
+      expect(platform.disposals, 0);
+      expect(find.byType(CameraPreview), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'a camera release that never finishes does not strand the next recorder',
+    (tester) async {
+      final stuck = Completer<void>();
+      final platform = _FakeCameraPlatform()..disposeGate = stuck;
+      await openRecorder(tester, platform);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(const MaterialApp(home: VideoNoteRecorderView()));
+      await tester.pump(const Duration(seconds: 1));
+      expect(platform.opens, 1, reason: 'still waiting for the first release');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(platform.opens, 2);
+      await tester.pumpWidget(const SizedBox.shrink());
+      // Let the stuck release finish so the next test does not inherit it.
+      stuck.complete();
+      await tester.pumpAndSettle();
     },
   );
 

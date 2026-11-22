@@ -327,6 +327,10 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
     with WidgetsBindingObserver {
   static const _maximumDuration = Duration(seconds: 60);
 
+  /// How long a recorder waits for the previous camera to be released before
+  /// it tries to open its own.
+  static const _releaseWaitLimit = Duration(seconds: 5);
+
   List<CameraDescription> _cameras = const [];
   CameraController? _controller;
   // A native reply may still update the controller. Drain its outstanding
@@ -371,8 +375,16 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
+    // The camera and microphone permission prompts make the app inactive
+    // while the first camera is still opening. Tearing that camera down only
+    // to reopen it the moment the prompt closes opened the device twice; a
+    // real trip to the background still arrives as hidden/paused below.
+    final permissionPrompt =
+        state == AppLifecycleState.inactive && _initializing && !_recording;
+    if (!permissionPrompt &&
+        (state == AppLifecycleState.inactive ||
+            state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused)) {
       if (_suspended) return;
       _suspended = true;
       ++_session;
@@ -469,7 +481,14 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
       _zoomLevels = const [];
       _settingZoom = false;
     });
-    await _disposeController();
+    // A native call that never answers would otherwise keep every later
+    // recorder on a spinner until the app restarts. After the bound, opening
+    // is attempted anyway; if the old camera still holds the device, that
+    // attempt fails with a readable error the user can close.
+    await _disposeController().timeout(
+      _releaseWaitLimit,
+      onTimeout: () => debugPrint('Video note camera release is still pending'),
+    );
     if (!_active(session)) return;
     final controller = CameraController(_cameras[index], ResolutionPreset.high);
     _controller = controller;
@@ -528,7 +547,11 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
     final controller = _controller;
     _controller = null;
     if (controller == null) return _released ?? Future.value();
-    final release = _releaseAfterPending(controller, _pending.toList());
+    final release = _releaseAfterPending(
+      controller,
+      _pending.toList(),
+      detachFirst: mounted,
+    );
     _released = release;
     return release.whenComplete(() {
       if (identical(_released, release)) _released = null;
@@ -537,9 +560,17 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
 
   Future<void> _releaseAfterPending(
     CameraController controller,
-    List<Future<void>> pending,
-  ) async {
+    List<Future<void>> pending, {
+    required bool detachFirst,
+  }) async {
     await Future.wait(pending);
+    // A mounted recorder (going back, backgrounding, switching lens) may still
+    // show this controller's preview, and stopping a recording below marks
+    // that preview for a rebuild. Releasing before the next frame left it to
+    // build against a disposed controller, which throws. The caller has
+    // already dropped the controller from state, so after one frame nothing
+    // on screen refers to it.
+    if (detachFirst) await WidgetsBinding.instance.endOfFrame;
     try {
       // The route may have closed before the native start reply arrived.
       if (controller.value.isRecordingVideo) {
@@ -789,7 +820,11 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         _suspended = true;
         ++_session;
         _timer?.cancel();
-        unawaited(_disposeController());
+        final release = _disposeController();
+        // The route stays on screen for its reverse transition: rebuild now
+        // so it stops showing the preview of the camera being released.
+        setState(() => _initializing = true);
+        unawaited(release);
       },
       child: ColoredBox(
         color: Colors.black,
