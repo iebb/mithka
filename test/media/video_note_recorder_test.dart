@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 // The fake platform is the published camera interface the `camera` package
@@ -23,6 +24,97 @@ void main() {
   setUpAll(() async {
     await AppStrings.ensureLoaded(const Locale('en'));
   });
+
+  testWidgets(
+    'switching from selfie to rear uses the wide lens at 1× and enables zoom and focus',
+    (tester) async {
+      final previous = CameraPlatform.instance;
+      final platform = _FakeCameraPlatform()
+        ..cameras = const [
+          CameraDescription(
+            name: 'selfie',
+            lensDirection: CameraLensDirection.front,
+            sensorOrientation: 90,
+          ),
+          CameraDescription(
+            name: 'tele',
+            lensDirection: CameraLensDirection.back,
+            sensorOrientation: 90,
+            lensType: CameraLensType.telephoto,
+          ),
+          CameraDescription(
+            name: 'main',
+            lensDirection: CameraLensDirection.back,
+            sensorOrientation: 90,
+            lensType: CameraLensType.wide,
+          ),
+        ];
+      CameraPlatform.instance = platform;
+      addTearDown(() => CameraPlatform.instance = previous);
+      await tester.pumpWidget(const MaterialApp(home: VideoNoteRecorderView()));
+      await tester.pumpAndSettle();
+      expect(platform.activeCamera.name, 'selfie');
+      expect(find.text('2×'), findsNothing);
+      final flip = _roundButton(
+        AppStrings.t(AppStringKeys.videoNoteRecorderSwitchCamera),
+      );
+      await tester.tap(flip);
+      await tester.pumpAndSettle();
+      expect(platform.activeCamera.name, 'main');
+      expect(platform.focusMode, FocusMode.auto);
+      expect(platform.appliedZoom, [1]);
+      await tester.tap(find.text('2×'));
+      await tester.pumpAndSettle();
+      expect(platform.appliedZoom.last, 2);
+      await tester.tapAt(tester.getCenter(find.byType(VideoNotePreviewBox)));
+      await tester.pump();
+      expect(platform.focusPoint!.x, closeTo(0.5, 0.001));
+      expect(platform.focusPoint!.y, closeTo(0.5, 0.001));
+      await tester.tap(flip);
+      await tester.pumpAndSettle();
+      expect(find.text('2×'), findsNothing);
+      await tester.tap(flip);
+      await tester.pumpAndSettle();
+      expect(platform.appliedZoom, [1, 2, 1]);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'untyped cameras switch to the first rear camera even when an auxiliary camera follows the front',
+    (tester) async {
+      final previous = CameraPlatform.instance;
+      final platform = _FakeCameraPlatform()
+        ..cameras = const [
+          CameraDescription(
+            name: '0',
+            lensDirection: CameraLensDirection.back,
+            sensorOrientation: 90,
+          ),
+          CameraDescription(
+            name: '1',
+            lensDirection: CameraLensDirection.front,
+            sensorOrientation: 90,
+          ),
+          CameraDescription(
+            name: '2',
+            lensDirection: CameraLensDirection.back,
+            sensorOrientation: 90,
+          ),
+        ];
+      CameraPlatform.instance = platform;
+      addTearDown(() => CameraPlatform.instance = previous);
+      await tester.pumpWidget(const MaterialApp(home: VideoNoteRecorderView()));
+      await tester.pumpAndSettle();
+      expect(platform.activeCamera.name, '1');
+      await tester.tap(
+        _roundButton(AppStrings.t(AppStringKeys.videoNoteRecorderSwitchCamera)),
+      );
+      await tester.pumpAndSettle();
+      expect(platform.activeCamera.name, '0');
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   for (final cropStartedBeforeDisposal in [false, true]) {
     testWidgets(
@@ -234,15 +326,40 @@ class _FakeCameraPlatform extends CameraPlatform {
   Future<XFile>? stoppedVideo;
   int stopCalls = 0;
 
+  List<CameraDescription> cameras = const [
+    CameraDescription(
+      name: 'back',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 90,
+    ),
+  ];
+  late CameraDescription activeCamera;
+  final appliedZoom = <double>[];
+  FocusMode? focusMode;
+  Point<double>? focusPoint;
+
   @override
-  Future<List<CameraDescription>> availableCameras() async {
-    return const [
-      CameraDescription(
-        name: 'back',
-        lensDirection: CameraLensDirection.back,
-        sensorOrientation: 90,
-      ),
-    ];
+  Future<List<CameraDescription>> availableCameras() async => cameras;
+
+  @override
+  Future<double> getMinZoomLevel(int cameraId) async => 1;
+
+  @override
+  Future<double> getMaxZoomLevel(int cameraId) async =>
+      activeCamera.lensType == CameraLensType.wide ? 3 : 1;
+
+  @override
+  Future<void> setZoomLevel(int cameraId, double zoom) async =>
+      appliedZoom.add(zoom);
+
+  @override
+  Future<void> setFocusMode(int cameraId, FocusMode mode) async {
+    focusMode = mode;
+  }
+
+  @override
+  Future<void> setFocusPoint(int cameraId, Point<double>? point) async {
+    focusPoint = point;
   }
 
   @override
@@ -250,6 +367,7 @@ class _FakeCameraPlatform extends CameraPlatform {
     CameraDescription cameraDescription,
     MediaSettings mediaSettings,
   ) async {
+    activeCamera = cameraDescription;
     return 1;
   }
 

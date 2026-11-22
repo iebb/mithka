@@ -197,7 +197,24 @@ class VideoNotePreviewBox extends StatelessWidget {
               key: const ValueKey('videoNotePreviewFootprint'),
               width: footprint.size.width,
               height: footprint.size.height,
-              child: CameraPreview(controller),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: value.focusPointSupported
+                    ? (tap) async {
+                        // The hit test already inverts the FittedBox transform.
+                        final point = Offset(
+                          tap.localPosition.dx / footprint.size.width,
+                          tap.localPosition.dy / footprint.size.height,
+                        );
+                        try {
+                          await controller.setFocusPoint(point);
+                        } on CameraException catch (error) {
+                          debugPrint('Video note focus: ${error.code}');
+                        }
+                      }
+                    : null,
+                child: CameraPreview(controller),
+              ),
             ),
           ),
         );
@@ -310,6 +327,9 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
   CameraController? _controller;
   Future<XFile>? _recordingStop;
   int _cameraIndex = 0;
+  List<double> _zoomLevels = const [];
+  double _zoom = 1;
+  bool _settingZoom = false;
   bool _initializing = true;
   bool _recording = false;
   bool _paused = false;
@@ -378,20 +398,52 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
       setState(() {
         _initializing = true;
         _error = null;
+        _zoomLevels = const [];
+        _settingZoom = false;
       });
     }
     await _disposeController();
+    if (!mounted) return;
     final controller = CameraController(_cameras[index], ResolutionPreset.high);
     _controller = controller;
     try {
       await controller.initialize();
       await controller.prepareForVideoRecording();
+      if (!mounted || !identical(_controller, controller)) return;
+      try {
+        await controller.setFocusMode(FocusMode.auto);
+      } on CameraException catch (error) {
+        debugPrint('Video note autofocus: ${error.code}');
+      }
+      var levels = <double>[];
+      var zoom = 1.0;
+      try {
+        final min = await controller.getMinZoomLevel();
+        final max = await controller.getMaxZoomLevel();
+        if (min.isFinite && max.isFinite && min > 0 && min <= max) {
+          zoom = 1.0.clamp(min, max);
+          if (min < max) {
+            await controller.setZoomLevel(zoom);
+            levels = {
+              min,
+              zoom,
+              2.0.clamp(min, max),
+              3.0.clamp(min, max),
+            }.toList()..sort();
+            if (levels.length == 1) levels.add(max);
+          }
+        }
+      } on CameraException catch (error) {
+        debugPrint('Video note zoom: ${error.code}');
+      }
       if (!mounted || !identical(_controller, controller)) {
         await controller.dispose();
         return;
       }
       setState(() {
         _cameraIndex = index;
+        _zoom = zoom;
+        _zoomLevels = levels;
         _initializing = false;
       });
     } on CameraException catch (error) {
@@ -430,7 +482,9 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
   }
 
   Future<void> _switchCamera() async {
-    if (_finishing || _recording || _cameras.length < 2) return;
+    if (_initializing || _finishing || _recording || _cameras.length < 2) {
+      return;
+    }
     var next = (_cameraIndex + 1) % _cameras.length;
     final currentDirection = _cameras[_cameraIndex].lensDirection;
     for (var offset = 1; offset <= _cameras.length; offset++) {
@@ -440,12 +494,46 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         break;
       }
     }
+    if (_cameras[next].lensDirection == CameraLensDirection.back &&
+        currentDirection != CameraLensDirection.back) {
+      final wide = _cameras.indexWhere(
+        (camera) =>
+            camera.lensDirection == CameraLensDirection.back &&
+            camera.lensType == CameraLensType.wide,
+      );
+      // CameraX may omit lens types. Use the platform's first rear camera
+      // consistently, even if an auxiliary lens is listed after the selfie.
+      next = wide >= 0
+          ? wide
+          : _cameras.indexWhere(
+              (camera) => camera.lensDirection == CameraLensDirection.back,
+            );
+    }
     await _initializeCamera(next);
+  }
+
+  Future<void> _setZoom(double level) async {
+    final controller = _controller;
+    if (controller == null || _settingZoom || _finishing || _initializing) {
+      return;
+    }
+    _settingZoom = true;
+    try {
+      await controller.setZoomLevel(level);
+      if (mounted && identical(controller, _controller)) {
+        setState(() => _zoom = level);
+      }
+    } on CameraException catch (error) {
+      debugPrint('Video note zoom: ${error.code}');
+    } finally {
+      if (identical(controller, _controller)) _settingZoom = false;
+    }
   }
 
   Future<void> _startRecording({bool locked = false}) async {
     final controller = _controller;
-    if (_recording ||
+    if (_initializing ||
+        _recording ||
         _finishing ||
         controller == null ||
         !controller.value.isInitialized) {
@@ -658,6 +746,49 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
                       ),
                     ),
                   ),
+                ),
+              ),
+            if (controller != null && !_initializing && _zoomLevels.length > 1)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 110,
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 4,
+                  children: [
+                    for (final level in _zoomLevels)
+                      Semantics(
+                        button: true,
+                        selected: _zoom == level,
+                        child: GestureDetector(
+                          onTap: () => _setZoom(level),
+                          child: Container(
+                            alignment: Alignment.center,
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xB3000000),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: _zoom == level
+                                    ? Colors.white
+                                    : Colors.transparent,
+                              ),
+                            ),
+                            child: Text(
+                              '${level.toStringAsFixed(level == level.roundToDouble() ? 0 : 1)}×',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             Positioned(left: 18, right: 18, bottom: 22, child: _controls()),
