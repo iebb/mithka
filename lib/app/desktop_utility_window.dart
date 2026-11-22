@@ -67,6 +67,7 @@ import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'app_navigator.dart';
 import 'app_performance_controller.dart';
+import 'app_root_text_style.dart';
 import 'chat_deep_link_controller.dart';
 import 'desktop_utility_window_models.dart';
 import 'desktop_utility_window_stub.dart'
@@ -853,15 +854,9 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
                   boldText: media.boldText,
                 ),
               ),
-              // Cupertino-rooted screens (SearchView and friends) sit under no
-              // text style of their own, so any Text that omits a decoration
-              // inherits Flutter's yellow "unstyled" underline. A Material
-              // ancestor would also fix it, but the app avoids Material
-              // surfaces and only the text default is actually missing.
-              child: DefaultTextStyle.merge(
-                style: const TextStyle(decoration: TextDecoration.none),
-                child: child ?? const SizedBox.shrink(),
-              ),
+              // Screens bring no text style of their own; without this default a
+              // Text that omits its weight draws at Flutter's unstyled weight 900.
+              child: AppRootTextStyle(theme: _theme, child: child),
             );
             final appSurface = Stack(
               children: [
