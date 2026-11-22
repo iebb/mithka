@@ -164,9 +164,11 @@ class VideoNotePreviewBox extends StatelessWidget {
     super.key,
     required this.controller,
     required this.viewport,
+    required this.onFocus,
   });
 
   final CameraController controller;
+  final ValueChanged<Offset> onFocus;
 
   /// The area the preview must cover, normally the recorder's constraints.
   final Size viewport;
@@ -197,7 +199,26 @@ class VideoNotePreviewBox extends StatelessWidget {
               key: const ValueKey('videoNotePreviewFootprint'),
               width: footprint.size.width,
               height: footprint.size.height,
-              child: CameraPreview(controller),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: value.focusPointSupported
+                    ? (tap) {
+                        // The hit test already inverts the FittedBox transform.
+                        final point = Offset(
+                          (tap.localPosition.dx / footprint.size.width).clamp(
+                            0.0,
+                            1.0,
+                          ),
+                          (tap.localPosition.dy / footprint.size.height).clamp(
+                            0.0,
+                            1.0,
+                          ),
+                        );
+                        onFocus(point);
+                      }
+                    : null,
+                child: CameraPreview(controller),
+              ),
             ),
           ),
         );
@@ -308,8 +329,20 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
 
   List<CameraDescription> _cameras = const [];
   CameraController? _controller;
-  Future<XFile>? _recordingStop;
+  // A native reply may still update the controller. Drain its outstanding
+  // calls before disposal and await disposal before opening another lens.
+  final _pending = <Future<void>>{};
+  // A freshly pushed recorder also waits for the previous route to release hardware.
+  static Future<void>? _released;
+  int _session = 0;
+  bool _suspended = false;
+  bool _starting = false;
+  bool _releasedShutter = false;
+  Future<void>? _pauseCommand;
   int _cameraIndex = 0;
+  List<double> _zoomLevels = const [];
+  double _zoom = 1;
+  bool _settingZoom = false;
   bool _initializing = true;
   bool _recording = false;
   bool _paused = false;
@@ -338,122 +371,248 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      if (_recording) {
-        unawaited(_cancelRecording());
-      } else {
-        unawaited(_disposeController());
-      }
-    } else if (state == AppLifecycleState.resumed && !_recording) {
-      unawaited(_initializeCamera(_cameraIndex));
+      if (_suspended) return;
+      _suspended = true;
+      ++_session;
+      if (_recording && !_finishing) unawaited(_cancelRecording());
+      setState(() => _initializing = true);
+      unawaited(_disposeController());
+    } else if (state == AppLifecycleState.resumed && _suspended) {
+      _suspended = false;
+      unawaited(
+        _cameras.isEmpty ? _loadCameras() : _initializeCamera(_cameraIndex),
+      );
     }
   }
 
+  int _preferredCamera(CameraLensDirection direction) {
+    final candidates = _cameras.indexed.where(
+      (entry) => entry.$2.lensDirection == direction,
+    );
+    if (candidates.isEmpty) return -1;
+    int rank(CameraDescription camera) => switch (camera.lensType) {
+      CameraLensType.wide => 0,
+      // CameraX may expose only Camera2 IDs. ID 0 is a common primary
+      // rear camera, a hint only for a lens with no type metadata.
+      CameraLensType.unknown
+          when direction == CameraLensDirection.back && camera.name == '0' =>
+        1,
+      CameraLensType.ultraWide => 2,
+      CameraLensType.unknown => 3,
+      CameraLensType.telephoto => 4,
+    };
+    return candidates.reduce((a, b) => rank(b.$2) < rank(a.$2) ? b : a).$1;
+  }
+
+  bool _active(int session) => mounted && !_suspended && _session == session;
+
   Future<void> _loadCameras() async {
+    final session = ++_session;
     try {
       final cameras = await availableCameras();
-      if (!mounted) return;
-      if (cameras.isEmpty) throw StateError('No camera is available.');
+      if (!_active(session)) return;
+      if (cameras.isEmpty) {
+        setState(() => _initializing = false);
+        return;
+      }
       _cameras = cameras;
-      final front = cameras.indexWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
+      final front = _preferredCamera(CameraLensDirection.front);
+      final back = _preferredCamera(CameraLensDirection.back);
+      await _initializeCamera(
+        front >= 0
+            ? front
+            : back >= 0
+            ? back
+            : 0,
       );
-      _cameraIndex = front >= 0 ? front : 0;
-      await _initializeCamera(_cameraIndex);
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _initializing = false;
-        _error = error.toString();
-      });
+      if (_active(session)) {
+        setState(() {
+          _initializing = false;
+          _error = error.toString();
+        });
+      }
+    }
+  }
+
+  Future<T> _track<T>(Future<T> operation) {
+    final done = operation.then<void>((_) {}, onError: (Object _) {});
+    _pending.add(done);
+    unawaited(done.then((_) => _pending.remove(done)));
+    return operation;
+  }
+
+  Future<bool> _optional(Future<void> Function() command) async {
+    try {
+      await _track(command());
+      return true;
+    } catch (error) {
+      if (error is! CameraException &&
+          error is! PlatformException &&
+          error is! MissingPluginException &&
+          error is! UnimplementedError) {
+        rethrow;
+      }
+      debugPrint('Video note camera setting unavailable: $error');
+      return false;
     }
   }
 
   Future<void> _initializeCamera(int index) async {
-    if (_cameras.isEmpty || index < 0 || index >= _cameras.length) return;
-    if (mounted) {
-      setState(() {
-        _initializing = true;
-        _error = null;
-      });
-    }
+    final session = ++_session;
+    _cameraIndex = index;
+    setState(() {
+      _initializing = true;
+      _error = null;
+      _zoomLevels = const [];
+      _settingZoom = false;
+    });
     await _disposeController();
+    if (!_active(session)) return;
     final controller = CameraController(_cameras[index], ResolutionPreset.high);
     _controller = controller;
     try {
-      await controller.initialize();
-      await controller.prepareForVideoRecording();
-      if (!mounted || !identical(_controller, controller)) {
-        await controller.dispose();
-        return;
-      }
+      await _track(controller.initialize());
+      if (!_active(session)) return;
+      await _track(controller.prepareForVideoRecording());
+      if (!_active(session)) return;
+      await _optional(() => controller.setFocusMode(FocusMode.auto));
+      if (!_active(session)) return;
+      await _optional(() => controller.setExposureMode(ExposureMode.auto));
+      if (!_active(session)) return;
+      var levels = <double>[];
+      var zoom = 1.0;
+      await _optional(() async {
+        final min = await controller.getMinZoomLevel();
+        if (!_active(session)) return;
+        final max = await controller.getMaxZoomLevel();
+        if (!_active(session) ||
+            !min.isFinite ||
+            !max.isFinite ||
+            min <= 0 ||
+            min >= max) {
+          return;
+        }
+        zoom = 1.0.clamp(min, max);
+        await controller.setZoomLevel(zoom);
+        levels = {
+          min,
+          zoom,
+          0.5.clamp(min, max),
+          2.0.clamp(min, max),
+          3.0.clamp(min, max),
+        }.toList()..sort();
+        if (levels.length == 1) levels.add(max);
+      });
+      if (!_active(session)) return;
       setState(() {
-        _cameraIndex = index;
+        _zoom = zoom;
+        _zoomLevels = levels;
         _initializing = false;
       });
-    } on CameraException catch (error) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!_active(session)) return;
+      unawaited(_disposeController());
       setState(() {
         _initializing = false;
-        _error = error.description ?? error.code;
+        _error = error is CameraException
+            ? error.description ?? error.code
+            : error.toString();
       });
     }
   }
 
-  Future<void> _disposeController() async {
+  Future<void> _disposeController() {
     final controller = _controller;
     _controller = null;
-    // CameraController updates its notifier after the native stop callback.
-    // Disposing it first makes that callback use an already disposed notifier.
-    final stopping = _recordingStop;
-    if (stopping != null) {
-      try {
-        await stopping;
-      } catch (_) {
-        // A failed stop must still release the controller.
-      }
-    }
-    if (controller != null) await controller.dispose();
+    if (controller == null) return _released ?? Future.value();
+    final release = _releaseAfterPending(controller, _pending.toList());
+    _released = release;
+    return release.whenComplete(() {
+      if (identical(_released, release)) _released = null;
+    });
   }
 
-  Future<XFile> _stopRecording(CameraController controller) async {
-    final stopping = controller.stopVideoRecording();
-    _recordingStop = stopping;
+  Future<void> _releaseAfterPending(
+    CameraController controller,
+    List<Future<void>> pending,
+  ) async {
+    await Future.wait(pending);
     try {
-      return await stopping;
+      // The route may have closed before the native start reply arrived.
+      if (controller.value.isRecordingVideo) {
+        final abandoned = await controller.stopVideoRecording();
+        final file = File(abandoned.path);
+        if (await file.exists()) await file.delete();
+      }
+    } catch (error) {
+      debugPrint('Video note cleanup: $error');
     } finally {
-      if (identical(_recordingStop, stopping)) _recordingStop = null;
+      try {
+        await controller.dispose();
+      } on CameraException catch (error) {
+        debugPrint('Video note camera release: $error');
+      } on PlatformException catch (error) {
+        debugPrint('Video note camera release: $error');
+      }
     }
   }
 
   Future<void> _switchCamera() async {
-    if (_finishing || _recording || _cameras.length < 2) return;
-    var next = (_cameraIndex + 1) % _cameras.length;
-    final currentDirection = _cameras[_cameraIndex].lensDirection;
-    for (var offset = 1; offset <= _cameras.length; offset++) {
-      final candidate = (_cameraIndex + offset) % _cameras.length;
-      if (_cameras[candidate].lensDirection != currentDirection) {
-        next = candidate;
-        break;
-      }
+    if (_initializing ||
+        _starting ||
+        _finishing ||
+        _recording ||
+        _cameras.length < 2) {
+      return;
     }
+    final current = _cameras[_cameraIndex].lensDirection;
+    final target = current == CameraLensDirection.back
+        ? CameraLensDirection.front
+        : CameraLensDirection.back;
+    var next = _preferredCamera(target);
+    if (next < 0) next = (_cameraIndex + 1) % _cameras.length;
     await _initializeCamera(next);
+  }
+
+  Future<void> _setZoom(double level) async {
+    final controller = _controller;
+    if (controller == null || _settingZoom || _finishing || _initializing) {
+      return;
+    }
+    _settingZoom = true;
+    try {
+      final accepted = await _optional(() => controller.setZoomLevel(level));
+      if (!mounted || !identical(controller, _controller)) return;
+      setState(() {
+        if (accepted) {
+          _zoom = level;
+        } else if (level != _zoom) {
+          _zoomLevels.remove(level);
+        }
+      });
+    } finally {
+      if (identical(controller, _controller)) _settingZoom = false;
+    }
   }
 
   Future<void> _startRecording({bool locked = false}) async {
     final controller = _controller;
-    if (_recording ||
+    if (_initializing ||
+        _starting ||
+        _recording ||
         _finishing ||
         controller == null ||
         !controller.value.isInitialized) {
       return;
     }
+    _starting = true;
+    _releasedShutter = false;
     try {
-      await controller.startVideoRecording();
-      if (!mounted) return;
+      await _track(controller.startVideoRecording());
+      if (!mounted || !identical(controller, _controller)) return;
       setState(() {
         _recording = true;
         _paused = false;
@@ -466,24 +625,49 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         setState(() => _elapsed += const Duration(milliseconds: 100));
         if (_elapsed >= _maximumDuration) unawaited(_finishRecording());
       });
+      if (_releasedShutter && !locked) await _finishRecording();
     } on CameraException catch (error) {
-      if (mounted) setState(() => _error = error.description ?? error.code);
+      if (mounted && identical(controller, _controller)) {
+        setState(() => _error = error.description ?? error.code);
+      }
+    } finally {
+      _starting = false;
     }
   }
 
   Future<void> _togglePause() async {
     final controller = _controller;
-    if (!_recording || _finishing || controller == null) return;
+    if (!_recording ||
+        _pauseCommand != null ||
+        _finishing ||
+        controller == null) {
+      return;
+    }
     try {
-      if (_paused) {
-        await controller.resumeVideoRecording();
-      } else {
-        await controller.pauseVideoRecording();
+      _pauseCommand = _paused
+          ? controller.resumeVideoRecording()
+          : controller.pauseVideoRecording();
+      await _track(_pauseCommand!);
+      if (mounted && identical(controller, _controller) && _recording) {
+        setState(() => _paused = !_paused);
       }
-      if (mounted) setState(() => _paused = !_paused);
     } on CameraException catch (error) {
       if (mounted) setState(() => _error = error.description ?? error.code);
+    } finally {
+      _pauseCommand = null;
     }
+  }
+
+  Future<XFile> _stopRecording(CameraController controller) async {
+    final pause = _pauseCommand;
+    if (pause != null) {
+      try {
+        await pause;
+      } on CameraException {
+        /* Stop even if pause failed. */
+      }
+    }
+    return controller.stopVideoRecording();
   }
 
   Future<void> _finishRecording() async {
@@ -493,7 +677,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
     _finishing = true;
     _timer?.cancel();
     try {
-      final video = await _stopRecording(controller);
+      final video = await _track(_stopRecording(controller));
       if (!mounted || route?.isCurrent != true) {
         // No consumer remains and no crop has started. Reclaim this recording
         // without starting another native encode for a disposed route.
@@ -570,7 +754,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
     _finishing = true;
     _timer?.cancel();
     try {
-      final video = await _stopRecording(controller);
+      final video = await _track(_stopRecording(controller));
       try {
         final file = File(video.path);
         if (await file.exists()) await file.delete();
@@ -598,70 +782,135 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    return ColoredBox(
-      color: Colors.black,
-      child: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (controller != null && controller.value.isInitialized)
-              _preview(controller)
-            else if (_initializing)
-              const Center(child: AppActivityIndicator(color: Colors.white))
-            else
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    _error ?? 'Camera unavailable',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+    return PopScope<VideoNoteCaptureResult>(
+      onPopInvokedWithResult: (popped, _) {
+        if (!popped) return;
+        WidgetsBinding.instance.removeObserver(this);
+        _suspended = true;
+        ++_session;
+        _timer?.cancel();
+        unawaited(_disposeController());
+      },
+      child: ColoredBox(
+        color: Colors.black,
+        child: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (!_initializing &&
+                  controller != null &&
+                  controller.value.isInitialized)
+                _preview(controller)
+              else if (_initializing)
+                const Center(child: AppActivityIndicator(color: Colors.white))
+              else
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Text(
+                      [
+                        AppStrings.t(AppStringKeys.storyCameraUnavailable),
+                        if (_error != null) _error,
+                      ].join('\n'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                    ),
                   ),
                 ),
-              ),
-            Positioned(
-              left: 12,
-              top: 8,
-              child: _roundButton(
-                icon: HeroAppIcons.xmark,
-                label: AppStrings.t(AppStringKeys.videoNoteRecorderCloseCamera),
-                onTap: () {
-                  if (_recording && !_finishing) {
-                    unawaited(_cancelRecording());
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                },
-              ),
-            ),
-            if (_recording)
               Positioned(
-                top: 16,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                    ),
-                    child: Text(
-                      _paused ? 'Paused · $_elapsedLabel' : _elapsedLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                left: 12,
+                top: 8,
+                child: _roundButton(
+                  icon: HeroAppIcons.xmark,
+                  label: AppStrings.t(
+                    AppStringKeys.videoNoteRecorderCloseCamera,
+                  ),
+                  onTap: () {
+                    if (_recording && !_finishing) {
+                      unawaited(_cancelRecording());
+                    } else {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                ),
+              ),
+              if (_recording)
+                Positioned(
+                  top: 16,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                      ),
+                      child: Text(
+                        _paused ? 'Paused · $_elapsedLabel' : _elapsedLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            Positioned(left: 18, right: 18, bottom: 22, child: _controls()),
-          ],
+              if (controller != null &&
+                  !_initializing &&
+                  _zoomLevels.length > 1)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 110,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 4,
+                    children: [
+                      for (final level in _zoomLevels)
+                        Semantics(
+                          button: true,
+                          selected: _zoom == level,
+                          child: GestureDetector(
+                            onTap: () => _setZoom(level),
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xB3000000),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: _zoom == level
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                ),
+                              ),
+                              child: Center(
+                                widthFactor: 1,
+                                heightFactor: 1,
+                                child: Text(
+                                  '${level == level.truncateToDouble() ? level.toStringAsFixed(0) : level.toString()}×',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              Positioned(left: 18, right: 18, bottom: 22, child: _controls()),
+            ],
+          ),
         ),
       ),
     );
@@ -682,7 +931,15 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         final viewport = measured.isFinite && !measured.isEmpty
             ? measured
             : MediaQuery.sizeOf(context);
-        return VideoNotePreviewBox(controller: controller, viewport: viewport);
+        return VideoNotePreviewBox(
+          controller: controller,
+          viewport: viewport,
+          onFocus: (point) {
+            if (!_finishing && identical(controller, _controller)) {
+              unawaited(_optional(() => controller.setFocusPoint(point)));
+            }
+          },
+        );
       },
     );
   }
@@ -737,6 +994,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
             }
           },
           onLongPressEnd: (_) {
+            _releasedShutter = true;
             if (_recording && !_locked) unawaited(_finishRecording());
           },
           child: _recordButton(),
@@ -744,7 +1002,10 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
         _roundButton(
           icon: HeroAppIcons.arrowsRotate,
           label: AppStrings.t(AppStringKeys.videoNoteRecorderSwitchCamera),
-          onTap: _cameras.length > 1 ? () => unawaited(_switchCamera()) : null,
+          onTap:
+              !_recording && !_initializing && !_starting && _cameras.length > 1
+              ? () => unawaited(_switchCamera())
+              : null,
         ),
       ],
     );
@@ -834,6 +1095,7 @@ class _VideoNoteRecorderViewState extends State<VideoNoteRecorderView>
 
   @override
   void dispose() {
+    ++_session;
     WidgetsBinding.instance.removeObserver(this);
     // A route closed mid-export owns no result: this recorder's own ticket is
     // surrendered when its platform call completes, even when that is long
