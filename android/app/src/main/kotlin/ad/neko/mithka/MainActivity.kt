@@ -1,5 +1,6 @@
 package ad.neko.mithka
 
+import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -63,6 +64,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSharePayload: Map<String, Any?>? = null
     private var acceptingImageDrop = false
     private var fullscreenSystemUi = false
+
+    /** Set when the user leaves through Home or Recents, cleared on return. */
+    private var leftByUser = false
     private val translators = mutableMapOf<String, Translator>()
     private val languageIdentifierDelegate = lazy<LanguageIdentifier> {
         LanguageIdentification.getClient()
@@ -114,6 +118,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        leftByUser = false
         mithkaPro?.onActivityResumed()
         FVideoPictureInPicturePlugin.onActivityResumed(this)
         if (fullscreenSystemUi) applyFullscreenSystemUi()
@@ -144,10 +149,17 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onStop() {
         FVideoPictureInPicturePlugin.onActivityStopped(this)
         super.onStop()
+        // The user went Home or to Recents (a floating video only stops here
+        // once it is dismissed): nothing of this window is on screen, so a
+        // deferred icon switch can retire it now.
+        if (leftByUser && !isInPictureInPictureMode && !isChangingConfigurations) {
+            applyPendingLauncherIcon(closeTask = true)
+        }
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        leftByUser = true
         FVideoPictureInPicturePlugin.onUserLeaveHint(this)
     }
 
@@ -850,6 +862,9 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         private const val MAX_SHARED_FILES = 10
         private const val MAX_SHARED_FILE_BYTES = 512L * 1024L * 1024L
+
+        /** A launcher icon chosen while its switch would close this window. */
+        private const val PENDING_LAUNCHER_ICON = "pending"
     }
 
     private fun handleMediaDragEvent(event: DragEvent): Boolean {
@@ -995,6 +1010,7 @@ class MainActivity : FlutterFragmentActivity() {
     )
 
     private fun currentLauncherIcon(): String {
+        pendingLauncherIcon()?.let { return it }
         val aliases = launcherAliases()
         // Choosing any icon explicitly disables the default alias, so one that
         // is still in its manifest state means no icon was ever chosen. That is
@@ -1018,9 +1034,74 @@ class MainActivity : FlutterFragmentActivity() {
         return "default"
     }
 
+    /**
+     * Switches the launcher icon, or defers the switch while it would close
+     * the window on screen.
+     *
+     * Each icon is an activity-alias, and the task Android opened from the
+     * launcher keeps that alias as its base intent. When an alias is disabled,
+     * the system finishes every task based on it ("disabled-package") once it
+     * processes the change: within a couple of seconds on Android 16, and on
+     * other versions as late as the next time the user opens the app from the
+     * new icon, which brings that same task back. Either way the app closed in
+     * front of the user. So a task based on an alias this switch disables keeps
+     * its alias until the user leaves the app; [applyPendingLauncherIcon] then
+     * switches and retires the task, and the next open starts a fresh one.
+     */
     private fun setLauncherIcon(name: String) {
         val aliases = launcherAliases()
         val target = if (aliases.containsKey(name)) name else "default"
+        val base = currentTaskBaseComponent()
+        val baseIsOtherAlias = base == null ||
+            (base.packageName == packageName &&
+                aliases.values.contains(base.className) &&
+                base.className != aliases[target])
+        if (baseIsOtherAlias) {
+            launcherIconPrefs().edit().putString(PENDING_LAUNCHER_ICON, target).apply()
+            return
+        }
+        applyLauncherIcon(target)
+    }
+
+    private fun launcherIconPrefs() =
+        getSharedPreferences("mithka_launcher_icon", Context.MODE_PRIVATE)
+
+    private fun pendingLauncherIcon(): String? =
+        launcherIconPrefs().getString(PENDING_LAUNCHER_ICON, null)
+            ?.takeIf { launcherAliases().containsKey(it) }
+
+    /** Applies a deferred switch; [closeTask] retires the window it was waiting on. */
+    private fun applyPendingLauncherIcon(closeTask: Boolean) {
+        val pending = pendingLauncherIcon() ?: return
+        try {
+            applyLauncherIcon(pending)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Could not apply the chosen launcher icon", e)
+            return
+        }
+        // This task is based on an alias that is now disabled; the system
+        // would finish it shortly anyway, possibly after the user came back.
+        if (closeTask) finishAndRemoveTask()
+    }
+
+    /** The component that opened this window's task, or null if unknown. */
+    private fun currentTaskBaseComponent(): ComponentName? = try {
+        getSystemService(ActivityManager::class.java)?.appTasks?.firstNotNullOfOrNull { task ->
+            val info = task.taskInfo
+            val id = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                info.taskId
+            } else {
+                @Suppress("DEPRECATION")
+                info.persistentId
+            }
+            if (id == taskId) info.baseIntent.component else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun applyLauncherIcon(target: String) {
+        val aliases = launcherAliases()
 
         // Enable the target alias first so there's never a window where no
         // launcher icon alias is active — that can cause a crash when the
@@ -1041,6 +1122,7 @@ class MainActivity : FlutterFragmentActivity() {
                 PackageManager.DONT_KILL_APP,
             )
         }
+        launcherIconPrefs().edit().remove(PENDING_LAUNCHER_ICON).apply()
     }
 
     private fun listSystemFonts(): List<String> {
@@ -1401,6 +1483,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onDestroy() {
         FVideoPictureInPicturePlugin.onActivityDestroyed(this)
+        // Back out of the app finishes this window anyway.
+        if (isFinishing) applyPendingLauncherIcon(closeTask = false)
         super.onDestroy()
     }
 }
