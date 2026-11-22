@@ -1594,7 +1594,7 @@ packages:
     source: hosted
     version: "2.4.1"
   shell_executor:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: shell_executor
       sha256: "9c024546fc96470a6b96be9902f0bc05347a017a7638ed8d93c77e8d77eb3c3c"

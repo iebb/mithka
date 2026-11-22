@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:screen_capturer/screen_capturer.dart';
 
+import 'appimage_host_environment.dart';
+
 enum DesktopScreenshotPlatform { macOS, windows, linux, unsupported }
 
 typedef DesktopScreenshotPermissionCheck = Future<bool> Function();
@@ -86,6 +88,10 @@ class DesktopScreenshotService {
       ScreenCapturer.instance.requestAccess();
 
   static Future<bool> _captureRegion(String imagePath) async {
+    // On Linux the capturer starts spectacle or gnome-screenshot. From the
+    // AppImage they must run in the host environment: the bundle's
+    // LD_LIBRARY_PATH makes them load mismatched libraries and exit at once.
+    useAppImageHostEnvironmentForShellCommands();
     final captured = await screenCapturer.capture(
       // ignore: avoid_redundant_argument_values
       mode: CaptureMode.region,
