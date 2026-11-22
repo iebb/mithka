@@ -599,8 +599,9 @@ class ChatListViewModel extends ChangeNotifier {
     _notifyIfAlive();
     if (_resolvingFolders.contains(id)) return;
     _resolvingFolders.add(id);
-    _client
-        .query({'@type': 'getChatFolder', 'chat_folder_id': id})
+    // Folder ids are account-scoped: a list pinned to an account must not ask
+    // the foreground one what its folder is called.
+    _chatListQuery({'@type': 'getChatFolder', 'chat_folder_id': id})
         .then((folder) {
           if (_disposed) return;
           _resolvingFolders.remove(id);
@@ -715,6 +716,18 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   void loadMore() => _loadChats(_pageSize);
+
+  /// [loadMore] for a caller that has to know when the page has landed.
+  ///
+  /// Completes once the rows the page brought are in [chats], and reports
+  /// whether TDLib had anything further to load.
+  Future<bool> loadMoreChats() async {
+    final loaded = await _loadAndHydrateChatList(_activeChatList, _pageSize);
+    // The rows arrive behind the resort debounce; fold them in now so the
+    // caller never sees a finished load and a list that is still stale.
+    if (!_disposed && _resortTimer != null) _resort();
+    return loaded;
+  }
 
   /// Warms [folderId] so a folder swipe reveals a populated list instead of one
   /// that fills in after the switch has already landed.

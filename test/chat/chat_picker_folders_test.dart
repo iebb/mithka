@@ -17,6 +17,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/settings/translation_controller.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
+import 'package:mithka/tdlib/td_models.dart' show ChatSummary;
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -25,19 +26,31 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../support/l10n_fixtures.dart';
 
 const _workFolderId = 7;
+const _emptyFolderId = 8;
 const _inboxChatId = 42;
 const _workChatId = 43;
+const _lateWorkChatId = 44;
 const _contactUserId = 77;
 
 /// Whether the account has its folder yet. A chat position inside a folder is
 /// itself proof the folder exists, so a folderless account must not report one.
 bool _accountHasFolder = true;
 
-/// Chat 42 sits in the Main list only; chat 43 is also filed under the folder.
+/// How many pages of the folder TDLib has been asked for, and the page from
+/// which chat 44 is part of it. Zero keeps the folder to chat 43 alone.
+int _folderPagesLoaded = 0;
+int _lateChatFromPage = 0;
+
+/// Chat 42 sits in the Main list only; chats 43 and 44 are also filed under
+/// the folder, 44 only on a later page of it.
 Map<String, dynamic> _chatJson(int chatId) => {
   '@type': 'chat',
   'id': chatId,
-  'title': chatId == _workChatId ? 'Work mate' : 'Inbox friend',
+  'title': switch (chatId) {
+    _workChatId => 'Work mate',
+    _lateWorkChatId => 'Late arrival',
+    _ => 'Inbox friend',
+  },
   'type': {'@type': 'chatTypePrivate', 'user_id': chatId},
   'last_read_inbox_message_id': 10,
   'unread_count': 0,
@@ -49,7 +62,7 @@ Map<String, dynamic> _chatJson(int chatId) => {
       'order': '${999999 - chatId}',
       'is_pinned': false,
     },
-    if (chatId == _workChatId && _accountHasFolder)
+    if (chatId != _inboxChatId && _accountHasFolder)
       {
         '@type': 'chatPosition',
         'list': {'@type': 'chatListFolder', 'chat_folder_id': _workFolderId},
@@ -127,12 +140,24 @@ void main() {
       supportDir: supportDir.path,
       bindings: _FakeBindings(),
       queryOverride: (request, _) async {
+        final list = request['chat_list'];
+        final folderId = list is Map<String, dynamic>
+            ? list['chat_folder_id']
+            : null;
         switch (request['@type']) {
+          case 'loadChats':
+            if (folderId == _workFolderId) _folderPagesLoaded++;
+            return {'@type': 'ok'};
           case 'getChats':
-            final list = request['chat_list'] as Map<String, dynamic>;
-            final ids = switch (list['@type']) {
+            final lateChatLoaded =
+                _lateChatFromPage > 0 &&
+                _folderPagesLoaded >= _lateChatFromPage;
+            final ids = switch ((list as Map<String, dynamic>)['@type']) {
               'chatListMain' => const [_inboxChatId, _workChatId],
-              'chatListFolder' => const [_workChatId],
+              'chatListFolder' when folderId == _workFolderId => [
+                _workChatId,
+                if (lateChatLoaded) _lateWorkChatId,
+              ],
               _ => const <int>[],
             };
             return {
@@ -180,6 +205,8 @@ void main() {
     translation = TranslationController(await SharedPreferences.getInstance());
     client.clearChatFoldersForTesting();
     _accountHasFolder = true;
+    _folderPagesLoaded = 0;
+    _lateChatFromPage = 0;
   });
   tearDown(() {
     theme.dispose();
@@ -199,6 +226,15 @@ void main() {
             'text': {'@type': 'formattedText', 'text': 'Work'},
           },
           'icon': {'@type': 'chatFolderIcon', 'name': 'Work'},
+        },
+        {
+          '@type': 'chatFolderInfo',
+          'id': _emptyFolderId,
+          'name': {
+            '@type': 'chatFolderName',
+            'text': {'@type': 'formattedText', 'text': 'Empty'},
+          },
+          'icon': {'@type': 'chatFolderIcon', 'name': 'Custom'},
         },
       ],
     });
@@ -222,6 +258,7 @@ void main() {
   Future<Future<Object?>> pumpPicker(
     WidgetTester tester, {
     required bool forwarding,
+    bool? showFolders,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -250,8 +287,11 @@ void main() {
     );
     final popped = navigatorKey.currentState!.push<Object?>(
       MaterialPageRoute(
-        builder: (_) =>
-            ChatPickerView(accountSlot: slot, showForwardOptions: forwarding),
+        builder: (_) => ChatPickerView(
+          accountSlot: slot,
+          showForwardOptions: forwarding,
+          showFolders: showFolders,
+        ),
       ),
     );
     await settle(tester);
@@ -263,6 +303,9 @@ void main() {
   final allTab = find.byKey(const ValueKey('chat-picker-folder-all'));
   final workTab = find.byKey(
     const ValueKey('chat-picker-folder-$_workFolderId'),
+  );
+  final emptyTab = find.byKey(
+    const ValueKey('chat-picker-folder-$_emptyFolderId'),
   );
 
   testWidgets('a forward picker narrows its destinations to a chosen folder', (
@@ -313,10 +356,62 @@ void main() {
     await settle(tester);
     expect(find.text('Inbox friend'), findsNothing);
     expect(find.text('Work mate'), findsNothing);
+    expect(find.text('No chats found'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'mate');
     await settle(tester);
     expect(find.text('Work mate'), findsOneWidget);
+    expect(find.text('No chats found'), findsNothing);
+
+    await tearDownPicker(tester);
+  });
+
+  testWidgets('a folder without chats says so instead of staying blank', (
+    tester,
+  ) async {
+    pushWorkFolder();
+    await pumpPicker(tester, forwarding: true);
+    expect(find.text('No chats found'), findsNothing);
+
+    await tester.tap(emptyTab);
+    await settle(tester);
+    expect(find.text('Inbox friend'), findsNothing);
+    expect(find.text('Work mate'), findsNothing);
+    expect(find.text('No chats found'), findsOneWidget);
+
+    await tester.tap(workTab);
+    await settle(tester);
+    expect(find.text('Work mate'), findsOneWidget);
+    expect(find.text('No chats found'), findsNothing);
+
+    await tearDownPicker(tester);
+  });
+
+  testWidgets('a folder too short to scroll still pages in its later chats', (
+    tester,
+  ) async {
+    pushWorkFolder();
+    // The second page of the folder brings a chat the first one did not.
+    _lateChatFromPage = 2;
+    await pumpPicker(tester, forwarding: true);
+
+    await tester.tap(workTab);
+    await settle(tester);
+    expect(find.text('Work mate'), findsOneWidget);
+    expect(
+      find.text('Late arrival'),
+      findsOneWidget,
+      reason: 'one row cannot be scrolled, so the picker pages on its own',
+    );
+
+    final pagesAfterSettling = _folderPagesLoaded;
+    await settle(tester);
+    expect(
+      _folderPagesLoaded,
+      pagesAfterSettling,
+      reason: 'a page that adds no chat ends the run',
+    );
+    expect(pagesAfterSettling, lessThanOrEqualTo(4));
 
     await tearDownPicker(tester);
   });
@@ -338,6 +433,29 @@ void main() {
     await pumpPicker(tester, forwarding: false);
     expect(allTab, findsNothing);
     expect(workTab, findsNothing);
+    await tearDownPicker(tester);
+  });
+
+  testWidgets('a share picker opts into folders and still returns the chat', (
+    tester,
+  ) async {
+    pushWorkFolder();
+    final popped = await pumpPicker(
+      tester,
+      forwarding: false,
+      showFolders: true,
+    );
+    expect(allTab, findsOneWidget);
+
+    await tester.tap(workTab);
+    await settle(tester);
+    expect(find.text('Inbox friend'), findsNothing);
+    await tester.tap(find.text('Work mate'));
+    await settle(tester);
+    final result = await popped;
+    expect(result, isA<ChatSummary>());
+    expect((result! as ChatSummary).id, _workChatId);
+
     await tearDownPicker(tester);
   });
 }

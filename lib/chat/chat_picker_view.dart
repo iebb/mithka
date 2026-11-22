@@ -55,7 +55,8 @@ class ChatPickerView extends StatefulWidget {
 
   /// Whether the account's chat folders are offered as tabs above the list, so
   /// a destination can be found inside one folder instead of the whole account.
-  /// Null follows [showForwardOptions]: every forward picker offers them.
+  /// Null follows [showForwardOptions]: every forward picker offers them, and
+  /// a picker that shares something else into a chat opts in.
   final bool? showFolders;
 
   /// Markdown detected in the forwarded text: the picker offers a "render
@@ -93,6 +94,14 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   final _listController = ScrollController();
   final List<Contact> _contacts = [];
   bool _contactsLoading = false;
+
+  /// A page of the selected list is on its way; an empty list is still
+  /// loading rather than empty.
+  bool _paging = false;
+
+  /// The chat count at the last page asked for on the list's behalf. A pass
+  /// that added no chat ends the run, so an exhausted list is not asked again.
+  int _autoPagedAt = -1;
   String _query = '';
   bool _removeCaption = false;
   bool _removeSender = false;
@@ -112,7 +121,9 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   }
 
   void _onModel() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _schedulePageInIfShort();
   }
 
   @override
@@ -133,13 +144,51 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   /// one larger than the first page still reaches its last chat.
   void _onListScroll() {
     if (!_listController.hasClients) return;
-    if (_listController.position.extentAfter < 600) _vm.loadMore();
+    if (_listController.position.extentAfter < 600) _pageIn();
+  }
+
+  Future<void> _pageIn() async {
+    if (_paging) return;
+    _paging = true;
+    try {
+      await _vm.loadMoreChats();
+    } finally {
+      _paging = false;
+    }
+    if (!mounted) return;
+    setState(() {});
+    _schedulePageInIfShort();
+  }
+
+  /// Whether fewer than 600 px of rows wait below the viewport. A search or a
+  /// kind restriction can hide most of a page, leaving nothing to scroll and
+  /// so nothing to trigger the next one.
+  bool get _listIsShort {
+    if (!_listController.hasClients) return true;
+    final position = _listController.position;
+    return !position.hasContentDimensions || position.extentAfter < 600;
+  }
+
+  /// Keeps paging while the rows on screen stop short of the viewport, so a
+  /// search reaches chats beyond the pages already loaded.
+  void _schedulePageInIfShort() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _paging || !_listIsShort) return;
+      final count = _vm.chats.length;
+      if (count == _autoPagedAt) return;
+      _autoPagedAt = count;
+      _pageIn();
+    });
   }
 
   void _selectFolder(ChatFilterOption filter) {
     if (filter.folderId == _vm.selectedFilter.folderId) return;
     _vm.selectFilter(filter);
     if (_listController.hasClients) _listController.jumpTo(0);
+    // Joins the load the selection just started, so the folder reads as
+    // loading instead of empty until its first page lands.
+    _autoPagedAt = -1;
+    _pageIn();
   }
 
   List<_PickerEntry> get _filtered {
@@ -258,17 +307,27 @@ class _ChatPickerViewState extends State<ChatPickerView> {
         children: [
           _header(),
           Expanded(
-            child: filtered.isEmpty && widget.emptyText != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Text(
-                        widget.emptyText!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15, color: c.textSecondary),
-                      ),
-                    ),
-                  )
+            child: filtered.isEmpty
+                // Nothing is said while a page or the contacts are still on
+                // their way: the list may be about to fill.
+                ? _vm.isInitialLoading || _paging || _contactsLoading
+                      ? const SizedBox.expand()
+                      : Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Text(
+                              widget.emptyText ??
+                                  AppStringKeys.chatsSearchNoResults.l10n(
+                                    context,
+                                  ),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ),
+                        )
                 : ListView.builder(
                     controller: _listController,
                     padding: EdgeInsets.zero,
@@ -349,7 +408,10 @@ class _ChatPickerViewState extends State<ChatPickerView> {
                         border: InputBorder.none,
                         isCollapsed: true,
                       ),
-                      onChanged: (q) => setState(() => _query = q),
+                      onChanged: (q) {
+                        setState(() => _query = q);
+                        _schedulePageInIfShort();
+                      },
                     ),
                   ),
                 ],
