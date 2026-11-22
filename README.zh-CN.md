@@ -2,7 +2,7 @@
 
 ![Mithka — 独立开发的 Telegram 客户端](docs/images/mithka-github-banner.png)
 
-[English](README.md) | 简体中文
+[English](README.md) | 简体中文 | [日本語](README.ja.md)
 
 **Mithka** 是一款轻量、紧凑的跨平台 Telegram 客户端，使用 Flutter 构建界面并通过
 Dart FFI 接入 [TDLib](https://core.telegram.org/tdlib)。支持 Android、iOS、macOS、
