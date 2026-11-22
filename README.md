@@ -2,7 +2,7 @@
 
 ![Mithka — an independent Telegram client](docs/images/mithka-github-banner.png)
 
-English | [简体中文](README.zh-CN.md)
+English | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 **Mithka** is a fast, compact, cross-platform Telegram client built with Flutter
 and [TDLib](https://core.telegram.org/tdlib) over Dart FFI. It runs natively on
