@@ -294,8 +294,10 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       final picked = await Navigator.of(context, rootNavigator: true)
           .push<ChatSummary>(
             MaterialPageRoute(
-              builder: (_) =>
-                  const ChatPickerView(title: AppStringKeys.topicChatShare),
+              builder: (_) => const ChatPickerView(
+                title: AppStringKeys.topicChatShare,
+                showFolders: true,
+              ),
             ),
           );
       if (!mounted || picked == null) return;
