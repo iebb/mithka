@@ -25,6 +25,7 @@ import '../app/desktop_chat_list_title_bar_anchors.dart';
 import '../app/desktop_chat_window.dart';
 import '../app/horizontal_safe_viewport.dart';
 import '../app/ipad_window_chrome.dart';
+import '../app/top_corner_cluster.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
 import '../chat/chat_picker_view.dart';
@@ -1163,6 +1164,10 @@ class _ChatListViewState extends State<ChatListView>
       ChatListConnectionStatus.connecting;
   int? _openSwipeChat;
   bool _showPlusMenu = false;
+  final GlobalKey _addButtonKey = GlobalKey();
+
+  /// Where the + menu hangs from, below whichever row holds the +.
+  double? _plusMenuTop;
   bool _showFilterMenu = false;
   int? _pendingScrollToFirstUnreadRequest;
   bool _pendingScrollShouldToggle = false;
@@ -1580,6 +1585,7 @@ class _ChatListViewState extends State<ChatListView>
     _dismissDesktopPlusMenu();
     if (!widget.desktopSidebar) {
       setState(() {
+        _plusMenuTop = _plusMenuTopBelowButton();
         _showPlusMenu = true;
         _showFilterMenu = false;
       });
@@ -2306,6 +2312,13 @@ class _ChatListViewState extends State<ChatListView>
         }
       });
     }
+    final showFolderTabs =
+        !sideFolders &&
+        folderMode == ChatFolderDisplayMode.tabs &&
+        _model.filters.length > 1;
+    // The + rides at the end of the folder tabs; without them (no folders,
+    // folders in the side rail or the menu) it stays on the profile row.
+    final addInFolderTabs = showFolderTabs && !widget.desktopSidebar;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2313,11 +2326,10 @@ class _ChatListViewState extends State<ChatListView>
           color: c.background,
           child: Column(
             children: [
-              if (!widget.desktopSidebar) _header(),
-              if (!sideFolders &&
-                  folderMode == ChatFolderDisplayMode.tabs &&
-                  _model.filters.length > 1)
-                _chatFolderTabs(),
+              if (!widget.desktopSidebar)
+                _header(addInFolderTabs: addInFolderTabs),
+              if (showFolderTabs)
+                _chatFolderTabs(withAddButton: addInFolderTabs),
               Expanded(
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
@@ -2522,171 +2534,202 @@ class _ChatListViewState extends State<ChatListView>
 
   // MARK: - Header
 
-  Widget _header() {
+  Widget _header({required bool addInFolderTabs}) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final appLock = context.watch<LocalAppLockController?>();
     final useFilterMenu =
         theme.chatFolderDisplayMode == ChatFolderDisplayMode.menu;
     final activeFilter = _model.selectedFilter;
-    return Container(
-      color: c.listHeaderTint,
-      padding: headerChromePaddingOf(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.xxl,
-          vertical: AppSpacing.md + AppSpacing.xxs,
+    const rowPadding = EdgeInsets.symmetric(
+      horizontal: AppSpacing.xxl,
+      vertical: AppSpacing.md + AppSpacing.xxs,
+    );
+    final row = Row(
+      children: [
+        GestureDetector(
+          key: const ValueKey('chat-list-header-avatar-hit'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => context.read<dc.DrawerController>().open(),
+          child: SizedBox(
+            width: AppMetric.chatHeaderHitTarget(),
+            height: AppMetric.chatHeaderHitTarget(),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PhotoAvatar(
+                title: _meName,
+                photo: _mePhoto,
+                size: AppMetric.chatHeaderAvatarSize(),
+                allowAnimation: false,
+              ),
+            ),
+          ),
         ),
-        child: Row(
-          children: [
-            GestureDetector(
-              key: const ValueKey('chat-list-header-avatar-hit'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => context.read<dc.DrawerController>().open(),
-              child: SizedBox(
-                width: AppMetric.chatHeaderHitTarget(),
-                height: AppMetric.chatHeaderHitTarget(),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: PhotoAvatar(
-                    title: _meName,
-                    photo: _mePhoto,
-                    size: AppMetric.chatHeaderAvatarSize(),
-                    allowAnimation: false,
-                  ),
-                ),
-              ),
-            ),
-            // The larger transparent hit box borrows from the existing 12pt
-            // artwork/name gap, leaving artwork at the same 16pt inset.
-            SizedBox(
-              width:
-                  AppSpacing.lg -
-                  (AppMetric.chatHeaderHitTarget() -
-                      AppMetric.chatHeaderAvatarSize()),
-            ),
-            Expanded(
-              child: Column(
+        // The larger transparent hit box borrows from the existing 12pt
+        // artwork/name gap, leaving artwork at the same 16pt inset.
+        SizedBox(
+          width:
+              AppSpacing.lg -
+              (AppMetric.chatHeaderHitTarget() -
+                  AppMetric.chatHeaderAvatarSize()),
+        ),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          _meName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: AppTextSize.bodyLarge,
-                            fontWeight: FontWeight.w500,
-                            color: c.textPrimary,
-                          ),
-                        ),
+                  Flexible(
+                    child: Text(
+                      _meName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: AppTextSize.bodyLarge,
+                        fontWeight: FontWeight.w500,
+                        color: c.textPrimary,
                       ),
-                      if (_meStatusId != 0 &&
-                          theme.chatListStatusEmojiMode.visible) ...[
-                        const SizedBox(width: AppSpacing.xs + 1),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => showEmojiStatusPicker(
-                            context,
-                            currentStatusId: _meStatusId,
-                          ),
-                          child: StatusEmojiView(
-                            id: _meStatusId,
-                            size: 18,
-                            color: c.textPrimary,
-                            animate: theme.chatListStatusEmojiMode.animate,
-                          ),
-                        ),
-                      ],
-                      if (_meIsPremium && _meStatusId != 0) ...[
-                        const SizedBox(width: AppSpacing.xs),
-                        AppIcon(
-                          HeroAppIcons.chevronDown,
-                          size: 14,
-                          color: c.textTertiary,
-                        ),
-                      ],
-                    ],
-                  ),
-                  ChatListConnectionStatusView(status: _connectionStatus),
-                ],
-              ),
-            ),
-            if (useFilterMenu && !activeFilter.isAll) ...[
-              const SizedBox(width: AppSpacing.md),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 132),
-                child: Text(
-                  activeFilter.title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: AppTextSize.callout,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-            ],
-            if (useFilterMenu && _model.filters.isNotEmpty)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() {
-                  _dismissDesktopPlusMenu();
-                  _showFilterMenu = true;
-                  _showPlusMenu = false;
-                }),
-                child: SizedBox(
-                  width: AppMetric.hitTarget,
-                  height: AppMetric.hitTarget,
-                  child: AppIcon(
-                    HeroAppIcons.folder,
-                    size: AppIconSize.toolbar,
-                    color: c.textPrimary,
-                  ),
-                ),
-              ),
-            if (appLock?.enabled == true) ...[
-              const SizedBox(width: AppSpacing.xs),
-              Semantics(
-                button: true,
-                label: AppStringKeys.appLockLockNow.l10n(context),
-                child: GestureDetector(
-                  key: const ValueKey('chat-list-app-lock'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: appLock!.lock,
-                  child: SizedBox(
-                    width: AppMetric.hitTarget,
-                    height: AppMetric.hitTarget,
-                    child: AppIcon(
-                      HeroAppIcons.lock,
-                      size: AppIconSize.toolbar,
-                      color: c.textPrimary,
                     ),
                   ),
-                ),
+                  if (_meStatusId != 0 &&
+                      theme.chatListStatusEmojiMode.visible) ...[
+                    const SizedBox(width: AppSpacing.xs + 1),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => showEmojiStatusPicker(
+                        context,
+                        currentStatusId: _meStatusId,
+                      ),
+                      child: StatusEmojiView(
+                        id: _meStatusId,
+                        size: 18,
+                        color: c.textPrimary,
+                        animate: theme.chatListStatusEmojiMode.animate,
+                      ),
+                    ),
+                  ],
+                  if (_meIsPremium && _meStatusId != 0) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    AppIcon(
+                      HeroAppIcons.chevronDown,
+                      size: 14,
+                      color: c.textTertiary,
+                    ),
+                  ],
+                ],
               ),
+              ChatListConnectionStatusView(status: _connectionStatus),
             ],
-            GestureDetector(
-              key: const ValueKey('chat-list-header-add-hit'),
+          ),
+        ),
+        if (useFilterMenu && !activeFilter.isAll) ...[
+          const SizedBox(width: AppSpacing.md),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 132),
+            child: Text(
+              activeFilter.title.l10n(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: AppTextSize.callout,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+        ],
+        if (useFilterMenu && _model.filters.isNotEmpty)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() {
+              _dismissDesktopPlusMenu();
+              _showFilterMenu = true;
+              _showPlusMenu = false;
+            }),
+            child: SizedBox(
+              width: AppMetric.hitTarget,
+              height: AppMetric.hitTarget,
+              child: AppIcon(
+                HeroAppIcons.folder,
+                size: AppIconSize.toolbar,
+                color: c.textPrimary,
+              ),
+            ),
+          ),
+        if (appLock?.enabled == true) ...[
+          const SizedBox(width: AppSpacing.xs),
+          Semantics(
+            button: true,
+            label: AppStringKeys.appLockLockNow.l10n(context),
+            child: GestureDetector(
+              key: const ValueKey('chat-list-app-lock'),
               behavior: HitTestBehavior.opaque,
-              onTap: _openPlusMenu,
+              onTap: appLock!.lock,
               child: SizedBox(
-                width: AppMetric.chatHeaderHitTarget(),
-                height: AppMetric.chatHeaderHitTarget(),
+                width: AppMetric.hitTarget,
+                height: AppMetric.hitTarget,
                 child: AppIcon(
-                  HeroAppIcons.plus,
-                  size: AppMetric.chatHeaderAddSize(),
+                  HeroAppIcons.lock,
+                  size: AppIconSize.toolbar,
                   color: c.textPrimary,
                 ),
               ),
             ),
-          ],
+          ),
+        ],
+        if (!addInFolderTabs) _addButton(),
+      ],
+    );
+    // Beside a corner status cluster hanging from the top edge (a closed
+    // iPhone Duo) the row moves up into the cluster's band, centred on it and
+    // ending a gap before it; the folder tabs then start below the cluster.
+    return TopClusterRowBeside(
+      builder: (context, slot) {
+        if (slot == null) {
+          return Container(
+            color: c.listHeaderTint,
+            padding: headerChromePaddingOf(context),
+            child: Padding(padding: rowPadding, child: row),
+          );
+        }
+        final insets = TopClusterInsets.of(context);
+        return ColoredBox(
+          color: c.listHeaderTint,
+          child: TopClusterRow(
+            slot: slot,
+            bottomGap: rowPadding.bottom,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: math.max(rowPadding.left, slot.insets.left) + insets.left,
+                right:
+                    math.max(rowPadding.right, slot.insets.right) +
+                    insets.right,
+              ),
+              child: row,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The new chat / group / channel button: icon 29pt in a 44pt target.
+  Widget _addButton() {
+    return GestureDetector(
+      key: const ValueKey('chat-list-header-add-hit'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _openPlusMenu,
+      child: SizedBox(
+        key: _addButtonKey,
+        width: AppMetric.chatHeaderHitTarget(),
+        height: AppMetric.chatHeaderHitTarget(),
+        child: AppIcon(
+          HeroAppIcons.plus,
+          size: AppMetric.chatHeaderAddSize(),
+          color: context.colors.textPrimary,
         ),
       ),
     );
@@ -2725,7 +2768,7 @@ class _ChatListViewState extends State<ChatListView>
     ),
   );
 
-  Widget _chatFolderTabs() {
+  Widget _chatFolderTabs({required bool withAddButton}) {
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final showBadges = theme.showFolderUnreadBadges;
@@ -2738,103 +2781,178 @@ class _ChatListViewState extends State<ChatListView>
       base: 44,
       lines: const [AppTextSize.callout],
     );
+    final decoration = BoxDecoration(
+      color: c.listHeaderTint,
+      border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+    );
+    // The + keeps the profile row's 16pt end inset and 44pt target; tabs
+    // scroll on underneath it, fading out over 16pt before they reach it.
+    const addEndInset = AppSpacing.xxl;
+    const addFade = AppSpacing.xxl;
+    final addTarget = AppMetric.chatHeaderHitTarget();
+    final addReserve = addEndInset + addTarget;
+    final tabs = ListView.separated(
+      controller: _folderTabScrollController,
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsetsDirectional.only(
+        start: AppSpacing.lg,
+        end: withAddButton ? addReserve + addFade : AppSpacing.lg,
+      ),
+      itemCount: _model.filters.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 28),
+      itemBuilder: (context, index) {
+        final filter = _model.filters[index];
+        final selected = filter.folderId == selectedFolderId;
+        final peeked = filter.folderId == _folderPeek?.folderId;
+        final key = _folderTabKeys.putIfAbsent(filter.folderId, GlobalKey.new);
+        return GestureDetector(
+          key: key,
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _selectFilter(filter),
+          onLongPress: () => _showFolderMenu(filter),
+          child: SizedBox(
+            height: tabHeight,
+            child: AnimatedBuilder(
+              animation: _folderDrag,
+              builder: (context, _) {
+                final highlight = _folderTabHighlight(
+                  selected: selected,
+                  peeked: peeked,
+                );
+                final accent = Color.lerp(
+                  c.textSecondary,
+                  AppTheme.brand,
+                  highlight,
+                );
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ChatFolderIcon(
+                          filter.isAll ? 'All' : filter.iconName,
+                          size: 17,
+                          color: accent ?? c.textSecondary,
+                        ),
+                        const SizedBox(width: AppSpacing.xs + 1),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 168),
+                          child: Text(
+                            filter.title.l10n(context),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: AppTextSize.callout,
+                              fontWeight: selected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (showBadges &&
+                            !filter.isAll &&
+                            filter.unreadChatCount > 0) ...[
+                          const SizedBox(width: 5),
+                          FolderUnreadBadge(
+                            label: badgeOverflow.format(filter.unreadChatCount),
+                            accent: filter.hasUnmutedUnread,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.brand.withValues(alpha: highlight),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    )._withChatFolderMouseDrag(context);
+    if (!withAddButton) {
+      return Container(height: tabHeight, decoration: decoration, child: tabs);
+    }
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    // Centre the target on the tab labels, which sit 7pt above the 4pt
+    // selection indicator at the bottom of the strip.
+    final labelCentreFromBottom = 4 + 7 + _folderTabLabelHeight() / 2;
     return Container(
       height: tabHeight,
-      decoration: BoxDecoration(
-        color: c.listHeaderTint,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: ListView.separated(
-        controller: _folderTabScrollController,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        itemCount: _model.filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 28),
-        itemBuilder: (context, index) {
-          final filter = _model.filters[index];
-          final selected = filter.folderId == selectedFolderId;
-          final peeked = filter.folderId == _folderPeek?.folderId;
-          final key = _folderTabKeys.putIfAbsent(
-            filter.folderId,
-            GlobalKey.new,
-          );
-          return GestureDetector(
-            key: key,
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectFilter(filter),
-            onLongPress: () => _showFolderMenu(filter),
-            child: SizedBox(
-              height: tabHeight,
-              child: AnimatedBuilder(
-                animation: _folderDrag,
-                builder: (context, _) {
-                  final highlight = _folderTabHighlight(
-                    selected: selected,
-                    peeked: peeked,
-                  );
-                  final accent = Color.lerp(
-                    c.textSecondary,
-                    AppTheme.brand,
-                    highlight,
-                  );
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ChatFolderIcon(
-                            filter.isAll ? 'All' : filter.iconName,
-                            size: 17,
-                            color: accent ?? c.textSecondary,
-                          ),
-                          const SizedBox(width: AppSpacing.xs + 1),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 168),
-                            child: Text(
-                              filter.title.l10n(context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: AppTextSize.callout,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (showBadges &&
-                              !filter.isAll &&
-                              filter.unreadChatCount > 0) ...[
-                            const SizedBox(width: 5),
-                            FolderUnreadBadge(
-                              label: badgeOverflow.format(
-                                filter.unreadChatCount,
-                              ),
-                              accent: filter.hasUnmutedUnread,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 7),
-                      Container(
-                        width: 38,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppTheme.brand.withValues(alpha: highlight),
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+      decoration: decoration,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (bounds) {
+                final width = bounds.width;
+                final clear = width <= 0
+                    ? 0.0
+                    : ((width - addReserve) / width).clamp(0.0, 1.0);
+                final solid = width <= 0
+                    ? 0.0
+                    : ((width - addReserve - addFade) / width).clamp(
+                        0.0,
+                        clear,
+                      );
+                return LinearGradient(
+                  begin: rtl ? Alignment.centerRight : Alignment.centerLeft,
+                  end: rtl ? Alignment.centerLeft : Alignment.centerRight,
+                  colors: const [
+                    Color(0xFFFFFFFF),
+                    Color(0xFFFFFFFF),
+                    Color(0x00FFFFFF),
+                    Color(0x00FFFFFF),
+                  ],
+                  stops: [0, solid, clear, 1],
+                ).createShader(bounds);
+              },
+              child: tabs,
             ),
-          );
-        },
-      )._withChatFolderMouseDrag(context),
+          ),
+          PositionedDirectional(
+            end: addEndInset,
+            bottom: labelCentreFromBottom - addTarget / 2,
+            child: _addButton(),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Height of a folder tab's label line: its 17pt icon or its text,
+  /// measured with the same font, weight and OS scaler as the label.
+  double _folderTabLabelHeight() {
+    final style = AppTextStyle.forSystemBoldTextMeasurement(
+      DefaultTextStyle.of(context).style.merge(
+        const TextStyle(
+          fontSize: AppTextSize.callout,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      boldText: MediaQuery.boldTextOf(context),
+    );
+    final painter = TextPainter(
+      text: TextSpan(text: 'Ag', style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+      maxLines: 1,
+    )..layout();
+    final height = math.max(17.0, painter.height);
+    painter.dispose();
+    return height;
   }
 
   // MARK: - Search
@@ -3815,10 +3933,30 @@ class _ChatListViewState extends State<ChatListView>
 
   // MARK: - "+" dropdown
 
+  /// The menu's top just under the + artwork, in this view's coordinates:
+  /// the + moves between the profile row and the folder tabs, and the row
+  /// itself moves up beside a corner status cluster.
+  double? _plusMenuTopBelowButton() {
+    final button = _addButtonKey.currentContext?.findRenderObject();
+    final view = context.findRenderObject();
+    if (button is! RenderBox ||
+        view is! RenderBox ||
+        !button.attached ||
+        !button.hasSize) {
+      return null;
+    }
+    // Same overlap as the original anchor: 6pt into the 44pt target, which
+    // leaves the menu 1.5pt under the 29pt artwork.
+    return button
+            .localToGlobal(Offset(0, button.size.height), ancestor: view)
+            .dy -
+        6;
+  }
+
   Widget _plusMenuOverlay({required bool visible}) {
     return _AnimatedAnchoredMenuOverlay(
       visible: visible,
-      top: MediaQuery.paddingOf(context).top + 48,
+      top: _plusMenuTop ?? MediaQuery.paddingOf(context).top + 48,
       onDismiss: () => setState(() => _showPlusMenu = false),
       child: PlusMenu(
         onSelect: _selectPlusMenuItem,

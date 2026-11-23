@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 /// Where the system keeps its status items along the top edge of the window.
@@ -16,6 +17,7 @@ class TopOcclusionData {
     required this.statusBarBottom,
     required this.windowWidth,
     required this.regions,
+    this.scale = 1,
   });
 
   /// The window's top safe-area inset.
@@ -30,32 +32,125 @@ class TopOcclusionData {
   /// Active occlusion regions inside the top band, in window coordinates.
   final List<Rect> regions;
 
+  /// Window points per unit of these lengths. The platform reports window
+  /// points (1); inside an interface-size view the lengths are divided by its
+  /// rendered scale so they compare directly with that view's layout.
+  final double scale;
+
   /// Top band every pane keeps when the cluster leaves the rest of the edge
-  /// free: clears the screen's rounded corner, as on iPad.
+  /// free: clears the screen's rounded corner, as on iPad. Window points.
   static const double paneTop = 24;
 
-  /// Space between a header's controls and the cluster.
+  /// Space between a header's controls and the cluster. Window points.
   static const double controlGap = 8;
+
+  /// [paneTop] in this data's units, so it stays 24 window points at every
+  /// interface size.
+  double get bandTop => paneTop / scale;
+
+  /// [controlGap] in this data's units.
+  double get gap => controlGap / scale;
+
+  /// One window point in this data's units: how far two measurements may
+  /// disagree and still mean the same edge.
+  double get tolerance => 1 / scale;
+
+  /// The same geometry measured in a view that renders [viewScale] window
+  /// points per unit, such as [ScaledAppView] at an interface size.
+  TopOcclusionData inViewScale(double viewScale) {
+    if (!viewScale.isFinite || viewScale <= 0 || viewScale == 1) return this;
+    return TopOcclusionData(
+      safeTop: safeTop / viewScale,
+      statusBarBottom: statusBarBottom / viewScale,
+      windowWidth: windowWidth / viewScale,
+      regions: List.unmodifiable([
+        for (final region in regions)
+          Rect.fromLTRB(
+            region.left / viewScale,
+            region.top / viewScale,
+            region.right / viewScale,
+            region.bottom / viewScale,
+          ),
+      ]),
+      scale: scale * viewScale,
+    );
+  }
 
   /// The shared top band for side-by-side panes, or null when the top inset
   /// comes from something that spans the edge and must be kept.
   double? get compactTop {
-    if (regions.isEmpty || !safeTop.isFinite || safeTop <= paneTop) {
+    if (regions.isEmpty || !safeTop.isFinite || safeTop <= bandTop) {
       return null;
     }
     if (!windowWidth.isFinite || windowWidth <= 0) return null;
     // A full-width status bar is real content along the whole edge.
-    if (!statusBarBottom.isFinite || statusBarBottom > paneTop) return null;
+    if (!statusBarBottom.isFinite || statusBarBottom > bandTop) return null;
     // The inset must be the cluster's own height, not a deeper system bar.
     final clusterBottom = regions.map((r) => r.bottom).reduce(math.max);
-    if ((clusterBottom - safeTop).abs() > 1) return null;
+    if ((clusterBottom - safeTop).abs() > tolerance) return null;
     // The cluster must leave most of the edge free.
     final covered = regions.fold<double>(
       0,
       (sum, r) => sum + r.width.clamp(0, windowWidth),
     );
     if (covered > windowWidth / 2) return null;
-    return paneTop;
+    return bandTop;
+  }
+
+  /// Room a header row inside [pane] leaves for the cluster: the side of the
+  /// pane the cluster meets keeps the cluster plus [gap] free. Both rects are
+  /// in this data's units. Never more than half of the pane.
+  EdgeInsets headerInsetsFor(Rect pane, {required double top}) {
+    var left = 0.0;
+    var right = 0.0;
+    for (final region in regions) {
+      if (region.bottom <= top) continue;
+      final start = region.left - gap;
+      final end = region.right + gap;
+      if (end <= pane.left || start >= pane.right) continue;
+      if (region.center.dx >= pane.center.dx) {
+        right = math.max(right, pane.right - start);
+      } else {
+        left = math.max(left, end - pane.left);
+      }
+    }
+    final limit = pane.width / 2;
+    return EdgeInsets.only(
+      left: left.clamp(0, limit).toDouble(),
+      right: right.clamp(0, limit).toDouble(),
+    );
+  }
+
+  /// Where a header row at the very top of the window can sit beside the
+  /// cluster instead of below it, or null when no cluster runs along the top
+  /// edge above [header] (a centred island, a cluster on another pane, a
+  /// full-width status bar) or it leaves the row too little room.
+  TopClusterRowSlot? rowSlotBeside(Rect header) {
+    if (compactTop == null || header.isEmpty) return null;
+    if (header.top.abs() > tolerance) return null;
+    Rect? cluster;
+    var left = 0.0;
+    var right = 0.0;
+    for (final region in regions) {
+      // Only what hangs from the top edge itself shares the row's band.
+      if (region.top > bandTop) continue;
+      final start = region.left - gap;
+      final end = region.right + gap;
+      if (end <= header.left || start >= header.right) continue;
+      if (region.center.dx >= header.center.dx) {
+        right = math.max(right, header.right - start);
+      } else {
+        left = math.max(left, end - header.left);
+      }
+      cluster = cluster?.expandToInclude(region) ?? region;
+    }
+    if (cluster == null) return null;
+    if (left + right > header.width / 2) return null;
+    return TopClusterRowSlot(
+      centerY: cluster.center.dy - header.top,
+      bottom: cluster.bottom - header.top,
+      insets: EdgeInsets.only(left: left, right: right),
+    );
   }
 
   static TopOcclusionData? fromMap(Map<String, dynamic>? map) {
@@ -100,6 +195,7 @@ class TopOcclusionData {
       other.safeTop == safeTop &&
       other.statusBarBottom == statusBarBottom &&
       other.windowWidth == windowWidth &&
+      other.scale == scale &&
       listEquals(other.regions, regions);
 
   @override
@@ -107,6 +203,7 @@ class TopOcclusionData {
     safeTop,
     statusBarBottom,
     windowWidth,
+    scale,
     Object.hashAll(regions),
   );
 }
@@ -159,26 +256,8 @@ class _TopClusterPaneState extends State<TopClusterPane> {
       if (box is! RenderBox || !box.attached || !box.hasSize) return;
       // Panes sit still inside their row; their window position is final
       // once laid out, unlike routes sliding in within a pane.
-      final pane = box.localToGlobal(Offset.zero) & box.size;
-      var left = 0.0;
-      var right = 0.0;
-      for (final region in data.regions) {
-        if (region.bottom <= top) continue;
-        final start = region.left - TopOcclusionData.controlGap;
-        final end = region.right + TopOcclusionData.controlGap;
-        if (end <= pane.left || start >= pane.right) continue;
-        if (region.center.dx >= pane.center.dx) {
-          right = math.max(right, pane.right - start);
-        } else {
-          left = math.max(left, end - pane.left);
-        }
-      }
-      // Never let the cluster take more than half of a header.
-      final limit = pane.width / 2;
-      final next = EdgeInsets.only(
-        left: left.clamp(0, limit).toDouble(),
-        right: right.clamp(0, limit).toDouble(),
-      );
+      final pane = _rectInViewUnits(box, data.scale);
+      final next = data.headerInsetsFor(pane, top: top);
       if (next != _headerInsets) setState(() => _headerInsets = next);
     });
   }
@@ -191,7 +270,7 @@ class _TopClusterPaneState extends State<TopClusterPane> {
     final top =
         widget.enabled &&
             data != null &&
-            (media.padding.top - data.safeTop).abs() <= 1
+            (media.padding.top - data.safeTop).abs() <= data.tolerance
         ? data.compactTop
         : null;
     if (top == null) _headerInsets = EdgeInsets.zero;
@@ -247,4 +326,188 @@ class TopClusterInsets extends InheritedWidget {
   @override
   bool updateShouldNotify(TopClusterInsets oldWidget) =>
       insets != oldWidget.insets || bandActive != oldWidget.bandActive;
+}
+
+/// Where a header row beside the corner cluster sits, in the header's own
+/// coordinates and [TopOcclusionData] units.
+@immutable
+class TopClusterRowSlot {
+  const TopClusterRowSlot({
+    required this.centerY,
+    required this.bottom,
+    required this.insets,
+  });
+
+  /// The cluster's vertical centre, which the row's content shares.
+  final double centerY;
+
+  /// The cluster's bottom: anything spanning the full width starts below it.
+  final double bottom;
+
+  /// Horizontal room kept for the cluster plus [TopOcclusionData.gap].
+  final EdgeInsets insets;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TopClusterRowSlot &&
+      other.centerY == centerY &&
+      other.bottom == bottom &&
+      other.insets == insets;
+
+  @override
+  int get hashCode => Object.hash(centerY, bottom, insets);
+}
+
+/// Lets a header at the very top of the window move its first row up beside
+/// a corner status cluster that hangs from the top edge above it, as on a
+/// closed iPhone Duo. [builder] gets null wherever the header keeps the
+/// window's full top inset: no cluster, a cluster elsewhere, or a header that
+/// no longer owns the top inset (inside a [TopClusterPane] band).
+class TopClusterRowBeside extends StatefulWidget {
+  const TopClusterRowBeside({super.key, required this.builder});
+
+  final Widget Function(BuildContext context, TopClusterRowSlot? slot) builder;
+
+  @override
+  State<TopClusterRowBeside> createState() => _TopClusterRowBesideState();
+}
+
+class _TopClusterRowBesideState extends State<TopClusterRowBeside> {
+  TopClusterRowSlot? _slot;
+  bool _measureScheduled = false;
+
+  void _scheduleMeasure(TopOcclusionData data) {
+    if (_measureScheduled) return;
+    _measureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureScheduled = false;
+      if (!mounted) return;
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.attached || !box.hasSize) return;
+      // The slot depends only on where the header starts and how wide it is,
+      // never on the height it then takes, so this settles in one pass.
+      final next = data.rowSlotBeside(_rectInViewUnits(box, data.scale));
+      if (next != _slot) setState(() => _slot = next);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = TopOcclusionGeometry.maybeOf(context);
+    final media = MediaQuery.of(context);
+    final owns =
+        data != null &&
+        data.compactTop != null &&
+        (media.padding.top - data.safeTop).abs() <= data.tolerance;
+    if (!owns) {
+      _slot = null;
+    } else {
+      // Re-measure after every build: a header can be built mid-transition
+      // and only reach its resting place later.
+      _scheduleMeasure(data);
+    }
+    return widget.builder(context, _slot);
+  }
+}
+
+/// Lays a header row out on a [TopClusterRowSlot]: the row's vertical centre
+/// on the cluster's, then [bottomGap] below the row, and never less than the
+/// cluster's height, so whatever follows starts clear of the cluster.
+class TopClusterRow extends SingleChildRenderObjectWidget {
+  const TopClusterRow({
+    super.key,
+    required this.slot,
+    this.bottomGap = 0,
+    super.child,
+  });
+
+  final TopClusterRowSlot slot;
+  final double bottomGap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      RenderTopClusterRow(slot, bottomGap);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderTopClusterRow renderObject,
+  ) {
+    renderObject
+      ..slot = slot
+      ..bottomGap = bottomGap;
+  }
+}
+
+/// Render object for [TopClusterRow].
+class RenderTopClusterRow extends RenderShiftedBox {
+  RenderTopClusterRow(this._slot, this._bottomGap) : super(null);
+
+  TopClusterRowSlot _slot;
+  set slot(TopClusterRowSlot value) {
+    if (value == _slot) return;
+    _slot = value;
+    markNeedsLayout();
+  }
+
+  double _bottomGap;
+  set bottomGap(double value) {
+    if (value == _bottomGap) return;
+    _bottomGap = value;
+    markNeedsLayout();
+  }
+
+  BoxConstraints _childConstraints(BoxConstraints constraints) =>
+      BoxConstraints(
+        minWidth: constraints.minWidth,
+        maxWidth: constraints.maxWidth,
+      );
+
+  Size _sizeFor(BoxConstraints constraints, Size child) {
+    final top = math.max(0.0, _slot.centerY - child.height / 2);
+    return constraints.constrain(
+      Size(
+        child.width,
+        math.max(_slot.bottom, top + child.height + _bottomGap),
+      ),
+    );
+  }
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) {
+    final child = this.child;
+    if (child == null) {
+      return constraints.constrain(Size(constraints.minWidth, _slot.bottom));
+    }
+    return _sizeFor(
+      constraints,
+      child.getDryLayout(_childConstraints(constraints)),
+    );
+  }
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.constrain(Size(constraints.minWidth, _slot.bottom));
+      return;
+    }
+    child.layout(_childConstraints(constraints), parentUsesSize: true);
+    final top = math.max(0.0, _slot.centerY - child.size.height / 2);
+    (child.parentData! as BoxParentData).offset = Offset(0, top);
+    size = _sizeFor(constraints, child.size);
+  }
+}
+
+/// [box]'s window rect in units of [scale] window points. The render tree
+/// reports window points, the box's own size is already in those units, and
+/// an interface-size view scales about the window's origin.
+Rect _rectInViewUnits(RenderBox box, double scale) {
+  final origin = box.localToGlobal(Offset.zero);
+  return Rect.fromLTWH(
+    origin.dx / scale,
+    origin.dy / scale,
+    box.size.width,
+    box.size.height,
+  );
 }

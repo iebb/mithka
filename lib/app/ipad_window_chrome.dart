@@ -12,6 +12,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'scaled_app_view.dart';
 import 'top_corner_cluster.dart';
 
 /// Extra top inset, in logical pixels, reserved for the iPadOS window
@@ -34,13 +35,20 @@ int? _cachedHostMajorVersion;
 
 /// Extra top inset that clears the iPadOS window controls for the view
 /// owning [context]; returns 0 whenever the controls are not shown.
+///
+/// The controls and the window's safe area are fixed in window points, so the
+/// check reads the inset back in window points and the result is returned in
+/// the interface-size view's units, keeping the clearance the same on screen
+/// at every interface size.
 double iPadWindowChromeInsetOf(BuildContext context) {
   final view = View.of(context);
+  final scale = ScaledAppView.scaleOf(context);
   return iPadWindowChromeInset(
-    viewSize: view.physicalSize,
-    displaySize: view.display.size,
-    paddingTop: MediaQuery.paddingOf(context).top,
-  );
+        viewSize: view.physicalSize,
+        displaySize: view.display.size,
+        paddingTop: MediaQuery.paddingOf(context).top * scale,
+      ) /
+      scale;
 }
 
 /// Top safe-area inset plus [iPadWindowChromeInsetOf]: the clearance a
