@@ -748,4 +748,93 @@ extension _ChatViewTranscript on _ChatViewState {
     );
     return availability.quickChoices(configured);
   }
+
+  /// Long-pressing the reply banner jumps to the original message. A
+
+  /// cross-chat reply's source lives outside this transcript, so only a
+
+  /// same-chat target can be jumped to.
+
+  void _jumpToReplySource(ChatMessage message) {
+    if (_vm.replyToChatId != null) return;
+    unawaited(_jumpToMessage(message.id));
+  }
+
+  /// Moves the pending reply into a chat picked from the chat list. The
+
+  /// destination composer receives the reply as a cross-chat reply, so its
+
+  /// send addresses the source message where it actually lives.
+
+  Future<void> _replyInAnotherChat(
+    ChatMessage message, {
+    MessageTextQuote? quoteParam,
+  }) async {
+    final result = await Navigator.of(context).push<ChatPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatReplyInAnotherChatTitle,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final targetChat = result.chat;
+    final sourceChatId = _vm.replyToChatId ?? _vm.chatId;
+    if (targetChat.id == sourceChatId) return;
+    // Read the composer draft before navigating: the current view model may
+    // be disposed once the destination transcript opens.
+    final draftText = _vm.composerFormattedDraft;
+    final quote = quoteParam ?? _vm.replyQuote;
+    ChatDeepLinkController.shared.openChat(
+      chatId: targetChat.id,
+      title: targetChat.title,
+      externalReply: ExternalReplyHandoff(
+        sourceChatId: sourceChatId,
+        message: ChatMessagePayload(
+          id: message.id,
+          isOutgoing: message.isOutgoing,
+          date: message.date,
+          senderName: message.senderName,
+          text: message.text,
+        ),
+        quote: quote,
+        draftText: draftText,
+      ),
+    );
+    _vm.setReply(null);
+  }
+
+  /// Installs a reply carried over from another chat ("reply in another
+
+  /// chat"): the composer starts with the cross-chat reply pending and the
+
+  /// draft text typed before the move. Consumed once; a later rebuild of the
+
+  /// same widget re-runs this against an already-cleared handoff field.
+
+  void _adoptExternalReplyHandoff() {
+    final handoff = widget.externalReplyHandoff;
+    if (handoff == null) return;
+    if (handoff.sourceChatId == widget.chatId) return;
+    _vm.setExternalReply(
+      ChatMessage(
+        id: handoff.message.id,
+        isOutgoing: handoff.message.isOutgoing,
+        date: handoff.message.date,
+        senderName: handoff.message.senderName,
+        text: handoff.message.text,
+      ),
+      handoff.sourceChatId,
+      quote: handoff.quote as MessageTextQuote?,
+    );
+    if (handoff.draftText.isNotEmpty) {
+      _vm.setDraft(handoff.draftText);
+    }
+  }
+
+  void _adoptForwardHandoff() {
+    final handoff = widget.forwardHandoff;
+    if (handoff == null) return;
+    _vm.adoptForwardHandoff(handoff);
+  }
 }

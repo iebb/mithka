@@ -624,6 +624,4 @@ extension ChatViewModelActions on ChatViewModel {
         return AppStrings.t(AppStringKeys.chatTyping);
     }
   }
-
-  // MARK: - 引用 reply-quote resolution
 }

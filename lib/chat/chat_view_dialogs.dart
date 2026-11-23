@@ -1206,3 +1206,141 @@ class _TextSelectionAction extends StatelessWidget {
     );
   }
 }
+
+extension _ChatViewDialogs on _ChatViewState {
+  /// Shared forward-to-chat flow (the reference client parity): the picker only chooses
+
+  /// the recipient, then the target chat opens with the forward pending in
+
+  /// its composer as a reply-style preview panel. Send happens there.
+
+  Future<void> _openForwardPicker({
+    required List<ChatMessage> messages,
+    required bool protectedCopy,
+  }) async {
+    final accountClientId = _vm.accountClientIdForForwarding;
+    final result = await Navigator.of(context).push<ChatPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => ChatPickerView(
+          title: AppStringKeys.chatForwardToTitle,
+          showForwardOptions: true,
+          accountSlot: _vm.accountSlot,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final target = result.chat;
+    if (target.id == _vm.chatId) {
+      // Forwarding to the same chat keeps the user here; the composer holds
+      // the pending forward instead of a new transcript.
+      _vm.adoptForwardHandoff(
+        ForwardMessagesHandoff(
+          fromChatId: _vm.chatId,
+          messages: messages,
+          accountSlot: _vm.accountSlot,
+          clientId: accountClientId,
+          hasCaption: forwardSelectionHasCaption(messages),
+          markdownOffer: _forwardMarkdownOffer([
+            for (final message in messages) message.id,
+          ]),
+          protectedCopy: protectedCopy,
+        ),
+      );
+      _exitSelection();
+      return;
+    }
+    ChatDeepLinkController.shared.openChat(
+      chatId: target.id,
+      title: target.title,
+      accountSlot: _vm.accountSlot,
+      forwardHandoff: ForwardMessagesHandoff(
+        fromChatId: _vm.chatId,
+        messages: messages,
+        accountSlot: _vm.accountSlot,
+        clientId: accountClientId,
+        hasCaption: forwardSelectionHasCaption(messages),
+        markdownOffer: _forwardMarkdownOffer([
+          for (final message in messages) message.id,
+        ]),
+        protectedCopy: protectedCopy,
+      ),
+    );
+    _exitSelection();
+  }
+
+  /// Tapping the pending-forward banner opens the forward options sheet:
+
+  /// hide sender / remove caption (independent toggles with the caption→copy
+
+  /// rule), render markdown, change recipient, apply, cancel.
+
+  Future<void> _showComposerForwardOptions() async {
+    final forward = _vm.pendingForward;
+    if (forward == null) return;
+    final result = await showAppModalSheet<ForwardOptionsResult>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ForwardOptionsHost(
+        onForwardOptionsChanged: () => _vm.notifyForwardOptionsChanged(),
+        child: ForwardOptionsSheet(forward: forward),
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result is ForwardOptionsApply) return;
+    if (result is ForwardOptionsCancel) {
+      _vm.clearPendingForward();
+      return;
+    }
+    if (result is ForwardOptionsChangeRecipient) {
+      await _openForwardPicker(
+        messages: forward.messages,
+        protectedCopy: forward.protectedCopy,
+      );
+    }
+  }
+
+  /// Tapping the reply banner opens the reply options sheet: quote a range,
+
+  /// carry the reply into another chat, or drop it.
+
+  Future<void> _showComposerReplyOptions() async {
+    final target = _vm.replyTo;
+    if (target == null) return;
+    final canQuote = _vm.canQuoteText && canQuoteMessageText(target);
+    final canReplyInAnotherChat = await _vm.canReplyInAnotherChat(target);
+    if (!mounted) return;
+    final limit = await _vm.messageQuoteLengthLimit();
+    if (!mounted) return;
+    final result = await showAppModalSheet<ComposerReplyOptionsResult>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      // The preview's selection handles drag inside the sheet; the
+      // drag-to-dismiss recognizer would fight them ("stuck" handle drags).
+      enableDrag: false,
+      builder: (_) => ComposerReplyOptionsSheet(
+        message: target,
+        canQuote: canQuote,
+        canReplyInAnotherChat: canReplyInAnotherChat,
+        quoteLengthLimit: limit,
+        initialQuote: _vm.replyQuote,
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result is ComposerReplyOptionsRemove) {
+      _vm.setReply(null);
+      return;
+    }
+    if (result is ComposerReplyOptionsQuote) {
+      final current =
+          _vm.messages.where((m) => m.id == target.id).firstOrNull ?? target;
+      _vm.setReply(current, quote: result.quote);
+      return;
+    }
+    if (result is ComposerReplyOptionsAnotherChat) {
+      await _replyInAnotherChat(target, quoteParam: result.quote);
+      return;
+    }
+    // Apply: the reply stays as it is (the sheet may have cleared its quote
+    // locally; nothing to commit).
+  }
+}

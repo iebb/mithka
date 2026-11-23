@@ -529,4 +529,832 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     if (_panel != _Panel.function) _replyKeyboardVisible = false;
     _toggle(_Panel.function);
   }
+
+  /// Finds a pack by id in the loaded list, or null.
+
+  StickerPack? _findStickerPack(int id) {
+    for (final pack in StickerStore.shared.packs) {
+      if (pack.id == id) return pack;
+    }
+    return null;
+  }
+
+  /// A docked panel slot that grows and shrinks with the house motion
+
+  /// language instead of swapping instantly: opening (button tap) and
+
+  /// collapsing (toggle, transcript-drag dismiss, send) both animate. The
+
+  /// outgoing child stays in the tree while the slot collapses, so its state
+
+  /// (scroll offsets, store subscriptions) survives a same-panel reopen only
+
+  /// through the panel's own persistence — never through this animation.
+
+  Widget _animatedDockedPanel({
+    required bool visible,
+    required Widget Function() builder,
+  }) {
+    final reduceMotion = AppMotion.isReduced(context);
+    // Collapse runs on the accelerate curve (content leaving gets out of the
+    // way quickly — the drag-dismiss the user called "not clean"), expansion
+    // keeps the standard decelerate. AnimatedSize has no reverseCurve, so the
+    // snappier collapse comes from the shorter reverseDuration alone.
+    return AnimatedSize(
+      duration: reduceMotion
+          ? Duration.zero
+          : AppMotion.duration(context, AppMotion.responsive),
+      reverseDuration: reduceMotion
+          ? Duration.zero
+          : AppMotion.duration(context, AppMotion.quick),
+      curve: AppMotion.standard,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
+      child: AnimatedSwitcher(
+        duration: reduceMotion
+            ? Duration.zero
+            : AppMotion.duration(context, AppMotion.quick),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
+        child: visible
+            ? KeyedSubtree(
+                key: const ValueKey('dockedPanelContent'),
+                child: builder(),
+              )
+            : const SizedBox(width: double.infinity),
+      ),
+    );
+  }
+  // MARK: Sticker panel
+
+  /// The packs the sticker panel lists vertically, in strip order: recents
+
+  /// first when non-empty, then every installed pack. Favorites render as
+
+  /// their own leading section inside the list.
+
+  List<StickerPack> _stickerPanelPacks() {
+    final packs = StickerStore.shared.packs
+        .where((p) => p.id != StickerStore.recentPackId)
+        .toList(growable: false);
+    final recents = StickerStore.shared.packs
+        .where((p) => p.id == StickerStore.recentPackId)
+        .toList(growable: false);
+    return [...recents, ...packs];
+  }
+
+  /// Scroll-follow for the sticker strip: the highlighted tab is the pack
+
+  /// whose header last crossed the viewport top, exactly the anchor logic the
+
+  /// unified panel used scoped to packs.
+
+  bool _onStickerPanelScrollNotification(ScrollNotification notification) {
+    if (notification is! ScrollEndNotification &&
+        notification is! ScrollUpdateNotification) {
+      return false;
+    }
+    if (_stickerPanelAnimatingToPack) {
+      if (notification is ScrollEndNotification) {
+        _stickerPanelAnimatingToPack = false;
+      }
+      return false;
+    }
+    if (!_stickerPanelScroll.hasClients) return false;
+    if (_isPanelSearchSelected) return false;
+    final packId = _stickerPackAtViewportTop();
+    if (packId == null || packId == _stickerAnchorPackId) return false;
+    if (packId == _ChatInputBarState._stickerSearchTabId ||
+        packId == _ChatInputBarState._gifTabId) {
+      return false;
+    }
+    _updateState(() => _stickerAnchorPackId = packId);
+    return false;
+  }
+
+  /// The pack whose header sits at (or just above) the viewport top.
+
+  int? _stickerPackAtViewportTop() {
+    final position = _stickerPanelScroll.position;
+    // Favorites render ahead of every pack: while the favorites header is
+    // above the viewport top (and the first pack's header is not), the strip
+    // highlights the favorites pseudo-tab.
+    if (FavoriteStickerStore.shared.items.isNotEmpty) {
+      final favoritesOffset = _packHeaderContextOffset(_favoritesHeaderContext);
+      final firstPack = _stickerPanelPacks().firstOrNull;
+      final firstPackOffset = firstPack == null
+          ? null
+          : _packHeaderScrollOffset(firstPack.id, position);
+      if (favoritesOffset != null &&
+          position.pixels + 2.0 >= favoritesOffset &&
+          (firstPackOffset == null ||
+              position.pixels + 2.0 < firstPackOffset)) {
+        return _ChatInputBarState._favoritesTabId;
+      }
+    }
+    final packs = _stickerPanelPacks();
+    if (packs.isEmpty) return null;
+    // The scroll cannot advance past maxScrollExtent, so the last packs'
+    // headers may never reach the top. At the end of the scroll the tail is
+    // what the user is looking at: the last pack wins.
+    if (position.pixels >= position.maxScrollExtent - 0.5) {
+      return packs.last.id;
+    }
+    int? best;
+    for (final pack in packs) {
+      final offset = _packHeaderScrollOffset(pack.id, position);
+      if (offset != null && position.pixels + 2.0 >= offset) best = pack.id;
+    }
+    return best ?? packs.first.id;
+  }
+
+  /// The scroll offset that puts a pack header at the viewport top, measured
+
+  /// through the header's live render box so it stays exact even while
+
+  /// earlier packs load or resize.
+
+  double? _packHeaderScrollOffset(int packId, ScrollPosition position) {
+    return _packHeaderContextOffset(_packHeaderContexts[packId]);
+  }
+
+  double? _packHeaderContextOffset(BuildContext? context) {
+    if (context == null) return null;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
+    final viewport = RenderAbstractViewport.maybeOf(box);
+    if (viewport == null) return null;
+    return viewport.getOffsetToReveal(box, 0).offset;
+  }
+
+  /// Tab tapped (or the panel reopened on a persisted pack): scroll so that
+
+  /// pack's header sits at the top of the viewport.
+
+  void _scrollStickerPanelToPack(int packId) {
+    if (!_stickerPanelScroll.hasClients) {
+      // The search overlay can still be unwinding from this same tap: retry
+      // once the panel scroll has rebuilt and attached.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !_isPanelSearchSelected &&
+            _stickerPanelScroll.hasClients) {
+          _scrollStickerPanelToPack(packId);
+        }
+      });
+      return;
+    }
+    final position = _stickerPanelScroll.position;
+    final target = _packHeaderScrollOffset(packId, position);
+    if (target == null) return;
+    final clamped = target.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((clamped - position.pixels).abs() < 0.5) return;
+    _stickerPanelAnimatingToPack = true;
+    _stickerPanelScroll.animateTo(
+      clamped,
+      duration: AppMotion.duration(context, AppMotion.routeReverse),
+      curve: AppMotion.standard,
+    );
+  }
+
+  /// Starts the pack's first load the moment its section builds without
+
+  /// contents; one in-flight load per pack per session, retried after a
+
+  /// failure because the entry is removed when the future settles.
+
+  void _ensureStickerPackLoaded(StickerPack? pack) {
+    if (pack == null || pack.loaded || pack.stickers.isNotEmpty) return;
+    if (_stickerPackLoads.containsKey(pack.id)) return;
+    final load = StickerStore.shared
+        .loadPack(pack.id)
+        .whenComplete(() => _stickerPackLoads.remove(pack.id));
+    _stickerPackLoads[pack.id] = load;
+  }
+
+  /// A sticker pack's header row; lazily starts the pack's first load the
+
+  /// moment the section builds without contents and registers its context
+
+  /// for the strip's anchor math.
+
+  Widget _mediaStickerPackHeader(StickerPack pack) {
+    _ensureStickerPackLoaded(pack);
+    final title = pack.id == StickerStore.recentPackId
+        ? AppStrings.t(AppStringKeys.stickerStoreRecent)
+        : pack.title;
+    return Builder(
+      builder: (context) {
+        _packHeaderContexts[pack.id] = context;
+        return _mediaSubsectionHeader(
+          ValueKey('mediaStickerPack-${pack.id}'),
+          title,
+        );
+      },
+    );
+  }
+
+  /// The favorites pseudo-tab scrolls the panel list to the favorites
+
+  /// section header (it is not a real pack, so it has no pack id).
+
+  void _scrollStickerPanelToFavorites() {
+    final ctx = _favoritesHeaderContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.attached || !_stickerPanelScroll.hasClients) {
+      return;
+    }
+    final viewport = RenderAbstractViewport.maybeOf(box);
+    if (viewport == null) return;
+    final position = _stickerPanelScroll.position;
+    final target = viewport
+        .getOffsetToReveal(box, 0)
+        .offset
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    _updateState(
+      () => _stickerAnchorPackId = _ChatInputBarState._favoritesTabId,
+    );
+    if ((target - position.pixels).abs() < 0.5) return;
+    _stickerPanelAnimatingToPack = true;
+    _stickerPanelScroll.animateTo(
+      target,
+      duration: AppMotion.duration(context, AppMotion.routeReverse),
+      curve: AppMotion.standard,
+    );
+  }
+
+  String _emojiCategoryTabId(int index) => 'category-$index';
+
+  /// Scrolls the emoji panel so the named section's header sits at the top:
+
+  /// 'recent', 'category-i' or 'pack-id'.
+
+  void _scrollEmojiPanelTo(String sectionId) {
+    if (_emojiTab != sectionId) {
+      _updateState(() => _emojiTab = sectionId);
+    }
+    final target = _emojiSectionTarget(sectionId);
+    if (target == null) return;
+    if (!_emojiPanelScroll.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _emojiPanelScroll.hasClients) {
+          _scrollEmojiPanelTo(sectionId);
+        }
+      });
+      return;
+    }
+    final position = _emojiPanelScroll.position;
+    final clamped = target.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((clamped - position.pixels).abs() < 0.5) return;
+    _emojiPanelAnimatingToSection = true;
+    _emojiPanelScroll.animateTo(
+      clamped,
+      duration: AppMotion.duration(context, AppMotion.routeReverse),
+      curve: AppMotion.standard,
+    );
+  }
+
+  /// Analytic offset of an emoji section header, exactly like the standalone
+
+  /// pane computes them: headers and grid rows both have fixed extents, so
+
+  /// the sum is exact however far off-screen the section is.
+
+  double? _emojiSectionTarget(String sectionId) {
+    final columns = _emojiPanelColumns;
+    if (columns == null) return null;
+    var offset = 8.0; // top spacer
+    if (EmojiRecentsStore.shared.renderableEntries.isNotEmpty) {
+      if (sectionId == 'recent') return offset;
+      offset +=
+          emojiSectionHeaderExtent +
+          (EmojiRecentsStore.shared.renderableEntries.length / columns)
+                  .ceilToDouble() *
+              emojiPanelCellExtent;
+    }
+    for (var i = 0; i < EmojiCatalog.categories.length; i++) {
+      if (sectionId == _emojiCategoryTabId(i)) return offset;
+      offset +=
+          emojiSectionHeaderExtent +
+          (EmojiCatalog.categories[i].emojis.length / columns).ceilToDouble() *
+              emojiPanelCellExtent;
+    }
+    for (final pack in EmojiStore.shared.customPacks) {
+      if (sectionId == 'pack-${pack.id}') {
+        return offset;
+      }
+      offset +=
+          _ChatInputBarState._emojiPackHeaderExtent +
+          (pack.emoji.length / columns).ceilToDouble() * emojiPanelCellExtent;
+    }
+    return null;
+  }
+
+  /// Scroll-follow for the emoji strip: the highlighted entry is the section
+
+  /// whose header last crossed the viewport top.
+
+  bool _onEmojiPanelScrollNotification(ScrollNotification notification) {
+    if (notification is! ScrollEndNotification &&
+        notification is! ScrollUpdateNotification) {
+      return false;
+    }
+    if (_emojiPanelAnimatingToSection) {
+      if (notification is ScrollEndNotification) {
+        _emojiPanelAnimatingToSection = false;
+      }
+      return false;
+    }
+    if (!_emojiPanelScroll.hasClients) return false;
+    if (_isPanelSearchSelected) return false;
+    final pixels = _emojiPanelScroll.position.pixels;
+    final sectionId = _emojiSectionAt(pixels);
+    if (sectionId == null || sectionId == _emojiTab) return false;
+    if (sectionId == _ChatInputBarState._emojiSearchTab) return false;
+    _updateState(() => _emojiTab = sectionId);
+    return false;
+  }
+
+  /// The section id whose header last scrolled to (or past) the viewport top.
+
+  String? _emojiSectionAt(double pixels) {
+    final columns = _emojiPanelColumns;
+    if (columns == null) return null;
+    var offset = 8.0;
+    String? best;
+    bool sawAny = false;
+    if (EmojiRecentsStore.shared.renderableEntries.isNotEmpty) {
+      sawAny = true;
+      best = 'recent';
+      offset +=
+          emojiSectionHeaderExtent +
+          (EmojiRecentsStore.shared.renderableEntries.length / columns)
+                  .ceilToDouble() *
+              emojiPanelCellExtent;
+    }
+    for (var i = 0; i < EmojiCatalog.categories.length; i++) {
+      if (pixels + 2.0 >= offset) {
+        best = _emojiCategoryTabId(i);
+      }
+      offset +=
+          emojiSectionHeaderExtent +
+          (EmojiCatalog.categories[i].emojis.length / columns).ceilToDouble() *
+              emojiPanelCellExtent;
+    }
+    for (final pack in EmojiStore.shared.customPacks) {
+      if (pixels + 2.0 >= offset) {
+        best = 'pack-${pack.id}';
+      }
+      offset +=
+          _ChatInputBarState._emojiPackHeaderExtent +
+          (pack.emoji.length / columns).ceilToDouble() * emojiPanelCellExtent;
+    }
+    return sawAny || best != null ? best : null;
+  }
+
+  /// A lighter-weight sub-header for a subsection (sticker pack, custom-emoji
+
+  /// pack) inside a section.
+
+  Widget _mediaSubsectionHeader(Key key, String label) {
+    final c = context.colors;
+    return SizedBox(
+      key: key,
+      height: 26,
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.only(start: 14, top: 4),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: c.textTertiary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The trailing search affordance on the segment-control row. Tapping it
+
+  /// enters the existing panel-search mode for the active section kind and
+
+  /// swaps the unified scroll for the search results; tapping it again leaves
+
+  /// search and restores the previous scroll offset.
+
+  Widget _mediaPanelSearchButton({required bool active}) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      label: AppStringKeys.composerMediaSearch.l10n(context),
+      child: GestureDetector(
+        key: const ValueKey('mediaPanelSearchButton'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _togglePanelSearch,
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Center(
+            child: AppIcon(
+              HeroAppIcons.magnifyingGlass,
+              size: 19,
+              color: active ? AppTheme.brand : c.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The search content replacing the unified scroll while search is active:
+
+  /// the existing per-kind search result grids, unchanged.
+
+  Widget _panelSearchContent() {
+    return switch (_mediaKind) {
+      _MediaKind.emoji => _emojiSearchContent(),
+      _MediaKind.sticker => _stickerSearchContent(),
+      _MediaKind.gif => _gifSearchContent(),
+    };
+  }
+
+  /// The active kind's panel scroller, whose offset the search overlay
+
+  /// remembers and restores. GIF keeps no panel scroll (its content is a
+
+  /// plain grid at the top).
+
+  ScrollController? get _activePanelScroll => switch (_mediaKind) {
+    _MediaKind.emoji => _emojiPanelScroll,
+    _MediaKind.sticker => _stickerPanelScroll,
+    _MediaKind.gif => null,
+  };
+
+  /// Enters/leaves the panel-search overlay, remembering where the active
+
+  /// kind's panel scroll sat so leaving restores the user's place.
+
+  void _togglePanelSearch() {
+    if (_isPanelSearchSelected) {
+      final restore = _panelScrollRestoreOffset;
+      _updateState(() {
+        _exitPanelSearchTabs();
+        _panelScrollRestoreOffset = null;
+      });
+      final controller = _activePanelScroll;
+      if (restore != null && controller != null && controller.hasClients) {
+        final position = controller.position;
+        // correctBy never animates and never throws overscroll notifications;
+        // clamping to the live extents keeps a shrunken content height
+        // (a pack list that reloads, for example) from restoring past the end.
+        final target = restore.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        );
+        position.correctBy(target - position.pixels);
+      }
+      return;
+    }
+    _updateState(() {
+      final controller = _activePanelScroll;
+      _panelScrollRestoreOffset = controller != null && controller.hasClients
+          ? controller.position.pixels
+          : null;
+      switch (_mediaKind) {
+        case _MediaKind.emoji:
+          _emojiTab = _ChatInputBarState._emojiSearchTab;
+        case _MediaKind.sticker:
+          _stickerPack = _ChatInputBarState._stickerSearchTabId;
+        case _MediaKind.gif:
+          _stickerPack = _ChatInputBarState._stickerSearchTabId;
+      }
+    });
+    if (_panelSearch.text.trim().isNotEmpty) {
+      _queuePanelSearch();
+    }
+  }
+
+  /// Returns the tab selectors to their non-search values (called from inside
+
+  /// a setState block).
+
+  void _exitPanelSearchTabs() {
+    switch (_mediaKind) {
+      case _MediaKind.emoji:
+        if (_emojiTab == _ChatInputBarState._emojiSearchTab) {
+          _emojiTab = 'standard';
+        }
+      case _MediaKind.sticker:
+        if (_stickerPack == _ChatInputBarState._stickerSearchTabId) {
+          _stickerPack = null;
+        }
+      case _MediaKind.gif:
+        if (_stickerPack == _ChatInputBarState._stickerSearchTabId) {
+          _stickerPack = _ChatInputBarState._gifTabId;
+        }
+    }
+  }
+
+  /// Maps a segment key like `mediaSegment-gif` to its kind label, so the
+
+  /// selected segment's highlight carries an assertable
+
+  /// `mediaSegmentSelected-<kind>` key.
+
+  String _segmentKindLabel(Key? key) {
+    if (key is ValueKey<String>) {
+      final value = key.value;
+      final dash = value.lastIndexOf('-');
+      if (dash >= 0 && dash + 1 < value.length) {
+        return value.substring(dash + 1);
+      }
+      return value;
+    }
+    return key?.toString() ?? '';
+  }
+
+  Future<void> _sendStickerItem(
+    StickerItem item, {
+    MessageSendConfiguration? config,
+  }) async {
+    widget.onMediaSendTapped?.call();
+    final sent = await widget.vm.sendSticker(item, sendConfiguration: config);
+    if (!mounted) return;
+    if (sent) {
+      _finishPanelSend();
+    } else {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+    }
+  }
+
+  Future<void> _sendGifItem(
+    GifItem item, {
+    MessageSendConfiguration? config,
+  }) async {
+    widget.onMediaSendTapped?.call();
+    final sent = await widget.vm.sendGif(item, sendConfiguration: config);
+    if (!mounted) return;
+    if (sent) {
+      _finishPanelSend();
+    } else {
+      showToast(context, AppStrings.t(AppStringKeys.composerGifSendFailed));
+    }
+  }
+
+  /// Long-press haptic matching the emoji cell's pattern: a light selection
+
+  /// tick on touch platforms only.
+
+  void _mediaTileLongPressHaptic() {
+    final platform = Theme.of(context).platform;
+    if (platform == TargetPlatform.android || platform == TargetPlatform.iOS) {
+      unawaited(HapticFeedback.selectionClick());
+    }
+  }
+
+  /// The composer side of the media-tile action sheet: descriptor plus the
+
+  /// actions each row performs. A row the caller passes null for is hidden.
+
+  void _showStickerTileActions(StickerItem item, {required bool isRecentTile}) {
+    _mediaTileLongPressHaptic();
+    unawaited(
+      showMediaTileActionSheet(
+        context,
+        MediaTileDescriptor.sticker(
+          item,
+          FavoriteStickerStore.shared.isFavorite(item.id),
+          isRecentTile,
+        ),
+        MediaTileActions(
+          send: () => unawaited(_sendStickerItem(item)),
+          sendWithoutSound: () => unawaited(
+            _sendStickerItem(
+              item,
+              config: const MessageSendConfiguration(disableNotification: true),
+            ),
+          ),
+          schedule: () => unawaited(_scheduleStickerSend(item)),
+          toggleFavorite: () => unawaited(_toggleStickerFavorite(item)),
+          viewSet: () => _openStickerSet(item.setId),
+          save: () => unawaited(_exportStickerTile(item)),
+          copy: () => unawaited(_copyStickerFile(item)),
+          removeFromRecent: isRecentTile
+              ? () => widget.vm.removeRecentSticker(item.id)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  void _showGifTileActions(GifItem item) {
+    _mediaTileLongPressHaptic();
+    unawaited(
+      showMediaTileActionSheet(
+        context,
+        MediaTileDescriptor.gif(item, false),
+        MediaTileActions(
+          send: () => unawaited(_sendGifItem(item)),
+          sendWithoutSound: () => unawaited(
+            _sendGifItem(
+              item,
+              config: const MessageSendConfiguration(disableNotification: true),
+            ),
+          ),
+          schedule: () => unawaited(_scheduleGifSend(item)),
+          save: () => unawaited(_saveGifTile(item)),
+        ),
+      ),
+    );
+  }
+
+  /// The tile menu's Schedule: the same owned picker the send-options sheet
+
+  /// opens, pre-armed to send this sticker once a future date is confirmed.
+
+  Future<void> _scheduleStickerSend(StickerItem item) async {
+    final config = await _pickTileScheduleConfiguration();
+    if (config == null) return;
+    await _sendStickerItem(item, config: config);
+  }
+
+  Future<void> _scheduleGifSend(GifItem item) async {
+    final config = await _pickTileScheduleConfiguration();
+    if (config == null) return;
+    await _sendGifItem(item, config: config);
+  }
+
+  /// Opens the app's owned schedule picker (the one showMessageSendOptionsSheet
+
+  /// uses) and turns the picked date into a send configuration.
+
+  Future<MessageSendConfiguration?> _pickTileScheduleConfiguration() async {
+    final now = DateTime.now();
+    final selected = await showOwnedSchedulePicker(
+      context: context,
+      initial: now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 366)),
+    );
+    if (selected == null || !selected.isAfter(now)) return null;
+    return MessageSendConfiguration(scheduleAt: selected);
+  }
+
+  Future<void> _toggleStickerFavorite(StickerItem item) async {
+    final store = FavoriteStickerStore.shared;
+    if (store.isFavorite(item.id)) {
+      await store.remove(item);
+    } else {
+      await store.add(item);
+    }
+  }
+
+  void _openStickerSet(int setId) {
+    if (setId == 0) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+      return;
+    }
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => StickerSetDetailView(setId: setId),
+        ),
+      ),
+    );
+  }
+
+  /// Save/export a panel sticker tile. There is no message to anchor on, so
+
+  /// the tile's file is wrapped in a synthetic one the way the set export
+
+  /// already wraps set entries internally.
+
+  Future<void> _exportStickerTile(StickerItem item) async {
+    final file = TdFileRef(id: item.id);
+    final message = ChatMessage(
+      id: item.id,
+      isOutgoing: false,
+      text: '',
+      date: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      image: item.isAnimated || item.isVideo ? null : file,
+      animatedSticker: item.isAnimated ? file : null,
+      videoSticker: item.isVideo ? file : null,
+    );
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
+    final result = await StickerExportService.export(
+      message,
+      format: StickerExportFormat.png,
+      destination: desktop
+          ? StickerExportDestination.files
+          : StickerExportDestination.photos,
+    );
+    if (!mounted) return;
+    if (result != StickerExportResult.cancelled) {
+      showToast(
+        context,
+        AppStrings.t(
+          result == StickerExportResult.saved
+              ? (desktop
+                    ? AppStringKeys.stickerExportSavedToFiles
+                    : AppStringKeys.chatSavedToPhotos)
+              : result == StickerExportResult.permissionDenied
+              ? AppStringKeys.chatSaveToPhotosPermissionDenied
+              : AppStringKeys.stickerExportFailed,
+        ),
+      );
+    }
+  }
+
+  /// Desktop webp sticker copy: puts the resolved local file path on the
+
+  /// clipboard. The sheet gates the row to static desktop stickers; a vanished
+
+  /// file reports instead of throwing into the zone.
+
+  Future<void> _copyStickerFile(StickerItem item) async {
+    try {
+      final path = await TdFileCenter.shared.pathFor(
+        item.thumb ?? TdFileRef(id: item.id),
+      );
+      if (path == null || path.isEmpty) throw StateError('no local file');
+      await Clipboard.setData(ClipboardData(text: path));
+      if (!mounted) return;
+      showToast(context, AppStrings.t(AppStringKeys.profileDetailCopied));
+    } catch (_) {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
+      );
+    }
+  }
+
+  /// Save a panel GIF tile. Mobile adds the downloaded mp4 to the photo
+
+  /// library like a chat GIF message; a desktop host has no album, so the
+
+  /// file goes through the same save panel MediaDownloadService already
+
+  /// uses for chat media.
+
+  Future<void> _saveGifTile(GifItem item) async {
+    final desktop = isDesktopTargetPlatform(Theme.of(context).platform);
+    if (desktop) {
+      final outcome = await MediaDownloadService.saveMedia(
+        file: item.file,
+        isVideo: true,
+      );
+      if (!mounted) return;
+      final feedback = MediaDownloadService.feedbackFor(outcome);
+      if (feedback != null) showToast(context, feedback);
+      return;
+    }
+    try {
+      final path = await TdFileCenter.shared.pathFor(item.file);
+      if (path == null || path.isEmpty) {
+        throw StateError('no local file');
+      }
+      final file = File(path);
+      if (!await file.exists()) throw StateError('file missing');
+      final result = await MediaLibrarySaver.savePreparedFile(
+        file,
+        isVideo: true,
+      );
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStrings.t(switch (result) {
+          MediaLibrarySaveResult.saved => AppStringKeys.chatSavedToPhotos,
+          MediaLibrarySaveResult.permissionDenied =>
+            AppStringKeys.chatSaveToPhotosPermissionDenied,
+          MediaLibrarySaveResult.unsupported ||
+          MediaLibrarySaveResult.failed => AppStringKeys.chatSaveToPhotosFailed,
+        }),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showToast(context, AppStrings.t(AppStringKeys.chatSaveToPhotosFailed));
+    }
+  }
 }

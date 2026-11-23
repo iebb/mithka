@@ -1704,4 +1704,120 @@ extension _ChatViewActions on _ChatViewState {
         ? null
         : _wallpaperController.resolvedWallpaper(globalChatWallpaper);
   }
+
+  /// Markdown detection over the messages about to be forwarded: the picker
+
+  /// offers the render option when any message carries convertible markers and
+
+  /// pre-checks it when at least one looks like authored Markdown.
+
+  /// Protected-source forwarding entry. When the kept-messages toggle is on,
+
+  /// the regular flow runs and ChatViewModel.forwardMany internally re-sends
+
+  /// as a copy; the UI only swaps the failure toast for the migration toast.
+
+  bool get _protectedCopyEnabled =>
+      _vm.hasProtectedContent &&
+      MessageHistorySettings.shared.forwardProtectedAsCopy;
+  void _showProtectedCopyResult(ProtectedForwardPlan? plan) {
+    if (!mounted || plan == null) return;
+    if (plan.skippedIds.isNotEmpty) {
+      showToast(
+        context,
+        AppStrings.t(AppStringKeys.keptForwardCopyPartToast, {
+          'value1': plan.copiedCount,
+          'value2': plan.skippedIds.length,
+        }),
+      );
+    }
+  }
+
+  /// The topic [message] belongs to, or null when it is attributable to
+
+  /// none. TDLib omits `topic_id` on General messages of a forum supergroup,
+
+  /// which is why the fallback is the General topic id there. A bot topic
+
+  /// chat has no General topic, so an unattributed message (topics traffic
+
+  /// predating the bot's toggle, say) belongs to no section rather than to a
+
+  /// bucket that cannot exist.
+
+  /// The display data for a topic section header.
+
+  ///
+
+  /// The loaded topic page carries the name and icon; a topic outside that
+
+  /// page still resolves through the shared index, which live topic traffic
+
+  /// keeps current. Both can miss for a topic this session never listed, so
+
+  /// the label falls back to a generic one — the icon and the tap target keep
+
+  /// Whether a topic section header belongs above [index].
+
+  ///
+
+  /// Mirrors Telegram iOS: the header marks the boundary where the topic
+
+  /// changes, so a run of same-topic messages carries exactly one header.
+
+  /// Service messages never carry one — a join/pin event is not attributable
+
+  /// to a topic — and they do not break a run either: the comparison skips
+
+  /// back over them, because TDLib reports them without a topic and a naive
+
+  /// read would file them under General and repeat the header after them.
+
+  /// A bot chat's unattributed messages are the same: no header, no run
+
+  /// break. The very first attributable message starts a section, since
+
+  /// nothing above it can carry one.
+
+  /// Header-bar launcher for a bot's menu mini app (mirrors the composer's
+
+  /// former pill action).
+
+  /// Opens a link as this transcript, even though the State's context is above
+
+  /// its [InternalChatLinkScope]: the scope's target is re-supplied so the
+
+  /// navigation request carries the owning chat and account.
+
+  /// Whether the mirror holds an edit trail for this message (compile-time
+
+  /// gated): the long-press menu then offers the revision sheet.
+
+  bool _actionTargetHasEdits(ChatMessage message) {
+    if (!allowTelegramTosViolations) return false;
+    final entry = _vm.mirrorEntryForMessage(message);
+    return entry != null && entry.events.isNotEmpty;
+  }
+
+  Future<void> _openMessageEdits(ChatMessage message) async {
+    final entry = message.mirrorEntry ?? _vm.mirrorEntryForMessage(message);
+    if (entry == null || entry.events.isEmpty) return;
+    await Navigator.of(context).push(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => MessageHistoryRevisionView(entry: entry),
+      ),
+    );
+  }
+
+  /// Drops a ghost bubble's kept copy (Telegram §1.4 mirror action).
+
+  void _removeMirrorEntry(ChatMessage message) {
+    final entry = message.mirrorEntry;
+    if (entry == null) return;
+    MessageHistoryStore.shared.deleteEntry(entry);
+    showToast(
+      context,
+      AppStringKeys.historyRemovedFromMirrorToast.l10n(context),
+    );
+  }
 }

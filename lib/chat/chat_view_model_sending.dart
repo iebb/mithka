@@ -1714,4 +1714,98 @@ extension ChatViewModelSending on ChatViewModel {
     notifyListeners();
     return true;
   }
+
+  Future<void> _sendPendingForwardInto(
+    PendingForward forward,
+    List<int> messageIds,
+    Map<String, dynamic>? topicRef,
+  ) async {
+    if (forward.protectedCopy) {
+      final plan = await forwardProtectedAsCopy(
+        query: _client.query,
+        fromChatId: forward.fromChatId,
+        messageIds: messageIds,
+        targetChatId: chatId,
+        topicId: topicRef,
+      );
+      protectedForwardLastPlan = plan;
+      pendingForward = null;
+      notifyListeners();
+      if (plan.anythingSent) return;
+      throw const ForwardBlockedException();
+    }
+    // Source ids are pinned to the account that supplied them; the same
+    // account owns this transcript, so the owned query route is exact.
+    final forwardQuery = forwardQueryForOwner(
+      _client,
+      accountSlot: forward.accountSlot,
+      clientId: forward.clientId,
+    );
+    var richText = forward.options.richText;
+    // Same second gate as forwardMany: entry points hide the chip for
+    // non-Premium, but the entitlement is re-checked here against the live
+    // TDLib state.
+    if (richText) {
+      try {
+        final user = await forwardQuery({'@type': 'getMe'});
+        richText = user.boolean('is_premium') ?? false;
+      } catch (_) {
+        richText = false;
+      }
+    }
+    final byId = {for (final message in forward.messages) message.id: message};
+    final pendingIds = <int>[];
+    // The handoff's messages carry the text the offer was computed from, so
+    // the rich-text conversion works even though the source transcript's
+    // view model is long gone.
+    bool converts(ChatMessage message) =>
+        forwardMarkdownOfferForMessage(message).available;
+    Future<void> flush() async {
+      if (pendingIds.isEmpty) return;
+      final ids = List<int>.of(pendingIds);
+      pendingIds.clear();
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: chatId,
+        fromChatId: forward.fromChatId,
+        messageIds: ids,
+        topicId: topicRef,
+        options: forward.options,
+        query: forwardQuery,
+      );
+    }
+
+    if (!richText) {
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: chatId,
+        fromChatId: forward.fromChatId,
+        messageIds: messageIds,
+        topicId: topicRef,
+        options: forward.options,
+        query: forwardQuery,
+      );
+    } else {
+      for (final id in messageIds) {
+        final message = byId[id];
+        if (message == null || !converts(message)) {
+          pendingIds.add(id);
+          continue;
+        }
+        await flush();
+        final sent = await sendMarkdownRichTextForward(
+          query: forwardQuery,
+          fromChatId: forward.fromChatId,
+          messageId: id,
+          targetChatId: chatId,
+          text: message.text,
+          topicId: topicRef,
+        );
+        if (!sent) pendingIds.add(id);
+      }
+      await flush();
+    }
+    pendingForward = null;
+    notifyListeners();
+  }
 }

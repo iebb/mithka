@@ -800,4 +800,233 @@ extension _ChatViewChrome on _ChatViewState {
     return targetTop >= viewportTop + pinnedOverlayInset - 24 &&
         targetBottom <= viewportBottom + 24;
   }
+
+  /// The topic tab strip: a folder-tab-styled selector pinned under the
+
+  /// header, shown for forum groups and bot topic chats on narrow layouts —
+
+  /// the whole chat included, where the "All" tab is the selected one. Wide
+
+  /// shells render their rail instead.
+
+  Widget _topicTabStrip(Widget child) {
+    if (!_topicsKnown || usesSplitSelectionLayout(MediaQuery.sizeOf(context))) {
+      return child;
+    }
+    final theme = context.watch<ThemeController>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TopicTabStrip(
+          chatId: widget.chatId,
+          topics: [
+            for (final topic in _vm.forumTopics) _topicNavigationItem(topic),
+          ],
+          selectedTopicId: widget.forumTopicId,
+          onSelected: _openTopicTranscript,
+          showUnreadBadges: theme.showFolderUnreadBadges,
+          badgeOverflowLabel: theme.unreadBadgeOverflowMode.format,
+          isLoading: _vm.forumTopicsLoading && _vm.forumTopics.isEmpty,
+          onLongPress: _showTopicTabMenu,
+        ),
+        if (_showsChatTranslationPanel) _chatTranslationPanel(),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// The read-all menu behind a long press on the mention pill: one anchored
+
+  /// row that clears every mention, mirroring the reference client's ReadAllMentionsMenu
+
+  /// over the chat's side control. Reactions need no menu — that long press
+
+  /// clears them directly.
+
+  Future<void> _showReadAllMentionsMenu(Rect anchor) => showAppAnchoredMenu(
+    context: context,
+    anchor: anchor,
+    actions: [
+      AppMenuAction(
+        key: 'read-all-mentions',
+        label: AppStrings.t(AppStringKeys.chatListMarkAllRead),
+        icon: HeroAppIcons.check,
+        onSelected: () => unawaited(_markAllMentionsRead()),
+      ),
+    ],
+  );
+  Future<void> _markAllMentionsRead() async {
+    if (!await _vm.markAllMentionsRead() && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.channelMarkAllReadFailed));
+    }
+  }
+
+  Future<void> _markAllReactionsRead() async {
+    if (!await _vm.markAllReactionsRead() && mounted) {
+      showToast(context, AppStrings.t(AppStringKeys.channelMarkAllReadFailed));
+    }
+  }
+
+  /// Opens the channel's linked chat (discussion group or direct messages)
+
+  /// from the bottom panel. The title paints the header until TDLib answers
+
+  /// with the real one, so the cached chat is read first.
+
+  Future<void> _openChannelLinkedChat(int chatId) async {
+    if (chatId == 0) return;
+    var title = '';
+    try {
+      final chat = await TdClient.shared.query({
+        '@type': 'getChat',
+        'chat_id': chatId,
+      });
+      title = chat.str('title') ?? '';
+    } catch (_) {}
+    if (title.isEmpty) title = _vm.peerTitle;
+    if (!mounted) return;
+    await openChatFromCurrentWindow(context, chatId: chatId, title: title);
+  }
+
+  /// Follows the topic a send just started from this bot topic chat's "All"
+
+  /// view: the reference client selects the freshly created topic's tab the moment the
+
+  /// send creates it, and the message must not stay stranded in a mixed list.
+
+  ///
+
+  /// The switch is scheduled for after the frame: the notification it rides in
+
+  /// on can arrive mid-send, and replacing this transcript synchronously would
+
+  /// tear it down under the caller.
+
+  void _maybeOpenCreatedBotTopic() {
+    final topicId = _vm.consumePendingBotTopicOpen();
+    if (topicId == null || topicId == widget.forumTopicId) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _exitStatePrepared) return;
+      _openTopicTranscript(topicId);
+    });
+  }
+
+  /// mute and mark-read stay available to everyone.
+
+  /// The tab's long press resolves the tab to its topic row and opens the
+
+  /// shared menu. A tab strip is a bar the menu belongs to, so the menu hugs
+
+  /// its bottom edge instead of hanging the default gap below it.
+
+  Future<void> _showTopicTabMenu(TopicNavigationItem item, Rect anchor) async {
+    final topic = _topicById(item.id);
+    if (topic == null) return;
+    await _showTopicMenu(topic, anchor, gap: AppSpacing.xs);
+  }
+
+  /// The topic menu, the way the reference client opens ItemOptions over a long-pressed
+
+  /// tab or list row: pin / edit / close-reopen / delete, each gated by the
+
+  /// rights the row menu uses. No name header — the tab or row under the
+
+  /// finger already names the topic. The creator deletion carve-out probes the
+
+  /// topic's live history before Delete can be offered; a bot topic chat has
+
+  /// no such probe.
+
+  Future<void> _showTopicMenu(
+    ForumTopicOption topic,
+    Rect anchor, {
+    double gap = 8,
+  }) async {
+    if (!topic.isGeneral &&
+        !_vm.isBotTopicChat &&
+        _vm.canDeleteForumTopics != true &&
+        _vm.creatorOfTopic(topic)) {
+      await _vm.ensureTopicCreatorDeletable(topic.id);
+      if (!mounted) return;
+    }
+    final actions = <AppMenuAction>[
+      if (_vm.canPinAndEditTopics)
+        AppMenuAction(
+          key: 'pin',
+          label: AppStrings.t(
+            topic.isPinned
+                ? AppStringKeys.chatListUnpin
+                : AppStringKeys.chatInfoPin,
+          ),
+          icon: HeroAppIcons.pin,
+          onSelected: () => unawaited(_toggleTopicPinned(topic)),
+        ),
+      if (_vm.canPinAndEditTopics && !topic.isGeneral)
+        AppMenuAction(
+          key: 'edit',
+          label: AppStrings.t(AppStringKeys.groupAdministrationEditTopic),
+          icon: HeroAppIcons.pen,
+          onSelected: () => unawaited(_editTopic(topic)),
+        ),
+      if (_vm.canCloseTopic(topic))
+        AppMenuAction(
+          key: 'close',
+          label: AppStrings.t(
+            topic.isClosed
+                ? AppStringKeys.topicChatReopenTopic
+                : AppStringKeys.topicChatCloseTopic,
+          ),
+          icon: topic.isClosed ? HeroAppIcons.eye : HeroAppIcons.lock,
+          onSelected: () => unawaited(_toggleTopicClosed(topic)),
+        ),
+      if (_vm.canDeleteTopic(topic))
+        AppMenuAction(
+          key: 'delete',
+          label: AppStrings.t(AppStringKeys.channelDeleteTopic),
+          icon: HeroAppIcons.trash,
+          destructive: true,
+          onSelected: () => unawaited(_deleteTopic(topic)),
+        ),
+    ];
+    if (actions.isEmpty) return;
+    await showAppAnchoredMenu(
+      context: context,
+      anchor: anchor,
+      actions: actions,
+      gap: gap,
+    );
+  }
+
+  /// The selector row's trailing slot: a brand check for the transcript the
+
+  /// user is already in, the unread pill for the others (both when the open
+
+  /// topic was manually marked unread).
+
+  Widget? _topicSelectorTrailing(
+    ForumTopicOption? topic,
+    bool all,
+    bool current,
+  ) {
+    final unread = !all && topic != null && topic.unreadCount > 0;
+    if (!current && !unread) return null;
+    return SizedBox(
+      width: 64,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (current)
+            AppIcon(HeroAppIcons.check, size: 18, color: AppTheme.brand),
+          if (unread) ...[
+            if (current) const SizedBox(width: AppSpacing.xs + 2),
+            UnreadBadge(
+              key: ValueKey('topic-selector-unread-${topic.id}'),
+              count: topic.unreadCount,
+              muted: topic.isMuted,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

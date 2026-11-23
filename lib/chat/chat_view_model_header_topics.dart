@@ -1634,4 +1634,22 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     _applyPinnedDismissal();
     notifyListeners();
   }
+
+  /// Whether this transcript is the mixed "All" view of a bot topic chat: a
+  /// private chat with a topics-enabled bot, no General topic, no topic
+  /// selected. Nothing can be posted there as-is — every send has to start or
+  /// join a topic.
+  bool get _inBotTopicAllView =>
+      supportsBotTopics && !isForum && !isForumTopicTranscript;
+
+  /// Hands the topic a send just started to the transcript host, once the send
+  /// outcome is known: the host switches afterwards, so a failed message is
+  /// retried inside its topic instead of starting yet another one.
+  void _announceStartedBotTopic(int? topicId) {
+    if (topicId == null || _isDisposed) return;
+    // A multi-segment send announces the same topic once per segment.
+    if (_pendingBotTopicOpen == topicId) return;
+    _pendingBotTopicOpen = topicId;
+    notifyListeners();
+  }
 }
