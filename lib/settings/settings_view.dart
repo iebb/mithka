@@ -97,12 +97,14 @@ class _SettingsViewState extends State<SettingsView> {
   void initState() {
     super.initState();
     final initialCategoryId = widget.initialCategoryId;
+    // Support Us sits first in the sidebar but is not a settings page, so the
+    // first real category opens by default.
     _selectedCategoryId =
         _settingsCategoryDefinitions.any(
           (category) => category.id == initialCategoryId,
         )
         ? initialCategoryId!
-        : 'general';
+        : 'notifications';
     _expandedCategoryIds.add(_selectedCategoryId);
     _searchController.addListener(_searchChanged);
     if (widget.focusSearch) {
@@ -436,11 +438,13 @@ class _SettingsViewState extends State<SettingsView> {
           key: ValueKey('settings-category-${category.id}'),
           label: category.titleKey.l10n(context),
           icon: category.icon,
-          // A leaf highlights only while its screen is the one on show.
+          // A leaf highlights only while its screen is the one on show,
+          // including when it opened by default before anything was picked.
           selected:
               isLeaf &&
               isSelectedCategory &&
-              _selectedDestinationId == category.destinations.single.id,
+              (_selectedDestinationId == null ||
+                  _selectedDestinationId == category.destinations.single.id),
           expanded: isLeaf ? null : expanded,
           onTap: () => isLeaf
               ? _selectDestination(category, category.destinations.single)
@@ -1351,9 +1355,9 @@ List<_SettingsCategory> _settingsCategories(
 
 const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
   _SettingsCategoryDefinition(
-    id: 'general',
-    titleKey: AppStringKeys.generalTitle,
-    icon: HeroAppIcons.gear,
+    id: 'support',
+    titleKey: AppStringKeys.mithkaProTitle,
+    icon: HeroAppIcons.heart,
     destinationIds: ['mithka-pro'],
   ),
   _SettingsCategoryDefinition(
