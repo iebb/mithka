@@ -108,6 +108,54 @@ void main() {
     });
   });
 
+  group('rowSlotInBand on an opened Duo', () {
+    for (final s in _scales) {
+      test('both columns share the clock line at s=$s', () {
+        final data = _openedDuo.inViewScale(s);
+        final width = 951 / s;
+        // Left column, away from the cluster: on the line, own spacing below.
+        final left = data.rowSlotInBand(Rect.fromLTWH(0, 0, 400 / s, 120));
+        expect(left, isNotNull);
+        expect(left!.centerY * s, moreOrLessEquals(41));
+        expect(left.bottom, 0);
+        expect(left.insets, EdgeInsets.zero);
+        // Right column, under the cluster: on the line and clear of it.
+        final right = data.rowSlotInBand(
+          Rect.fromLTWH(401 / s, 0, width - 401 / s, 120),
+          room: EdgeInsets.only(right: 152 / s),
+        );
+        expect(right, isNotNull);
+        expect(right!.centerY * s, moreOrLessEquals(41));
+        expect(right.bottom * s, moreOrLessEquals(82));
+      });
+    }
+
+    test('keeps today\'s header when the row has no room or starts lower', () {
+      expect(
+        _openedDuo.rowSlotInBand(
+          const Rect.fromLTWH(651, 0, 300, 120),
+          room: const EdgeInsets.only(right: 152),
+        ),
+        isNull,
+      );
+      expect(
+        _openedDuo.rowSlotInBand(const Rect.fromLTWH(0, 24, 400, 120)),
+        isNull,
+      );
+    });
+
+    test('a full-width status bar never moves the row', () {
+      const phone = TopOcclusionData(
+        safeTop: 59,
+        statusBarBottom: 54,
+        windowWidth: 402,
+        regions: [Rect.fromLTWH(140, 11, 122, 37)],
+      );
+      expect(phone.rowSlotInBand(const Rect.fromLTWH(0, 0, 402, 120)), isNull);
+      expect(phone.rowSlotBeside(const Rect.fromLTWH(0, 0, 402, 120)), isNull);
+    });
+  });
+
   group('TopClusterPane under ScaledAppView', () {
     for (final s in _scales) {
       testWidgets('both opened panes start 24 window points down at s=$s', (

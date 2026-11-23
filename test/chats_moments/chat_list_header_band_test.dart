@@ -25,6 +25,14 @@ const _closedDuo = TopOcclusionData(
   regions: [Rect.fromLTWH(266, 0, 200, 82), Rect.fromLTWH(399.7, 29.3, 37, 37)],
 );
 
+/// An opened iPhone Duo: the status items sit in the top-right corner.
+const _openedDuo = TopOcclusionData(
+  safeTop: 82,
+  statusBarBottom: 2,
+  windowWidth: 951,
+  regions: [Rect.fromLTWH(807, 0, 144, 82)],
+);
+
 final _add = find.byKey(const ValueKey('chat-list-header-add-hit'));
 final _avatar = find.byKey(const ValueKey('chat-list-header-avatar-hit'));
 
@@ -122,6 +130,106 @@ void main() {
     );
   }
 
+  for (final s in const [1.0, 0.9487, 1.483]) {
+    testWidgets(
+      'opened Duo, one column: the profile row sits on the clock line at s=$s',
+      (tester) async {
+        await _pumpChatList(
+          tester,
+          updates,
+          folders: true,
+          size: const Size(951, 669),
+          topInset: 82,
+          scale: s,
+          occlusion: _openedDuo,
+        );
+        final avatar = tester.getRect(_avatar);
+        expect(avatar.center.dy, moreOrLessEquals(41, epsilon: 1));
+        expect(
+          tester.getRect(find.text(_longName)).right,
+          lessThanOrEqualTo(799 + 0.5),
+        );
+        // Everything below starts clear of the cluster.
+        final tabsTop = tester.getTopLeft(find.byType(ShaderMask)).dy;
+        expect(tabsTop, greaterThanOrEqualTo(82 - 0.5));
+        await _dispose(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.android),
+    );
+
+    testWidgets(
+      'opened Duo, two columns: the list column moves up level with the '
+      'clock at s=$s',
+      (tester) async {
+        await _pumpChatList(
+          tester,
+          updates,
+          folders: true,
+          size: const Size(951, 669),
+          topInset: 82,
+          scale: s,
+          occlusion: _openedDuo,
+          layout: (list) => Row(
+            children: [
+              SizedBox(
+                width: 400 / s,
+                child: TopClusterPane(child: list),
+              ),
+              const Expanded(child: TopClusterPane(child: SizedBox.expand())),
+            ],
+          ),
+        );
+        final avatar = tester.getRect(_avatar);
+        expect(avatar.center.dy, moreOrLessEquals(41, epsilon: 1));
+        // Away from the cluster the tabs keep their usual 10pt gap below the
+        // row instead of waiting for the cluster's bottom.
+        final tabsTop = tester.getTopLeft(find.byType(ShaderMask)).dy;
+        expect(tabsTop, moreOrLessEquals(avatar.bottom + 10 * s, epsilon: 1));
+        // At 220% the row alone already reaches past the cluster's bottom.
+        if (s < 1.2) expect(tabsTop, lessThan(82));
+        await _dispose(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.android),
+    );
+
+    testWidgets(
+      'opened Duo, list column under the cluster: on the line, 8pt clear at '
+      's=$s',
+      (tester) async {
+        await _pumpChatList(
+          tester,
+          updates,
+          folders: true,
+          size: const Size(951, 669),
+          topInset: 82,
+          scale: s,
+          occlusion: _openedDuo,
+          layout: (list) => Row(
+            children: [
+              const Expanded(child: TopClusterPane(child: SizedBox.expand())),
+              SizedBox(
+                width: 551 / s,
+                child: TopClusterPane(child: list),
+              ),
+            ],
+          ),
+        );
+        final avatar = tester.getRect(_avatar);
+        expect(avatar.center.dy, moreOrLessEquals(41, epsilon: 1));
+        expect(
+          tester.getRect(find.text(_longName)).right,
+          lessThanOrEqualTo(799 + 0.5),
+        );
+        expect(
+          tester.getTopLeft(find.byType(ShaderMask)).dy,
+          greaterThanOrEqualTo(82 - 0.5),
+        );
+        await _dispose(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.android),
+    );
+  }
+
   testWidgets(
     'without a cluster the header keeps the safe-area top',
     (tester) async {
@@ -147,6 +255,7 @@ Future<void> _pumpChatList(
   double topInset = 0,
   double scale = 1,
   TopOcclusionData? occlusion,
+  Widget Function(Widget list)? layout,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -178,7 +287,9 @@ Future<void> _pumpChatList(
             ),
           ),
         ),
-        home: const Scaffold(body: ChatListView()),
+        home: Scaffold(
+          body: layout?.call(const ChatListView()) ?? const ChatListView(),
+        ),
       ),
     ),
   );

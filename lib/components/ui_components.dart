@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/ipad_window_chrome.dart';
+import '../app/top_corner_cluster.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../platform/system_ui.dart';
@@ -329,75 +330,98 @@ class NavHeader extends StatelessWidget {
     final effectiveOnBack = SettingsSplitPaneScope.isRootRoute(context)
         ? null
         : onBack;
+    final row = Row(
+      children: [
+        if (effectiveOnBack != null)
+          AppInteractiveSurface(
+            semanticLabel: AppStringKeys.navigationBack.l10n(context),
+            onTap: effectiveOnBack,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: EdgeInsets.only(
+                right: pointerDense ? AppSpacing.md : AppSpacing.lg,
+              ),
+              child: AppIcon(
+                HeroAppIcons.chevronLeft,
+                size: metrics.scaled(
+                  pointerDense ? AppIconSize.lg : AppIconSize.nav,
+                ),
+                color: c.textPrimary,
+              ),
+            ),
+          ),
+        Expanded(
+          child: Text(
+            title.l10n(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: pointerDense
+                ? AppTextStyle.bodyLarge(
+                    c.textPrimary,
+                    weight: AppTextWeight.medium,
+                  )
+                : AppTextStyle.title(c.textPrimary),
+          ),
+        ),
+        ?trailing,
+        if (trailing == null && trailingIcon != null)
+          AppInteractiveSurface(
+            semanticLabel: title.l10n(context),
+            onTap: onTrailing,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xs),
+              child: AppIcon(
+                trailingIcon!,
+                size: metrics.scaled(
+                  pointerDense ? AppIconSize.lg : AppIconSize.nav - 1,
+                ),
+                color: c.textPrimary,
+              ),
+            ),
+          ),
+      ],
+    );
+    final decoration = BoxDecoration(
+      color: c.navBar,
+      border: Border(
+        bottom: BorderSide(color: c.divider, width: AppMetric.divider),
+      ),
+    );
+    Widget header(TopClusterRowSlot? slot) {
+      if (slot == null) {
+        return Container(
+          constraints: BoxConstraints(
+            minHeight: headerHeight + topChromeInsetOf(context),
+          ),
+          padding: headerChromePaddingOf(context),
+          decoration: decoration,
+          child: Padding(padding: AppInsets.navHeader, child: row),
+        );
+      }
+      // On the status items' line beside a corner cluster.
+      return DecoratedBox(
+        decoration: decoration,
+        child: TopClusterRow(
+          slot: slot,
+          child: Padding(
+            padding: TopClusterInsets.of(context),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: headerHeight),
+              child: Padding(padding: AppInsets.navHeader, child: row),
+            ),
+          ),
+        ),
+      );
+    }
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiOverlayStyleForSurface(c.navBar),
-      child: Container(
-        constraints: BoxConstraints(
-          minHeight: headerHeight + topChromeInsetOf(context),
-        ),
-        padding: headerChromePaddingOf(context),
-        decoration: BoxDecoration(
-          color: c.navBar,
-          border: Border(
-            bottom: BorderSide(color: c.divider, width: AppMetric.divider),
-          ),
-        ),
-        child: Padding(
-          padding: AppInsets.navHeader,
-          child: Row(
-            children: [
-              if (effectiveOnBack != null)
-                AppInteractiveSurface(
-                  semanticLabel: AppStringKeys.navigationBack.l10n(context),
-                  onTap: effectiveOnBack,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      right: pointerDense ? AppSpacing.md : AppSpacing.lg,
-                    ),
-                    child: AppIcon(
-                      HeroAppIcons.chevronLeft,
-                      size: metrics.scaled(
-                        pointerDense ? AppIconSize.lg : AppIconSize.nav,
-                      ),
-                      color: c.textPrimary,
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: Text(
-                  title.l10n(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: pointerDense
-                      ? AppTextStyle.bodyLarge(
-                          c.textPrimary,
-                          weight: AppTextWeight.medium,
-                        )
-                      : AppTextStyle.title(c.textPrimary),
-                ),
-              ),
-              ?trailing,
-              if (trailing == null && trailingIcon != null)
-                AppInteractiveSurface(
-                  semanticLabel: title.l10n(context),
-                  onTap: onTrailing,
-                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.xs),
-                    child: AppIcon(
-                      trailingIcon!,
-                      size: metrics.scaled(
-                        pointerDense ? AppIconSize.lg : AppIconSize.nav - 1,
-                      ),
-                      color: c.textPrimary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      // Only the root page of a two-column settings split shares the corner
+      // cluster's line for now; every other page keeps its header as is.
+      child: SettingsSplitPaneScope.isRootRoute(context)
+          ? TopClusterRowBeside(builder: (context, slot) => header(slot))
+          : header(null),
     );
   }
 }

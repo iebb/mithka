@@ -162,21 +162,57 @@ class TopOcclusionData {
     }
     if (cluster == null) return null;
     if (left + right > header.width / 2) return null;
-    // The row shares the line of the status items themselves. The cluster's
-    // region runs down to the full inset; a region nested in it (the camera
-    // beside the clock on a closed iPhone Duo) marks that line, so the row
-    // centres on the innermost one and only needs to clear its bottom.
+    final line = _lineOf(cluster);
+    return TopClusterRowSlot(
+      centerY: line.center.dy - header.top,
+      bottom: line.bottom - header.top,
+      insets: EdgeInsets.only(left: left, right: right),
+    );
+  }
+
+  /// Where a header row at the top of a [TopClusterPane] band sits: on the
+  /// status items' line, so the headers of side-by-side panes stay level
+  /// whether or not the cluster hangs above them. [room] is what the pane
+  /// already keeps free for the cluster ([TopClusterInsets]), so the slot adds
+  /// none of its own. Only a header the cluster hangs above has to clear the
+  /// line's bottom; the others keep their own spacing below the row. Null
+  /// when the header does not start at the window top or [room] leaves the
+  /// row half of the header or less.
+  TopClusterRowSlot? rowSlotInBand(
+    Rect header, {
+    EdgeInsets room = EdgeInsets.zero,
+  }) {
+    if (compactTop == null || header.isEmpty) return null;
+    if (header.top.abs() > tolerance) return null;
+    if (room.horizontal >= header.width / 2) return null;
+    Rect? cluster;
+    for (final region in regions) {
+      if (region.top > bandTop) continue;
+      cluster = cluster?.expandToInclude(region) ?? region;
+    }
+    if (cluster == null) return null;
+    final line = _lineOf(cluster);
+    final above =
+        cluster.right + gap > header.left && cluster.left - gap < header.right;
+    return TopClusterRowSlot(
+      centerY: line.center.dy - header.top,
+      bottom: above ? line.bottom - header.top : 0,
+      insets: EdgeInsets.zero,
+    );
+  }
+
+  /// The line the status items sit on inside [cluster]. The cluster's region
+  /// runs down to the full inset; a region nested in it (the camera beside
+  /// the clock on a closed iPhone Duo) marks that line, so the innermost one
+  /// wins.
+  Rect _lineOf(Rect cluster) {
     var line = cluster;
     for (final region in regions) {
       if (region.height < line.height && cluster.overlaps(region)) {
         line = region;
       }
     }
-    return TopClusterRowSlot(
-      centerY: line.center.dy - header.top,
-      bottom: line.bottom - header.top,
-      insets: EdgeInsets.only(left: left, right: right),
-    );
+    return line;
   }
 
   static TopOcclusionData? fromMap(Map<String, dynamic>? map) {
@@ -385,11 +421,13 @@ class TopClusterRowSlot {
   int get hashCode => Object.hash(centerY, bottom, insets);
 }
 
-/// Lets a header at the very top of the window move its first row up beside
-/// a corner status cluster that hangs from the top edge above it, as on a
-/// closed iPhone Duo. [builder] gets null wherever the header keeps the
-/// window's full top inset: no cluster, a cluster elsewhere, or a header that
-/// no longer owns the top inset (inside a [TopClusterPane] band).
+/// Lets a header at the very top of the window move its first row up onto the
+/// line of a corner status cluster hanging from the top edge, as on an iPhone
+/// Duo. A header owning the window's full top inset moves up beside the
+/// cluster above it; one inside a [TopClusterPane] band moves up to the same
+/// line, so side-by-side headers stay level. [builder] gets null wherever the
+/// header keeps its usual top inset: no cluster, a header lower in the
+/// window, or too little room left beside the cluster.
 class TopClusterRowBeside extends StatefulWidget {
   const TopClusterRowBeside({super.key, required this.builder});
 
@@ -403,7 +441,14 @@ class _TopClusterRowBesideState extends State<TopClusterRowBeside> {
   TopClusterRowSlot? _slot;
   bool _measureScheduled = false;
 
-  void _scheduleMeasure(TopOcclusionData data) {
+  late TopOcclusionData _data;
+  EdgeInsets? _bandRoom;
+
+  /// Measures against the latest [data] and [bandRoom] (null outside a band)
+  /// once this frame is laid out.
+  void _scheduleMeasure(TopOcclusionData data, EdgeInsets? bandRoom) {
+    _data = data;
+    _bandRoom = bandRoom;
     if (_measureScheduled) return;
     _measureScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -413,7 +458,12 @@ class _TopClusterRowBesideState extends State<TopClusterRowBeside> {
       if (box is! RenderBox || !box.attached || !box.hasSize) return;
       // The slot depends only on where the header starts and how wide it is,
       // never on the height it then takes, so this settles in one pass.
-      final next = data.rowSlotBeside(_rectInViewUnits(box, data.scale));
+      final data = _data;
+      final room = _bandRoom;
+      final header = _rectInViewUnits(box, data.scale);
+      final next = room == null
+          ? data.rowSlotBeside(header)
+          : data.rowSlotInBand(header, room: room);
       if (next != _slot) setState(() => _slot = next);
     });
   }
@@ -422,16 +472,20 @@ class _TopClusterRowBesideState extends State<TopClusterRowBeside> {
   Widget build(BuildContext context) {
     final data = TopOcclusionGeometry.maybeOf(context);
     final media = MediaQuery.of(context);
-    final owns =
-        data != null &&
-        data.compactTop != null &&
-        (media.padding.top - data.safeTop).abs() <= data.tolerance;
-    if (!owns) {
+    final band = TopClusterInsets.bandActiveOf(context);
+    final room = TopClusterInsets.of(context);
+    final compactTop = data?.compactTop;
+    bool near(double a, double b) => (a - b).abs() <= data!.tolerance;
+    final ownsTop =
+        compactTop != null && near(media.padding.top, data!.safeTop);
+    final inBand =
+        compactTop != null && band && near(media.padding.top, compactTop);
+    if (!ownsTop && !inBand) {
       _slot = null;
     } else {
       // Re-measure after every build: a header can be built mid-transition
       // and only reach its resting place later.
-      _scheduleMeasure(data);
+      _scheduleMeasure(data!, inBand ? room : null);
     }
     return widget.builder(context, _slot);
   }

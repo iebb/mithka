@@ -296,21 +296,25 @@ class _SettingsViewState extends State<SettingsView> {
   /// One settings column: keeps the window's top inset, or the shared band
   /// beside a corner status cluster, and tells its header where that is.
   /// In that band the column's own top colour runs to the screen edge, as on
-  /// the main screen, instead of leaving a separate strip.
+  /// the main screen, instead of leaving a separate strip, and the band is
+  /// left to the column's header, which starts at the screen edge and can
+  /// move up onto the cluster's line.
   Widget _splitColumn({required Color topColor, required Widget child}) =>
       TopClusterPane(
         child: Builder(
-          builder: (context) => ColoredBox(
-            color: TopClusterInsets.bandActiveOf(context)
-                ? topColor
-                : Colors.transparent,
-            child: SafeArea(
-              left: false,
-              right: false,
-              bottom: false,
-              child: child,
-            ),
-          ),
+          builder: (context) {
+            final band = TopClusterInsets.bandActiveOf(context);
+            return ColoredBox(
+              color: band ? topColor : Colors.transparent,
+              child: SafeArea(
+                left: false,
+                top: !band,
+                right: false,
+                bottom: false,
+                child: child,
+              ),
+            );
+          },
         ),
       );
 
@@ -320,69 +324,93 @@ class _SettingsViewState extends State<SettingsView> {
     // Beside a corner status cluster the column starts on the main screen's
     // band, so the title shares the detail header's row and centre line.
     final band = !desktopDense && TopClusterInsets.bandActiveOf(context);
-    // The enclosing SafeArea only clears the system inset; iPadOS floating
+    // In the band the column leaves its top inset to this header; elsewhere
+    // the enclosing SafeArea clears the system inset. iPadOS floating
     // windows additionally need clearance for the traffic-light controls.
-    return Container(
-      constraints: BoxConstraints(
-        minHeight: band
-            ? AppMetric.navHeaderHeight
-            : desktopDense
-            ? 48
-            : 58,
-      ),
-      padding:
-          EdgeInsets.fromLTRB(
-            desktopDense ? 14 : AppSpacing.lg,
-            (band
-                    ? 0
-                    : desktopDense
-                    ? 8
-                    : AppSpacing.md) +
-                iPadWindowChromeInsetOf(context),
-            desktopDense ? 14 : AppSpacing.lg,
-            band
-                ? 0
-                : desktopDense
-                ? 4
-                : AppSpacing.xs,
-          ) +
-          TopClusterInsets.of(context),
-      alignment: Alignment.centerLeft,
-      child: Row(
-        children: [
-          if (widget.showBackButton && Navigator.of(context).canPop()) ...[
-            AppInteractiveSurface(
-              key: const ValueKey('settings-root-back'),
-              semanticLabel: AppStringKeys.navigationBack.l10n(context),
-              onTap: () => Navigator.of(context).pop(),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: AppIcon(
-                  HeroAppIcons.chevronLeft,
-                  size: AppIconSize.nav,
-                  color: c.textPrimary,
-                ),
+    final bandTop = band ? MediaQuery.paddingOf(context).top : 0.0;
+    final horizontal = desktopDense ? 14.0 : AppSpacing.lg;
+    final row = Row(
+      children: [
+        if (widget.showBackButton && Navigator.of(context).canPop()) ...[
+          AppInteractiveSurface(
+            key: const ValueKey('settings-root-back'),
+            semanticLabel: AppStringKeys.navigationBack.l10n(context),
+            onTap: () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: AppIcon(
+                HeroAppIcons.chevronLeft,
+                size: AppIconSize.nav,
+                color: c.textPrimary,
               ),
             ),
-            SizedBox(width: desktopDense ? 4 : AppSpacing.xs),
-          ],
-          Expanded(
-            child: Text(
-              AppStringKeys.profileSettings.l10n(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: desktopDense
-                  ? TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    )
-                  : AppTextStyle.title(c.textPrimary),
-            ),
           ),
+          SizedBox(width: desktopDense ? 4 : AppSpacing.xs),
         ],
-      ),
+        Expanded(
+          child: Text(
+            AppStringKeys.profileSettings.l10n(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: desktopDense
+                ? TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  )
+                : AppTextStyle.title(c.textPrimary),
+          ),
+        ),
+      ],
+    );
+    return TopClusterRowBeside(
+      builder: (context, slot) {
+        if (slot == null || !band) {
+          return Container(
+            constraints: BoxConstraints(
+              minHeight: band
+                  ? AppMetric.navHeaderHeight + bandTop
+                  : desktopDense
+                  ? 48
+                  : 58,
+            ),
+            padding:
+                EdgeInsets.fromLTRB(
+                  horizontal,
+                  (band
+                          ? bandTop
+                          : desktopDense
+                          ? 8
+                          : AppSpacing.md) +
+                      iPadWindowChromeInsetOf(context),
+                  horizontal,
+                  band
+                      ? 0
+                      : desktopDense
+                      ? 4
+                      : AppSpacing.xs,
+                ) +
+                TopClusterInsets.of(context),
+            alignment: Alignment.centerLeft,
+            child: row,
+          );
+        }
+        // Level with the detail header on the corner cluster's line.
+        return TopClusterRow(
+          slot: slot,
+          child: Container(
+            constraints: const BoxConstraints(
+              minHeight: AppMetric.navHeaderHeight,
+            ),
+            padding:
+                EdgeInsets.symmetric(horizontal: horizontal) +
+                TopClusterInsets.of(context),
+            alignment: Alignment.centerLeft,
+            child: row,
+          ),
+        );
+      },
     );
   }
 
