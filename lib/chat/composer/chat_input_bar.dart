@@ -31,6 +31,7 @@ import 'package:record/record.dart' as desktop_record;
 
 import '../../app/desktop_utility_window.dart';
 import '../../app/diagnostic_breadcrumbs.dart';
+import '../../app/split_bottom_edge.dart';
 import '../../components/app_dialog.dart';
 import '../../components/app_icons.dart';
 import '../../components/app_interactive_surface.dart';
@@ -1472,7 +1473,13 @@ class _ChatInputBarState extends State<ChatInputBar>
         !_hasText &&
         _pendingClipboardAttachments.isEmpty &&
         _voiceDraft == null;
-    final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
+    // In an opened iPhone Duo's detail pane the icon row ends level with the
+    // tab labels in the list column instead of above a phone's home-bar gap;
+    // the strip keeps its own 8pt under the row.
+    final splitEdge = splitPaneBottomEdgeOf(context);
+    final bottomSafeArea = splitEdge == null
+        ? MediaQuery.paddingOf(context).bottom
+        : math.max(0.0, splitEdge - 8);
     final mediaPanelVisible =
         _panel == _Panel.emoji || _panel == _Panel.sticker;
     final simpleComposer = !desktopComposer && widget.simpleMode;
@@ -1488,69 +1495,77 @@ class _ChatInputBarState extends State<ChatInputBar>
         children: [
           SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (editingMessage != null)
-                  _editBanner(editingMessage)
-                else if (vm.replyTo != null)
-                  _replyBanner(vm.replyTo!),
-                if (editingMessage == null)
-                  if (_inlineBotResults != null)
-                    _inlineBotResultMenu()
-                  else if (_botCommandCandidates.isNotEmpty)
-                    _botCommandMenu()
-                  else if (_mentionSuggestionsVisible)
-                    _mentionMenu()
-                  else if (_quickReplyContextVisible &&
-                      _quickReplies.isNotEmpty)
-                    _quickReplyContextMenu(),
-                if (editingMessage == null &&
-                    _pendingClipboardAttachments.isNotEmpty)
-                  _clipboardAttachmentStrip(desktop: desktopComposer),
-                if (!desktopComposer)
-                  _voiceDraftSlot(visible: editingMessage == null),
-                if (desktopComposer) ...[
-                  if (editingMessage == null)
-                    _desktopIconStrip(
-                      aiSettings: aiSettings,
-                      replyKeyboard: replyKeyboard,
-                    ),
-                  if (!(editingMessage == null && _panel == _Panel.voice))
-                    _inputRow(
-                      replyKeyboard,
-                      aiSettings: aiSettings,
-                      desktop: true,
-                    ),
-                  if (replyKeyboardPanelVisible)
-                    _replyKeyboardPanel(replyKeyboard),
-                ] else if (simpleComposer) ...[
-                  // One row replaces the input row and the icon strip.
-                  _inputRow(
-                    replyKeyboard,
-                    aiSettings: aiSettings,
-                    simple: true,
-                  ),
-                  if (replyKeyboardPanelVisible)
-                    _replyKeyboardPanel(replyKeyboard),
-                ] else ...[
-                  _inputRow(replyKeyboard, aiSettings: aiSettings),
-                  if (replyKeyboardPanelVisible)
-                    _replyKeyboardPanel(replyKeyboard)
-                  else if (editingMessage == null)
-                    _iconStrip(),
-                ],
-                if (editingMessage == null &&
-                    !desktopComposer &&
-                    _panel == _Panel.function)
-                  simpleComposer ? _simpleMorePanel() : _functionPanel(),
-                if (editingMessage == null &&
-                    !desktopComposer &&
-                    (_panel == _Panel.emoji || _panel == _Panel.sticker))
-                  _mediaPanel(),
-                if (editingMessage == null && _panel == _Panel.voice)
-                  _voicePanel(),
-              ],
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: bottomSafeArea),
+              child: MediaQuery.removePadding(
+                context: context,
+                removeBottom: true,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (editingMessage != null)
+                      _editBanner(editingMessage)
+                    else if (vm.replyTo != null)
+                      _replyBanner(vm.replyTo!),
+                    if (editingMessage == null)
+                      if (_inlineBotResults != null)
+                        _inlineBotResultMenu()
+                      else if (_botCommandCandidates.isNotEmpty)
+                        _botCommandMenu()
+                      else if (_mentionSuggestionsVisible)
+                        _mentionMenu()
+                      else if (_quickReplyContextVisible &&
+                          _quickReplies.isNotEmpty)
+                        _quickReplyContextMenu(),
+                    if (editingMessage == null &&
+                        _pendingClipboardAttachments.isNotEmpty)
+                      _clipboardAttachmentStrip(desktop: desktopComposer),
+                    if (!desktopComposer)
+                      _voiceDraftSlot(visible: editingMessage == null),
+                    if (desktopComposer) ...[
+                      if (editingMessage == null)
+                        _desktopIconStrip(
+                          aiSettings: aiSettings,
+                          replyKeyboard: replyKeyboard,
+                        ),
+                      if (!(editingMessage == null && _panel == _Panel.voice))
+                        _inputRow(
+                          replyKeyboard,
+                          aiSettings: aiSettings,
+                          desktop: true,
+                        ),
+                      if (replyKeyboardPanelVisible)
+                        _replyKeyboardPanel(replyKeyboard),
+                    ] else if (simpleComposer) ...[
+                      // One row replaces the input row and the icon strip.
+                      _inputRow(
+                        replyKeyboard,
+                        aiSettings: aiSettings,
+                        simple: true,
+                      ),
+                      if (replyKeyboardPanelVisible)
+                        _replyKeyboardPanel(replyKeyboard),
+                    ] else ...[
+                      _inputRow(replyKeyboard, aiSettings: aiSettings),
+                      if (replyKeyboardPanelVisible)
+                        _replyKeyboardPanel(replyKeyboard)
+                      else if (editingMessage == null)
+                        _iconStrip(),
+                    ],
+                    if (editingMessage == null &&
+                        !desktopComposer &&
+                        _panel == _Panel.function)
+                      simpleComposer ? _simpleMorePanel() : _functionPanel(),
+                    if (editingMessage == null &&
+                        !desktopComposer &&
+                        (_panel == _Panel.emoji || _panel == _Panel.sticker))
+                      _mediaPanel(),
+                    if (editingMessage == null && _panel == _Panel.voice)
+                      _voicePanel(),
+                  ],
+                ),
+              ),
             ),
           ),
           if (desktopComposer)
