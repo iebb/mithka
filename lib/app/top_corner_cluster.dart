@@ -538,6 +538,23 @@ class RenderTopClusterRow extends RenderShiftedBox {
     markNeedsLayout();
   }
 
+  /// Height the row takes for a child [childHeight] tall: the child centred
+  /// on the line, then [bottomGap], and never above the line's bottom.
+  double _heightFor(double childHeight) => math.max(
+    _slot.bottom,
+    math.max(0.0, _slot.centerY - childHeight / 2) + childHeight + _bottomGap,
+  );
+
+  // Intrinsic heights include the shift onto the line, so a column sized
+  // from them (a SliverFillRemaining footer) has room for the whole row.
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _heightFor(child?.getMinIntrinsicHeight(width) ?? 0);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _heightFor(child?.getMaxIntrinsicHeight(width) ?? 0);
+
   BoxConstraints _childConstraints(BoxConstraints constraints) =>
       BoxConstraints(
         minWidth: constraints.minWidth,
