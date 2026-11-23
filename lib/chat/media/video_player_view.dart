@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../app/app_navigator.dart';
+import '../../app/chat_deep_link_controller.dart';
 import '../../app/ipad_window_chrome.dart';
 import '../../app/video_split_controller.dart';
 import '../../components/app_icons.dart';
@@ -48,7 +49,8 @@ import '../../theme/app_motion.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/theme_controller.dart';
 import '../chat_picker_view.dart';
-import '../messages/forward_options.dart';
+import '../forward_handoff.dart';
+import '../messages/forward_markdown.dart';
 import 'media_download_service.dart';
 import 'media_library_saver.dart';
 import 'td_video_stream_server.dart';
@@ -945,7 +947,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         playbackSpeed: controller.value.playbackSpeed,
         bufferedAhead: _bufferedAhead(controller.value),
         onClose: () {
-          if (mounted) setState(() => _debuggerVisible = false);
+          if (mounted) _updateState(() => _debuggerVisible = false);
         },
       ),
     );
@@ -1239,7 +1241,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                                 AppStringKeys.videoPlayerStreamInspector,
                               ),
                               onTap: () {
-                                setState(
+                                _updateState(
                                   () => _debuggerVisible = !_debuggerVisible,
                                 );
                                 scope.actions.showControls();
@@ -1537,7 +1539,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
                         AppStringKeys.videoPlayerStreamInspector,
                       ),
                       onTap: () {
-                        setState(() => _debuggerVisible = !_debuggerVisible);
+                        _updateState(
+                          () => _debuggerVisible = !_debuggerVisible,
+                        );
                         scope.actions.showControls();
                       },
                       size: 44,
@@ -2185,7 +2189,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final rate = videoHeldSpeedRate(current);
     if (rate < _minimumHeldSpeedRate) return;
     if (!mounted) return;
-    setState(() {
+    _updateState(() {
       _heldSpeedRate = rate;
       _heldSpeedActive = true;
     });
@@ -2206,7 +2210,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     if (!_heldSpeedActive) return;
     _heldSpeedActive = false;
     _heldSpeedPointer = null;
-    if (mounted) setState(() {});
+    if (mounted) _updateState(() {});
     // The pump owns the wire: it lands the base rate behind any held request
     // still in flight instead of racing it.
     _heldSpeedDesiredRate = _heldSpeedBaseRate;
@@ -2309,7 +2313,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           if (!mounted) return;
           _heldSpeedActive = false;
           _heldSpeedPointer = null;
-          if (mounted) setState(() {});
+          if (mounted) _updateState(() {});
           _heldSpeedConsecutiveFailures++;
           final restore = _heldSpeedBaseRate;
           if (_heldSpeedConsecutiveFailures >=
@@ -2441,7 +2445,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       _stopHeldSpeed();
     }
     if (!mounted) return;
-    setState(() => _dismissDx = math.max(0.0, _dismissTrackedDx));
+    _updateState(() => _dismissDx = math.max(0.0, _dismissTrackedDx));
   }
 
   void _finishDismissDrag() {
@@ -2453,7 +2457,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _edgeDismissActive = false;
     _dismissTrackedDx = 0;
     _dismissTrackedDy = 0;
-    if (dx != 0 && mounted) setState(() => _dismissDx = 0);
+    if (dx != 0 && mounted) _updateState(() => _dismissDx = 0);
     if (!active) return;
     if (dx >= videoDismissDragDistance) {
       _close();
@@ -2466,7 +2470,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final generation = ++_dismissSettlerGeneration;
     Future<void>.delayed(const Duration(milliseconds: 120), () {
       if (!mounted || generation != _dismissSettlerGeneration) return;
-      setState(() => _dismissGestureSettling = false);
+      _updateState(() => _dismissGestureSettling = false);
     });
   }
 
@@ -2478,7 +2482,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _edgeDismissActive = false;
     _dismissTrackedDx = 0;
     _dismissTrackedDy = 0;
-    if (_dismissDx != 0 && mounted) setState(() => _dismissDx = 0);
+    if (_dismissDx != 0 && mounted) _updateState(() => _dismissDx = 0);
   }
 
   void _beginVideoZoomGesture(
@@ -2493,7 +2497,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     _videoZoomGestureContentAnchor =
         (localFocalPoint - center - _videoZoomOffset) / _videoZoomScale;
     if (mounted) {
-      setState(() => _videoZoomGestureActive = true);
+      _updateState(() => _videoZoomGestureActive = true);
     }
   }
 
@@ -2515,7 +2519,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         localFocalPoint - center - _videoZoomGestureContentAnchor * scale;
     final clampedOffset = _clampVideoZoomOffset(offset, scale, viewport.size);
     if (!mounted) return;
-    setState(() {
+    _updateState(() {
       _videoZoomScale = scale;
       _videoZoomOffset = clampedOffset;
     });
@@ -2523,7 +2527,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _finishVideoZoomGesture() {
     if (!mounted) return;
-    setState(() {
+    _updateState(() {
       _videoZoomGestureActive = false;
       if (_videoZoomScale <= _videoZoomResetThreshold) {
         _videoZoomScale = _minimumVideoZoomScale;
@@ -2678,7 +2682,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ),
         );
     }
-    setState(() => _activeGesture = gesture);
+    _updateState(() => _activeGesture = gesture);
   }
 
   Future<void> _beginBrightnessGesture() async {
@@ -2690,7 +2694,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         current == null) {
       return;
     }
-    setState(() {
+    _updateState(() {
       _gestureStartValue = current;
       _gestureValue = current;
       _gestureBrightnessReady = true;
@@ -2716,7 +2720,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
     final start = useSystemVolume
         ? current!.fraction
         : controller.value.volume.clamp(0.0, 1.0);
-    setState(() {
+    _updateState(() {
       _gestureStartValue = start;
       _gestureValue = start;
       _gestureUsesSystemVolume = useSystemVolume;
@@ -2734,7 +2738,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
         current == null) {
       return;
     }
-    setState(() => _gestureValue = current.fraction);
+    _updateState(() => _gestureValue = current.fraction);
   }
 
   void _finishPlaybackGesture(VideoPlayerController controller) {
@@ -2783,7 +2787,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
   void _cancelPlaybackGesture() {
     _gestureVolumeRequestGeneration++;
     if (!mounted) return;
-    setState(() {
+    _updateState(() {
       _activeGesture = null;
       _activeGestureSide = null;
       _gestureOrigin = null;

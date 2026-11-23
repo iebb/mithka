@@ -178,7 +178,12 @@ class _GroupAppearanceViewState extends State<GroupAppearanceView> {
 
   void _explainLock(int level) {
     if (!widget.canChangeInfo) {
-      showToast(context, AppStringKeys.groupManagementNoEditInfoPermission);
+      showToast(
+        context,
+        widget.isChannel
+            ? AppStringKeys.groupManagementNoEditInfoPermissionChannel
+            : AppStringKeys.groupManagementNoEditInfoPermission,
+      );
       return;
     }
     showToast(

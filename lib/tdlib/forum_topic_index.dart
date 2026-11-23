@@ -19,6 +19,7 @@ class ForumTopicIndexEntry {
     this.iconColor = 0,
     this.unreadCount = 0,
     this.isMuted = false,
+    this.isPinned = false,
     this.lastMessageId = 0,
     this.lastReadInboxMessageId = 0,
   });
@@ -29,6 +30,10 @@ class ForumTopicIndexEntry {
   final int iconColor;
   final int unreadCount;
   final bool isMuted;
+
+  /// Pinned topics lead the tab strip in their pin order (the page's own
+  /// order), the way the reference client keeps them in `TopicsController.sortTopics`.
+  final bool isPinned;
 
   /// The newest message id this entry has accounted for, so an observed read
   /// position reaching it can clear the counter locally.
@@ -41,6 +46,7 @@ class ForumTopicIndexEntry {
     int? iconColor,
     int? unreadCount,
     bool? isMuted,
+    bool? isPinned,
     int? lastMessageId,
     int? lastReadInboxMessageId,
   }) => ForumTopicIndexEntry(
@@ -50,6 +56,7 @@ class ForumTopicIndexEntry {
     iconColor: iconColor ?? this.iconColor,
     unreadCount: unreadCount ?? this.unreadCount,
     isMuted: isMuted ?? this.isMuted,
+    isPinned: isPinned ?? this.isPinned,
     lastMessageId: lastMessageId ?? this.lastMessageId,
     lastReadInboxMessageId:
         lastReadInboxMessageId ?? this.lastReadInboxMessageId,
@@ -74,11 +81,19 @@ class ForumTopicIndexEntry {
       other.iconCustomEmojiId == iconCustomEmojiId &&
       other.iconColor == iconColor &&
       other.unreadCount == unreadCount &&
-      other.isMuted == isMuted;
+      other.isMuted == isMuted &&
+      other.isPinned == isPinned;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, iconCustomEmojiId, iconColor, unreadCount, isMuted);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    iconCustomEmojiId,
+    iconColor,
+    unreadCount,
+    isMuted,
+    isPinned,
+  );
 
   /// Parses a `forumTopic` object from getForumTopics/getForumTopic. Topic ids
   /// are chat-scoped, so the chat context must be supplied by the caller.
@@ -113,6 +128,7 @@ class ForumTopicIndexEntry {
         raw.integer('unread_count') ?? info.integer('unread_count'),
       ),
       isMuted: (raw.obj('notification_settings')?.integer('mute_for') ?? 0) > 0,
+      isPinned: raw.boolean('is_pinned') ?? false,
       lastMessageId: raw.obj('last_message')?.int64('id') ?? 0,
       lastReadInboxMessageId:
           raw.int64('last_read_inbox_message_id') ??
@@ -126,6 +142,60 @@ int _nonNegative(int? value) {
   final v = value ?? 0;
   return v < 0 ? 0 : v;
 }
+
+/// Sorts the topics of one chat into display order without disturbing the
+/// map's own order, which is the server's order (pinned topics in pin order).
+///
+/// Mirrors the reference client `TopicsController.sortTopics`: pinned first in pin
+/// order, everything else by the newest activity. See [orderForumTopics].
+List<ForumTopicIndexEntry> _inDisplayOrder(
+  Map<int, ForumTopicIndexEntry> entries,
+) => orderForumTopics(
+  entries.values,
+  isPinned: (entry) => entry.isPinned,
+  lastMessageId: (entry) => entry.lastMessageId,
+);
+
+/// Orders topics the way the tab strip paints them: pinned first in the order
+/// they already carry (the page's pin order), then newest activity first.
+///
+/// Telegram message ids are per-chat, so a topic's last message id orders it
+/// against its siblings exactly. A topic whose newest message is not known yet
+/// (one TDLib announced after the page, or a fresh bot topic) counts as the
+/// newest — the same contract [ForumTopicIndex.addTopic] implements by
+/// inserting at the head.
+///
+/// Shared by the index and the view model: a live update that reaches one of
+/// them first must not paint a different order than the other.
+List<T> orderForumTopics<T>(
+  Iterable<T> topics, {
+  required bool Function(T topic) isPinned,
+  required int Function(T topic) lastMessageId,
+}) {
+  final decorated = [
+    for (final (arrival, topic) in topics.indexed)
+      (arrival: arrival, topic: topic),
+  ];
+  decorated.sort((a, b) {
+    final aPinned = isPinned(a.topic);
+    if (aPinned != isPinned(b.topic)) return aPinned ? -1 : 1;
+    if (!aPinned) {
+      final activity = _activityOf(
+        lastMessageId(b.topic),
+      ).compareTo(_activityOf(lastMessageId(a.topic)));
+      if (activity != 0) return activity;
+    }
+    // Pin order and activity ties fall back to the previous order; List.sort
+    // is not stable, so compare the captured slots explicitly.
+    return a.arrival.compareTo(b.arrival);
+  });
+  return [for (final item in decorated) item.topic];
+}
+
+const int _unknownActivity = 1 << 62;
+
+int _activityOf(int lastMessageId) =>
+    lastMessageId == 0 ? _unknownActivity : lastMessageId;
 
 /// Topic ids are chat-scoped message ids, so chats are keyed per account slot.
 ///
@@ -144,10 +214,21 @@ class ForumTopicIndex extends ChangeNotifier {
   final Map<(int, int), Map<int, ForumTopicIndexEntry>> _topics = {};
   final Map<int, Set<int>> _topicChats = {};
 
+  /// Chats whose topic page has landed at least once (an empty page counts).
+  /// A chat outside this set has no known membership yet, so a topic it
+  /// announces must wait for its page instead of being inserted.
+  final Set<(int, int)> _loadedChats = {};
+
+  /// The topics in display order — the order the tab strip, the rail and the
+  /// topic list paint.
+  ///
+  /// Pinned topics lead, in the order the page laid their pins out; the rest
+  /// follow newest-activity-first. A new message moves its topic up without a
+  /// `getForumTopics` round-trip, so the strip reorders as traffic lands.
   List<ForumTopicIndexEntry> topicsFor(int slot, int chatId) {
     final entries = _topics[(slot, chatId)];
     if (entries == null) return const [];
-    return entries.values.toList(growable: false);
+    return _inDisplayOrder(entries);
   }
 
   ForumTopicIndexEntry? entryFor(int slot, int chatId, int topicId) =>
@@ -156,10 +237,30 @@ class ForumTopicIndex extends ChangeNotifier {
   bool knowsTopics(int slot, int chatId) =>
       (_topics[(slot, chatId)]?.isNotEmpty) ?? false;
 
+  /// Adds a topic the paged list predates — one created by the bot or on
+  /// another device after the page loaded. New topics lead the list: they
+  /// carry the newest activity, so appending one would park it past a long
+  /// tab strip. Returns whether the topic was new to the index.
+  ///
+  /// Ignored for a chat whose page never landed: its membership is unknown,
+  /// and its own page answers first (the page is authoritative).
+  bool addTopic(int slot, int chatId, ForumTopicIndexEntry entry) {
+    final key = (slot, chatId);
+    if (!_loadedChats.contains(key)) return false;
+    final topics = _topics[key];
+    if (topics != null && topics.containsKey(entry.id)) return false;
+    _topics[key] = {entry.id: entry, ...?topics};
+    _topicChats.putIfAbsent(slot, () => {}).add(chatId);
+    _evictStaleChats();
+    notifyListeners();
+    return true;
+  }
+
   /// Stores a complete getForumTopics page. The response is authoritative for
   /// both membership (topics deleted elsewhere drop out) and counters.
   void storeAll(int slot, int chatId, List<ForumTopicIndexEntry> entries) {
     final key = (slot, chatId);
+    _loadedChats.add(key);
     if (entries.isEmpty) {
       final removed = _topics.remove(key) != null;
       _topicChats[slot]?.remove(chatId);
@@ -167,11 +268,14 @@ class ForumTopicIndex extends ChangeNotifier {
       return;
     }
     var displayChanged = false;
-    final topics = _topics.putIfAbsent(key, () => {});
-    final keep = <int>{};
+    final previousTopics = _topics[key] ?? const <int, ForumTopicIndexEntry>{};
+    // Rebuild in the page's order instead of patching the old map: the page
+    // is authoritative for membership AND for the pin order (TDLib returns
+    // pinned topics in their pinned order), and [_inDisplayOrder] leans on
+    // that order for the pinned block.
+    final topics = <int, ForumTopicIndexEntry>{};
     for (final entry in entries) {
-      keep.add(entry.id);
-      final previous = topics[entry.id];
+      final previous = previousTopics[entry.id];
       // Keep the bookkeeping ids of a live entry when the page is stale: a
       // counter that already saw newer traffic must not be rewound.
       final merged =
@@ -185,15 +289,23 @@ class ForumTopicIndex extends ChangeNotifier {
               iconCustomEmojiId: entry.iconCustomEmojiId,
               iconColor: entry.iconColor,
               isMuted: entry.isMuted,
+              isPinned: entry.isPinned,
             )
           : entry;
       if (previous != merged) displayChanged = true;
       topics[entry.id] = merged;
     }
-    displayChanged |= topics.keys.any((id) => !keep.contains(id));
-    topics.removeWhere((id, _) => !keep.contains(id));
+    displayChanged |=
+        previousTopics.length != topics.length ||
+        topics.keys.any((id) => !previousTopics.containsKey(id));
+    _topics[key] = topics;
     _topicChats.putIfAbsent(slot, () => {}).add(chatId);
     _evictStaleChats();
+    // Chats whose page was empty never enter _topicChats, so bound their
+    // bookkeeping separately; a dropped chat re-registers on its next page.
+    while (_loadedChats.length > _chatCapacity * 4) {
+      _loadedChats.remove(_loadedChats.first);
+    }
     if (displayChanged) notifyListeners();
   }
 
@@ -212,6 +324,7 @@ class ForumTopicIndex extends ChangeNotifier {
         if (toDrop <= 0) break;
         _topics.remove((slot, chatId));
         _topicChats[slot]?.remove(chatId);
+        _loadedChats.remove((slot, chatId));
         toDrop--;
       }
     }
@@ -229,6 +342,7 @@ class ForumTopicIndex extends ChangeNotifier {
           object.integer('forum_topic_id'),
           object.int64('last_read_inbox_message_id'),
           object.obj('notification_settings'),
+          object.boolean('is_pinned'),
         );
       case 'updateForumTopicInfo':
         _observeForumTopicInfo(slot, object.obj('info'));
@@ -271,8 +385,12 @@ class ForumTopicIndex extends ChangeNotifier {
     // bookkeeping ids must survive, or a partial read's watermark is lost
     // and the next arrival over-counts.
     final displayChanged = next != previous;
+    // An outgoing message leaves every counter alone but still moves its
+    // topic to the front of the strip, so a newer id counts as a change: it
+    // is what [topicsFor] orders by.
+    final orderChanged = next.lastMessageId > previous.lastMessageId;
     topics[topicId] = next;
-    if (displayChanged) notifyListeners();
+    if (displayChanged || orderChanged) notifyListeners();
   }
 
   void _observeForumTopic(
@@ -281,12 +399,16 @@ class ForumTopicIndex extends ChangeNotifier {
     int? topicId,
     int? lastReadInboxMessageId,
     Map<String, dynamic>? notificationSettings,
+    bool? isPinned,
   ) {
     if (chatId == null || topicId == null) return;
     final topics = _topics[(slot, chatId)];
     final previous = topics?[topicId];
     if (topics == null || previous == null) return;
     var next = previous;
+    if (isPinned != null && isPinned != previous.isPinned) {
+      next = next.copyWith(isPinned: isPinned);
+    }
     if (notificationSettings != null) {
       next = next.copyWith(
         isMuted: (notificationSettings.integer('mute_for') ?? 0) > 0,
@@ -318,11 +440,29 @@ class ForumTopicIndex extends ChangeNotifier {
     // guessing from the currently indexed chats.
     final chatId = info.int64('chat_id');
     if (chatId == null) return;
-    final previous = _topics[(slot, chatId)]?[topicId];
-    if (previous == null) return;
     final icon = info.obj('icon');
     final name = info.str('name');
     if (name == null || name.isEmpty) return;
+    final previous = _topics[(slot, chatId)]?[topicId];
+    if (previous == null) {
+      // TDLib announces every topic it learns about; one the paged list does
+      // not carry is new (created by the bot or on another device), not an
+      // edit. Insert it so open tabs and topic lists gain it live.
+      addTopic(
+        slot,
+        chatId,
+        ForumTopicIndexEntry(
+          id: topicId,
+          name: name,
+          iconCustomEmojiId:
+              icon?.int64('custom_emoji_id') ??
+              info.int64('icon_custom_emoji_id') ??
+              0,
+          iconColor: icon?.integer('color') ?? info.integer('icon_color') ?? 0,
+        ),
+      );
+      return;
+    }
     final next = previous.copyWith(
       name: name,
       iconCustomEmojiId:

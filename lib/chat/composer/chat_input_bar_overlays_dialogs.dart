@@ -1,7 +1,9 @@
 part of 'chat_input_bar.dart';
 
-/// The voice panel's live-recording dot: blinks 1 → 0.3 → 1 each second
 /// while [blinking], and holds still otherwise (paused, or reduced motion).
+
+/// while [blinking], and holds still otherwise (paused, or reduced motion).
+
 class _RecordingDot extends StatefulWidget {
   const _RecordingDot({required this.color, required this.blinking});
 

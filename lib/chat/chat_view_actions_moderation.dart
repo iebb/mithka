@@ -109,9 +109,6 @@ extension _ChatViewActions on _ChatViewState {
     });
   }
 
-  /// Markdown detection over the messages about to be forwarded: the picker
-  /// offers the render option when any message carries convertible markers and
-  /// pre-checks it when at least one looks like authored Markdown.
   ForwardMarkdownOffer _forwardMarkdownOffer(List<int> messageIds) {
     // Both gates are client-side: the re-send is a normal sendMessage, the
     // server never sees a "rich text forward" mode. The settings toggle keeps
@@ -139,35 +136,19 @@ extension _ChatViewActions on _ChatViewState {
   Future<void> _forwardSelected() async {
     final ids = _orderedSelectedIds();
     if (ids.isEmpty) return;
-    if (!_vm.canForwardContent) {
+    if (!_vm.canForwardContent && !_protectedCopyEnabled) {
       _showForwardFailure(const ForwardBlockedException());
       return;
     }
-    final result = await Navigator.of(context).push<ChatPickerResult>(
-      MaterialPageRoute(
-        builder: (_) => ChatPickerView(
-          title: AppStringKeys.chatForwardToTitle,
-          showForwardOptions: true,
-          markdownOffer: _forwardMarkdownOffer(ids),
-        ),
-      ),
+    final byId = {for (final message in _vm.messages) message.id: message};
+    final messages = [
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
+    await _openForwardPicker(
+      messages: messages,
+      protectedCopy: _protectedCopyEnabled,
     );
-    if (result == null || !mounted) return;
-    final target = result.chat;
-    try {
-      await _vm.forwardMany(ids, target.id, options: result.forwardOptions);
-      if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.chatMessagesForwardedCount, {
-          'value1': ids.length,
-        }),
-      );
-      _exitSelection();
-    } catch (e) {
-      if (!mounted) return;
-      _showForwardFailure(e);
-    }
   }
 
   Future<void> _saveSelected() async {
@@ -504,21 +485,9 @@ extension _ChatViewActions on _ChatViewState {
         _ChatViewState._separatorGap;
   }
 
-  /// The topic [message] belongs to, or null when it is attributable to
-  /// none. TDLib omits `topic_id` on General messages of a forum supergroup,
-  /// which is why the fallback is the General topic id there. A bot topic
-  /// chat has no General topic, so an unattributed message (topics traffic
-  /// predating the bot's toggle, say) belongs to no section rather than to a
-  /// bucket that cannot exist.
   int? _topicSectionId(ChatMessage message) =>
       message.forumTopicId ?? (_vm.isForum ? generalForumTopicId : null);
 
-  /// The display data for a topic section header.
-  ///
-  /// The loaded topic page carries the name and icon; a topic outside that
-  /// page still resolves through the shared index, which live topic traffic
-  /// keeps current. Both can miss for a topic this session never listed, so
-  /// the label falls back to a generic one — the icon and the tap target keep
   /// the message attributable either way.
   ({String name, int iconCustomEmojiId, int iconColor, bool isGeneral})
   _topicSectionDisplay(int topicId) {
@@ -555,17 +524,6 @@ extension _ChatViewActions on _ChatViewState {
     );
   }
 
-  /// Whether a topic section header belongs above [index].
-  ///
-  /// Mirrors Telegram iOS: the header marks the boundary where the topic
-  /// changes, so a run of same-topic messages carries exactly one header.
-  /// Service messages never carry one — a join/pin event is not attributable
-  /// to a topic — and they do not break a run either: the comparison skips
-  /// back over them, because TDLib reports them without a topic and a naive
-  /// read would file them under General and repeat the header after them.
-  /// A bot chat's unattributed messages are the same: no header, no run
-  /// break. The very first attributable message starts a section, since
-  /// nothing above it can carry one.
   bool _needsTopicSeparator(int index, {List<ChatMessage>? messages}) {
     if (!_showsForumTopicSections) return false;
     messages ??= _vm.messages;
@@ -844,8 +802,6 @@ extension _ChatViewActions on _ChatViewState {
     );
   }
 
-  /// Header-bar launcher for a bot's menu mini app (mirrors the composer's
-  /// former pill action).
   Future<void> _openBotMenuApp(BotMenuInfo menu) async {
     final botUserId = _vm.peerUserId;
     if (botUserId == null) {
@@ -867,9 +823,6 @@ extension _ChatViewActions on _ChatViewState {
     }
   }
 
-  /// Opens a link as this transcript, even though the State's context is above
-  /// its [InternalChatLinkScope]: the scope's target is re-supplied so the
-  /// navigation request carries the owning chat and account.
   Future<void> _openLinkFromTranscript(BuildContext context, String url) =>
       openLink(context, url, sourceChat: _internalLinkTarget);
 
@@ -1039,6 +992,10 @@ extension _ChatViewActions on _ChatViewState {
       _actionSource = MessageActionSource.normal;
     });
     switch (action) {
+      case MessageAction.viewEdits:
+        await _openMessageEdits(message);
+      case MessageAction.removeMirror:
+        _removeMirrorEntry(message);
       case MessageAction.copy:
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
       case MessageAction.copyImage:
@@ -1078,6 +1035,8 @@ extension _ChatViewActions on _ChatViewState {
         unawaited(_forwardMessage(message));
       case MessageAction.repeat:
         try {
+          // In a protected chat this rides the copy-forward route: a
+          // no-quote re-send of the message into the CURRENT chat.
           final preserveSender = context
               .read<ThemeController>()
               .preserveSenderWhenRepeating;
@@ -1088,6 +1047,7 @@ extension _ChatViewActions on _ChatViewState {
           );
           if (!mounted) return;
           _scrollToBottom();
+          _showProtectedCopyResult(_vm.protectedForwardLastPlan);
         } catch (e) {
           if (!mounted) return;
           _showForwardFailure(e);
@@ -1226,8 +1186,6 @@ extension _ChatViewActions on _ChatViewState {
     }
   }
 
-  /// Desktop counterpart of 保存到相册: fetch the original if it is not local
-  /// yet, then copy it into a folder the user picks.
   Future<void> _saveMediaToFolder(ChatMessage message) async {
     final progressTimer = Timer(const Duration(milliseconds: 500), () {
       if (!mounted) return;
@@ -1327,9 +1285,6 @@ extension _ChatViewActions on _ChatViewState {
     }
   }
 
-  /// Hides [message]'s sender on this device, in this group or everywhere.
-  /// Nothing reaches Telegram: unlike Block, the member is not blocked,
-  /// reported or told.
   Future<void> _hideSender(ChatMessage message) async {
     final senderId = message.senderId;
     if (senderId == null) return;
@@ -1413,8 +1368,6 @@ extension _ChatViewActions on _ChatViewState {
     );
   }
 
-  /// Someone else's message in a group; never the group itself posting as
-  /// an anonymous admin, and not in broadcast channels.
   bool _canHideSender(ChatMessage message) {
     final senderId = message.senderId;
     return _vm.isGroup &&
@@ -1600,14 +1553,26 @@ extension _ChatViewActions on _ChatViewState {
     bool useAppPageRoute = false,
   }) async {
     final chatTitle = title ?? _vm.peerTitle;
+    // The §1.4 mirror rows act on the OWNING transcript's account, not the
+    // store's active one: a stale pane after an account switch must never
+    // exclude the other account's chat.
+    final accountUserId = allowTelegramTosViolations
+        ? _vm.mirrorAccountUserId
+        : null;
     final Route<int> route = useAppPageRoute
         ? AppPageRoute<int>(
-            pageBuilder: (_, _, _) =>
-                ChatInfoView(chatId: widget.chatId, title: chatTitle),
+            pageBuilder: (_, _, _) => ChatInfoView(
+              chatId: widget.chatId,
+              title: chatTitle,
+              accountUserId: accountUserId,
+            ),
           )
         : MaterialPageRoute<int>(
-            builder: (_) =>
-                ChatInfoView(chatId: widget.chatId, title: chatTitle),
+            builder: (_) => ChatInfoView(
+              chatId: widget.chatId,
+              title: chatTitle,
+              accountUserId: accountUserId,
+            ),
           );
     final messageId = await Navigator.of(context).push<int>(route);
     if (!mounted || messageId == null) return;
@@ -1696,41 +1661,15 @@ extension _ChatViewActions on _ChatViewState {
   }
 
   Future<void> _forwardMessage(ChatMessage message) async {
-    if (!_vm.canForwardContent) {
+    if (!_vm.canForwardContent && !_protectedCopyEnabled) {
       _showForwardFailure(const ForwardBlockedException());
       return;
     }
-    final messageIds = _messagesForForward(
-      message,
-    ).map((candidate) => candidate.id).toList();
-    final result = await Navigator.of(context).push<ChatPickerResult>(
-      MaterialPageRoute(
-        builder: (_) => ChatPickerView(
-          title: AppStringKeys.chatForwardToTitle,
-          showForwardOptions: true,
-          markdownOffer: _forwardMarkdownOffer(messageIds),
-        ),
-      ),
+    final messages = _messagesForForward(message);
+    await _openForwardPicker(
+      messages: messages,
+      protectedCopy: _protectedCopyEnabled,
     );
-    if (result == null || !mounted) return;
-    final target = result.chat;
-    try {
-      await _vm.forwardMany(
-        messageIds,
-        target.id,
-        options: result.forwardOptions,
-      );
-      if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.chatForwardedToName, {
-          'value1': target.title,
-        }),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showForwardFailure(e);
-    }
   }
 
   void _showForwardFailure(Object error) {

@@ -1,6 +1,7 @@
 part of 'chat_view.dart';
 
-@visibleForTesting
+// ignore: unused_element
+
 class ReactionUsersSheetFrame extends StatelessWidget {
   const ReactionUsersSheetFrame({super.key, required this.child});
 
@@ -117,7 +118,8 @@ bool selectionAreaContainsGlobalTextPosition({
   return contains;
 }
 
-@visibleForTesting
+// ignore: unused_element
+
 class ChatActionOverlayGestureLayer extends StatelessWidget {
   const ChatActionOverlayGestureLayer({
     super.key,
@@ -613,9 +615,12 @@ class _ChatEditChoiceDialog<T> extends StatelessWidget {
   }
 }
 
-/// Lets an adaptive parent save a chat's measured viewport before replacing
-/// its detail pane. Waiting for [State.dispose] is too late on desktop because
-/// the render tree has already detached, so message geometry is unavailable.
+// ignore: unused_element
+
+// ignore: unused_element
+
+// ignore: unused_element
+
 class ChatViewExitController {
   VoidCallback? _prepareExit;
 
@@ -630,9 +635,12 @@ class ChatViewExitController {
   void prepareExit() => _prepareExit?.call();
 }
 
-// Retained as a keyboard-accessible fallback surface for future non-message
-// text sources. Mobile messages now use the in-place SelectionArea flow.
 // ignore: unused_element
+
+// ignore: unused_element
+
+// ignore: unused_element
+
 class _MessageTextSelectionDialog extends StatefulWidget {
   const _MessageTextSelectionDialog({
     required this.text,

@@ -550,32 +550,25 @@ extension _VideoPlayerOverlaysMenus on _VideoPlayerViewState {
     );
     if (result == null || !mounted) return;
     final target = result.chat;
-    try {
-      await forwardMessagesWithOptions(
-        client: TdClient.shared,
-        targetChatId: target.id,
+    ChatDeepLinkController.shared.openChat(
+      chatId: target.id,
+      title: target.title,
+      forwardHandoff: ForwardMessagesHandoff(
         fromChatId: sourceChatId,
-        messageIds: [messageId],
-        options: result.forwardOptions,
-      );
-      if (mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.chatForwardedToName, {
-            'value1': target.title,
-          }),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showToast(
-          context,
-          isForwardProtectedError(e)
-              ? AppStringKeys.chatForwardProtected
-              : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
-        );
-      }
-    }
+        messages: [
+          ChatMessage(
+            id: messageId,
+            isOutgoing: false,
+            text: widget.title,
+            date: 0,
+          ),
+        ],
+        accountSlot: TdClient.shared.activeSlot,
+        clientId: TdClient.shared.activeClientId,
+        hasCaption: false,
+        markdownOffer: const ForwardMarkdownOffer.none(),
+      ),
+    );
   }
 
   Duration _bufferedAhead(VideoPlayerValue value) {

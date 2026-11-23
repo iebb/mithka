@@ -1,8 +1,6 @@
 part of 'chat_view_model.dart';
 
 extension ChatViewModelHistory on ChatViewModel {
-  // MARK: - Paging
-
   /// Loads a bounded, read-only slice of older messages for an AI reply.
   ///
   /// Unlike [loadOlder] and [loadAroundMessage], this never merges messages
@@ -71,7 +69,7 @@ extension ChatViewModelHistory on ChatViewModel {
     final rawMessages =
         response.objects('messages') ?? const <Map<String, dynamic>>[];
     for (final raw in rawMessages) {
-      final message = TDParse.message(raw);
+      final message = _parseMessage(raw);
       if (message == null ||
           message.id <= 0 ||
           (message.chatId != null && message.chatId != chatId) ||
@@ -311,7 +309,7 @@ extension ChatViewModelHistory on ChatViewModel {
       final rawMessages =
           response.objects('messages') ?? const <Map<String, dynamic>>[];
       final latest = rawMessages
-          .map(TDParse.message)
+          .map(_parseMessage)
           .whereType<ChatMessage>()
           .toList();
       if (rawMessages.isNotEmpty && latest.isEmpty) return false;
@@ -383,7 +381,7 @@ extension ChatViewModelHistory on ChatViewModel {
       }
       final parsed =
           (response.objects('messages') ?? const <Map<String, dynamic>>[])
-              .map(TDParse.message)
+              .map(_parseMessage)
               .whereType<ChatMessage>()
               .where(
                 (message) =>
@@ -530,7 +528,7 @@ extension ChatViewModelHistory on ChatViewModel {
         'message_id': messageId,
       });
       if (cancelled()) return false;
-      final target = TDParse.message(targetRaw);
+      final target = _parseMessage(targetRaw);
       if (target != null) batch.add(target);
     } catch (_) {
       if (cancelled()) return false;
@@ -556,7 +554,7 @@ extension ChatViewModelHistory on ChatViewModel {
       if (cancelled()) return false;
       batch.addAll(
         (response.objects('messages') ?? const <Map<String, dynamic>>[])
-            .map(TDParse.message)
+            .map(_parseMessage)
             .whereType<ChatMessage>(),
       );
     } catch (error) {
@@ -622,7 +620,7 @@ extension ChatViewModelHistory on ChatViewModel {
         return null;
       }
       final mentions = rawMessages
-          .map(TDParse.message)
+          .map(_parseMessage)
           .whereType<ChatMessage>()
           .where((message) => !_locallyViewedMentionIds.contains(message.id))
           .toList();
@@ -655,7 +653,7 @@ extension ChatViewModelHistory on ChatViewModel {
         return null;
       }
       final reactions = rawMessages
-          .map(TDParse.message)
+          .map(_parseMessage)
           .whereType<ChatMessage>()
           .where((message) => !_locallyViewedReactionIds.contains(message.id))
           .toList();
@@ -741,6 +739,65 @@ extension ChatViewModelHistory on ChatViewModel {
     }
     _consumeViewedReactions([messageId], force: true);
   }
+
+  /// Marks every unread mention in this conversation read at once — the
+  /// long-press action on the chat's @ pill (the reference client's ReadAllMentionsMenu).
+  /// TDLib exposes one scoped call per chat / forum topic; a refused call
+  /// leaves the counter intact so the pill and a retry stay available.
+  Future<bool> markAllMentionsRead() async {
+    if (unreadMentionCount <= 0) return true;
+    // Ghost mode skips only the server report; the local flags and counter
+    // still clear so the UI reads the mentions as seen.
+    if (!_blocksReadReports) {
+      try {
+        await _client.query({
+          '@type': isForumTopicTranscript
+              ? 'readAllForumTopicMentions'
+              : 'readAllChatMentions',
+          'chat_id': chatId,
+          if (isForumTopicTranscript) 'forum_topic_id': forumTopicId,
+        });
+      } catch (_) {
+        return false;
+      }
+    }
+    for (final message in _allMessages) {
+      if (message.containsUnreadMention) message.containsUnreadMention = false;
+    }
+    _setUnreadMentionCount(0, emitLocalUpdate: true);
+    return true;
+  }
+
+  /// Marks every unread reaction in this conversation read at once — the
+  /// long-press action on the chat's reaction pill. Mirrors
+  /// [markAllMentionsRead]'s scoped TDLib call and local clear.
+  Future<bool> markAllReactionsRead() async {
+    if (unreadReactionCount <= 0) return true;
+    if (!_blocksReadReports) {
+      try {
+        await _client.query({
+          '@type': isForumTopicTranscript
+              ? 'readAllForumTopicReactions'
+              : 'readAllChatReactions',
+          'chat_id': chatId,
+          if (isForumTopicTranscript) 'forum_topic_id': forumTopicId,
+        });
+      } catch (_) {
+        return false;
+      }
+    }
+    for (final message in _allMessages) {
+      if (message.hasUnreadReactions) message.hasUnreadReactions = false;
+    }
+    _setUnreadReactionCount(0, emitLocalUpdate: true);
+    return true;
+  }
+
+  /// Ghost mode blocks read receipts at the server; the local counters still
+  /// clear so the UI does not keep showing what the user already looked at.
+  bool get _blocksReadReports =>
+      allowTelegramTosViolations &&
+      GhostModeController.shared.shouldBlockRead(chatId).isBlock;
 
   void _consumeViewedMentions(Iterable<int> messageIds, {bool force = false}) {
     final consumed = _consumeViewedFlags(
@@ -867,7 +924,7 @@ extension ChatViewModelHistory on ChatViewModel {
     final rawMessages =
         response.objects('messages') ?? const <Map<String, dynamic>>[];
     final parsed = rawMessages
-        .map(TDParse.message)
+        .map(_parseMessage)
         .whereType<ChatMessage>()
         .toList();
     if (parsed.isEmpty) {
@@ -1009,7 +1066,7 @@ extension ChatViewModelHistory on ChatViewModel {
       pagesScanned++;
       final page =
           (response.objects('messages') ?? const <Map<String, dynamic>>[])
-              .map(TDParse.message)
+              .map(_parseMessage)
               .whereType<ChatMessage>()
               .where(
                 (message) => !isPendingChatMessage(message) && message.id > 0,
@@ -1056,7 +1113,7 @@ extension ChatViewModelHistory on ChatViewModel {
                 })
               : await _client.query({'@type': 'getChat', 'chat_id': chatId});
           final latestRaw = raw.obj('last_message');
-          final latest = latestRaw == null ? null : TDParse.message(latestRaw);
+          final latest = latestRaw == null ? null : _parseMessage(latestRaw);
           messageId = math.max(
             messageId,
             latest == null ? 0 : latestServerMessageId([latest]),

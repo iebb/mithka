@@ -204,6 +204,7 @@ class RichMessageBotRelay {
     required TdClient tdClient,
     List<RichMessageSendFile> files = const [],
     List<Map<String, dynamic>> blocks = const [],
+    Map<String, dynamic>? topicRef,
     RichMessageRelayProgressCallback? onProgress,
   }) async {
     final bot = await validateToken(token);
@@ -296,6 +297,7 @@ class RichMessageBotRelay {
           fromChatId: fromChatId,
           sourceMessageIds: sourceMessageIds,
           sendCopy: false,
+          topicRef: topicRef,
         ),
       );
       forwarded = true;
@@ -331,6 +333,7 @@ class RichMessageBotRelay {
     required int currentUserId,
     required int targetChatId,
     required TdClient tdClient,
+    Map<String, dynamic>? topicRef,
     RichMessageRelayProgressCallback? onProgress,
   }) async {
     final bot = await validateToken(token);
@@ -389,6 +392,7 @@ class RichMessageBotRelay {
       targetChatId: targetChatId,
       fromChatId: fromChatId,
       sourceMessageId: sourceMessageId,
+      topicRef: topicRef,
     );
     try {
       await _call(token, 'deleteMessage', {
@@ -528,6 +532,7 @@ class RichMessageBotRelay {
     required int targetChatId,
     required int fromChatId,
     required int sourceMessageId,
+    Map<String, dynamic>? topicRef,
   }) async {
     await _forward(
       client,
@@ -536,20 +541,25 @@ class RichMessageBotRelay {
         fromChatId: fromChatId,
         sourceMessageIds: [sourceMessageId],
         sendCopy: false,
+        topicRef: topicRef,
       ),
     );
     return const RichMessageRelayResult(senderRemoved: false);
   }
 
+  /// The copy lands where the composed message would have: a bot topic chat's
+  /// topic is part of the destination, not of the relay chat.
   Map<String, dynamic> _forwardRequest({
     required int targetChatId,
     required int fromChatId,
     required List<int> sourceMessageIds,
     required bool sendCopy,
+    Map<String, dynamic>? topicRef,
   }) {
     return {
       '@type': 'forwardMessages',
       'chat_id': targetChatId,
+      'topic_id': ?topicRef,
       'from_chat_id': fromChatId,
       'message_ids': sourceMessageIds,
       'options': {'@type': 'messageSendOptions'},

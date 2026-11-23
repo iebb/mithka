@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
+import 'local_premium.dart';
 
 /// Runtime availability for Telegram Business features.
 ///
@@ -335,7 +336,9 @@ class BusinessService {
       // surface during a transient server/capability-probe failure.
     }
     return BusinessCapabilities(
-      isPremium: me.boolean('is_premium') ?? false,
+      isPremium: LocalPremium.shared.premiumForMe(
+        me.boolean('is_premium') ?? false,
+      ),
       features: resolvedBusinessFeatures(businessFeatures),
     );
   }

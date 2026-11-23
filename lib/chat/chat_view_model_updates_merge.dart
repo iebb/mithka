@@ -23,7 +23,7 @@ extension ChatViewModelUpdates on ChatViewModel {
               rawContent?.boolean('new_has_protected_content') ??
               hasProtectedContent;
         }
-        final message = TDParse.message(raw);
+        final message = _parseMessage(raw);
         if (message == null) return;
         final senderId = message.senderId;
         if (isBotApiAccount &&
@@ -104,7 +104,7 @@ extension ChatViewModelUpdates on ChatViewModel {
           // keep using only user-authored text, otherwise TDLib's live content
           // update for a just-sent attachment turns that preview label into a
           // visible caption until the confirmed message replaces it.
-          TDParse.messageContentText(content),
+          TDParse.messageContentText(content, isChannel: isChannel),
           entities: TDParse.messageTextEntities(content),
           customEmoji: TDParse.customEmojiEntitiesForContent(content),
           linkPreview: TDParse.linkPreview(content.obj('link_preview')),
@@ -196,7 +196,7 @@ extension ChatViewModelUpdates on ChatViewModel {
         _acknowledgedPendingMessageIds.remove(oldMessageId);
         if (_latestHistoryLoadInFlight) {
           _latestHistoryLiveArrivals.remove(oldMessageId);
-          final sentMessage = TDParse.message(rawSentMessage);
+          final sentMessage = _parseMessage(rawSentMessage);
           if (sentMessage != null) {
             _latestHistoryLiveArrivals[sentMessage.id] = sentMessage;
           }
@@ -527,8 +527,13 @@ extension ChatViewModelUpdates on ChatViewModel {
       case 'updateSupergroupFullInfo':
         if (update.int64('supergroup_id') != peerSupergroupId) return;
         final fullInfo = update.obj('supergroup_full_info') ?? update;
-        hasLinkedDiscussion =
-            isChannel && (fullInfo.int64('linked_chat_id') ?? 0) != 0;
+        linkedDiscussionChatId = isChannel
+            ? (fullInfo.int64('linked_chat_id') ?? 0)
+            : 0;
+        hasLinkedDiscussion = linkedDiscussionChatId != 0;
+        directMessagesChatId = isChannel
+            ? (fullInfo.int64('direct_messages_chat_id') ?? 0)
+            : 0;
         _setPaidMessageStarCount(_paidMessageStars(fullInfo));
         if (isChannel) {
           _clearGroupBotCommands();
@@ -697,6 +702,12 @@ extension ChatViewModelUpdates on ChatViewModel {
         }
         continue;
       }
+      // Reply-to-deleted fill: when the target is not in
+      // the transcript, the local mirror may still hold a kept copy of the
+      // deleted original; its text fills the reply anchor like a quote.
+      if (_applyMirrorReply(m, rid, rChatId)) {
+        continue;
+      }
       final unresolved = unresolvedByChat.putIfAbsent(
         rChatId,
         () => <int, List<ChatMessage>>{},
@@ -743,7 +754,7 @@ extension ChatViewModelUpdates on ChatViewModel {
           final raws =
               response.objects('messages') ?? const <Map<String, dynamic>>[];
           for (final raw in raws) {
-            final quoted = TDParse.message(raw);
+            final quoted = _parseMessage(raw);
             if (quoted == null) continue;
             final waiting = unresolved[quoted.id];
             if (waiting == null) continue;
@@ -893,6 +904,10 @@ extension ChatViewModelUpdates on ChatViewModel {
     return KeywordBlocker.shared.matches(message.text);
   }
 
+  // ---------------------------------------------------------------------------
+  // Ghost transcript (Telegram §1.4 mirror, self-build gated)
+  // ---------------------------------------------------------------------------
+
   /// Rebuilds `messages` from `_allMessages` and refreshes the lookup indexes.
   ///
   /// One pass does the filtering, the blocked-user marking and the index fill
@@ -938,6 +953,7 @@ extension ChatViewModelUpdates on ChatViewModel {
     // is not a total order, so only the pure-id case can be checked.
     assert(_pendingMessageCount > 0 || _isSortedById(_allMessages));
     messages = visible;
+    _foldGhostsIntoTranscript();
     _blockedMessageIds = blockedIds;
     _markBlockedMessagesReadThroughVisibleBoundary(blockedIds);
     notifyListeners();
@@ -961,6 +977,25 @@ extension ChatViewModelUpdates on ChatViewModel {
     }
     // Guaranteed by _appendIfStrictlyNewest, so the pending count cannot move.
     assert(!isPendingChatMessage(message));
+    // A revived message (the same id as a folded ghost re-entering the
+    // transcript) must retire its ghost through the full rebuild — the fast
+    // path would leave both the ghost and the live copy on screen.
+    if (_ghostsEnabled) {
+      final accountUserId = _accountUserId;
+      final revivedGhost =
+          accountUserId != null &&
+          (historyStoreOverride ?? MessageHistoryStore.shared)
+              .deletedEntriesFor(
+                accountUserId,
+                chatId,
+                topicId: forumTopicId ?? 0,
+              )
+              .any((entry) => entry.messageId == message.id);
+      if (revivedGhost) {
+        _applyKeywordFilter();
+        return;
+      }
+    }
     _allMessagesById[message.id] = message;
     if (_isBlockedMessage(message)) {
       _blockedMessageIds.add(message.id);
@@ -1148,7 +1183,7 @@ extension ChatViewModelUpdates on ChatViewModel {
           'chat_id': chatId,
           'message_id': pendingId,
         });
-        final current = TDParse.message(raw);
+        final current = _parseMessage(raw);
         if (current == null || current.id != pendingId || !current.isSending) {
           staleIds.add(pendingId);
           if (current != null) replacements.add(current);
@@ -1249,7 +1284,7 @@ extension ChatViewModelUpdates on ChatViewModel {
         .where((message) => message.id != pendingMessageId)
         .toList();
     _messageIndexesDirty = true;
-    final sentMessage = TDParse.message(rawMessage);
+    final sentMessage = _parseMessage(rawMessage);
     if (sentMessage == null) {
       _applyKeywordFilter();
       return;
@@ -1311,15 +1346,6 @@ extension ChatViewModelUpdates on ChatViewModel {
     } finally {
       _loadingFullRichMessageIds.remove(messageId);
     }
-  }
-
-  void _setTranslationLoading(int messageId, bool loading) {
-    final target = _messageRefs(messageId);
-    if (target.isEmpty) return;
-    for (final message in target) {
-      message.isTranslating = loading;
-    }
-    _scheduleCoalescedNotify();
   }
 
   void _replaceTranslation(
@@ -1454,6 +1480,22 @@ extension ChatViewModelUpdates on ChatViewModel {
         changed = true;
       }
     }
+    // Ghost bubbles never join the id/sender indexes (their ids no longer
+    // exist on Telegram's side), so the loop above cannot reach them. Patch
+    // the folded ghosts of the resolved senders directly — otherwise a group
+    // ghost stays unattributed until the next full transcript rebuild.
+    if (allowTelegramTosViolations) {
+      for (final m in messages) {
+        final entry = m.mirrorEntry;
+        if (entry == null) continue;
+        if (!senders.containsKey(entry.senderId)) continue;
+        final name = senders[entry.senderId]!.name;
+        if (m.senderName != name) {
+          m.senderName = name;
+          changed = true;
+        }
+      }
+    }
     if (changed) _scheduleCoalescedNotify();
   }
 
@@ -1546,8 +1588,6 @@ extension ChatViewModelUpdates on ChatViewModel {
     _handle(update);
   }
 
-  /// Marks the read-state gates satisfied so read-marking paths can be
-  /// exercised without replaying the whole history bootstrap.
   @visibleForTesting
   void markChatReadStateReadyForTesting() {
     _chatReadStateLoaded = true;
@@ -1562,6 +1602,24 @@ extension ChatViewModelUpdates on ChatViewModel {
   @visibleForTesting
   void supportsBotTopicsForTesting(bool value) {
     supportsBotTopics = value;
+  }
+
+  @visibleForTesting
+  void forumTopicsLoadedForTesting(List<ForumTopicIndexEntry> entries) {
+    forumTopicsLoading = false;
+    _forumTopicsLoaded = true;
+    if (!_forumTopicIndexListening) {
+      ForumTopicIndex.shared.addListener(_onForumTopicIndexChanged);
+      _forumTopicIndexListening = true;
+    }
+    ForumTopicIndex.shared.storeAll(_accountSlot, chatId, entries);
+    forumTopics = [
+      for (final entry in ForumTopicIndex.shared.topicsFor(
+        _accountSlot,
+        chatId,
+      ))
+        _optionFromIndex(entry),
+    ];
   }
 
   @visibleForTesting
@@ -1797,6 +1855,7 @@ extension ChatViewModelUpdates on ChatViewModel {
       contentType: message.contentType ?? '',
       actorName: actorName,
       communityName: target.communityPreview?.name ?? '',
+      isChannel: isChannel,
     );
     if (target.text != text) {
       target.text = text;
@@ -1846,10 +1905,15 @@ extension ChatViewModelUpdates on ChatViewModel {
             'value1': message.serviceUserIds.length - names.length,
           })
         : '';
-    final text = AppStrings.t(AppStringKeys.chatUsersJoinedGroup, {
-      'value1': names.join(AppStrings.t(AppStringKeys.listSeparator)),
-      'value2': suffix,
-    });
+    final text = AppStrings.t(
+      isChannel
+          ? AppStringKeys.chatUsersJoinedChannel
+          : AppStringKeys.chatUsersJoinedGroup,
+      {
+        'value1': names.join(AppStrings.t(AppStringKeys.listSeparator)),
+        'value2': suffix,
+      },
+    );
     _ensureMessageIndexes();
     final target = _messagesById[message.id];
     if (target == null || target.text == text) return;
@@ -1866,9 +1930,12 @@ extension ChatViewModelUpdates on ChatViewModel {
           await _client.query({'@type': 'getUser', 'user_id': userId});
       final name = TDParse.userName(user);
       if (name.isEmpty) return;
-      final text = AppStrings.t(AppStringKeys.chatUserBoostedGroup, {
-        'value1': name,
-      });
+      final text = AppStrings.t(
+        isChannel
+            ? AppStringKeys.chatUserBoostedChannel
+            : AppStringKeys.chatUserBoostedGroup,
+        {'value1': name},
+      );
       _ensureMessageIndexes();
       final target = _messagesById[message.id];
       if (target == null || target.text == text) return;
@@ -1886,9 +1953,12 @@ extension ChatViewModelUpdates on ChatViewModel {
       });
       final name = TDParse.userName(user);
       if (name.isEmpty) return;
-      final text = AppStrings.t(AppStringKeys.chatUserLeftGroup, {
-        'value1': name,
-      });
+      final text = AppStrings.t(
+        isChannel
+            ? AppStringKeys.chatUserLeftChannel
+            : AppStringKeys.chatUserLeftGroup,
+        {'value1': name},
+      );
       _ensureMessageIndexes();
       final target = _messagesById[message.id];
       if (target == null || target.text == text) return;
@@ -2005,5 +2075,14 @@ extension ChatViewModelUpdates on ChatViewModel {
         member.str('title');
     final title = raw?.trim();
     return title == null || title.isEmpty ? null : title;
+  }
+
+  void _setTranslationLoading(int messageId, bool loading) {
+    final target = _messageRefs(messageId);
+    if (target.isEmpty) return;
+    for (final message in target) {
+      message.isTranslating = loading;
+    }
+    _scheduleCoalescedNotify();
   }
 }

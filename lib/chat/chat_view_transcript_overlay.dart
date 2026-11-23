@@ -16,8 +16,6 @@ extension _ChatViewTranscript on _ChatViewState {
     );
   }
 
-  /// Answers a swipe on the transcript. The gesture is a shortcut to typing,
-  /// so the composer takes the caret as well as the reply target.
   void _beginSwipeReply(ChatMessage message) {
     _vm.setReply(message);
     _vm.requestComposerFocus();
@@ -388,12 +386,6 @@ extension _ChatViewTranscript on _ChatViewState {
     unawaited(_loadActionAvailability(message.id, propertiesGeneration));
   }
 
-  /// The link row appears only once the server confirms the message carries
-  /// one (`messageProperties.can_get_link`), and the reply row only once it
-  /// confirms a reply is accepted (`messageProperties.can_be_replied`). A
-  /// chat without a composer never gets one at all. While the offline
-  /// properties query is in flight both entries stay hidden, so the menu
-  /// never grows a row it would have to remove a moment later.
   Future<void> _loadActionAvailability(int messageId, int generation) async {
     bool? canGetLink;
     bool? canBeReplied;
@@ -441,8 +433,6 @@ extension _ChatViewTranscript on _ChatViewState {
     _updateState(() => _actionReactionAvailability = availability);
   }
 
-  /// An album shows one set of reactions, those of its interaction owner, so
-  /// a reaction picked on any member goes to that owner.
   ChatMessage _reactionMessageFor(ChatMessage message) {
     final kind = chatMediaAlbumKind(message);
     if (message.mediaAlbumId == 0 || kind == null) return message;
@@ -728,9 +718,6 @@ extension _ChatViewTranscript on _ChatViewState {
     MessageReaction reaction,
   ) => _sendReaction(() => _vm.toggleReaction(message, reaction));
 
-  /// Clears the live action state, handing the closing overlay its snapshot to
-  /// replay during the exit. A second dismiss while the exit is still running
-  /// finds no live target and leaves the running reverse alone.
   void _dismissActionOverlay() {
     if (_actionTarget == null) return;
     _updateState(() {
@@ -743,9 +730,6 @@ extension _ChatViewTranscript on _ChatViewState {
     });
   }
 
-  /// The exit animation landed: drop the snapshot and unmount the overlay. A
-  /// late report for a menu that has since re-opened (or closed again) is
-  /// stale — only a snapshot from the reported close is released here.
   void _handleActionOverlayExitComplete() {
     if (!mounted || _actionTarget != null || _actionOverlaySnapshot == null) {
       return;

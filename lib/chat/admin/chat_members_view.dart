@@ -597,9 +597,12 @@ class _ChatMembersViewState extends State<ChatMembersView> {
     final ok = await confirmDialog(
       context,
       title: AppStrings.t(AppStringKeys.chatMembersRemoveMemberTitle),
-      message: AppStrings.t(AppStringKeys.chatMembersRemoveMemberConfirmation, {
-        'value1': m.name,
-      }),
+      message: AppStrings.t(
+        _isChannel
+            ? AppStringKeys.chatMembersRemoveMemberConfirmationChannel
+            : AppStringKeys.chatMembersRemoveMemberConfirmation,
+        {'value1': m.name},
+      ),
       confirmText: AppStrings.t(AppStringKeys.chatInfoRemove),
       destructive: true,
     );

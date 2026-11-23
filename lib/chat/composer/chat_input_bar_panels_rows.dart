@@ -168,6 +168,40 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     }
   }
 
+  void _selectEmojiTab(String tab) {
+    if (_emojiTab == tab) return;
+    _updateState(() => _emojiTab = tab);
+    if (tab == _ChatInputBarState._emojiSearchTab &&
+        _panelSearch.text.trim().isNotEmpty) {
+      _queuePanelSearch();
+    }
+  }
+
+  void _selectStickerTab(int tab) {
+    if (tab != _ChatInputBarState._stickerSearchTabId) {
+      // A pack tab scrolls the continuous list; the search tab swaps content
+      // instead and needs no anchor.
+      if (_stickerPack != tab) {
+        _updateState(() => _stickerPack = tab);
+      }
+      _scrollStickerPanelToPack(tab);
+      if (tab == _ChatInputBarState._gifTabId) {
+        GifStore.shared.loadIfNeeded();
+      } else if (tab == StickerStore.recentPackId) {
+        StickerStore.shared.loadIfNeeded();
+      } else {
+        final pack = _findStickerPack(tab);
+        if (pack != null) _ensureStickerPackLoaded(pack);
+      }
+      return;
+    }
+    if (_stickerPack == _ChatInputBarState._stickerSearchTabId) return;
+    _updateState(() => _stickerPack = _ChatInputBarState._stickerSearchTabId);
+    if (_panelSearch.text.trim().isNotEmpty) {
+      _queuePanelSearch();
+    }
+  }
+
   void _setPanel(_Panel next) {
     if (_panel == next && !_quickReplyContextVisible) return;
     if (_panel == _Panel.voice && next != _Panel.voice) {
@@ -180,30 +214,6 @@ extension _ChatInputBarPanels on _ChatInputBarState {
       _voiceInlineError = _VoiceInlineError.none;
     });
     widget.onPanelGeometryChanged?.call();
-  }
-
-  void _selectEmojiTab(String tab) {
-    if (_emojiTab == tab) return;
-    _updateState(() => _emojiTab = tab);
-    if (tab == _ChatInputBarState._emojiSearchTab &&
-        _panelSearch.text.trim().isNotEmpty) {
-      _queuePanelSearch();
-    }
-  }
-
-  void _selectStickerTab(int tab) {
-    if (_stickerPack == tab) return;
-    _updateState(() => _stickerPack = tab);
-    if (tab == _ChatInputBarState._stickerSearchTabId &&
-        _panelSearch.text.trim().isNotEmpty) {
-      _queuePanelSearch();
-    } else if (tab == _ChatInputBarState._gifTabId) {
-      GifStore.shared.loadIfNeeded();
-    } else if (tab == StickerStore.recentPackId) {
-      StickerStore.shared.loadIfNeeded();
-    } else {
-      StickerStore.shared.loadPack(tab);
-    }
   }
 
   void _selectMediaKind(_MediaKind kind) {
@@ -219,17 +229,19 @@ extension _ChatInputBarPanels on _ChatInputBarState {
       _mediaKind = kind;
       _stickerPack = stickerPack;
     });
+    widget.onMediaKindChanged?.call(kind.name);
     switch (kind) {
       case _MediaKind.emoji:
         EmojiStore.shared.loadIfNeeded();
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
+        FavoriteStickerStore.shared.loadIfNeeded();
         final activeId = _activeStickerTab;
         if (activeId == StickerStore.recentPackId ||
             activeId == _ChatInputBarState._stickerSearchTabId) {
           StickerStore.shared.loadIfNeeded();
         } else {
-          StickerStore.shared.loadPack(activeId);
+          _ensureStickerPackLoaded(_findStickerPack(activeId));
         }
       case _MediaKind.gif:
         GifStore.shared.loadIfNeeded();
@@ -239,11 +251,6 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     }
   }
 
-  /// Toggles the unified media panel from the composer's media button.
-  ///
-  /// Opening keeps the last-used segment (emoji until the user picks
-  /// another); tapping again closes the panel. Switching segments inside an
-  /// open panel goes through [_selectMediaKind] instead.
   void _toggleMediaPanel() {
     if (_mediaPanelOpen) {
       _toggle(_Panel.none);
@@ -255,6 +262,7 @@ extension _ChatInputBarPanels on _ChatInputBarState {
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
         StickerStore.shared.loadIfNeeded();
+        FavoriteStickerStore.shared.loadIfNeeded();
       case _MediaKind.gif:
         GifStore.shared.loadIfNeeded();
     }
@@ -287,15 +295,6 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     unawaited(_deleteTempFile(attachment.path));
   }
 
-  String _replyLine(ChatMessage m) {
-    final name = m.isOutgoing
-        ? vm.meName
-        : (m.senderName?.isNotEmpty ?? false)
-        ? m.senderName!
-        : vm.peerTitle;
-    return '$name:${vm.replyQuote?.text ?? _replyPreview(m)}';
-  }
-
   String _replyPreview(ChatMessage m) {
     if (m.document != null) {
       return AppStrings.t(AppStringKeys.composerFilePreview, {
@@ -324,8 +323,6 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     }
     return m.text;
   }
-
-  // MARK: - Input row
 
   void _hideDesktopPopovers({bool rebuild = true}) {
     _desktopSendOptionsMenu?.dismiss();
@@ -368,6 +365,7 @@ extension _ChatInputBarPanels on _ChatInputBarState {
         EmojiRecentsStore.shared.loadIfNeeded();
       case _MediaKind.sticker:
         StickerStore.shared.loadIfNeeded();
+        FavoriteStickerStore.shared.loadIfNeeded();
       case _MediaKind.gif:
         GifStore.shared.loadIfNeeded();
     }
@@ -496,26 +494,6 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     );
   }
 
-  ({Color background, Color foreground, Color border})
-  _replyKeyboardButtonColors(MessageButton button, {required bool prominent}) {
-    final c = context.colors;
-    return botButtonPalette(
-      button.style,
-      primary: AppTheme.brand,
-      standard: prominent
-          ? (
-              background: AppTheme.brand,
-              foreground: Colors.white,
-              border: c.inputBarBackground.withValues(alpha: 0.72),
-            )
-          : (background: c.card, foreground: c.textPrimary, border: c.divider),
-    );
-  }
-
-  /// The narrow rule: while there is something to send, the leading cell
-  /// (the Mic, or a bot chat's menu cell) gives its room to the field once the
-  /// typing field would fall under [AppMetric.simpleComposerNarrowField]. The
-  /// empty row never drops it.
   bool _simpleComposerFitsLeadingCell({
     required double width,
     required bool hasText,
@@ -532,15 +510,11 @@ extension _ChatInputBarPanels on _ChatInputBarState {
     return typingField >= AppMetric.simpleComposerNarrowField;
   }
 
-  /// A simple-mode cell's keyboard glyph: closes its docked panel and brings
-  /// the keyboard back to the same draft.
   void _showKeyboardFromSimplePanel() {
     _setPanel(_Panel.none);
     _focus.requestFocus();
   }
 
-  // The simple row stays visible above the bot reply keyboard, so opening a
-  // panel from it folds that keyboard away: only one panel is ever docked.
   void _openSimpleVoicePanel() {
     _replyKeyboardVisible = false;
     _toggleVoice();
@@ -554,42 +528,5 @@ extension _ChatInputBarPanels on _ChatInputBarState {
   void _toggleSimpleMorePanel() {
     if (_panel != _Panel.function) _replyKeyboardVisible = false;
     _toggle(_Panel.function);
-  }
-
-  Future<void> _sendStickerItem(StickerItem item) async {
-    widget.onMediaSendTapped?.call();
-    final sent = await widget.vm.sendSticker(item);
-    if (!mounted) return;
-    if (sent) {
-      _finishPanelSend();
-    } else {
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.stickerSetDetailActionFailed),
-      );
-    }
-  }
-
-  Future<void> _sendGifItem(GifItem item) async {
-    widget.onMediaSendTapped?.call();
-    final sent = await widget.vm.sendGif(item);
-    if (!mounted) return;
-    if (sent) {
-      _finishPanelSend();
-    } else {
-      showToast(context, AppStrings.t(AppStringKeys.composerGifSendFailed));
-    }
-  }
-
-  // Kept for re-exposing the studio from a more appropriate surface later.
-  // ignore: unused_element
-  Future<void> _openStickerStudio() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const StickerSetStudioView()),
-    );
-    StickerStore.shared.reset();
-    EmojiStore.shared.reset();
-    StickerStore.shared.loadIfNeeded();
-    EmojiStore.shared.loadIfNeeded();
   }
 }

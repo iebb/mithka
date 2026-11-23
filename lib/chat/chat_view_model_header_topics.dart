@@ -1,8 +1,6 @@
 part of 'chat_view_model.dart';
 
 extension ChatViewModelHeaderTopics on ChatViewModel {
-  // MARK: - Header
-
   Future<void> _loadChatHeader() async {
     final readStateRevisionAtRequestStart = _chatReadStateRevision;
     final readInboxRevisionAtRequestStart = _chatReadInboxRevision;
@@ -95,6 +93,8 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     isChannel = false;
     isMessageBubbleRepository = false;
     hasLinkedDiscussion = false;
+    linkedDiscussionChatId = 0;
+    directMessagesChatId = 0;
     isDirectMessagesGroup = false;
     isAdministeredDirectMessagesGroup = false;
     canDeleteMessagesBySender = false;
@@ -235,13 +235,48 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     if (isChannel || peerIsBot) {
       unawaited(_retrieveSponsoredMessages());
     }
+    _relabelChannelServiceMessages();
     if (!canSendMessages && sendDisabledReason.isEmpty && isPeerRestricted) {
       sendDisabledReason = AppStrings.t(
-        AppStringKeys.chatRestrictedTelegramTosMessage,
+        isChannel
+            ? AppStringKeys.chatRestrictedTelegramTosMessageChannel
+            : AppStringKeys.chatRestrictedTelegramTosMessage,
       );
     }
+    _storeHeaderSnapshot();
     notifyListeners();
     unawaited(_loadPinnedMessage());
+  }
+
+  /// Publishes this transcript's topic-independent header facts so the next
+  /// topic transcript of the same chat can paint a full-height header on its
+  /// first frame instead of growing one async query later.
+  void _storeHeaderSnapshot() {
+    if (!isForum) return;
+    final existing = ChatHeaderStateCache.read(_accountSlot, chatId);
+    ChatHeaderStateCache.write(
+      ChatHeaderSnapshot(
+        accountSlot: _accountSlot,
+        chatId: chatId,
+        isGroup: isGroup,
+        isChannel: isChannel,
+        isBotApiAccount: isBotApiAccount,
+        memberCount: memberCount,
+        peerOnline: peerOnline,
+        peerStatusText: peerStatusText,
+        peerIsBot: peerIsBot,
+        botMenu: botMenu,
+        botCommands: botCommands,
+        botApiCanReadAllGroupMessages: botApiCanReadAllGroupMessages,
+        botApiBotToBotAccessObserved: botApiBotToBotAccessObserved,
+        detectedChatLanguage: existing?.detectedChatLanguage,
+        chatLanguageDetectionComplete:
+            existing?.chatLanguageDetectionComplete ?? false,
+        chatLanguageDetectedAt: existing?.chatLanguageDetectedAt,
+        chatLanguageDetectionNewestMessageId:
+            existing?.chatLanguageDetectionNewestMessageId,
+      ),
+    );
   }
 
   Future<void> refreshPeerRestrictionState() => _loadChatHeader();
@@ -271,7 +306,11 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
         canSendMessages = _chatCanSend;
         sendDisabledReason = canSendMessages
             ? ''
-            : AppStrings.t(AppStringKeys.chatRestrictedTelegramTosMessage);
+            : AppStrings.t(
+                isChannel
+                    ? AppStringKeys.chatRestrictedTelegramTosMessageChannel
+                    : AppStringKeys.chatRestrictedTelegramTosMessage,
+              );
       case SecretChatReadiness.closed:
         canSendMessages = false;
         sendDisabledReason = AppStrings.t(AppStringKeys.secretChatClosed);
@@ -306,7 +345,7 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     bool preserveNewer = false,
   }) {
     final lastRaw = chat.obj('last_message');
-    final lastMessage = lastRaw == null ? null : TDParse.message(lastRaw);
+    final lastMessage = lastRaw == null ? null : _parseMessage(lastRaw);
     if (lastMessage == null) return;
     final lastMessageId = isPendingChatMessage(lastMessage)
         ? 0
@@ -342,8 +381,13 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
       });
       if (_isDisposed || peerSupergroupId != supergroupId) return;
       memberCount = full.integer('member_count') ?? memberCount;
-      hasLinkedDiscussion =
-          isChannel && (full.int64('linked_chat_id') ?? 0) != 0;
+      linkedDiscussionChatId = isChannel
+          ? (full.int64('linked_chat_id') ?? 0)
+          : 0;
+      hasLinkedDiscussion = linkedDiscussionChatId != 0;
+      directMessagesChatId = isChannel
+          ? (full.int64('direct_messages_chat_id') ?? 0)
+          : 0;
       _setPaidMessageStarCount(_paidMessageStars(full), notify: false);
       notifyListeners();
       if (isChannel) {
@@ -518,7 +562,7 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
         // a synthetic fallback's text is the topic's own name, so the preview
         // stays hidden exactly the way the chat list hides empty ones.
         final rawLast = topic.obj('last_message');
-        final parsed = rawLast == null ? null : TDParse.message(rawLast);
+        final parsed = rawLast == null ? null : _parseMessage(rawLast);
         if (parsed != null) previewMessages.add(parsed);
         topics.add(
           ForumTopicOption(
@@ -554,7 +598,11 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
         );
       }
       final previous = forumTopics;
-      forumTopics = topics;
+      forumTopics = orderForumTopics(
+        topics,
+        isPinned: (topic) => topic.isPinned,
+        lastMessageId: (topic) => topic.lastMessageId,
+      );
       ForumTopicIndex.shared.storeAll(_accountSlot, chatId, [
         for (final topic in raw) ?ForumTopicIndexEntry.fromTopic(topic),
       ]);
@@ -576,8 +624,44 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
       forumTopics = const [];
     } finally {
       forumTopicsLoading = false;
+      _forumTopicsLoaded = true;
       notifyListeners();
     }
+  }
+
+  /// Learns the identity of a topic the loaded page predates.
+  ///
+  /// TDLib only announces a topic's name and icon once something asks for it
+  /// (`getForumTopic`); traffic alone registers a nameless thread. Without
+  /// this, a topic the bot created after the page loaded stays invisible in
+  /// the tab strip and topic list until a full reload.
+  void _requestForumTopicInfo(int topicId) {
+    if (!supportsTopics || topicId <= 0) return;
+    if (forumTopicsLoading || !_forumTopicsLoaded) return;
+    if (!_pendingForumTopicInfoRequests.add(topicId)) return;
+    final slot = _accountSlot;
+    unawaited(() async {
+      final Map<String, dynamic> topic;
+      try {
+        topic = await _client.query({
+          '@type': 'getForumTopic',
+          'chat_id': chatId,
+          'forum_topic_id': topicId,
+        });
+      } catch (_) {
+        // Deleted before it could be read: let the next traffic retry.
+        _pendingForumTopicInfoRequests.remove(topicId);
+        return;
+      }
+      if (_isDisposed) return;
+      final entry = ForumTopicIndexEntry.fromTopic(topic);
+      // A successful read whose entry the index refused (its page has not
+      // landed here) stays retryable rather than silently dropping the topic.
+      if (entry == null ||
+          !ForumTopicIndex.shared.addTopic(slot, chatId, entry)) {
+        _pendingForumTopicInfoRequests.remove(topicId);
+      }
+    }());
   }
 
   ForumTopicOption _optionFromIndex(ForumTopicIndexEntry entry) =>
@@ -588,6 +672,7 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
         iconColor: entry.iconColor,
         unreadCount: entry.unreadCount,
         isMuted: entry.isMuted,
+        isPinned: entry.isPinned,
         lastMessageId: entry.lastMessageId,
       );
 
@@ -941,12 +1026,12 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
   /// renames move without a full getForumTopics round-trip. Runs for every
   /// update of this chat — including topics other than the open transcript.
   void _foldForumTopicRowUpdate(Map<String, dynamic> update) {
-    if (!supportsTopics || forumTopics.isEmpty) return;
+    if (!supportsTopics) return;
     switch (update.type) {
       case 'updateNewMessage':
         final raw = update.obj('message');
         if (raw?.int64('chat_id') != chatId) return;
-        final message = TDParse.message(raw!);
+        final message = _parseMessage(raw!);
         if (message == null) return;
         final topicRef = raw.obj('topic_id');
         // A message outside any topic belongs to General (id 1) — but only
@@ -960,7 +1045,12 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
             : null;
         if (topicId == null) return;
         final index = forumTopics.indexWhere((topic) => topic.id == topicId);
-        if (index < 0) return;
+        if (index < 0) {
+          // Traffic in a topic the page predates: ask TDLib for its identity
+          // so the tab strip and topic list gain it without a reload.
+          _requestForumTopicInfo(topicId);
+          return;
+        }
         final topic = forumTopics[index];
         if (topic.lastMessageId != 0 &&
             (message.date < topic.lastMessageDate ||
@@ -982,6 +1072,14 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
           lastSender: _topicPreviewSender(topic.id, message),
           lastMessageDate: message.date,
           lastMessageId: message.id,
+        );
+        // The strip orders by newest activity: move the topic now instead of
+        // waiting for the index notification, so a live update that reaches
+        // this pane first cannot paint the old order.
+        forumTopics = orderForumTopics(
+          forumTopics,
+          isPinned: (option) => option.isPinned,
+          lastMessageId: (option) => option.lastMessageId,
         );
         notifyListeners();
         unawaited(_resolveTopicPreviewSenders([message]));
@@ -1013,6 +1111,13 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
           lastSender: forumTopics[index].lastSender,
           lastMessageDate: forumTopics[index].lastMessageDate,
           lastMessageId: forumTopics[index].lastMessageId,
+        );
+        // A pin change moves the row between the pinned block and the
+        // activity-sorted rest.
+        forumTopics = orderForumTopics(
+          forumTopics,
+          isPinned: (option) => option.isPinned,
+          lastMessageId: (option) => option.lastMessageId,
         );
         notifyListeners();
 
@@ -1092,11 +1197,17 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
     if (user.int64('id') != peerUserId) return;
     final nextIsBot = TDParse.isBotUser(user);
     final nextSupportsTopics = TDParse.botUserHasTopics(user);
-    if (peerIsBot == nextIsBot && supportsBotTopics == nextSupportsTopics) {
+    final nextBotTopicsManageable =
+        nextSupportsTopics &&
+        (user.obj('type')?.boolean('allows_users_to_create_topics') ?? false);
+    if (peerIsBot == nextIsBot &&
+        supportsBotTopics == nextSupportsTopics &&
+        botTopicsManageable == nextBotTopicsManageable) {
       return;
     }
     peerIsBot = nextIsBot;
     supportsBotTopics = nextSupportsTopics;
+    botTopicsManageable = nextBotTopicsManageable;
     if (!supportsTopics) {
       forumTopicsLoading = false;
       forumTopics = const [];
@@ -1204,6 +1315,14 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
   /// the send / membership / join flags the chat UI reads, plus the topic
   /// moderation rights the forum topic list gates its actions on.
   void _applyGroupStatus(Map<String, dynamic>? status) {
+    // A channel direct messages chat is a monoforum: it has no membership to
+    // hold — each subscriber's conversation lives in their own topic, and
+    // TDLib reports the current user as "left" until that topic exists. Write
+    // access follows the parent channel (ChatManager::have_input_peer_channel
+    // grants Write while the channel is readable), so treating the status like
+    // an ordinary left group paints a join prompt over a chat that already
+    // accepts the user's messages.
+    final directMessagesChat = isDirectMessagesGroup;
     switch (status?.type) {
       case 'chatMemberStatusCreator':
         canDeleteMessagesBySender = true;
@@ -1240,16 +1359,26 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
           sendDisabledReason = AppStrings.t(AppStringKeys.chatYouAreMuted);
         }
       case 'chatMemberStatusLeft':
-        isMember = false;
-        canSendMessages = false;
-        canSendVoiceNotes = false;
-        canJoin = true;
+        if (directMessagesChat) {
+          // Opened before the user ever wrote there: sending is already
+          // allowed and the server files the message in their own topic.
+          isMember = true;
+          canJoin = false;
+          canSendMessages = _chatCanSend;
+        } else {
+          isMember = false;
+          canSendMessages = false;
+          canSendVoiceNotes = false;
+          canJoin = true;
+        }
       case 'chatMemberStatusBanned':
         isMember = false;
         canSendMessages = false;
         canSendVoiceNotes = false;
         sendDisabledReason = AppStrings.t(
-          AppStringKeys.chatYouWereRemovedFromGroup,
+          isChannel
+              ? AppStringKeys.chatYouWereRemovedFromChannel
+              : AppStringKeys.chatYouWereRemovedFromGroup,
         );
     }
   }
@@ -1323,7 +1452,7 @@ extension ChatViewModelHeaderTopics on ChatViewModel {
       });
       final list = res.objects('messages');
       final parsed = (list ?? const [])
-          .map(TDParse.message)
+          .map(_parseMessage)
           .whereType<ChatMessage>()
           .toList();
       await dismissal;

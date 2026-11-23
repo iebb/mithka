@@ -19,9 +19,20 @@ class AppChatPageRoute<T> extends PageRoute<T>
     super.settings,
     super.requestFocus,
     this.maintainState = true,
-  }) : super(allowSnapshotting: false);
+    Duration? transitionDuration,
+    Duration? reverseTransitionDuration,
+  }) : _transitionDuration = transitionDuration ?? AppMotion.route,
+       _reverseTransitionDuration =
+           reverseTransitionDuration ?? AppMotion.routeReverse,
+       super(allowSnapshotting: false);
 
   final WidgetBuilder builder;
+
+  /// An in-place swap (a topic switch inside one chat) passes [Duration.zero]
+  /// so the replacement transcript arrives fully in a single frame instead
+  /// of sliding over its sibling — the strip and header never animate.
+  final Duration _transitionDuration;
+  final Duration _reverseTransitionDuration;
 
   @override
   final bool maintainState;
@@ -32,10 +43,10 @@ class AppChatPageRoute<T> extends PageRoute<T>
   bool _fullPageBackSwipeActive = false;
 
   @override
-  Duration get transitionDuration => AppMotion.route;
+  Duration get transitionDuration => _transitionDuration;
 
   @override
-  Duration get reverseTransitionDuration => AppMotion.routeReverse;
+  Duration get reverseTransitionDuration => _reverseTransitionDuration;
 
   @override
   Color? get barrierColor => null;

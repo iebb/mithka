@@ -77,6 +77,12 @@ extension _ChatViewScrollSession on _ChatViewState {
         unawaited(_continueHistoryIfNearLatest());
       }
     } else if (_initialTranscriptReady) {
+      // A drag starting means the reader is leaving the composer: fold its
+      // open panels the same way the OS folds the keyboard on drag.
+      if (_lastTranscriptUserScrollDirection == ScrollDirection.idle &&
+          notification.direction != ScrollDirection.idle) {
+        _vm.dismissComposerPanels();
+      }
       // Once an older-page request is in flight, a turn toward the latest
       // messages means the user has abandoned the pull. A later model frame
       // must not reveal that page by jumping the viewport back to the oldest
@@ -347,46 +353,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     } else {
       Navigator.of(context).pop();
     }
-  }
-
-  ({int messageId, double viewportOffset})? _captureSessionScrollAnchor() {
-    final viewportContext = _transcriptViewportKey.currentContext;
-    final viewportRenderObject = viewportContext?.findRenderObject();
-    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
-      return null;
-    }
-    // Viewport-local coordinates: the offset is already relative to the
-    // viewport top, and stopping the transform walk at the viewport avoids the
-    // full ancestor chain per row.
-    final viewportBottom = viewportRenderObject.size.height;
-    int? visibleAnchorMessageId;
-    double? visibleAnchorTop;
-    int? partialAnchorMessageId;
-    double? partialAnchorTop;
-    for (final entry in _mountedTranscriptEntries.entries) {
-      final itemRenderObject = entry.value;
-      if (!itemRenderObject.attached) {
-        continue;
-      }
-      final itemTop = itemRenderObject
-          .localToGlobal(Offset.zero, ancestor: viewportRenderObject)
-          .dy;
-      final itemBottom = itemTop + itemRenderObject.size.height;
-      if (itemBottom <= 0 || itemTop >= viewportBottom) continue;
-      if (itemTop >= 0) {
-        if (visibleAnchorTop == null || itemTop < visibleAnchorTop) {
-          visibleAnchorMessageId = entry.key;
-          visibleAnchorTop = itemTop;
-        }
-      } else if (partialAnchorTop == null || itemTop > partialAnchorTop) {
-        partialAnchorMessageId = entry.key;
-        partialAnchorTop = itemTop;
-      }
-    }
-    final anchorMessageId = visibleAnchorMessageId ?? partialAnchorMessageId;
-    final anchorTop = visibleAnchorTop ?? partialAnchorTop;
-    if (anchorMessageId == null || anchorTop == null) return null;
-    return (messageId: anchorMessageId, viewportOffset: anchorTop);
   }
 
   void _scheduleUnreadProgressUpdate() {
@@ -676,9 +642,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     _autoScrollPolicy.allowViewportPreservation();
   }
 
-  /// Records where the reader is standing before an in-transcript jump. A
-  /// chain of jumps keeps the FIRST origin: that is the place the reader
-  /// actually left, and every later jump is only a detour away from it.
   void _captureJumpOrigin() {
     if (_jumpOrigin != null || _scrollTargetId != null) return;
     if (!mounted || !_initialTranscriptReady || !_scroll.hasClients) return;
@@ -699,9 +662,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     _jumpOriginDragBaseline = null;
   }
 
-  /// Remembers where the viewport stood when a real drag began. A tap (reply
-  /// quote, timestamp) produces no scroll notification, so it can never be
-  /// mistaken for the drag that abandons the origin.
   void _noteJumpOriginDragStart() {
     if (_jumpOrigin == null || !_hasTranscriptPointerDown) return;
     _jumpOriginDragBaseline ??= _scroll.hasClients
@@ -709,9 +669,6 @@ extension _ChatViewScrollSession on _ChatViewState {
         : null;
   }
 
-  /// Drops the origin once a drag has carried the viewport a meaningful
-  /// distance away from the jump target. A small nudge to read the quoted
-  /// neighbourhood keeps the arrow pointing back at where the reader left.
   void _releaseJumpOriginAfterDrag() {
     final baseline = _jumpOriginDragBaseline;
     _jumpOriginDragBaseline = null;
@@ -726,8 +683,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     }
   }
 
-  /// The floating arrow: returns to the message the reader left while a jump
-  /// origin is live, and to the newest message otherwise.
   void _onReturnToLatestTapped() {
     final origin = _jumpOrigin;
     if (origin != null) {
@@ -740,11 +695,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     _requestReturnToLatest(userInitiated: true);
   }
 
-  /// The shell asked for the newest message — because the reader tapped the
-  /// conversation that is already open, or re-opened it from a link. This is
-  /// the same intent as tapping the return-to-latest arrow, so it goes through
-  /// the same coordinator: an anchored history window loads the latest page
-  /// first, and a plain scroll-up just animates back to the edge.
   void _onRevealLatestRequested() {
     if (!mounted) return;
     if (!_scroll.hasClients) {
@@ -922,10 +872,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     _scheduleScrollToBottom(animated: false);
   }
 
-  /// The transcript sits above the composer in a forward scroll view, so a
-  /// field that wraps onto more lines shrinks the viewport from the bottom and
-  /// would cover the newest message. Unlike a panel change this keeps a
-  /// pending unread/linked-message jump.
   void _onComposerInputHeightChanged() {
     if (_scrollTargetId != null ||
         !_autoScrollPolicy.shouldFollowComposerPanelChange(
@@ -1000,9 +946,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     lastReadInboxId: _entryLastReadInboxId,
   );
 
-  /// Jump to the unread boundary captured when the chat opened. The live TDLib
-  /// boundary may already point at the newest message after the chat is marked
-  /// read, so it cannot be used to resolve this button later.
   Future<void> _jumpToFirstUnread() async {
     // Choosing a different destination drops the recorded jump origin.
     _forgetJumpOrigin();
@@ -1254,6 +1197,7 @@ extension _ChatViewScrollSession on _ChatViewState {
 
   void _onModel() {
     if (!mounted) return;
+    _maybeOpenCreatedBotTopic();
     final nextFullViewRevision = _vm.fullViewRevision;
     final requiresFullViewSync = chatViewRequiresFullSync(
       previousRevision: _fullViewRevision,
@@ -1579,10 +1523,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     _scrollTargetId = messageId;
   }
 
-  /// Makes an arbitrary loaded target the first child after the scroll view's
-  /// center sliver, so Flutter lays it out without depending on guessed row
-  /// heights. The transcript keeps the same chronological order on both sides
-  /// of the new pivot; only its zero scroll coordinate moves to the target.
   bool _stageMessageAtTranscriptCenter(int messageId) {
     if (!_scroll.hasClients) return false;
     ChatMessage? target;
@@ -1662,10 +1602,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     (m) => !m.isOutgoing && !m.isService && _isEntryUnreadMessage(m.id),
   );
 
-  /// One-time positioning when a chat opens. This must never block painting:
-  /// a hidden transcript reads as a black screen in dark mode. We jump to the
-  /// deterministic estimate immediately and then do one zero-duration correction
-  /// after layout, without waiting to reveal the UI.
   Future<void> _completeInitialScroll() async {
     // Opening (or reopening) the session establishes a fresh reading position;
     // an origin from a previous visit of this state must not survive it.
@@ -1819,9 +1755,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     return _restoreMessageViewportOffset(messageId, desiredOffset);
   }
 
-  /// Puts [messageId] back at [desiredOffset] pixels below the transcript
-  /// viewport top, measured rather than replayed as raw pixels: the row may sit
-  /// in a different sliver window than it did when the offset was recorded.
   bool _restoreMessageViewportOffset(int messageId, double desiredOffset) {
     if (!_scroll.hasClients) return false;
     final viewportContext = _transcriptViewportKey.currentContext;
@@ -2161,8 +2094,6 @@ extension _ChatViewScrollSession on _ChatViewState {
     });
   }
 
-  /// Unparks a frozen newest (or newest-like) pivot when older messages are
-  /// already in the model but only the after-center arm is visible.
   bool _repairParkedShortTranscriptPivot() {
     if (!mounted ||
         (_vm.anchoredHistory && !_isTranscriptShort()) ||

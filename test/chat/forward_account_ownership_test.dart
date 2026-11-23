@@ -28,15 +28,10 @@ class _Accounts implements TdClient {
   }) async {
     routed.add(clientId);
     switch (request['@type']) {
-      case 'getMessageProperties':
+      case 'getChat':
+        // Simulates a concurrent account switch racing the first probe.
         activeClientId = 10;
         if (replaceSource) clients[0] = 10;
-        return {
-          '@type': 'messageProperties',
-          'can_be_copied': true,
-          'can_be_forwarded': true,
-        };
-      case 'getChat':
         return {'@type': 'chat', 'id': 42, 'has_protected_content': false};
       case 'parseMarkdown':
         return {
@@ -89,7 +84,10 @@ void main() {
     () async {
       final accounts = _Accounts()..replaceSource = true;
       final query = forwardQueryForOwner(accounts, accountSlot: 0, clientId: 9);
-      expect(await _copy(query), isFalse);
+      // The first pinned query (getChat) swaps the slot's client out from
+      // under the forward; the copy then refuses with the pinned-client
+      // StateError instead of quietly re-routing to the new account.
+      await expectLater(_copy(query), throwsStateError);
       await expectLater(
         forwardMessagesWithOptions(
           client: accounts,
@@ -101,6 +99,7 @@ void main() {
         throwsStateError,
       );
       expect(accounts.sent, isEmpty);
+      // getChat rode the pre-switch client 9 before the swap.
       expect(accounts.routed, [9]);
     },
   );

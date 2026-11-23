@@ -7,6 +7,8 @@ preview glyph through a full emoji font.
 
 Included source artwork:
 
+- `apple.png`: Apple Color Emoji `U+1F602` rendered from the AppleColorEmoji
+  CBDT table (GORAlexComp/AppleColorEmojiFont), downscaled to 64px
 - `noto.svg`: googlefonts/noto-emoji `emoji_u1f602.svg`
 - `noto-mono.svg`: same Noto source artwork; the upstream monochrome font does
   not publish a separate SVG asset

@@ -422,6 +422,7 @@ class _DesktopMiniAppMainBridge with WindowListener {
           messageId: request.messageId,
           accountSlot: binding.accountSlot,
           accountUserId: binding.accountUserId,
+          externalReply: request.externalReply,
         );
         try {
           await MultiWindowManager.current.show();
