@@ -24,6 +24,7 @@ import '../l10n/app_localizations.dart';
 import '../media/video_playback_reporting.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';
+import '../theme/app_theme.dart';
 import 'desktop_media_window_registry.dart';
 import 'video_split_controller.dart';
 
@@ -189,8 +190,10 @@ class DesktopVideoWindowApp extends StatelessWidget {
       title: arguments.title,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      builder: (context, child) => DefaultTextStyle.merge(
-        style: const TextStyle(decoration: TextDecoration.none),
+      // The player's screens bring no text style of their own; without this
+      // default a Text that omits its weight draws at weight 900.
+      builder: (context, child) => DefaultTextStyle(
+        style: AppTextStyle.body(Colors.white),
         child: child ?? const SizedBox.shrink(),
       ),
       supportedLocales: AppLocalizations.supportedLocales,

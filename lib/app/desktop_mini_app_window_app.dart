@@ -13,6 +13,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'app_navigator.dart';
+import 'app_root_text_style.dart';
 import 'desktop_mini_app_window.dart';
 
 /// Presentation shell for an independent native Telegram Mini App window.
@@ -141,15 +142,9 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
                     boldText: media.boldText,
                   ),
                 ),
-                // Cupertino-rooted screens (SearchView and friends) sit under no
-                // text style of their own, so any Text that omits a decoration
-                // inherits Flutter's yellow "unstyled" underline. A Material
-                // ancestor would also fix it, but the app avoids Material
-                // surfaces and only the text default is actually missing.
-                child: DefaultTextStyle.merge(
-                  style: const TextStyle(decoration: TextDecoration.none),
-                  child: child ?? const SizedBox.shrink(),
-                ),
+                // Screens bring no text style of their own; without this default a
+                // Text that omits its weight draws at Flutter's unstyled weight 900.
+                child: AppRootTextStyle(theme: _theme, child: child),
               ),
             );
           },

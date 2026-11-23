@@ -253,4 +253,38 @@ void main() {
 
     await tearDownPicker(tester);
   });
+
+  testWidgets('a pinned picker resolves folder names on its own account', (
+    tester,
+  ) async {
+    await pumpPicker(tester);
+
+    // A chat filed under a folder the picker has not been told about yet: the
+    // folder's name has to be asked for, and folder ids are account-scoped.
+    final chat = _chatJson(44, 'Filed chat');
+    (chat['positions'] as List).add({
+      '@type': 'chatPosition',
+      'list': {'@type': 'chatListFolder', 'chat_folder_id': 9},
+      'order': '500',
+      'is_pinned': false,
+    });
+    client.routeUpdateForTesting({
+      '@type': 'updateNewChat',
+      '@client_id': pinnedClientId,
+      'chat': chat,
+    });
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final lookups = queries
+        .where((entry) => entry.$2['@type'] == 'getChatFolder')
+        .toList();
+    expect(lookups, isNotEmpty);
+    expect(
+      lookups.map((entry) => entry.$1).toSet(),
+      {pinnedClientId},
+      reason: 'the foreground account has a different folder behind this id',
+    );
+
+    await tearDownPicker(tester);
+  });
 }

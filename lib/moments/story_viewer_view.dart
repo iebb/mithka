@@ -1396,7 +1396,10 @@ class _StoryViewerViewState extends State<StoryViewerView>
   Future<void> _shareStory() async {
     final picked = await Navigator.of(context).push<ChatSummary>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(title: AppStringKeys.storyShare),
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.storyShare,
+          showFolders: true,
+        ),
       ),
     );
     if (picked == null) return;
