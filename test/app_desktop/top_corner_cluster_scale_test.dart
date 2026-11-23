@@ -6,11 +6,13 @@ import 'package:mithka/app/scaled_app_view.dart';
 import 'package:mithka/app/top_corner_cluster.dart';
 
 /// iPhone Duo geometry as the platform reports it, in window points.
+/// The closed screen reports the camera as its own region inside the status
+/// cluster.
 const _closedDuo = TopOcclusionData(
   safeTop: 82,
   statusBarBottom: 2,
   windowWidth: 466,
-  regions: [Rect.fromLTWH(266, 0, 200, 82)],
+  regions: [Rect.fromLTWH(266, 0, 200, 82), Rect.fromLTWH(399.7, 29.3, 37, 37)],
 );
 const _openedDuo = TopOcclusionData(
   safeTop: 82,
@@ -56,14 +58,28 @@ void main() {
       test('a closed header row sits beside the cluster at s=$s', () {
         final data = _closedDuo.inViewScale(s);
         final slot = data.rowSlotBeside(Rect.fromLTWH(0, 0, 466 / s, 200));
+        expect(data.compactTop, isNotNull);
         expect(slot, isNotNull);
-        expect(slot!.centerY * s, moreOrLessEquals(41));
-        expect(slot.bottom * s, moreOrLessEquals(82));
+        // On the clock and camera line, not the middle of the 82pt inset.
+        expect(slot!.centerY * s, moreOrLessEquals(47.8));
+        expect(slot.bottom * s, moreOrLessEquals(66.3));
         expect(slot.insets.left, 0);
         // The row ends 8 window points before the cluster at x=266.
         expect((466 / s - slot.insets.right) * s, moreOrLessEquals(258));
       });
     }
+
+    test('nested regions count the covered edge once', () {
+      // 200 + 37 would pass half of the 466pt edge; together they cover 200.
+      expect(_closedDuo.compactTop, TopOcclusionData.paneTop);
+      const wide = TopOcclusionData(
+        safeTop: 82,
+        statusBarBottom: 2,
+        windowWidth: 466,
+        regions: [Rect.fromLTWH(0, 0, 120, 82), Rect.fromLTWH(300, 0, 166, 82)],
+      );
+      expect(wide.compactTop, isNull);
+    });
 
     test('scale 1 returns the same data', () {
       expect(identical(_closedDuo.inViewScale(1), _closedDuo), isTrue);

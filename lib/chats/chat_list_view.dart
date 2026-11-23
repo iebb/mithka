@@ -2684,8 +2684,8 @@ class _ChatListViewState extends State<ChatListView>
       ],
     );
     // Beside a corner status cluster hanging from the top edge (a closed
-    // iPhone Duo) the row moves up into the cluster's band, centred on it and
-    // ending a gap before it; the folder tabs then start below the cluster.
+    // iPhone Duo) the row moves up onto the line of the clock and camera,
+    // ending a gap before the cluster; the folder tabs follow right below.
     return TopClusterRowBeside(
       builder: (context, slot) {
         if (slot == null) {

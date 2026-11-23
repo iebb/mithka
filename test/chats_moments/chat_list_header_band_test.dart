@@ -16,11 +16,13 @@ const _longName =
     'Wilhelmina Featherstonehaugh-Cholmondeley of the Northern Reaches';
 
 /// A closed iPhone Duo as the platform reports it, in window points.
+/// The closed screen reports the camera as its own region inside the status
+/// cluster.
 const _closedDuo = TopOcclusionData(
   safeTop: 82,
   statusBarBottom: 2,
   windowWidth: 466,
-  regions: [Rect.fromLTWH(266, 0, 200, 82)],
+  regions: [Rect.fromLTWH(266, 0, 200, 82), Rect.fromLTWH(399.7, 29.3, 37, 37)],
 );
 
 final _add = find.byKey(const ValueKey('chat-list-header-add-hit'));
@@ -102,17 +104,18 @@ void main() {
           scale: s,
           occlusion: _closedDuo,
         );
-        // Window points: the avatar is centred on the cluster and the
-        // truncated name ends 8pt before it.
-        expect(tester.getCenter(_avatar).dy, moreOrLessEquals(41, epsilon: 1));
+        // Window points: the avatar sits on the clock and camera line and
+        // the truncated name ends 8pt before the cluster.
+        final avatar = tester.getRect(_avatar);
+        expect(avatar.center.dy, moreOrLessEquals(47.8, epsilon: 1));
         final name = tester.getRect(find.text(_longName));
         expect(name.right, lessThanOrEqualTo(258 + 0.5));
-        // Tabs start below the cluster, keeping the + clear of it.
-        expect(tester.getRect(_add).top, greaterThanOrEqualTo(82));
-        expect(
-          tester.getTopLeft(find.byType(ShaderMask)).dy,
-          greaterThanOrEqualTo(82 - 0.5),
-        );
+        // The tabs follow the row with its usual 10pt gap, clear of the
+        // camera.
+        final tabsTop = tester.getTopLeft(find.byType(ShaderMask)).dy;
+        expect(tabsTop, moreOrLessEquals(avatar.bottom + 10 * s, epsilon: 1));
+        expect(tabsTop, greaterThanOrEqualTo(66.3));
+        expect(tester.getRect(_add).top, greaterThan(66.3));
         await _dispose(tester);
       },
       variant: TargetPlatformVariant.only(TargetPlatform.android),

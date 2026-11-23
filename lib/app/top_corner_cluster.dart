@@ -88,13 +88,29 @@ class TopOcclusionData {
     // The inset must be the cluster's own height, not a deeper system bar.
     final clusterBottom = regions.map((r) => r.bottom).reduce(math.max);
     if ((clusterBottom - safeTop).abs() > tolerance) return null;
-    // The cluster must leave most of the edge free.
-    final covered = regions.fold<double>(
-      0,
-      (sum, r) => sum + r.width.clamp(0, windowWidth),
-    );
-    if (covered > windowWidth / 2) return null;
+    // The cluster must leave most of the edge free. Regions nest (the closed
+    // iPhone Duo reports its camera inside the status cluster), so measure
+    // the edge they cover together rather than adding their widths.
+    if (_coveredWidth > windowWidth / 2) return null;
     return bandTop;
+  }
+
+  double get _coveredWidth {
+    final spans = [
+      for (final r in regions)
+        (
+          r.left.clamp(0.0, windowWidth).toDouble(),
+          r.right.clamp(0.0, windowWidth).toDouble(),
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    var covered = 0.0;
+    var end = double.negativeInfinity;
+    for (final (left, right) in spans) {
+      if (right <= end) continue;
+      covered += right - math.max(left, end);
+      end = right;
+    }
+    return covered;
   }
 
   /// Room a header row inside [pane] leaves for the cluster: the side of the
@@ -146,9 +162,19 @@ class TopOcclusionData {
     }
     if (cluster == null) return null;
     if (left + right > header.width / 2) return null;
+    // The row shares the line of the status items themselves. The cluster's
+    // region runs down to the full inset; a region nested in it (the camera
+    // beside the clock on a closed iPhone Duo) marks that line, so the row
+    // centres on the innermost one and only needs to clear its bottom.
+    var line = cluster;
+    for (final region in regions) {
+      if (region.height < line.height && cluster.overlaps(region)) {
+        line = region;
+      }
+    }
     return TopClusterRowSlot(
-      centerY: cluster.center.dy - header.top,
-      bottom: cluster.bottom - header.top,
+      centerY: line.center.dy - header.top,
+      bottom: line.bottom - header.top,
       insets: EdgeInsets.only(left: left, right: right),
     );
   }
@@ -338,10 +364,11 @@ class TopClusterRowSlot {
     required this.insets,
   });
 
-  /// The cluster's vertical centre, which the row's content shares.
+  /// The vertical centre of the status items' line, which the row's content
+  /// shares.
   final double centerY;
 
-  /// The cluster's bottom: anything spanning the full width starts below it.
+  /// Bottom of that line: whatever follows the row starts at least here.
   final double bottom;
 
   /// Horizontal room kept for the cluster plus [TopOcclusionData.gap].
@@ -411,8 +438,8 @@ class _TopClusterRowBesideState extends State<TopClusterRowBeside> {
 }
 
 /// Lays a header row out on a [TopClusterRowSlot]: the row's vertical centre
-/// on the cluster's, then [bottomGap] below the row, and never less than the
-/// cluster's height, so whatever follows starts clear of the cluster.
+/// on the status items' line, then [bottomGap] below the row, and never
+/// shorter than that line, so whatever follows starts clear of it.
 class TopClusterRow extends SingleChildRenderObjectWidget {
   const TopClusterRow({
     super.key,
