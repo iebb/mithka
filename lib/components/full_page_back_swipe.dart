@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show Theme;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../platform/adaptive_platform.dart';
@@ -21,11 +22,37 @@ abstract interface class FullPageBackSwipeDriver {
   void commitFullPageBackSwipe(VoidCallback? beforePop);
 }
 
+/// Marks a subtree that owns horizontal drags, such as a horizontally
+/// scrollable strip: the full-page back swipe ignores pointers that land
+/// inside it.
+///
+/// The back swipe is a raw pointer listener, so it never loses a gesture
+/// arena to a nested control. Without this marker a rightward drag that
+/// scrolls a strip back (the topic tabs above all) also starts the page's
+/// back gesture and pops the chat. Layout and painting are untouched: the
+/// marker only adds itself to the hit-test path.
+class ExcludeFromBackSwipe extends SingleChildRenderObjectWidget {
+  const ExcludeFromBackSwipe({super.key, super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderExcludeFromBackSwipe();
+}
+
+class _RenderExcludeFromBackSwipe extends RenderProxyBox {
+  // Opaque to the hit test even over a transparent gap between the strip's
+  // items: the whole bar belongs to the strip, not only the painted tabs.
+  @override
+  bool hitTestSelf(Offset position) => true;
+}
+
 /// Observes a rightward back swipe from anywhere inside [child].
 ///
 /// A raw pointer listener is intentional: nested horizontal controls can keep
 /// handling their own gestures while the page still observes the navigation
-/// gesture.
+/// gesture. Controls that must not share the drag — horizontally scrollable
+/// surfaces and anything marked with [ExcludeFromBackSwipe] — are excluded at
+/// pointer-down, because a raw listener cannot be cancelled by the arena.
 class FullPageBackSwipe extends StatefulWidget {
   const FullPageBackSwipe({
     super.key,
@@ -81,9 +108,28 @@ class _FullPageBackSwipeState extends State<FullPageBackSwipe> {
         (event.kind == PointerDeviceKind.mouse ||
             event.kind == PointerDeviceKind.trackpad);
     if (desktopPointer) return;
+    // The drag belongs to the control under the finger when that control
+    // scrolls horizontally (the topic tab strip above all): a rightward swipe
+    // there is "scroll back to earlier tabs", not "leave the chat".
+    if (_ownsHorizontalDragAt(event.position, event.viewId)) return;
     _pointer = event.pointer;
     _velocity = VelocityTracker.withKind(event.kind)
       ..addPosition(event.timeStamp, event.position);
+  }
+
+  /// True when the pointer landed on a horizontally scrollable surface or on a
+  /// subtree marked [ExcludeFromBackSwipe].
+  bool _ownsHorizontalDragAt(Offset position, int viewId) {
+    final result = HitTestResult();
+    RendererBinding.instance.hitTestInView(result, position, viewId);
+    for (final entry in result.path) {
+      final target = entry.target;
+      if (target is _RenderExcludeFromBackSwipe) return true;
+      if (target is RenderViewportBase && target.axis == Axis.horizontal) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _update(PointerMoveEvent event) {

@@ -274,17 +274,33 @@ Map<String, dynamic> createForumTopicRequest({
   required String name,
   required int color,
   required int customEmojiId,
+  bool isNameImplicit = false,
 }) => {
   '@type': 'createForumTopic',
   'chat_id': chatId,
   'name': name,
-  'is_name_implicit': false,
+  'is_name_implicit': isNameImplicit,
   'icon': {
     '@type': 'forumTopicIcon',
     'color': color,
     'custom_emoji_id': customEmojiId,
   },
 };
+
+/// The implicit title a send from a bot topic chat's "All" view starts its
+/// topic with: the message's first [maxLength] characters, ellipsised when
+/// longer — the reference client names bot-forum topics exactly this way. Returns an
+/// empty string when the message carries no text, so the caller falls back to
+/// a media/placeholder title.
+String botTopicTitleForMessage(String text, {int maxLength = 16}) {
+  // One line keeps a multi-line paste from folding into a tall tab label.
+  final collapsed = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (collapsed.isEmpty) return '';
+  final runes = collapsed.runes.toList(growable: false);
+  if (runes.length <= maxLength) return collapsed;
+  final clipped = String.fromCharCodes(runes.take(maxLength)).trimRight();
+  return '$clipped...';
+}
 
 Map<String, dynamic> editForumTopicRequest({
   required int chatId,
@@ -347,11 +363,15 @@ Map<String, dynamic> toggleForumTopicClosedRequest({
 /// The gated action list for one topic row, exactly the way Telegram iOS
 /// offers them: mark-read while unread remains, mute for everyone, pin/edit/
 /// close behind can_manage_topics, delete behind the creator /
-/// can_delete_messages rule (the caller decides that one).
+/// can_delete_messages rule (the caller decides that one). [canClose] carries
+/// the caller's close right — can_manage_topics or the topic's own creator —
+/// and stays false for a chat with a bot, whose close call TDLib does not
+/// support.
 List<TopicRowAction> topicRowActions({
   required TopicNavigationItem topic,
   required bool canManage,
   required bool canDelete,
+  required bool canClose,
   required Future<void> Function() onMarkRead,
   required Future<void> Function() onTogglePinned,
   required Future<void> Function() onToggleMuted,
@@ -391,7 +411,7 @@ List<TopicRowAction> topicRowActions({
         icon: HeroAppIcons.pen,
         onSelected: onEdit,
       ),
-    if (canManage && !topic.isGeneral)
+    if (canClose && !topic.isGeneral)
       TopicRowAction(
         key: 'close',
         label: topic.isClosed

@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -42,6 +43,7 @@ import '../../components/ui_components.dart';
 import '../../media/app_asset_picker.dart';
 import '../../media/camera_capture.dart';
 import '../../media/media_metadata.dart';
+import '../../platform/adaptive_platform.dart';
 import '../../platform/desktop_clipboard_images.dart';
 import '../../platform/desktop_screenshot.dart';
 import '../../platform/keyboard_image_paste.dart';
@@ -68,14 +70,21 @@ import '../ai_translation/ai_reply_service.dart';
 import '../ai_translation/telegram_ai_editor_view.dart';
 import '../ai_translation/telegram_ai_service.dart';
 import '../chat_view_model.dart';
+import '../composer_reply_options_sheet.dart';
+import '../favorite_sticker_store.dart';
+import '../forward_handoff.dart';
 import '../links_search/link_handler.dart';
 import '../media/audio_search_view.dart';
 import '../media/image_edit_view.dart';
+import '../media/media_download_service.dart';
 import '../media/media_library_saver.dart';
+import '../media_tile_action_sheet.dart';
 import '../messages/bot_button_presentation.dart';
+import '../messages/forward_options.dart' show isForwardProtectedError;
 import '../mini_apps/bot_platform_service.dart';
 import '../mini_apps/telegram_mini_app_view.dart';
 import '../stickers/custom_emoji.dart';
+import '../stickers/emoji_catalog.dart';
 import '../stickers/emoji_panel.dart';
 import '../stickers/emoji_panel_layout.dart';
 import '../stickers/emoji_recents_store.dart';
@@ -84,9 +93,10 @@ import '../stickers/emoji_text_controller.dart';
 import '../stickers/gif_item.dart';
 import '../stickers/gif_preview.dart';
 import '../stickers/gif_store.dart';
+import '../stickers/sticker_export_service.dart';
 import '../stickers/sticker_item.dart';
 import '../stickers/sticker_preview.dart';
-import '../stickers/sticker_set_studio_view.dart';
+import '../stickers/sticker_set_detail_view.dart';
 import '../stickers/sticker_store.dart';
 import 'checklist_composer_view.dart';
 import 'contact_share_picker_view.dart';
@@ -506,6 +516,9 @@ typedef _ComposerVmState = ({
   Object? selectedSender,
   bool canChooseSender,
   bool peerIsBot,
+  int? replyToId,
+  int? replyToChatId,
+  int? replyQuoteRevision,
 });
 
 /// Incoming chat updates are frequent while a user is typing. Rebuilding the
@@ -549,7 +562,12 @@ class ChatInputBar extends StatefulWidget {
     this.quickRepliesEnabled = true,
     this.showCallAction = true,
     this.simpleMode = false,
+    this.initialMediaKind,
+    this.onMediaKindChanged,
     this.onBotTopicCreated,
+    this.onReplyOptionsRequested,
+    this.onForwardOptionsRequested,
+    this.onReplySourceJump,
     this.quickReplyLoader,
     this.quickReplySender,
     this.onVoicePanelOpenedForTesting,
@@ -591,7 +609,28 @@ class ChatInputBar extends StatefulWidget {
   /// the strip's other tools move into the More panel. The native desktop
   /// composer ignores it.
   final bool simpleMode;
+
+  /// The media panel segment ('emoji'/'sticker'/'gif') the panel should open
+  /// on; chat_view restores the last-used segment from preferences. Null (and
+  /// any unrecognized value) means emoji.
+  final String? initialMediaKind;
+
+  /// Reports every segment switch so the caller can persist the last-used
+  /// segment. Fires only on real changes, never on restore.
+  final ValueChanged<String>? onMediaKindChanged;
   final ValueChanged<int>? onBotTopicCreated;
+
+  /// Tapping the reply banner's body asks the host to present the reply
+  /// options sheet (quote selection, reply in another chat). Null leaves the
+  /// banner body inert; hosts that cannot present options keep tap-to-nothing.
+  final VoidCallback? onReplyOptionsRequested;
+
+  /// Tapping the pending-forward banner's body asks the host to present the
+  /// forward options sheet (hide sender, remove caption, render markdown).
+  final VoidCallback? onForwardOptionsRequested;
+
+  /// Long-pressing the reply banner jumps to the original message.
+  final ValueChanged<ChatMessage>? onReplySourceJump;
   @visibleForTesting
   final Future<List<BusinessQuickReplyShortcut>> Function()? quickReplyLoader;
   @visibleForTesting
@@ -668,6 +707,10 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   static const _stickerSearchTabId = -3;
 
+  /// Strip pseudo-id for the favorites section (not a real pack id).
+
+  static const _favoritesTabId = -4;
+
   static const _emojiSearchTab = 'search';
 
   static const _imageMimeTypes = <String>[
@@ -686,13 +729,14 @@ class _ChatInputBarState extends State<ChatInputBar>
   final _panelSearch = TextEditingController();
 
   /// Simple mode's More panel. It never keeps an offset, so the panel always
+
   /// opens scrolled to the top.
+
   final _simpleMorePanelScroll = ScrollController(keepScrollOffset: false);
 
   final List<OutgoingAttachment> _pendingClipboardAttachments = [];
 
   final _desktopActionOwner = Object();
-
   DesktopHotkeyRegistration? _desktopScreenshotHotkeyRegistration;
 
   final _desktopSenderPopoverLink = LayerLink();
@@ -702,12 +746,12 @@ class _ChatInputBarState extends State<ChatInputBar>
   final _desktopSendOptionsTargetKey = GlobalKey();
 
   // Single anchor for the unified emoji/sticker/GIF media popover.
+
   final _desktopMediaPopoverLink = LayerLink();
 
   final _desktopSenderPopoverController = OverlayPortalController();
 
   final _desktopMediaPopoverController = OverlayPortalController();
-
   MessageSendOptionsContextMenuHandle? _desktopSendOptionsMenu;
 
   bool _desktopSenderPopoverVisible = false;
@@ -715,23 +759,83 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _desktopMediaPopoverVisible = false;
 
   bool _wasEditingMessage = false;
-
   int? _syncedEditingMessageId;
 
   int _syncedComposerRevision = -1;
 
   int _syncedComposerFocusTick = 0;
 
+  int _syncedComposerDismissTick = 0;
+
   _Panel _panel = _Panel.none;
+
+  /// Reply banner hint alternation (reference client parity): until the user
+
+  /// has opened the reply-options panel once, the banner's preview line
+
+  /// periodically swaps with a "tap for reply options" hint so the tap
+
+  /// affordance is discoverable.
+  bool? _replyHintSeen;
+  Timer? _replyHintTimer;
+
+  bool _replyHintShowing = false;
+
+  int _replyHintTick = 0;
 
   _MediaKind _mediaKind = _MediaKind.emoji;
 
-  String _emojiTab = 'standard';
+  String _emojiTab = 'standard'; // 'standard' or a custom-emoji pack id
+  int? _stickerPack; // active sticker pack id
 
-  // 'standard' or a custom-emoji pack id
-  int? _stickerPack;
+  /// The sticker panel's own vertical scroller: favorites, the recents
 
-  // active sticker pack id
+  /// pseudo-pack and every installed pack stack in one continuous list, with
+
+  /// the pack strip above anchoring into it.
+
+  final _stickerPanelScroll = ScrollController();
+
+  /// The emoji panel's own vertical scroller: the standard catalog categories
+
+  /// and the custom-emoji packs stack in one continuous list.
+
+  final _emojiPanelScroll = ScrollController();
+
+  /// Guards the sticker strip's scroll-following tab highlight against
+
+  /// re-entrancy: a tab tap animates the panel scroll to that pack, and the
+
+  /// resulting ScrollEnd must not be re-read as the user scrolling.
+
+  bool _stickerPanelAnimatingToPack = false;
+
+  /// The sticker pack header the panel scroll currently anchors to, kept as
+
+  /// a stable pack id so rebuilds (store loads, search toggles) never lose
+
+  /// the selection.
+
+  int _stickerAnchorPackId = StickerStore.recentPackId;
+
+  /// Guards the emoji strip's scroll-following highlight the same way a tab
+
+  /// tap animates the panel scroll to a category.
+
+  bool _emojiPanelAnimatingToSection = false;
+
+  /// The offset the active panel scroller sat at when search replaced it,
+
+  /// restored on cancel so leaving search never loses the user's place.
+  double? _panelScrollRestoreOffset;
+
+  /// Sticker pack loads this panel session already started, keyed by pack id
+
+  /// and cleared when the load settles, so a rebuild storm over an unloaded
+
+  /// section cannot re-issue the same getStickerSet query.
+
+  final Map<int, Future<void>> _stickerPackLoads = {};
   Timer? _panelSearchTimer;
 
   int _panelSearchGeneration = 0;
@@ -754,26 +858,28 @@ class _ChatInputBarState extends State<ChatInputBar>
   FlutterSoundRecorder? _recorder;
 
   /// The category this composer's capture put on the shared audio session.
+
   ///
+
   /// Non-null only while a capture owns it, so releasing is idempotent even
+
   /// when a stop, a cancel and dispose all run for one recording.
   VoiceRecordingAudioSession? _captureSession;
 
   /// The cause of the last preparation that could not get the microphone.
+
   ///
+
   /// The panel opening prepares once and every press waits on that same
+
   /// preparation, so without this a single failure would report itself again on
+
   /// each press. Opening the panel again clears it and retries.
   Object? _recorderPreparationFailure;
-
   desktop_record.AudioRecorder? _desktopRecorder;
-
   Future<void>? _recorderPreparation;
-
   Future<void>? _desktopRecorderPreparation;
-
   Future<void>? _voiceStart;
-
   Future<void>? _voiceStop;
 
   bool _voiceDisposed = false;
@@ -789,23 +895,22 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _changingRecordingPause = false;
 
   bool _mobilePointerHeld = false;
-
   int? _voicePointerId;
 
   // A press on the big button while a locked recording runs: its release
+
   // stops the recording and leaves it as a draft above the field.
   int? _lockedStopPointerId;
 
   Offset _lockedStopDownPosition = Offset.zero;
 
   _VoiceInlineError _voiceInlineError = _VoiceInlineError.none;
-
   VoiceNoteDraft? _desktopVoiceDraft;
 
   /// The phone's finished recording, waiting above the field to be sent with
+
   /// the field's text as its caption, or deleted.
   ComposerVoiceDraft? _voiceDraft;
-
   StreamSubscription<desktop_record.Amplitude>? _desktopRecProgress;
 
   final _desktopVoiceFocus = FocusNode(debugLabel: 'desktopVoiceMessage');
@@ -827,9 +932,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   double _pressStartX = 0;
 
   double _pressStartY = 0;
-
   Timer? _recTimer;
-
   StreamSubscription<RecordingDisposition>? _recProgress;
 
   final List<double> _recLevels = [];
@@ -838,42 +941,35 @@ class _ChatInputBarState extends State<ChatInputBar>
     elapsed: 0.0,
     levels: const <double>[],
   ));
-
   String? _recPath;
 
   late bool _hasText = vm.draft.trim().isNotEmpty;
 
   /// Assigned in [initState], never lazily: a `late` initializer would first
+
   /// run inside the very [_syncFromVm] call it exists to compare against, and
+
   /// so record the new value as the old one.
   late _ComposerVmState _syncedVmState;
 
   late bool _aiDraftEligible = isTelegramAiDraftEligible(vm.draft);
 
   bool _replyKeyboardVisible = false;
-
   Timer? _mentionSearchTimer;
-
   MentionQuery? _mentionQuery;
 
   List<MentionCandidate> _mentionCandidates = const [];
 
   int _mentionSearchGeneration = 0;
-
   BotCommandQuery? _botCommandQuery;
 
   List<BotCommandOption> _botCommandCandidates = const [];
-
   OverlayEntry? _relayProgressEntry;
-
   RichMessageRelayProgress? _relayProgress;
-
   late final BotPlatformService _botPlatform;
-
   StreamSubscription<Map<String, dynamic>>? _botPlatformUpdates;
 
   final List<BotGuestQuery> _guestQueries = [];
-
   Timer? _inlineBotTimer;
 
   int _inlineBotGeneration = 0;
@@ -881,15 +977,12 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _inlineBotLoading = false;
 
   bool _inlineBotLoadingMore = false;
-
   BotPlatformCapabilities? _inlineBot;
-
   BotInlineResultsPage? _inlineBotResults;
 
   bool _quickRepliesLoaded = false;
 
   bool _quickReplyContextVisible = false;
-
   int? _quickReplySendingId;
 
   List<BusinessQuickReplyShortcut> _quickReplies = const [];
@@ -897,13 +990,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   int _composerRevision = 0;
 
   int _aiReplyGeneration = 0;
-
   int? _aiReplyWorkingTargetId;
-
   bool? _aiReplyWorkingUsesExplicitTarget;
-
   int? _aiReplyWorkingTargetFingerprint;
-
   _AiReplyContextSnapshot? _aiReplyWorkingContextSnapshot;
 
   bool _applyingAiReplyDraft = false;
@@ -913,7 +1002,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _initialFocusRequestConsumed = false;
 
   bool _keyboardSendScheduled = false;
-
   AiReplyProvider? _activeAiReplyProvider;
 
   List<AiReplyProgressPhase> _aiReplyProgressPhases = const [];
@@ -936,15 +1024,30 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool get _canSendVoiceNotes => vm.canSendMessages && vm.canSendVoiceNotes;
 
   /// The one surface colour every panel docked to the composer bar paints, so
+
   /// a panel reads as a continuation of the bar instead of a recessed block.
+
   /// The bar itself paints `AppColors.inputBarBackground`; the darker
+
   /// `AppColors.panelBackground` is for surfaces that sit on an opaque pane
+
   /// (settings lists, desk panes), not for anything attached to the composer.
+
   Color get _composerDockedSurfaceColor => context.colors.inputBarBackground;
 
   @override
   void initState() {
     super.initState();
+    // The panel reopens on the last-used segment; anything unknown (including
+    // null) keeps the emoji default set on the field above.
+    switch (widget.initialMediaKind) {
+      case 'sticker':
+        _mediaKind = _MediaKind.sticker;
+      case 'gif':
+        _mediaKind = _MediaKind.gif;
+      case 'emoji' || null:
+        _mediaKind = _MediaKind.emoji;
+    }
     WidgetsBinding.instance.addObserver(this);
     _syncedVmState = _renderedVmState;
     _botPlatform =
@@ -977,12 +1080,27 @@ class _ChatInputBarState extends State<ChatInputBar>
     _wasEditingMessage = vm.editingMessage != null;
     _syncedEditingMessageId = vm.editingMessage?.id;
     _syncedComposerFocusTick = vm.composerFocusTick;
+    _syncedComposerDismissTick = vm.composerDismissTick;
     _controller.setFormattedText(
       vm.composerFormattedDraft,
       vm.composerDraftEntities,
     );
     _controller.addListener(_onTextChanged);
     _panelSearch.addListener(_queuePanelSearch);
+    _replyHintTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      // Stop alternating once the flag loads as seen; otherwise flip only
+      // while a reply banner is actually showing.
+      if (_replyHintSeen != false || vm.replyTo == null) return;
+      if (!mounted) return;
+      setState(() {
+        _replyHintShowing = !_replyHintShowing;
+        _replyHintTick++;
+      });
+    });
+    composerReplyOptionsHintSeen().then((seen) {
+      if (!mounted) return;
+      setState(() => _replyHintSeen = seen);
+    });
     _focus.addListener(() {
       var needsRebuild = false;
       var panelChanged = false;
@@ -1012,6 +1130,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     EmojiRecentsStore.shared.addListener(_onStore);
     StickerStore.shared.addListener(_onStore);
     GifStore.shared.addListener(_onStore);
+    FavoriteStickerStore.shared.addListener(_onStore);
     _botPlatformUpdates = TdClient.shared
         .updatesOf('updateNewGuestQuery')
         .listen(_handleBotPlatformUpdate);
@@ -1088,8 +1207,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The touch field grows and shrinks with its text. Report it once the
+
   /// frame is laid out so the transcript can follow the resized viewport;
+
   /// the desktop editor's height only changes by drag, reported above.
+
   void _onInputFieldResized({required bool desktop}) {
     if (desktop || widget.onInputHeightChanged == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1188,23 +1310,37 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The view-model state the composer draws itself.
+
   ///
+
   /// [shouldRebuildComposerForVmUpdate] stops rebuilding on bare revision
+
   /// bumps while the field has focus, so anything rendered from the view model
+
   /// has to be compared here or it silently stops updating mid-typing — which
+
   /// is how the auto-delete indicator got stuck on screen after the chat's
+
   /// timer was turned off. Add to this record when the composer starts drawing
+
   /// another view-model value.
+
   _ComposerVmState get _renderedVmState => (
     autoDeleteTime: vm.messageAutoDeleteTime,
     selectedSender: vm.selectedMessageSender,
     canChooseSender: vm.canChooseMessageSender,
     peerIsBot: vm.peerIsBot,
+    replyToId: vm.replyTo?.id,
+    replyToChatId: vm.replyToChatId,
+    replyQuoteRevision: vm.replyQuote?.position,
   );
 
   /// Raises the caret for a reply target picked on the transcript. Skipped
+
   /// where nothing can be sent: a keyboard over a composer that cannot speak
+
   /// only hides the conversation.
+
   void _focusComposerForTranscriptReply() {
     final owner = vm;
     if (!mounted || !owner.canSendMessages) return;
@@ -1252,6 +1388,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.vm, widget.vm)) {
       _syncedComposerFocusTick = widget.vm.composerFocusTick;
+      _syncedComposerDismissTick = widget.vm.composerDismissTick;
       _cancelVoiceRecording();
       _discardDesktopVoiceDraft();
       _discardVoiceDraft(rebuild: false);
@@ -1296,6 +1433,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _replyHintTimer?.cancel();
     _voiceDisposed = true;
     _recordCancelled = true;
     _clearVoicePresses();
@@ -1326,10 +1464,13 @@ class _ChatInputBarState extends State<ChatInputBar>
     EmojiRecentsStore.shared.removeListener(_onStore);
     StickerStore.shared.removeListener(_onStore);
     GifStore.shared.removeListener(_onStore);
+    FavoriteStickerStore.shared.removeListener(_onStore);
     if (widget.quickReplyLoader == null) {
       BusinessQuickReplyService.shared.removeListener(_syncQuickReplyCache);
     }
     _controller.dispose();
+    _stickerPanelScroll.dispose();
+    _emojiPanelScroll.dispose();
     _panelSearch
       ..removeListener(_queuePanelSearch)
       ..dispose();
@@ -1360,14 +1501,18 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// True when the unified emoji/sticker/GIF panel is open, either inline or
+
   /// as the desktop media popover.
+
   bool get _mediaPanelOpen =>
       _panel == _Panel.emoji ||
       _panel == _Panel.sticker ||
       _desktopMediaPopoverVisible;
 
   /// The GIF segment's secondary strip is a search bar plus the saved-GIFs
+
   /// tab, mirroring the emoji and sticker search tabs.
+
   bool get _gifSearchSelected => _stickerPack == _stickerSearchTabId;
 
   bool get _isPanelSearchSelected {
@@ -1379,9 +1524,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     };
   }
 
-  /// The sticker tab to show: an explicit pick while it still names a tab in
-  /// the loaded list, otherwise the first installed set, and recents when no
-  /// set is installed at all.
+  /// The sticker tab the panel anchors to: an explicit pick while it still
+
+  /// names a tab in the loaded list, otherwise the first installed set, and
+
+  /// recents when no set is installed at all.
+
   int get _activeStickerTab {
     final selected = _stickerPack;
     if (selected == _stickerSearchTabId) return _stickerSearchTabId;
@@ -1392,6 +1540,42 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
     return StickerStore.shared.defaultPackId;
   }
+
+  /// Selecting a sticker tab scrolls the panel's continuous pack list to that
+
+  /// pack (the strip and the list stay in sync in both directions).
+
+  /// Toggles the media panel from the composer's media button.
+
+  ///
+
+  /// Opening keeps the last-used segment (emoji until the user picks
+
+  /// another); tapping again closes the panel. Switching segments inside an
+
+  /// open panel goes through [_selectMediaKind] instead. Each kind renders
+
+  /// its own content area, so a persisted non-emoji segment needs no scroll
+
+  /// restoration: the panel simply builds that kind's panel first.
+
+  // MARK: - Voice recording
+
+  /// Claims the capture audio session for this composer.
+
+  ///
+
+  /// Failures propagate: a session that cannot be claimed is exactly the state
+
+  /// that used to end in an unexplained "could not record" toast, so the caller
+
+  /// reports it instead of opening a recorder that captures nothing. The mobile
+
+  /// recorder and this session share one platform decision, so a composer
+
+  /// already using the desktop recorder never touches the session.
+
+  /// Hands the shared session back to playback, once per capture.
 
   bool get _voicePressHeld => _voiceUsesDesktopRecorder
       ? _desktopSpaceHeld || _desktopPointerHeld
@@ -1408,10 +1592,34 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool get _showsMobileVoicePanel =>
       _panel == _Panel.voice && !_voiceUsesDesktopRecorder;
 
+  /// Shows [error] in the mobile panel's status line until the next press on
+
+  /// the record button, a panel switch, or the composer closing.
+
+  /// Re-shows the inline row for a failure that was already reported while the
+
+  /// panel opened, after a press cleared the row. `PermissionStatus` names map
+
+  /// to their settings/required variants; anything else is the generic failure.
+
   /// Whether a voice draft or pasted pictures wait above the field. Only one
+
   /// attachment kind waits at a time.
+
   bool get _composerAttachmentWaiting =>
       _voiceDraft != null || _pendingClipboardAttachments.isNotEmpty;
+
+  /// Deletes the waiting phone recording: playback stops, its file goes and
+
+  /// the card collapses. The caption text stays.
+
+  /// Sends the waiting recording as one voice message with the field's text
+
+  /// as its caption: the length and paid-message checks, the trim export,
+
+  /// then [ChatViewModel.sendVoice]. A failure keeps the recording for a
+
+  /// retry and says so under the card.
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -1493,6 +1701,8 @@ class _ChatInputBarState extends State<ChatInputBar>
               children: [
                 if (editingMessage != null)
                   _editBanner(editingMessage)
+                else if (vm.pendingForward != null)
+                  _forwardBanner(vm.pendingForward!)
                 else if (vm.replyTo != null)
                   _replyBanner(vm.replyTo!),
                 if (editingMessage == null)
@@ -1540,14 +1750,16 @@ class _ChatInputBarState extends State<ChatInputBar>
                   else if (editingMessage == null)
                     _iconStrip(),
                 ],
-                if (editingMessage == null &&
-                    !desktopComposer &&
-                    _panel == _Panel.function)
-                  simpleComposer ? _simpleMorePanel() : _functionPanel(),
-                if (editingMessage == null &&
-                    !desktopComposer &&
-                    (_panel == _Panel.emoji || _panel == _Panel.sticker))
-                  _mediaPanel(),
+                if (editingMessage == null && !desktopComposer)
+                  _animatedDockedPanel(
+                    visible: _panel == _Panel.function,
+                    builder: simpleComposer ? _simpleMorePanel : _functionPanel,
+                  ),
+                if (editingMessage == null && !desktopComposer)
+                  _animatedDockedPanel(
+                    visible: _panel == _Panel.emoji || _panel == _Panel.sticker,
+                    builder: _mediaPanel,
+                  ),
                 if (editingMessage == null && _panel == _Panel.voice)
                   _voicePanel(),
               ],
@@ -2114,8 +2326,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The waiting voice draft's slot above the field. The card grows and fades
+
   /// in, and collapses when it is sent or deleted; instantly with Reduce
+
   /// Motion. It hides while a message is being edited and returns afterwards.
+
   Widget _voiceDraftSlot({required bool visible}) {
     final draft = visible ? _voiceDraft : null;
     final reduceMotion = AppMotion.isReduced(context);
@@ -2225,39 +2440,248 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Widget _replyBanner(ChatMessage m) {
     final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, right: 12, top: 8),
-      child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: c.searchFill,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                _replyLine(m),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: c.textSecondary),
+    final externalChatId = vm.replyToChatId;
+    final quote = vm.replyQuote;
+    final name = m.isOutgoing
+        ? vm.meName
+        : (m.senderName?.isNotEmpty ?? false)
+        ? m.senderName!
+        : vm.peerTitle;
+    final preview = quote?.text ?? _replyPreview(m);
+    final title = externalChatId == null
+        ? (quote != null
+              ? AppStrings.t(AppStringKeys.composerReplyToQuoteName, {
+                  'value1': name,
+                })
+              : AppStrings.t(AppStringKeys.composerReplyToName, {
+                  'value1': name,
+                }))
+        : AppStrings.t(AppStringKeys.composerReplyToExternalName, {
+            'value1': name,
+          });
+    final thumb = m.image?.thumbnail ?? m.image;
+    return SizedBox(
+      key: const ValueKey('composerReplyBanner'),
+      height: 46,
+      child: Row(
+        children: [
+          // Leading icon block: 52x46, matching the reference client's
+          // reply-panel icon slot so the banner reads as one strip.
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: Center(
+              child: AppIcon(
+                quote != null ? HeroAppIcons.quoteLeft : HeroAppIcons.reply,
+                size: 19,
+                color: c.linkBlue,
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onReplyOptionsRequested,
+              onLongPress: () => widget.onReplySourceJump?.call(m),
+              child: SizedBox(
+                height: 46,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.body(
+                          c.linkBlue,
+                          weight: AppTextWeight.semibold,
+                        ),
+                      ),
+                      if (preview.isNotEmpty)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 150),
+                          child: _replyHintShowing && _replyHintSeen == false
+                              ? Text(
+                                  key: ValueKey(
+                                    'composerReplyHint-$_replyHintTick',
+                                  ),
+                                  AppStrings.t(
+                                    AppStringKeys.composerReplyTapHint,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.body(c.textSecondary),
+                                )
+                              : Text(
+                                  key: ValueKey(
+                                    'composerReplyPreview-$_replyHintTick',
+                                  ),
+                                  preview,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyle.body(c.textSecondary),
+                                ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (thumb != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: TDImage(photo: thumb, cacheWidth: 68, cacheHeight: 68),
               ),
             ),
             const SizedBox(width: 8),
-            GestureDetector(
+          ],
+          // Close: 52x46 with a circular ripple, mirroring the reference
+          // client's reply-close hit target.
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: AppInteractiveSurface(
+              key: const ValueKey('composerReplyClose'),
+              semanticLabel: AppStringKeys.confirmCancel.l10n(context),
               onTap: () => vm.setReply(null),
-              child: AppIcon(
-                HeroAppIcons.xmark,
-                size: 18,
-                color: c.textTertiary,
+              borderRadius: BorderRadius.circular(19),
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 17,
+                  color: c.textTertiary,
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+
+  /// The pending-forward banner (forward-to-chat, the reference client parity): the
+
+  /// same strip language as the reply banner, with the option toggles the
+
+  /// reference client's forward preview panel carries. Tapping the body
+
+  /// opens the forward options sheet; the close button cancels the forward.
+
+  Widget _forwardBanner(PendingForward forward) {
+    final c = context.colors;
+    final first = forward.messages.first;
+    final count = forward.messages.length;
+    final title = count > 1
+        ? AppStrings.t(AppStringKeys.chatForwardPendingCount, {'value1': count})
+        : AppStrings.t(AppStringKeys.chatForwardPending);
+    final previewLines = <String>[
+      for (final message in forward.messages.take(2))
+        if (_forwardPreviewLine(message).isNotEmpty)
+          _forwardPreviewLine(message),
+      if (count > 2)
+        AppStrings.t(AppStringKeys.chatForwardPendingMore, {
+          'value1': count - 2,
+        }),
+    ];
+    final thumb = first.image?.thumbnail ?? first.image;
+    return SizedBox(
+      key: const ValueKey('composerForwardBanner'),
+      height: 46,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: Center(
+              child: AppIcon(HeroAppIcons.forward, size: 19, color: c.linkBlue),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onForwardOptionsRequested,
+              child: SizedBox(
+                height: 46,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.body(
+                          c.linkBlue,
+                          weight: AppTextWeight.semibold,
+                        ),
+                      ),
+                      if (previewLines.isNotEmpty)
+                        Text(
+                          previewLines.join('  '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyle.body(c.textSecondary),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (thumb != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: TDImage(photo: thumb, cacheWidth: 68, cacheHeight: 68),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          SizedBox(
+            width: 52,
+            height: 46,
+            child: AppInteractiveSurface(
+              key: const ValueKey('composerForwardClose'),
+              semanticLabel: AppStringKeys.confirmCancel.l10n(context),
+              onTap: () => vm.clearPendingForward(),
+              borderRadius: BorderRadius.circular(19),
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.xmark,
+                  size: 17,
+                  color: c.textTertiary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _forwardPreviewLine(ChatMessage m) => _replyPreview(m);
+
+  void _showForwardFailureFromComposer(Object error) {
+    showToast(
+      context,
+      isForwardProtectedError(error)
+          ? AppStringKeys.chatForwardProtected
+          : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': error}),
+    );
+  }
+
+  // MARK: - Input row
 
   Widget _desktopPopoverOverlay({
     required BuildContext overlayContext,
@@ -2623,11 +3047,17 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The phone input row, or the desktop editor row when [desktop].
+
   ///
+
   /// With [simple] it is simple mode's single row: the Mic cell leads, and
+
   /// the Emoji and More cells and the Send button trail the field. In a bot
+
   /// chat the bot's menu cell takes the Mic's place, and voice opens from
+
   /// the More panel instead.
+
   Widget _inputRow(
     _ReplyKeyboard? replyKeyboard, {
     required AiSettingsController? aiSettings,
@@ -2642,7 +3072,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         _hasText ||
         editing ||
         _pendingClipboardAttachments.isNotEmpty ||
-        voiceDraft != null;
+        voiceDraft != null ||
+        vm.pendingForward != null;
     final replyTarget = _currentAiReplyTarget();
     final aiReplyWorking =
         replyTarget != null && _aiReplyWorkingTargetId == replyTarget.id;
@@ -3130,7 +3561,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The phone Send button, with the AI-style prefix stacked above it when
+
   /// the draft is eligible. Shared unchanged by the standard and simple rows.
+
   Widget _phoneSendButton({
     required bool editing,
     required bool sendingVoiceDraft,
@@ -3255,7 +3688,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// Width of the phone Send button's slot: wider for a paid message, whose
+
   /// button also shows the price.
+
   double get _phoneSendSlotWidth => vm.requiresPaidMessage ? 58 : 44;
 
   bool get _hasActiveTextComposition {
@@ -3574,7 +4009,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// Converts the typed draft, formatting included, into the rich-text
+
   /// editor, which now holds the composer's formatting tools.
+
   Widget _richTextConvertButton() {
     return Semantics(
       button: true,
@@ -3674,6 +4111,22 @@ class _ChatInputBarState extends State<ChatInputBar>
           ),
         ),
       ),
+    );
+  }
+
+  ({Color background, Color foreground, Color border})
+  _replyKeyboardButtonColors(MessageButton button, {required bool prominent}) {
+    final c = context.colors;
+    return botButtonPalette(
+      button.style,
+      primary: AppTheme.brand,
+      standard: prominent
+          ? (
+              background: AppTheme.brand,
+              foreground: Colors.white,
+              border: c.inputBarBackground.withValues(alpha: 0.72),
+            )
+          : (background: c.card, foreground: c.textPrimary, border: c.divider),
     );
   }
 
@@ -4171,11 +4624,23 @@ class _ChatInputBarState extends State<ChatInputBar>
   // MARK: - Simple mode row
 
   /// Scale a simple-mode control grows from as it appears or swaps glyphs.
+
   static const double _simpleComposerEnterScale = 0.85;
 
+  /// The narrow rule: while there is something to send, the leading cell
+
+  /// (the Mic, or a bot chat's menu cell) gives its room to the field once the
+
+  /// typing field would fall under [AppMetric.simpleComposerNarrowField]. The
+
+  /// empty row never drops it.
+
   /// The simple row's leading slot: [cell] and its gap to the field or,
+
   /// without the cell, the extra inset that keeps the field 12pt from the
+
   /// edge. The narrow rule collapses and restores it in place.
+
   Widget _simpleLeadingSlot({required bool visible, required Widget cell}) {
     return AnimatedSize(
       duration: AppMotion.duration(context, AppMotion.swap),
@@ -4194,6 +4659,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The Mic cell in the leading slot.
+
   Widget _simpleMicSlot({required bool visible, required bool editing}) {
     final voiceOpen = !editing && _panel == _Panel.voice;
     return _simpleLeadingSlot(
@@ -4225,8 +4691,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// A bot chat's menu cell in the leading slot, where other chats have the
+
   /// Mic: a slash for the command sheet, or a globe when the bot's menu
+
   /// button is a Mini App. Tap and long press do what the bot button does.
+
   Widget _simpleBotMenuSlot({required bool visible, required bool editing}) {
     final menu = vm.botMenu;
     final opensMiniApp = menu?.isWebApp ?? false;
@@ -4256,10 +4725,15 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// Emoji and More, always present, then [send] in its own slot while there
+
   /// is something to send. The group resizes as Send comes and goes, so the
+
   /// field's trailing edge moves instead of jumping. With [voiceInMore] the
+
   /// voice panel opens from More, so while it is docked More carries its
+
   /// keyboard glyph, as the Mic cell does elsewhere.
+
   Widget _simpleTrailingCells({
     required bool editing,
     required Widget? send,
@@ -4359,8 +4833,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// One square cell of the simple row. Its glyph is the cell's state cue:
+
   /// while the cell's panel is docked the glyph swaps (to the keyboard, or to
+
   /// a close mark) and the cell reports itself selected.
+
   Widget _simpleComposerCell({
     required Key key,
     required String semanticLabel,
@@ -4409,6 +4886,50 @@ class _ChatInputBarState extends State<ChatInputBar>
     // The long press as an action screen readers can reach.
     return Semantics(onLongPress: enabled ? onLongPress : null, child: cell);
   }
+
+  /// A simple-mode cell's keyboard glyph: closes its docked panel and brings
+
+  /// the keyboard back to the same draft.
+
+  // The simple row stays visible above the bot reply keyboard, so opening a
+
+  // panel from it folds that keyboard away: only one panel is ever docked.
+
+  // MARK: - Media pickers
+
+  /// 图片: pick one or more photos/videos and preserve their album order.
+
+  /// 相机: capture a photo and send it.
+
+  /// Delivers the composer's text as an ordinary formatted message when the
+
+  /// account has no rich send path. Block structure has no representation in
+
+  /// `inputMessageText`, so it is dropped with one toast; when nothing at all
+
+  /// can be sent (a document containing media, or a rejected send) the draft
+
+  /// is reopened instead of silently sending only its caption and losing media.
+
+  /// Resolves how this account can deliver a rich message, without asking the
+
+  /// user for anything. A null result means the account has no rich send path;
+
+  /// callers may then offer [RichMessageRelayConfig] setup once and fall back
+
+  /// to a plain formatted message.
+
+  /// 文件: pick an arbitrary document and send it.
+
+  /// 位置: open a map picker centred on the GPS fix; send the chosen point.
+
+  /// 投票: collect a question + options and send a poll.
+
+  /// 音频: pick a local audio file and send it as a music message.
+
+  /// 音频: search Telegram audio first; local files remain available inside.
+
+  /// 清单: collect a title + tasks and send a checklist (to-do list).
 
   // MARK: - Function panel
 
@@ -4518,9 +5039,13 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// Simple mode's More panel: the strip's tools and the function panel's in
+
   /// one vertically scrolling grid, with no paging. Every row is as tall as
+
   /// its tallest label, so long translations and large text wrap instead of
+
   /// truncating; at extreme text sizes the grid becomes a one-column list.
+
   Widget _simpleMorePanel() {
     final items = <(AppIconData, String, VoidCallback)>[
       (HeroAppIcons.image, AppStringKeys.composerImage, _pickPhotos),
@@ -4657,7 +5182,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// One More-panel tool: a bare line glyph over its full label, or, as a
+
   /// [listRow], the glyph leading a left-aligned label.
+
   Widget _simpleMorePanelItem(
     (AppIconData, String, VoidCallback) item, {
     required TextStyle labelStyle,
@@ -4709,23 +5236,41 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  // MARK: - Unified media panel (emoji / stickers / GIF)
+  // MARK: - Media panel (emoji / stickers / GIF)
 
-  /// One picker with a segmented selector (Emoji | Stickers | GIF) above each
-  /// kind's own tab strip and content, painted on the composer's own surface
-  /// so it continues the input bar instead of reading as a separate block.
-  /// Rendered for both `_Panel.emoji` and `_Panel.sticker`.
+  /// One picker with a segmented selector (Emoji | Stickers | GIF) above the
+
+  /// active kind's own strip and content, painted on the composer's own
+
+  /// surface so it continues the input bar instead of reading as a separate
+
+  /// block. The kinds switch instantly — there is no inter-kind scrolling.
+
+  /// Rendered for both `_Panel.emoji` and `_Panel.sticker`, and by the
+
+  /// desktop media popover.
+
   Widget _mediaPanel({double height = 376}) {
+    final searchSelected = _isPanelSearchSelected;
     return Container(
       key: const ValueKey('composerMediaPanel'),
       height: height,
       color: _composerDockedSurfaceColor,
       child: Column(
         children: [
-          _mediaKindSegmentControl(),
-          _mediaSecondaryStrip(),
-          if (_isPanelSearchSelected) _panelSearchField(),
-          Expanded(child: _mediaContent()),
+          Row(
+            children: [
+              Expanded(child: _mediaKindSegmentControl()),
+              _mediaPanelSearchButton(active: searchSelected),
+            ],
+          ),
+          if (searchSelected) ...[
+            _panelSearchField(),
+            Expanded(child: _panelSearchContent()),
+          ] else ...[
+            _mediaSecondaryStrip(),
+            Expanded(child: _mediaContent()),
+          ],
         ],
       ),
     );
@@ -4744,6 +5289,467 @@ class _ChatInputBarState extends State<ChatInputBar>
       _MediaKind.gif =>
         _gifSearchSelected ? _gifSearchContent() : _gifContent(),
     };
+  }
+
+  Widget _gifContent() {
+    final store = GifStore.shared;
+    final items = store.items;
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          store.loading
+              ? AppStrings.t(AppStringKeys.composerLoadingGifs)
+              : AppStrings.t(AppStringKeys.composerNoGifs),
+          style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
+        ),
+      );
+    }
+    return GridView.builder(
+      key: const ValueKey('gifPanelGrid'),
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 1.2,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+      ),
+      itemCount: items.length,
+      itemBuilder: (_, index) => _gifTile(items[index]),
+    );
+  }
+
+  /// The sticker panel: favorites + every pack stacked in ONE continuously
+
+  /// scrollable list (a pack's grid flows into the next pack's header), with
+
+  /// the pack strip on top anchoring into it in both directions.
+
+  Widget _stickerContent() {
+    final store = StickerStore.shared;
+    final packs = _stickerPanelPacks();
+    final favorites = FavoriteStickerStore.shared.items;
+    if (packs.isEmpty && favorites.isEmpty) {
+      return Center(
+        child: Text(
+          store.loading
+              ? AppStrings.t(AppStringKeys.composerLoadingEmoji)
+              : AppStrings.t(AppStringKeys.composerNoEmoji),
+          style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
+        ),
+      );
+    }
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onStickerPanelScrollNotification,
+      child: CustomScrollView(
+        key: const ValueKey('stickerPanelScroll'),
+        controller: _stickerPanelScroll,
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          if (favorites.isNotEmpty) ...[
+            Builder(
+              builder: (context) {
+                _favoritesHeaderContext = context;
+                return SliverToBoxAdapter(
+                  child: _mediaSubsectionHeader(
+                    const ValueKey('mediaStickerPack-favorites'),
+                    AppStrings.t(AppStringKeys.mediaFavorites),
+                  ),
+                );
+              },
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.all(12),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _stickerTile(favorites[index]),
+                  childCount: favorites.length,
+                ),
+              ),
+            ),
+          ],
+          for (final pack in packs) ...[
+            SliverToBoxAdapter(child: _mediaStickerPackHeader(pack)),
+            if (!pack.loaded && pack.stickers.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: SizedBox(
+                    height: 24,
+                    child: Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.all(12),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _stickerTile(
+                      pack.stickers[index],
+                      recent: pack.id == StickerStore.recentPackId,
+                    ),
+                    childCount: pack.stickers.length,
+                  ),
+                ),
+              ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        ],
+      ),
+    );
+  }
+
+  /// Pack header BuildContexts registered as the list builds, keyed by pack
+
+  /// id, so the strip's anchor math can measure any pack's header — even ones
+
+  /// scrolled far off-screen stay registered once built (forward slivers all
+
+  /// lay out in a CustomScrollView).
+
+  final Map<int, BuildContext> _packHeaderContexts = {};
+
+  /// The horizontally scrollable pack strip above the sticker panel: the
+
+  /// search entry, recents, favorites when any exist, then one thumbnail per
+
+  /// installed pack. Tapping a tab scrolls the panel list to that pack;
+
+  /// scrolling the list highlights the pack at the top.
+
+  Widget _stickerTabStrip() {
+    final c = context.colors;
+    final packs = StickerStore.shared.packs;
+    final activeId = _activeStickerTab;
+    final installed = packs.where((p) => p.id != StickerStore.recentPackId);
+    final hasFavorites = FavoriteStickerStore.shared.items.isNotEmpty;
+    final hasRecents = packs.any((p) => p.id == StickerStore.recentPackId);
+    return Container(
+      key: const ValueKey('stickerPanelTabs'),
+      decoration: BoxDecoration(
+        color: c.inputBarBackground,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: SizedBox(
+        height: 50,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          children: [
+            _emojiTabButton(
+              key: const ValueKey('stickerSearchTab'),
+              selected: activeId == _stickerSearchTabId,
+              onTap: () => _selectStickerTab(_stickerSearchTabId),
+              child: AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 20,
+                color: activeId == _stickerSearchTabId
+                    ? AppTheme.brand
+                    : c.textSecondary,
+              ),
+            ),
+            if (hasFavorites)
+              _emojiTabButton(
+                key: const ValueKey('stickerFavoritesTab'),
+                selected: _stickerAnchorPackId == _favoritesTabId,
+                onTap: _scrollStickerPanelToFavorites,
+                child: AppIcon(
+                  HeroAppIcons.solidStar,
+                  size: 20,
+                  color: _stickerAnchorPackId == _favoritesTabId
+                      ? AppTheme.brand
+                      : c.textSecondary,
+                ),
+              ),
+            if (hasRecents)
+              _emojiTabButton(
+                key: const ValueKey('stickerRecentsTab'),
+                selected: activeId == StickerStore.recentPackId,
+                onTap: () => _selectStickerTab(StickerStore.recentPackId),
+                child: AppIcon(
+                  HeroAppIcons.clock,
+                  size: 20,
+                  color: activeId == StickerStore.recentPackId
+                      ? AppTheme.brand
+                      : c.textSecondary,
+                ),
+              ),
+            for (final pack in installed)
+              _emojiTabButton(
+                key: ValueKey('stickerPackTab-${pack.id}'),
+                selected: pack.id == activeId,
+                onTap: () => _selectStickerTab(pack.id),
+                child: pack.cover != null
+                    ? StickerTabPreview(item: pack.cover!)
+                    : Text(
+                        pack.title.isEmpty ? '' : pack.title.characters.first,
+                        style: TextStyle(color: c.textPrimary),
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  BuildContext? _favoritesHeaderContext;
+
+  // MARK: Emoji panel
+
+  /// The emoji panel: the standard catalog categories plus one section per
+
+  /// custom-emoji pack, stacked in ONE continuously scrollable list under the
+
+  /// panel's own category strip.
+
+  Widget _emojiContent() {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onEmojiPanelScrollNotification,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = emojiPanelColumnCount(constraints.maxWidth);
+          _emojiPanelColumns = columns;
+          return CustomScrollView(
+            key: const ValueKey('emojiPanelScroll'),
+            controller: _emojiPanelScroll,
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              ...standardEmojiSectionSlivers(
+                context: context,
+                columns: columns,
+                hasRecents:
+                    EmojiRecentsStore.shared.renderableEntries.isNotEmpty,
+                insert: _controller.insertText,
+                insertCustom: _controller.insertCustomEmoji,
+              ),
+              for (final pack in EmojiStore.shared.customPacks) ...[
+                SliverToBoxAdapter(
+                  child: _mediaSubsectionHeader(
+                    ValueKey('mediaEmojiPack-${pack.id}'),
+                    pack.title,
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      mainAxisExtent: emojiPanelCellExtent,
+                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final item = pack.emoji[index];
+                      return item.customEmojiId != 0
+                          ? EmojiPanelCell(
+                              customItem: item,
+                              onTap: () => _controller.insertCustomEmoji(
+                                item.customEmojiId,
+                                item.emoji,
+                              ),
+                            )
+                          : const SizedBox();
+                    }, childCount: pack.emoji.length),
+                  ),
+                ),
+              ],
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// The horizontally scrollable strip above the emoji panel: the search
+
+  /// entry, then the recents and standard category icons, then one thumbnail
+
+  /// per custom-emoji pack. Tapping an entry scrolls the panel to it.
+
+  Widget _emojiTabStrip() {
+    final c = context.colors;
+    final packs = EmojiStore.shared.customPacks;
+    final hasRecents = EmojiRecentsStore.shared.renderableEntries.isNotEmpty;
+    return Container(
+      key: const ValueKey('emojiPanelTabs'),
+      decoration: BoxDecoration(
+        color: c.inputBarBackground,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: SizedBox(
+        height: 50,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          children: [
+            _emojiTabButton(
+              key: const ValueKey('emojiSearchTab'),
+              selected: _emojiTab == _emojiSearchTab,
+              onTap: () => _selectEmojiTab(_emojiSearchTab),
+              child: AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 20,
+                color: _emojiTab == _emojiSearchTab
+                    ? AppTheme.brand
+                    : c.textSecondary,
+              ),
+            ),
+            if (hasRecents)
+              _emojiTabButton(
+                key: const ValueKey('emojiRecentsTab'),
+                selected: _emojiTab == 'recent',
+                onTap: () => _scrollEmojiPanelTo('recent'),
+                child: AppIcon(
+                  HeroAppIcons.clock,
+                  size: 20,
+                  color: _emojiTab == 'recent'
+                      ? AppTheme.brand
+                      : c.textSecondary,
+                ),
+              ),
+            for (var i = 0; i < EmojiCatalog.categories.length; i++)
+              _emojiTabButton(
+                key: ValueKey('emojiCategoryTab-$i'),
+                selected: _emojiTab == _emojiCategoryTabId(i),
+                onTap: () => _scrollEmojiPanelTo(_emojiCategoryTabId(i)),
+                child: AppIcon(
+                  _emojiCategoryIcons[i],
+                  size: 20,
+                  color: _emojiTab == _emojiCategoryTabId(i)
+                      ? AppTheme.brand
+                      : c.textSecondary,
+                ),
+              ),
+            for (final pack in packs)
+              _emojiTabButton(
+                key: ValueKey('emojiPackTab-${pack.id}'),
+                selected: _emojiTab == 'pack-${pack.id}',
+                onTap: () => _scrollEmojiPanelTo('pack-${pack.id}'),
+                child:
+                    pack.emoji.isNotEmpty && pack.emoji.first.customEmojiId != 0
+                    ? CustomEmojiView(
+                        id: pack.emoji.first.customEmojiId,
+                        size: 28,
+                        color: c.textPrimary,
+                      )
+                    : (pack.cover != null
+                          ? TDImage(photo: pack.cover, cornerRadius: 4)
+                          : Text(
+                              pack.title.isEmpty
+                                  ? ''
+                                  : pack.title.characters.first,
+                              style: TextStyle(color: c.textPrimary),
+                            )),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One icon per catalog category, mirroring the standalone pane's strip.
+
+  static const List<AppIconData> _emojiCategoryIcons = [
+    HeroAppIcons.faceSmile,
+    HeroAppIcons.user,
+    HeroAppIcons.bug,
+    HeroAppIcons.cake,
+    HeroAppIcons.trophy,
+    HeroAppIcons.locationPin,
+    HeroAppIcons.lightbulb,
+    HeroAppIcons.hashtag,
+  ];
+
+  /// Column count for the emoji panel's analytic offset math, captured from
+
+  /// the live layout so the strip and the grid agree.
+  int? _emojiPanelColumns;
+
+  static const double _emojiPackHeaderExtent = 26;
+
+  Widget _emojiTabButton({
+    Key? key,
+    required bool selected,
+    required VoidCallback onTap,
+    required Widget child,
+  }) {
+    return GestureDetector(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          color: selected ? context.colors.searchFill : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: SizedBox(width: 28, height: 28, child: Center(child: child)),
+      ),
+    );
+  }
+
+  /// The GIF segment's secondary strip is a search bar plus the saved-GIFs
+
+  /// tab, mirroring the emoji and sticker search tabs.
+
+  Widget _gifTabStrip() {
+    final c = context.colors;
+    return Container(
+      key: const ValueKey('gifPanelTabs'),
+      decoration: BoxDecoration(
+        color: c.inputBarBackground,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+      ),
+      child: SizedBox(
+        height: 50,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          children: [
+            _emojiTabButton(
+              key: const ValueKey('gifSearchTab'),
+              selected: _gifSearchSelected,
+              onTap: () => _selectStickerTab(_stickerSearchTabId),
+              child: AppIcon(
+                HeroAppIcons.magnifyingGlass,
+                size: 20,
+                color: _gifSearchSelected ? AppTheme.brand : c.textSecondary,
+              ),
+            ),
+            _emojiTabButton(
+              key: const ValueKey('gifSavedTab'),
+              selected: !_gifSearchSelected,
+              onTap: () => _selectStickerTab(_gifTabId),
+              child: AppIcon(
+                HeroAppIcons.gif,
+                size: 22,
+                color: !_gifSearchSelected ? AppTheme.brand : c.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _mediaKindSegmentControl() {
@@ -4778,7 +5784,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The segmented switcher docked panels share (Emoji | Stickers | GIF, and
+
   /// Voice | Video message), so every panel draws the same control.
+
   Widget _composerSegmentSwitcher({
     required Key key,
     required List<_ComposerSegment> segments,
@@ -4840,6 +5848,11 @@ class _ChatInputBarState extends State<ChatInputBar>
             // itself instead of passing through grey on the way to
             // transparent black.
             child: AnimatedContainer(
+              key: selected
+                  ? ValueKey(
+                      'mediaSegmentSelected-${_segmentKindLabel(item.key)}',
+                    )
+                  : null,
               duration: reduceMotion
                   ? Duration.zero
                   : const Duration(milliseconds: 180),
@@ -4877,46 +5890,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Widget _gifTabStrip() {
-    final c = context.colors;
-    return Container(
-      key: const ValueKey('gifPanelTabs'),
-      decoration: BoxDecoration(
-        color: c.inputBarBackground,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: SizedBox(
-        height: 50,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          children: [
-            _emojiTabButton(
-              key: const ValueKey('gifSearchTab'),
-              selected: _gifSearchSelected,
-              onTap: () => _selectStickerTab(_stickerSearchTabId),
-              child: AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: 20,
-                color: _gifSearchSelected ? AppTheme.brand : c.textSecondary,
-              ),
-            ),
-            _emojiTabButton(
-              key: const ValueKey('gifSavedTab'),
-              selected: !_gifSearchSelected,
-              onTap: () => _selectStickerTab(_gifTabId),
-              child: AppIcon(
-                HeroAppIcons.gif,
-                size: 22,
-                color: !_gifSearchSelected ? AppTheme.brand : c.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _gifSearchContent() {
     if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
     if (_gifSearchResults.isEmpty && _gifSearchNextOffset.isEmpty) {
@@ -4938,52 +5911,6 @@ class _ChatInputBarState extends State<ChatInputBar>
         }
         return _gifTile(_gifSearchResults[index], search: true);
       },
-    );
-  }
-
-  Widget _emojiContent() {
-    if (_emojiTab == _emojiSearchTab) {
-      if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
-      return _emojiSearchContent();
-    }
-    final store = EmojiStore.shared;
-    if (_emojiTab != 'standard') {
-      final id = int.tryParse(_emojiTab);
-      CustomEmojiPack? pack;
-      for (final p in store.customPacks) {
-        if (p.id == id) {
-          pack = p;
-          break;
-        }
-      }
-      if (pack != null) {
-        final packEmoji = pack.emoji;
-        return LayoutBuilder(
-          builder: (context, constraints) => GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: emojiPanelColumnCount(constraints.maxWidth),
-            ),
-            itemCount: packEmoji.length,
-            itemBuilder: (context, index) {
-              final item = packEmoji[index];
-              return item.customEmojiId != 0
-                  ? EmojiPanelCell(
-                      customItem: item,
-                      onTap: () => _controller.insertCustomEmoji(
-                        item.customEmojiId,
-                        item.emoji,
-                      ),
-                    )
-                  : const SizedBox();
-            },
-          ),
-        );
-      }
-    }
-    return StandardEmojiPane(
-      insertText: _controller.insertText,
-      insertCustomEmoji: _controller.insertCustomEmoji,
     );
   }
 
@@ -5100,94 +6027,6 @@ class _ChatInputBarState extends State<ChatInputBar>
             style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
           ),
   );
-
-  Widget _emojiTabStrip() {
-    final c = context.colors;
-    final packs = EmojiStore.shared.customPacks;
-    return Container(
-      key: const ValueKey('emojiPanelTabs'),
-      decoration: BoxDecoration(
-        color: c.inputBarBackground,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: SizedBox(
-        height: 50,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          children: [
-            _emojiTabButton(
-              key: const ValueKey('emojiSearchTab'),
-              selected: _emojiTab == _emojiSearchTab,
-              onTap: () => _selectEmojiTab(_emojiSearchTab),
-              child: AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: 20,
-                color: _emojiTab == _emojiSearchTab
-                    ? AppTheme.brand
-                    : c.textSecondary,
-              ),
-            ),
-            _emojiTabButton(
-              selected: _emojiTab == 'standard',
-              onTap: () => _selectEmojiTab('standard'),
-              child: AppIcon(
-                HeroAppIcons.solidFaceSmile,
-                size: 20,
-                color: _emojiTab == 'standard'
-                    ? AppTheme.brand
-                    : c.textSecondary,
-              ),
-            ),
-            for (final pack in packs)
-              _emojiTabButton(
-                selected: _emojiTab == pack.id.toString(),
-                onTap: () => _selectEmojiTab(pack.id.toString()),
-                child:
-                    pack.emoji.isNotEmpty && pack.emoji.first.customEmojiId != 0
-                    ? CustomEmojiView(
-                        id: pack.emoji.first.customEmojiId,
-                        size: 28,
-                        color: c.textPrimary,
-                      )
-                    : (pack.cover != null
-                          ? TDImage(photo: pack.cover, cornerRadius: 4)
-                          : Text(
-                              pack.title.isEmpty
-                                  ? ''
-                                  : pack.title.characters.first,
-                              style: TextStyle(color: c.textPrimary),
-                            )),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _emojiTabButton({
-    Key? key,
-    required bool selected,
-    required VoidCallback onTap,
-    required Widget child,
-  }) {
-    return GestureDetector(
-      key: key,
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        decoration: BoxDecoration(
-          color: selected ? context.colors.searchFill : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-        ),
-        child: SizedBox(width: 28, height: 28, child: Center(child: child)),
-      ),
-    );
-  }
 
   Widget _voicePanel() {
     if (_usesNativeDesktopComposer(context)) return _desktopVoicePanel();
@@ -5391,8 +6230,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   );
 
   /// Fixed slots inside the 318pt panel, so nothing moves between states:
+
   /// switcher 8–42, status line 82–126, record button 142–226 (centre 184,
+
   /// halo 128–240), helper line centred on 260.
+
   Widget _mobileVoicePanel() {
     final recordingBusy =
         _recording || _startingRecording || _stoppingRecording;
@@ -5466,7 +6308,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The error the mobile panel shows, if any. A live recording always keeps
+
   /// its timer and waveform.
+
   _VoiceInlineError get _visibleVoiceInlineError =>
       _recording ? _VoiceInlineError.none : _voiceInlineError;
 
@@ -5545,8 +6389,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   /// The live recording's status row: the timer on the panel's centre line,
+
   /// the red dot to its left balanced by a blank on its right, and the newest
+
   /// meter levels mirrored on both sides, newest next to the timer.
+
   Widget _mobileVoiceRecordingRow() {
     final c = context.colors;
     final paused = _recordingPaused;
@@ -5902,45 +6749,11 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
-  Widget _stickerContent() {
-    final store = StickerStore.shared;
-    final packs = store.packs;
-    final activeId = _activeStickerTab;
-    if (activeId == _stickerSearchTabId) return _stickerSearchContent();
-    if (packs.isEmpty) {
-      return Center(
-        child: Text(
-          store.loading
-              ? AppStrings.t(AppStringKeys.composerLoadingEmoji)
-              : AppStrings.t(AppStringKeys.composerNoEmoji),
-          style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
-        ),
-      );
+  Widget _stickerSearchContent() {
+    if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
+    if (_stickerSearchResults.isEmpty) {
+      return _panelSearchState();
     }
-    StickerPack? pack;
-    for (final p in packs) {
-      if (p.id == activeId) {
-        pack = p;
-        break;
-      }
-    }
-    pack ??= packs.first;
-    if (!pack.loaded && pack.stickers.isEmpty) {
-      store.loadPack(pack.id);
-      return const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-        ),
-      );
-    }
-    final stickers = pack.stickers;
-    // Lazy builder so only on-screen stickers spin up an animation/decoder.
-    return _stickerGrid(stickers);
-  }
-
-  Widget _stickerGrid(List<StickerItem> stickers, {bool search = false}) {
     return GridView.builder(
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -5948,59 +6761,31 @@ class _ChatInputBarState extends State<ChatInputBar>
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
       ),
-      itemCount: stickers.length,
-      itemBuilder: (context, i) => _stickerTile(stickers[i], search: search),
+      itemCount: _stickerSearchResults.length,
+      itemBuilder: (context, index) =>
+          _stickerTile(_stickerSearchResults[index], search: true),
     );
   }
 
-  Widget _gifContent() {
-    final store = GifStore.shared;
-    final items = store.items;
-    if (items.isEmpty) {
-      return Center(
-        child: Text(
-          store.loading
-              ? AppStrings.t(AppStringKeys.composerLoadingGifs)
-              : AppStrings.t(AppStringKeys.composerNoGifs),
-          style: TextStyle(fontSize: 13, color: context.colors.textSecondary),
-        ),
-      );
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 1.2,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-      ),
-      itemCount: items.length,
-      itemBuilder: (_, index) => _gifTile(items[index]),
-    );
-  }
-
-  Widget _stickerSearchContent() {
-    if (_panelSearch.text.trim().isEmpty) return const SizedBox.shrink();
-    if (_stickerSearchResults.isEmpty) {
-      return _panelSearchState();
-    }
-    return _stickerGrid(_stickerSearchResults, search: true);
-  }
-
-  Widget _stickerTile(StickerItem item, {bool search = false}) =>
-      GestureDetector(
-        key: ValueKey(
-          search ? 'stickerSearch-${item.id}' : 'sticker-${item.id}',
-        ),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => unawaited(_sendStickerItem(item)),
-        child: StickerPreview(item: item),
-      );
+  Widget _stickerTile(
+    StickerItem item, {
+    bool search = false,
+    bool recent = false,
+  }) => GestureDetector(
+    key: ValueKey(search ? 'stickerSearch-${item.id}' : 'sticker-${item.id}'),
+    behavior: HitTestBehavior.opaque,
+    onTap: () => unawaited(_sendStickerItem(item)),
+    // Search results are not recents, so only the pack grid passes
+    // recent: true; favorites tiles know their state through the store.
+    onLongPress: () => _showStickerTileActions(item, isRecentTile: recent),
+    child: StickerPreview(item: item),
+  );
 
   Widget _gifTile(GifItem item, {bool search = false}) => GestureDetector(
     key: ValueKey(search ? 'gifSearch-${item.id}' : 'gif-${item.id}'),
     behavior: HitTestBehavior.opaque,
     onTap: () => unawaited(_sendGifItem(item)),
+    onLongPress: () => _showGifTileActions(item),
     child: widget.gifPreviewBuilder?.call(item) ?? GifPreview(item: item),
   );
 
@@ -6038,62 +6823,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     ),
   );
 
-  Widget _stickerTabStrip() {
-    final c = context.colors;
-    final packs = StickerStore.shared.packs;
-    final activeId = _activeStickerTab;
-    final installed = packs.where((p) => p.id != StickerStore.recentPackId);
-    return Container(
-      key: const ValueKey('stickerPanelTabs'),
-      decoration: BoxDecoration(
-        color: c.inputBarBackground,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: SizedBox(
-        height: 50,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          children: [
-            _emojiTabButton(
-              key: const ValueKey('stickerSearchTab'),
-              selected: activeId == _stickerSearchTabId,
-              onTap: () => _selectStickerTab(_stickerSearchTabId),
-              child: AppIcon(
-                HeroAppIcons.magnifyingGlass,
-                size: 20,
-                color: activeId == _stickerSearchTabId
-                    ? AppTheme.brand
-                    : c.textSecondary,
-              ),
-            ),
-            _emojiTabButton(
-              key: const ValueKey('stickerRecentsTab'),
-              selected: activeId == StickerStore.recentPackId,
-              onTap: () => _selectStickerTab(StickerStore.recentPackId),
-              child: AppIcon(
-                HeroAppIcons.clock,
-                size: 20,
-                color: activeId == StickerStore.recentPackId
-                    ? AppTheme.brand
-                    : c.textSecondary,
-              ),
-            ),
-            for (final pack in installed)
-              _emojiTabButton(
-                key: ValueKey('stickerPackTab-${pack.id}'),
-                selected: pack.id == activeId,
-                onTap: () => _selectStickerTab(pack.id),
-                child: pack.cover != null
-                    ? StickerTabPreview(item: pack.cover!)
-                    : Text(
-                        pack.title.isEmpty ? '' : pack.title.characters.first,
-                        style: TextStyle(color: c.textPrimary),
-                      ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Kept for re-exposing the studio from a more appropriate surface later.
+
+  // ignore: unused_element
 }

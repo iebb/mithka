@@ -1,17 +1,21 @@
 //
 //  emoji_panel.dart
 //
-//  The standard-emoji pane of the composer's emoji panel, modelled on Telegram
-//  iOS: a "Recently used" section first, the catalog categories below it in an
-//  adaptive grid, and a bottom strip of category icons that follows the scroll
-//  position — scroll the grid and the highlighted category updates, tap a
-//  category and the grid jumps to it. Long-pressing a cell raises an iOS-style
-//  enlarged preview bubble; releasing the held emoji inserts it (exactly once),
-//  and a cancelled long-press dismisses the preview without inserting.
+//  The standard-emoji content of the composer's media panel, modelled on
+//  Telegram iOS: a "Recently used" section first, the catalog categories below
+//  it in an adaptive grid, and — in the standalone pane — a bottom strip of
+//  category icons that follows the scroll position. Long-pressing a cell
+//  raises an iOS-style enlarged preview bubble; releasing the held emoji
+//  inserts it (exactly once), and a cancelled long-press dismisses the preview
+//  without inserting.
 //
-//  The surrounding chrome (pack tab strip, search field, desktop popovers)
-//  stays in chat_input_bar.dart; this file owns only the pane and its cells so
-//  the composer's public behavior is unchanged.
+//  The unified composer media panel embeds the same content without the pane's
+//  own scroller or strip: [standardEmojiSectionSlivers] exposes one header +
+//  grid sliver pair per category (recents first when present) so the sections
+//  can be stacked inside the composer's single CustomScrollView.
+//
+//  The surrounding chrome (segment control, search field, desktop popovers)
+//  stays in chat_input_bar.dart; this file owns only the sections and cells.
 //
 
 import 'dart:async';
@@ -34,7 +38,9 @@ import 'sticker_item.dart';
 
 /// Vertical spacing each section header reserves, kept in one place so the
 /// strip's tap-to-scroll target lines up with what the grid actually lays out.
-const double _emojiSectionHeaderExtent = 30.0;
+/// Public so the unified composer panel's own anchor math can use the same
+/// extent.
+const double emojiSectionHeaderExtent = 30.0;
 
 /// The standard pane: recents + category sections + a scroll-following strip.
 class StandardEmojiPane extends StatefulWidget {
@@ -90,7 +96,7 @@ class StandardEmojiPaneState extends State<StandardEmojiPane> {
     for (final count in counts) {
       offsets.add(offset);
       offset +=
-          _emojiSectionHeaderExtent +
+          emojiSectionHeaderExtent +
           (count / columns).ceilToDouble() * emojiPanelCellExtent;
     }
     _sectionOffsets = offsets;
@@ -181,20 +187,13 @@ class StandardEmojiPaneState extends State<StandardEmojiPane> {
                 controller: _controller,
                 slivers: [
                   const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                  if (hasRecents) ...[
-                    _sectionHeader(
-                      AppStringKeys.emojiRecentsSection.l10n(context),
-                      section: 0,
-                    ),
-                    _recentsGrid(columns),
-                  ],
-                  for (var i = 0; i < EmojiCatalog.categories.length; i++) ...[
-                    _sectionHeader(
-                      EmojiCatalog.categories[i].name.l10n(context),
-                      section: i + (hasRecents ? 1 : 0),
-                    ),
-                    _categoryGrid(EmojiCatalog.categories[i], columns),
-                  ],
+                  ...standardEmojiSectionSlivers(
+                    context: context,
+                    columns: columns,
+                    hasRecents: hasRecents,
+                    insert: _insert,
+                    insertCustom: _insertCustom,
+                  ),
                   const SliverToBoxAdapter(child: SizedBox(height: 8)),
                 ],
               ),
@@ -215,12 +214,91 @@ class StandardEmojiPaneState extends State<StandardEmojiPane> {
       },
     );
   }
+}
 
-  Widget _sectionHeader(String label, {required int section}) {
-    return SliverToBoxAdapter(
+/// The standard-emoji categories as embeddable slivers: one compact header
+/// plus its adaptive grid per category, recents first when present. The
+/// unified composer media panel stacks these inside its own CustomScrollView
+/// so the sections scroll with the sticker and GIF sections; the standalone
+/// [StandardEmojiPane] reuses the same list inside its private scroller.
+List<Widget> standardEmojiSectionSlivers({
+  required BuildContext context,
+  required int columns,
+  required bool hasRecents,
+  required ValueChanged<String> insert,
+  required void Function(int customEmojiId, String fallback) insertCustom,
+}) {
+  void insertRecent(EmojiRecentEntry entry) {
+    if (entry.isCustom) {
+      EmojiRecentsStore.shared.recordCustom(entry.customEmojiId, entry.emoji);
+      insertCustom(entry.customEmojiId, entry.emoji);
+    } else {
+      EmojiRecentsStore.shared.record(entry.emoji);
+      insert(entry.emoji);
+    }
+  }
+
+  return [
+    if (hasRecents) ...[
+      emojiSectionHeader(AppStringKeys.emojiRecentsSection.l10n(context)),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        sliver: SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisExtent: emojiPanelCellExtent,
+          ),
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final entry = EmojiRecentsStore.shared.renderableEntries[index];
+            return entry.isCustom
+                ? EmojiPanelCell(
+                    key: ValueKey('emojiRecentCustom-${entry.customEmojiId}'),
+                    customItem: StickerItem(
+                      id: entry.customEmojiId,
+                      width: 512,
+                      height: 512,
+                      emoji: entry.emoji,
+                      customEmojiId: entry.customEmojiId,
+                    ),
+                    onTap: () => insertRecent(entry),
+                  )
+                : EmojiPanelCell(
+                    key: ValueKey('emojiRecent-${entry.emoji}'),
+                    emoji: entry.emoji,
+                    onTap: () => insertRecent(entry),
+                  );
+          }, childCount: EmojiRecentsStore.shared.renderableEntries.length),
+        ),
+      ),
+    ],
+    for (final category in EmojiCatalog.categories) ...[
+      emojiSectionHeader(category.name.l10n(context)),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        sliver: SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisExtent: emojiPanelCellExtent,
+          ),
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final emoji = category.emojis[index];
+            return EmojiPanelCell(emoji: emoji, onTap: () => insert(emoji));
+          }, childCount: category.emojis.length),
+        ),
+      ),
+    ],
+  ];
+}
+
+/// One compact category header row shared by the pane and the unified panel.
+/// The key names the label (stable across the recents toggle) so both surfaces
+/// expose the same per-category anchors.
+Widget emojiSectionHeader(String label) {
+  return Builder(
+    builder: (context) => SliverToBoxAdapter(
       child: SizedBox(
-        key: ValueKey('emojiSectionHeader-$section'),
-        height: _emojiSectionHeaderExtent,
+        key: ValueKey('emojiSectionHeader-$label'),
+        height: emojiSectionHeaderExtent,
         child: Align(
           alignment: AlignmentDirectional.centerStart,
           child: Padding(
@@ -238,57 +316,8 @@ class StandardEmojiPaneState extends State<StandardEmojiPane> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _recentsGrid(int columns) {
-    final entries = EmojiRecentsStore.shared.renderableEntries;
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      sliver: SliverGrid(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          mainAxisExtent: emojiPanelCellExtent,
-        ),
-        delegate: SliverChildBuilderDelegate((context, index) {
-          final entry = entries[index];
-          return entry.isCustom
-              ? EmojiPanelCell(
-                  key: ValueKey('emojiRecentCustom-${entry.customEmojiId}'),
-                  customItem: StickerItem(
-                    id: entry.customEmojiId,
-                    width: 512,
-                    height: 512,
-                    emoji: entry.emoji,
-                    customEmojiId: entry.customEmojiId,
-                  ),
-                  onTap: () => _insertCustom(entry.customEmojiId, entry.emoji),
-                )
-              : EmojiPanelCell(
-                  key: ValueKey('emojiRecent-${entry.emoji}'),
-                  emoji: entry.emoji,
-                  onTap: () => _insert(entry.emoji),
-                );
-        }, childCount: entries.length),
-      ),
-    );
-  }
-
-  Widget _categoryGrid(EmojiCategory category, int columns) {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      sliver: SliverGrid(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          mainAxisExtent: emojiPanelCellExtent,
-        ),
-        delegate: SliverChildBuilderDelegate((context, index) {
-          final emoji = category.emojis[index];
-          return EmojiPanelCell(emoji: emoji, onTap: () => _insert(emoji));
-        }, childCount: category.emojis.length),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 /// Bottom strip of category icons that follows the grid's scroll position,

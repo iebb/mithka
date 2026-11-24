@@ -2315,16 +2315,18 @@ class _SearchViewModel extends ChangeNotifier {
         );
       final seen = <String>{};
       final out = <_SearchHit>[];
+      final sourceCache = <int, _SearchSource>{};
       for (final object in raw) {
         if (!_isCurrent(tab, runId, trimmed) || out.length >= resultLimit) {
           break;
         }
         final chatId = object.int64('chat_id');
-        final message = TDParse.message(object);
-        if (chatId == null || message == null) continue;
+        if (chatId == null) continue;
+        final source = sourceCache[chatId] ??= await _sourceFor(chatId);
+        final message = TDParse.message(object, isChannel: source.isChannel);
+        if (message == null) continue;
         final key = '$chatId:${message.id}';
         if (!seen.add(key)) continue;
-        final source = await _sourceFor(chatId);
         out.add(_SearchHit.message(message, chatId: chatId, source: source));
       }
       _finish(tab, runId, trimmed, out);
@@ -2415,6 +2417,7 @@ class _SearchViewModel extends ChangeNotifier {
       return _SearchSource(
         title: chat.str('title') ?? '',
         photo: TDParse.smallPhoto(chat.obj('photo')),
+        isChannel: TDParse.chatKind(chat) == ChatKind.channel,
       );
     } catch (_) {
       return const _SearchSource(title: '', photo: null);
@@ -2630,7 +2633,12 @@ class _SearchHit {
 }
 
 class _SearchSource {
-  const _SearchSource({required this.title, required this.photo});
+  const _SearchSource({
+    required this.title,
+    required this.photo,
+    this.isChannel = false,
+  });
   final String title;
   final TdFileRef? photo;
+  final bool isChannel;
 }

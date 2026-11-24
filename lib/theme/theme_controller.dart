@@ -192,6 +192,20 @@ enum MobileMessageActionMenuStyle {
   final AppIconData icon;
 }
 
+/// What the bottom panel of a channel you subscribe to but cannot post in
+/// shows. Mirrors the reference client's channel-bottom trio: the stock mute bar, the
+/// discussion / direct-message actions, or nothing at all.
+enum ChannelBottomBarMode {
+  mute(AppStringKeys.channelBottomBarMute, HeroAppIcons.bell),
+  actions(AppStringKeys.channelBottomBarActions, HeroAppIcons.message),
+  hidden(AppStringKeys.channelBottomBarHidden, HeroAppIcons.eyeSlash);
+
+  const ChannelBottomBarMode(this.label, this.icon);
+
+  final String label;
+  final AppIconData icon;
+}
+
 enum NameColorAudience {
   premium(AppStringKeys.appearanceNameColorPremium, HeroAppIcons.star),
   allUsers(AppStringKeys.appearanceNameColorAllUsers, HeroAppIcons.users),
@@ -1134,6 +1148,11 @@ class ThemeController extends ChangeNotifier {
               style.name == _prefs.getString(_mobileMessageActionMenuStyleKey),
           orElse: () => MobileMessageActionMenuStyle.grid,
         );
+    _channelBottomBarMode = ChannelBottomBarMode.values.firstWhere(
+      (mode) => mode.name == _prefs.getString(_channelBottomBarModeKey),
+      orElse: () => ChannelBottomBarMode.mute,
+    );
+    _showChannelPostStats = _prefs.getBool(_showChannelPostStatsKey) ?? true;
     _enterToSend = _prefs.getBool(_enterToSendKey) ?? false;
     _openChatsAtLatest = _prefs.getBool(_openChatsAtLatestKey) ?? false;
     // Wide chats show the group context pane on arrival; this opts out.
@@ -1207,6 +1226,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   static const _modeKey = 'appearanceMode';
+  static const _mediaPanelSegmentKey = 'mediaPanelSegment';
+  static const _channelBottomBarModeKey = 'channelBottomBarMode.v1';
+  static const _showChannelPostStatsKey = 'showChannelPostStats.v1';
   static const _themingEnabledKey = 'appearanceThemingEnabled';
   static const _brandKey = 'brandColor';
   static const _cloudThemeKey = 'telegramCloudTheme';
@@ -1313,6 +1335,8 @@ class ThemeController extends ChangeNotifier {
   int? _activeAccountUserId;
   late bool _usePerAccountTheming;
   late bool _themingEnabled;
+  late ChannelBottomBarMode _channelBottomBarMode;
+  bool _showChannelPostStats = true;
   late AppearanceMode _mode;
   late Color _brandColor;
   TelegramCloudTheme? _lightCloudTheme;
@@ -1845,6 +1869,32 @@ class ThemeController extends ChangeNotifier {
   /// the chat header button opens it.
   bool get hideChatContextPane => _hideChatContextPane;
   LinkOpenMode get linkOpenMode => _linkOpenMode;
+  String get mediaPanelSegment =>
+      _prefs.getString(_mediaPanelSegmentKey) ?? 'emoji';
+
+  set mediaPanelSegment(String value) {
+    if (_prefs.getString(_mediaPanelSegmentKey) == value) return;
+    _prefs.setString(_mediaPanelSegmentKey, value);
+  }
+
+  ChannelBottomBarMode get channelBottomBarMode => _channelBottomBarMode;
+
+  set channelBottomBarMode(ChannelBottomBarMode value) {
+    if (_channelBottomBarMode == value) return;
+    _channelBottomBarMode = value;
+    _prefs.setString(_channelBottomBarModeKey, value.name);
+    notifyListeners();
+  }
+
+  bool get showChannelPostStats => _showChannelPostStats;
+
+  set showChannelPostStats(bool value) {
+    if (_showChannelPostStats == value) return;
+    _showChannelPostStats = value;
+    _prefs.setBool(_showChannelPostStatsKey, value);
+    notifyListeners();
+  }
+
   bool get showSavedMessagesIdentity => _showSavedMessagesIdentity;
   bool get preserveSenderWhenRepeating => _preserveSenderWhenRepeating;
   bool get forwardRichMarkdown => _forwardRichMarkdown;

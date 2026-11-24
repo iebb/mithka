@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:fvp/fvp.dart';
@@ -19,6 +20,19 @@ bool loopingMediaPlaybackIsEligible({
 /// playback. Animated avatars intentionally use their own separate budget.
 final LoopingMediaPlayerPool loopingMediaPlayerPool = LoopingMediaPlayerPool(
   maximumPlayers: 4,
+);
+
+/// Native players for video stickers (`.webm`), in the conversation and in
+/// every picker.
+///
+/// The budget has to fit a viewport, not a fixed few: a sticker picker page
+/// shows a dozen or more cells at once, and a sticker only competes for a
+/// player while it is actually on screen ([loopingSurfaceIsOnScreen]), so the
+/// cap is a safety valve for pathological layouts rather than the ordinary
+/// case. A sticker that is scrolled out (or cached by the list) drops its
+/// player and gets a fresh one when it comes back.
+final LoopingMediaPlayerPool stickerPlayerPool = LoopingMediaPlayerPool(
+  maximumPlayers: 24,
 );
 
 final Set<VoidCallback> _playbackContextListeners = <VoidCallback>{};
@@ -46,6 +60,51 @@ void addLoopingMediaPlaybackContextListener(VoidCallback listener) {
 
 void removeLoopingMediaPlaybackContextListener(VoidCallback listener) {
   _playbackContextListeners.remove(listener);
+}
+
+/// Whether a looping media surface is worth a native player right now.
+///
+/// Scroll views keep a cache extent of children laid out above and below the
+/// viewport; those are mounted and would otherwise hold players for content
+/// nobody can see. A small [margin] keeps a sticker alive across a short
+/// overscroll instead of tearing its decoder down and building it again.
+bool loopingSurfaceIsOnScreen({
+  required Rect rect,
+  required Size screen,
+  double margin = 0,
+}) {
+  if (screen.isEmpty || rect.isEmpty) return false;
+  final visible = Rect.fromLTWH(
+    -margin,
+    -margin,
+    screen.width + margin * 2,
+    screen.height + margin * 2,
+  );
+  return rect.overlaps(visible);
+}
+
+/// Remembers whether a looping surface is inside the viewport, so a scroll
+/// tick only triggers work when the answer actually changed.
+class LoopingSurfaceVisibility {
+  LoopingSurfaceVisibility({this.margin = 0});
+
+  /// Extra room around the viewport that still counts as visible, so a short
+  /// overscroll does not tear a decoder down and build it again.
+  final double margin;
+
+  bool _onScreen = true;
+  bool get isOnScreen => _onScreen;
+
+  /// Feeds a freshly measured [rect] (null while the surface has no render box
+  /// yet) and reports whether visibility flipped.
+  bool update({required Rect? rect, required Size screen}) {
+    final next = rect == null
+        ? _onScreen
+        : loopingSurfaceIsOnScreen(rect: rect, screen: screen, margin: margin);
+    if (next == _onScreen) return false;
+    _onScreen = next;
+    return true;
+  }
 }
 
 /// Pure FIFO lease pool used to cap native looping-media players.
@@ -174,16 +233,24 @@ void disableLoopingMediaAudioTracks(VideoPlayerController controller) {
 }
 
 /// Video decoder override for muted looping WebM (Telegram video stickers),
-/// by [platform]. FVP prefers MDK's VT decoder on Apple platforms, and that
-/// decoder's VP9 path presents frames faster than the media clock for the
-/// alpha-enhanced WebM Telegram stickers are encoded as, so sticker playback
-/// visibly runs too fast. Plain FFmpeg decodes those clips with correct
-/// pacing and still outputs yuva420p through MDK's enhancement-layer merge.
+/// by [platform].
+///
+/// MDK's hardware decoders run the alpha-enhanced VP9 WebM Telegram encodes
+/// stickers as ahead of the media clock: its VT path on Apple platforms, and
+/// AMediaCodec's VP9 path on Android. The clip then visibly loops too fast
+/// while H.264 GIF animations and audio-bearing videos keep their pacing.
+/// Android's alpha-WebM registration asks FVP for FFmpeg, but that global
+/// option only reaches players constructed after it — FVP's auto-registration
+/// and the primary-backend route can build one before it lands, which is why
+/// the per-player override has to be re-asserted after `initialize()`. Plain
+/// FFmpeg decodes these clips with correct pacing and still outputs yuva420p
+/// through MDK's enhancement-layer merge.
+///
 /// Returns null when the platform's default decoder order is fine.
 @visibleForTesting
 List<String>? webmLoopingDecoderOverride(TargetPlatform platform) {
   return switch (platform) {
-    TargetPlatform.iOS => const <String>['FFmpeg'],
+    TargetPlatform.iOS || TargetPlatform.android => const <String>['FFmpeg'],
     _ => null,
   };
 }

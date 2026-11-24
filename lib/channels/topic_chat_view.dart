@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
+import '../app/chat_deep_link_controller.dart';
 import '../app/chat_pane.dart';
 import '../app/ipad_window_chrome.dart';
 import '../chat/admin/chat_members_view.dart';
@@ -23,8 +24,9 @@ import '../chat/composer/outgoing_attachment.dart';
 import '../chat/composer/rich_text_composer_view.dart';
 import '../chat/composer/rich_text_format.dart';
 import '../chat/forum_topic_transcript.dart';
+import '../chat/forward_handoff.dart';
 import '../chat/links_search/link_preview_fixer.dart';
-import '../chat/messages/forward_options.dart';
+import '../chat/messages/forward_markdown.dart';
 import '../chat/messages/message_replies_sheet.dart';
 import '../chat/messages/pangu_spacing.dart';
 import '../components/app_icons.dart';
@@ -1359,6 +1361,7 @@ class _TopicChatViewState extends State<TopicChatView> {
         topic: item,
         canManage: _canManageTopics,
         canDelete: _canDeleteTopic(topic),
+        canClose: _canManageTopics,
         onMarkRead: () => _markTopicRead(topic),
         onTogglePinned: () => _toggleTopicPinned(topic),
         onToggleMuted: () => _toggleTopicMuted(topic),
@@ -1759,30 +1762,19 @@ class _TopicChatViewState extends State<TopicChatView> {
     );
     if (result == null || !mounted) return;
     final target = result.chat;
-    try {
-      await forwardMessagesWithOptions(
-        client: TdClient.shared,
-        targetChatId: target.id,
+    ChatDeepLinkController.shared.openChat(
+      chatId: target.id,
+      title: target.title,
+      accountSlot: _accountSlot,
+      forwardHandoff: ForwardMessagesHandoff(
         fromChatId: widget.chat.id,
-        messageIds: [post.message.id],
-        options: result.forwardOptions,
-      );
-      if (!mounted) return;
-      showToast(
-        context,
-        AppStrings.t(AppStringKeys.chatForwardedToName, {
-          'value1': target.title,
-        }),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showToast(
-        context,
-        isForwardProtectedError(e)
-            ? AppStringKeys.chatForwardProtected
-            : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
-      );
-    }
+        messages: [post.message],
+        accountSlot: _accountSlot,
+        clientId: TdClient.shared.clientId(_accountSlot) ?? 0,
+        hasCaption: forwardSelectionHasCaption([post.message]),
+        markdownOffer: const ForwardMarkdownOffer.none(),
+      ),
+    );
   }
 
   Future<void> _addReaction(_TopicPost post, String emoji) async {

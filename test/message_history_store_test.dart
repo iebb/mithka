@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
+import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/history/message_history_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -131,7 +132,18 @@ void main() {
     });
     store.activeClientIdProvider = () => _clientA;
     SharedPreferences.setMockInitialValues(const {});
-    store.initialize(await SharedPreferences.getInstance());
+    final prefs = await SharedPreferences.getInstance();
+    // Recording is off by default; these tests exercise the store with
+    // every chat type recorded.
+    MessageHistorySettings.shared
+      ..initialize(prefs)
+      ..setEnableAll(true)
+      ..setRecordDeleted(true)
+      ..setRecordEdits(true)
+      ..setRecordPrivate(true)
+      ..setRecordGroups(true)
+      ..setRecordChannels(true);
+    store.initialize(prefs);
     notifications = 0;
     store.addListener(() => notifications++);
   });

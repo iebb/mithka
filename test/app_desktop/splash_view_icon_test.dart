@@ -125,6 +125,14 @@ void main() {
     expect(find.byKey(const ValueKey('splash-icon-default')), findsNothing);
   });
 
+  testWidgets('the fork\'s shipped mark keeps the brand screen too', (
+    tester,
+  ) async {
+    await pumpSplash(tester, icon: 'default');
+    expect(imageOf('assets/penguin.png'), findsOneWidget);
+    expect(find.byKey(const ValueKey('splash-icon-default')), findsNothing);
+  });
+
   testWidgets('without an icon controller it shows the default screen', (
     tester,
   ) async {

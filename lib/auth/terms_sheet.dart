@@ -91,6 +91,7 @@ class _TermsSheet extends StatelessWidget {
                           image: AssetImage('assets/penguin.png'),
                           width: 48,
                           height: 48,
+                          filterQuality: FilterQuality.high,
                         ),
                       ),
                       const SizedBox(width: 14),

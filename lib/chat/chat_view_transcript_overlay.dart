@@ -16,8 +16,6 @@ extension _ChatViewTranscript on _ChatViewState {
     );
   }
 
-  /// Answers a swipe on the transcript. The gesture is a shortcut to typing,
-  /// so the composer takes the caret as well as the reply target.
   void _beginSwipeReply(ChatMessage message) {
     _vm.setReply(message);
     _vm.requestComposerFocus();
@@ -388,12 +386,6 @@ extension _ChatViewTranscript on _ChatViewState {
     unawaited(_loadActionAvailability(message.id, propertiesGeneration));
   }
 
-  /// The link row appears only once the server confirms the message carries
-  /// one (`messageProperties.can_get_link`), and the reply row only once it
-  /// confirms a reply is accepted (`messageProperties.can_be_replied`). A
-  /// chat without a composer never gets one at all. While the offline
-  /// properties query is in flight both entries stay hidden, so the menu
-  /// never grows a row it would have to remove a moment later.
   Future<void> _loadActionAvailability(int messageId, int generation) async {
     bool? canGetLink;
     bool? canBeReplied;
@@ -441,8 +433,6 @@ extension _ChatViewTranscript on _ChatViewState {
     _updateState(() => _actionReactionAvailability = availability);
   }
 
-  /// An album shows one set of reactions, those of its interaction owner, so
-  /// a reaction picked on any member goes to that owner.
   ChatMessage _reactionMessageFor(ChatMessage message) {
     final kind = chatMediaAlbumKind(message);
     if (message.mediaAlbumId == 0 || kind == null) return message;
@@ -728,9 +718,6 @@ extension _ChatViewTranscript on _ChatViewState {
     MessageReaction reaction,
   ) => _sendReaction(() => _vm.toggleReaction(message, reaction));
 
-  /// Clears the live action state, handing the closing overlay its snapshot to
-  /// replay during the exit. A second dismiss while the exit is still running
-  /// finds no live target and leaves the running reverse alone.
   void _dismissActionOverlay() {
     if (_actionTarget == null) return;
     _updateState(() {
@@ -743,9 +730,6 @@ extension _ChatViewTranscript on _ChatViewState {
     });
   }
 
-  /// The exit animation landed: drop the snapshot and unmount the overlay. A
-  /// late report for a menu that has since re-opened (or closed again) is
-  /// stale — only a snapshot from the reported close is released here.
   void _handleActionOverlayExitComplete() {
     if (!mounted || _actionTarget != null || _actionOverlaySnapshot == null) {
       return;
@@ -763,5 +747,94 @@ extension _ChatViewTranscript on _ChatViewState {
           availability.choices.any((choice) => choice.isCustom),
     );
     return availability.quickChoices(configured);
+  }
+
+  /// Long-pressing the reply banner jumps to the original message. A
+
+  /// cross-chat reply's source lives outside this transcript, so only a
+
+  /// same-chat target can be jumped to.
+
+  void _jumpToReplySource(ChatMessage message) {
+    if (_vm.replyToChatId != null) return;
+    unawaited(_jumpToMessage(message.id));
+  }
+
+  /// Moves the pending reply into a chat picked from the chat list. The
+
+  /// destination composer receives the reply as a cross-chat reply, so its
+
+  /// send addresses the source message where it actually lives.
+
+  Future<void> _replyInAnotherChat(
+    ChatMessage message, {
+    MessageTextQuote? quoteParam,
+  }) async {
+    final result = await Navigator.of(context).push<ChatPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => const ChatPickerView(
+          title: AppStringKeys.chatReplyInAnotherChatTitle,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final targetChat = result.chat;
+    final sourceChatId = _vm.replyToChatId ?? _vm.chatId;
+    if (targetChat.id == sourceChatId) return;
+    // Read the composer draft before navigating: the current view model may
+    // be disposed once the destination transcript opens.
+    final draftText = _vm.composerFormattedDraft;
+    final quote = quoteParam ?? _vm.replyQuote;
+    ChatDeepLinkController.shared.openChat(
+      chatId: targetChat.id,
+      title: targetChat.title,
+      externalReply: ExternalReplyHandoff(
+        sourceChatId: sourceChatId,
+        message: ChatMessagePayload(
+          id: message.id,
+          isOutgoing: message.isOutgoing,
+          date: message.date,
+          senderName: message.senderName,
+          text: message.text,
+        ),
+        quote: quote,
+        draftText: draftText,
+      ),
+    );
+    _vm.setReply(null);
+  }
+
+  /// Installs a reply carried over from another chat ("reply in another
+
+  /// chat"): the composer starts with the cross-chat reply pending and the
+
+  /// draft text typed before the move. Consumed once; a later rebuild of the
+
+  /// same widget re-runs this against an already-cleared handoff field.
+
+  void _adoptExternalReplyHandoff() {
+    final handoff = widget.externalReplyHandoff;
+    if (handoff == null) return;
+    if (handoff.sourceChatId == widget.chatId) return;
+    _vm.setExternalReply(
+      ChatMessage(
+        id: handoff.message.id,
+        isOutgoing: handoff.message.isOutgoing,
+        date: handoff.message.date,
+        senderName: handoff.message.senderName,
+        text: handoff.message.text,
+      ),
+      handoff.sourceChatId,
+      quote: handoff.quote as MessageTextQuote?,
+    );
+    if (handoff.draftText.isNotEmpty) {
+      _vm.setDraft(handoff.draftText);
+    }
+  }
+
+  void _adoptForwardHandoff() {
+    final handoff = widget.forwardHandoff;
+    if (handoff == null) return;
+    _vm.adoptForwardHandoff(handoff);
   }
 }

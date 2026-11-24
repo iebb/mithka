@@ -1,14 +1,14 @@
 //
 //  ghost_mode_controller.dart
 //
-//  AyuGram-style ghost mode. Guards the app behind the compile-time
+//  Ghost mode (anti-recall style stealth). Guards the app behind the compile-time
 //  `allowTelegramTosViolations` flag: when the flag is absent or false the
 //  controller stays permanently disabled, every query method returns the
 //  "never block" answer, and nothing else in the app changes. Preferences are
 //  persisted in SharedPreferences so they survive restarts of self-built
 //  binaries.
 //
-//  Semantics mirror NagramXF's AyuGhostPreferences: a global switch plus a
+//  Semantics: a global switch plus a
 //  per-chat three-state exception — `default` follows the global switch,
 //  `forceBlock` always intercepts, `forceAllow` never intercepts.
 //
@@ -62,6 +62,7 @@ class GhostModeController extends ChangeNotifier {
   static const _blockStoryReadsKey = 'ghost_mode.blockStoryReads';
   static const _blockTypingKey = 'ghost_mode.blockTyping';
   static const _hideOnlineKey = 'ghost_mode.hideOnline';
+  static const _showSidebarEntryKey = 'ghost_mode.showSidebarEntry';
   static const _chatExceptionKeyPrefix = 'ghost_mode.chat.';
 
   // Dimensions default to blocking while ghost mode is on; toggling only a
@@ -70,6 +71,7 @@ class GhostModeController extends ChangeNotifier {
   static const _defaultBlockStoryReads = true;
   static const _defaultBlockTyping = true;
   static const _defaultHideOnline = true;
+  static const _defaultShowSidebarEntry = true;
 
   SharedPreferences? _prefs;
   StreamSubscription<Map<String, dynamic>>? _authSub;
@@ -79,6 +81,7 @@ class GhostModeController extends ChangeNotifier {
   bool _blockStoryReads = _defaultBlockStoryReads;
   bool _blockTyping = _defaultBlockTyping;
   bool _hideOnline = _defaultHideOnline;
+  bool _showSidebarEntry = _defaultShowSidebarEntry;
   final Map<int, GhostChatException> _chatExceptions = {};
 
   bool get globalEnabled => _globalEnabled && isAvailable;
@@ -86,6 +89,11 @@ class GhostModeController extends ChangeNotifier {
   bool get blockStoryReads => _blockStoryReads;
   bool get blockTyping => _blockTyping;
   bool get hideOnline => _hideOnline;
+
+  /// Whether the drawer sidebar and the desktop rail carry the ghost-mode
+  /// shortcut at all. Pure placement: flipping it never touches
+  /// interception, which keeps working with the entry hidden.
+  bool get showSidebarEntry => _showSidebarEntry;
 
   Map<int, GhostChatException> get chatExceptions =>
       Map<int, GhostChatException>.unmodifiable(_chatExceptions);
@@ -105,6 +113,8 @@ class GhostModeController extends ChangeNotifier {
         prefs.getBool(_blockStoryReadsKey) ?? _defaultBlockStoryReads;
     _blockTyping = prefs.getBool(_blockTypingKey) ?? _defaultBlockTyping;
     _hideOnline = prefs.getBool(_hideOnlineKey) ?? _defaultHideOnline;
+    _showSidebarEntry =
+        prefs.getBool(_showSidebarEntryKey) ?? _defaultShowSidebarEntry;
     _chatExceptions.clear();
     for (final key in prefs.getKeys()) {
       if (!key.startsWith(_chatExceptionKeyPrefix)) continue;
@@ -224,6 +234,14 @@ class GhostModeController extends ChangeNotifier {
     _hideOnline = value;
     await _prefs?.setBool(_hideOnlineKey, value);
     await _applyOnlineInterception();
+    notifyListeners();
+  }
+
+  Future<void> setShowSidebarEntry(bool value) async {
+    if (!isAvailable) return;
+    if (_showSidebarEntry == value) return;
+    _showSidebarEntry = value;
+    await _prefs?.setBool(_showSidebarEntryKey, value);
     notifyListeners();
   }
 

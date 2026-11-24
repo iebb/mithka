@@ -34,10 +34,15 @@ class VideoStickerView extends StatefulWidget {
     required this.file,
     this.fallback,
     this.onReady,
+    this.pool,
   });
   final TdFileRef file;
   final TdFileRef? fallback;
   final VoidCallback? onReady;
+
+  /// Native-player budget to draw from. Stickers and their pickers share
+  /// [stickerPlayerPool]; other looping surfaces keep their own budget.
+  final LoopingMediaPlayerPool? pool;
 
   @override
   State<VideoStickerView> createState() => _VideoStickerViewState();
@@ -52,6 +57,11 @@ class _VideoStickerViewState extends State<VideoStickerView>
   bool _fallbackOnly = false;
   bool _tickerEnabled = false;
   bool _appIsActive = true;
+  final LoopingSurfaceVisibility _visibility = LoopingSurfaceVisibility(
+    margin: _visibilityMargin,
+  );
+  bool _visibilityCheckScheduled = false;
+  ScrollPosition? _scrollPosition;
   bool _loadPending = false;
   int _generation = 0;
   LoopingMediaPlayerLease? _lease;
@@ -59,6 +69,10 @@ class _VideoStickerViewState extends State<VideoStickerView>
   VideoPlayerController? _initializingController;
   VideoPlaybackDiagnostics? _playbackDiagnostics;
   Timer? _loopReplayTimer;
+
+  /// Keeps a sticker alive across a short overscroll instead of tearing its
+  /// decoder down and rebuilding it on the way back.
+  static const double _visibilityMargin = 64;
 
   static Future<bool>? _androidNeedsStaticFallback;
 
@@ -72,22 +86,64 @@ class _VideoStickerViewState extends State<VideoStickerView>
     addLoopingMediaPlaybackContextListener(_handlePlaybackContextChanged);
   }
 
-  bool get _isEligible => loopingMediaPlaybackIsEligible(
-    tickerEnabled: _tickerEnabled,
-    appIsActive: _appIsActive,
-  );
+  bool get _isEligible =>
+      _visibility.isOnScreen &&
+      loopingMediaPlaybackIsEligible(
+        tickerEnabled: _tickerEnabled,
+        appIsActive: _appIsActive,
+      );
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _attachScrollListener();
+    _scheduleVisibilityCheck();
     _reconcilePlayback(rebuildOnRelease: false);
   }
 
   @override
   void didUpdateWidget(VideoStickerView old) {
     super.didUpdateWidget(old);
+    _scheduleVisibilityCheck();
     _reconcilePlayback(rebuildOnRelease: false);
+  }
+
+  /// Every sticker in a chat or a picker page lives in a scrollable, and only
+  /// the ones inside the viewport should own a native player.
+  void _attachScrollListener() {
+    final position = Scrollable.maybeOf(context)?.position;
+    if (identical(position, _scrollPosition)) return;
+    _scrollPosition?.removeListener(_scheduleVisibilityCheck);
+    _scrollPosition = position;
+    _scrollPosition?.addListener(_scheduleVisibilityCheck);
+  }
+
+  void _scheduleVisibilityCheck() {
+    if (_visibilityCheckScheduled || !mounted) return;
+    _visibilityCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityCheckScheduled = false;
+      if (!mounted) return;
+      final media = MediaQuery.maybeOf(context);
+      final box = context.findRenderObject();
+      if (media == null || box is! RenderBox || !box.attached || !box.hasSize) {
+        return;
+      }
+      final changed = _visibility.update(
+        rect: box.localToGlobal(Offset.zero) & box.size,
+        screen: media.size,
+      );
+      if (!changed) return;
+      _reconcilePlayback();
+    });
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Keyboard insets, rotation, and a sheet sliding over the list all move
+    // every sticker without scrolling it.
+    _scheduleVisibilityCheck();
   }
 
   @override
@@ -140,14 +196,15 @@ class _VideoStickerViewState extends State<VideoStickerView>
     final ref = widget.file;
     final slot = TdClient.shared.activeSlot;
     final generation = ++_generation;
-    final lease = loopingMediaPlayerPool.tryAcquire();
+    final pool = widget.pool ?? stickerPlayerPool;
+    final lease = pool.tryAcquire();
     if (lease != null) {
       _startLoad(lease, generation, ref, slot);
       return;
     }
 
     late final LoopingMediaPlayerWaiter waiter;
-    waiter = loopingMediaPlayerPool.waitForLease((grantedLease) {
+    waiter = pool.waitForLease((grantedLease) {
       if (identical(_leaseWaiter, waiter)) _leaseWaiter = null;
       if (!_ownsAttempt(generation, ref, slot)) {
         grantedLease.release();
@@ -218,11 +275,11 @@ class _VideoStickerViewState extends State<VideoStickerView>
       viewType: c.viewType,
     );
     try {
-      // MDK (via fvp) may ignore a loop flag applied once the media is
-      // prepared (wang-bin/fvp#394), so record it first; video_player applies
-      // it while handling the initialized event. A completed clip is also
-      // replayed from the value listener below, so the sticker loops even on
-      // backends that still ignore the flag.
+      // Looping stays with the backend: seeking to zero on every pass showed a
+      // corrupted frame at the seam (a blocky black-and-white frame users read
+      // as a QR code). MDK (via fvp) may ignore a loop flag applied after the
+      // media is prepared (wang-bin/fvp#394), so record it first; a backend that
+      // still completes the clip is replayed from the value listener.
       await c.setLooping(true);
       await c.initialize();
       diagnostics.initialized(value: c.value);
@@ -270,11 +327,10 @@ class _VideoStickerViewState extends State<VideoStickerView>
         diagnostics.reportTerminal();
         return;
       }
-      // A backend that ignored setLooping completes the clip once and stops
-      // on its last frame; a video sticker must loop forever. Replay it from
-      // the start, but only after video_player's own `completed` handler has
-      // paused and parked the clip on its last frame, or the sticker briefly
-      // flashes that frame at every wrap.
+      // A backend that ignored setLooping completes the clip once and stops on
+      // its last frame; a video sticker must loop forever. Replay it after
+      // video_player's own completed handler has parked it, or the wrap flashes
+      // the last frame.
       if (value.isCompleted && !value.isPlaying) {
         _loopReplayTimer ??= Timer(_loopReplayDelay, () {
           _loopReplayTimer = null;
@@ -427,6 +483,8 @@ class _VideoStickerViewState extends State<VideoStickerView>
 
   @override
   void dispose() {
+    _scrollPosition?.removeListener(_scheduleVisibilityCheck);
+    _scrollPosition = null;
     WidgetsBinding.instance.removeObserver(this);
     removeLoopingMediaPlaybackContextListener(_handlePlaybackContextChanged);
     _releasePlayback(rebuild: false);

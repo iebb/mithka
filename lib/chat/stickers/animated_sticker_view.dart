@@ -84,7 +84,7 @@ const int _maxConcurrentTgsParses = 2;
 int _activeTgsParses = 0;
 final List<Completer<void>> _tgsParseQueue = <Completer<void>>[];
 
-Future<void> _prewarmTgsComposition(
+Future<LottieComposition?> _prewarmTgsComposition(
   Uint8List bytes,
   bool Function() stillWanted,
 ) async {
@@ -98,21 +98,41 @@ Future<void> _prewarmTgsComposition(
     // so hand the slot straight on instead.
     if (!stillWanted()) {
       if (_tgsParseQueue.isNotEmpty) _tgsParseQueue.removeAt(0).complete();
-      return;
+      return null;
     }
   }
   _activeTgsParses++;
   try {
     // Lands in lottie's own `sharedLottieCache`, keyed on the byte buffer, so
-    // the `Lottie.memory` in build resolves without parsing again.
-    await MemoryLottie(bytes, backgroundLoading: true).load();
+    // a remount of the same sticker resolves without parsing again.
+    return await MemoryLottie(bytes, backgroundLoading: true).load();
   } catch (_) {
-    // Let the Lottie widget surface a broken composition on its own.
+    // A broken composition simply renders as its placeholder frame.
+    return null;
   } finally {
     _activeTgsParses--;
     if (_tgsParseQueue.isNotEmpty) _tgsParseQueue.removeAt(0).complete();
   }
 }
+
+/// The controller that drives a sticker loop.
+///
+/// Lottie's built-in controller is stopped and restarted by every parent
+/// rebuild (a busy chat row rebuilds on reactions, read state, selection) and
+/// inherits the platform's reduced-motion scale. A sticker is content with an
+/// authored three-second loop, so it gets one long-lived controller per
+/// composition that is started once and preserves its duration
+/// ([AnimationBehavior.preserve]) — Telegram's rlottie loop is likewise
+/// independent of the UI animation scale.
+@visibleForTesting
+AnimationController createStickerPlaybackController({
+  required TickerProvider vsync,
+  required Duration duration,
+}) => AnimationController(
+  vsync: vsync,
+  duration: duration,
+  animationBehavior: AnimationBehavior.preserve,
+);
 
 class AnimatedStickerView extends StatefulWidget {
   const AnimatedStickerView({
@@ -135,8 +155,10 @@ class AnimatedStickerView extends StatefulWidget {
   State<AnimatedStickerView> createState() => _AnimatedStickerViewState();
 }
 
-class _AnimatedStickerViewState extends State<AnimatedStickerView> {
-  Uint8List? _bytes;
+class _AnimatedStickerViewState extends State<AnimatedStickerView>
+    with SingleTickerProviderStateMixin {
+  LottieComposition? _composition;
+  AnimationController? _playback;
   int? _loadedId;
   int? _loadedSlot;
 
@@ -149,7 +171,27 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
   @override
   void didUpdateWidget(AnimatedStickerView old) {
     super.didUpdateWidget(old);
+    if (old.animate != widget.animate) {
+      final playback = _playback;
+      if (playback != null) _applyPlayback(playback);
+    }
     _load();
+  }
+
+  @override
+  void dispose() {
+    _playback?.dispose();
+    super.dispose();
+  }
+
+  void _applyPlayback(AnimationController playback) {
+    if (widget.animate) {
+      playback.repeat();
+    } else {
+      playback
+        ..stop()
+        ..value = 0;
+    }
   }
 
   Future<void> _load() async {
@@ -165,25 +207,44 @@ class _AnimatedStickerViewState extends State<AnimatedStickerView> {
     // decoded bytes across recycled chat rows / emoji-grid cells.
     final inflated = await _loadInflatedTgsSticker('$slot:${ref.id}', path);
     if (!mounted || _loadedId != ref.id || inflated == null) return;
-    await _prewarmTgsComposition(
+    final composition = await _prewarmTgsComposition(
       inflated,
       () => mounted && _loadedId == ref.id,
     );
-    if (!mounted || _loadedId != ref.id) return;
-    setState(() => _bytes = inflated);
+    if (!mounted || _loadedId != ref.id || composition == null) return;
+    final playback =
+        _playback ??
+        createStickerPlaybackController(
+          vsync: this,
+          duration: composition.duration,
+        );
+    // A recycled cell gets a new sticker: rewind before the new composition
+    // paints, so the first visible frame is its first frame.
+    playback
+      ..duration = composition.duration
+      ..value = 0;
+    _applyPlayback(playback);
+    setState(() {
+      _composition = composition;
+      _playback = playback;
+    });
     widget.onReady?.call();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bytes = _bytes;
-    if (bytes == null) return const SizedBox.expand();
-    return Lottie.memory(
-      bytes,
-      backgroundLoading: true,
+    final composition = _composition;
+    final playback = _playback;
+    if (composition == null || playback == null) {
+      return const SizedBox.expand();
+    }
+    // Our own controller survives parent rebuilds: lottie's built-in one is
+    // stopped and restarted by every didUpdateWidget, which a busy chat row
+    // (reactions, read state, selection) triggers often.
+    return Lottie(
+      composition: composition,
+      controller: playback,
       fit: BoxFit.contain,
-      animate: widget.animate,
-      repeat: widget.animate,
       frameRate: widget.frameRate,
     );
   }

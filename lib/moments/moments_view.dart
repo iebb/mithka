@@ -17,18 +17,20 @@ import 'package:provider/provider.dart';
 
 import '../app/app_navigator.dart';
 import '../app/bottom_bar_layout.dart';
+import '../app/chat_deep_link_controller.dart';
 import '../app/ipad_window_chrome.dart';
 import '../chat/chat_picker_view.dart';
 import '../chat/chat_view.dart';
 import '../chat/composer/outgoing_attachment.dart';
 import '../chat/composer/rich_text_composer_view.dart';
 import '../chat/composer/rich_text_format.dart';
+import '../chat/forward_handoff.dart';
 import '../chat/media/image_preview.dart';
 import '../chat/media/music_player_controller.dart';
 import '../chat/media/shared_media_view.dart';
 import '../chat/media/video_playback_queue.dart';
 import '../chat/media/video_player_view.dart';
-import '../chat/messages/forward_options.dart';
+import '../chat/messages/forward_markdown.dart';
 import '../chat/messages/media_album_layout.dart';
 import '../chat/messages/media_spoiler.dart';
 import '../chat/messages/message_reaction_availability.dart';
@@ -5722,40 +5724,28 @@ class _PostActions extends StatelessWidget {
   Future<void> _forward(BuildContext context) async {
     final result = await Navigator.of(context).push<ChatPickerResult>(
       MaterialPageRoute(
-        builder: (_) => const ChatPickerView(
+        builder: (_) => ChatPickerView(
           title: AppStringKeys.chatForwardToTitle,
           showForwardOptions: true,
+          accountSlot: post.accountSlot,
         ),
       ),
     );
     if (result == null || !context.mounted) return;
     final target = result.chat;
-    try {
-      await forwardMessagesWithOptions(
-        client: TdClient.shared,
-        targetChatId: target.id,
+    ChatDeepLinkController.shared.openChat(
+      chatId: target.id,
+      title: target.title,
+      accountSlot: post.accountSlot,
+      forwardHandoff: ForwardMessagesHandoff(
         fromChatId: channel.id,
-        messageIds: [message.id],
-        options: result.forwardOptions,
-      );
-      if (context.mounted) {
-        showToast(
-          context,
-          AppStrings.t(AppStringKeys.chatForwardedToName, {
-            'value1': target.title,
-          }),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(
-          context,
-          isForwardProtectedError(e)
-              ? AppStringKeys.chatForwardProtected
-              : AppStrings.t(AppStringKeys.chatForwardFailed, {'value1': e}),
-        );
-      }
-    }
+        messages: post.messages,
+        accountSlot: post.accountSlot,
+        clientId: TdClient.shared.clientId(post.accountSlot) ?? 0,
+        hasCaption: forwardSelectionHasCaption(post.messages),
+        markdownOffer: const ForwardMarkdownOffer.none(),
+      ),
+    );
   }
 }
 

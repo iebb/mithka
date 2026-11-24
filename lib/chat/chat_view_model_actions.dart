@@ -1,8 +1,6 @@
 part of 'chat_view_model.dart';
 
 extension ChatViewModelActions on ChatViewModel {
-  // MARK: - Message actions (long-press menu)
-
   Future<void> forward(
     int messageId,
     int targetChatId, {
@@ -16,6 +14,23 @@ extension ChatViewModelActions on ChatViewModel {
     int targetChatId, {
     ForwardOptions options = const ForwardOptions(),
   }) async {
+    // Protected source + the kept-messages toggle: re-send as a copy
+    // (the reference client ForwardProtectedAsCopy). The plan's counts surface
+    // through ProtectedForwardResult below; a fully-uncopyable selection
+    // still throws so the UI keeps its single failure path.
+    if (hasProtectedContent &&
+        MessageHistorySettings.shared.forwardProtectedAsCopy) {
+      final plan = await forwardProtectedAsCopy(
+        query: _client.query,
+        fromChatId: chatId,
+        messageIds: messageIds,
+        targetChatId: targetChatId,
+        topicId: targetChatId == chatId ? _forumTopicRef : null,
+      );
+      protectedForwardLastPlan = plan;
+      if (plan.anythingSent) return;
+      throw const ForwardBlockedException();
+    }
     if (hasProtectedContent) throw const ForwardBlockedException();
     final forwardQuery = forwardQueryForOwner(
       _client,
@@ -324,6 +339,8 @@ extension ChatViewModelActions on ChatViewModel {
       ),
     });
   }
+
+  // MARK: - Paging
 
   Future<MessageReactionAvailability> messageReactionAvailability(
     int messageId, {

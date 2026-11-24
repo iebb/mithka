@@ -117,8 +117,6 @@ extension _ChatViewTranslationSummary on _ChatViewState {
     );
   }
 
-  /// Opens the profile of a user who reacted, or the chat when the reaction
-  /// was sent by a chat. A deleted account has neither.
   void _openReactionSender(MessageReactionUser user) {
     final senderId = user.senderId;
     if (user.isDeleted || senderId == 0) return;
@@ -304,6 +302,9 @@ extension _ChatViewTranslationSummary on _ChatViewState {
   Future<void> _loadBotApiWarningDismissal() async {
     final prefs = await SharedPreferences.getInstance();
     final mask = prefs.getInt(_botApiWarningDismissalKey);
+    if (mask != null) {
+      _ChatViewState._dismissedBotApiWarningByChat[widget.chatId] = mask;
+    }
     if (!mounted || mask == _dismissedBotApiWarningMask) return;
     _updateState(() => _dismissedBotApiWarningMask = mask);
   }
@@ -311,6 +312,7 @@ extension _ChatViewTranslationSummary on _ChatViewState {
   void _dismissBotApiAccessWarning() {
     final mask = _botApiWarningMask;
     if (mask == 0) return;
+    _ChatViewState._dismissedBotApiWarningByChat[widget.chatId] = mask;
     _updateState(() => _dismissedBotApiWarningMask = mask);
     unawaited(
       SharedPreferences.getInstance().then(
@@ -383,6 +385,14 @@ extension _ChatViewTranslationSummary on _ChatViewState {
       _chatLanguageDetectionNewestMessageId = newestId;
       _chatLanguageDetectedAt = DateTime.now();
       _detectedChatLanguage = detected;
+      ChatHeaderStateCache.updateLanguageState(
+        accountSlot: TdClient.shared.activeSlot,
+        chatId: widget.chatId,
+        detectedChatLanguage: detected,
+        complete: true,
+        detectedAt: DateTime.now(),
+        newestMessageId: newestId,
+      );
       _scheduleAutomaticTranslations();
       _updateState(() {});
     }());

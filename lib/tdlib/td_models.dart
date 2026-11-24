@@ -13,6 +13,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/l10n/gram_amount.dart';
 import 'package:mithka/notifications/scope_notification_settings.dart';
 
+import '../history/message_history_models.dart';
 import 'json_helpers.dart';
 import 'message_gift.dart';
 import 'message_gram_transfer.dart';
@@ -561,6 +562,8 @@ class ChatSummary {
     required this.order,
     required this.isMuted,
     this.kind = ChatKind.unknown,
+    this.useDefaultMuteFor = true,
+    this.muteForOverride = 0,
     this.photo,
     this.lastSender,
     this.isPinned = false,
@@ -590,6 +593,16 @@ class ChatSummary {
   int unreadMentionCount;
   int unreadReactionCount;
   int order;
+
+  /// Whether the chat's mute state follows its scope's default. A default-
+  /// following chat has no mute state of its own (TDLib zeroes its
+  /// `mute_for`), so [isMuted] is derived from the scope cache and re-derived
+  /// whenever the scope settings change or load.
+  bool useDefaultMuteFor;
+
+  /// The chat's own `mute_for` override, valid only when
+  /// [useDefaultMuteFor] is false.
+  int muteForOverride;
   bool isMuted;
   ChatKind kind;
   TdFileRef? photo;
@@ -629,6 +642,21 @@ class ChatSummary {
   bool get supportsTopics => isForum || supportsBotTopics;
 
   bool get isBotTopicChat => supportsBotTopics && !isForum;
+
+  /// Re-derives [isMuted] from the stored per-chat override plus the given
+  /// scope-level mute_for. Returns true when the derived value changed.
+  ///
+  /// A default-following chat has no mute state of its own: TDLib zeroes its
+  /// `mute_for` (`DialogNotificationSettings::fix_mute_until`), so the
+  /// effective mute state is the scope's. The scope cache loads after the
+  /// first chat snapshots on a cold start, which is why this is derived, not
+  /// frozen at parse time.
+  bool applyScopeMuteFor(int scopeMuteFor) {
+    final derived = useDefaultMuteFor ? scopeMuteFor > 0 : muteForOverride > 0;
+    if (derived == isMuted) return false;
+    isMuted = derived;
+    return true;
+  }
 
   bool get showsRedUnreadIndicator =>
       (unreadCount > 0 && !isMuted) || isMarkedUnread;
@@ -716,6 +744,7 @@ class ChatMessage {
     this.callDiscardReason,
     this.callDuration = 0,
     this.contentType,
+    this.serviceTitle,
     this.restrictionReason,
     this.restrictionReasonCode,
     this.restrictedContentText,
@@ -797,6 +826,7 @@ class ChatMessage {
     this.blockedByUser = false,
     this.viaBotUserId,
     this.viaBotUsername,
+    this.mirrorEntry,
   }) : commentThreadMetadataKnown =
            commentThreadMetadataKnown ??
            (hasCommentThread ||
@@ -805,6 +835,13 @@ class ChatMessage {
 
   final int id;
   final bool isOutgoing;
+
+  /// Kept-copy mirror entry when this bubble renders a deleted message
+  /// (ghost transcript, Telegram §1.4 self-build feature). Null for every
+  /// live message. Declared on [ChatMessage] so the bubble layer can render
+  /// the ghost styling and the long-press menu can offer mirror actions
+  /// without a store lookup per bubble.
+  MessageHistoryEntry? mirrorEntry;
   String text;
   final int date;
   int? chatId;
@@ -826,6 +863,11 @@ class ChatMessage {
   /// Kept so we can distinguish kinds the lossy media fields can't (e.g. a
   /// photo vs a video-thumb, or plain text vs an audio/poll placeholder).
   String? contentType;
+
+  /// The `title` carried by a `messageChatChangeTitle` service message. Kept
+  /// so a transcript whose channel type resolves after the first history page
+  /// can rebuild the label with channel wording.
+  String? serviceTitle;
 
   /// TDLib's message-level restriction reason. When present, the original
   /// content must be replaced by this server-provided explanation.
@@ -1600,6 +1642,8 @@ abstract final class TDParse {
   static ChatSummary? chat(Map<String, dynamic> chat) {
     final id = chat.int64('id');
     if (id == null) return null;
+    final kind = chatKind(chat);
+    final isChannel = kind == ChatKind.channel;
     final title = chat.str('title') ?? '—';
     final unread = chat.integer('unread_count') ?? 0;
 
@@ -1611,9 +1655,11 @@ abstract final class TDParse {
     if (last != null) {
       lastMessageId = last.int64('id') ?? 0;
       date = last.integer('date') ?? 0;
-      lastChatMessage = message(last);
+      lastChatMessage = message(last, isChannel: isChannel);
       final content = last.obj('content');
-      if (content != null) lastText = messageText(content);
+      if (content != null) {
+        lastText = messageText(content, isChannel: isChannel);
+      }
     }
 
     int order = 0, archiveOrder = 0;
@@ -1631,7 +1677,18 @@ abstract final class TDParse {
       }
     }
 
-    final muted = ScopeNotificationSettings.shared.isMuted(chat);
+    final notificationSettings = chat.obj('notification_settings');
+    final useDefaultMuteFor =
+        notificationSettings?.boolean('use_default_mute_for') ?? true;
+    final muteForOverride = notificationSettings?.integer('mute_for') ?? 0;
+    final muted = useDefaultMuteFor
+        ? ScopeNotificationSettings.shared.getMuteForScope(
+                ScopeNotificationSettings.shared.scopeTagForKind(
+                  chatKind(chat),
+                ),
+              ) >
+              0
+        : muteForOverride > 0;
 
     final type = chat.obj('type');
     return ChatSummary(
@@ -1647,6 +1704,8 @@ abstract final class TDParse {
       order: order,
       isMuted: muted,
       kind: chatKind(chat),
+      useDefaultMuteFor: useDefaultMuteFor,
+      muteForOverride: muteForOverride,
       photo: smallPhoto(chat.obj('photo')),
       isPinned: pinned,
       archiveOrder: archiveOrder,
@@ -1675,7 +1734,10 @@ abstract final class TDParse {
     return legacy?.obj('text')?.str('text') ?? '';
   }
 
-  static ChatMessage? message(Map<String, dynamic> message) {
+  static ChatMessage? message(
+    Map<String, dynamic> message, {
+    bool isChannel = false,
+  }) {
     final id = message.int64('id');
     if (id == null) return null;
     final chatId = message.int64('chat_id');
@@ -1694,7 +1756,7 @@ abstract final class TDParse {
         ? content?.obj('discard_reason')?.type
         : null;
     final contentText = rawService
-        ? serviceText(content)
+        ? serviceText(content, isChannel: isChannel)
         : (content != null
               ? messageContentText(content)
               : AppStrings.t(AppStringKeys.chatSearchMessageResultLabel));
@@ -1804,6 +1866,9 @@ abstract final class TDParse {
         callDiscardReason: callDiscardReason,
         callDuration: callDuration,
         contentType: isContentRestricted ? 'messageText' : content?.type,
+        serviceTitle: content?.type == 'messageChatChangeTitle'
+            ? content?.str('title')
+            : null,
         restrictionReason: restrictionReason,
         restrictionReasonCode: restrictionReasonCode,
         restrictedContentText: isContentRestricted ? contentDisplayText : null,
@@ -4247,8 +4312,13 @@ abstract final class TDParse {
     return const MediaAttachment();
   }
 
-  static String messageText(Map<String, dynamic> content) {
-    if (isServiceContent(content.type)) return serviceText(content);
+  static String messageText(
+    Map<String, dynamic> content, {
+    bool isChannel = false,
+  }) {
+    if (isServiceContent(content.type)) {
+      return serviceText(content, isChannel: isChannel);
+    }
     switch (content.type) {
       case 'messageText':
         return content.obj('text')?.str('text') ?? '';
@@ -4377,10 +4447,13 @@ abstract final class TDParse {
   /// [messageText] intentionally retains those labels for chat-list/search
   /// previews. Transcript messages must use this value so an absent caption is
   /// represented as an empty string and can never be rendered as real text.
-  static String messageContentText(Map<String, dynamic> content) {
+  static String messageContentText(
+    Map<String, dynamic> content, {
+    bool isChannel = false,
+  }) {
     final formatted = formattedTextForContent(content);
     if (formatted != null) return formatted.str('text') ?? '';
-    return messageText(content);
+    return messageText(content, isChannel: isChannel);
   }
 
   static String richMessageDisplayText(Map<String, dynamic> content) {
@@ -4488,26 +4561,69 @@ abstract final class TDParse {
   static bool isServiceContent(String? type) =>
       type != null && _serviceTypes.contains(type);
 
-  static String serviceText(Map<String, dynamic>? content) {
+  /// The banner label for a service message. Pass `isChannel: true` for a
+  /// broadcast channel: TDLib reports channel supergroups through the same
+  /// content types as groups, so the chat's type is the only thing that
+  /// separates "Group chat created" from "Channel created".
+  static String serviceText(
+    Map<String, dynamic>? content, {
+    bool isChannel = false,
+  }) {
     switch (content?.type) {
       case 'messageContactRegistered':
         return AppStrings.t(AppStringKeys.tdMessageUserJoinedTelegram);
       case 'messageChatChangeTitle':
-        return AppStrings.t(AppStringKeys.tdMessageGroupNameChanged, {
-          'value1': content?.str('title') ?? '',
-        });
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelNameChanged
+              : AppStringKeys.tdMessageGroupNameChanged,
+          {'value1': content?.str('title') ?? ''},
+        );
       case 'messageChatChangePhoto':
-        return AppStrings.t(AppStringKeys.tdMessageGroupPhotoUpdated);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelPhotoUpdated
+              : AppStringKeys.tdMessageGroupPhotoUpdated,
+        );
       case 'messageChatDeletePhoto':
-        return AppStrings.t(AppStringKeys.tdMessageGroupPhotoDeleted);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelPhotoDeleted
+              : AppStringKeys.tdMessageGroupPhotoDeleted,
+        );
       case 'messageChatAddMembers':
-        return AppStrings.t(AppStringKeys.tdMessageNewMemberJoinedGroup);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageNewMemberJoinedChannel
+              : AppStringKeys.tdMessageNewMemberJoinedGroup,
+        );
       case 'messageChatJoinByLink':
-        return AppStrings.t(AppStringKeys.tdMessageJoinedGroupByLink);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageJoinedChannelByLink
+              : AppStringKeys.tdMessageJoinedGroupByLink,
+        );
       case 'messageChatJoinByRequest':
-        return AppStrings.t(AppStringKeys.groupManagementLogJoinedGroup);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageJoinedChannel
+              : AppStringKeys.groupManagementLogJoinedGroup,
+        );
       case 'messageChatDeleteMember':
-        return AppStrings.t(AppStringKeys.tdMessageMemberLeftGroup);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageMemberLeftChannel
+              : AppStringKeys.tdMessageMemberLeftGroup,
+        );
+      case 'messageChatHasProtectedContentToggled':
+        return AppStrings.t(
+          content?.boolean('new_has_protected_content') == true
+              ? AppStringKeys.tdMessageProtectedContentEnabled
+              : AppStringKeys.tdMessageProtectedContentDisabled,
+        );
+      case 'messageChatUpgradeTo':
+      case 'messageChatUpgradeFrom':
+        return AppStrings.t(AppStringKeys.tdMessageGroupUpgraded);
       case 'messagePinMessage':
         return AppStrings.t(AppStringKeys.tdMessageMessagePinned);
       case 'messageCustomServiceAction':
@@ -4538,12 +4654,25 @@ abstract final class TDParse {
               })
             : AppStrings.t(AppStringKeys.tdMessageAutoDeleteTimerDisabled);
       case 'messageBasicGroupChatCreate':
-      case 'messageSupergroupChatCreate':
         return AppStrings.t(AppStringKeys.tdMessageGroupCreated);
+      case 'messageSupergroupChatCreate':
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelCreated
+              : AppStringKeys.tdMessageGroupCreated,
+        );
       case 'messageVideoChatStarted':
-        return AppStrings.t(AppStringKeys.tdMessageGroupVideoChatStarted);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelVideoChatStarted
+              : AppStringKeys.tdMessageGroupVideoChatStarted,
+        );
       case 'messageVideoChatEnded':
-        return AppStrings.t(AppStringKeys.tdMessageGroupVideoChatEnded);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageChannelVideoChatEnded
+              : AppStringKeys.tdMessageGroupVideoChatEnded,
+        );
       case 'messageForumTopicCreated':
         return AppStrings.t(AppStringKeys.groupManagementLogCreatedTopic);
       case 'messageForumTopicEdited':
@@ -4553,7 +4682,11 @@ abstract final class TDParse {
             ? AppStrings.t(AppStringKeys.groupManagementLogClosedTopic)
             : AppStrings.t(AppStringKeys.groupManagementLogReopenedTopic);
       case 'messageChatBoost':
-        return AppStrings.t(AppStringKeys.tdMessageBoostedGroup);
+        return AppStrings.t(
+          isChannel
+              ? AppStringKeys.tdMessageBoostedChannel
+              : AppStringKeys.tdMessageBoostedGroup,
+        );
       case 'messageChatAddedToCommunity':
         return AppStrings.t(AppStringKeys.communityChatAddedService);
       case 'messageChatRemovedFromCommunity':
@@ -4564,6 +4697,56 @@ abstract final class TDParse {
         return AppStrings.t(AppStringKeys.chatThemeChanged);
       default:
         return AppStrings.t(AppStringKeys.tdMessageSystemMessage);
+    }
+  }
+
+  /// The channel-wording label for a service message that was parsed before
+  /// its chat's supergroup type resolved, or null when the label reads the
+  /// same in a channel. Group wording is the parse-time default because the
+  /// type is not on the message itself.
+  static String? channelServiceText(ChatMessage message) {
+    switch (message.contentType) {
+      case 'messageChatChangeTitle':
+        return AppStrings.t(AppStringKeys.tdMessageChannelNameChanged, {
+          'value1': message.serviceTitle ?? '',
+        });
+      case 'messageChatChangePhoto':
+        return AppStrings.t(AppStringKeys.tdMessageChannelPhotoUpdated);
+      case 'messageChatDeletePhoto':
+        return AppStrings.t(AppStringKeys.tdMessageChannelPhotoDeleted);
+      case 'messageChatAddMembers':
+        final group = AppStrings.t(AppStringKeys.tdMessageNewMemberJoinedGroup);
+        return message.text == group
+            ? AppStrings.t(AppStringKeys.tdMessageNewMemberJoinedChannel)
+            : null;
+      case 'messageChatJoinByLink':
+        final group = AppStrings.t(AppStringKeys.tdMessageJoinedGroupByLink);
+        return message.text == group
+            ? AppStrings.t(AppStringKeys.tdMessageJoinedChannelByLink)
+            : null;
+      case 'messageChatJoinByRequest':
+        final group = AppStrings.t(AppStringKeys.groupManagementLogJoinedGroup);
+        return message.text == group
+            ? AppStrings.t(AppStringKeys.tdMessageJoinedChannel)
+            : null;
+      case 'messageChatDeleteMember':
+        final group = AppStrings.t(AppStringKeys.tdMessageMemberLeftGroup);
+        return message.text == group
+            ? AppStrings.t(AppStringKeys.tdMessageMemberLeftChannel)
+            : null;
+      case 'messageSupergroupChatCreate':
+        return AppStrings.t(AppStringKeys.tdMessageChannelCreated);
+      case 'messageVideoChatStarted':
+        return AppStrings.t(AppStringKeys.tdMessageChannelVideoChatStarted);
+      case 'messageVideoChatEnded':
+        return AppStrings.t(AppStringKeys.tdMessageChannelVideoChatEnded);
+      case 'messageChatBoost':
+        final group = AppStrings.t(AppStringKeys.tdMessageBoostedGroup);
+        return message.text == group
+            ? AppStrings.t(AppStringKeys.tdMessageBoostedChannel)
+            : null;
+      default:
+        return null;
     }
   }
 
