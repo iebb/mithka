@@ -11,6 +11,22 @@ extension _MessageBubbleRichBlocks on _MessageBubbleState {
     for (var index = 0; index < blocks.length; index++) {
       final block = blocks[index];
       if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 8));
+      if (block.kind == RichMessageBlockKind.document) {
+        // Consecutive files share one card, like a document album.
+        var end = index + 1;
+        while (end < blocks.length &&
+            blocks[end].kind == RichMessageBlockKind.document) {
+          end++;
+        }
+        widgets.add(
+          KeyedSubtree(
+            key: ValueKey('rich-message-block-$index-document'),
+            child: _richDocumentGroup(blocks.sublist(index, end), outgoing),
+          ),
+        );
+        index = end - 1;
+        continue;
+      }
       final widget = _richBlockWidget(
         block,
         outgoing,
@@ -71,6 +87,7 @@ extension _MessageBubbleRichBlocks on _MessageBubbleState {
       RichMessageBlockKind.photo ||
       RichMessageBlockKind.video ||
       RichMessageBlockKind.voiceNote => _richMediaBlock(block, outgoing),
+      RichMessageBlockKind.document => _richDocumentGroup([block], outgoing),
       RichMessageBlockKind.collage => _richCollageBlock(block, outgoing),
       RichMessageBlockKind.slideshow => _richSlideshowBlock(block, outgoing),
       RichMessageBlockKind.table => _richTableBlock(block, outgoing),
@@ -177,6 +194,117 @@ extension _MessageBubbleRichBlocks on _MessageBubbleState {
       videoDuration: block.videoDuration,
       music: block.music,
       voice: block.voice,
+    );
+  }
+
+  /// One card of file rows, matching a document album: each row shows the
+  /// name, the size and the file glyph, and opens the file screen when
+  /// tapped. A file's caption sits under its own row.
+  Widget _richDocumentGroup(List<RichMessageBlock> documents, bool outgoing) {
+    final c = _colors;
+    final themed = _messageColors != null;
+    final messageText = outgoing ? _outgoingTextColor : _incomingTextColor;
+    final surface = themed
+        ? (outgoing ? _outgoingBubbleColor : _incomingBubbleColor)
+        : c.card;
+    final primary = themed ? messageText : _incomingTextColor;
+    final secondary = themed
+        ? messageText.withValues(alpha: 0.70)
+        : c.textSecondary;
+    final divider = themed ? messageText.withValues(alpha: 0.16) : c.divider;
+    final rows = <Widget>[];
+    for (var index = 0; index < documents.length; index++) {
+      final block = documents[index];
+      final document = block.document;
+      if (rows.isNotEmpty) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Container(height: 0.5, color: divider),
+          ),
+        );
+      }
+      rows.add(
+        document == null
+            ? Padding(
+                padding: const EdgeInsets.all(8),
+                child: _richMissingMedia(HeroAppIcons.folder, outgoing),
+              )
+            : GestureDetector(
+                key: ValueKey('rich-message-document-$index'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => FileDetailView(
+                      doc: document,
+                      chatId: message.chatId,
+                      messageId: message.id,
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              document.fileName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 15, color: primary),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _MessageBubbleState._byteString(document.size),
+                              style: TextStyle(fontSize: 12, color: secondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _fileGlyph(document, message.id, surfaceColor: surface),
+                    ],
+                  ),
+                ),
+              ),
+      );
+      if (block.caption.trim().isNotEmpty) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: _richTextWidgets(
+                block.caption,
+                messageText,
+                _messageLinkColor(outgoing),
+                outgoing,
+                false,
+                block.captionEntities,
+                13,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return Container(
+      width: _mediaMaxWidth(),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: themed ? null : Border.all(color: c.divider, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: rows,
+      ),
     );
   }
 }
