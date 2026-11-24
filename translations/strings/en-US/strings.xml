@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">Model name</string>
     <string name="aiServerPrivacy">Text used by enabled AI features is sent to this endpoint. Your API key stays in secure storage on this device.</string>
     <string name="aiSettingsTitle">AI Settings</string>
+    <string name="aiShowComposerButton">Show AI Button in Message Box</string>
+    <string name="aiShowComposerButtonDescription">Turn off to remove the sparkle button next to the message field.</string>
     <string name="aiSummarizePrompts">Summarize Prompts</string>
     <string name="aiSummarizeUsing">Summarize using</string>
     <string name="aiSummaryActions">Action Items</string>

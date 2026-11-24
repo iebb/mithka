@@ -504,6 +504,9 @@ abstract final class AppStringKeys {
   static const aiServerModelHint = 'aiServerModelHint';
   static const aiServerPrivacy = 'aiServerPrivacy';
   static const aiSettingsTitle = 'aiSettingsTitle';
+  static const aiShowComposerButton = 'aiShowComposerButton';
+  static const aiShowComposerButtonDescription =
+      'aiShowComposerButtonDescription';
   static const aiSummaryActions = 'aiSummaryActions';
   static const aiSummaryAssembling = 'aiSummaryAssembling';
   static const aiSummaryButton = 'aiSummaryButton';

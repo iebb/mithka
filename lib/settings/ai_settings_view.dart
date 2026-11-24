@@ -160,6 +160,18 @@ class _AiSettingsViewState extends State<AiSettingsView> {
                         AiReplyPromptEditorView(settings: settings),
                       ),
                     ),
+                    SettingsSwitchRow(
+                      key: const ValueKey('aiShowComposerButtonRow'),
+                      title: AppStringKeys.aiShowComposerButton.l10n(context),
+                      subtitle: AppStringKeys.aiShowComposerButtonDescription
+                          .l10n(context),
+                      value: settings.showComposerAiButton,
+                      leading: const SettingsLeadingIcon(
+                        icon: HeroAppIcons.wandMagicSparkles,
+                      ),
+                      onChanged: (value) =>
+                          unawaited(settings.setShowComposerAiButton(value)),
+                    ),
                   ],
                 ),
               ],
