@@ -24,6 +24,8 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../pro/mithka_pro_service.dart';
+import '../pro/mithka_pro_view.dart';
 import '../security/local_app_lock_views.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -755,6 +757,7 @@ class _SettingsViewState extends State<SettingsView> {
 
   List<_SettingsDestination> _destinations(BuildContext context) {
     final developer = context.watch<DeveloperModeController>();
+    final pro = context.watch<MithkaProService>();
     return [
       _SettingsDestination(
         id: 'notifications',
@@ -859,6 +862,18 @@ class _SettingsViewState extends State<SettingsView> {
           'locale',
         ],
       ),
+      if (pro.storeAvailable || pro.canManageSubscriptions)
+        _SettingsDestination(
+          id: 'mithka-pro',
+          owner: _SettingsOwner.mithka,
+          group: 1,
+          order: 0,
+          titleKey: AppStringKeys.mithkaProTitle,
+          icon: HeroAppIcons.solidStar,
+          color: const Color(0xFF7C5CFC),
+          destination: () => const MithkaProView(),
+          searchTerms: const ['pro', 'support', 'subscription'],
+        ),
       _SettingsDestination(
         id: 'mithka-theme',
         owner: _SettingsOwner.mithka,

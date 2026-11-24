@@ -1,11 +1,94 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/components/app_interactive_surface.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/pro/mithka_pro_service.dart';
+import 'package:mithka/pro/mithka_pro_view.dart';
+import 'package:mithka/settings/developer_mode_controller.dart';
+import 'package:mithka/settings/notification_settings_view.dart';
+import 'package:mithka/settings/settings_view.dart';
+import 'package:mithka/theme/app_theme.dart';
+import 'package:mithka/theme/theme_controller.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final split in [false, true]) {
+    for (final availability in [
+      (store: true, manage: false),
+      (store: false, manage: true),
+      (store: false, manage: false),
+    ]) {
+      testWidgets(
+        'Support Us in ${split ? 'split' : 'compact'} settings: '
+        'store=${availability.store}, manage=${availability.manage}',
+        (tester) async {
+          final gateway = _FakeGateway(
+            distribution: 'app_store',
+            storeAvailable: availability.store,
+            canManageSubscriptions: availability.manage,
+          );
+          final service = MithkaProService(
+            gateway: gateway,
+            platform: TargetPlatform.iOS,
+          );
+          addTearDown(service.dispose);
+          await service.initialize();
+          await _pumpSettings(tester, service, split: split);
+
+          final support = find.byKey(
+            ValueKey(
+              split
+                  ? 'settings-category-support'
+                  : 'settings-destination-mithka-pro',
+            ),
+          );
+          if (!availability.store && !availability.manage) {
+            expect(support, findsNothing);
+            expect(find.byType(MithkaProView), findsNothing);
+          } else {
+            expect(support, findsOneWidget);
+            expect(
+              find.descendant(of: support, matching: find.text('Support Us')),
+              findsOneWidget,
+            );
+            if (split) {
+              expect(find.byType(NotificationSettingsView), findsOneWidget);
+              expect(
+                tester.widget<AppInteractiveSurface>(support).selected,
+                isFalse,
+              );
+            }
+            await tester.tap(support);
+            await tester.pumpAndSettle();
+            expect(find.byType(MithkaProView), findsOneWidget);
+            if (split) {
+              expect(
+                tester.widget<AppInteractiveSurface>(support).selected,
+                isTrue,
+              );
+              expect(
+                find.byKey(const ValueKey('settings-detail-mithka-pro')),
+                findsOneWidget,
+              );
+            }
+            expect(tester.takeException(), isNull);
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+        },
+      );
+    }
+  }
+
   test('restricted purchases still allow Restore and Manage', () async {
     final gateway = _FakeGateway(
       distribution: 'app_store',
@@ -198,6 +281,48 @@ void main() {
     await service.manage(productId: mithkaProYearlyProductId);
     expect(gateway.managedProductId, mithkaProYearlyProductId);
   });
+}
+
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  MithkaProService service, {
+  required bool split,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  PackageInfo.setMockInitialValues(
+    appName: 'Mithka',
+    packageName: 'ad.neko.mithka',
+    version: '1.10.0',
+    buildNumber: '1',
+    buildSignature: '',
+  );
+  final prefs = await SharedPreferences.getInstance();
+  tester.view.physicalSize = split ? const Size(951, 669) : const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeController(prefs)),
+        ChangeNotifierProvider(create: (_) => DeveloperModeController(prefs)),
+        ChangeNotifierProvider<MithkaProService>.value(value: service),
+      ],
+      child: MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(extensions: [AppColors.light]),
+        home: const SettingsView(allowSessionLifecycleActions: false),
+      ),
+    ),
+  );
+  // The default Notifications page can be loading without a TDLib account.
+  await tester.pump();
 }
 
 class _FakeGateway implements MithkaProGateway {
