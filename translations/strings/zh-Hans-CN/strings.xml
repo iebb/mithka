@@ -881,6 +881,8 @@
     <string name="chatCannotSendMessages">你无法在此聊天中发送消息</string>
     <string name="chatConnectedBusinessBot">已连接的商务机器人</string>
     <string name="chatContactCallsOnly">仅支持与联系人通话</string>
+    <string name="chatContextPaneHide">隐藏群信息</string>
+    <string name="chatContextPaneShow">显示群信息</string>
     <string name="chatDelete">删除</string>
     <string name="chatDeleteActionsDone">操作已完成</string>
     <string name="chatDeleteActionsFailed">操作失败：{value1}</string>

@@ -881,6 +881,8 @@
     <string name="chatCannotSendMessages">このチャットではメッセージを送信できません</string>
     <string name="chatConnectedBusinessBot">接続中のビジネスボット</string>
     <string name="chatContactCallsOnly">連絡先との通話のみ対応しています</string>
+    <string name="chatContextPaneHide">グループ情報を隠す</string>
+    <string name="chatContextPaneShow">グループ情報を表示</string>
     <string name="chatDelete">削除</string>
     <string name="chatDeleteActionsDone">完了しました</string>
     <string name="chatDeleteActionsFailed">操作を実行できませんでした: {value1}</string>

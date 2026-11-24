@@ -972,6 +972,8 @@ abstract final class AppStringKeys {
   static const chatButtonUnsupported = 'chatButtonUnsupported';
   static const chatCannotSendMessages = 'chatCannotSendMessages';
   static const chatContactCallsOnly = 'chatContactCallsOnly';
+  static const chatContextPaneHide = 'chatContextPaneHide';
+  static const chatContextPaneShow = 'chatContextPaneShow';
   static const chatFirstContactNotContact = 'chatFirstContactNotContact';
   static const chatFirstContactNotOfficial = 'chatFirstContactNotOfficial';
   static const chatFirstContactOfficial = 'chatFirstContactOfficial';
