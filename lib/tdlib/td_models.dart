@@ -244,6 +244,7 @@ enum RichMessageBlockKind {
   photo,
   video,
   voiceNote,
+  document,
   collage,
   slideshow,
   table,
@@ -287,6 +288,7 @@ class RichMessageBlock {
     this.videoDuration = 0,
     this.music,
     this.voice,
+    this.document,
     this.hasSpoiler = false,
     this.tableRows = const [],
     this.mathExpression,
@@ -347,6 +349,7 @@ class RichMessageBlock {
     int videoDuration = 0,
     MessageMusic? music,
     MessageVoice? voice,
+    MessageDocument? document,
     bool hasSpoiler = false,
     String caption = '',
     List<MessageTextEntity> captionEntities = const [],
@@ -359,6 +362,7 @@ class RichMessageBlock {
          videoDuration: videoDuration,
          music: music,
          voice: voice,
+         document: document,
          hasSpoiler: hasSpoiler,
          caption: caption,
          captionEntities: captionEntities,
@@ -435,6 +439,9 @@ class RichMessageBlock {
   final int videoDuration;
   final MessageMusic? music;
   final MessageVoice? voice;
+
+  /// The attached file of a [RichMessageBlockKind.document] block.
+  final MessageDocument? document;
   final bool hasSpoiler;
 
   final List<List<RichMessageTableCell>> tableRows;
@@ -2621,6 +2628,9 @@ abstract final class TDParse {
         );
       case 'pageBlockBlockQuote':
       case 'RichBlockBlockQuotation':
+      // An expandable quote is the same quote with its body folded; text
+      // quotes fold here already, so the two render alike.
+      case 'pageBlockExpandableBlockQuote':
         final credit = _richBlockText(block['credit']);
         return RichMessageBlock.container(
           kind: RichMessageBlockKind.blockQuote,
@@ -2693,6 +2703,20 @@ abstract final class TDParse {
           '@type': 'messageAudio',
           'audio': block['audio'],
         });
+      case 'pageBlockDocument':
+      case 'RichBlockDocument':
+        // Files attached to a rich post arrive as document blocks. Without
+        // this case they were dropped and the post showed no files at all.
+        final caption = _richBlockCaption(block['caption']);
+        return RichMessageBlock.media(
+          kind: RichMessageBlockKind.document,
+          document: mediaAttachment({
+            '@type': 'messageDocument',
+            'document': block['document'],
+          }).document,
+          caption: caption.text,
+          captionEntities: caption.entities,
+        );
       case 'pageBlockVoiceNote':
       case 'RichBlockVoiceNote':
         final caption = _richBlockCaption(block['caption']);
@@ -3376,6 +3400,10 @@ abstract final class TDParse {
         _appendPageBlocks(builder, block.objects('blocks'));
         _appendCredit(builder, block.obj('credit'));
         builder.entity(start, 'textEntityTypeBlockQuote');
+      case 'pageBlockExpandableBlockQuote':
+        _appendPageBlocks(builder, block.objects('blocks'));
+        _appendCredit(builder, block.obj('credit'));
+        builder.entity(start, 'textEntityTypeExpandableBlockQuote');
       case 'pageBlockPullQuote':
         _appendRichText(builder, block['text']);
         _appendCredit(builder, block.obj('credit'));
@@ -3387,6 +3415,15 @@ abstract final class TDParse {
       case 'pageBlockVoiceNote':
       case 'pageBlockEmbedded':
         _appendCaption(builder, block.obj('caption'));
+      case 'pageBlockDocument':
+        final document = block.obj('document');
+        final caption = block.obj('caption');
+        final captionStart = builder.length;
+        _appendCaption(builder, caption);
+        // A file without a caption is still named in previews and search.
+        if (builder.length == captionStart) {
+          builder.buffer.write(document?.str('file_name') ?? '');
+        }
       case 'pageBlockMap':
       case 'richBlockMap':
       case 'RichBlockMap':
