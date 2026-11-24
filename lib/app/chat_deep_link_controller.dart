@@ -1,5 +1,50 @@
 import 'package:flutter/foundation.dart';
 
+import '../chat/forward_handoff.dart';
+
+/// A reply carried from another chat into the newly opened transcript.
+///
+/// The destination composer holds this as a cross-chat reply: its sends
+/// address the source message via `inputMessageReplyToExternalMessage`, so
+/// the destination chat shows a quote-reply header pointing at the original
+/// message in [sourceChatId].
+class ExternalReplyHandoff {
+  const ExternalReplyHandoff({
+    required this.sourceChatId,
+    required this.message,
+    this.quote,
+    this.draftText = '',
+  });
+
+  final int sourceChatId;
+  final ChatMessagePayload message;
+
+  /// Pre-selected quote range, when the reply started as a quote.
+  final Object? quote;
+
+  /// The composer text typed before the move, restored into the destination.
+  final String draftText;
+}
+
+/// Minimal message identity the handoff carries. Kept as a thin carrier so
+/// this file stays free of the chat-model import; the chat side reconstructs
+/// a [ChatMessage] from it via [ChatMessagePayload.toChatMessage].
+class ChatMessagePayload {
+  const ChatMessagePayload({
+    required this.id,
+    required this.isOutgoing,
+    required this.date,
+    this.senderName,
+    this.text = '',
+  });
+
+  final int id;
+  final bool isOutgoing;
+  final int date;
+  final String? senderName;
+  final String text;
+}
+
 class ChatDeepLinkRequest {
   const ChatDeepLinkRequest({
     required this.chatId,
@@ -9,6 +54,8 @@ class ChatDeepLinkRequest {
     this.accountSlot,
     this.preserveChatStack = false,
     this.fromNotification = false,
+    this.externalReply,
+    this.forwardHandoff,
   });
 
   final int chatId;
@@ -23,6 +70,14 @@ class ChatDeepLinkRequest {
   /// chat instead of asking.
   final bool fromNotification;
 
+  /// A reply carried over from another chat (reply-in-another-chat). The
+  /// destination transcript's composer starts with this reply pending.
+  final ExternalReplyHandoff? externalReply;
+
+  /// A forward carried over from the picking chat (forward-to-chat): the
+  /// destination transcript's composer starts with this forward pending.
+  final ForwardMessagesHandoff? forwardHandoff;
+
   ChatDeepLinkRequest scopedToAccountSlot(int slot) => ChatDeepLinkRequest(
     chatId: chatId,
     title: title,
@@ -31,6 +86,8 @@ class ChatDeepLinkRequest {
     accountSlot: slot,
     preserveChatStack: preserveChatStack,
     fromNotification: fromNotification,
+    externalReply: externalReply,
+    forwardHandoff: forwardHandoff,
   );
 
   /// Presentation-only payload used when a registered desktop child asks the
@@ -53,10 +110,18 @@ class ChatDeepLinkRequest {
     }
     final title = source['title'];
     if (title != null && title is! String) return null;
+    final handoff = source['externalReply'];
+    if (handoff != null && handoff is! ExternalReplyHandoff) return null;
+    final forwardHandoff = source['forwardHandoff'];
+    if (forwardHandoff != null && forwardHandoff is! ForwardMessagesHandoff) {
+      return null;
+    }
     return ChatDeepLinkRequest(
       chatId: chatId,
       title: _normalizeDesktopChatTitle(title as String?),
       messageId: messageId as int?,
+      externalReply: handoff as ExternalReplyHandoff?,
+      forwardHandoff: forwardHandoff as ForwardMessagesHandoff?,
     );
   }
 }
@@ -110,6 +175,8 @@ class ChatDeepLinkController extends ChangeNotifier {
     int? accountSlot,
     bool preserveChatStack = false,
     bool fromNotification = false,
+    ExternalReplyHandoff? externalReply,
+    ForwardMessagesHandoff? forwardHandoff,
   }) {
     _pending = ChatDeepLinkRequest(
       chatId: chatId,
@@ -119,6 +186,8 @@ class ChatDeepLinkController extends ChangeNotifier {
       accountSlot: accountSlot,
       preserveChatStack: preserveChatStack,
       fromNotification: fromNotification,
+      externalReply: externalReply,
+      forwardHandoff: forwardHandoff,
     );
     notifyListeners();
   }

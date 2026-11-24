@@ -151,6 +151,19 @@ abstract final class _DuoLoginMetrics {
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
+  /// The pure core of the login step identity: the step-family mapping that
+  /// keeps same-form states (the phone column, including the logout chain
+  /// AuthInitializing → AuthWaitPhoneNumber → AuthClosed hops) on one key so
+  /// the step's AnimatedSwitcher never cross-fades a form against itself.
+  /// The instance method layers the bot/phone-override identities on top,
+  /// and AuthReloading is handled BEFORE this mapping (it sticks to the
+  /// previous identity — see _LoginViewState._stepIdentity).
+  @visibleForTesting
+  static String debugStepIdentityForTesting(AuthStep step) => switch (step) {
+    AuthInitializing() || AuthWaitPhoneNumber() || AuthClosed() => 'phone',
+    _ => step.runtimeType.toString(),
+  };
+
   @override
   State<LoginView> createState() => _LoginViewState();
 }
@@ -195,6 +208,16 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
+    final initialStep = context.read<AuthManager>().step;
+    // Mounting mid-reload (add-account rides the gate's splash→login
+    // hand-off through AuthReloading) must not seed the literal
+    // "AuthReloading" identity: a few hundred ms later the real phone form
+    // arrives, the key flips, and the switcher cross-fades the same form
+    // against itself — the add-account entry flicker. Seed the phone
+    // column; the sticky branch keeps later reloads on what's on screen.
+    _lastStepIdentity = initialStep is AuthReloading
+        ? 'phone'
+        : LoginView.debugStepIdentityForTesting(initialStep);
     ProxyStatusController.shared.ensureTracking();
     unawaited(_loadBotEndpoint());
     if (isMobilePlatform) {
@@ -661,6 +684,7 @@ class _LoginViewState extends State<LoginView> {
       width: size,
       height: size,
       fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
     ),
   );
 
@@ -1396,12 +1420,33 @@ class _LoginViewState extends State<LoginView> {
   }
 
   /// Stable identity of the visible step, so [AnimatedSwitcher] cross-fades
-  /// only when the flow actually moves between steps.
+  /// only when the flow actually moves between FORMS. Several auth states
+  /// render the same phone form (AuthReloading and AuthInitializing both
+  /// hand the default branch to the phone step) — re-keying on the raw
+  /// runtime type mounted a second copy of the form and cross-faded it
+  /// against itself, the "renders twice" flicker on add-account.
+  /// AuthMissingCredentials renders its own notice, so it keeps a distinct
+  /// identity from the working phone form. AuthClosed maps to the phone
+  /// form too: the logout chain LoggingOut → Closed → Initializing →
+  /// WaitPhoneNumber bounces between the gate's splash and login surfaces
+  /// (each a deliberate crossfade there), and re-keying the phone form at
+  /// the last hop would fade the freshly mounted form against itself.
   String _stepIdentity(AuthManager auth) {
     if (_showBotLogin) return 'bot';
     if (_forcePhone) return 'phone';
-    return auth.step.runtimeType.toString();
+    // AuthReloading is a re-read of the SAME client, not a form change:
+    // cancel-add-account / logout run form → AuthReloading → (gate takes
+    // over: splash or another account's ready sidebar). Mapping it to the
+    // phone column swapped the code/2FA form for the phone form mid-flight —
+    // the outgoing form cross-faded against a different incoming form while
+    // both stacked in the switcher's centered overlap ("a displaced form
+    // that vanishes last"). Stick to the identity already on screen; the
+    // gate's own crossfade takes it from there.
+    if (auth.step is AuthReloading) return _lastStepIdentity;
+    return _lastStepIdentity = LoginView.debugStepIdentityForTesting(auth.step);
   }
+
+  late String _lastStepIdentity;
 
   // MARK: Steps
 

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../auth/account_store.dart';
 import '../chat/chat_picker_view.dart';
 import '../chats/chat_folder_tag_controller.dart';
+import '../chats/local_folder_order_store.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
@@ -19,6 +21,7 @@ import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
 import 'chat_folder_service.dart';
+import 'local_premium.dart';
 
 /// Stand-in title for a chat whose real title has not been resolved yet.
 String _chatFallbackTitle(int id) =>
@@ -50,9 +53,25 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       context.read<ChatFolderTagController?>();
   bool get _tagsEnabled => _tags?.enabled ?? false;
 
+  /// The main list's position is a Premium-only server field. The account's
+  /// own entitlement or the local-premium overlay decides whether this page
+  /// may edit it; with neither, "All chats" stays pinned at the top.
+  bool get _mainListEditable {
+    final accounts = context.read<AccountStore?>();
+    return LocalPremium.shared.enabled ||
+        (accounts?.activeSummary?.isPremium ?? false);
+  }
+
+  int _storedMainListPosition(int serverPosition) {
+    if (!_mainListEditable) return 0;
+    final userId = context.read<AccountStore?>()?.activeUserId;
+    return LocalFolderOrderStore.shared.positionFor(userId) ?? serverPosition;
+  }
+
   @override
   void initState() {
     super.initState();
+    LocalPremium.shared.addListener(_handleLocalPremiumChanged);
     final updates =
         widget.updates ??
         (widget.service == null ? TdClient.shared.subscribe() : null);
@@ -66,8 +85,18 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
 
   @override
   void dispose() {
+    LocalPremium.shared.removeListener(_handleLocalPremiumChanged);
     _updates?.cancel();
     super.dispose();
+  }
+
+  void _handleLocalPremiumChanged() {
+    if (!mounted) return;
+    // The switch can be flipped elsewhere while this page sits in the stack;
+    // re-read the position so the card locks or unlocks with it.
+    setState(() {
+      _mainListPosition = _storedMainListPosition(_mainListPosition);
+    });
   }
 
   void _handleUpdate(Map<String, dynamic> update) {
@@ -89,8 +118,9 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       setState(() {
         _folders = values[0] as List<ChatFolderRecord>;
         _recommended = values[1] as List<RecommendedFolder>;
-        _mainListPosition =
+        final serverPosition =
             update?.integer('main_chat_list_position') ?? _mainListPosition;
+        _mainListPosition = _storedMainListPosition(serverPosition);
         _loading = false;
       });
     } catch (error) {
@@ -215,15 +245,34 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
   }
 
   Future<void> _reorder(int oldIndex, int newIndex) async {
+    final mainListEditable = _mainListEditable;
+    final writesLocal = mainListEditable && LocalPremium.shared.enabled;
+    final userId = context.read<AccountStore?>()?.activeUserId;
     final previous = _folders;
     final previousMainPosition = _mainListPosition;
-    final result = reorderFolderEntries(_orderedEntries(), oldIndex, newIndex);
+    final previousLocalPosition = writesLocal
+        ? LocalFolderOrderStore.shared.positionFor(userId)
+        : null;
+    final result = reorderFolderEntries(
+      _orderedEntries(mainListEditable: mainListEditable),
+      oldIndex,
+      newIndex,
+      moveMainList: mainListEditable,
+    );
     final updated = result.folders;
     final mainListPosition = result.mainChatListPosition;
     setState(() {
       _folders = updated;
       _mainListPosition = mainListPosition;
     });
+    // Persist the local-premium position before the server round trip: TDLib
+    // clamps it to 0 and may emit updateChatFolders before the query returns,
+    // which would otherwise reload this page with the old position.
+    if (writesLocal) {
+      unawaited(
+        LocalFolderOrderStore.shared.setPosition(userId, mainListPosition),
+      );
+    }
     try {
       await _service.reorder(
         updated.map((folder) => folder.id).toList(),
@@ -231,6 +280,16 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       );
     } catch (error) {
       if (!mounted) return;
+      if (writesLocal) {
+        unawaited(
+          previousLocalPosition == null
+              ? LocalFolderOrderStore.shared.clearPosition(userId)
+              : LocalFolderOrderStore.shared.setPosition(
+                  userId,
+                  previousLocalPosition,
+                ),
+        );
+      }
       setState(() {
         _folders = previous;
         _mainListPosition = previousMainPosition;
@@ -245,8 +304,8 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     }
   }
 
-  List<ChatFolderRecord?> _orderedEntries() =>
-      folderOrderEntries(_folders, _mainListPosition);
+  List<ChatFolderRecord?> _orderedEntries({required bool mainListEditable}) =>
+      folderOrderEntries(_folders, mainListEditable ? _mainListPosition : 0);
 
   /// 文件夹标签 is a Premium setting on the server, so the controller writes it
   /// there only for a Premium account and keeps everyone else's choice on this
@@ -260,6 +319,10 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     // a Premium account's own server update — lands on this row.
     final tagsEnabled =
         context.watch<ChatFolderTagController?>()?.enabled ?? false;
+    final accounts = context.watch<AccountStore?>();
+    final mainListEditable =
+        LocalPremium.shared.enabled ||
+        (accounts?.activeSummary?.isPremium ?? false);
     return SettingsPageScaffold(
       title: AppStrings.t(AppStringKeys.appearanceChatFolders),
       onBack: () => Navigator.of(context).pop(),
@@ -297,7 +360,7 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
                   AppStrings.t(AppStringKeys.chatFolderManagementFolders),
                   key: const ValueKey('title'),
                 ),
-                _folderOrderCard(),
+                _folderOrderCard(mainListEditable: mainListEditable),
                 const SizedBox(
                   key: ValueKey('gap-tags'),
                   height: AppSpacing.xl,
@@ -343,8 +406,8 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
     );
   }
 
-  Widget _folderOrderCard() {
-    final entries = _orderedEntries();
+  Widget _folderOrderCard({required bool mainListEditable}) {
+    final entries = _orderedEntries(mainListEditable: mainListEditable);
     return SettingsPanel(
       key: const ValueKey('folder-list'),
       clipBehavior: Clip.antiAlias,
@@ -356,7 +419,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         children: [
           for (var index = 0; index < entries.length; index++)
             entries[index] == null
-                ? _mainListRow(index, showDivider: index < entries.length - 1)
+                ? _mainListRow(
+                    index,
+                    editable: mainListEditable,
+                    showDivider: index < entries.length - 1,
+                  )
                 : _folderRow(
                     entries[index]!,
                     index,
@@ -397,7 +464,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
         : AppMetric.settingsTrailingInset,
   );
 
-  Widget _mainListRow(int index, {required bool showDivider}) {
+  Widget _mainListRow(
+    int index, {
+    required bool editable,
+    required bool showDivider,
+  }) {
     final c = context.colors;
     return Container(
       key: const ValueKey('folder-main-list'),
@@ -410,7 +481,24 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       ),
       child: Row(
         children: [
-          _dragHandle(index),
+          if (editable)
+            _dragHandle(index)
+          else
+            // Non-Premium: the main list is pinned. No handle means no
+            // drop target can move it, and the lock explains why.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                0,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.sm,
+              ),
+              child: AppIcon(
+                HeroAppIcons.lock,
+                size: 19,
+                color: Color(0xFF9CA3AF),
+              ),
+            ),
           AppIcon(HeroAppIcons.inbox, size: 23, color: AppTheme.brand),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -442,7 +530,11 @@ class _ChatFolderManagementViewState extends State<ChatFolderManagementView> {
       child: Row(
         children: [
           _dragHandle(index),
-          AppIcon(HeroAppIcons.folder, size: 23, color: AppTheme.brand),
+          ChatFolderIcon(
+            folder.draft.iconName,
+            size: 23,
+            color: AppTheme.brand,
+          ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: GestureDetector(

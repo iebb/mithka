@@ -3,6 +3,8 @@ import 'package:flutter/widgets.dart';
 import '../app/adaptive_split_layout.dart';
 import '../chat/stickers/custom_emoji.dart';
 import '../components/app_icons.dart';
+import '../components/chat_folder_icons.dart';
+import '../components/full_page_back_swipe.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../tdlib/td_models.dart';
@@ -405,5 +407,270 @@ class _RailHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Remembers each chat's tab-strip scroll offset across transcript swaps.
+/// Opening a topic replaces the whole ChatView (its state reads the topic
+/// once), so the fresh strip rebuilds at offset 0 without this — shifting
+/// the tabs the user was looking at. Keyed by chat, never cleared: it is a
+/// few floats per forum chat.
+class TopicTabStripScrollMemory {
+  TopicTabStripScrollMemory._();
+
+  static final Map<int, double> _offsets = {};
+
+  static double? read(int chatId) => _offsets[chatId];
+
+  static void write(int chatId, double offset) {
+    // Guard degenerate extents before the list has laid out.
+    if (!offset.isFinite || offset < 0) return;
+    _offsets[chatId] = offset;
+  }
+
+  /// Drops every remembered offset. Tests only.
+  @visibleForTesting
+  static void resetForTesting() => _offsets.clear();
+}
+
+/// The topic tab strip: a horizontal, folder-tab-styled selector pinned
+/// under the chat header for forum groups and bot topic chats on narrow
+/// layouts. Mirrors the chat list's folder tabs — label with the topic
+/// icon, unread badge pill, and the 4pt selection indicator under the
+/// chosen tab. Switching topics must not move the strip: the scroll offset
+/// lives in [TopicTabStripScrollMemory] and survives the transcript swap.
+class TopicTabStrip extends StatefulWidget {
+  const TopicTabStrip({
+    super.key,
+    required this.chatId,
+    required this.topics,
+    required this.selectedTopicId,
+    required this.onSelected,
+    this.showUnreadBadges = true,
+    this.badgeOverflowLabel,
+    this.isLoading = false,
+    this.onLongPress,
+  });
+
+  /// The chat whose topics these are; keys the scroll-offset memory.
+  final int chatId;
+
+  final List<TopicNavigationItem> topics;
+
+  /// The open transcript's topic id; null = the "All" pseudo-topic.
+  final int? selectedTopicId;
+  final ValueChanged<int?> onSelected;
+
+  /// Folder-tab badge parity: honours the chat-list unread-badge setting.
+  final bool showUnreadBadges;
+
+  /// Pre-formatted count text for [topics]' total unread; when null the strip
+  /// derives per-topic labels itself (capped at 99+).
+  final String? Function(int count)? badgeOverflowLabel;
+
+  /// Shows the trailing shimmer tab while a topic page is still in flight.
+  final bool isLoading;
+
+  /// Long press on a real topic tab, with the tab's global rect as the
+  /// anchor for the host's topic menu. The "All" pseudo-tab never fires it.
+  final void Function(TopicNavigationItem topic, Rect anchor)? onLongPress;
+
+  @override
+  State<TopicTabStrip> createState() => _TopicTabStripState();
+}
+
+class _TopicTabStripState extends State<TopicTabStrip> {
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController(
+      initialScrollOffset: TopicTabStripScrollMemory.read(widget.chatId) ?? 0,
+    );
+    _controller.addListener(_rememberOffset);
+  }
+
+  @override
+  void dispose() {
+    _rememberOffset();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _rememberOffset() {
+    if (!_controller.hasClients) return;
+    TopicTabStripScrollMemory.write(widget.chatId, _controller.offset);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final tabHeight = AppMetric.rowExtentFor(
+      context,
+      base: 44,
+      lines: const [AppTextSize.callout],
+    );
+    final topics = widget.topics;
+    final isLoading = widget.isLoading;
+    // The strip scrolls horizontally, so a rightward drag on it means "show
+    // earlier tabs" — never the page's back swipe. Keep the whole bar out of
+    // that gesture, including the gaps between tabs.
+    return ExcludeFromBackSwipe(
+      child: Container(
+        width: double.infinity,
+        height: tabHeight,
+        decoration: BoxDecoration(
+          // Same bar as the chat header so the strip reads as part of the
+          // header, not a separate washed panel.
+          color: c.navBar,
+          border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
+        ),
+        child: ListView.separated(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          itemCount: topics.length + 1 + (isLoading ? 1 : 0),
+          separatorBuilder: (_, _) => const SizedBox(width: 28),
+          itemBuilder: (context, index) {
+            // Index 0 is the "All" tab; topics occupy 1..topics.length, and the
+            // loading placeholder is the LAST slot. Getting this off by one
+            // reads topics[-1] on an empty page and Flutter swaps in an error
+            // box, which release builds paint as an opaque grey block over the
+            // strip's right side.
+            if (isLoading && index == topics.length + 1) {
+              // Topic info is still loading: the placeholder tab keeps the same
+              // bar color as the header so the strip reads as one unified
+              // surface instead of a grey block sticking out.
+              return SizedBox(height: tabHeight);
+            }
+            final all = index == 0;
+            final topic = all ? null : topics[index - 1];
+            final selected = all
+                ? widget.selectedTopicId == null
+                : topic!.id == widget.selectedTopicId;
+            return _TopicTab(
+              key: ValueKey('topic-tab-${topic?.id ?? "all"}'),
+              topic: topic,
+              selected: selected,
+              showUnreadBadge: widget.showUnreadBadges,
+              badgeOverflowLabel: widget.badgeOverflowLabel,
+              onTap: () => widget.onSelected(topic?.id),
+              onLongPress: topic == null
+                  ? null
+                  : (anchor) => widget.onLongPress?.call(topic, anchor),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _TopicTab extends StatelessWidget {
+  const _TopicTab({
+    super.key,
+    required this.topic,
+    required this.selected,
+    required this.onTap,
+    this.onLongPress,
+    this.showUnreadBadge = true,
+    this.badgeOverflowLabel,
+  });
+
+  final TopicNavigationItem? topic;
+  final bool selected;
+  final VoidCallback onTap;
+
+  /// Reports the tab's global rect so the host can hang its menu there.
+  final ValueChanged<Rect>? onLongPress;
+  final bool showUnreadBadge;
+  final String? Function(int count)? badgeOverflowLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isAll = topic == null;
+    final name = isAll
+        ? AppStringKeys.topicChatAllFilter.l10n(context)
+        : topic!.name;
+    final unread = topic?.unreadCount ?? 0;
+    final iconId = topic?.iconCustomEmojiId ?? 0;
+    final rawColor = topic?.iconColor ?? 0;
+    final iconColor = selected
+        ? AppTheme.brand
+        : rawColor == 0
+        ? c.textSecondary
+        : Color(0xFF000000 | (rawColor & 0xFFFFFF));
+    final longPress = onLongPress;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onLongPress: longPress == null
+          ? null
+          : () {
+              final box = context.findRenderObject() as RenderBox?;
+              if (box == null || !box.hasSize) return;
+              longPress(box.localToGlobal(Offset.zero) & box.size);
+            },
+      child: SizedBox(
+        height: 44,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (iconId != 0)
+                  CustomEmojiView(id: iconId, size: 17)
+                else
+                  AppIcon(
+                    isAll ? HeroAppIcons.inbox : HeroAppIcons.hashtag,
+                    size: 17,
+                    color: iconColor,
+                  ),
+                const SizedBox(width: AppSpacing.xs + 1),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 168),
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: AppTextSize.callout,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+                if (showUnreadBadge && !isAll && unread > 0) ...[
+                  const SizedBox(width: 5),
+                  FolderUnreadBadge(
+                    key: ValueKey('topic-tab-unread-${topic!.id}'),
+                    label: _badgeLabel(unread),
+                    accent: !topic!.isMuted,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 7),
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.brand.withValues(alpha: selected ? 1 : 0),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _badgeLabel(int count) {
+    final custom = badgeOverflowLabel?.call(count);
+    if (custom != null) return custom;
+    return count > 99 ? '99+' : '$count';
   }
 }

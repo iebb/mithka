@@ -1,8 +1,6 @@
 part of 'chat_input_bar.dart';
 
 extension _ChatInputBarAttachments on _ChatInputBarState {
-  // MARK: - Media pickers
-
   Future<void> _captureDesktopScreenshot() async {
     if (!_usesNativeDesktopComposer(context) || vm.editingMessage != null) {
       return;
@@ -37,7 +35,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     }
   }
 
-  /// 图片: pick one or more photos/videos and preserve their album order.
   Future<void> _pickPhotos() async {
     try {
       if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
@@ -137,7 +134,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     await _previewAndSendAttachments(attachments);
   }
 
-  /// 相机: capture a photo and send it.
   Future<void> _takePhoto() async {
     try {
       final capture = await captureComposerPhoto(
@@ -532,11 +528,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     }
   }
 
-  /// Delivers the composer's text as an ordinary formatted message when the
-  /// account has no rich send path. Block structure has no representation in
-  /// `inputMessageText`, so it is dropped with one toast; when nothing at all
-  /// can be sent (a document containing media, or a rejected send) the draft
-  /// is reopened instead of silently sending only its caption and losing media.
   Future<void> _sendRichTextFormattedOnly(
     RichTextComposerResult result, {
     required bool droppedRichBlocks,
@@ -607,6 +598,22 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     final relay = RichMessageBotRelay();
     var sentAny = false;
     _showRelayProgress();
+    // A relayed copy is a forward the view model never builds, so the "All"
+    // view's topic is resolved here, once for the whole burst, and handed to
+    // every copy: a rich document must not open one topic per segment.
+    RichMessageSendSegment? titledSegment;
+    for (final segment in segments) {
+      if (segment.isHtml) {
+        titledSegment = segment;
+        break;
+      }
+    }
+    final topicRef = titledSegment == null
+        ? await widget.vm.botTopicRefForSend()
+        : await widget.vm.botTopicRefForSend(
+            html: titledSegment.html,
+            blocks: titledSegment.blocks,
+          );
     try {
       for (final segment in segments) {
         if (segment.isHtml) {
@@ -629,9 +636,11 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
             tdClient: TdClient.shared,
             files: files,
             blocks: segment.blocks,
+            topicRef: topicRef,
             onProgress: _updateRelayProgress,
           );
           sentAny = true;
+          widget.vm.announceBotTopicRef(topicRef);
         } else {
           for (final attachment in segment.attachments) {
             await relay.sendAttachmentAndCopy(
@@ -640,9 +649,11 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
               currentUserId: currentUserId,
               targetChatId: widget.vm.chatId,
               tdClient: TdClient.shared,
+              topicRef: topicRef,
               onProgress: _updateRelayProgress,
             );
             sentAny = true;
+            widget.vm.announceBotTopicRef(topicRef);
           }
         }
       }
@@ -698,10 +709,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     if (entry?.mounted ?? false) entry!.remove();
   }
 
-  /// Resolves how this account can deliver a rich message, without asking the
-  /// user for anything. A null result means the account has no rich send path;
-  /// callers may then offer [RichMessageRelayConfig] setup once and fall back
-  /// to a plain formatted message.
   Future<_RichTextSendMode?> _richTextSendMode() async {
     try {
       if (await TdClient.shared.activeAccountUsesBotApi()) {
@@ -735,7 +742,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     return mounted && await RichMessageRelayConfig.isConfigured();
   }
 
-  /// 文件: pick an arbitrary document and send it.
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
@@ -778,7 +784,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     if (!opened && mounted) _pickFailed(title);
   }
 
-  /// 位置: open a map picker centred on the GPS fix; send the chosen point.
   Future<void> _sendLocation() async {
     if (_usesNativeDesktopComposer(context)) {
       await _openDesktopComposerPicker(
@@ -819,7 +824,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     }
   }
 
-  /// 投票: collect a question + options and send a poll.
   Future<void> _createPoll() async {
     if (_usesNativeDesktopComposer(context)) {
       await _openDesktopComposerPicker(
@@ -845,7 +849,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     }
   }
 
-  /// 音频: pick a local audio file and send it as a music message.
   Future<void> _pickLocalAudio() async {
     try {
       final preferred = await FilePicker.platform.pickFiles(
@@ -884,7 +887,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     }
   }
 
-  /// 音频: search Telegram audio first; local files remain available inside.
   Future<void> _pickAudio() async {
     if (_usesNativeDesktopComposer(context)) {
       await _openDesktopComposerPicker(
@@ -906,7 +908,6 @@ extension _ChatInputBarAttachments on _ChatInputBarState {
     );
   }
 
-  /// 清单: collect a title + tasks and send a checklist (to-do list).
   Future<void> _createChecklist() async {
     if (_usesNativeDesktopComposer(context)) {
       await _openDesktopComposerPicker(

@@ -393,6 +393,168 @@ extension ChatViewModelSending on ChatViewModel {
     notifyListeners();
   }
 
+  /// A bot topic chat has no General topic, so its "All" view has nowhere to
+  /// put a new message. Mirror the reference client: the send starts a topic named after
+  /// the message and is retargeted into it. Returns the new topic id, or null
+  /// when the request is not a bot-topic "All" send (or topic creation failed,
+  /// in which case the request is sent unscoped and the server's error stands).
+  Future<int?> _scopeSendToNewBotTopic(Map<String, dynamic> request) async {
+    if (!_startsBotTopicFor(request)) return null;
+    final topicId = await _ensureBotTopicForSend(_sendRequestText(request));
+    if (topicId == null) return null;
+    request['topic_id'] = {
+      '@type': 'messageTopicForum',
+      'forum_topic_id': topicId,
+    };
+    return topicId;
+  }
+
+  /// Whether this "All" view may start topics at all.
+  bool get _canStartBotTopic => _inBotTopicAllView && canSendMessages;
+
+  /// The topic this chat's "All" sends land in, started on first use.
+  ///
+  /// A burst — a rich document's segments, two quick taps — shares one topic,
+  /// so the burst id outlives the creation request and is returned on every
+  /// later send of this view model. A failed creation returns null and the
+  /// send goes out unscoped, leaving the server's error to speak.
+  Future<int?> _ensureBotTopicForSend(String text) async {
+    final started = _botTopicBurstId;
+    if (started != null) return started;
+    var creation = _botTopicCreation;
+    if (creation == null) {
+      final title = botTopicTitleForMessage(text);
+      creation = _createBotTopicForSend(
+        title.isEmpty ? AppStrings.t(AppStringKeys.topicChatTopicTitle) : title,
+      );
+      _botTopicCreation = creation;
+    }
+    final topicId = await creation;
+    if (identical(_botTopicCreation, creation)) _botTopicCreation = null;
+    if (topicId == null) return null;
+    _botTopicBurstId = topicId;
+    return topicId;
+  }
+
+  /// The topic a send from this chat's "All" view has to land in, for senders
+  /// that bypass the request pipeline.
+  ///
+  /// The rich-message relay bot copies its message in with a forward the view
+  /// model never builds, so the composer asks for the topic up front and hands
+  /// the ref to the relay. Returns null when this chat has no topic
+  /// destination or the creation failed: the send then stays unscoped, exactly
+  /// like a failed creation on the direct path.
+  Future<Map<String, dynamic>?> botTopicRefForSend({
+    String html = '',
+    List<Map<String, dynamic>> blocks = const [],
+  }) async {
+    if (!_canStartBotTopic) return null;
+    final topicId = await _ensureBotTopicForSend(
+      blocks.isNotEmpty
+          ? _richMessageText({'blocks': blocks})
+          : _richMessageText({'html': html}),
+    );
+    if (topicId == null) return null;
+    return {'@type': 'messageTopicForum', 'forum_topic_id': topicId};
+  }
+
+  /// Switches the transcript to the topic [botTopicRefForSend] started, once
+  /// the relayed copy landed.
+  void announceBotTopicRef(Map<String, dynamic>? topicRef) {
+    _announceStartedBotTopic(topicRef?.int64('forum_topic_id'));
+  }
+
+  /// Whether [request] is a new message composed in a bot topic chat's "All"
+  /// view, i.e. one that must start its own topic.
+  ///
+  /// A reply is left alone: its `inputMessageReplyToMessage` already resolves
+  /// the topic of the message it answers, exactly like the reference client's interceptor
+  /// skipping reply sends.
+  bool _startsBotTopicFor(Map<String, dynamic> request) {
+    if (!_canStartBotTopic) return false;
+    final type = request.type;
+    if (type != 'sendMessage' &&
+        type != 'sendMessageAlbum' &&
+        type != 'forwardMessages') {
+      return false;
+    }
+    if (request.int64('chat_id') != chatId) return false;
+    if (request.containsKey('topic_id') ||
+        request.containsKey('message_thread_id')) {
+      return false;
+    }
+    return !request.containsKey('reply_to');
+  }
+
+  /// The text a send request carries — the message body, its caption, or the
+  /// first album item's — so the topic it starts is named after it.
+  String _sendRequestText(Map<String, dynamic> request) {
+    final contents = request['input_message_contents'];
+    final rawContent = contents is List && contents.isNotEmpty
+        ? contents.first
+        : request['input_message_content'];
+    if (rawContent is! Map<String, dynamic>) return '';
+    final formatted = rawContent.obj('text') ?? rawContent.obj('caption');
+    if (formatted != null) return formatted.str('text') ?? '';
+    // A rich message carries its text as nested rich-text nodes (Bot API
+    // transport: as HTML). Its first readable run names the topic the way a
+    // plain message's opening words would.
+    return _richMessageText(
+      rawContent.obj('message') ?? rawContent.obj('rich_message'),
+    );
+  }
+
+  /// The first readable run inside a rich-message payload.
+  ///
+  /// Block trees nest `richTextPlain` nodes arbitrarily deep (inside
+  /// `richTextBold`, paragraph blocks, table cells), so the walk goes by shape
+  /// rather than by block type: the first node that actually carries text wins.
+  String _richMessageText(Object? node) {
+    if (node is List) {
+      for (final child in node) {
+        final text = _richMessageText(child);
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
+    if (node is! Map) return '';
+    if (node['@type'] == 'richTextPlain') {
+      final text = node['text'];
+      return text is String ? text : '';
+    }
+    final html = node['html'];
+    if (html is String && html.trim().isNotEmpty) {
+      return html.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll('&nbsp;', ' ');
+    }
+    for (final value in node.values) {
+      final text = _richMessageText(value);
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  Future<int?> _createBotTopicForSend(String name) async {
+    try {
+      final created = await _topicAccountQuery(
+        createForumTopicRequest(
+          chatId: chatId,
+          name: name,
+          color: topicIconColors[forumTopics.length % topicIconColors.length],
+          customEmojiId: 0,
+          // The name is a preview of the first message, not a user-picked
+          // title: Telegram keeps deriving it on the server (title_missing).
+          isNameImplicit: true,
+        ),
+      );
+      final topicId = created.integer('forum_topic_id');
+      return topicId == null || topicId == 0 ? null : topicId;
+    } catch (_) {
+      // the reference client sends the message unscoped when the topic cannot be
+      // created; the send then fails on its own terms instead of vanishing.
+      return null;
+    }
+  }
+
   Future<bool> send() async {
     if (!canSendMessages) return false;
     final trimmed = draft.trim();
@@ -455,7 +617,7 @@ extension ChatViewModelSending on ChatViewModel {
     final response = await _client.query(
       _withPaidMessageOptions(_withFixedLinkPreview(request)),
     );
-    final message = TDParse.message(response);
+    final message = _parseMessage(response);
     if (message != null) {
       _merge([message]);
       _resolveSendersIfNeeded([message]);
@@ -595,26 +757,6 @@ extension ChatViewModelSending on ChatViewModel {
     while (_recentMessageSendResults.length > 32) {
       _recentMessageSendResults.remove(_recentMessageSendResults.keys.first);
     }
-  }
-
-  Future<bool> _sendDice(String text) async {
-    final emoji = text.trim();
-    if (!ChatViewModel._diceEmojis.contains(emoji)) return false;
-    final request = <String, dynamic>{
-      '@type': 'sendMessage',
-      'chat_id': chatId,
-      'input_message_content': {'@type': 'inputMessageDice', 'emoji': emoji},
-    };
-    final replyRevision = _replyRevision;
-    if (replyTo != null) {
-      request['reply_to'] = replyToInput;
-    }
-    final sent = await _submitMessageRequest(request);
-    if (!sent) return false;
-    _consumeReplyAnchorIfCurrent(replyRevision);
-    _clearDraft();
-    notifyListeners();
-    return true;
   }
 
   /// Sets or clears the reply target without changing the current draft.
@@ -1044,38 +1186,50 @@ extension ChatViewModelSending on ChatViewModel {
     );
     final music = message.music;
     final fileId = music?.file?.id;
+    Map<String, dynamic>? topicRef;
+    int? startedTopicId;
     if (music != null && fileId != null && fileId > 0) {
-      try {
-        await _client.query(
-          _withPaidMessageOptions({
-            '@type': 'sendMessage',
-            'chat_id': chatId,
-            'input_message_content': {
-              '@type': 'inputMessageAudio',
-              'audio': {
-                '@type': 'inputAudio',
-                'audio': {'@type': 'inputFileId', 'id': fileId},
-                'duration': music.duration,
-                'title': music.title,
-                'performer': music.performer ?? '',
-              },
-            },
-          }),
-        );
-        return;
-      } catch (_) {}
-    }
-    await _client.query(
-      _withPaidMessageOptions({
-        '@type': 'forwardMessages',
+      final audioRequest = <String, dynamic>{
+        '@type': 'sendMessage',
         'chat_id': chatId,
-        'from_chat_id': sourceChatId,
-        'message_ids': [message.id],
-        'options': {'@type': 'messageSendOptions'},
-        'send_copy': true,
-        'remove_caption': false,
-      }),
-    );
+        'input_message_content': {
+          '@type': 'inputMessageAudio',
+          'audio': {
+            '@type': 'inputAudio',
+            'audio': {'@type': 'inputFileId', 'id': fileId},
+            'duration': music.duration,
+            'title': music.title,
+            'performer': music.performer ?? '',
+          },
+        },
+      };
+      startedTopicId = await _scopeSendToNewBotTopic(audioRequest);
+      topicRef = audioRequest.obj('topic_id');
+      try {
+        await _client.query(_withPaidMessageOptions(audioRequest));
+        _announceStartedBotTopic(startedTopicId);
+        return;
+      } catch (_) {
+        // Fall back to a copy of the original message below; the topic this
+        // attempt started (if any) is reused so the copy lands inside it.
+      }
+    }
+    final forwardRequest = <String, dynamic>{
+      '@type': 'forwardMessages',
+      'chat_id': chatId,
+      'topic_id': ?topicRef,
+      'from_chat_id': sourceChatId,
+      'message_ids': [message.id],
+      'options': {'@type': 'messageSendOptions'},
+      'send_copy': true,
+      'remove_caption': false,
+    };
+    final startedForwardTopicId = await _scopeSendToNewBotTopic(forwardRequest);
+    try {
+      await _client.query(_withPaidMessageOptions(forwardRequest));
+    } finally {
+      _announceStartedBotTopic(startedTopicId ?? startedForwardTopicId);
+    }
   }
 
   /// 清单: send a checklist (to-do list). Creating checklists needs Premium.
@@ -1424,7 +1578,7 @@ extension ChatViewModelSending on ChatViewModel {
         'message_id': messageId,
       });
       if (_isDisposed) return;
-      final refreshed = TDParse.message(raw);
+      final refreshed = _parseMessage(raw);
       if (refreshed == null) return;
       _merge([refreshed]);
       _resolveRichMessagesIfNeeded([refreshed]);
@@ -1537,5 +1691,121 @@ extension ChatViewModelSending on ChatViewModel {
       if (showLoading) _setTranslationLoading(messageId, false);
       rethrow;
     }
+  }
+
+  // MARK: - Message actions (long-press menu)
+
+  Future<bool> _sendDice(String text) async {
+    final emoji = text.trim();
+    if (!ChatViewModel._diceEmojis.contains(emoji)) return false;
+    final request = <String, dynamic>{
+      '@type': 'sendMessage',
+      'chat_id': chatId,
+      'input_message_content': {'@type': 'inputMessageDice', 'emoji': emoji},
+    };
+    final replyRevision = _replyRevision;
+    if (replyTo != null) {
+      request['reply_to'] = replyToInput;
+    }
+    final sent = await _submitMessageRequest(request);
+    if (!sent) return false;
+    _consumeReplyAnchorIfCurrent(replyRevision);
+    _clearDraft();
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> _sendPendingForwardInto(
+    PendingForward forward,
+    List<int> messageIds,
+    Map<String, dynamic>? topicRef,
+  ) async {
+    if (forward.protectedCopy) {
+      final plan = await forwardProtectedAsCopy(
+        query: _client.query,
+        fromChatId: forward.fromChatId,
+        messageIds: messageIds,
+        targetChatId: chatId,
+        topicId: topicRef,
+      );
+      protectedForwardLastPlan = plan;
+      pendingForward = null;
+      notifyListeners();
+      if (plan.anythingSent) return;
+      throw const ForwardBlockedException();
+    }
+    // Source ids are pinned to the account that supplied them; the same
+    // account owns this transcript, so the owned query route is exact.
+    final forwardQuery = forwardQueryForOwner(
+      _client,
+      accountSlot: forward.accountSlot,
+      clientId: forward.clientId,
+    );
+    var richText = forward.options.richText;
+    // Same second gate as forwardMany: entry points hide the chip for
+    // non-Premium, but the entitlement is re-checked here against the live
+    // TDLib state.
+    if (richText) {
+      try {
+        final user = await forwardQuery({'@type': 'getMe'});
+        richText = user.boolean('is_premium') ?? false;
+      } catch (_) {
+        richText = false;
+      }
+    }
+    final byId = {for (final message in forward.messages) message.id: message};
+    final pendingIds = <int>[];
+    // The handoff's messages carry the text the offer was computed from, so
+    // the rich-text conversion works even though the source transcript's
+    // view model is long gone.
+    bool converts(ChatMessage message) =>
+        forwardMarkdownOfferForMessage(message).available;
+    Future<void> flush() async {
+      if (pendingIds.isEmpty) return;
+      final ids = List<int>.of(pendingIds);
+      pendingIds.clear();
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: chatId,
+        fromChatId: forward.fromChatId,
+        messageIds: ids,
+        topicId: topicRef,
+        options: forward.options,
+        query: forwardQuery,
+      );
+    }
+
+    if (!richText) {
+      await forwardMessagesWithOptions(
+        client: _client,
+        targetChatId: chatId,
+        fromChatId: forward.fromChatId,
+        messageIds: messageIds,
+        topicId: topicRef,
+        options: forward.options,
+        query: forwardQuery,
+      );
+    } else {
+      for (final id in messageIds) {
+        final message = byId[id];
+        if (message == null || !converts(message)) {
+          pendingIds.add(id);
+          continue;
+        }
+        await flush();
+        final sent = await sendMarkdownRichTextForward(
+          query: forwardQuery,
+          fromChatId: forward.fromChatId,
+          messageId: id,
+          targetChatId: chatId,
+          text: message.text,
+          topicId: topicRef,
+        );
+        if (!sent) pendingIds.add(id);
+      }
+      await flush();
+    }
+    pendingForward = null;
+    notifyListeners();
   }
 }

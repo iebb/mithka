@@ -37,13 +37,19 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/drawer_controller.dart' as dc;
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
 import '../contacts/contacts_view.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../moments/moments_view.dart';
 import '../platform/android_share_intent.dart';
+import '../profile/profile_proxy_button.dart';
 import '../profile/profile_view.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../settings/ghost_mode_controller.dart';
+import '../settings/ghost_mode_settings_view.dart';
+import '../settings/proxy_status.dart';
+import '../settings/proxy_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -585,6 +591,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
           messageId: replay.messageId,
           accountUserId: replay.accountUserId,
           accountSlot: replay.accountSlot,
+          externalReply: replay.externalReply,
+          forwardHandoff: replay.forwardHandoff,
         );
       });
       return;
@@ -594,6 +602,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         chatId: request.chatId,
         title: request.title,
         initialMessageId: request.messageId,
+        pendingForwardHandoff: request.forwardHandoff,
       );
       setState(() => _selection = 0);
       _showMessageChat(nextSelection);
@@ -613,6 +622,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             chatId: request.chatId,
             title: request.title,
             initialMessageId: request.messageId,
+            externalReplyHandoff: request.externalReply,
+            forwardHandoff: request.forwardHandoff,
           ),
         ),
       );
@@ -654,6 +665,25 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       for (var i = 0; i < others.length; i++)
         if (found[i]) others[i],
     ];
+  }
+
+  /// Ghost-mode settings straight from the desktop rail. The view reads
+  /// GhostModeController.shared, whose prefs the primary engine already
+  /// initialized; a plain route keeps it inside the main window (the
+  /// controller is not wired through the TD-proxy child engines).
+  Future<void> _openDesktopProxySettings() async {
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      AppPageRoute<void>(pageBuilder: (_, _, _) => const ProxyView()),
+    );
+    unawaited(ProxyStatusController.shared.refresh());
+  }
+
+  void _openDesktopGhostMode() {
+    Navigator.of(context, rootNavigator: true).push<void>(
+      AppPageRoute<void>(
+        pageBuilder: (_, _, _) => const GhostModeSettingsView(),
+      ),
+    );
   }
 
   void _openDesktopUtility(
@@ -1073,7 +1103,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         ),
     ];
     final rail = AnimatedBuilder(
-      animation: Listenable.merge([_unread, _chatListController.sideFolders]),
+      // GhostModeController joins the rebuild set: the rail's ghost glyph is
+      // a status light and must repaint the moment the switch flips.
+      animation: Listenable.merge([
+        _unread,
+        _chatListController.sideFolders,
+        if (GhostModeController.isAvailable) GhostModeController.shared,
+      ]),
       builder: (context, _) => DesktopNavigationRail(
         destinations: destinations,
         folders: activeTabIndex == 0
@@ -1098,6 +1134,30 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         darkMode: Theme.of(context).brightness == Brightness.dark,
         onToggleThemeMode: () =>
             theme.toggleDayNight(Theme.of(context).brightness),
+        // 代理 straight from the rail: the drawer sidebar's status-light
+        // globe, re-hosted at the rail's 38pt footprint.
+        proxyButton: ProfileProxyButton(
+          extent: 38,
+          onTap: _openDesktopProxySettings,
+        ),
+        // Compile-time gated ghost-mode shortcut, right under the theme
+        // toggle (the rail's counterpart of the drawer sidebar's slot).
+        // The runtime sidebar-entry switch hides it on both surfaces.
+        ghostModeLabel:
+            allowTelegramTosViolations &&
+                GhostModeController.isAvailable &&
+                GhostModeController.shared.showSidebarEntry
+            ? AppStrings.t(AppStringKeys.ghostModeTitle)
+            : null,
+        ghostModeActive:
+            allowTelegramTosViolations &&
+            GhostModeController.shared.globalEnabled,
+        onOpenGhostMode:
+            allowTelegramTosViolations &&
+                GhostModeController.isAvailable &&
+                GhostModeController.shared.showSidebarEntry
+            ? _openDesktopGhostMode
+            : null,
         showAccountPhone: !theme.hideSidebarPhone,
         applicationMenuLabel: AppStrings.t(AppStringKeys.chatMenu),
         languageMenuLabel: AppStrings.t(AppStringKeys.languageMithkaLanguage),
@@ -1521,6 +1581,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
             selectedChatId: _selectedMessageChat?.chatId,
             onClearUnread: archivedSelection.onClearUnread,
             onUnarchive: archivedSelection.onUnarchive,
+            onToggleMute: archivedSelection.onToggleMute,
             onBack: () => setState(() => _selectedArchivedChats = null),
             onChatSelected: (chat) {
               _showMessageChat(ChatListSelection.fromChat(chat));
@@ -1664,7 +1725,8 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       key: ValueKey(
         'message-detail-${selected.chatId}-${selected.supportsTopics}-'
         '${selected.initialMessageId ?? 0}-${selected.forumTopicId ?? 0}-'
-        '${selected.composerFocusRequestId}',
+        '${selected.composerFocusRequestId}-'
+        '${selected.pendingForwardHandoff != null ? 1 : 0}',
       ),
       child: ChatView(
         chatId: selected.chatId,
@@ -1682,6 +1744,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         // pane fits, so the edge tab shares the header button's state.
         onTrailingPaneToggle: onInfoPressed,
         requestComposerFocusOnReady: selected.composerFocusRequestId != 0,
+        forwardHandoff: selected.pendingForwardHandoff,
         exitController: _messageChatExitController,
         revealLatestController: _messageRevealLatestController,
         onChatKindResolved: (kind) =>
@@ -2002,14 +2065,26 @@ class _MessageEmptyPane extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('assets/penguin.png', width: 92, height: 92),
+              Image.asset(
+                'assets/penguin.png',
+                width: 92,
+                height: 92,
+                filterQuality: FilterQuality.high,
+              ),
               const SizedBox(width: 18),
-              Text(
-                'Mithka',
-                style: TextStyle(
-                  fontSize: 64,
-                  fontWeight: FontWeight.w600,
-                  color: c.textTertiary,
+              // The 64 pt wordmark plus the mark overflows narrow panes; scale
+              // the pair down as one unit instead of clipping the text.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Mithka',
+                    style: TextStyle(
+                      fontSize: 64,
+                      fontWeight: FontWeight.w600,
+                      color: c.textTertiary,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -2340,9 +2415,10 @@ class _MainBottomBar extends StatelessWidget {
   /// sits over the detail pane, not over this column.
   final bool reserveBottomInset;
 
-  /// Label size the classic bar is laid out around. The icon block above it
-  /// keeps its size at every text scale, so only this line's growth is added
-  /// to the bar. The glass bar draws no label at all and always grows by zero.
+  /// Label size the bar is laid out around. The icon block above it keeps its
+  /// size at every text scale, so only this line's growth is added to the bar.
+  /// A host that draws no label — the glass bar docked in the split shell's
+  /// sidebar column — always grows by zero.
   static const double _labelSize = 11;
 
   /// Line box of the label relative to its font size.
@@ -2436,15 +2512,22 @@ class _MainBottomBar extends StatelessWidget {
         ),
       );
     }
-    // The glass row contains only centered icons and reserves no label height;
-    // the classic bar keeps growing with the scaled label line.
-    final labelGrowth = glass
-        ? 0.0
-        : math.max(
+    // The label rule follows the slot's width, not the surface: the compact
+    // shell (the only host that reserves the home indicator's clearance) spans
+    // the window, so each of its slots fits a label line under the icon. The
+    // split shell docks the bar inside its sidebar column, where the slot is
+    // narrower than the label and the selection capsule around it would reach
+    // past the tab it marks — that host keeps the Telegram-iOS icon-only row.
+    final drawsTabLabel = !glass || reserveBottomInset;
+    // Icons and badges keep their size, so a bar that draws labels only grows
+    // by what the scaled label line gains.
+    final labelGrowth = drawsTabLabel
+        ? math.max(
             0.0,
             (MediaQuery.textScalerOf(context).scale(_labelSize) - _labelSize) *
                 _labelLineHeight,
-          );
+          )
+        : 0.0;
     // Only the compact shell reserves the home indicator's own height; the
     // split shell leaves the window edge to its column, so the row keeps the
     // bar's whole box.
@@ -2561,11 +2644,11 @@ class _MainBottomBar extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            // The glass row is icon-only: the label line and its
-                            // gutter are dropped, and the icon stays centred in
-                            // the slot. Every other target keeps the classic
-                            // icon + label column untouched.
-                            if (!glass) ...[
+                            // The phone's glass row carries the tab's name the
+                            // same way the classic bar does; only the split
+                            // shell's sidebar column drops the line and its
+                            // gutter, leaving the icon centred in the slot.
+                            if (drawsTabLabel) ...[
                               const SizedBox(height: 2),
                               AnimatedDefaultTextStyle(
                                 duration: AppMotion.duration(

@@ -32,6 +32,36 @@ extension _ChatInputBarAiSend on _ChatInputBarState {
       }
       return;
     }
+    // A pending forward rides the send button first (the reference client parity: the
+    // preview panel's send commits the forward; any typed text follows as a
+    // normal message).
+    if (vm.pendingForward != null) {
+      final canAttemptSend = await vm.prepareMessageSend();
+      if (!mounted || !canAttemptSend) return;
+      try {
+        await vm.sendPendingForward();
+        if (!mounted) return;
+        widget.onMessageSent();
+        final plan = vm.protectedForwardLastPlan;
+        if (plan != null && plan.skippedIds.isNotEmpty) {
+          showToast(
+            context,
+            AppStrings.t(AppStringKeys.keptForwardCopyPartToast, {
+              'value1': plan.copiedCount,
+              'value2': plan.skippedIds.length,
+            }),
+          );
+        }
+        if (_controller.text.trim().isNotEmpty) {
+          await _sendCurrentText();
+        } else {
+          _focus.requestFocus();
+        }
+      } catch (error) {
+        if (mounted) _showForwardFailureFromComposer(error);
+      }
+      return;
+    }
     if (_voiceDraft != null) {
       await _sendVoiceDraft();
       return;

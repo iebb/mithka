@@ -173,17 +173,24 @@ List<ChatFolderRecord?> folderOrderEntries(
 
 /// Applies a reorder-list move to [entries] and reports the folder order and
 /// main-list position to send to `reorderChatFolders`.
+///
+/// With [moveMainList] false the main list is pinned: moving a folder above
+/// it still reorders the folders, but the reported position stays 0, exactly
+/// what a non-Premium account is allowed to save.
 ({List<ChatFolderRecord> folders, int mainChatListPosition})
 reorderFolderEntries(
   List<ChatFolderRecord?> entries,
   int oldIndex,
-  int newIndex,
-) {
+  int newIndex, {
+  bool moveMainList = true,
+}) {
   final ordered = [...entries];
   ordered.insert(newIndex, ordered.removeAt(oldIndex));
   return (
     folders: ordered.whereType<ChatFolderRecord>().toList(),
-    mainChatListPosition: ordered.indexWhere((folder) => folder == null),
+    mainChatListPosition: moveMainList
+        ? ordered.indexWhere((folder) => folder == null)
+        : 0,
   );
 }
 

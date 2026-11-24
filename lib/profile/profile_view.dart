@@ -31,8 +31,12 @@ import '../components/drawer_controller.dart' as dc;
 import '../components/photo_avatar.dart';
 import '../components/ui_components.dart';
 import '../components/vip_badge.dart';
+import '../config/build_flags.dart';
 import '../platform/adaptive_platform.dart';
 import '../settings/edit_profile_view.dart';
+import '../settings/ghost_mode_controller.dart';
+import '../settings/ghost_mode_settings_view.dart';
+import '../settings/local_premium.dart';
 import '../settings/proxy_status.dart';
 import '../settings/proxy_view.dart';
 import '../settings/settings_view.dart';
@@ -56,6 +60,7 @@ class ProfileViewModel extends ChangeNotifier {
   int? savedChatId;
   bool _loaded = false;
   StreamSubscription? _sub;
+  VoidCallback? _premiumListener;
 
   void onAppear() {
     if (_loaded) return;
@@ -67,6 +72,16 @@ class ProfileViewModel extends ChangeNotifier {
       final usr = u.obj('user');
       if (usr != null && usr.int64('id') == user?.id) _applyUser(usr);
     });
+    // The local-premium overlay is applied at read time; flipping the switch
+    // must repaint the drawer's premium affordances without waiting for the
+    // next updateUser.
+    if (allowTelegramTosViolations) {
+      // notifyListeners is not a tearoff-friendly shape here (the listener
+      // must stay removable), so the closure is deliberate.
+      // ignore: unnecessary_lambdas
+      _premiumListener = () => notifyListeners();
+      LocalPremium.shared.addListener(_premiumListener!);
+    }
     _getMe();
   }
 
@@ -79,10 +94,20 @@ class ProfileViewModel extends ChangeNotifier {
       username: usernames.isEmpty ? null : usernames.first,
       photo: TDParse.smallPhoto(me.obj('profile_photo')),
       emojiStatusId: TDParse.emojiStatusCustomEmojiId(me.obj('emoji_status')),
+      // Raw server value; the local-premium overlay is applied at read time
+      // (isPremiumForView) so toggling it repaints without a new updateUser.
       isPremium: me.boolean('is_premium') ?? false,
     );
     notifyListeners();
   }
+
+  /// The premium answer for this profile's display: the raw server value with
+  /// the self-build local-premium overlay on top (our own account only).
+  /// Outside opted-in builds this is plainly false — the overlay is the only
+  /// premium adder.
+  bool isPremiumForView(CurrentUser? candidate) =>
+      allowTelegramTosViolations &&
+      LocalPremium.shared.premiumForMe(candidate?.isPremium ?? false);
 
   Future<void> _getMe() async {
     try {
@@ -101,6 +126,10 @@ class ProfileViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _sub?.cancel();
+    final premiumListener = _premiumListener;
+    if (premiumListener != null) {
+      LocalPremium.shared.removeListener(premiumListener);
+    }
     super.dispose();
   }
 
@@ -371,7 +400,7 @@ class _ProfileViewState extends State<ProfileView> {
                               ),
                             ),
                             _nameStatusIcon(user),
-                            if (user?.isPremium ?? false) ...[
+                            if (_vm.isPremiumForView(user)) ...[
                               const SizedBox(width: 6),
                               const VipBadge(),
                             ],
@@ -435,7 +464,7 @@ class _ProfileViewState extends State<ProfileView> {
   Widget _nameStatusIcon(CurrentUser? user) {
     final foreground = context.colors.textPrimary;
     final hasStatus = (user?.emojiStatusId ?? 0) != 0;
-    final premium = user?.isPremium ?? false;
+    final premium = _vm.isPremiumForView(user);
     if (!hasStatus && !premium) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(left: 6),
@@ -770,6 +799,36 @@ class _ProfileViewState extends State<ProfileView> {
               const SizedBox(width: 24),
               ProfileProxyButton(onTap: _openProxySettings),
               const SizedBox(width: 24),
+              // 幽灵模式 straight from the sidebar, between 代理 and the
+              // day/night switch. Compile-time gated: the button (and the
+              // page behind it) does not exist in non-opted builds; the
+              // runtime sidebar-entry switch (ghost mode settings) hides it
+              // without touching interception. The bar listens to the
+              // controller so flipping that switch adds/removes the button
+              // immediately — _ghostBarItem's own builder only repaints the
+              // glyph, it cannot add or remove the slot.
+              if (allowTelegramTosViolations)
+                ListenableBuilder(
+                  listenable: GhostModeController.shared,
+                  builder: (context, _) =>
+                      GhostModeController.shared.showSidebarEntry
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _root.push(
+                                MaterialPageRoute(
+                                  builder: (_) => const GhostModeSettingsView(),
+                                ),
+                              ),
+                              child: _ghostBarItem(context),
+                            ),
+                            const SizedBox(width: 24),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
+                ),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => theme.toggleDayNight(Theme.of(context).brightness),
@@ -807,6 +866,34 @@ class _ProfileViewState extends State<ProfileView> {
         width: 48,
         height: 48,
         child: Center(child: AppIcon(icon, size: 24, color: c.textPrimary)),
+      ),
+    );
+  }
+
+  /// The sidebar's ghost-mode glyph: eyeSlash that lights up in the brand
+  /// colour while ghost mode is intercepting, so the shortcut doubles as a
+  /// status light the way the proxy globe does. Hidden entirely when the
+  /// user turned the sidebar entry off in ghost mode's settings.
+  Widget _ghostBarItem(BuildContext context) {
+    final c = context.colors;
+    return AnimatedBuilder(
+      animation: GhostModeController.shared,
+      builder: (context, _) => Tooltip(
+        message: AppStrings.t(AppStringKeys.ghostModeTitle),
+        child: SizedBox(
+          key: const ValueKey('sidebar-ghost-mode-button'),
+          width: 48,
+          height: 48,
+          child: Center(
+            child: AppIcon(
+              HeroAppIcons.eyeSlash,
+              size: 24,
+              color: GhostModeController.shared.globalEnabled
+                  ? AppTheme.brand
+                  : c.textPrimary,
+            ),
+          ),
+        ),
       ),
     );
   }

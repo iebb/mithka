@@ -3,11 +3,9 @@
 //
 //  A searchable chat chooser. Pushed when the user forwards a message or shares
 //  content; returns the picked `ChatSummary` via Navigator.pop. Reuses
-//  `ChatListViewModel` so it shows the same live, sorted chat list as 消息,
-//  and, when forwarding, the same chat folders to narrow it by.
+//  `ChatListViewModel` so it shows the same live, sorted chat list as 消息 —
+//  folder tabs included, like the reference client's forward picker.
 //
-
-import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
@@ -21,19 +19,15 @@ import '../components/photo_avatar.dart';
 import '../contacts/contact_users.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
-import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'links_search/internal_chat_link_router.dart';
 import 'links_search/telegram_link.dart';
-import 'messages/forward_markdown.dart';
-import 'messages/forward_options.dart';
 
 class ChatPickerResult {
-  const ChatPickerResult({required this.chat, required this.forwardOptions});
+  const ChatPickerResult({required this.chat});
 
   final ChatSummary chat;
-  final ForwardOptions forwardOptions;
 }
 
 class ChatPickerView extends StatefulWidget {
@@ -42,7 +36,6 @@ class ChatPickerView extends StatefulWidget {
     this.title = AppStringKeys.chatPickerChooseChat,
     this.showForwardOptions = false,
     this.showFolders,
-    this.markdownOffer = const ForwardMarkdownOffer.none(),
     this.allowChannels = true,
     this.allowedKinds,
     this.allowedChatIds,
@@ -51,6 +44,9 @@ class ChatPickerView extends StatefulWidget {
     this.accountSlot,
   });
   final String title;
+
+  /// Forwarding entries route the picker's result through
+  /// [ChatPickerResult]; other callers receive the bare [ChatSummary].
   final bool showForwardOptions;
 
   /// Whether the account's chat folders are offered as tabs above the list, so
@@ -58,10 +54,6 @@ class ChatPickerView extends StatefulWidget {
   /// Null follows [showForwardOptions]: every forward picker offers them, and
   /// a picker that shares something else into a chat opts in.
   final bool? showFolders;
-
-  /// Markdown detected in the forwarded text: the picker offers a "render
-  /// Markdown" chip, pre-checked only when the offer is strong.
-  final ForwardMarkdownOffer markdownOffer;
   final bool allowChannels;
   final Set<ChatKind>? allowedKinds;
   final Set<int>? allowedChatIds;
@@ -103,9 +95,6 @@ class _ChatPickerViewState extends State<ChatPickerView> {
   /// that added no chat ends the run, so an exhausted list is not asked again.
   int _autoPagedAt = -1;
   String _query = '';
-  bool _removeCaption = false;
-  bool _removeSender = false;
-  late bool _renderMarkdown = widget.markdownOffer.suggested;
 
   @override
   void initState() {
@@ -191,11 +180,16 @@ class _ChatPickerViewState extends State<ChatPickerView> {
     _pageIn();
   }
 
+  /// The selected folder's own chats with the archive appended, exactly like
+  /// the reference client's forward picker.
+  List<ChatSummary> get _selectionChats =>
+      _vm.chatsForSelection(_vm.selectedFilter.folderId);
+
   List<_PickerEntry> get _filtered {
     // A folder's own list already carries its archived members. Contacts
     // without a chat belong to no folder, so they are offered under "All" only.
     final inFolder = !_vm.isAllFilter;
-    final chats = inFolder ? _vm.chats : [..._vm.chats, ..._vm.archived];
+    final chats = _selectionChats;
     final chatPeerUserIds = chats
         .map((chat) => chat.peerUserId)
         .whereType<int>()
@@ -278,17 +272,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
 
   void _popPickedChat(ChatSummary chat) {
     if (widget.showForwardOptions) {
-      final renderMarkdown = widget.markdownOffer.available && _renderMarkdown;
-      Navigator.of(context).pop(
-        ChatPickerResult(
-          chat: chat,
-          forwardOptions: ForwardOptions(
-            removeCaption: _removeCaption,
-            removeSender: _removeSender,
-            richText: renderMarkdown,
-          ),
-        ),
-      );
+      Navigator.of(context).pop(ChatPickerResult(chat: chat));
     } else {
       Navigator.of(context).pop(chat);
     }
@@ -306,6 +290,7 @@ class _ChatPickerViewState extends State<ChatPickerView> {
       body: Column(
         children: [
           _header(),
+          if (_offersFolders) _folderTabs(),
           Expanded(
             child: filtered.isEmpty
                 // Nothing is said while a page or the contacts are still on
@@ -418,214 +403,94 @@ class _ChatPickerViewState extends State<ChatPickerView> {
               ),
             ),
           ),
-          if (widget.showForwardOptions) _forwardOptions(),
-          if (_offersFolders) _folderTabs(),
         ],
       ),
     );
   }
 
-  /// One tab per folder, "All" first. Each is a 17 px glyph and a 14 px title
-  /// above a 38 x 4 px indicator that fills with the brand colour on the
-  /// selected folder; the strip scrolls sideways when the folders overflow.
   Widget _folderTabs() {
+    final c = context.colors;
+    final theme = context.watch<ThemeController>();
+    final showBadges = theme.showFolderUnreadBadges;
+    final badgeOverflow = theme.unreadBadgeOverflowMode;
     final selectedFolderId = _vm.selectedFilter.folderId;
-    final filters = _vm.filters;
     final tabHeight = AppMetric.rowExtentFor(
       context,
-      base: 40,
+      base: 44,
       lines: const [AppTextSize.callout],
     );
-    final scrollBehavior = ScrollConfiguration.of(context);
-    return SizedBox(
+    return Container(
       height: tabHeight,
-      child: ScrollConfiguration(
-        // A desktop pointer drags the strip the same way a finger does.
-        behavior: scrollBehavior.copyWith(
-          dragDevices: {...scrollBehavior.dragDevices, PointerDeviceKind.mouse},
-        ),
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          itemCount: filters.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 24),
-          itemBuilder: (_, index) => _folderTab(
-            filters[index],
-            selected: filters[index].folderId == selectedFolderId,
-          ),
-        ),
+      decoration: BoxDecoration(
+        color: c.listHeaderTint,
+        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
       ),
-    );
-  }
-
-  Widget _folderTab(ChatFilterOption filter, {required bool selected}) {
-    final c = context.colors;
-    final accent = selected ? AppTheme.brand : c.textSecondary;
-    // The Builder hands the tap this tab's own position in the strip, which is
-    // what scrolls a half-hidden tab fully into view once it is chosen.
-    return Builder(
-      builder: (context) {
-        return Semantics(
-          button: true,
-          selected: selected,
-          child: GestureDetector(
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        itemCount: _vm.filters.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 28),
+        itemBuilder: (context, index) {
+          final filter = _vm.filters[index];
+          final selected = filter.folderId == selectedFolderId;
+          return GestureDetector(
             key: ValueKey('chat-picker-folder-${filter.folderId ?? 'all'}'),
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              _selectFolder(filter);
-              Scrollable.ensureVisible(
-                context,
-                alignment: 0.5,
-                duration: AppMotion.responsive,
-                curve: AppMotion.standard,
-              );
-            },
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ChatFolderIcon(
-                      filter.isAll ? 'All' : filter.iconName,
-                      size: 17,
-                      color: accent,
-                    ),
-                    const SizedBox(width: AppSpacing.xs + 1),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 168),
-                      child: Text(
-                        filter.title.l10n(context),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: AppTextSize.callout,
-                          fontWeight: selected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: c.textPrimary,
+            onTap: () => _selectFolder(filter),
+            child: SizedBox(
+              height: tabHeight,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ChatFolderIcon(
+                        filter.isAll ? 'All' : filter.iconName,
+                        size: 17,
+                        color: selected ? AppTheme.brand : c.textSecondary,
+                      ),
+                      const SizedBox(width: AppSpacing.xs + 1),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 168),
+                        child: Text(
+                          filter.title.l10n(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: AppTextSize.callout,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: c.textPrimary,
+                          ),
                         ),
                       ),
+                      if (showBadges &&
+                          !filter.isAll &&
+                          filter.unreadChatCount > 0) ...[
+                        const SizedBox(width: 5),
+                        FolderUnreadBadge(
+                          label: badgeOverflow.format(filter.unreadChatCount),
+                          accent: filter.hasUnmutedUnread,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.brand.withValues(alpha: selected ? 1 : 0),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: selected ? AppTheme.brand : null,
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _forwardOptions() {
-    final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          border: Border.all(color: c.divider, width: 0.5),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _forwardOption(
-                    label: AppStringKeys.chatForwardRemoveCaption,
-                    selected: _removeCaption,
-                    onTap: () {
-                      setState(() {
-                        _removeCaption = !_removeCaption;
-                        if (_removeCaption) _removeSender = true;
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _forwardOption(
-                    label: AppStringKeys.chatForwardRemoveSender,
-                    selected: _removeSender,
-                    onTap: () {
-                      setState(() {
-                        _removeSender = !_removeSender;
-                        if (!_removeSender) _removeCaption = false;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-            if (widget.markdownOffer.available) ...[
-              const SizedBox(height: 8),
-              _forwardOption(
-                label: AppStringKeys.chatForwardRenderMarkdown,
-                selected: _renderMarkdown,
-                onTap: () => setState(() => _renderMarkdown = !_renderMarkdown),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _forwardOption({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final c = context.colors;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: selected ? c.linkBlue : c.searchFill,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: selected ? c.linkBlue : c.divider),
-            ),
-            child: selected
-                ? const AppIcon(
-                    HeroAppIcons.check,
-                    size: 14,
-                    color: Colors.white,
-                  )
-                : null,
-          ),
-          const SizedBox(width: 7),
-          Flexible(
-            child: Text(
-              label.l10n(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: c.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+                ],
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

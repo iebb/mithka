@@ -25,6 +25,7 @@ import '../theme/theme_controller.dart';
 import 'account_security_views.dart';
 import 'auto_delete_view.dart';
 import 'ghost_mode_settings_view.dart';
+import 'kept_messages_settings_view.dart';
 import 'passkeys_view.dart';
 import 'privacy_detail_views.dart';
 import 'privacy_rule_options.dart';
@@ -312,12 +313,21 @@ class _PrivacySecurityViewState extends State<PrivacySecurityView> {
             ),
             // Compile-time gated: the row (and the whole ghost-mode surface
             // behind it) does not exist in builds without the ToS define.
+            // The hub page in Settings owns these surfaces now; privacy keeps
+            // read-only pointers for discoverability.
             if (allowTelegramTosViolations)
               _Row(
                 HeroAppIcons.eyeSlash,
                 AppStrings.t(AppStringKeys.ghostModeTitle),
                 '',
                 () => _open(const GhostModeSettingsView()),
+              ),
+            if (allowTelegramTosViolations)
+              _Row(
+                HeroAppIcons.solidStar,
+                AppStrings.t(AppStringKeys.localPremiumTitle),
+                '',
+                () => _open(const KeptMessagesSettingsView()),
               ),
           ]),
           _group(AppStrings.t(AppStringKeys.privacyDangerZone), [

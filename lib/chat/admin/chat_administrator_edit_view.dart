@@ -82,6 +82,16 @@ class _ChatAdministratorEditViewState extends State<ChatAdministratorEditView> {
   };
 
   String _labelFor(String key) => switch (key) {
+    'can_manage_chat' => AppStrings.t(
+      widget.isChannel
+          ? AppStringKeys.chatAdminManageChannel
+          : AppStringKeys.chatAdminManageChat,
+    ),
+    'can_manage_video_chats' => AppStrings.t(
+      widget.isChannel
+          ? AppStringKeys.chatAdminManageLiveStreams
+          : AppStringKeys.chatAdminManageVideoChats,
+    ),
     'can_change_info' => AppStrings.t(
       widget.isChannel
           ? AppStringKeys.chatAdminPermissionChangeInfoChannel

@@ -26,6 +26,7 @@ import '../platform/adaptive_platform.dart';
 import '../profile/emoji_status_picker.dart';
 import '../settings/app_icon_controller.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'account_picker_sheet.dart';
@@ -40,28 +41,87 @@ import 'main_tab_view.dart';
 Key desktopPrimaryWindowIdentityKey(int accountSlot, int? accountUserId) =>
     ValueKey(('desktop-primary-window', accountSlot, accountUserId));
 
-class ContentView extends StatelessWidget {
+/// Pure decision logic for the auth gate's surface switch, extracted so the
+/// animation contract is unit-testable without the full provider tree.
+abstract final class AuthGateTracker {
+  /// Whether [step] maps to the login surface (anything that is neither the
+  /// ready sidebar, the cold-start splash, nor the logout interstitial).
+  static bool sawLoginSurface(AuthStep step) =>
+      step is! AuthReady &&
+      step is! AuthInitializing &&
+      step is! AuthLoggingOut;
+
+  /// Whether the gate animates the transition onto [step]: every departure
+  /// from a non-ready surface crossfades, EXCEPT a cold start landing on the
+  /// sidebar straight from the splash — that first main build stays a jump
+  /// cut because animating it rasterises the launch's most expensive frame.
+  /// A login → ready hand-off (login WAS on screen) always animates.
+  static bool animates(AuthStep step, {required bool seenLoginSurface}) {
+    if (step is! AuthReady) return true;
+    return seenLoginSurface;
+  }
+}
+
+bool gateAnimatesHandOff(AuthStep step, {required bool seenLoginSurface}) =>
+    AuthGateTracker.animates(step, seenLoginSurface: seenLoginSurface);
+
+class ContentView extends StatefulWidget {
   const ContentView({super.key});
+
+  @override
+  State<ContentView> createState() => _ContentViewState();
+}
+
+class _ContentViewState extends State<ContentView> {
+  bool _seenLoginSurface = false;
 
   @override
   Widget build(BuildContext context) {
     final step = context.watch<AuthManager>().step;
+    // Only a login → main hand-off earns the crossfade: a login-family step
+    // was on screen and then auth completed. A cold start goes splash → main
+    // without ever showing login, keeping its deliberate jump cut.
+    final animated = gateAnimatesHandOff(
+      step,
+      seenLoginSurface: _seenLoginSurface,
+    );
+    _seenLoginSurface = AuthGateTracker.sawLoginSurface(step);
+    // The account identity gates what the ready surface shows (and the
+    // upstream shell keys on it via main.dart's KeyedSubtree); rebinding the
+    // ready surface per identity keeps its inner state scoped to one account
+    // WITHOUT tearing down this gate — the AnimatedSwitcher below must
+    // survive the slot change to crossfade the add-account hand-off.
+    final account = context.watch<AccountStore>();
     final Widget child = switch (step) {
-      AuthReady() => const MainTabView(),
+      AuthReady() => KeyedSubtree(
+        key: ValueKey((account.activeSlot, account.activeUserId)),
+        child: const MainTabView(),
+      ),
       // A real cold start (and a logout) paints the splash. AuthReloading is a
       // re-read of an already-running client — account switch or add account —
       // and the login surface is what the user asked for, so it stays on screen.
       AuthInitializing() || AuthLoggingOut() => const SplashView(),
       _ => const LoginView(),
     };
-    // Entering MainTabView is the one edge where the crossfade lands on the
-    // frames that inflate the tab stack and the first chat rows; wrapping that
-    // in a full-viewport opacity layer for 250 ms is the most expensive
-    // rasterisation of the launch. Splash <-> login still crossfades.
+    // A cold start lands on MainTabView while the launch rasterises its first
+    // frames; wrapping that in a full-viewport opacity layer for 250 ms is the
+    // most expensive rasterisation of the launch, so it stays a jump cut. The
+    // login ⇄ sidebar edge is a user-paced switch (login completing, logout,
+    // account add) with no first-frame cost: there the surfaces crossfade so
+    // the hand-off does not feel like a hard cut.
+
     final content = AnimatedSwitcher(
-      duration: child is MainTabView
-          ? Duration.zero
-          : const Duration(milliseconds: 250),
+      duration: animated
+          ? AppMotion.duration(context, AppMotion.deliberate)
+          : Duration.zero,
+      switchInCurve: AppMotion.standard,
+      switchOutCurve: AppMotion.standard,
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
+      // Keyed on the surface type, not the account identity: an add-account
+      // slot change rekeys the READY child above while the gate itself keeps
+      // its state, so login → (new account's) ready still crossfades through
+      // this switcher instead of the whole subtree being replaced upstream.
       child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
     );
     return content;
@@ -316,8 +376,10 @@ class _DesktopPrimaryWindowFrameState extends State<DesktopPrimaryWindowFrame> {
     final canManageProfile =
         widget.accountReady && activeAccount?.isBotApi != true;
     // Emoji statuses are a Premium feature; without it the button could only
-    // open a picker that fails on every choice.
-    final canSetStatus = canManageProfile && activeAccount?.isPremium == true;
+    // open a picker that fails on every choice. premiumForView (not the raw
+    // field) so the self-build local-premium switch unlocks the button too.
+    final canSetStatus =
+        canManageProfile && (activeAccount?.premiumForView ?? false);
     final statusId = activeAccount?.emojiStatusId ?? 0;
     final statusMode = context
         .watch<ThemeController?>()
@@ -867,8 +929,8 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
 
 /// The screen shown while the session starts.
 ///
-/// The default icon keeps the brand gradient with the transparent penguin,
-/// which is that icon drawn full screen. Any other chosen icon is drawn the
+/// The shipped default keeps the brand gradient with the transparent penguin,
+/// which is the mark Mithka opens with. Any other chosen icon is drawn the
 /// way the icon picker draws it, centred on the app background over a 24 pt
 /// spinner in the tertiary text colour: a standard icon as a 160 pt tile with
 /// 36 pt corners, a penguin as its 192 pt background-free art. Android 12+
@@ -876,8 +938,8 @@ class _DesktopTitleBarProfilePopup extends StatelessWidget {
 class SplashView extends StatelessWidget {
   const SplashView({super.key});
 
-  /// The icon the user chose, or null for the default (and before any choice
-  /// is known, or where no icon controller is provided).
+  /// The icon the user chose, or null for the shipped default (and before any
+  /// choice is known, or where no icon controller is provided).
   static AppIconVariant? _chosenIcon(BuildContext context) {
     final AppIconVariant? current;
     try {
@@ -887,6 +949,8 @@ class SplashView extends StatelessWidget {
     } on ProviderNotFoundException {
       return null;
     }
+    // Upstream's defaultIcon draws the brand screen; only an icon chosen
+    // away from it is drawn as itself.
     return current == null || current == AppIconVariant.defaultIcon
         ? null
         : current;
@@ -908,6 +972,7 @@ class SplashView extends StatelessWidget {
               image: ResizeImage(AssetImage('assets/penguin.png'), width: 576),
               width: AppMetric.splashPenguinSize,
               height: AppMetric.splashPenguinSize,
+              filterQuality: FilterQuality.high,
             ),
             SizedBox(height: AppSpacing.lg + AppSpacing.sm),
             SizedBox(

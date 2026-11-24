@@ -24,8 +24,6 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
-import '../pro/mithka_pro_service.dart';
-import '../pro/mithka_pro_view.dart';
 import '../security/local_app_lock_views.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -757,7 +755,6 @@ class _SettingsViewState extends State<SettingsView> {
 
   List<_SettingsDestination> _destinations(BuildContext context) {
     final developer = context.watch<DeveloperModeController>();
-    final pro = context.watch<MithkaProService>();
     return [
       _SettingsDestination(
         id: 'notifications',
@@ -862,20 +859,6 @@ class _SettingsViewState extends State<SettingsView> {
           'locale',
         ],
       ),
-      if (pro.storeAvailable || pro.canManageSubscriptions)
-        _SettingsDestination(
-          id: 'mithka-pro',
-          owner: _SettingsOwner.mithka,
-          group: 1,
-          order: 0,
-          titleKey: AppStringKeys.mithkaProTitle,
-          icon: HeroAppIcons.solidStar,
-          color: const Color(0xFF7C5CFC),
-          destination: () => const MithkaProView(),
-          trailingKey: pro.isPro ? AppStringKeys.mithkaProActive : null,
-          platformNeutralRoute: true,
-          searchTerms: const ['pro', 'support', 'subscription'],
-        ),
       _SettingsDestination(
         id: 'mithka-theme',
         owner: _SettingsOwner.mithka,
@@ -900,6 +883,7 @@ class _SettingsViewState extends State<SettingsView> {
           'theme',
           'font',
           'icon',
+          'emoji',
           'wallpaper',
           'bubbles',
           'message bubbles',
@@ -1027,7 +1011,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-features',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 0,
+        order: 10,
         titleKey: AppStringKeys.featureTitle,
         icon: HeroAppIcons.grip,
         color: const Color(0xFF3C8CF0),
@@ -1044,7 +1028,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-ai',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 10,
+        order: 20,
         titleKey: AppStringKeys.aiSettingsTitle,
         icon: HeroAppIcons.cpuChip,
         color: const Color(0xFF7467F0),
@@ -1062,7 +1046,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-proxy',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 20,
+        order: 30,
         titleKey: AppStringKeys.proxyTitle,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
@@ -1073,7 +1057,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-advanced',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 30,
+        order: 40,
         titleKey: AppStringKeys.advancedTitle,
         icon: HeroAppIcons.objectGroup,
         color: const Color(0xFF16B0A0),
@@ -1091,7 +1075,7 @@ class _SettingsViewState extends State<SettingsView> {
           id: 'mithka-developer',
           owner: _SettingsOwner.mithka,
           group: 5,
-          order: 40,
+          order: 50,
           titleKey: AppStringKeys.developerModeTitle,
           icon: HeroAppIcons.code,
           color: const Color(0xFFFF5A5F),
@@ -1107,7 +1091,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-about',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 50,
+        order: 60,
         titleKey: AppStringKeys.settingsAboutMithka,
         icon: HeroAppIcons.circleInfo,
         color: const Color(0xFF8E8E93),
@@ -1259,9 +1243,7 @@ class _SettingsViewState extends State<SettingsView> {
     Widget row(String? version) => SettingsRow(
       key: ValueKey('settings-destination-${destination.id}'),
       title: destination.titleKey,
-      value: showOwner
-          ? destination.owner?.titleKey ?? ''
-          : destination.trailingKey ?? version ?? '',
+      value: showOwner ? destination.owner?.titleKey ?? '' : version ?? '',
       leading: SettingsIconTile(
         icon: destination.icon,
         backgroundColor: destination.color,
@@ -1288,11 +1270,7 @@ class _SettingsViewState extends State<SettingsView> {
     BuildContext? context,
   }) {
     Navigator.of(context ?? this.context).push(
-      destination.platformNeutralRoute
-          ? AppPageRoute<void>(
-              pageBuilder: (_, _, _) => destination.destination(),
-            )
-          : MaterialPageRoute<void>(builder: (_) => destination.destination()),
+      AppPageRoute<void>(pageBuilder: (_, _, _) => destination.destination()),
     );
   }
 
@@ -1471,8 +1449,6 @@ class _SettingsDestination {
     required this.destination,
     this.splitDestination,
     this.owner,
-    this.trailingKey,
-    this.platformNeutralRoute = false,
     this.showsVersion = false,
     this.searchTerms = const [],
   });
@@ -1486,8 +1462,6 @@ class _SettingsDestination {
   final Color color;
   final Widget Function() destination;
   final Widget Function()? splitDestination;
-  final String? trailingKey;
-  final bool platformNeutralRoute;
   final bool showsVersion;
   final List<String> searchTerms;
 

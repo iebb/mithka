@@ -290,7 +290,10 @@ class _GroupManagementViewState extends State<GroupManagementView> {
             child: _loading
                 ? const Center(child: _GroupManagementSpinner())
                 : _loadFailed
-                ? _GroupManagementLoadError(onRetry: _load)
+                ? _GroupManagementLoadError(
+                    onRetry: _load,
+                    isChannel: _isChannel,
+                  )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
                     children: [
@@ -359,7 +362,10 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                         _gap(),
                         _section(
                           AppStrings.t(
-                            AppStringKeys.groupManagementJoinSection,
+                            _isChannel
+                                ? AppStringKeys
+                                      .groupManagementJoinSectionChannel
+                                : AppStringKeys.groupManagementJoinSection,
                           ),
                           [
                             _switchRow(
@@ -392,7 +398,11 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                               Expanded(
                                 child: Text(
                                   AppStrings.t(
-                                    AppStringKeys.groupManagementLoadFailed,
+                                    _isChannel
+                                        ? AppStringKeys
+                                              .groupManagementLoadFailedChannel
+                                        : AppStringKeys
+                                              .groupManagementLoadFailed,
                                   ),
                                   style: AppTextStyle.footnote(
                                     context.colors.textSecondary,
@@ -567,6 +577,7 @@ class _GroupManagementViewState extends State<GroupManagementView> {
                                   GroupManagementLogView(
                                     chatId: widget.chatId,
                                     title: _title,
+                                    isChannel: _isChannel,
                                   ),
                                 ),
                               ),
@@ -811,7 +822,12 @@ class _GroupManagementViewState extends State<GroupManagementView> {
 
   Future<void> _editTitle() async {
     if (!_canChangeInfo) {
-      showToast(context, AppStringKeys.groupManagementNoEditInfoPermission);
+      showToast(
+        context,
+        _isChannel
+            ? AppStringKeys.groupManagementNoEditInfoPermissionChannel
+            : AppStringKeys.groupManagementNoEditInfoPermission,
+      );
       return;
     }
     final value = await Navigator.of(context).push<String>(
@@ -1044,9 +1060,13 @@ class _GroupManagementSwitch extends StatelessWidget {
 }
 
 class _GroupManagementLoadError extends StatelessWidget {
-  const _GroupManagementLoadError({required this.onRetry});
+  const _GroupManagementLoadError({
+    required this.onRetry,
+    this.isChannel = false,
+  });
 
   final VoidCallback onRetry;
+  final bool isChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,7 +1090,11 @@ class _GroupManagementLoadError extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                AppStrings.t(AppStringKeys.groupManagementLoadFailed),
+                AppStrings.t(
+                  isChannel
+                      ? AppStringKeys.groupManagementLoadFailedChannel
+                      : AppStringKeys.groupManagementLoadFailed,
+                ),
                 style: TextStyle(fontSize: 15, color: c.textSecondary),
               ),
               const SizedBox(height: 16),

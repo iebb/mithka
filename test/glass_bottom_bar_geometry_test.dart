@@ -58,6 +58,10 @@ const _firstSlotKey = ValueKey('bottom-tab-0');
 const _phoneSize = Size(390, 844);
 const _phoneBottomInset = 34.0;
 
+/// An iPad-style window wide enough to split, so the tab bar docks inside the
+/// sidebar column instead of spanning the window.
+const _tabletSize = Size(900, 800);
+
 /// The bar geometry both glass hosts share: the 62px control row inside a 5px
 /// capsule inset, with 14px lateral and 8px top margins, and a 10px gap above
 /// the surface's own bottom (the Flutter bar's `minimum` for the safe area).
@@ -620,47 +624,109 @@ void main() {
     });
   });
 
-  // Every glass slot is an icon-only target. With the setting on no label
-  // is drawn in the bar; its accessible name stays on AppInteractiveSurface.
-  testWidgets('glass bar draws no tab label and keeps its semantic names', (
-    tester,
-  ) async {
+  // The compact shell spans the window, so every slot is wide enough for the
+  // tab's own name: its glass row draws the label line above the icon and grows
+  // with it, exactly like the classic bar.
+  testWidgets('phone glass bar names each tab under its icon', (tester) async {
     await onIOS(() async {
       installMockGlassSurface(tester);
       await _pumpShell(tester, _phoneSize);
       final bar = find.byKey(_barKey);
       expect(bar, findsOneWidget);
       for (final tab in _tabs) {
-        // No label text inside the bar — 'Messages' only lives in the chat
-        // list's empty state, which sits outside the bar.
+        final slot = find.byKey(ValueKey('bottom-tab-${tab.index}'));
         expect(
-          find.descendant(of: bar, matching: find.text(tab.label)),
-          findsNothing,
+          find.descendant(of: slot, matching: find.text(tab.label)),
+          findsOneWidget,
         );
+        // The label line sits below the icon inside the slot's own capsule.
+        final label = tester.getRect(
+          find.descendant(of: slot, matching: find.text(tab.label)),
+        );
+        final icon = tester.getRect(
+          find.descendant(of: slot, matching: find.byType(AppIcon)),
+        );
+        expect(label.top, greaterThanOrEqualTo(icon.bottom));
+        expect(label.bottom, lessThanOrEqualTo(tester.getRect(slot).bottom));
         expect(
           semanticLabelOf(tester, ValueKey('bottom-tab-${tab.index}')),
           tab.label,
         );
       }
-      // The icon is what the slot shows, centred in the label's place.
-      expect(
-        find.descendant(of: bar, matching: find.byType(AppIcon)),
-        findsNWidgets(_tabs.length),
-      );
-      // With no label line there is nothing to grow for text scale.
+      // The label line is reserved, so the scaled text grows the row.
       final unscaledHeight = tester.getRect(bar).height;
       tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
       try {
         await _pumpShell(tester, _phoneSize);
         expect(
           tester.getRect(find.byKey(_barKey)).height,
-          unscaledHeight,
-          reason: 'the icon-only glass row never reserves label height',
+          greaterThan(unscaledHeight),
+          reason: 'the phone glass row reserves the scaled label line',
         );
         expect(tester.takeException(), isNull);
       } finally {
         tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
       }
+      await _dispose(tester);
+    });
+  });
+
+  // The split shell docks the bar inside its sidebar column, whose slot is
+  // narrower than a label line: that host keeps the icon-only row so the
+  // selection capsule never reaches past the tab it marks. The accessible name
+  // stays on each slot's AppInteractiveSurface.
+  testWidgets('tablet sidebar glass bar stays icon-only', (tester) async {
+    await onIOS(() async {
+      installMockGlassSurface(tester);
+      await _pumpShell(tester, _tabletSize);
+      final bar = find.byKey(_barKey);
+      expect(bar, findsOneWidget);
+      // The split shell's column really is the host: the bar spans only the
+      // sidebar, not the window.
+      expect(tester.getRect(bar).width, lessThan(_tabletSize.width / 3));
+      for (final tab in _tabs) {
+        final slot = find.byKey(ValueKey('bottom-tab-${tab.index}'));
+        expect(
+          find.descendant(of: slot, matching: find.text(tab.label)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: slot, matching: find.byType(AppIcon)),
+          findsOneWidget,
+        );
+        expect(
+          semanticLabelOf(tester, ValueKey('bottom-tab-${tab.index}')),
+          tab.label,
+        );
+      }
+      expect(tester.getRect(bar).height, _surfaceHeight);
+      await _dispose(tester);
+    });
+  });
+
+  // The icon-only row reserves no label height at any text scale, and the
+  // sidebar header beside it survives 200% text without overflowing.
+  testWidgets('sidebar glass row never reserves label height', (tester) async {
+    await onIOS(() async {
+      installMockGlassSurface(tester);
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue,
+      );
+      await _pumpShell(tester, _tabletSize);
+      final bar = find.byKey(_barKey);
+      expect(bar, findsOneWidget);
+      expect(tester.getRect(bar).height, _surfaceHeight);
+      for (final tab in _tabs) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey('bottom-tab-${tab.index}')),
+            matching: find.text(tab.label),
+          ),
+          findsNothing,
+        );
+      }
+      expect(tester.takeException(), isNull);
       await _dispose(tester);
     });
   });
