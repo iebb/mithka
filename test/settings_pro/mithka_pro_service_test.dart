@@ -57,7 +57,7 @@ void main() {
           } else {
             expect(support, findsOneWidget);
             expect(
-              find.descendant(of: support, matching: find.text('Support Us')),
+              find.descendant(of: support, matching: find.text('Support us')),
               findsOneWidget,
             );
             if (split) {
@@ -297,7 +297,9 @@ Future<void> _pumpSettings(
     buildSignature: '',
   );
   final prefs = await SharedPreferences.getInstance();
-  tester.view.physicalSize = split ? const Size(951, 669) : const Size(390, 844);
+  tester.view.physicalSize = split
+      ? const Size(951, 669)
+      : const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
