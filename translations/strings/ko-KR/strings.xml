@@ -881,6 +881,8 @@
     <string name="chatCannotSendMessages">이 채팅에서는 메시지를 보낼 수 없습니다</string>
     <string name="chatConnectedBusinessBot">연결된 비즈니스 봇</string>
     <string name="chatContactCallsOnly">연락처와의 통화만 지원됩니다</string>
+    <string name="chatContextPaneHide">그룹 정보 숨기기</string>
+    <string name="chatContextPaneShow">그룹 정보 보기</string>
     <string name="chatDelete">삭제</string>
     <string name="chatDeleteActionsDone">완료되었습니다</string>
     <string name="chatDeleteActionsFailed">작업을 적용할 수 없음: {value1}</string>

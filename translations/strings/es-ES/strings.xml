@@ -881,6 +881,8 @@
     <string name="chatCannotSendMessages">No puedes enviar mensajes en este chat</string>
     <string name="chatConnectedBusinessBot">Bot de empresa conectado</string>
     <string name="chatContactCallsOnly">Solo se permiten llamadas con contactos</string>
+    <string name="chatContextPaneHide">Ocultar información del grupo</string>
+    <string name="chatContextPaneShow">Mostrar información del grupo</string>
     <string name="chatDelete">Eliminar</string>
     <string name="chatDeleteActionsDone">Listo</string>
     <string name="chatDeleteActionsFailed">No se pudo aplicar la acción: {value1}</string>

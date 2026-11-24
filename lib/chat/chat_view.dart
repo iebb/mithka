@@ -312,6 +312,7 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
     required this.body,
     this.trailingPane,
     this.trailingPaneWidth = 0,
+    this.onTrailingPaneToggle,
   });
 
   final Widget header;
@@ -319,27 +320,34 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
   final Widget? trailingPane;
   final double trailingPaneWidth;
 
+  /// Shows [ChatTrailingPaneEdgeTab] on the pane's leading edge (or the
+  /// conversation's trailing edge while the pane is closed) when set.
+  final VoidCallback? onTrailingPaneToggle;
+
   @override
   Widget build(BuildContext context) {
     final pane = trailingPane;
+    final paneShown = pane != null && trailingPaneWidth > 0;
+    final onToggle = onTrailingPaneToggle;
+    // One Row and one Stack whether or not the pane is open, so toggling it
+    // keeps the transcript's element (and its scroll position) in place.
     return Column(
       children: [
         KeyedSubtree(key: const ValueKey('chatFullWidthHeader'), child: header),
         Expanded(
-          child: pane == null || trailingPaneWidth <= 0
-              ? KeyedSubtree(
-                  key: const ValueKey('chatConversationContent'),
-                  child: body,
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: KeyedSubtree(
-                        key: const ValueKey('chatConversationContent'),
-                        child: body,
-                      ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: KeyedSubtree(
+                      key: const ValueKey('chatConversationContent'),
+                      child: body,
                     ),
+                  ),
+                  if (paneShown) ...[
                     VerticalDivider(
                       width: 1,
                       thickness: 1,
@@ -351,9 +359,100 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
                       child: pane,
                     ),
                   ],
+                ],
+              ),
+              if (onToggle != null)
+                // The tab's flat edge lies on the divider, so it reads as a
+                // grip of the pane; it takes no width from either side.
+                PositionedDirectional(
+                  end: paneShown ? trailingPaneWidth : 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: ChatTrailingPaneEdgeTab(
+                      paneShown: paneShown,
+                      onTap: onToggle,
+                    ),
+                  ),
                 ),
+            ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// A narrow tab that opens and closes the trailing context pane. The visible
+/// grip is [visualWidth] × [visualHeight] with its start corners rounded; the
+/// hit target extends [hitWidth] × [hitHeight] into the conversation.
+@visibleForTesting
+class ChatTrailingPaneEdgeTab extends StatelessWidget {
+  const ChatTrailingPaneEdgeTab({
+    super.key = const ValueKey('chatTrailingPaneEdgeTab'),
+    required this.paneShown,
+    required this.onTap,
+  });
+
+  static const double visualWidth = 16;
+  static const double visualHeight = 56;
+  static const double hitWidth = 44;
+  static const double hitHeight = 64;
+
+  final bool paneShown;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    return AppInteractiveSurface(
+      semanticLabel:
+          (paneShown
+                  ? AppStringKeys.chatContextPaneHide
+                  : AppStringKeys.chatContextPaneShow)
+              .l10n(context),
+      expanded: paneShown,
+      isButton: true,
+      showHover: false,
+      onTap: onTap,
+      borderRadius: const BorderRadiusDirectional.horizontal(
+        start: Radius.circular(AppRadius.control),
+      ),
+      child: SizedBox(
+        width: hitWidth,
+        height: hitHeight,
+        child: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Container(
+            key: const ValueKey('chatTrailingPaneEdgeTabGrip'),
+            width: visualWidth,
+            height: visualHeight,
+            decoration: BoxDecoration(
+              // Card, not the pane's own fill: that is within a shade of the
+              // conversation canvas in the light palette.
+              color: c.card,
+              border: Border.all(color: c.divider),
+              borderRadius: const BorderRadiusDirectional.horizontal(
+                start: Radius.circular(AppRadius.control),
+              ),
+            ),
+            alignment: Alignment.center,
+            // Points the way the pane will move: toward the edge to close it,
+            // back out to open it.
+            child: AnimatedRotation(
+              turns: paneShown ? 0 : 0.5,
+              duration: AppMotion.duration(context, AppMotion.responsive),
+              curve: AppMotion.standard,
+              child: AppIcon(
+                rtl ? HeroAppIcons.chevronLeft : HeroAppIcons.chevronRight,
+                size: AppIconSize.xs,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -374,6 +473,7 @@ class ChatView extends StatefulWidget {
     this.headerBottomHeight = 44,
     this.trailingPane,
     this.trailingPaneWidth = 0,
+    this.onTrailingPaneToggle,
     this.requestComposerFocusOnReady = false,
     this.onOpenTopicTranscript,
     this.onChatKindResolved,
@@ -402,6 +502,10 @@ class ChatView extends StatefulWidget {
   final double headerBottomHeight;
   final Widget? trailingPane;
   final double trailingPaneWidth;
+
+  /// Opens or closes [trailingPane] from a tab on its edge. Set only while
+  /// the owner can actually show the pane beside this chat.
+  final VoidCallback? onTrailingPaneToggle;
   final bool requestComposerFocusOnReady;
 
   /// Lets an owning shell switch this chat to a topic transcript (or the
@@ -2081,6 +2185,11 @@ class _ChatViewState extends State<ChatView> {
                                 trailingPaneWidth: searchPane
                                     ? chatSearchResultsPaneWidth
                                     : widget.trailingPaneWidth,
+                                // Search results own the trailing slot
+                                // while they are up; the tab returns after.
+                                onTrailingPaneToggle: searchPane
+                                    ? null
+                                    : widget.onTrailingPaneToggle,
                               );
                               _cachedShellLayout = shell;
                               _cachedShellLayoutGeneration =
@@ -3078,6 +3187,7 @@ class _ChatViewState extends State<ChatView> {
       header: _header(),
       trailingPane: widget.trailingPane,
       trailingPaneWidth: widget.trailingPaneWidth,
+      onTrailingPaneToggle: widget.onTrailingPaneToggle,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),

@@ -1678,6 +1678,9 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         showHeaderDivider: false,
         trailingPane: trailingPane,
         trailingPaneWidth: trailingPaneWidth,
+        // Every shell passes the context-pane toggle here, and only while the
+        // pane fits, so the edge tab shares the header button's state.
+        onTrailingPaneToggle: onInfoPressed,
         requestComposerFocusOnReady: selected.composerFocusRequestId != 0,
         exitController: _messageChatExitController,
         revealLatestController: _messageRevealLatestController,

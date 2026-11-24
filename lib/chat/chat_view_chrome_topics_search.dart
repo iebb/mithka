@@ -63,6 +63,7 @@ extension _ChatViewChrome on _ChatViewState {
         showHeaderDivider: widget.showHeaderDivider,
         trailingPane: widget.trailingPane,
         trailingPaneWidth: widget.trailingPaneWidth,
+        onTrailingPaneToggle: widget.onTrailingPaneToggle,
         exitController: widget.exitController,
         onChatKindResolved: widget.onChatKindResolved,
         onInfoPressed: widget.onInfoPressed,
