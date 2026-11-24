@@ -16,6 +16,7 @@ import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 const _composerButton = ValueKey('composerAiReplyButton');
 const _settingsRow = ValueKey('aiShowComposerButtonRow');
@@ -108,7 +109,50 @@ void main() {
     expect(restored.showComposerAiButton, isFalse);
   });
 
-  testWidgets('composer shows the AI button only while the setting is on', (
+  test('refreshes an existing controller after preferences reload', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final settings = _settings(preferences);
+    addTearDown(settings.dispose);
+    await settings.initialize();
+    final capabilities = settings.pccCapabilities;
+    var notifications = 0;
+    settings.addListener(() => notifications++);
+
+    // Another engine writes to storage; this window still has its old cache.
+    final store = SharedPreferencesStorePlatform.instance;
+    const key =
+        'flutter.${AiSettingsController.showComposerAiButtonPreferenceKey}';
+    await store.setValue('Bool', key, false);
+    expect(settings.showComposerAiButton, isTrue);
+    settings.refreshComposerButtonPreference();
+    expect(settings.showComposerAiButton, isTrue);
+    expect(notifications, 0);
+
+    await preferences.reload();
+    settings.refreshComposerButtonPreference();
+    expect(settings.showComposerAiButton, isFalse);
+    expect(notifications, 1);
+    settings.refreshComposerButtonPreference();
+    expect(notifications, 1);
+
+    // Removing the stored choice restores the default in the same controller.
+    await store.remove(key);
+    await preferences.reload();
+    settings.refreshComposerButtonPreference();
+    expect(settings.showComposerAiButton, isTrue);
+    expect(notifications, 2);
+    expect(settings.initialized, isTrue);
+    expect(settings.pccCapabilities, same(capabilities));
+    expect(
+      preferences.getBool(
+        AiSettingsController.showComposerAiButtonPreferenceKey,
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets('composer refreshes the AI button in an already-open window', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -160,7 +204,12 @@ void main() {
     expect(find.byKey(_composerButton), findsOneWidget);
     final fieldWidthWithButton = tester.getSize(find.byType(TextField)).width;
 
-    await settings.setShowComposerAiButton(false);
+    final mainSettings = _settings(preferences);
+    addTearDown(mainSettings.dispose);
+    await mainSettings.setShowComposerAiButton(false);
+    expect(settings.showComposerAiButton, isTrue);
+    await preferences.reload();
+    settings.refreshComposerButtonPreference();
     await tester.pump();
 
     expect(find.byKey(_composerButton), findsNothing);
@@ -170,7 +219,9 @@ void main() {
       greaterThan(fieldWidthWithButton),
     );
 
-    await settings.setShowComposerAiButton(true);
+    await mainSettings.setShowComposerAiButton(true);
+    await preferences.reload();
+    settings.refreshComposerButtonPreference();
     await tester.pump();
 
     expect(find.byKey(_composerButton), findsOneWidget);
