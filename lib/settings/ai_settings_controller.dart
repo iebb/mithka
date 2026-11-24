@@ -788,6 +788,16 @@ class AiSettingsController extends ChangeNotifier {
 
   Future<void> resetAiReplyPrompt() => setAiReplyPrompt(defaultAiReplyPrompt);
 
+  /// Refresh after the caller reloads shared preferences for a window update.
+  void refreshComposerButtonPreference() {
+    final value =
+        _preferences.getBool(showComposerAiButtonPreferenceKey) ??
+        defaultShowComposerAiButton;
+    if (_showComposerAiButton == value) return;
+    _showComposerAiButton = value;
+    notifyListeners();
+  }
+
   Future<void> setShowComposerAiButton(bool value) async {
     if (_showComposerAiButton == value) return;
     await _preferences.setBool(showComposerAiButtonPreferenceKey, value);

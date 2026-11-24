@@ -226,6 +226,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
           return;
         }
         if (!mounted) return;
+        _ai.refreshComposerButtonPreference();
         _readingHiddenSenders = true;
         HiddenSenderStore.shared.initialize(widget.prefs);
         _readingHiddenSenders = false;
@@ -555,6 +556,13 @@ class _DesktopStandaloneChatSurfaceState
       onChatKindResolved: _handleKindResolved,
       trailingPane: contextPane,
       trailingPaneWidth: desktopInfoPaneWidth,
+      onTrailingPaneToggle:
+          desktopStandaloneChatUsesContextPane(
+            width: MediaQuery.sizeOf(context).width,
+            kind: _kind,
+          )
+          ? _handleInfoPressed
+          : null,
       onInfoPressed: _kind == ChatKind.group || _kind == ChatKind.channel
           ? _handleInfoPressed
           : null,

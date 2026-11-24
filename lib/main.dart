@@ -483,6 +483,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   );
   late TranslationController _translation = TranslationController(widget.prefs);
   late AiSettingsController _ai = AiSettingsController(widget.prefs);
+  late bool _lastShowComposerAiButton;
   late AppLocaleController _locale = AppLocaleController(widget.prefs);
   late final dc.DrawerController _drawer = dc.DrawerController();
   late final ChatDeepLinkController _chatDeepLinks =
@@ -532,6 +533,8 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _performance.start();
     _accounts.addListener(_handleActiveAccountChange);
     _theme.addListener(_handleThemePreferencesChange);
+    _lastShowComposerAiButton = _ai.showComposerAiButton;
+    _ai.addListener(_handleAiPreferencesChange);
     HiddenSenderStore.shared.addListener(_handleHiddenSendersChange);
     BusinessQuickReplyService.shared.startPreloading(
       enabled: _theme.quickRepliesEnabled,
@@ -596,6 +599,7 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
     _performance.dispose();
     _accounts.removeListener(_handleActiveAccountChange);
     _theme.removeListener(_handleThemePreferencesChange);
+    _ai.removeListener(_handleAiPreferencesChange);
     HiddenSenderStore.shared.removeListener(_handleHiddenSendersChange);
     _groupRemarks.dispose();
     _folderTags.dispose();
@@ -631,6 +635,13 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
   /// Hidden members changed here, or a child window asked this one to
   /// re-read them: every other window re-reads them too.
   void _handleHiddenSendersChange() {
+    unawaited(DesktopChatWindowService.instance.notifyPresentationChanged());
+  }
+
+  void _handleAiPreferencesChange() {
+    final showButton = _ai.showComposerAiButton;
+    if (_lastShowComposerAiButton == showButton) return;
+    _lastShowComposerAiButton = showButton;
     unawaited(DesktopChatWindowService.instance.notifyPresentationChanged());
   }
 
@@ -699,6 +710,9 @@ class _MithkaAppState extends State<MithkaApp> with WidgetsBindingObserver {
         )..start();
         final nextSafetyNotice = SafetyNoticeController(widget.prefs);
 
+        previousAi.removeListener(_handleAiPreferencesChange);
+        _lastShowComposerAiButton = nextAi.showComposerAiButton;
+        nextAi.addListener(_handleAiPreferencesChange);
         previousTheme.removeListener(_handleThemePreferencesChange);
         nextTheme.addListener(_handleThemePreferencesChange);
         BusinessQuickReplyService.shared.setPreloadingEnabled(
