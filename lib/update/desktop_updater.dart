@@ -437,7 +437,7 @@ abstract final class DesktopUpdater {
   ];
 
   static String get launcherFileName =>
-      Platform.isWindows ? 'mithka.exe' : 'Mithka';
+      Platform.isWindows ? 'mithka.exe' : 'mithka';
 
   /// Why an in-place update is unavailable here, or null when one can run.
   static DesktopUpdateBlock? inspectInstall() {
