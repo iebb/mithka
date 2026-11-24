@@ -27,65 +27,64 @@ void main() {
       (store: false, manage: true),
       (store: false, manage: false),
     ]) {
-      testWidgets(
-        'Support Us in ${split ? 'split' : 'compact'} settings: '
-        'store=${availability.store}, manage=${availability.manage}',
-        (tester) async {
-          final gateway = _FakeGateway(
-            distribution: 'app_store',
-            storeAvailable: availability.store,
-            canManageSubscriptions: availability.manage,
-          );
-          final service = MithkaProService(
-            gateway: gateway,
-            platform: TargetPlatform.iOS,
-          );
-          addTearDown(service.dispose);
-          await service.initialize();
-          await _pumpSettings(tester, service, split: split);
+      testWidgets('Support Us in ${split ? 'split' : 'compact'} settings: '
+          'store=${availability.store}, manage=${availability.manage}', (
+        tester,
+      ) async {
+        final gateway = _FakeGateway(
+          distribution: 'app_store',
+          storeAvailable: availability.store,
+          canManageSubscriptions: availability.manage,
+        );
+        final service = MithkaProService(
+          gateway: gateway,
+          platform: TargetPlatform.iOS,
+        );
+        addTearDown(service.dispose);
+        await service.initialize();
+        await _pumpSettings(tester, service, split: split);
 
-          final support = find.byKey(
-            ValueKey(
-              split
-                  ? 'settings-category-support'
-                  : 'settings-destination-mithka-pro',
-            ),
+        final support = find.byKey(
+          ValueKey(
+            split
+                ? 'settings-category-support'
+                : 'settings-destination-mithka-pro',
+          ),
+        );
+        if (!availability.store && !availability.manage) {
+          expect(support, findsNothing);
+          expect(find.byType(MithkaProView), findsNothing);
+        } else {
+          expect(support, findsOneWidget);
+          expect(
+            find.descendant(of: support, matching: find.text('Support us')),
+            findsOneWidget,
           );
-          if (!availability.store && !availability.manage) {
-            expect(support, findsNothing);
-            expect(find.byType(MithkaProView), findsNothing);
-          } else {
-            expect(support, findsOneWidget);
+          if (split) {
+            expect(find.byType(NotificationSettingsView), findsOneWidget);
             expect(
-              find.descendant(of: support, matching: find.text('Support us')),
+              tester.widget<AppInteractiveSurface>(support).selected,
+              isFalse,
+            );
+          }
+          await tester.tap(support);
+          await tester.pumpAndSettle();
+          expect(find.byType(MithkaProView), findsOneWidget);
+          if (split) {
+            expect(
+              tester.widget<AppInteractiveSurface>(support).selected,
+              isTrue,
+            );
+            expect(
+              find.byKey(const ValueKey('settings-detail-mithka-pro')),
               findsOneWidget,
             );
-            if (split) {
-              expect(find.byType(NotificationSettingsView), findsOneWidget);
-              expect(
-                tester.widget<AppInteractiveSurface>(support).selected,
-                isFalse,
-              );
-            }
-            await tester.tap(support);
-            await tester.pumpAndSettle();
-            expect(find.byType(MithkaProView), findsOneWidget);
-            if (split) {
-              expect(
-                tester.widget<AppInteractiveSurface>(support).selected,
-                isTrue,
-              );
-              expect(
-                find.byKey(const ValueKey('settings-detail-mithka-pro')),
-                findsOneWidget,
-              );
-            }
-            expect(tester.takeException(), isNull);
           }
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pump();
-        },
-      );
+          expect(tester.takeException(), isNull);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
     }
   }
 
