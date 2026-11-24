@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">モデル名</string>
     <string name="aiServerPrivacy">有効な AI 機能で使用するテキストがこのエンドポイントに送信されます。API キーはこのデバイスの安全なストレージにのみ保存されます。</string>
     <string name="aiSettingsTitle">AI 設定</string>
+    <string name="aiShowComposerButton">メッセージ欄に AI ボタンを表示</string>
+    <string name="aiShowComposerButtonDescription">オフにすると、メッセージ入力欄の横にあるきらめきボタンが表示されなくなります。</string>
     <string name="aiSummarizePrompts">要約プロンプト</string>
     <string name="aiSummarizeUsing">要約に使用</string>
     <string name="aiSummaryActions">アクション項目</string>

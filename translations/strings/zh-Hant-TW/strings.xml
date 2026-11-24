@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">模型名稱</string>
     <string name="aiServerPrivacy">已啟用 AI 功能使用的文字會傳送到此端點。API 金鑰只會保存在此裝置的安全儲存空間。</string>
     <string name="aiSettingsTitle">AI 設定</string>
+    <string name="aiShowComposerButton">在訊息輸入框中顯示 AI 按鈕</string>
+    <string name="aiShowComposerButtonDescription">關閉後會移除訊息輸入框旁的閃光按鈕。</string>
     <string name="aiSummarizePrompts">摘要提示詞</string>
     <string name="aiSummarizeUsing">摘要使用</string>
     <string name="aiSummaryActions">待辦事項</string>

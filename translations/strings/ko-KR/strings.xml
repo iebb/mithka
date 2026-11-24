@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">모델 이름</string>
     <string name="aiServerPrivacy">활성화된 AI 기능에서 사용하는 텍스트가 이 엔드포인트로 전송됩니다. API 키는 이 기기의 보안 저장소에만 보관됩니다.</string>
     <string name="aiSettingsTitle">AI 설정</string>
+    <string name="aiShowComposerButton">메시지 입력란에 AI 버튼 표시</string>
+    <string name="aiShowComposerButtonDescription">끄면 메시지 입력란 옆의 반짝이 버튼이 사라집니다.</string>
     <string name="aiSummarizePrompts">요약 프롬프트</string>
     <string name="aiSummarizeUsing">요약에 사용할 모델</string>
     <string name="aiSummaryActions">할 일</string>

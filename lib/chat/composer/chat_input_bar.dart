@@ -2661,7 +2661,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     final replyTarget = _currentAiReplyTarget();
     final aiReplyWorking =
         replyTarget != null && _aiReplyWorkingTargetId == replyTarget.id;
+    // Turning the button off in AI Settings removes it outright; a reply
+    // already being written keeps it so the run can still be cancelled.
     final showAiReply =
+        ((aiSettings?.showComposerAiButton ?? true) || aiReplyWorking) &&
         !editing &&
         (!hasText || aiReplyWorking) &&
         replyTarget != null &&
@@ -3972,25 +3975,27 @@ class _ChatInputBarState extends State<ChatInputBar>
             active: false,
             onTap: () => unawaited(_openRichTextComposer()),
           ),
-          _desktopIcon(
-            key: const ValueKey('desktopComposerAiReplyAction'),
-            icon: aiReplyWorking
-                ? HeroAppIcons.xmark
-                : HeroAppIcons.wandMagicSparkles,
-            semanticLabel: aiReplyWorking
-                ? AppStringKeys.confirmCancel.l10n(context)
-                : AppStringKeys.aiReplyAction.l10n(context),
-            active: aiReplyWorking,
-            enabled: canUseAiReply,
-            onTap: aiReplyWorking
-                ? () => _invalidateAiReplyGeneration(clearProgress: true)
-                : replyTarget == null
-                ? null
-                : () => unawaited(_generateAiReply(replyTarget)),
-            onLongPress: !aiReplyWorking && canUseAiReply && replyTarget != null
-                ? () => unawaited(_showAiReplyModelPicker(replyTarget))
-                : null,
-          ),
+          if ((aiSettings?.showComposerAiButton ?? true) || aiReplyWorking)
+            _desktopIcon(
+              key: const ValueKey('desktopComposerAiReplyAction'),
+              icon: aiReplyWorking
+                  ? HeroAppIcons.xmark
+                  : HeroAppIcons.wandMagicSparkles,
+              semanticLabel: aiReplyWorking
+                  ? AppStringKeys.confirmCancel.l10n(context)
+                  : AppStringKeys.aiReplyAction.l10n(context),
+              active: aiReplyWorking,
+              enabled: canUseAiReply,
+              onTap: aiReplyWorking
+                  ? () => _invalidateAiReplyGeneration(clearProgress: true)
+                  : replyTarget == null
+                  ? null
+                  : () => unawaited(_generateAiReply(replyTarget)),
+              onLongPress:
+                  !aiReplyWorking && canUseAiReply && replyTarget != null
+                  ? () => unawaited(_showAiReplyModelPicker(replyTarget))
+                  : null,
+            ),
           _desktopIcon(
             key: const ValueKey('desktopComposerAiEditorAction'),
             icon: HeroAppIcons.palette,

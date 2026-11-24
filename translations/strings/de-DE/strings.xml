@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">Modellname</string>
     <string name="aiServerPrivacy">Text für aktivierte KI-Funktionen wird an diesen Endpunkt gesendet. Dein API-Schlüssel bleibt im sicheren Speicher dieses Geräts.</string>
     <string name="aiSettingsTitle">KI-Einstellungen</string>
+    <string name="aiShowComposerButton">KI-Taste im Nachrichtenfeld anzeigen</string>
+    <string name="aiShowComposerButtonDescription">Ausschalten, um die Funkel-Taste neben dem Nachrichtenfeld zu entfernen.</string>
     <string name="aiSummarizePrompts">Zusammenfassungs-Prompts</string>
     <string name="aiSummarizeUsing">Zusammenfassen mit</string>
     <string name="aiSummaryActions">Aufgaben</string>

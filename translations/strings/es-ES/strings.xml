@@ -235,6 +235,8 @@
     <string name="aiServerModelHint">Nombre del modelo</string>
     <string name="aiServerPrivacy">El texto usado por las funciones de IA activadas se envía a este punto de conexión. La clave de API permanece en el almacenamiento seguro del dispositivo.</string>
     <string name="aiSettingsTitle">Ajustes de IA</string>
+    <string name="aiShowComposerButton">Mostrar botón de IA en el cuadro de mensaje</string>
+    <string name="aiShowComposerButtonDescription">Desactívalo para quitar el botón de destellos junto al campo de mensaje.</string>
     <string name="aiSummarizePrompts">Prompts de resumen</string>
     <string name="aiSummarizeUsing">Resumir con</string>
     <string name="aiSummaryActions">Tareas</string>
