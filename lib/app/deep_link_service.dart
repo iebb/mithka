@@ -12,6 +12,10 @@
 //  `mithkaOpenLinkFor` in chat/telegram_link.dart. Only Mithka registers mk://,
 //  so it reaches Mithka even when an official Telegram client claims tg://.
 //
+//  The iOS share action opens that form directly when it can; otherwise it
+//  leaves it in [SharedLinkInbox], drained on start, whenever the app comes
+//  to the front, and when its notification is tapped.
+//
 
 import 'dart:async';
 
@@ -25,6 +29,7 @@ import '../chat/links_search/link_handler.dart';
 import '../chat/links_search/telegram_link.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/shared_link_inbox.dart';
 import '../security/local_app_lock_controller.dart';
 import '../settings/network_proxy/proxy_config.dart';
 import 'app_navigator.dart';
@@ -72,6 +77,44 @@ DeepLinkGate deepLinkGateFor(
 bool deepLinkAppInForeground(AppLifecycleState? state) =>
     state == null || state == AppLifecycleState.resumed;
 
+/// The link to act on from a [SharedLinkInbox] drain: the newest one Mithka
+/// accepts from outside. Older ones are dropped, as for any queued link.
+@visibleForTesting
+Uri? latestSharedLink(List<Uri> links) {
+  for (final uri in links.reversed) {
+    if (classifyExternalLink(uri).kind != ExternalLinkKind.ignored) return uri;
+  }
+  return null;
+}
+
+/// Drops a `mk://open?url=` hand-off link seen again within [window].
+///
+/// The iOS share action may fall back (App Group copy) just before its direct
+/// open succeeds after all; Mithka then gets the same link from app_links and
+/// from [SharedLinkInbox]. Other links always pass.
+@visibleForTesting
+class SharedLinkDeduper {
+  SharedLinkDeduper({
+    this.window = const Duration(seconds: 10),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
+
+  final Duration window;
+  final DateTime Function() _now;
+  final Map<String, DateTime> _seen = {};
+
+  /// Whether [uri] should be handled.
+  bool admit(Uri uri) {
+    if (uri.scheme.toLowerCase() != 'mk' ||
+        uri.host.toLowerCase() != mithkaOpenLinkHost) {
+      return true;
+    }
+    final now = _now();
+    _seen.removeWhere((_, seen) => now.difference(seen) > window);
+    return _seen.putIfAbsent(uri.toString(), () => now) == now;
+  }
+}
+
 /// One thing an external link asks for, run once the app is in front.
 sealed class _ExternalAction {
   const _ExternalAction();
@@ -104,6 +147,10 @@ class DeepLinkService extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<Uri>? _sub;
   AuthManager? _auth;
   LocalAppLockController? _appLock;
+  SharedLinkInbox? _inbox;
+  Future<void>? _sharedDrain;
+  bool _sharedDrainAgain = false;
+  final _sharedLinkDeduper = SharedLinkDeduper();
 
   /// The latest external link waiting for the foreground, login, unlock or
   /// startup. A newer link replaces it: only the last thing the user tapped
@@ -118,18 +165,24 @@ class DeepLinkService extends ChangeNotifier with WidgetsBindingObserver {
   /// Starts listening. Safe to call more than once; later calls are no-ops.
   ///
   /// Without [auth], links open as soon as the app is in front (no sign-in
-  /// queue).
-  void start({AuthManager? auth, LocalAppLockController? appLock}) {
+  /// queue). [uriLinks] and [inbox] replace the platform sources in tests.
+  void start({
+    AuthManager? auth,
+    LocalAppLockController? appLock,
+    Stream<Uri>? uriLinks,
+    SharedLinkInbox? inbox,
+  }) {
     if (_sub != null) return;
     _auth = auth?..addListener(_stateChanged);
     _appLock = appLock?..addListener(_stateChanged);
     WidgetsBinding.instance.addObserver(this);
-    final links = _links ??= AppLinks();
     // uriLinkStream replays the launch URI, so cold-start links work too.
-    _sub = links.uriLinkStream.listen(
-      (uri) => unawaited(_handle(uri)),
-      onError: (Object error) => debugPrint('deep link error: $error'),
-    );
+    _sub = (uriLinks ?? (_links ??= AppLinks()).uriLinkStream).listen((uri) {
+      if (_sharedLinkDeduper.admit(uri)) unawaited(_handle(uri));
+    }, onError: (Object error) => debugPrint('deep link error: $error'));
+    _inbox = (inbox ?? SharedLinkInbox())
+      ..listen(() => unawaited(drainSharedLinks()));
+    unawaited(drainSharedLinks());
   }
 
   Future<void> stop() async {
@@ -140,11 +193,45 @@ class DeepLinkService extends ChangeNotifier with WidgetsBindingObserver {
     _appLock?.removeListener(_stateChanged);
     _auth = null;
     _appLock = null;
+    _inbox?.stop();
+    _inbox = null;
     _pending = null;
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) => _stateChanged();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(drainSharedLinks());
+    _stateChanged();
+  }
+
+  /// Queues the newest link the iOS share action left for Mithka, if any.
+  ///
+  /// One drain runs at a time; a request during it runs one more afterwards,
+  /// so an older batch can never replace a newer one.
+  @visibleForTesting
+  Future<void> drainSharedLinks() {
+    if (_sharedDrain case final running?) {
+      _sharedDrainAgain = true;
+      return running;
+    }
+    return _sharedDrain = _drainSharedLinksInOrder().whenComplete(
+      () => _sharedDrain = null,
+    );
+  }
+
+  Future<void> _drainSharedLinksInOrder() async {
+    do {
+      _sharedDrainAgain = false;
+      final inbox = _inbox;
+      if (inbox == null) return;
+      final uri = latestSharedLink(await inbox.drain());
+      // _handle queues the link before its first await; opening it must not
+      // hold up the next drain.
+      if (uri != null && _sub != null && _sharedLinkDeduper.admit(uri)) {
+        unawaited(_handle(uri));
+      }
+    } while (_sharedDrainAgain);
+  }
 
   DeepLinkGate _gate() {
     final pending = _pending;

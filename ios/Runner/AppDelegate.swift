@@ -31,6 +31,15 @@ enum VideoNoteExportError: Error, Sendable {
   private var notificationTapChannel: FlutterMethodChannel?
   private var communicationNotificationBridge: CommunicationNotificationBridge?
   private var pendingNotificationTap: [String: Any]?
+  private var sharedLinksChannel: FlutterMethodChannel?
+  /// Links from taps on the Open in Mithka notification, held until Dart
+  /// drains them together with SharedLinkQueue.
+  private var pendingSharedLinks: [String] = []
+  /// Open in Mithka links that came in as URLs (the share action's direct
+  /// open), with when. A late direct open can follow its own fallback, so
+  /// drain skips queued copies of these.
+  private var recentOpenedSharedLinks: [(link: String, at: Date)] = []
+  private static let openedSharedLinkWindow: TimeInterval = 5
   private var apnsDeviceToken: String?
   private var didRegisterFlutterPlugins = false
   private var liveCommunicationBridge: AnyObject?
@@ -869,6 +878,34 @@ enum VideoNoteExportError: Error, Sendable {
       self?.pendingNotificationTap = nil
       result(pending)
     }
+    let sharedLinksChannel = FlutterMethodChannel(
+      name: "mithka/shared_links",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    self.sharedLinksChannel = sharedLinksChannel
+    sharedLinksChannel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "drain" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      // Oldest first and tapped links last: Dart acts on the last one, so a
+      // tapped notification wins over anything merely waiting in the queue.
+      guard let self else {
+        result([String]())
+        return
+      }
+      let tapped = self.pendingSharedLinks
+      self.pendingSharedLinks = []
+      let queued = SharedLinkQueue.shared?.drainEntries() ?? (links: [], ids: [])
+      if !queued.ids.isEmpty {
+        // Their notifications would now open nothing.
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: queued.ids)
+        center.removeDeliveredNotifications(withIdentifiers: queued.ids)
+      }
+      let opened = self.recentlyOpenedSharedLinks()
+      result((queued.links + tapped).filter { !opened.contains($0) })
+    }
     communicationNotificationBridge = CommunicationNotificationBridge(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
@@ -1374,6 +1411,11 @@ enum VideoNoteExportError: Error, Sendable {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
+    if let id = userInfo[SharedLinkQueue.UserInfoKey.id] as? String {
+      openSharedLink(id: id, userInfo: userInfo)
+      completionHandler()
+      return
+    }
     if Self.isFlutterLocalNotification(userInfo) {
       super.userNotificationCenter(
         center,
@@ -1387,6 +1429,38 @@ enum VideoNoteExportError: Error, Sendable {
     pendingNotificationTap = payload
     notificationTapChannel?.invokeMethod("notificationTap", arguments: payload)
     completionHandler()
+  }
+
+  /// A tap on the notification the OpenInMithka extension posts. A queued
+  /// link is claimed from SharedLinkQueue, so it opens once even if Mithka
+  /// already drained it on becoming active; a link the extension could not
+  /// queue travels in userInfo instead.
+  private func openSharedLink(id: String, userInfo: [AnyHashable: Any]) {
+    let link: String?
+    if userInfo[SharedLinkQueue.UserInfoKey.queued] as? Bool == true {
+      link = SharedLinkQueue.shared?.claim(id: id)
+    } else {
+      link = (userInfo[SharedLinkQueue.UserInfoKey.link] as? String)
+        .flatMap { TelegramShareLink.isMithkaOpenLink($0) ? $0 : nil }
+    }
+    guard let link else { return }
+    pendingSharedLinks.append(link)
+    sharedLinksChannel?.invokeMethod("linksAvailable", arguments: nil)
+  }
+
+  /// Notes an incoming URL so drain can drop a queued copy of it.
+  func noteOpenedURL(_ url: URL) {
+    let link = url.absoluteString
+    guard TelegramShareLink.isMithkaOpenLink(link) else { return }
+    recentOpenedSharedLinks.append((link, Date()))
+  }
+
+  private func recentlyOpenedSharedLinks() -> Set<String> {
+    let now = Date()
+    recentOpenedSharedLinks.removeAll {
+      now.timeIntervalSince($0.at) > Self.openedSharedLinkWindow
+    }
+    return Set(recentOpenedSharedLinks.map(\.link))
   }
 
   private static func isFlutterLocalNotification(_ userInfo: [AnyHashable: Any]) -> Bool {

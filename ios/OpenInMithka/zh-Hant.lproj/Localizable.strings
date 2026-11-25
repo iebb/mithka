@@ -1,0 +1,8 @@
+"linkNotTelegramLink" = "Mithka 只能開啟 Telegram 連結。";
+"linkHandlerOpenTelegramLinkFailed" = "無法開啟 Telegram 連結";
+"linkShareContinueTitle" = "開啟 Mithka 以繼續";
+"linkShareTapNotification" = "點一下通知，即可在 Mithka 中開啟此連結。";
+"linkShareOpensNextTime" = "下次開啟 Mithka 時會自動開啟此連結。";
+"linkShareNotificationTitle" = "Telegram 連結已準備好";
+"linkShareNotificationBody" = "點一下即可在 Mithka 中開啟。";
+"linkShareDone" = "完成";

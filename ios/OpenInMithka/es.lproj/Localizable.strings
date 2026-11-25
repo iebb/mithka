@@ -1,0 +1,8 @@
+"linkNotTelegramLink" = "Mithka solo puede abrir enlaces de Telegram.";
+"linkHandlerOpenTelegramLinkFailed" = "No se pudo abrir el enlace de Telegram";
+"linkShareContinueTitle" = "Abre Mithka para continuar";
+"linkShareTapNotification" = "Toca la notificación para abrir el enlace en Mithka.";
+"linkShareOpensNextTime" = "El enlace se abrirá la próxima vez que abras Mithka.";
+"linkShareNotificationTitle" = "Tu enlace de Telegram está listo";
+"linkShareNotificationBody" = "Toca para abrirlo en Mithka.";
+"linkShareDone" = "Listo";

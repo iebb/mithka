@@ -1,0 +1,32 @@
+{
+  "images": [
+    {
+      "filename": "ActionGlyph120.png",
+      "idiom": "iphone",
+      "size": "60x60",
+      "scale": "2x"
+    },
+    {
+      "filename": "ActionGlyph180.png",
+      "idiom": "iphone",
+      "size": "60x60",
+      "scale": "3x"
+    },
+    {
+      "filename": "ActionGlyph152.png",
+      "idiom": "ipad",
+      "size": "76x76",
+      "scale": "2x"
+    },
+    {
+      "filename": "ActionGlyph167.png",
+      "idiom": "ipad",
+      "size": "83.5x83.5",
+      "scale": "2x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
