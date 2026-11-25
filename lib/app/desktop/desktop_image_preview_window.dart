@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import '../../platform/ohos_support.dart';
 import '../../tdlib/td_image_loader.dart';
 import '../../tdlib/td_models.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/platform_font_defaults.dart';
 import 'desktop_image_preview_window_models.dart';
 import 'desktop_image_preview_window_stub.dart'
     if (dart.library.io) 'desktop_image_preview_window_io.dart'
@@ -232,9 +234,18 @@ class DesktopImagePreviewWindowApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final systemLocale = ui.PlatformDispatcher.instance.locale;
+    final rawLocale = AppLocalizations.localeFromTag(arguments.localeTag);
     final locale = AppLocalizations.resolve(
-      AppLocalizations.localeFromTag(arguments.localeTag) ??
-          AppLocalizations.fallbackLocale,
+      rawLocale ?? AppLocalizations.fallbackLocale,
+    );
+    final typographyLocale = PlatformFontDefaults.effectiveTypographyLocale(
+      appLocale: rawLocale ?? locale,
+      systemLocale: systemLocale,
+    );
+    final families = PlatformFontDefaults.effectiveFontChain(
+      appLocale: rawLocale ?? locale,
+      systemLocale: systemLocale,
     );
     return WidgetsApp(
       color: const Color(0xFF0C0D0F),
@@ -247,6 +258,16 @@ class DesktopImagePreviewWindowApp extends StatelessWidget {
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
+      builder: (context, child) => DefaultTextStyle.merge(
+        style: TextStyle(
+          fontFamily: families.isEmpty ? null : families.first,
+          fontFamilyFallback: families.length > 1
+              ? families.skip(1).toList()
+              : null,
+          locale: typographyLocale,
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
       pageRouteBuilder: <T>(settings, builder) => PageRouteBuilder<T>(
         settings: settings,
         pageBuilder: (context, _, _) => builder(context),

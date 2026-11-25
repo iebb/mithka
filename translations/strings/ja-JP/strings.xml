@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">使用中</string>
     <string name="appearanceInterfaceSize">画面サイズ</string>
     <string name="appearanceLivePreviewUnavailable">ライブプレビューを利用できません</string>
+    <string name="appearanceLocalFonts">ローカルフォント</string>
+    <string name="appearanceLocalFontsDescription">このデバイスにインストールされているフォントです。ダウンロード不要でそのまま使えます。</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">メディアアルバムをまとめて表示</string>
     <string name="appearanceMessageActionMenu">メッセージ操作メニュー</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium ユーザー</string>
     <string name="appearanceNoCleanableFonts">クリーンアップ可能な項目なし</string>
     <string name="appearanceNoDownloadedFontCache">ダウンロード済みのフォントキャッシュはありません。</string>
+    <string name="appearanceNoLocalFonts">インストール済みのローカルフォントが見つかりません。</string>
+    <string name="appearanceOnlineFonts">Google Fonts（オンライン）</string>
+    <string name="appearanceOnlineFontsDescription">Google Fonts のオンラインフォントです。選択時に取得してキャッシュします。</string>
     <string name="appearanceNoMatchingFonts">一致するフォントがありません</string>
     <string name="appearancePerAccountTheming">アカウントごとにテーマを使用</string>
     <string name="appearancePreviewAlbumCaption">グループアルバムからの2つの瞬間。</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie: チャットでね</string>
     <string name="appearancePreviewUsersSample">Mithka ユーザー</string>
     <string name="appearanceRefreshCacheList">キャッシュ一覧を更新</string>
+    <string name="appearanceReloadFonts">ローカルフォントを再読み込み</string>
     <string name="appearanceRoundGroupAvatars">グループチャットのアイコンを丸く表示</string>
     <string name="appearanceSearchFont">フォントを検索</string>
     <string name="appearanceSectionChat">チャット</string>

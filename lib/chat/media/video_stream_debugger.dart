@@ -68,6 +68,10 @@ const List<String> _inspectorFontFamilyFallback = <String>[
   'Ubuntu',
   'Noto Sans',
   'Arial',
+  'Microsoft YaHei UI',
+  'Microsoft JhengHei UI',
+  'PingFang SC',
+  'Noto Sans CJK SC',
 ];
 const TextStyle _inspectorDefaultTextStyle = TextStyle(
   color: Colors.white,

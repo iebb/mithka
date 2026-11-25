@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -160,7 +161,8 @@ class DesktopUtilityWindowApp extends StatefulWidget {
       _DesktopUtilityWindowAppState();
 }
 
-class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
+class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp>
+    with WidgetsBindingObserver {
   late final AuthManager _auth = AuthManager();
   late final AccountStore _accounts = AccountStore(widget.prefs);
   late ThemeController _theme = ThemeController(
@@ -229,6 +231,7 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     KeywordBlocker.shared.initialize(widget.prefs);
     LinkPreviewFixer.shared.initialize(widget.prefs);
     HiddenSenderStore.shared
@@ -447,7 +450,19 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    _theme.syncTypographyLocale(
+      appLocale: _effectiveLocale(),
+      systemLocale: locales?.isNotEmpty == true
+          ? locales!.first
+          : ui.PlatformDispatcher.instance.locale,
+    );
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HiddenSenderStore.shared.removeListener(_handleHiddenSendersChanged);
     DesktopUtilityWindowService.instance.detachChildPresentationReload();
     _settingsSyncDebounce?.cancel();
@@ -847,6 +862,11 @@ class _DesktopUtilityWindowAppState extends State<DesktopUtilityWindowApp> {
       animation: Listenable.merge([_theme, _locale]),
       builder: (context, _) {
         final locale = _effectiveLocale();
+        _theme.syncTypographyLocale(
+          appLocale: locale,
+          systemLocale: ui.PlatformDispatcher.instance.locale,
+          notify: false,
+        );
         return MaterialApp(
           navigatorKey: appNavigatorKey,
           title: widget.arguments.title,

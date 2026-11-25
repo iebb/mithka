@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cineplay/cineplay.dart';
 import 'package:cineplay_fvp/cineplay_fvp.dart';
@@ -26,6 +27,7 @@ import '../../media/video_playback_reporting.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_image_loader.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/platform_font_defaults.dart';
 import '../video_split_controller.dart';
 import 'desktop_media_window_registry.dart';
 
@@ -187,14 +189,47 @@ class DesktopVideoWindowApp extends StatelessWidget {
     debugPaintLayerBordersEnabled = false;
     debugPaintPointersEnabled = false;
     debugRepaintRainbowEnabled = false;
+    final systemLocale = ui.PlatformDispatcher.instance.locale;
+    final typographyLocale = PlatformFontDefaults.effectiveTypographyLocale(
+      systemLocale: systemLocale,
+    );
+    final families = PlatformFontDefaults.effectiveFontChain(
+      systemLocale: systemLocale,
+    );
+    final primaryFont = families.isEmpty ? null : families.first;
+    final fallbackFonts = families.length > 1
+        ? families.skip(1).toList()
+        : null;
+    final darkBase = ThemeData.dark();
+    final darkTextTheme = darkBase.textTheme.apply(
+      fontFamily: primaryFont,
+      fontFamilyFallback: fallbackFonts,
+    );
+    final darkPrimaryTextTheme = darkBase.primaryTextTheme.apply(
+      fontFamily: primaryFont,
+      fontFamilyFallback: fallbackFonts,
+    );
+    final rootTextStyle = AppTextStyle.body(Colors.white).copyWith(
+      fontFamily: primaryFont,
+      fontFamilyFallback: fallbackFonts,
+      locale: typographyLocale,
+    );
     return MaterialApp(
       title: arguments.title,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+      locale: AppLocalizations.resolve(systemLocale),
+      localeResolutionCallback: (locale, _) => locale == null
+          ? AppLocalizations.fallbackLocale
+          : AppLocalizations.resolve(locale),
+      theme: darkBase.copyWith(
+        scaffoldBackgroundColor: Colors.black,
+        textTheme: darkTextTheme,
+        primaryTextTheme: darkPrimaryTextTheme,
+      ),
       // The player's screens bring no text style of their own; without this
       // default a Text that omits its weight draws at weight 900.
       builder: (context, child) => DefaultTextStyle(
-        style: AppTextStyle.body(Colors.white),
+        style: rootTextStyle,
         child: child ?? const SizedBox.shrink(),
       ),
       supportedLocales: AppLocalizations.supportedLocales,

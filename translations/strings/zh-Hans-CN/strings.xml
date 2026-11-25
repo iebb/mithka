@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">正在使用</string>
     <string name="appearanceInterfaceSize">界面大小</string>
     <string name="appearanceLivePreviewUnavailable">实时预览不可用</string>
+    <string name="appearanceLocalFonts">本机字体</string>
+    <string name="appearanceLocalFontsDescription">已安装在本机系统中的字体，无需网络下载，可直接渲染。</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">合并显示媒体相册</string>
     <string name="appearanceMessageActionMenu">消息操作菜单</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium 用户</string>
     <string name="appearanceNoCleanableFonts">无可清理</string>
     <string name="appearanceNoDownloadedFontCache">没有已下载的字体缓存。</string>
+    <string name="appearanceNoLocalFonts">未检测到本机已安装字体。</string>
+    <string name="appearanceOnlineFonts">Google Fonts（在线下载）</string>
+    <string name="appearanceOnlineFontsDescription">来自 Google Fonts 的外部云端字体，选择后按需下载并缓存在本地。</string>
     <string name="appearanceNoMatchingFonts">没有匹配的字体</string>
     <string name="appearancePerAccountTheming">每个账号单独使用主题</string>
     <string name="appearancePreviewAlbumCaption">群组相册里的两个瞬间。</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie：聊天里见</string>
     <string name="appearancePreviewUsersSample">Mithka 用户</string>
     <string name="appearanceRefreshCacheList">刷新缓存列表</string>
+    <string name="appearanceReloadFonts">刷新本机字体</string>
     <string name="appearanceRoundGroupAvatars">群聊头像显示为圆形</string>
     <string name="appearanceSearchFont">搜索字体</string>
     <string name="appearanceSectionChat">聊天</string>

@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">사용 중</string>
     <string name="appearanceInterfaceSize">인터페이스 크기</string>
     <string name="appearanceLivePreviewUnavailable">실시간 미리보기를 사용할 수 없음</string>
+    <string name="appearanceLocalFonts">로컬 글꼴</string>
+    <string name="appearanceLocalFontsDescription">이 기기에 설치된 글꼴로 다운로드 없이 바로 렌더링됩니다.</string>
     <string name="appearanceManage">관리</string>
     <string name="appearanceMergeConsecutiveImages">미디어 앨범 묶어 보기</string>
     <string name="appearanceMessageActionMenu">메시지 작업 메뉴</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium 사용자</string>
     <string name="appearanceNoCleanableFonts">정리할 항목 없음</string>
     <string name="appearanceNoDownloadedFontCache">다운로드된 글꼴 캐시가 없습니다.</string>
+    <string name="appearanceNoLocalFonts">설치된 로컬 글꼴을 찾을 수 없습니다.</string>
+    <string name="appearanceOnlineFonts">Google Fonts (온라인)</string>
+    <string name="appearanceOnlineFontsDescription">Google Fonts 온라인 글꼴로 선택 시 다운로드하여 로컬에 캐시합니다.</string>
     <string name="appearanceNoMatchingFonts">일치하는 글꼴이 없습니다</string>
     <string name="appearancePerAccountTheming">계정별 테마 사용</string>
     <string name="appearancePreviewAlbumCaption">그룹 앨범 속 두 순간.</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie: 채팅에서 봐요</string>
     <string name="appearancePreviewUsersSample">Mithka 사용자</string>
     <string name="appearanceRefreshCacheList">캐시 목록 새로 고침</string>
+    <string name="appearanceReloadFonts">로컬 글꼴 새로고침</string>
     <string name="appearanceRoundGroupAvatars">그룹 채팅 프로필을 원형으로 표시</string>
     <string name="appearanceSearchFont">글꼴 검색</string>
     <string name="appearanceSectionChat">채팅</string>

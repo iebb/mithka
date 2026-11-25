@@ -9,8 +9,10 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "system_fonts_channel.cpp"
   "utils.cpp"
   "win32_window.cpp"
+  "windows_font_catalog.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"

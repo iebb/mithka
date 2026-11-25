@@ -674,6 +674,9 @@ abstract final class AppStringKeys {
   static const appearanceHidePhoneInSidebar = 'appearanceHidePhoneInSidebar';
   static const appearanceInterfaceSize = 'appearanceInterfaceSize';
   static const appearanceInUseSize = 'appearanceInUseSize';
+  static const appearanceLocalFonts = 'appearanceLocalFonts';
+  static const appearanceLocalFontsDescription =
+      'appearanceLocalFontsDescription';
   static const appearanceManage = 'appearanceManage';
   static const appearanceMergeConsecutiveImages =
       'appearanceMergeConsecutiveImages';
@@ -691,8 +694,13 @@ abstract final class AppStringKeys {
   static const appearanceNoCleanableFonts = 'appearanceNoCleanableFonts';
   static const appearanceNoDownloadedFontCache =
       'appearanceNoDownloadedFontCache';
+  static const appearanceNoLocalFonts = 'appearanceNoLocalFonts';
   static const appearanceNoMatchingFonts = 'appearanceNoMatchingFonts';
+  static const appearanceOnlineFonts = 'appearanceOnlineFonts';
+  static const appearanceOnlineFontsDescription =
+      'appearanceOnlineFontsDescription';
   static const appearanceRefreshCacheList = 'appearanceRefreshCacheList';
+  static const appearanceReloadFonts = 'appearanceReloadFonts';
   static const appearanceRoundGroupAvatars = 'appearanceRoundGroupAvatars';
   static const appearanceSearchFont = 'appearanceSearchFont';
   static const appearanceSenderNameBackground =

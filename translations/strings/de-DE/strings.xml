@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">In Verwendung</string>
     <string name="appearanceInterfaceSize">Oberflächengröße</string>
     <string name="appearanceLivePreviewUnavailable">Live-Vorschau nicht verfügbar</string>
+    <string name="appearanceLocalFonts">Lokale Schriften</string>
+    <string name="appearanceLocalFontsDescription">Auf diesem Gerät installierte Schriftarten werden direkt ohne Download verwendet.</string>
     <string name="appearanceManage">Verwalten</string>
     <string name="appearanceMergeConsecutiveImages">Medienalben gruppieren</string>
     <string name="appearanceMessageActionMenu">Nachrichten-Aktionsmenü</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium-Nutzer</string>
     <string name="appearanceNoCleanableFonts">Nichts zu bereinigen</string>
     <string name="appearanceNoDownloadedFontCache">Kein heruntergeladener Schriftcache vorhanden.</string>
+    <string name="appearanceNoLocalFonts">Keine lokal installierten Schriftarten gefunden.</string>
+    <string name="appearanceOnlineFonts">Google Fonts (Online)</string>
+    <string name="appearanceOnlineFontsDescription">Online über Google Fonts bereitgestellte Schriften werden bei Bedarf geladen.</string>
     <string name="appearanceNoMatchingFonts">Keine passenden Schriftarten</string>
     <string name="appearancePerAccountTheming">Designs pro Konto verwenden</string>
     <string name="appearancePreviewAlbumCaption">Zwei Momente aus dem Gruppenalbum.</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie: Wir sehen uns im Chat</string>
     <string name="appearancePreviewUsersSample">Mithka-Nutzer</string>
     <string name="appearanceRefreshCacheList">Cache-Liste aktualisieren</string>
+    <string name="appearanceReloadFonts">Lokale Schriften aktualisieren</string>
     <string name="appearanceRoundGroupAvatars">Gruppenavatare rund anzeigen</string>
     <string name="appearanceSearchFont">Schriftart suchen</string>
     <string name="appearanceSectionChat">Chat</string>

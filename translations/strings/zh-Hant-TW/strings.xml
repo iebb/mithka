@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">使用中</string>
     <string name="appearanceInterfaceSize">介面大小</string>
     <string name="appearanceLivePreviewUnavailable">即時預覽無法使用</string>
+    <string name="appearanceLocalFonts">本機字型</string>
+    <string name="appearanceLocalFontsDescription">已安裝於本機系統中的字型，無需網路下載，可直接套用。</string>
     <string name="appearanceManage">管理</string>
     <string name="appearanceMergeConsecutiveImages">合併顯示媒體相簿</string>
     <string name="appearanceMessageActionMenu">訊息操作選單</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium 使用者</string>
     <string name="appearanceNoCleanableFonts">沒有可清理項目</string>
     <string name="appearanceNoDownloadedFontCache">沒有已下載的字型快取。</string>
+    <string name="appearanceNoLocalFonts">未偵測到本機已安裝的字型。</string>
+    <string name="appearanceOnlineFonts">Google Fonts（線上字型）</string>
+    <string name="appearanceOnlineFontsDescription">來自 Google Fonts 的線上字型，選用時會按需下載並快取於本機。</string>
     <string name="appearanceNoMatchingFonts">沒有符合的字型</string>
     <string name="appearancePerAccountTheming">每個帳號分別使用主題</string>
     <string name="appearancePreviewAlbumCaption">群組相簿裡的兩個瞬間。</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie：聊天裡見</string>
     <string name="appearancePreviewUsersSample">Mithka 使用者</string>
     <string name="appearanceRefreshCacheList">重新整理快取列表</string>
+    <string name="appearanceReloadFonts">重新整理本機字型</string>
     <string name="appearanceRoundGroupAvatars">群組頭像顯示為圓形</string>
     <string name="appearanceSearchFont">搜尋字型</string>
     <string name="appearanceSectionChat">聊天</string>

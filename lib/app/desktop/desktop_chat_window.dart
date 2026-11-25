@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -133,7 +134,8 @@ class DesktopChatWindowApp extends StatefulWidget {
   State<DesktopChatWindowApp> createState() => _DesktopChatWindowAppState();
 }
 
-class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
+class _DesktopChatWindowAppState extends State<DesktopChatWindowApp>
+    with WidgetsBindingObserver {
   late ThemeController _theme = ThemeController(
     widget.prefs,
     initialAccountSlot: widget.arguments.accountSlot,
@@ -159,6 +161,7 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _theme.setActiveAccountSlot(
       widget.arguments.accountSlot,
       userId: widget.arguments.accountUserId,
@@ -271,7 +274,21 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    _theme.syncTypographyLocale(
+      appLocale:
+          _locale.locale ??
+          AppLocalizations.localeFromTag(widget.arguments.localeTag),
+      systemLocale: locales?.isNotEmpty == true
+          ? locales!.first
+          : ui.PlatformDispatcher.instance.locale,
+    );
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HiddenSenderStore.shared.removeListener(_handleHiddenSendersChanged);
     DesktopChatWindowService.instance.detachChildPresentationReload();
     unawaited(TdClient.shared.closeProxy());
@@ -339,6 +356,11 @@ class _DesktopChatWindowAppState extends State<DesktopChatWindowApp> {
         final locale =
             _locale.locale ??
             AppLocalizations.localeFromTag(widget.arguments.localeTag);
+        _theme.syncTypographyLocale(
+          appLocale: locale,
+          systemLocale: ui.PlatformDispatcher.instance.locale,
+          notify: false,
+        );
         return MaterialApp(
           navigatorKey: appNavigatorKey,
           title: widget.arguments.title,

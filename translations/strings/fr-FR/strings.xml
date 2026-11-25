@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">En cours d’utilisation</string>
     <string name="appearanceInterfaceSize">Taille de l’interface</string>
     <string name="appearanceLivePreviewUnavailable">Aperçu en direct indisponible</string>
+    <string name="appearanceLocalFonts">Polices locales</string>
+    <string name="appearanceLocalFontsDescription">Les polices installées sur cet appareil s'affichent immédiatement sans téléchargement.</string>
     <string name="appearanceManage">Gérer</string>
     <string name="appearanceMergeConsecutiveImages">Regrouper les albums multimédias</string>
     <string name="appearanceMessageActionMenu">Menu d’actions des messages</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Utilisateurs Premium</string>
     <string name="appearanceNoCleanableFonts">Rien à nettoyer</string>
     <string name="appearanceNoDownloadedFontCache">Aucun cache de police téléchargé.</string>
+    <string name="appearanceNoLocalFonts">Aucune police locale installée détectée.</string>
+    <string name="appearanceOnlineFonts">Google Fonts (En ligne)</string>
+    <string name="appearanceOnlineFontsDescription">Les polices Google Fonts sont téléchargées à la demande et mises en cache.</string>
     <string name="appearanceNoMatchingFonts">Aucune police correspondante</string>
     <string name="appearancePerAccountTheming">Utiliser un thème par compte</string>
     <string name="appearancePreviewAlbumCaption">Deux moments de l'album du groupe.</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie : À tout de suite dans la discussion</string>
     <string name="appearancePreviewUsersSample">Utilisateurs Mithka</string>
     <string name="appearanceRefreshCacheList">Actualiser la liste du cache</string>
+    <string name="appearanceReloadFonts">Actualiser les polices locales</string>
     <string name="appearanceRoundGroupAvatars">Afficher les avatars de groupe en cercle</string>
     <string name="appearanceSearchFont">Rechercher une police</string>
     <string name="appearanceSectionChat">Discussion</string>

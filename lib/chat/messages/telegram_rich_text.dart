@@ -10,6 +10,7 @@ import '../../components/toast.dart';
 import '../../l10n/app_localizations.dart';
 import '../../tdlib/td_models.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/platform_font_defaults.dart';
 import '../../theme/theme_controller.dart';
 import '../links_search/link_handler.dart';
 import '../stickers/custom_emoji.dart';
@@ -109,17 +110,25 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         DefaultTextStyle.of(
           context,
         ).style.copyWith(color: context.colors.textPrimary);
+    final resolvedLocale =
+        baseStyle.locale ??
+        theme?.effectiveTypographyLocale ??
+        PlatformFontDefaults.normalizeTypographyLocale(
+          Localizations.maybeLocaleOf(context),
+        );
     // RichText does not merge DefaultTextStyle like Text does. Give ordinary
-    // iOS message text the same system face/fallbacks without replacing custom
-    // chains, code faces, or explicit tracking supplied by the caller.
+    // message text the same platform face/fallbacks and typography locale without
+    // replacing custom chains, code faces, or explicit caller tracking.
     if (theme != null &&
-        theme.usesIosSystemTypography &&
         baseStyle.fontFamily == null &&
         baseStyle.fontFamilyFallback == null) {
       baseStyle = theme.applyAppTextStyle(
         baseStyle,
         boldText: MediaQuery.boldTextOf(context),
       );
+    }
+    if (resolvedLocale != null && baseStyle.locale == null) {
+      baseStyle = baseStyle.copyWith(locale: resolvedLocale);
     }
     final linkColor = widget.linkColor ?? context.colors.linkBlue;
     if (widget.quoteBackgroundColor != null && _hasBlockQuote()) {
@@ -131,6 +140,7 @@ class _TelegramRichTextState extends State<TelegramRichText> {
         ? baseStyle.copyWith(height: 1.0)
         : baseStyle;
     return RichText(
+      locale: effectiveStyle.locale ?? resolvedLocale,
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: widget.maxLines,
       overflow: widget.overflow,
@@ -604,9 +614,13 @@ class _TelegramRichTextState extends State<TelegramRichText> {
     if (fontFeatures.isNotEmpty) {
       style = style.copyWith(fontFeatures: fontFeatures);
     }
-    return useCodeFont
-        ? context.read<ThemeController>().codeTextStyle(style)
-        : style;
+    if (!useCodeFont) return style;
+    final theme = context.read<ThemeController?>();
+    if (theme != null) return theme.codeTextStyle(style);
+    return style.copyWith(
+      fontFamily: PlatformFontDefaults.monospaceFontFamily(),
+      fontFamilyFallback: PlatformFontDefaults.monospaceFontFallback(),
+    );
   }
 
   bool _hasCode(List<MessageTextEntity> active) {

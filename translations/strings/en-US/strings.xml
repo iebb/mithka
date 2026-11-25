@@ -497,6 +497,8 @@
     <string name="appearanceInUseSize">In Use</string>
     <string name="appearanceInterfaceSize">Interface Size</string>
     <string name="appearanceLivePreviewUnavailable">Live preview unavailable</string>
+    <string name="appearanceLocalFonts">Local Fonts</string>
+    <string name="appearanceLocalFontsDescription">Fonts installed on this device render immediately with no download needed.</string>
     <string name="appearanceManage">Manage</string>
     <string name="appearanceMergeConsecutiveImages">Group Media Albums</string>
     <string name="appearanceMessageActionMenu">Message action menu</string>
@@ -511,6 +513,9 @@
     <string name="appearanceNameColorPremium">Premium users</string>
     <string name="appearanceNoCleanableFonts">Nothing to clean</string>
     <string name="appearanceNoDownloadedFontCache">No downloaded font cache.</string>
+    <string name="appearanceNoLocalFonts">No locally installed fonts detected.</string>
+    <string name="appearanceOnlineFonts">Google Fonts (Online)</string>
+    <string name="appearanceOnlineFontsDescription">Cloud-hosted Google Fonts are downloaded on demand and cached locally.</string>
     <string name="appearanceNoMatchingFonts">No matching fonts</string>
     <string name="appearancePerAccountTheming">Use themes per account</string>
     <string name="appearancePreviewAlbumCaption">Two moments from the group album.</string>
@@ -521,6 +526,7 @@
     <string name="appearancePreviewMessageSample">Jennie: See you in the chat</string>
     <string name="appearancePreviewUsersSample">Mithka Users</string>
     <string name="appearanceRefreshCacheList">Refresh Cache List</string>
+    <string name="appearanceReloadFonts">Refresh Local Fonts</string>
     <string name="appearanceRoundGroupAvatars">Show Group Avatars as Circles</string>
     <string name="appearanceSearchFont">Search fonts</string>
     <string name="appearanceSectionChat">Chat</string>

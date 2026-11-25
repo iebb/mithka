@@ -45,6 +45,7 @@ import '../../theme/emoji_font_catalog.dart';
 import '../../theme/global_theme_view.dart';
 import '../../theme/message_bubble_background.dart';
 import '../../theme/message_name_colors.dart';
+import '../../theme/platform_font_defaults.dart';
 import '../../theme/system_font_catalog.dart';
 import '../../theme/theme_controller.dart';
 import '../quick_reaction_settings_view.dart';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -34,7 +35,8 @@ class DesktopMiniAppWindowApp extends StatefulWidget {
       _DesktopMiniAppWindowAppState();
 }
 
-class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
+class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp>
+    with WidgetsBindingObserver {
   late final ThemeController _theme = ThemeController(
     widget.prefs,
     initialAccountSlot: widget.launch.arguments.accountSlot,
@@ -44,6 +46,7 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _theme.setActiveAccountSlot(
       widget.launch.arguments.accountSlot,
       userId: widget.launch.arguments.accountUserId,
@@ -52,7 +55,21 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    _theme.syncTypographyLocale(
+      appLocale: AppLocalizations.localeFromTag(
+        widget.launch.arguments.localeTag,
+      ),
+      systemLocale: locales?.isNotEmpty == true
+          ? locales!.first
+          : ui.PlatformDispatcher.instance.locale,
+    );
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(TdClient.shared.closeProxy());
     _theme.dispose();
     super.dispose();
@@ -102,11 +119,17 @@ class _DesktopMiniAppWindowAppState extends State<DesktopMiniAppWindowApp> {
       animation: _theme,
       builder: (context, _) {
         final arguments = widget.launch.arguments;
+        final appLocale = AppLocalizations.localeFromTag(arguments.localeTag);
+        _theme.syncTypographyLocale(
+          appLocale: appLocale,
+          systemLocale: ui.PlatformDispatcher.instance.locale,
+          notify: false,
+        );
         return MaterialApp(
           navigatorKey: appNavigatorKey,
           title: arguments.title,
           debugShowCheckedModeBanner: false,
-          locale: AppLocalizations.localeFromTag(arguments.localeTag),
+          locale: appLocale,
           supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: const [
             AppLocalizations.delegate,
