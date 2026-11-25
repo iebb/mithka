@@ -282,6 +282,19 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(fromTop, 20, accuracy: 0.5)
   }
 
+  func testDesktopSystemFontsListsInstalledFamiliesAndNormalizesPostScriptNames() {
+    let families = DesktopSystemFontsPlugin.listFontFamilies()
+    XCTAssertFalse(families.isEmpty)
+    XCTAssertEqual(families.count, Set(families).count)
+    XCTAssertTrue(families.contains("Helvetica"))
+
+    let normalized = DesktopSystemFontsPlugin.normalizeFontFamilies([
+      "HelveticaNeue-Bold",
+      "NonExistentMithkaFont",
+    ])
+    XCTAssertEqual(normalized, ["Helvetica Neue", "NonExistentMithkaFont"])
+  }
+
   @MainActor
   private func makeMainWindow() -> MainFlutterWindow {
     let window = MainFlutterWindow(

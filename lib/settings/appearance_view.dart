@@ -3356,6 +3356,36 @@ int _popularSystemFontPriority(String family) {
       'monospace',
       'serif',
     ],
+    TargetPlatform.windows => const [
+      'Segoe UI',
+      'Segoe UI Variable',
+      'Yu Gothic UI',
+      'Microsoft YaHei UI',
+      'Malgun Gothic',
+      'Calibri',
+      'Arial',
+      'Cambria',
+      'Georgia',
+      'Times New Roman',
+      'Consolas',
+      'Cascadia Mono',
+      'Courier New',
+    ],
+    TargetPlatform.linux => const [
+      'Ubuntu',
+      'Cantarell',
+      'Noto Sans',
+      'DejaVu Sans',
+      'Liberation Sans',
+      'Noto Serif',
+      'DejaVu Serif',
+      'DejaVu Sans Mono',
+      'Liberation Mono',
+      'Ubuntu Mono',
+      'monospace',
+      'sans-serif',
+      'serif',
+    ],
     _ => const [
       'Arial',
       'Helvetica',
@@ -3441,7 +3471,14 @@ bool _isSystemMonospaceFontFamily(String family) {
   final normalized = family.toLowerCase();
   return normalized.contains('mono') ||
       normalized.contains('menlo') ||
-      normalized.contains('courier');
+      normalized.contains('monaco') ||
+      normalized.contains('courier') ||
+      normalized.contains('consolas') ||
+      normalized.contains('cascadia') ||
+      normalized.contains('lucida console') ||
+      normalized.contains('fira code') ||
+      normalized.contains('source code') ||
+      normalized.contains('inconsolata');
 }
 
 class TextFontView extends StatelessWidget {
@@ -4491,6 +4528,20 @@ class _MonospaceFontPickerViewState extends State<MonospaceFontPickerView> {
       TargetPlatform.android => const [
         'monospace',
         'Roboto Mono',
+        'Noto Sans Mono',
+      ],
+      TargetPlatform.windows => const [
+        'Consolas',
+        'Cascadia Mono',
+        'Cascadia Code',
+        'Courier New',
+        'Lucida Console',
+      ],
+      TargetPlatform.linux => const [
+        'monospace',
+        'DejaVu Sans Mono',
+        'Liberation Mono',
+        'Ubuntu Mono',
         'Noto Sans Mono',
       ],
       _ => const ['monospace', 'Courier New'],

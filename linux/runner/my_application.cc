@@ -1,6 +1,13 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <pango/pangocairo.h>
+
+#include <algorithm>
+#include <cctype>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
 #include <multi_window_manager/multi_window_manager_plugin.h>
@@ -11,6 +18,100 @@ struct _MyApplication {
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+static std::string trim_ascii_whitespace(const std::string& value) {
+  size_t start = 0;
+  while (start < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[start]))) {
+    ++start;
+  }
+  size_t end = value.size();
+  while (end > start &&
+         std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    --end;
+  }
+  return value.substr(start, end - start);
+}
+
+static FlValue* list_system_fonts() {
+  FlValue* list = fl_value_new_list();
+  PangoFontMap* font_map = pango_cairo_font_map_get_default();
+  if (font_map == nullptr) {
+    return list;
+  }
+
+  PangoFontFamily** families = nullptr;
+  int n_families = 0;
+  pango_font_map_list_families(font_map, &families, &n_families);
+
+  std::set<std::string> unique_names;
+  for (int i = 0; i < n_families; ++i) {
+    const char* name = pango_font_family_get_name(families[i]);
+    if (name == nullptr) {
+      continue;
+    }
+    std::string trimmed = trim_ascii_whitespace(name);
+    if (!trimmed.empty()) {
+      unique_names.insert(std::move(trimmed));
+    }
+  }
+  g_free(families);
+
+  std::vector<std::string> sorted(unique_names.begin(), unique_names.end());
+  std::sort(sorted.begin(), sorted.end(),
+            [](const std::string& a, const std::string& b) {
+              const size_t min_len = std::min(a.size(), b.size());
+              for (size_t i = 0; i < min_len; ++i) {
+                const int ca =
+                    std::tolower(static_cast<unsigned char>(a[i]));
+                const int cb =
+                    std::tolower(static_cast<unsigned char>(b[i]));
+                if (ca != cb) return ca < cb;
+              }
+              if (a.size() != b.size()) return a.size() < b.size();
+              return a < b;
+            });
+
+  for (const auto& name : sorted) {
+    fl_value_append_take(list, fl_value_new_string(name.c_str()));
+  }
+  return list;
+}
+
+static void fonts_method_call_cb(FlMethodChannel* channel,
+                                 FlMethodCall* method_call,
+                                 gpointer user_data) {
+  (void)channel;
+  (void)user_data;
+  g_autoptr(FlMethodResponse) response = nullptr;
+  const gchar* method = fl_method_call_get_name(method_call);
+  if (g_strcmp0(method, "listFonts") == 0) {
+    g_autoptr(FlValue) result = list_system_fonts();
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(method_call, response, nullptr);
+}
+
+static void register_system_fonts_channel(FlPluginRegistry* registry) {
+  g_autoptr(FlPluginRegistrar) registrar =
+      fl_plugin_registry_get_registrar_for_plugin(registry,
+                                                  "SystemFontsPlugin");
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  FlMethodChannel* channel = fl_method_channel_new(
+      fl_plugin_registrar_get_messenger(registrar), "mithka/fonts",
+      FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(channel, fonts_method_call_cb,
+                                            nullptr, nullptr);
+  g_object_set_data_full(G_OBJECT(registry), "mithka-fonts-channel", channel,
+                         g_object_unref);
+}
+
+static void register_all_plugins(FlPluginRegistry* registry) {
+  fl_register_plugins(registry);
+  register_system_fonts_channel(registry);
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -67,9 +168,9 @@ static void my_application_activate(GApplication* application) {
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
 
-  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  register_all_plugins(FL_PLUGIN_REGISTRY(view));
   multi_window_manager_linux_init(GTK_APPLICATION(application),
-                                  fl_register_plugins);
+                                  register_all_plugins);
   multi_window_manager_linux_detach_flutter_quit_on_window_close(window, view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
