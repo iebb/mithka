@@ -5,8 +5,8 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../../settings/ai_endpoint_style.dart';
-import '../../settings/ai_stdout_logger.dart';
+import '../../settings/ai_translation/ai_endpoint_style.dart';
+import '../../settings/ai_translation/ai_stdout_logger.dart';
 import 'unread_chat_summary_service.dart';
 
 class OpenAiCompatibleUnreadSummaryProvider

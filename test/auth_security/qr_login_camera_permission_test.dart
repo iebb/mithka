@@ -3,7 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/platform/camera_permission.dart';
-import 'package:mithka/settings/qr_login_scanner_view.dart';
+import 'package:mithka/settings/profile_account/qr_login_scanner_view.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';

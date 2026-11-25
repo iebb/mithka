@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_image_preview_window.dart';
+import 'package:mithka/app/desktop/desktop_image_preview_window.dart';
 import 'package:mithka/chat/chat_view.dart'
     show ChatView, clearChatMemoryCaches;
 import 'package:mithka/chat/media/full_image_viewer.dart';
 import 'package:mithka/components/photo_avatar.dart' show TDImage;
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/translation_controller.dart';
+import 'package:mithka/settings/ai_translation/translation_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';

@@ -20,8 +20,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
-import '../../app/desktop_mini_app_window.dart';
-import '../../app/desktop_window_drag_area.dart';
+import '../../app/desktop/desktop_mini_app_window.dart';
+import '../../app/desktop/desktop_window_drag_area.dart';
 import '../../auth/account_store.dart';
 import '../../chats/qr_scanner_view.dart';
 import '../../components/app_confirm_dialog.dart';

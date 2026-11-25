@@ -12,7 +12,7 @@ import '../components/app_icons.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import 'api_credentials_view.dart';
+import 'network_proxy/api_credentials_view.dart';
 
 class DeveloperSettingsView extends StatelessWidget {
   const DeveloperSettingsView({super.key});

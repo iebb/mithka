@@ -26,11 +26,11 @@ import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
-import 'auto_download_media_controller.dart';
-import 'auto_download_settings_view.dart';
-import 'downloads_view.dart';
-import 'network_usage_view.dart';
-import 'storage_usage_view.dart';
+import 'downloads_storage/auto_download_media_controller.dart';
+import 'downloads_storage/auto_download_settings_view.dart';
+import 'downloads_storage/downloads_view.dart';
+import 'downloads_storage/storage_usage_view.dart';
+import 'network_proxy/network_usage_view.dart';
 import 'video_playback_settings_view.dart';
 
 class GeneralSettingsView extends StatefulWidget {

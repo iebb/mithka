@@ -30,24 +30,24 @@ import '../security/local_app_lock_views.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'about_view.dart';
-import 'account_backup_view.dart';
 import 'advanced_settings_view.dart';
-import 'ai_settings_view.dart';
-import 'appearance_view.dart';
-import 'blocking_settings_view.dart';
+import 'ai_translation/ai_settings_view.dart';
+import 'ai_translation/translation_settings_view.dart';
+import 'appearance/appearance_view.dart';
 import 'chat_folder_management_view.dart';
 import 'desktop_hotkey_settings_view.dart';
 import 'developer_mode_controller.dart';
 import 'developer_settings_view.dart';
+import 'downloads_storage/storage_usage_view.dart';
 import 'feature_settings_view.dart';
 import 'general_settings_view.dart';
 import 'language_settings_view.dart';
+import 'network_proxy/proxy_view.dart';
 import 'notification_settings_view.dart';
-import 'privacy_detail_views.dart';
-import 'privacy_security_view.dart';
-import 'proxy_view.dart';
-import 'storage_usage_view.dart';
-import 'translation_settings_view.dart';
+import 'privacy_security/blocking_settings_view.dart';
+import 'privacy_security/privacy_detail_views.dart';
+import 'privacy_security/privacy_security_view.dart';
+import 'profile_account/account_backup_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({

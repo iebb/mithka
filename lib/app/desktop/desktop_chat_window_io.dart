@@ -1,0 +1,820 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:multi_window_manager/multi_window_manager.dart';
+
+import '../../settings/privacy_security/hidden_sender_store.dart';
+import '../../tdlib/json_helpers.dart';
+import '../../tdlib/td_client.dart';
+import '../chat_deep_link_controller.dart';
+import 'desktop_chat_window_models.dart';
+import 'desktop_child_window_startup.dart';
+import 'desktop_utility_window.dart';
+
+const _subscribeMethod = 'mithka.chat.td.subscribe';
+const _queryMethod = 'mithka.chat.td.query';
+const _sendMethod = 'mithka.chat.td.send';
+const _updateMethod = 'mithka.chat.td.update';
+const _openUtilityMethod = 'mithka.chat.utility.open';
+const _openPrimaryChatMethod = 'mithka.chat.primary-chat.open';
+const _presentationChangedMethod = 'mithka.chat.presentation.changed';
+const _hiddenSendersChangedMethod = 'mithka.chat.hidden-senders.changed';
+
+const _chatWindowSize = Size(1120, 760);
+const _chatWindowMinimumSize = Size(720, 520);
+
+const _blockedRequestTypes = <String>{
+  'close',
+  'destroy',
+  'logOut',
+  'setTdlibParameters',
+};
+
+bool get supportsDesktopChatWindows =>
+    Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+
+final _mainBridge = _DesktopChatMainBridge();
+Future<void> Function()? _childPresentationReload;
+DesktopChatWindowArguments? _childArguments;
+
+void attachDesktopChatMainProxy({
+  int? Function(int accountSlot)? accountUserIdForSlot,
+}) => _mainBridge.attach(accountUserIdForSlot: accountUserIdForSlot);
+
+void detachDesktopChatMainProxy() => _mainBridge.detach();
+
+void notifyDesktopChatAccountIdentityChanged() =>
+    _mainBridge.closeStaleAccountWindows();
+
+void attachDesktopChatChildPresentationReload(
+  Future<void> Function() callback,
+) => _childPresentationReload = callback;
+
+void detachDesktopChatChildPresentationReload() =>
+    _childPresentationReload = null;
+
+Map<String, Object?>? desktopChatChildWindowIdentity() =>
+    _childArguments?.toIpcJson();
+
+int? registeredDesktopChatWindowAccountSlot(int windowId, Object? source) =>
+    _mainBridge.registeredAccountSlot(windowId, source);
+
+({int accountSlot, int? accountUserId})?
+registeredDesktopChatWindowAccountIdentity(int windowId, Object? source) =>
+    _mainBridge.registeredAccountIdentity(windowId, source);
+
+Future<void> notifyDesktopChatPresentationChanged() async {
+  if (!supportsDesktopChatWindows || MultiWindowManager.current.id > 0) {
+    return;
+  }
+  _mainBridge.schedulePresentationChanged();
+  await DesktopUtilityWindowService.instance.notifyPresentationChanged();
+}
+
+Future<bool> openDesktopChatWindow(DesktopChatWindowArguments arguments) =>
+    _mainBridge.open(arguments);
+
+/// Tells the primary window that this chat child hid or showed a member,
+/// so it re-reads the list and passes the change on to the other windows.
+Future<void> notifyDesktopChatHiddenSendersChanged() async {
+  if (!supportsDesktopChatWindows) return;
+  final source = _childArguments;
+  if (source == null) return;
+  try {
+    if (MultiWindowManager.current.id <= 0) return;
+    await MultiWindowManager.current
+        .invokeMethodToWindow(
+          0,
+          _hiddenSendersChangedMethod,
+          source.toIpcJson(),
+        )
+        .timeout(const Duration(seconds: 5));
+  } on Object {
+    // The primary window may already be closing; the preference is durable.
+  }
+}
+
+Future<bool> openChatInPrimaryWindowFromDesktopChat(
+  ChatDeepLinkRequest request,
+) async {
+  if (!supportsDesktopChatWindows) return false;
+  // Only a registered child hands a conversation over, and `current` throws
+  // until the window manager is initialized — so the child check has to come
+  // first or the primary window's own callers blow up here.
+  final source = _childArguments;
+  if (source == null) return false;
+  try {
+    if (MultiWindowManager.current.id <= 0) return false;
+    final response = await MultiWindowManager.current
+        .invokeMethodToWindow(0, _openPrimaryChatMethod, {
+          ...source.toIpcJson(),
+          'chat': request.toDesktopIpcJson(),
+        })
+        .timeout(const Duration(seconds: 10));
+    return response is Map && response['ok'] == true;
+  } on Object {
+    return false;
+  }
+}
+
+Future<bool> requestDesktopUtilityWindowFromChat({
+  required DesktopChatWindowArguments requestingChat,
+  required DesktopUtilityWindowArguments utility,
+}) async {
+  if (!supportsDesktopChatWindows ||
+      !desktopChatUtilityRequestIsAllowed(
+        requestingChat: requestingChat,
+        utility: utility,
+      )) {
+    return false;
+  }
+  if (MultiWindowManager.current.id <= 0) {
+    return DesktopUtilityWindowService.instance.open(utility);
+  }
+  try {
+    final response = await MultiWindowManager.current
+        .invokeMethodToWindow(0, _openUtilityMethod, {
+          ...requestingChat.toIpcJson(),
+          'utility': utility.encode(),
+        })
+        .timeout(const Duration(seconds: 10));
+    return response is Map && response['ok'] == true;
+  } on Object {
+    return false;
+  }
+}
+
+Future<void> configureDesktopChatChildProxy(
+  DesktopChatWindowArguments arguments,
+) async {
+  _childArguments = arguments;
+  final proxy = _DesktopChatChildProxy(arguments);
+  TdClient.shared.configureProxy(
+    TdClientProxyTransport(
+      accountSlot: arguments.accountSlot,
+      accountUserId: arguments.accountUserId,
+      query: proxy.query,
+      send: proxy.send,
+      updates: proxy.updates,
+    ),
+  );
+  await proxy.subscribe();
+}
+
+Future<void> closeCurrentDesktopChatWindow() async {
+  if (!supportsDesktopChatWindows || MultiWindowManager.current.id <= 0) {
+    return;
+  }
+  try {
+    await MultiWindowManager.current.close();
+  } on Object {
+    // Closing an already-destroyed native child is a harmless no-op.
+  }
+}
+
+Widget buildDesktopChatWindowHost({
+  required DesktopChatWindowArguments initialArguments,
+  required Widget Function(
+    BuildContext context,
+    DesktopChatWindowArguments arguments,
+  )
+  builder,
+}) => Builder(builder: (context) => builder(context, initialArguments));
+
+WindowOptions _windowOptions(DesktopChatWindowArguments arguments) =>
+    WindowOptions(
+      size: _chatWindowSize,
+      minimumSize: _chatWindowMinimumSize,
+      center: true,
+      title: arguments.title,
+      backgroundColor: Color(arguments.palette.chatBackground),
+      titleBarStyle: TitleBarStyle.normal,
+      windowButtonVisibility: true,
+    );
+
+@visibleForTesting
+bool desktopChatRequestTypeIsAllowed(Object? type) =>
+    type is String && type.isNotEmpty && !_blockedRequestTypes.contains(type);
+
+@visibleForTesting
+bool desktopChatUtilityRequestIsAllowed({
+  required DesktopChatWindowArguments requestingChat,
+  required DesktopUtilityWindowArguments utility,
+}) {
+  if (utility.accountSlot != requestingChat.accountSlot ||
+      (utility.accountUserId != null &&
+          utility.accountUserId != requestingChat.accountUserId)) {
+    return false;
+  }
+  return switch (utility.kind) {
+    DesktopUtilityWindowKind.chatInfo =>
+      utility.chatId == requestingChat.chatId,
+    DesktopUtilityWindowKind.userProfile => (utility.userId ?? 0) > 0,
+    DesktopUtilityWindowKind.audioPicker ||
+    DesktopUtilityWindowKind.locationPicker ||
+    DesktopUtilityWindowKind.contactPicker ||
+    DesktopUtilityWindowKind.pollComposer ||
+    DesktopUtilityWindowKind.checklistComposer ||
+    DesktopUtilityWindowKind.scheduledMessages ||
+    DesktopUtilityWindowKind.richTextComposer ||
+    DesktopUtilityWindowKind.aiEditor =>
+      utility.chatId == requestingChat.chatId,
+    _ => false,
+  };
+}
+
+@visibleForTesting
+Map<String, dynamic>? desktopChatSanitizeRequest(Object? source) {
+  final request = desktopChatNormalizeIpcMap(source);
+  if (request == null) return null;
+  if (!desktopChatRequestTypeIsAllowed(request['@type'])) return null;
+  request
+    ..remove('@client_id')
+    ..remove('@extra');
+  return request;
+}
+
+/// StandardMessageCodec returns nested maps as `Map<Object?, Object?>`.
+/// Normalize the complete object graph once at the desktop IPC boundary so
+/// TDLib's typed JSON helpers can read messages, entities, and live updates.
+@visibleForTesting
+Map<String, dynamic>? desktopChatNormalizeIpcMap(Object? source) {
+  final normalized = _normalizeDesktopChatIpcValue(source);
+  return normalized is Map<String, dynamic> ? normalized : null;
+}
+
+Object? _normalizeDesktopChatIpcValue(Object? source) {
+  if (source is Map) {
+    final result = <String, dynamic>{};
+    for (final entry in source.entries) {
+      if (entry.key is String) {
+        result[entry.key as String] = _normalizeDesktopChatIpcValue(
+          entry.value,
+        );
+      }
+    }
+    return result;
+  }
+  if (source is TypedData) return source;
+  if (source is List) {
+    return source.map<Object?>(_normalizeDesktopChatIpcValue).toList();
+  }
+  return source;
+}
+
+Map<String, dynamic> _sanitizeTdObject(Map<String, dynamic> source) =>
+    <String, dynamic>{...source}
+      ..remove('@client_id')
+      ..remove('@extra');
+
+class _DesktopChatMainBridge with WindowListener {
+  final DesktopChatWindowRegistry _registry = DesktopChatWindowRegistry();
+  final DesktopChildWindowStartup _startup = DesktopChildWindowStartup();
+  final Map<int, DesktopChatWindowArguments> _argumentsByWindow = {};
+  final Map<int, TdAccountLease> _accountLeasesByWindow = {};
+  final Set<int> _subscribedWindows = {};
+  final Map<int, List<Map<String, dynamic>>> _pendingUpdatesByWindow = {};
+  StreamSubscription<Map<String, dynamic>>? _tdUpdates;
+  Timer? _pendingUpdateFlush;
+  Timer? _presentationChangedDebounce;
+  int? Function(int accountSlot)? _accountUserIdForSlot;
+  bool _attached = false;
+
+  void attach({int? Function(int accountSlot)? accountUserIdForSlot}) {
+    if (!_attached || accountUserIdForSlot != null) {
+      _accountUserIdForSlot = accountUserIdForSlot;
+    }
+    if (_attached || !supportsDesktopChatWindows) return;
+    try {
+      MultiWindowManager.current.addListener(this);
+      MultiWindowManager.addGlobalListener(this);
+      MultiWindowManager.current.activeWindows.addListener(
+        _handleActiveWindowsChanged,
+      );
+      _tdUpdates = TdClient.shared.subscribeAll().listen(_handleTdUpdate);
+      _attached = true;
+    } on Object {
+      // Portable builds may omit the native plugin. The primary process still
+      // owns TDLib; never create a second client as a fallback.
+    }
+  }
+
+  void detach() {
+    if (!_attached) return;
+    _attached = false;
+    MultiWindowManager.current.removeListener(this);
+    MultiWindowManager.removeGlobalListener(this);
+    MultiWindowManager.current.activeWindows.removeListener(
+      _handleActiveWindowsChanged,
+    );
+    unawaited(_tdUpdates?.cancel());
+    _tdUpdates = null;
+    _pendingUpdateFlush?.cancel();
+    _pendingUpdateFlush = null;
+    _pendingUpdatesByWindow.clear();
+    _presentationChangedDebounce?.cancel();
+    _presentationChangedDebounce = null;
+    for (final lease in _accountLeasesByWindow.values) {
+      unawaited(lease.release());
+    }
+    _accountLeasesByWindow.clear();
+    _argumentsByWindow.clear();
+    _subscribedWindows.clear();
+    _registry.clear();
+    _startup.clear();
+    _accountUserIdForSlot = null;
+  }
+
+  void schedulePresentationChanged() {
+    attach();
+    _presentationChangedDebounce?.cancel();
+    _presentationChangedDebounce = Timer(
+      const Duration(milliseconds: 250),
+      () => unawaited(_broadcastPresentationChanged()),
+    );
+  }
+
+  Future<void> _broadcastPresentationChanged() async {
+    _presentationChangedDebounce = null;
+    for (final windowId in _argumentsByWindow.keys.toList(growable: false)) {
+      try {
+        await MultiWindowManager.current.invokeMethodToWindow(
+          windowId,
+          _presentationChangedMethod,
+          const {'reloadPreferences': true},
+        );
+      } on Object {
+        _removeWindow(windowId);
+      }
+    }
+  }
+
+  Future<bool> open(DesktopChatWindowArguments arguments) async {
+    if (!supportsDesktopChatWindows) return false;
+    attach();
+    if (!_identityIsCurrent(arguments)) return false;
+    MultiWindowManager? createdWindow;
+    try {
+      final active = _startup.live(
+        await MultiWindowManager.current.getActiveWindowIds(),
+      );
+      final existing = _registry.activeWindowFor(arguments.key, active);
+      if (existing != null) {
+        final window = MultiWindowManager.fromWindowId(existing);
+        await window.show();
+        await window.focus();
+        return true;
+      }
+
+      // A chat child binds its TD proxy exactly once. Always create a fresh
+      // engine instead of reusing a hidden child that may belong to another
+      // account or to the video/image window type.
+      createdWindow = await MultiWindowManager.createWindow([
+        arguments.encode(),
+      ]);
+      if (createdWindow == null || createdWindow.id <= 0) return false;
+      if (!_registerWindow(createdWindow.id, arguments)) {
+        throw StateError('The source account is unavailable');
+      }
+
+      await createdWindow.waitUntilReadyToShow(_windowOptions(arguments));
+      await createdWindow.show();
+      await createdWindow.focus();
+      return true;
+    } on Object catch (error) {
+      final failedWindow = createdWindow;
+      if (failedWindow != null) {
+        _removeWindow(failedWindow.id);
+        try {
+          await failedWindow.close();
+        } on Object {
+          // The native child may already have closed during startup.
+        }
+      }
+      assert(() {
+        debugPrint('Desktop chat window open failed: $error');
+        return true;
+      }());
+      return false;
+    }
+  }
+
+  bool _registerWindow(int windowId, DesktopChatWindowArguments arguments) {
+    for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
+      if (entry.key == windowId || entry.value.key == arguments.key) {
+        _removeWindow(entry.key);
+      }
+    }
+    final lease = TdClient.shared.retainAccountSlot(arguments.accountSlot);
+    if (lease == null) return false;
+    _argumentsByWindow[windowId] = arguments;
+    _accountLeasesByWindow[windowId] = lease;
+    _registry.register(arguments.key, windowId);
+    _startup.begin(windowId);
+    return true;
+  }
+
+  @override
+  Future<dynamic> onEventFromWindow(
+    String eventName,
+    int fromWindowId,
+    dynamic arguments,
+  ) async {
+    final registered = _registeredRequest(fromWindowId, arguments);
+    if (registered == null) return null;
+    final accountLease = _accountLeasesByWindow[fromWindowId];
+    if (accountLease == null) return null;
+
+    switch (eventName) {
+      case _subscribeMethod:
+        _subscribedWindows.add(fromWindowId);
+        return {
+          'ok': true,
+          'updates': _bootstrapUpdates(accountLease.clientId),
+        };
+      case _queryMethod:
+        final request = arguments is Map
+            ? desktopChatSanitizeRequest(arguments['request'])
+            : null;
+        return request == null
+            ? const <String, dynamic>{
+                '@type': 'error',
+                'code': 400,
+                'message': 'Unsupported desktop chat request',
+              }
+            : _query(accountLease.clientId, request);
+      case _sendMethod:
+        final request = arguments is Map
+            ? desktopChatSanitizeRequest(arguments['request'])
+            : null;
+        if (request == null) return const {'ok': false};
+        return _send(accountLease.clientId, request);
+      case _openUtilityMethod:
+        final encoded = arguments is Map ? arguments['utility'] : null;
+        final utility = encoded is String
+            ? DesktopUtilityWindowArguments.tryParse(encoded)
+            : null;
+        if (utility == null ||
+            !desktopChatUtilityRequestIsAllowed(
+              requestingChat: registered,
+              utility: utility,
+            )) {
+          return const {'ok': false};
+        }
+        return {'ok': await DesktopUtilityWindowService.instance.open(utility)};
+      case _hiddenSendersChangedMethod:
+        await HiddenSenderStore.shared.reload();
+        return const {'ok': true};
+      case _openPrimaryChatMethod:
+        final request = arguments is Map
+            ? ChatDeepLinkRequest.tryParseDesktopIpc(arguments['chat'])
+            : null;
+        if (request == null) return const {'ok': false};
+        ChatDeepLinkController.shared.openChat(
+          chatId: request.chatId,
+          title: request.title,
+          messageId: request.messageId,
+          accountSlot: registered.accountSlot,
+          accountUserId: registered.accountUserId,
+          externalReply: request.externalReply,
+        );
+        try {
+          await MultiWindowManager.current.show();
+          await MultiWindowManager.current.focus();
+        } on Object {
+          // The queued primary-window deep link remains valid if native focus
+          // is unavailable on this desktop build.
+        }
+        return const {'ok': true};
+      default:
+        return null;
+    }
+  }
+
+  DesktopChatWindowArguments? _registeredRequest(int windowId, Object? source) {
+    if (windowId <= 0) return null;
+    final requestedKey = _keyFromIpc(source);
+    final registered = _argumentsByWindow[windowId];
+    if (requestedKey == null ||
+        registered == null ||
+        !desktopChatWindowRequestIsRegistered(
+          registry: _registry,
+          windowId: windowId,
+          requestedKey: requestedKey,
+        )) {
+      return null;
+    }
+    if (!_identityIsCurrent(registered)) {
+      _rejectStaleWindow(windowId);
+      return null;
+    }
+    return registered;
+  }
+
+  bool _identityIsCurrent(DesktopChatWindowArguments arguments) {
+    final resolver = _accountUserIdForSlot;
+    return resolver == null ||
+        resolver(arguments.accountSlot) == arguments.accountUserId;
+  }
+
+  void closeStaleAccountWindows() {
+    if (_accountUserIdForSlot == null) return;
+    for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
+      if (!_identityIsCurrent(entry.value)) _rejectStaleWindow(entry.key);
+    }
+  }
+
+  void _rejectStaleWindow(int windowId) {
+    _removeWindow(windowId);
+    unawaited(_closeWindow(windowId));
+  }
+
+  Future<void> _closeWindow(int windowId) async {
+    try {
+      await MultiWindowManager.fromWindowId(windowId).close();
+    } on Object {
+      // A stale or already-closed child is fully rejected locally.
+    }
+  }
+
+  int? registeredAccountSlot(int windowId, Object? source) =>
+      _registeredRequest(windowId, source)?.accountSlot;
+
+  ({int accountSlot, int? accountUserId})? registeredAccountIdentity(
+    int windowId,
+    Object? source,
+  ) {
+    final registered = _registeredRequest(windowId, source);
+    return registered == null
+        ? null
+        : (
+            accountSlot: registered.accountSlot,
+            accountUserId: registered.accountUserId,
+          );
+  }
+
+  DesktopChatWindowKey? _keyFromIpc(Object? source) {
+    if (source is! Map ||
+        source['accountSlot'] is! int ||
+        source['chatId'] is! int) {
+      return null;
+    }
+    final accountSlot = source['accountSlot']! as int;
+    final chatId = source['chatId']! as int;
+    if (accountSlot < 0 || chatId == 0) return null;
+    return DesktopChatWindowKey(accountSlot: accountSlot, chatId: chatId);
+  }
+
+  List<Map<String, dynamic>> _bootstrapUpdates(int clientId) {
+    return [
+      TdClient.shared.latestChatFoldersUpdateForClient(clientId),
+      TdClient.shared.latestEmojiChatThemesUpdateForClient(clientId),
+      TdClient.shared.latestTextCompositionStylesUpdateForClient(clientId),
+      ...TdClient.shared.latestCommunityUpdatesForClient(clientId),
+    ].whereType<Map<String, dynamic>>().map(_sanitizeTdObject).toList();
+  }
+
+  Future<Map<String, dynamic>> _query(
+    int clientId,
+    Map<String, dynamic> request,
+  ) async {
+    try {
+      return _sanitizeTdObject(
+        await TdClient.shared.queryTo(request, clientId),
+      );
+    } on TdError catch (error) {
+      return {'@type': 'error', 'code': error.code, 'message': error.message};
+    } on Object {
+      return const {
+        '@type': 'error',
+        'code': 500,
+        'message': 'Desktop chat request failed',
+      };
+    }
+  }
+
+  Map<String, Object?> _send(int clientId, Map<String, dynamic> request) {
+    TdClient.shared.sendTo(request, clientId);
+    return const {'ok': true};
+  }
+
+  void _handleTdUpdate(Map<String, dynamic> source) {
+    // No popped-out window is the common case; do not pay the sanitize copy.
+    if (_subscribedWindows.isEmpty) return;
+    final clientId = source.integer('@client_id');
+    if (clientId == null) return;
+    final accountSlot = TdClient.shared.slotForClient(clientId);
+    if (accountSlot == null) return;
+    final update = _sanitizeTdObject(source);
+    for (final entry in _argumentsByWindow.entries.toList(growable: false)) {
+      if (entry.value.accountSlot != accountSlot ||
+          !_subscribedWindows.contains(entry.key)) {
+        continue;
+      }
+      if (!_identityIsCurrent(entry.value)) {
+        _rejectStaleWindow(entry.key);
+        continue;
+      }
+      _enqueueUpdate(entry.key, update);
+    }
+  }
+
+  /// Buffers one frame's worth of updates per window.
+  ///
+  /// Every push is a StandardMessageCodec encode of the whole nested update
+  /// plus a platform-thread hop, and a parallel download burst emits hundreds
+  /// of `updateFile` per second — one hop per frame instead of one per update.
+  void _enqueueUpdate(int windowId, Map<String, dynamic> update) {
+    final pending = _pendingUpdatesByWindow.putIfAbsent(
+      windowId,
+      () => <Map<String, dynamic>>[],
+    );
+    final fileId = _progressFileId(update);
+    if (fileId != null &&
+        pending.isNotEmpty &&
+        _progressFileId(pending.last) == fileId) {
+      // updateFile is pure progress state, so a run of them for one file can
+      // collapse to the last without the child missing anything.
+      pending[pending.length - 1] = update;
+    } else {
+      pending.add(update);
+    }
+    _pendingUpdateFlush ??= Timer(
+      const Duration(milliseconds: 16),
+      _flushPendingUpdates,
+    );
+  }
+
+  static int? _progressFileId(Map<String, dynamic> update) {
+    if (update['@type'] != 'updateFile') return null;
+    final file = update['file'];
+    return file is Map ? (file['id'] as num?)?.toInt() : null;
+  }
+
+  void _flushPendingUpdates() {
+    _pendingUpdateFlush = null;
+    if (_pendingUpdatesByWindow.isEmpty) return;
+    final batches = _pendingUpdatesByWindow.entries.toList(growable: false);
+    _pendingUpdatesByWindow.clear();
+    for (final batch in batches) {
+      unawaited(_pushUpdate(batch.key, batch.value));
+    }
+  }
+
+  Future<void> _pushUpdate(
+    int windowId,
+    List<Map<String, dynamic>> updates,
+  ) async {
+    try {
+      await MultiWindowManager.current.invokeMethodToWindow(
+        windowId,
+        _updateMethod,
+        updates,
+      );
+    } on Object {
+      _removeWindow(windowId);
+    }
+  }
+
+  void _handleActiveWindowsChanged() {
+    // A child that has not been shown yet is not listed as active on Linux;
+    // only a window that was shown and then left the list has closed.
+    final active = _startup.live(
+      MultiWindowManager.current.activeWindows.value,
+    );
+    for (final windowId in _argumentsByWindow.keys.toList(growable: false)) {
+      if (!active.contains(windowId)) _removeWindow(windowId);
+    }
+    _registry.retainActive(active);
+  }
+
+  void _removeWindow(int windowId) {
+    _argumentsByWindow.remove(windowId);
+    final lease = _accountLeasesByWindow.remove(windowId);
+    if (lease != null) unawaited(lease.release());
+    _subscribedWindows.remove(windowId);
+    _pendingUpdatesByWindow.remove(windowId);
+    _registry.removeWindow(windowId);
+    _startup.end(windowId);
+  }
+
+  @override
+  void onWindowClose([int? windowId]) {
+    if (windowId != null && windowId > 0) _removeWindow(windowId);
+  }
+}
+
+class _DesktopChatChildProxy with WindowListener {
+  _DesktopChatChildProxy(this.arguments) {
+    MultiWindowManager.current.addListener(this);
+  }
+
+  final DesktopChatWindowArguments arguments;
+  final StreamController<Map<String, dynamic>> _updates =
+      StreamController.broadcast(sync: true);
+  bool _closed = false;
+
+  Stream<Map<String, dynamic>> get updates => _updates.stream;
+
+  Future<void> subscribe() async {
+    Map? response;
+    for (var attempt = 0; attempt < 30 && response == null; attempt += 1) {
+      try {
+        final value = await MultiWindowManager.current
+            .invokeMethodToWindow(0, _subscribeMethod, arguments.toIpcJson())
+            .timeout(const Duration(seconds: 2));
+        if (value is Map && value['ok'] == true) response = value;
+      } on Object {
+        // createWindow can finish before the primary registry entry becomes
+        // visible to the new engine. Retry only this bounded local handshake.
+      }
+      if (response == null && attempt < 29) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+    if (response == null) {
+      throw StateError('Primary chat transport is unavailable');
+    }
+    final bootstrap = response['updates'];
+    if (bootstrap is List) {
+      for (final update in bootstrap) {
+        final normalized = desktopChatNormalizeIpcMap(update);
+        if (normalized != null) _updates.add(normalized);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> query(Map<String, dynamic> request) async {
+    if (_closed) {
+      return const {
+        '@type': 'error',
+        'code': 503,
+        'message': 'Desktop chat transport is closed',
+      };
+    }
+    final response = await MultiWindowManager.current
+        .invokeMethodToWindow(0, _queryMethod, {
+          ...arguments.toIpcJson(),
+          'request': request,
+        })
+        .timeout(const Duration(seconds: 30));
+    return desktopChatNormalizeIpcMap(response) ??
+        const {
+          '@type': 'error',
+          'code': 500,
+          'message': 'Invalid primary chat response',
+        };
+  }
+
+  Future<void> send(Map<String, dynamic> request) async {
+    if (_closed) return;
+    await MultiWindowManager.current
+        .invokeMethodToWindow(0, _sendMethod, {
+          ...arguments.toIpcJson(),
+          'request': request,
+        })
+        .timeout(const Duration(seconds: 10));
+  }
+
+  @override
+  Future<dynamic> onEventFromWindow(
+    String eventName,
+    int fromWindowId,
+    dynamic eventArguments,
+  ) async {
+    if (fromWindowId != 0) return null;
+    if (eventName == _updateMethod) {
+      // The primary coalesces a frame's updates into one hop. A lone map is
+      // still accepted: silently dropping one would stop the window updating
+      // with nothing to show for it.
+      final batch = eventArguments is List ? eventArguments : [eventArguments];
+      for (final entry in batch) {
+        final update = desktopChatNormalizeIpcMap(entry);
+        if (!_closed && update != null) _updates.add(update);
+      }
+      return const {'ok': true};
+    }
+    if (eventName == _presentationChangedMethod) {
+      final callback = _childPresentationReload;
+      if (callback == null) return const {'ok': false};
+      await callback();
+      return const {'ok': true};
+    }
+    return null;
+  }
+
+  Future<void> _close() async {
+    if (_closed) return;
+    _closed = true;
+    MultiWindowManager.current.removeListener(this);
+    await TdClient.shared.closeProxy();
+    await _updates.close();
+  }
+
+  @override
+  void onWindowClose([int? windowId]) {
+    unawaited(_close());
+  }
+}

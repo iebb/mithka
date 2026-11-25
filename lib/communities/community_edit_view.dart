@@ -31,7 +31,7 @@ import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../media/app_asset_picker.dart';
-import '../settings/edit_field_view.dart';
+import '../settings/profile_account/edit_field_view.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
 import 'community_models.dart';

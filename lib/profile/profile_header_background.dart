@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../chat/stickers/custom_emoji.dart';
-import '../settings/accent_color_picker_view.dart';
+import '../settings/appearance/accent_color_picker_view.dart';
 import '../tdlib/json_helpers.dart';
 
 /// The one or two colors Telegram paints behind a user's profile photo, from

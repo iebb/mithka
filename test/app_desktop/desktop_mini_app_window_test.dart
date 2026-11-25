@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_mini_app_window.dart';
-import 'package:mithka/app/desktop_mini_app_window_io.dart';
+import 'package:mithka/app/desktop/desktop_mini_app_window.dart';
+import 'package:mithka/app/desktop/desktop_mini_app_window_io.dart';
 
 void main() {
   DesktopMiniAppWindowArguments arguments({

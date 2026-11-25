@@ -6,7 +6,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_locale_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import 'translation_settings_view.dart';
+import 'ai_translation/translation_settings_view.dart';
 
 class LanguageSettingsView extends StatelessWidget {
   const LanguageSettingsView({super.key});

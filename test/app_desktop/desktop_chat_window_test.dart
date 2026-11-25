@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_chat_window.dart';
-import 'package:mithka/app/desktop_chat_window_io.dart';
+import 'package:mithka/app/desktop/desktop_chat_window.dart';
+import 'package:mithka/app/desktop/desktop_chat_window_io.dart';
 
 void main() {
   test('IPC authorization fails closed for unknown or mismatched windows', () {

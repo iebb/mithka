@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../components/app_icons.dart';
 import '../../components/ui_components.dart';
 import '../../l10n/app_localizations.dart';
-import '../../settings/ai_settings_view.dart';
+import '../../settings/ai_translation/ai_settings_view.dart';
 import '../../theme/app_theme.dart';
 import 'unread_chat_summary_models.dart';
 import 'unread_chat_summary_service.dart';

@@ -19,7 +19,7 @@ import '../../components/confirm_dialog.dart';
 import '../../components/toast.dart';
 import '../../components/ui_components.dart';
 import '../../profile/qr_code_view.dart';
-import '../../settings/edit_field_view.dart';
+import '../../settings/profile_account/edit_field_view.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../theme/app_motion.dart';

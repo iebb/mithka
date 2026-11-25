@@ -9,7 +9,7 @@ import '../../components/app_icons.dart';
 import '../../components/photo_avatar.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/adaptive_platform.dart';
-import '../../settings/translation_controller.dart';
+import '../../settings/ai_translation/translation_controller.dart';
 import '../../tdlib/td_models.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/content_size.dart';

@@ -1,4 +1,4 @@
-import '../../settings/translation_controller.dart';
+import '../../settings/ai_translation/translation_controller.dart';
 import '../../tdlib/td_models.dart';
 
 String automaticTranslationSourceText(ChatMessage message) {

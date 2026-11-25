@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/ai_stdout_logger.dart';
+import 'package:mithka/settings/ai_translation/ai_stdout_logger.dart';
 
 void main() {
   test('metadata-only logging never writes request, result, or error text', () {

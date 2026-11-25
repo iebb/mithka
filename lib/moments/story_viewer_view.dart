@@ -35,7 +35,7 @@ import '../media/video_playback_reporting.dart';
 import '../media/video_view_compatibility.dart';
 import '../platform/adaptive_platform.dart';
 import '../platform/keyboard_modifiers.dart';
-import '../settings/ghost_mode_controller.dart';
+import '../settings/privacy_security/ghost_mode_controller.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_image_loader.dart';

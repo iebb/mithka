@@ -30,7 +30,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart' as desktop_record;
 
-import '../../app/desktop_utility_window.dart';
+import '../../app/desktop/desktop_utility_window.dart';
 import '../../app/diagnostic_breadcrumbs.dart';
 import '../../app/split_bottom_edge.dart';
 import '../../components/app_dialog.dart';
@@ -50,13 +50,13 @@ import '../../platform/desktop_screenshot.dart';
 import '../../platform/keyboard_image_paste.dart';
 import '../../platform/keyboard_modifiers.dart';
 import '../../platform/ohos_support.dart';
-import '../../settings/ai_settings_controller.dart';
-import '../../settings/ai_settings_view.dart';
-import '../../settings/apple_pcc_api.dart';
-import '../../settings/business_service.dart';
+import '../../settings/ai_translation/ai_settings_controller.dart';
+import '../../settings/ai_translation/ai_settings_view.dart';
+import '../../settings/ai_translation/apple_pcc_api.dart';
+import '../../settings/business/business_service.dart';
 import '../../settings/desktop_hotkey_controller.dart';
-import '../../settings/rich_message_relay_config.dart';
-import '../../settings/rich_message_relay_view.dart';
+import '../../settings/network_proxy/rich_message_relay_config.dart';
+import '../../settings/network_proxy/rich_message_relay_view.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_image_loader.dart';
@@ -6845,8 +6845,4 @@ class _ChatInputBarState extends State<ChatInputBar>
       ),
     ),
   );
-
-  // Kept for re-exposing the studio from a more appropriate surface later.
-
-  // ignore: unused_element
 }

@@ -74,7 +74,8 @@ iPhone、iPad 与 Mac 共用同一个 App Store 页面，TestFlight 链接同样
 ```text
 mithka/
 ├── lib/
-│   ├── app/              # 应用外壳、自适应分栏布局、深链路由与桌面多窗口
+│   ├── app/              # 应用外壳、自适应分栏布局、深链路由与标签栏框架
+│   │   └── desktop/      # 桌面多窗口、标题栏、快捷键宿主与侧边导航栏
 │   ├── auth/             # 登录流程、多账号存储、扫码与通行密钥认证
 │   ├── bot_api/          # Bot API 账号模式与本地兼容适配层
 │   ├── call/             # 一对一及群组通话界面与原生音视频桥接
@@ -101,7 +102,14 @@ mithka/
 │   ├── platform/         # 移动与桌面端原生平台通道封装
 │   ├── profile/          # 个人/群组资料页、二维码名片与藏品展示
 │   ├── security/         # 本地生物识别/密码锁与敏感剪贴板自动清理
-│   ├── settings/         # 外观、隐私、存储、代理、AI 与陌生消息过滤设置
+│   ├── settings/         # 设置主入口、通用、分组、通知与开发者选项
+│   │   ├── ai_translation/ # AI 接口配置、提示词与翻译偏好
+│   │   ├── appearance/   # 主题、应用图标、字体、字号与气泡外观
+│   │   ├── business/     # Telegram Business 工具与快捷回复设置
+│   │   ├── downloads_storage/ # 下载管理、保留策略、自动下载与存储占用
+│   │   ├── network_proxy/ # 代理、API 凭据、富文本中继、传输加速与流量统计
+│   │   ├── privacy_security/ # 通行密钥、屏蔽过滤、隐私与编译期门控项
+│   │   └── profile_account/ # 个人资料编辑、账号备份、历史迁移与扫码登录
 │   ├── tdlib/            # Dart FFI 绑定、后台接收 Isolate 与数据模型
 │   ├── theme/            # 设计令牌、浅/深色主题调色板与云端主题解析
 │   └── update/           # GitHub 版本源与桌面端自更新实现

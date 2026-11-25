@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/bot_api/bot_api_store.dart';
-import 'package:mithka/settings/download_storage.dart';
+import 'package:mithka/settings/downloads_storage/download_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

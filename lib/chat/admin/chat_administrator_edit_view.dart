@@ -4,7 +4,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import '../../components/app_dialog.dart';
 import '../../components/toast.dart';
 import '../../components/ui_components.dart';
-import '../../settings/edit_field_view.dart';
+import '../../settings/profile_account/edit_field_view.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../theme/app_theme.dart';

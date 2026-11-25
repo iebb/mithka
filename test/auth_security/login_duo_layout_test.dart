@@ -388,8 +388,10 @@ Future<void> _pump(
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   tester.view.physicalSize = size;
+  tester.view.display.size = size;
   tester.view.devicePixelRatio = 1;
   tester.view.padding = FakeViewPadding(top: top, bottom: _bottomInset);
+  addTearDown(tester.view.display.reset);
   addTearDown(tester.view.reset);
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();

@@ -18,9 +18,9 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/chat_deep_link_controller.dart';
-import '../settings/country_chat_blocker.dart';
-import '../settings/hidden_sender_store.dart';
-import '../settings/keyword_blocker.dart';
+import '../settings/privacy_security/country_chat_blocker.dart';
+import '../settings/privacy_security/hidden_sender_store.dart';
+import '../settings/privacy_security/keyword_blocker.dart';
 import '../tdlib/chat_membership.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';

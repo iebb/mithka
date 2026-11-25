@@ -7,7 +7,7 @@ import 'package:mithka/chat/messages/media_spoiler.dart';
 import 'package:mithka/chat/messages/message_bubble.dart';
 import 'package:mithka/components/photo_avatar.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/sensitive_content_controller.dart';
+import 'package:mithka/settings/privacy_security/sensitive_content_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/theme_controller.dart';

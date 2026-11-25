@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/ai_settings_controller.dart';
-import 'package:mithka/settings/apple_pcc_api.dart';
+import 'package:mithka/settings/ai_translation/ai_settings_controller.dart';
+import 'package:mithka/settings/ai_translation/apple_pcc_api.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

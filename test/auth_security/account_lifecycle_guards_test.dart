@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/blocked_user_service.dart';
-import 'package:mithka/settings/sensitive_content_controller.dart';
+import 'package:mithka/settings/privacy_security/blocked_user_service.dart';
+import 'package:mithka/settings/privacy_security/sensitive_content_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
 
 Map<String, dynamic> _blockedResponse(Iterable<int> userIds) => {

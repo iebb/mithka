@@ -26,7 +26,7 @@ import '../chat/links_search/telegram_link.dart';
 import '../components/toast.dart';
 import '../l10n/app_localizations.dart';
 import '../security/local_app_lock_controller.dart';
-import '../settings/proxy_config.dart';
+import '../settings/network_proxy/proxy_config.dart';
 import 'app_navigator.dart';
 
 /// What to do with a queued external link in the current app state.

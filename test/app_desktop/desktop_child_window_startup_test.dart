@@ -17,9 +17,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_child_window_startup.dart';
-import 'package:mithka/app/desktop_utility_window_io.dart';
-import 'package:mithka/app/desktop_utility_window_models.dart';
+import 'package:mithka/app/desktop/desktop_child_window_startup.dart';
+import 'package:mithka/app/desktop/desktop_utility_window_io.dart';
+import 'package:mithka/app/desktop/desktop_utility_window_models.dart';
 import 'package:mithka/tdlib/td_bindings.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:multi_window_manager/multi_window_manager.dart';

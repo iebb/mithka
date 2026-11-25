@@ -8,7 +8,7 @@ import 'package:mithka/chat/admin/group_management_view.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/contacts/contacts_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/edit_field_view.dart';
+import 'package:mithka/settings/profile_account/edit_field_view.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';

@@ -11,12 +11,12 @@ import '../l10n/app_localizations.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../theme/app_theme.dart';
-import 'bot_api_endpoint_view.dart';
-import 'kept_messages_settings_view.dart';
-import 'rich_message_relay_config.dart';
-import 'rich_message_relay_view.dart';
-import 'transfer_boost_config.dart';
-import 'transfer_boost_view.dart';
+import 'network_proxy/bot_api_endpoint_view.dart';
+import 'network_proxy/rich_message_relay_config.dart';
+import 'network_proxy/rich_message_relay_view.dart';
+import 'network_proxy/transfer_boost_config.dart';
+import 'network_proxy/transfer_boost_view.dart';
+import 'privacy_security/kept_messages_settings_view.dart';
 
 class AdvancedSettingsView extends StatefulWidget {
   const AdvancedSettingsView({super.key});

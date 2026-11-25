@@ -16,7 +16,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/ui_components.dart';
-import '../settings/proxy_status.dart';
+import '../settings/network_proxy/proxy_status.dart';
 import '../theme/app_theme.dart';
 
 /// The shortcut's tooltip: 代理, plus what the proxy is doing once one exists.

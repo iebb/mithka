@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/privacy_rule_options.dart';
+import 'package:mithka/settings/privacy_security/privacy_rule_options.dart';
 
 void main() {
   test('ignores exception rules and keeps the broad rule', () {

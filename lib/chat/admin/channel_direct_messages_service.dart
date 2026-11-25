@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../config/build_flags.dart';
-import '../../settings/ghost_mode_controller.dart';
+import '../../settings/privacy_security/ghost_mode_controller.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_models.dart';

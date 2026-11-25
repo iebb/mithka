@@ -14,8 +14,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../app/desktop/macos_desktop_title_bar.dart';
 import '../../app/ipad_window_chrome.dart';
-import '../../app/macos_desktop_title_bar.dart';
 import '../../components/app_icons.dart';
 import '../../components/app_interactive_surface.dart';
 import '../../components/toast.dart';

@@ -37,7 +37,7 @@ import '../components/ui_components.dart';
 import '../config/build_flags.dart';
 import '../l10n/app_localizations.dart';
 import '../notifications/notification_settings_payload.dart';
-import '../settings/ghost_mode_controller.dart';
+import '../settings/privacy_security/ghost_mode_controller.dart';
 import '../tdlib/forum_topic_index.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';

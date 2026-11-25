@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../app/desktop_utility_window.dart';
+import '../app/desktop/desktop_utility_window.dart';
 import '../auth/account_store.dart';
 import '../platform/adaptive_platform.dart';
 import 'profile_detail_view.dart';

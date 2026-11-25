@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_translation/ai_reply_service.dart';
-import 'package:mithka/settings/ai_endpoint_style.dart';
+import 'package:mithka/settings/ai_translation/ai_endpoint_style.dart';
 import 'package:mithka/tdlib/td_models.dart';
 
 void main() {

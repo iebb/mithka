@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/country_chat_blocker.dart';
-import 'package:mithka/settings/country_message_filter.dart';
+import 'package:mithka/settings/privacy_security/country_chat_blocker.dart';
+import 'package:mithka/settings/privacy_security/country_message_filter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

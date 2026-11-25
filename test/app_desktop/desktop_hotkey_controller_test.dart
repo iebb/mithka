@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
-import 'package:mithka/app/desktop_hotkey_host.dart';
+import 'package:mithka/app/desktop/desktop_hotkey_host.dart';
 import 'package:mithka/settings/desktop_hotkey_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
