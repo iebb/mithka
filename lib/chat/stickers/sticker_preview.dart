@@ -34,6 +34,9 @@ class StickerPreview extends StatelessWidget {
     if (item.isVideo) {
       final fallback = item.thumb?.id == item.id ? null : item.thumb;
       if (fallback != null) {
+        // Shares the sticker budget with the conversation: both are gated by
+        // what is on screen, so a visible grid cell is never starved by a
+        // sticker that scrolled out of the chat behind it.
         return VideoStickerView(file: file, fallback: fallback);
       }
       return Center(

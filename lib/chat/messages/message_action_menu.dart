@@ -14,6 +14,7 @@ import 'package:mithka/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../../components/app_icons.dart';
+import '../../components/app_press_ripple.dart';
 import '../../platform/adaptive_platform.dart';
 import '../../settings/translation_controller.dart';
 import '../../tdlib/td_models.dart';
@@ -52,26 +53,120 @@ enum MessageAction {
   saveToPhotos(HeroAppIcons.download, AppStringKeys.messageActionSaveToPhotos),
   saveAs(HeroAppIcons.download, AppStringKeys.messageActionSaveAs),
   multiSelect(HeroAppIcons.circleCheck, AppStringKeys.messageActionMultiSelect),
-  pinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionSetTodo),
-  unpinTodo(HeroAppIcons.thumbtack, AppStringKeys.messageActionUnsetTodo),
-  save(HeroAppIcons.solidStar, AppStringKeys.messageActionFavorite),
+  pinTodo(HeroAppIcons.pin, AppStringKeys.messageActionSetTodo),
+  unpinTodo(HeroAppIcons.pin, AppStringKeys.messageActionUnsetTodo),
+  save(HeroAppIcons.thumbtack, AppStringKeys.messageActionFavorite),
   saveSticker(HeroAppIcons.circlePlus, AppStringKeys.imageEditAdd),
   viewStickerSet(HeroAppIcons.tableCells, AppStringKeys.messageActionSticker),
+  viewEdits(HeroAppIcons.clock, AppStringKeys.messageActionViewEdits),
+  removeMirror(HeroAppIcons.trash, AppStringKeys.historyRemoveFromMirrorAction),
   delete(HeroAppIcons.trash, AppStringKeys.chatDelete);
 
   const MessageAction(this.glyph, this.label);
+
   final AppIconData glyph;
   final String label;
 
   bool get isDestructive =>
       this == MessageAction.delete ||
       this == MessageAction.report ||
-      this == MessageAction.block;
+      this == MessageAction.block ||
+      this == MessageAction.removeMirror;
 }
 
 enum MessageActionSource { normal, video }
 
 enum MessageActionMenuLayout { adaptive, grid, vertical }
+
+/// Where the phone overlay puts its two pieces, in overlay coordinates.
+@immutable
+class MessageActionOverlayPlacement {
+  const MessageActionOverlayPlacement({
+    required this.stripTop,
+    required this.menuTop,
+    required this.menuHeight,
+  });
+
+  /// Top edge of the reaction strip (unused when no strip is drawn).
+  final double stripTop;
+
+  /// Top edge of the action menu.
+  final double menuTop;
+
+  /// Height the menu is given; it scrolls when the height is a shortfall.
+  final double menuHeight;
+}
+
+/// The floating overlay's palette, taken from the app theme: a light card with
+/// dark ink in day mode, the raised dark surface at night.
+///
+/// The menu and the reaction strip above it draw from one palette so the pair
+/// reads as a single themed surface instead of a fixed dark HUD parked over a
+/// light chat.
+@immutable
+class MessageActionPalette {
+  const MessageActionPalette({
+    required this.surface,
+    required this.foreground,
+    required this.divider,
+    required this.destructive,
+    required this.shadow,
+    required this.chip,
+  });
+
+  factory MessageActionPalette.of(BuildContext context) {
+    final c = context.colors;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return MessageActionPalette(
+      // The raised surface the rest of the app floats over a page: white in
+      // day mode, the nav-bar grey at night.
+      surface: dark ? c.navBar : c.card,
+      foreground: c.textPrimary,
+      divider: c.divider,
+      destructive: dark ? _nightDestructive : AppTheme.tagRed,
+      shadow: Colors.black.withValues(alpha: dark ? 0.36 : 0.16),
+      chip: dark ? c.searchFill : c.groupedBackground,
+    );
+  }
+
+  /// The lighter red the dark HUD always used; the day palette takes the
+  /// app's own destructive red, which reads on a white card.
+  static const _nightDestructive = Color(0xFFFF6961);
+
+  final Color surface;
+  final Color foreground;
+  final Color divider;
+  final Color destructive;
+  final Color shadow;
+
+  /// Fill for a small control sitting on [surface] (the expand button, the
+  /// reaction tab strip).
+  final Color chip;
+}
+
+/// The line box a reaction glyph occupies at [fontSize] in the style it
+/// inherits, before any layout constraint.
+///
+/// Both strips draw their emoji with the app's text style (only the size
+/// differs), so the glyph's box follows the UI font, not the emoji font: a CJK
+/// text font's line box runs 1.35–1.45em, taller than the ~1.18em the emoji
+/// itself needs. Sizing the slot on a fixed constant (34pt for a 28pt emoji)
+/// therefore clipped the glyph top and bottom — `Text` clips to the paragraph's
+/// own box once the inherited line box outgrows the slot.
+double _reactionGlyphExtent(BuildContext context, double fontSize) {
+  final style = DefaultTextStyle.of(
+    context,
+  ).style.merge(TextStyle(fontSize: fontSize));
+  final painter = TextPainter(
+    text: TextSpan(text: '😀', style: style),
+    textDirection: Directionality.of(context),
+    textScaler: TextScaler.noScaling,
+    maxLines: 1,
+  )..layout();
+  final extent = painter.height;
+  painter.dispose();
+  return extent;
+}
 
 class QuickReactionBar extends StatelessWidget {
   const QuickReactionBar({
@@ -82,6 +177,28 @@ class QuickReactionBar extends StatelessWidget {
   });
 
   static const maxFittedButtonCount = 10;
+  static const emojiSize = 28.0;
+  static const _horizontalPadding = 8.0;
+  static const _verticalPadding = 6.0;
+
+  /// The slot never shrinks below the size the pill was designed around; it
+  /// GROWS when the inherited line box is taller than that constant, so the
+  /// glyph is never clipped by a font the strip does not control.
+  static const _minSlotExtent = 34.0;
+
+  /// Headroom around the measured line box for raster overshoot.
+  static const _glyphSlop = 2.0;
+
+  /// One emoji slot's height for [context]'s text metrics.
+  static double _slotExtent(BuildContext context) => math.max(
+    _minSlotExtent,
+    _reactionGlyphExtent(context, emojiSize) + _glyphSlop,
+  );
+
+  /// The pill's height at [context]'s text metrics — the host places the
+  /// action menu against exactly this, so it must not be a constant either.
+  static double heightFor(BuildContext context) =>
+      _slotExtent(context) + _verticalPadding * 2;
 
   final List<QuickReactionChoice> reactions;
   final ValueChanged<QuickReactionChoice> onReaction;
@@ -89,25 +206,29 @@ class QuickReactionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = MessageActionPalette.of(context);
     final buttonCount = reactions.length + 1;
+    final slotExtent = _slotExtent(context);
     return Container(
       key: const ValueKey('quick-reaction-bar'),
       width: MessageActionMenu.widthForAvailable(
         MediaQuery.sizeOf(context).width - 24,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: _horizontalPadding,
+        vertical: _verticalPadding,
+      ),
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadius.xxl),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
-        ],
+        boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 12)],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final buttons = <Widget>[
-            for (final emoji in reactions) _reactionButton(emoji),
-            _expandButton(),
+            for (final emoji in reactions)
+              _reactionButton(emoji, palette, slotExtent),
+            _expandButton(palette, slotExtent),
           ];
           if (buttonCount <= maxFittedButtonCount) {
             return Row(
@@ -124,52 +245,56 @@ class QuickReactionBar extends StatelessWidget {
     );
   }
 
-  Widget _reactionButton(QuickReactionChoice reaction) {
+  Widget _reactionButton(
+    QuickReactionChoice reaction,
+    MessageActionPalette palette,
+    double slotExtent,
+  ) {
     return GestureDetector(
       key: ValueKey('quick-reaction-${reaction.storageValue}'),
       behavior: HitTestBehavior.opaque,
       onTap: () => onReaction(reaction),
       child: SizedBox(
         width: 40,
-        height: 34,
+        height: slotExtent,
         child: Center(
           child: reaction.isCustom
               ? CustomEmojiView(
                   id: reaction.customEmojiId,
-                  size: 28,
-                  color: Colors.white,
+                  size: emojiSize,
+                  color: palette.foreground,
                 )
               : Text(
                   reaction.emoji,
                   textScaler: TextScaler.noScaling,
-                  style: const TextStyle(fontSize: 28),
+                  style: const TextStyle(fontSize: emojiSize),
                 ),
         ),
       ),
     );
   }
 
-  Widget _expandButton() {
+  Widget _expandButton(MessageActionPalette palette, double slotExtent) {
     return GestureDetector(
       key: const ValueKey('quick-reaction-expand'),
       behavior: HitTestBehavior.opaque,
       onTap: onExpand,
       child: SizedBox(
         width: 40,
-        height: 34,
+        height: slotExtent,
         child: Center(
           child: Container(
             width: 34,
             height: 34,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Color(0xFF3A3A3C),
+            decoration: BoxDecoration(
+              color: palette.chip,
               shape: BoxShape.circle,
             ),
-            child: const AppIcon(
+            child: AppIcon(
               HeroAppIcons.chevronDown,
               size: 22,
-              color: Colors.white,
+              color: palette.foreground,
             ),
           ),
         ),
@@ -196,9 +321,23 @@ class MenuReactionBar extends StatelessWidget {
   /// slots. More would either narrow the slots below a comfortable target or
   /// push the strip wider than the menu it sits on.
   static const maxReactionCount = 6;
-  static const height = 40.0;
+  static const emojiSize = 22.0;
   static const _padding = 5.0;
-  static const _emojiSize = 22.0;
+
+  /// The slot keeps the strip's designed 30pt floor and grows for an inherited
+  /// line box taller than that (see [_reactionGlyphExtent]).
+  static const _minSlotExtent = 30.0;
+  static const _glyphSlop = 2.0;
+
+  static double _slotExtent(BuildContext context) => math.max(
+    _minSlotExtent,
+    _reactionGlyphExtent(context, emojiSize) + _glyphSlop,
+  );
+
+  /// The strip's height at [context]'s text metrics. Desktop places the menu
+  /// below it by this figure, so it is measured, never assumed.
+  static double heightFor(BuildContext context) =>
+      _slotExtent(context) + _padding * 2;
 
   final List<QuickReactionChoice> reactions;
   final ValueChanged<QuickReactionChoice> onReaction;
@@ -206,21 +345,20 @@ class MenuReactionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = MessageActionPalette.of(context);
     final shown = reactions.take(maxReactionCount).toList(growable: false);
+    final slotExtent = _slotExtent(context);
     return Container(
       key: const ValueKey('menu-reaction-bar'),
-      height: height,
+      height: heightFor(context),
       padding: const EdgeInsets.symmetric(horizontal: _padding),
       decoration: BoxDecoration(
-        color: MessageActionMenu.surface,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.22),
-          width: 0.75,
-        ),
+        border: Border.all(color: palette.divider, width: 0.75),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.24),
+            color: palette.shadow,
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -232,28 +370,32 @@ class MenuReactionBar extends StatelessWidget {
             Expanded(
               child: _MenuReactionSlot(
                 key: ValueKey('menu-reaction-${reaction.storageValue}'),
+                palette: palette,
+                slotExtent: slotExtent,
                 onTap: () => onReaction(reaction),
                 child: reaction.isCustom
                     ? CustomEmojiView(
                         id: reaction.customEmojiId,
-                        size: _emojiSize,
-                        color: Colors.white,
+                        size: emojiSize,
+                        color: palette.foreground,
                       )
                     : Text(
                         reaction.emoji,
                         textScaler: TextScaler.noScaling,
-                        style: const TextStyle(fontSize: _emojiSize),
+                        style: const TextStyle(fontSize: emojiSize),
                       ),
               ),
             ),
           Expanded(
             child: _MenuReactionSlot(
               key: const ValueKey('menu-reaction-expand'),
+              palette: palette,
+              slotExtent: slotExtent,
               onTap: onExpand,
-              child: const AppIcon(
+              child: AppIcon(
                 HeroAppIcons.faceSmile,
                 size: 21,
-                color: Colors.white,
+                color: palette.foreground,
               ),
             ),
           ),
@@ -268,10 +410,16 @@ class MenuReactionBar extends StatelessWidget {
 class _MenuReactionSlot extends StatefulWidget {
   const _MenuReactionSlot({
     super.key,
+    required this.palette,
+    required this.slotExtent,
     required this.onTap,
     required this.child,
   });
 
+  final MessageActionPalette palette;
+
+  /// The glyph box the strip measured for its emoji — never a constant.
+  final double slotExtent;
   final VoidCallback onTap;
   final Widget child;
 
@@ -294,12 +442,12 @@ class _MenuReactionSlotState extends State<_MenuReactionSlot> {
         child: AnimatedContainer(
           duration: AppMotion.duration(context, AppMotion.quick),
           curve: AppMotion.standard,
-          height: MenuReactionBar.height - MenuReactionBar._padding * 2,
+          height: widget.slotExtent,
           margin: const EdgeInsets.symmetric(horizontal: 1),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: _hovering
-                ? Colors.white.withValues(alpha: 0.12)
+                ? widget.palette.foreground.withValues(alpha: 0.10)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
@@ -324,6 +472,8 @@ class MessageActionMenu extends StatelessWidget {
     this.allowSuggestedPostOffer = false,
     this.allowHideSender = false,
     this.allowCopyMessageLink = false,
+    this.allowViewEdits = false,
+    this.allowProtectedCopyForward = false,
     this.source = MessageActionSource.normal,
     this.showingOriginalTranslation = false,
     this.layout = MessageActionMenuLayout.adaptive,
@@ -346,12 +496,21 @@ class MessageActionMenu extends StatelessWidget {
 
   /// Offer [MessageAction.copyMessageLink] (server-verified availability).
   final bool allowCopyMessageLink;
+
+  /// Offer [MessageAction.viewEdits]: a kept edit trail exists for this
+  /// message in the local mirror (compile-time gated feature).
+  final bool allowViewEdits;
+
+  /// Offer 转发 inside a protected chat: the kept-messages copy-forward
+  /// toggle is on, so the selection re-sends as a copy instead of a forward
+  /// (the route _forwardMessage takes). Repeat rides the same copy route —
+  /// in a protected chat it is a no-quote copy re-send into the CURRENT
+  /// chat, which is exactly what the toggle enables.
+  final bool allowProtectedCopyForward;
   final MessageActionSource source;
   final bool showingOriginalTranslation;
   final MessageActionMenuLayout layout;
 
-  static const surface = Color(0xFF2C2C2E);
-  static const _destructive = Color(0xFFFF6961);
   static const _horizontalPadding = 6.0;
   static const _actionWidth = 58.0;
   static const _maxContentSizedActionCount = 10;
@@ -359,6 +518,19 @@ class MessageActionMenu extends StatelessWidget {
   static const preferredHeight = 152.0;
   static const desktopPreferredWidth = 220.0;
   static const _desktopActionHeight = 36.0;
+
+  /// Touch dropdown geometry, at the reference client's popup scale: a full-height row
+  /// per option, the menu's own text size, and a column that hugs its widest
+  /// label between a comfortable minimum and a cap — instead of the desktop's
+  /// pointer-sized rows squeezed into a fixed 220px column.
+  static const mobileDropdownRowHeight = 44.0;
+  static const mobileDropdownMinWidth = 196.0;
+  static const mobileDropdownMaxWidth = 300.0;
+  static const mobileDropdownVerticalInset = AppSpacing.md;
+  static const mobileDropdownHorizontalPadding = AppSpacing.xxl;
+  static const mobileDropdownIconSize = AppIconSize.xl;
+  static const mobileDropdownIconGap = AppSpacing.lg;
+  static const mobileDropdownTextSize = AppTextSize.bodyLarge;
   static const maxGridLabelCharacters = 8;
 
   @visibleForTesting
@@ -390,6 +562,40 @@ class MessageActionMenu extends StatelessWidget {
   }) =>
       math.min(math.max(0, count) * _desktopActionHeight + 12, availableHeight);
 
+  /// Height of the touch dropdown: one full row per option between its insets.
+  @visibleForTesting
+  static double mobileDropdownHeightForActionCount(
+    int count, {
+    required double availableHeight,
+  }) => math.min(
+    math.max(0, count) * mobileDropdownRowHeight +
+        mobileDropdownVerticalInset * 2,
+    availableHeight,
+  );
+
+  /// Width of the touch dropdown: its widest label plus the glyph column and
+  /// the row insets, between [mobileDropdownMinWidth] and
+  /// [mobileDropdownMaxWidth], never wider than [availableWidth].
+  @visibleForTesting
+  static double mobileDropdownWidthFor({
+    required double longestLabelWidth,
+    double availableWidth = double.infinity,
+  }) {
+    final fitted =
+        longestLabelWidth +
+        mobileDropdownIconSize +
+        mobileDropdownIconGap +
+        mobileDropdownHorizontalPadding * 2 +
+        _labelFitSlop;
+    return math.min(
+      fitted.clamp(mobileDropdownMinWidth, mobileDropdownMaxWidth),
+      availableWidth,
+    );
+  }
+
+  /// Rounding headroom so the widest label's own glyph raster never ellipsizes.
+  static const _labelFitSlop = 2.0;
+
   static Rect rectInOverlay(
     Rect globalRect, {
     required Offset Function(Offset) globalToLocal,
@@ -407,6 +613,80 @@ class MessageActionMenu extends StatelessWidget {
       return Rect.fromLTWH(pointer.dx, pointer.dy, 0, 0);
     }
     return targetRect;
+  }
+
+  /// Where the phone overlay puts its two pieces.
+  ///
+  /// The strip always rides ABOVE the menu — the pair reads as one stack in
+  /// that order, so a message near the bottom lifts the whole pair instead of
+  /// flipping the menu over the reactions.
+  ///
+  /// [menuStartsAtAnchorTop] is the dropdown (true), whose menu covers the
+  /// bubble right under the strip; the grid (false) keeps its menu below the
+  /// bubble and only lifts it when the bottom leaves no room. A null [anchor]
+  /// centres the pair in the viewport.
+  static MessageActionOverlayPlacement placeMobileOverlay({
+    required Rect? anchor,
+    required double preferredMenuHeight,
+    required double stripHeight,
+    required double topSafe,
+    required double bottomSafe,
+    required double viewportHeight,
+    required bool menuStartsAtAnchorTop,
+    double gap = 8,
+  }) {
+    final stripGap = stripHeight > 0 ? gap : 0.0;
+    final menuHeight = math.min(
+      preferredMenuHeight,
+      math.max(0.0, bottomSafe - topSafe - stripHeight - stripGap),
+    );
+    final stackHeight = stripHeight + stripGap + menuHeight;
+
+    if (anchor == null) {
+      final top = ((viewportHeight - stackHeight) / 2)
+          .clamp(topSafe, math.max(topSafe, bottomSafe - stackHeight))
+          .toDouble();
+      return MessageActionOverlayPlacement(
+        stripTop: top,
+        menuTop: top + stripHeight + stripGap,
+        menuHeight: menuHeight,
+      );
+    }
+
+    if (menuStartsAtAnchorTop) {
+      // Dropdown: the strip sits above the bubble and the menu directly under
+      // it. When the menu would run past the bottom, the pair slides up so the
+      // menu ends at the safe area and the strip stays on top of it.
+      final top = (anchor.top - stripHeight - stripGap)
+          .clamp(topSafe, math.max(topSafe, bottomSafe - stackHeight))
+          .toDouble();
+      return MessageActionOverlayPlacement(
+        stripTop: top,
+        menuTop: top + stripHeight + stripGap,
+        menuHeight: menuHeight,
+      );
+    }
+
+    // Grid: strip above the bubble, menu under the bubble. Lift both only when
+    // the bottom would cut the menu off, and keep the strip above the menu.
+    final stripTop = (anchor.top - stripHeight - stripGap)
+        .clamp(topSafe, math.max(topSafe, bottomSafe - stripHeight))
+        .toDouble();
+    var menuTop = anchor.bottom + stripGap;
+    if (menuTop + menuHeight > bottomSafe) {
+      menuTop = math.max(
+        topSafe + stripHeight + stripGap,
+        bottomSafe - menuHeight,
+      );
+    }
+    final liftedStripTop = math
+        .min(stripTop, math.max(topSafe, menuTop - stripGap - stripHeight))
+        .toDouble();
+    return MessageActionOverlayPlacement(
+      stripTop: liftedStripTop,
+      menuTop: menuTop,
+      menuHeight: menuHeight,
+    );
   }
 
   static Offset verticalOriginForPointer({
@@ -479,7 +759,10 @@ class MessageActionMenu extends StatelessWidget {
     required bool isDesktop,
     required bool isMacOS,
   }) {
-    if (message.isCall) return [MessageAction.delete];
+    // Call logs aren't reactable, but their delivery metadata stays useful.
+    if (message.isCall) {
+      return [MessageAction.delete];
+    }
     final result = <MessageAction>[];
     if (_hasCopyableText) {
       result.add(MessageAction.copy);
@@ -517,20 +800,24 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.suggestOffer);
     }
     if (allowReply) {
+      // the reference client parity: quote lives in the text-selection flow (the
+      // reply panel here), not as a separate long-press menu entry — a
+      // desktop transcript selection becomes Quote directly; everywhere else
+      // the single Reply action opens the banner whose panel quotes.
       final canQuote = allowQuote && canQuoteMessageText(message);
       result.add(
         isDesktop && canQuote && hasSelectedQuote
             ? MessageAction.quote
             : MessageAction.reply,
       );
-      if (!isDesktop && canQuote) {
-        result.add(MessageAction.quote);
-      }
     }
     if (message.hasActualReplies) {
       result.add(MessageAction.replies);
     }
     if (allowForwarding) {
+      result.add(MessageAction.forward);
+      result.add(MessageAction.repeat);
+    } else if (allowProtectedCopyForward && !message.isService) {
       result.add(MessageAction.forward);
       result.add(MessageAction.repeat);
     }
@@ -558,6 +845,8 @@ class MessageActionMenu extends StatelessWidget {
       result.add(MessageAction.viewStickerSet);
     }
     if (allowHideSender) result.add(MessageAction.hideSender);
+    if (allowViewEdits) result.add(MessageAction.viewEdits);
+    if (message.mirrorEntry != null) result.add(MessageAction.removeMirror);
     result.add(MessageAction.delete);
     return result;
   }
@@ -566,14 +855,62 @@ class MessageActionMenu extends StatelessWidget {
     if (!_usesVerticalLayout(context)) {
       return preferredHeight;
     }
-    return desktopHeightForActionCount(
-      _actions(
-        context.read<TranslationController>(),
-        isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
-        isMacOS: Theme.of(context).platform == TargetPlatform.macOS,
-      ).length,
-      availableHeight: MediaQuery.sizeOf(context).height - 24,
+    final actions = _actions(
+      context.read<TranslationController>(),
+      isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+      isMacOS: Theme.of(context).platform == TargetPlatform.macOS,
     );
+    final availableHeight = MediaQuery.sizeOf(context).height - 24;
+    return isDesktopTargetPlatform(Theme.of(context).platform)
+        ? desktopHeightForActionCount(
+            actions.length,
+            availableHeight: availableHeight,
+          )
+        : mobileDropdownHeightForActionCount(
+            actions.length,
+            availableHeight: availableHeight,
+          );
+  }
+
+  /// The column's width: fixed and compact on a pointer, hugging its widest
+  /// label on the touch dropdown. Used by the host, which sizes the menu it
+  /// places so the placement math and the drawn surface agree.
+  double preferredWidthFor(BuildContext context) {
+    if (!_usesVerticalLayout(context)) return preferredWidth;
+    final platform = Theme.of(context).platform;
+    if (isDesktopTargetPlatform(platform)) return desktopPreferredWidth;
+    final actions = _actions(
+      context.read<TranslationController>(),
+      isDesktop: false,
+      isMacOS: platform == TargetPlatform.macOS,
+    );
+    return mobileDropdownWidthFor(
+      longestLabelWidth: _widestLabelWidth(context, actions),
+      availableWidth: math.max(0.0, MediaQuery.sizeOf(context).width - 20),
+    );
+  }
+
+  /// How wide the touch dropdown's widest option label draws.
+  static double _widestLabelWidth(
+    BuildContext context,
+    List<MessageAction> actions,
+  ) {
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    );
+    var widest = 0.0;
+    for (final action in actions) {
+      painter.text = TextSpan(
+        text: AppStrings.t(action.label),
+        style: const TextStyle(fontSize: mobileDropdownTextSize),
+      );
+      painter.layout();
+      widest = math.max(widest, painter.width);
+    }
+    painter.dispose();
+    return widest;
   }
 
   @override
@@ -584,7 +921,11 @@ class MessageActionMenu extends StatelessWidget {
       isMacOS: Theme.of(context).platform == TargetPlatform.macOS,
     );
     if (_usesVerticalLayout(context)) {
-      return _VerticalActionList(actions: actions, onSelect: onSelect);
+      return _VerticalActionList(
+        actions: actions,
+        onSelect: onSelect,
+        compact: isDesktopTargetPlatform(Theme.of(context).platform),
+      );
     }
     final rowCounts = rowCountsForActionCount(actions.length);
     final firstRowCount = rowCounts.first;
@@ -609,17 +950,19 @@ class MessageActionMenu extends StatelessWidget {
             (math.max(columnCount, 1) * _actionWidth) +
             (_horizontalPadding * 2);
         final contentWidth = math.max(menuWidth, actionContentWidth);
+        final palette = MessageActionPalette.of(context);
         return Container(
           key: const ValueKey('message-action-menu-surface'),
           width: menuWidth,
           padding: const EdgeInsets.symmetric(vertical: 11),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: surface,
+            color: palette.surface,
             borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: palette.divider, width: 0.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
+                color: palette.shadow,
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -638,15 +981,20 @@ class MessageActionMenu extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _ActionRow(actions: firstRow, onSelect: onSelect),
+                    _ActionRow(
+                      actions: firstRow,
+                      onSelect: onSelect,
+                      palette: palette,
+                    ),
                     if (secondRow.isNotEmpty) ...[
                       const SizedBox(height: 10),
-                      Container(
-                        height: 1,
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
+                      Container(height: 1, color: palette.divider),
                       const SizedBox(height: 10),
-                      _ActionRow(actions: secondRow, onSelect: onSelect),
+                      _ActionRow(
+                        actions: secondRow,
+                        onSelect: onSelect,
+                        palette: palette,
+                      ),
                     ],
                   ],
                 ),
@@ -660,39 +1008,58 @@ class MessageActionMenu extends StatelessWidget {
 }
 
 class _VerticalActionList extends StatelessWidget {
-  const _VerticalActionList({required this.actions, required this.onSelect});
+  const _VerticalActionList({
+    required this.actions,
+    required this.onSelect,
+    required this.compact,
+  });
 
   final List<MessageAction> actions;
   final ValueChanged<MessageAction> onSelect;
+
+  /// Draw the pointer-sized column (the desktop context menu) instead of the
+  /// touch dropdown's full-size rows.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final availableWidth = MediaQuery.sizeOf(context).width - 20;
     final availableHeight = MediaQuery.sizeOf(context).height - 24;
-    final width = math.min(
-      MessageActionMenu.desktopPreferredWidth,
-      availableWidth,
-    );
-    final height = MessageActionMenu.desktopHeightForActionCount(
-      actions.length,
-      availableHeight: availableHeight,
-    );
+    final width = compact
+        ? math.min(MessageActionMenu.desktopPreferredWidth, availableWidth)
+        : MessageActionMenu.mobileDropdownWidthFor(
+            longestLabelWidth: MessageActionMenu._widestLabelWidth(
+              context,
+              actions,
+            ),
+            availableWidth: availableWidth,
+          );
+    final height = compact
+        ? MessageActionMenu.desktopHeightForActionCount(
+            actions.length,
+            availableHeight: availableHeight,
+          )
+        : MessageActionMenu.mobileDropdownHeightForActionCount(
+            actions.length,
+            availableHeight: availableHeight,
+          );
+    final dividerInset = compact ? 10.0 : AppSpacing.lg;
+    final palette = MessageActionPalette.of(context);
     return Container(
       key: const ValueKey('message-action-menu-surface'),
       width: width,
       height: height,
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: EdgeInsets.symmetric(
+        vertical: compact ? 6 : MessageActionMenu.mobileDropdownVerticalInset,
+      ),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: MessageActionMenu.surface,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadius.control),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.22),
-          width: 0.75,
-        ),
+        border: Border.all(color: palette.divider, width: 0.75),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.24),
+            color: palette.shadow,
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -715,44 +1082,14 @@ class _VerticalActionList extends StatelessWidget {
                 Container(
                   key: const ValueKey('message-action-destructive-divider'),
                   height: 1,
-                  margin: const EdgeInsets.symmetric(horizontal: 10),
-                  color: Colors.white.withValues(alpha: 0.10),
+                  margin: EdgeInsets.symmetric(horizontal: dividerInset),
+                  color: palette.divider,
                 ),
-              GestureDetector(
-                key: ValueKey('message-action-${action.name}'),
-                behavior: HitTestBehavior.opaque,
+              _VerticalActionRow(
+                action: action,
+                compact: compact,
+                palette: palette,
                 onTap: () => onSelect(action),
-                child: SizedBox(
-                  height: MessageActionMenu._desktopActionHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        AppIcon(
-                          action.glyph,
-                          size: 17,
-                          color: action.isDestructive
-                              ? MessageActionMenu._destructive
-                              : Colors.white,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            AppStrings.t(action.label),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: action.isDestructive
-                                  ? MessageActionMenu._destructive
-                                  : Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
             ],
           );
@@ -762,11 +1099,85 @@ class _VerticalActionList extends StatelessWidget {
   }
 }
 
+/// One option of the vertical column: glyph in its slot, label, and — on
+/// touch — a full-height row with a press highlight, so the whole row answers
+/// a fingertip instead of only the line of type.
+class _VerticalActionRow extends StatelessWidget {
+  const _VerticalActionRow({
+    required this.action,
+    required this.compact,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final MessageAction action;
+  final bool compact;
+  final MessageActionPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = action.isDestructive
+        ? palette.destructive
+        : palette.foreground;
+    final row = SizedBox(
+      height: compact
+          ? MessageActionMenu._desktopActionHeight
+          : MessageActionMenu.mobileDropdownRowHeight,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact
+              ? AppSpacing.lg
+              : MessageActionMenu.mobileDropdownHorizontalPadding,
+        ),
+        child: Row(
+          children: [
+            AppIcon(
+              action.glyph,
+              size: compact ? 17 : MessageActionMenu.mobileDropdownIconSize,
+              color: color,
+            ),
+            SizedBox(
+              width: compact ? 10 : MessageActionMenu.mobileDropdownIconGap,
+            ),
+            Expanded(
+              child: Text(
+                AppStrings.t(action.label),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact
+                      ? AppTextSize.callout
+                      : MessageActionMenu.mobileDropdownTextSize,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return GestureDetector(
+      key: ValueKey('message-action-${action.name}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: compact
+          ? row
+          : AppPressRipple(color: palette.foreground, child: row),
+    );
+  }
+}
+
 class _ActionRow extends StatelessWidget {
-  const _ActionRow({required this.actions, required this.onSelect});
+  const _ActionRow({
+    required this.actions,
+    required this.onSelect,
+    required this.palette,
+  });
 
   final List<MessageAction> actions;
   final ValueChanged<MessageAction> onSelect;
+  final MessageActionPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -784,7 +1195,7 @@ class _ActionRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (action == MessageAction.repeat)
-                    const SizedBox(
+                    SizedBox(
                       height: 22,
                       child: Center(
                         child: Text(
@@ -792,7 +1203,7 @@ class _ActionRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            color: palette.foreground,
                           ),
                         ),
                       ),
@@ -802,8 +1213,8 @@ class _ActionRow extends StatelessWidget {
                       action.glyph,
                       size: 22,
                       color: action.isDestructive
-                          ? MessageActionMenu._destructive
-                          : Colors.white,
+                          ? palette.destructive
+                          : palette.foreground,
                     ),
                   const SizedBox(height: 5),
                   Text(
@@ -814,8 +1225,8 @@ class _ActionRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       color: action.isDestructive
-                          ? MessageActionMenu._destructive
-                          : Colors.white,
+                          ? palette.destructive
+                          : palette.foreground,
                     ),
                   ),
                 ],

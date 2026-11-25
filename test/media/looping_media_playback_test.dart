@@ -12,6 +12,23 @@ void main() {
     expect(fvpVideoDecoders(TargetPlatform.macOS), isEmpty);
   });
 
+  test('looping WebM stickers decode through FFmpeg on mobile', () {
+    // MDK's hardware VP9 paths (VT on Apple, AMediaCodec on Android) present
+    // alpha WebM frames ahead of the media clock, so stickers loop too fast.
+    expect(webmLoopingDecoderOverride(TargetPlatform.iOS), ['FFmpeg']);
+    expect(webmLoopingDecoderOverride(TargetPlatform.android), ['FFmpeg']);
+  });
+
+  test('every other platform keeps its default video decoder order', () {
+    for (final platform in TargetPlatform.values) {
+      if (platform == TargetPlatform.iOS ||
+          platform == TargetPlatform.android) {
+        continue;
+      }
+      expect(webmLoopingDecoderOverride(platform), isNull);
+    }
+  });
+
   group('LoopingMediaPlayerPool', () {
     test('caps concurrent leases at the configured maximum', () {
       final pool = LoopingMediaPlayerPool(maximumPlayers: 4);

@@ -25,6 +25,14 @@ class ScaledAppView extends StatelessWidget {
   final double interfaceScale;
   final Widget child;
 
+  /// The rendered interface scale of the [ScaledAppView] above [context]:
+  /// one virtual point inside it covers this many window points. 1 outside.
+  static double scaleOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<_InterfaceScaleScope>()
+          ?.scale ??
+      1;
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -60,7 +68,10 @@ class ScaledAppView extends StatelessWidget {
               height: virtualSize.height,
               child: MediaQuery(
                 data: scaledMedia,
-                child: ContentSizeRoot(appScale: textScale, child: child),
+                child: _InterfaceScaleScope(
+                  scale: scale,
+                  child: ContentSizeRoot(appScale: textScale, child: child),
+                ),
               ),
             ),
           ),
@@ -68,4 +79,14 @@ class ScaledAppView extends StatelessWidget {
       ),
     );
   }
+}
+
+class _InterfaceScaleScope extends InheritedWidget {
+  const _InterfaceScaleScope({required this.scale, required super.child});
+
+  final double scale;
+
+  @override
+  bool updateShouldNotify(_InterfaceScaleScope oldWidget) =>
+      scale != oldWidget.scale;
 }

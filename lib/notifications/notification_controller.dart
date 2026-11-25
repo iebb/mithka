@@ -164,7 +164,9 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
     await _plugin.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(
+          '@mipmap/ic_launcher_letter_m_neutral',
+        ),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,
@@ -382,7 +384,10 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       return;
     }
 
-    final messageText = _notificationText(content);
+    final messageText = _notificationText(
+      content,
+      isChannel: TDParse.chatKind(chat) == ChatKind.channel,
+    );
     if (KeywordBlocker.shared.matches(messageText)) return;
     // Same id space as ChatMessage.senderId: users positive, chats negative.
     final sender = raw.obj('sender_id');
@@ -1074,8 +1079,14 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     );
   }
 
-  String _notificationText(Map<String, dynamic> content) {
-    final text = TDParse.messageText(content).replaceAll('\n', ' ').trim();
+  String _notificationText(
+    Map<String, dynamic> content, {
+    bool isChannel = false,
+  }) {
+    final text = TDParse.messageText(
+      content,
+      isChannel: isChannel,
+    ).replaceAll('\n', ' ').trim();
     return text.isEmpty
         ? AppStrings.t(AppStringKeys.chatSearchMessageResultLabel)
         : text;
@@ -1166,6 +1177,15 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
 
   void _openNotification(NotificationResponse? response) {
     final target = NotificationTarget.fromLocalPayload(response?.payload);
+    if (target != null) _openTarget(target);
+  }
+
+  /// Opens the chat named by a notification payload that reached the app
+  /// through a native surface (the UnifiedPush fallback notification). The
+  /// payload is the same JSON form [NotificationTarget.fromLocalPayload]
+  /// already understands.
+  void openPayload(String payload) {
+    final target = NotificationTarget.fromLocalPayload(payload);
     if (target != null) _openTarget(target);
   }
 

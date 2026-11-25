@@ -328,6 +328,12 @@ extension _ChatInputBarBots on _ChatInputBarState {
       _syncedComposerFocusTick = focusTick;
       _focusComposerForTranscriptReply();
     }
+    final dismissTick = vm.composerDismissTick;
+    final dismissRequested = dismissTick != _syncedComposerDismissTick;
+    if (dismissRequested) {
+      _syncedComposerDismissTick = dismissTick;
+      _setPanel(_Panel.none);
+    }
     final hadText = _hasText;
     final controllerTextBeforeSync = _controller.text;
     final previousVmState = _syncedVmState;

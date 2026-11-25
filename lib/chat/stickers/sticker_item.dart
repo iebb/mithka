@@ -19,6 +19,7 @@ class StickerItem {
     this.isVideo = false,
     this.thumb,
     this.customEmojiId = 0,
+    this.setId = 0,
   });
   final int id;
   final String? remoteId;
@@ -29,4 +30,8 @@ class StickerItem {
   final bool isVideo; // .webm (VP9 video sticker)
   final TdFileRef? thumb; // for display in the picker
   final int customEmojiId; // custom_emoji_id (premium emoji), or 0 if regular
+
+  /// Owning sticker set (td_api.tl `sticker.set_id`), or 0 when unknown.
+  /// Long-press tile actions use it to open the set's detail page.
+  final int setId;
 }

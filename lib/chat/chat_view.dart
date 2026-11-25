@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app/active_conversation.dart';
 import '../app/adaptive_split_layout.dart';
 import '../app/app_navigator.dart';
+import '../app/chat_deep_link_controller.dart';
 import '../app/chat_pane.dart';
 import '../app/desktop_video_window.dart';
 import '../app/ipad_window_chrome.dart';
@@ -35,9 +36,11 @@ import '../channels/topic_list_actions.dart';
 import '../channels/topic_list_host.dart';
 import '../channels/topic_list_row.dart';
 import '../channels/topic_navigation.dart';
+import '../chats/chat_list_view.dart';
 import '../chats/search_token_views.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
+import '../components/app_anchored_menu.dart';
 import '../components/app_confirm_dialog.dart';
 import '../components/app_dialog.dart';
 import '../components/app_icons.dart';
@@ -48,6 +51,10 @@ import '../components/full_page_back_swipe.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
+import '../config/build_flags.dart';
+import '../history/message_history_revision_view.dart';
+import '../history/message_history_settings.dart';
+import '../history/message_history_store.dart';
 import '../media/app_asset_picker.dart';
 import '../media/media_metadata.dart';
 import '../moments/moments_view.dart' show ChannelMomentsView;
@@ -95,6 +102,7 @@ import 'ai_translation/unread_chat_summary_service.dart';
 import 'ai_translation/unread_chat_summary_view.dart';
 import 'appearance/chat_appearance_message_preview.dart';
 import 'appearance/chat_wallpaper.dart';
+import 'channel_bottom_panel.dart';
 import 'chat_auto_scroll_policy.dart';
 import 'chat_first_contact_card.dart';
 import 'chat_first_contact_info.dart';
@@ -113,7 +121,10 @@ import 'composer/chat_media_drop_region.dart';
 import 'composer/checklist_composer_view.dart';
 import 'composer/media_send_preview_view.dart';
 import 'composer/outgoing_attachment.dart';
+import 'composer_reply_options_sheet.dart';
 import 'forum_topic_transcript.dart';
+import 'forward_handoff.dart';
+import 'forward_options_sheet.dart';
 import 'links_search/chat_message_search_bar.dart';
 import 'links_search/chat_message_search_controller.dart';
 import 'links_search/internal_chat_link_router.dart';
@@ -146,6 +157,7 @@ import 'messages/quick_reaction_choice.dart';
 import 'messages/shared_contact_sheet.dart';
 import 'mini_apps/bot_api_access_warning.dart';
 import 'mini_apps/telegram_mini_app_view.dart';
+import 'protected_forward.dart';
 import 'stickers/custom_emoji.dart';
 import 'stickers/emoji_store.dart';
 import 'stickers/sticker_set_detail_view.dart';
@@ -153,12 +165,12 @@ import 'stickers/sticker_viewer.dart';
 import 'transcript_entry_boundary.dart';
 import 'transcript_pivot_partition.dart';
 
+part 'chat_view_actions_moderation.dart';
+part 'chat_view_chrome_topics_search.dart';
 part 'chat_view_dialogs.dart';
 part 'chat_view_scroll_session.dart';
-part 'chat_view_actions_moderation.dart';
-part 'chat_view_translation_summary.dart';
-part 'chat_view_chrome_topics_search.dart';
 part 'chat_view_transcript_overlay.dart';
+part 'chat_view_translation_summary.dart';
 
 @visibleForTesting
 bool chatTranscriptAllowsCommentAttachment({required bool isChannel}) =>
@@ -312,6 +324,7 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
     required this.body,
     this.trailingPane,
     this.trailingPaneWidth = 0,
+    this.onTrailingPaneToggle,
   });
 
   final Widget header;
@@ -319,27 +332,34 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
   final Widget? trailingPane;
   final double trailingPaneWidth;
 
+  /// Shows [ChatTrailingPaneEdgeTab] on the pane's leading edge (or the
+  /// conversation's trailing edge while the pane is closed) when set.
+  final VoidCallback? onTrailingPaneToggle;
+
   @override
   Widget build(BuildContext context) {
     final pane = trailingPane;
+    final paneShown = pane != null && trailingPaneWidth > 0;
+    final onToggle = onTrailingPaneToggle;
+    // One Row and one Stack whether or not the pane is open, so toggling it
+    // keeps the transcript's element (and its scroll position) in place.
     return Column(
       children: [
         KeyedSubtree(key: const ValueKey('chatFullWidthHeader'), child: header),
         Expanded(
-          child: pane == null || trailingPaneWidth <= 0
-              ? KeyedSubtree(
-                  key: const ValueKey('chatConversationContent'),
-                  child: body,
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: KeyedSubtree(
-                        key: const ValueKey('chatConversationContent'),
-                        child: body,
-                      ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: KeyedSubtree(
+                      key: const ValueKey('chatConversationContent'),
+                      child: body,
                     ),
+                  ),
+                  if (paneShown) ...[
                     VerticalDivider(
                       width: 1,
                       thickness: 1,
@@ -351,9 +371,100 @@ class ChatHeaderTrailingPaneLayout extends StatelessWidget {
                       child: pane,
                     ),
                   ],
+                ],
+              ),
+              if (onToggle != null)
+                // The tab's flat edge lies on the divider, so it reads as a
+                // grip of the pane; it takes no width from either side.
+                PositionedDirectional(
+                  end: paneShown ? trailingPaneWidth : 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: ChatTrailingPaneEdgeTab(
+                      paneShown: paneShown,
+                      onTap: onToggle,
+                    ),
+                  ),
                 ),
+            ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// A narrow tab that opens and closes the trailing context pane. The visible
+/// grip is [visualWidth] × [visualHeight] with its start corners rounded; the
+/// hit target extends [hitWidth] × [hitHeight] into the conversation.
+@visibleForTesting
+class ChatTrailingPaneEdgeTab extends StatelessWidget {
+  const ChatTrailingPaneEdgeTab({
+    super.key = const ValueKey('chatTrailingPaneEdgeTab'),
+    required this.paneShown,
+    required this.onTap,
+  });
+
+  static const double visualWidth = 16;
+  static const double visualHeight = 56;
+  static const double hitWidth = 44;
+  static const double hitHeight = 64;
+
+  final bool paneShown;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    return AppInteractiveSurface(
+      semanticLabel:
+          (paneShown
+                  ? AppStringKeys.chatContextPaneHide
+                  : AppStringKeys.chatContextPaneShow)
+              .l10n(context),
+      expanded: paneShown,
+      isButton: true,
+      showHover: false,
+      onTap: onTap,
+      borderRadius: const BorderRadiusDirectional.horizontal(
+        start: Radius.circular(AppRadius.control),
+      ),
+      child: SizedBox(
+        width: hitWidth,
+        height: hitHeight,
+        child: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Container(
+            key: const ValueKey('chatTrailingPaneEdgeTabGrip'),
+            width: visualWidth,
+            height: visualHeight,
+            decoration: BoxDecoration(
+              // Card, not the pane's own fill: that is within a shade of the
+              // conversation canvas in the light palette.
+              color: c.card,
+              border: Border.all(color: c.divider),
+              borderRadius: const BorderRadiusDirectional.horizontal(
+                start: Radius.circular(AppRadius.control),
+              ),
+            ),
+            alignment: Alignment.center,
+            // Points the way the pane will move: toward the edge to close it,
+            // back out to open it.
+            child: AnimatedRotation(
+              turns: paneShown ? 0 : 0.5,
+              duration: AppMotion.duration(context, AppMotion.responsive),
+              curve: AppMotion.standard,
+              child: AppIcon(
+                rtl ? HeroAppIcons.chevronLeft : HeroAppIcons.chevronRight,
+                size: AppIconSize.xs,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -366,6 +477,8 @@ class ChatView extends StatefulWidget {
     this.forumTopicId,
     this.initialMessageId,
     this.seedMessage,
+    this.externalReplyHandoff,
+    this.forwardHandoff,
     this.showBackButton = true,
     this.headerHeight = 48,
     this.headerColor,
@@ -374,6 +487,7 @@ class ChatView extends StatefulWidget {
     this.headerBottomHeight = 44,
     this.trailingPane,
     this.trailingPaneWidth = 0,
+    this.onTrailingPaneToggle,
     this.requestComposerFocusOnReady = false,
     this.onOpenTopicTranscript,
     this.onChatKindResolved,
@@ -392,6 +506,15 @@ class ChatView extends StatefulWidget {
   final int? forumTopicId;
   final int? initialMessageId;
   final ChatMessage? seedMessage;
+
+  /// A reply carried over from another chat (see
+  /// `ComposerReplyOptionsSheet`'s reply-in-another-chat entry). The
+  /// composer starts with this cross-chat reply pending.
+  final ExternalReplyHandoff? externalReplyHandoff;
+
+  /// A forward carried over from the picking chat (forward-to-chat). The
+  /// composer starts with this forward pending as a reply-style preview.
+  final ForwardMessagesHandoff? forwardHandoff;
   final bool showBackButton;
 
   /// Minimum toolbar height; accessible title/status text can grow it.
@@ -402,6 +525,10 @@ class ChatView extends StatefulWidget {
   final double headerBottomHeight;
   final Widget? trailingPane;
   final double trailingPaneWidth;
+
+  /// Opens or closes [trailingPane] from a tab on its edge. Set only while
+  /// the owner can actually show the pane beside this chat.
+  final VoidCallback? onTrailingPaneToggle;
   final bool requestComposerFocusOnReady;
 
   /// Lets an owning shell switch this chat to a topic transcript (or the
@@ -467,12 +594,14 @@ class WideGroupChatHeaderActions extends StatelessWidget {
     required this.onOpenFullInfo,
     this.onToggleContext,
     this.showCallActions = true,
+    this.isChannel = false,
   });
 
   final ValueChanged<bool> onStartCall;
   final VoidCallback? onToggleContext;
   final VoidCallback onOpenFullInfo;
   final bool showCallActions;
+  final bool isChannel;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -495,7 +624,11 @@ class WideGroupChatHeaderActions extends StatelessWidget {
       if (onToggleContext != null)
         _ChatHeaderAction(
           key: const ValueKey('chatHeaderGroupContextToggle'),
-          label: AppStringKeys.chatInfoGroupAnnouncement.l10n(context),
+          label:
+              (isChannel
+                      ? AppStringKeys.chatInfoChannelAnnouncement
+                      : AppStringKeys.chatInfoGroupAnnouncement)
+                  .l10n(context),
           icon: HeroAppIcons.grip,
           onTap: onToggleContext!,
         ),
@@ -624,38 +757,25 @@ class _ChatViewState extends State<ChatView> {
   void _updateState(VoidCallback fn) => setState(fn);
 
   late final bool _openAtLatest;
-
   late final ({int accountSlot, int chatId, int? forumTopicId}) _sessionKey;
-
   late _ChatScrollSnapshot? _sessionScrollSnapshot;
-
   late final ChatSessionRenderState? _sessionRenderState;
-
   late bool _olderHistoryExhaustedHint;
-
   late final ChatViewModel _vm;
-
   ChatKind? _reportedChatKind;
-
   late final TranslationController _translation;
-
   AiSettingsController? _ai;
 
   Set<TranslationProvider> _nativeTranslationProviders = const {};
-
   int? _dismissedBotApiWarningMask;
-
   late final ScrollController _scroll;
 
-  final _pinnedKey = GlobalKey();
+  final _pinnedKey = GlobalKey(); // the pinned message's row, for scroll-to
 
-  // the pinned message's row, for scroll-to
-  final _targetKey = GlobalKey();
+  final _targetKey = GlobalKey(); // arbitrary linked/anchored message row
 
-  // arbitrary linked/anchored message row
-  final _unreadKey = GlobalKey();
+  final _unreadKey = GlobalKey(); // the "以下为新消息" divider, for entry scroll
 
-  // the "以下为新消息" divider, for entry scroll
   final _transcriptViewportKey = GlobalKey();
 
   final _newerTranscriptSliverKey = GlobalKey();
@@ -669,23 +789,18 @@ class _ChatViewState extends State<ChatView> {
   final Map<int, RenderBox> _mountedTranscriptEntries = {};
 
   bool _bottomGapCorrectionScheduled = false;
-
   TranscriptPivot? _transcriptPivot;
 
   bool _transcriptPivotFrozen = false;
 
   bool _transcriptPivotFreezeScheduled = false;
-
   late int _historyWindowRevision;
-
   late int _historyWindowInvalidationRevision;
-
   late int _fullViewRevision;
 
   final Set<int> _expandedBlockedRunIds = <int>{};
 
   final Set<int> _showOriginalTranslationMessageIds = <int>{};
-
   int? _desktopStickerSetId;
 
   bool _unreadProgressUpdateScheduled = false;
@@ -695,99 +810,76 @@ class _ChatViewState extends State<ChatView> {
   bool _modelDirtyWhileInactive = false;
 
   bool _reactivationSyncScheduled = false;
-
   ChatMessage? _actionTarget;
-
   int? _desktopQuoteMessageId;
-
   MessageTextQuote? _desktopQuote;
-
   MessageTextQuote? _actionQuote;
+  Rect? _actionRect; // bounds in the action-overlay Stack's coordinate space
 
-  Rect? _actionRect;
-
-  // bounds in the action-overlay Stack's coordinate space
   final GlobalKey _actionOverlayKey = GlobalKey();
-
   GlobalKey<SelectionAreaState>? _mobileTextSelectionAreaKey;
-
   int? _mobileTextSelectionMessageId;
 
   bool _mobileTextSelectionActive = false;
-
   Offset? _lastActionPointerGlobalPosition;
 
   MessageActionSource _actionSource = MessageActionSource.normal;
 
-  bool _reactionExpanded = false;
+  bool _reactionExpanded = false; // full reaction picker vs. quick bar
 
-  // full reaction picker vs. quick bar
-  String _reactionTab = 'standard';
-
-  // 'standard' or a custom-emoji pack id
+  String _reactionTab = 'standard'; // 'standard' or a custom-emoji pack id
   MessageReactionAvailability? _actionReactionAvailability;
 
   // The message a reaction from the open menu lands on: the album's
+
   // interaction owner when the menu was opened on an album member.
   int? _actionReactionMessageId;
 
   int _actionReactionAvailabilityGeneration = 0;
-
   bool? _actionMessageLinkAvailable;
-
   bool? _actionCanReply;
 
   int _actionPropertiesGeneration = 0;
+  Offset?
+  _actionAnchor; // overlay-space point the HUD grows from / collapses to
+  Widget? _actionOverlaySnapshot; // last visible overlay, replayed during exit
 
-  Offset? _actionAnchor;
-
-  // overlay-space point the HUD grows from / collapses to
-  Widget? _actionOverlaySnapshot;
-
-  // last visible overlay, replayed during exit
   int _lastCount = 0;
 
-  bool _didInitialScroll = false;
+  bool _didInitialScroll = false; // one-time entry positioning has run
 
-  // one-time entry positioning has run
-  bool _showJumpDown = false;
+  bool _showJumpDown = false; // scrolled up → show jump-to-bottom button
 
-  // scrolled up → show jump-to-bottom button
-  bool _bannerDismissed = false;
-
-  // "N条新消息" banner dismissed / caught up
-  Timer? _bannerTimer;
-
-  // auto-hides the banner a few seconds after it appears
+  bool _bannerDismissed = false; // "N条新消息" banner dismissed / caught up
+  Timer? _bannerTimer; // auto-hides the banner a few seconds after it appears
   Timer? _readSyncTimer;
-
   Timer? _handoffUpdateTimer;
-
   Timer? _linkedMessageHighlightFadeTimer;
-
   Timer? _linkedMessageHighlightClearTimer;
-
   int? _scrollTargetId;
 
   int _scrollTargetGeneration = 0;
 
   /// See [_ChatJumpOrigin]. Live from the moment a reply/View in Chat jump
+
   /// starts until the arrow consumes it, the user drags the transcript away
+
   /// from the jump target, or the session ends.
   _ChatJumpOrigin? _jumpOrigin;
 
   // Unlike the target generation, this survives a successful target clear so
+
   // post-layout corrections can still be cancelled by a newer user intent.
+
   int _jumpOriginReturnGeneration = 0;
 
   /// Scroll offset when the drag that may abandon [_jumpOrigin] began. Null
+
   /// outside such a drag, so programmatic scrolls cannot measure against it.
   double? _jumpOriginDragBaseline;
 
   int _transcriptGestureGeneration = 0;
-
   int? _lastNewestMessageId;
-
   int? _lastOldestMessageId;
 
   final ChatUnreadProgress _unreadProgress = ChatUnreadProgress();
@@ -802,26 +894,29 @@ class _ChatViewState extends State<ChatView> {
   int _entryLastReadInboxId = 0;
 
   int _entryLatestMessageId = 0;
-
   int? _entryFirstUnreadMessageId;
 
   bool _showEntryUnreadBanner = false;
-
   late final ChatMessageSearchController _search;
 
   /// Mirrors `_search.isActive`, so the controller's per-keystroke
+
   /// notifications only setState when the value this build reads changed.
+
   bool _searchActive = false;
 
   /// Whether the last layout had room for the results pane. Read by callbacks
+
   /// that run outside build, where the constraints are no longer at hand.
+
   bool _searchResultsPaneVisible = false;
 
   /// The hit the search cursor is sitting on. Unlike [_scrollTargetId] this
+
   /// survives the jump that put it there, so the bubble stays marked while the
+
   /// user steps through the rest of the results.
   int? _searchHighlightId;
-
   int? _linkedMessageHighlightId;
 
   bool _linkedMessageHighlightActive = false;
@@ -829,13 +924,14 @@ class _ChatViewState extends State<ChatView> {
   double _keyboardInset = 0;
 
   // Bumped once per ChatView build; the shell LayoutBuilder reuses its subtree
+
   // whenever the generation and the available width are both unchanged.
+
   int _shellLayoutGeneration = 0;
 
   int _cachedShellLayoutGeneration = -1;
 
   double _cachedShellLayoutWidth = double.nan;
-
   Widget? _cachedShellLayout;
 
   bool _shortTranscriptFillScheduled = false;
@@ -849,14 +945,11 @@ class _ChatViewState extends State<ChatView> {
   bool _showingFullyVisibleFirstContactHistory = false;
 
   bool _transcriptViewportClaimedByUser = false;
-
   late final ChatReturnToLatestCoordinator _returnToLatestCoordinator;
-
   late final ChatRestoredPositionGuard _restoredPositionGuard;
 
   final ChatSessionReopenNavigationGuard _sessionReopenNavigationGuard =
       ChatSessionReopenNavigationGuard();
-
   late bool _sessionReopenDispositionResolved;
 
   bool _sessionReopenResolutionInFlight = false;
@@ -880,7 +973,6 @@ class _ChatViewState extends State<ChatView> {
   final _bottomFollow = ChatBottomFollowCoordinator();
 
   final Set<int> _selectedMessageIds = {};
-
   int? _selectionAnchorId;
 
   bool _selectionScrollingUp = false;
@@ -909,9 +1001,7 @@ class _ChatViewState extends State<ChatView> {
   bool _wasLoadingOlder = false;
 
   bool _maintainSessionScrollAnchor = false;
-
   ChatThemeStyle? _resolvedChatThemeStyle;
-
   TelegramCloudTheme? _resolvedCloudTheme;
 
   bool _themingEnabled = true;
@@ -937,11 +1027,8 @@ class _ChatViewState extends State<ChatView> {
   bool _chatLanguageDetectionRunning = false;
 
   bool _chatLanguageDetectionComplete = false;
-
   int? _chatLanguageDetectionNewestMessageId;
-
   DateTime? _chatLanguageDetectedAt;
-
   String? _detectedChatLanguage;
 
   bool _autoTranslationRunning = false;
@@ -954,16 +1041,20 @@ class _ChatViewState extends State<ChatView> {
 
   bool _sendFailureDialogVisible = false;
 
+  /// Bot API access warning dismissal, keyed by chat so a topic switch does
+
+  /// not re-show a warning the user already dismissed in another topic.
+
+  static final Map<int, int> _dismissedBotApiWarningByChat = {};
   VoidCallback? _detachExitController;
-
   VoidCallback? _detachRevealLatestController;
-
   VoidCallback? _detachPaneBackHandler;
 
   final ChatSessionCacheWriteGate _sessionCacheWriteGate =
       ChatSessionCacheWriteGate();
 
   /// Gap (seconds) between messages that triggers a fresh time separator.
+
   static const _separatorGap = 300;
 
   static const _initialTargetAlignment = 0.30;
@@ -971,7 +1062,6 @@ class _ChatViewState extends State<ChatView> {
   static const _initialUnreadAlignment = 0.12;
 
   static const _pendingTranscriptOrderId = 0x7FFFFFFFFFFFFFFF;
-
   static final Map<
     ({int accountSlot, int chatId, int? forumTopicId}),
     _ChatScrollSnapshot
@@ -979,7 +1069,6 @@ class _ChatViewState extends State<ChatView> {
   _sessionScrollSnapshots = {};
 
   static final ChatSessionCache _sessionCache = ChatSessionCache();
-
   late final ChatAutoScrollPolicy _autoScrollPolicy;
 
   final ChatWallpaperController _wallpaperController =
@@ -1035,6 +1124,22 @@ class _ChatViewState extends State<ChatView> {
             forumTopicId: _sessionKey.forumTopicId,
           )
         : null;
+    // A topic switch rebuilds this transcript; restore the chat-level
+    // language-detection result so the translation panel does not hide on
+    // the first frame and pop open a beat later.
+    final headerSnapshot = ChatHeaderStateCache.read(
+      _sessionKey.accountSlot,
+      _sessionKey.chatId,
+    );
+    if (headerSnapshot != null &&
+        headerSnapshot.chatLanguageDetectionComplete) {
+      _detectedChatLanguage = headerSnapshot.detectedChatLanguage;
+      _chatLanguageDetectionComplete = true;
+      _chatLanguageDetectedAt = headerSnapshot.chatLanguageDetectedAt;
+      _chatLanguageDetectionNewestMessageId =
+          headerSnapshot.chatLanguageDetectionNewestMessageId;
+    }
+    _dismissedBotApiWarningMask = _dismissedBotApiWarningByChat[widget.chatId];
     _olderHistoryExhaustedHint =
         _sessionRenderState?.olderHistoryExhausted ?? false;
     _sessionScrollSnapshot = widget.initialMessageId == null
@@ -1168,6 +1273,8 @@ class _ChatViewState extends State<ChatView> {
     _vm.addListener(_onModel);
     _vm.addListener(_publishTopicList);
     _setScrollTarget(widget.initialMessageId);
+    _adoptExternalReplyHandoff();
+    _adoptForwardHandoff();
     _vm.onAppear();
     _readSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && _viewTickerEnabled && _isAtLoadedBottom(80)) {
@@ -1214,8 +1321,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Whether this chat's topics are known — resolved live or seeded from the
+
   /// process-wide index — so a pane rebuilt for another topic keeps its rail
+
   /// instead of flashing an "All"-only strip until getChat resolves.
+
   bool get _topicsKnown =>
       _vm.supportsTopics ||
       ForumTopicIndex.shared.knowsTopics(
@@ -1224,17 +1334,21 @@ class _ChatViewState extends State<ChatView> {
       );
 
   // The split shell's topic-list relay: while this transcript lives in a
+
   // sidebar-placement shell, its topic list is handed to the shell, which
+
   // overlays it on the chat list column the way Telegram iOS does. The shell
+
   // owns that pane, so topic switches keep its scroll position.
   TopicListHost? _shellTopicListHost;
-
   TopicListAttachment? _publishedAttachment;
 
   bool _topicListOverlaid = false;
 
   /// Wide split shells overlay this transcript's topic list on the chat list
+
   /// column, so the in-pane rail stays out of the conversation there.
+
   void _syncTopicListHostScope() {
     _shellTopicListHost =
         TopicListPlacementScope.of(context) == TopicListPlacement.sidebar
@@ -1243,8 +1357,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Publishes (or retracts) this transcript's topic list with the shell's
+
   /// relay. Publishing an unchanged list is a no-op, so the shell's pane —
+
   /// and its scroll position — survives every topic switch.
+
   void _publishTopicList() {
     if (!mounted) return;
     final host = _shellTopicListHost;
@@ -1304,9 +1421,13 @@ class _ChatViewState extends State<ChatView> {
       _vm.forumTopics.any((topic) => topic.unreadCount > 0);
 
   /// The rows handed to the shell. A pane rebuilt for another topic seeds
+
   /// from the shared index first, which knows identities and counters but
+
   /// not previews; the rows already published for this chat fill those in so
+
   /// the overlay never flashes to bare rows mid-switch.
+
   List<TopicNavigationItem> _topicListRows() {
     final prior = _shellTopicListHost?.attachment;
     final previousRows = prior?.chatId == widget.chatId
@@ -1482,8 +1603,47 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  bool _scrollTickActive = false;
+  ({int messageId, double viewportOffset})? _captureSessionScrollAnchor() {
+    final viewportContext = _transcriptViewportKey.currentContext;
+    final viewportRenderObject = viewportContext?.findRenderObject();
+    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
+      return null;
+    }
+    // Viewport-local coordinates: the offset is already relative to the
+    // viewport top, and stopping the transform walk at the viewport avoids the
+    // full ancestor chain per row.
+    final viewportBottom = viewportRenderObject.size.height;
+    int? visibleAnchorMessageId;
+    double? visibleAnchorTop;
+    int? partialAnchorMessageId;
+    double? partialAnchorTop;
+    for (final entry in _mountedTranscriptEntries.entries) {
+      final itemRenderObject = entry.value;
+      if (!itemRenderObject.attached) {
+        continue;
+      }
+      final itemTop = itemRenderObject
+          .localToGlobal(Offset.zero, ancestor: viewportRenderObject)
+          .dy;
+      final itemBottom = itemTop + itemRenderObject.size.height;
+      if (itemBottom <= 0 || itemTop >= viewportBottom) continue;
+      if (itemTop >= 0) {
+        if (visibleAnchorTop == null || itemTop < visibleAnchorTop) {
+          visibleAnchorMessageId = entry.key;
+          visibleAnchorTop = itemTop;
+        }
+      } else if (partialAnchorTop == null || itemTop > partialAnchorTop) {
+        partialAnchorMessageId = entry.key;
+        partialAnchorTop = itemTop;
+      }
+    }
+    final anchorMessageId = visibleAnchorMessageId ?? partialAnchorMessageId;
+    final anchorTop = visibleAnchorTop ?? partialAnchorTop;
+    if (anchorMessageId == null || anchorTop == null) return null;
+    return (messageId: anchorMessageId, viewportOffset: anchorTop);
+  }
 
+  bool _scrollTickActive = false;
   double? _scrollTickLoadedBottomOffset;
 
   double get _loadedBottomOffset {
@@ -1496,6 +1656,74 @@ class _ChatViewState extends State<ChatView> {
 
   bool get _showReturnToLatestProgress =>
       _returnToLatestCoordinator.showProgress;
+
+  /// Records where the reader is standing before an in-transcript jump. A
+
+  /// chain of jumps keeps the FIRST origin: that is the place the reader
+
+  /// actually left, and every later jump is only a detour away from it.
+
+  /// Remembers where the viewport stood when a real drag began. A tap (reply
+
+  /// quote, timestamp) produces no scroll notification, so it can never be
+
+  /// mistaken for the drag that abandons the origin.
+
+  /// Drops the origin once a drag has carried the viewport a meaningful
+
+  /// distance away from the jump target. A small nudge to read the quoted
+
+  /// neighbourhood keeps the arrow pointing back at where the reader left.
+
+  /// The floating arrow: returns to the message the reader left while a jump
+
+  /// origin is live, and to the newest message otherwise.
+
+  /// The shell asked for the newest message — because the reader tapped the
+
+  /// conversation that is already open, or re-opened it from a link. This is
+
+  /// the same intent as tapping the return-to-latest arrow, so it goes through
+
+  /// the same coordinator: an anchored history window loads the latest page
+
+  /// first, and a plain scroll-up just animates back to the edge.
+
+  /// The transcript sits above the composer in a forward scroll view, so a
+
+  /// field that wraps onto more lines shrinks the viewport from the bottom and
+
+  /// would cover the newest message. Unlike a panel change this keeps a
+
+  /// pending unread/linked-message jump.
+
+  /// Jump to the unread boundary captured when the chat opened. The live TDLib
+
+  /// boundary may already point at the newest message after the chat is marked
+
+  /// read, so it cannot be used to resolve this button later.
+
+  /// Makes an arbitrary loaded target the first child after the scroll view's
+
+  /// center sliver, so Flutter lays it out without depending on guessed row
+
+  /// heights. The transcript keeps the same chronological order on both sides
+
+  /// of the new pivot; only its zero scroll coordinate moves to the target.
+
+  /// One-time positioning when a chat opens. This must never block painting:
+
+  /// a hidden transcript reads as a black screen in dark mode. We jump to the
+
+  /// deterministic estimate immediately and then do one zero-duration correction
+
+  /// after layout, without waiting to reveal the UI.
+
+  /// Puts [messageId] back at [desiredOffset] pixels below the transcript
+
+  /// viewport top, measured rather than replayed as raw pixels: the row may sit
+
+  /// in a different sliver window than it did when the offset was recorded.
 
   ChatInitialViewportTarget _initialViewportTarget() {
     final i = _firstUnreadIndex();
@@ -1515,6 +1743,10 @@ class _ChatViewState extends State<ChatView> {
   static const _estimatedUnreadDividerExtent = 33.0;
 
   static const _estimatedSeparatorExtent = 34.0;
+
+  /// Unparks a frozen newest (or newest-like) pivot when older messages are
+
+  /// already in the model but only the after-center arm is visible.
 
   bool get _canBackSwipe =>
       widget.showBackButton &&
@@ -1579,12 +1811,31 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// The section marker above the first message of a topic run, in the forum
+
   /// transcript that mixes every topic together.
+
   ///
+
   /// Telegram iOS renders this as a tappable header naming the topic the
+
   /// messages below belong to, so the list stays attributable without opening
+
   /// each topic. Tapping it opens that topic's own transcript, matching the
+
   /// topic list's navigation.
+
+  ///
+
+  /// The row keeps a [AppSpacing.sm] top inset like the transcript's other
+
+  /// separator plates. A message hangs its detail timestamp 5px below its own
+
+  /// row (`MessageBubble`'s floating timestamp, shown on tap, hover and with
+
+  /// 「始终显示消息时间」), so a row that started flush with the message above
+
+  /// would have its badge plate painted over that timestamp.
+
   Widget _topicSectionHeader(int topicId) {
     final c = context.colors;
     final display = _topicSectionDisplay(topicId);
@@ -1592,7 +1843,7 @@ class _ChatViewState extends State<ChatView> {
     final foreground = servicePlateForeground(plate);
     return Padding(
       key: ValueKey('forum-topic-section-$topicId'),
-      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xs),
       child: Center(
         child: GestureDetector(
           key: ValueKey('forum-topic-section-tap-$topicId'),
@@ -1723,6 +1974,10 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Answers a swipe on the transcript. The gesture is a shortcut to typing,
+
+  /// so the composer takes the caret as well as the reply target.
+
   Widget _buildMessageBubble(
     ChatMessage message,
     int messageIndex, {
@@ -1748,7 +2003,9 @@ class _ChatViewState extends State<ChatView> {
       meName: _vm.meName,
       mePhoto: _vm.mePhoto,
       meId: _vm.meId,
-      showRepeat: _vm.canForwardContent && _isRepeatTail(messageIndex),
+      showRepeat:
+          (_vm.canForwardContent || _protectedCopyEnabled) &&
+          _isRepeatTail(messageIndex),
       onRepeat: () => _vm.repeatMessage(message),
       onLongPress: _isSelecting ? null : _showActionMenuForMessage,
       onDesktopQuoteChanged: _handleDesktopQuoteChanged,
@@ -1775,6 +2032,8 @@ class _ChatViewState extends State<ChatView> {
         isChannel: _vm.isChannel,
       ),
       channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
+      showChannelPostStats:
+          _vm.isChannel && context.read<ThemeController>().showChannelPostStats,
       onOpenImage: _openImage,
       onOpenImageGallery: _openImageGallery,
       onApplyMessageBubble: offersMessageBubbleApplyAction(message)
@@ -1824,14 +2083,39 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Whether the transcript mixes every topic into one list: a forum opened
+
   /// without a specific topic. Telegram iOS sections that list by topic so
+
   /// each message stays attributable; a single-topic transcript is already
+
   /// scoped and needs no sections. A topics-enabled bot's chat mixes the
+
   /// same way when opened without a topic — its messages carry explicit
+
   /// topic ids and no General bucket exists, so the headers attribute them
+
   /// exactly like a forum's.
+
   bool get _showsForumTopicSections =>
       (_vm.isForum || _vm.supportsBotTopics) && !_vm.isForumTopicTranscript;
+
+  /// Desktop counterpart of 保存到相册: fetch the original if it is not local
+
+  /// yet, then copy it into a folder the user picks.
+
+  /// Hides [message]'s sender on this device, in this group or everywhere.
+
+  /// Nothing reaches Telegram: unlike Block, the member is not blocked,
+
+  /// reported or told.
+
+  /// Someone else's message in a group; never the group itself posting as
+
+  /// an anonymous admin, and not in broadcast channels.
+
+  /// Opens the profile of a user who reacted, or the chat when the reaction
+
+  /// was sent by a chat. A deleted account has neither.
 
   List<String> get _effectiveTranslationOptions =>
       effectiveTranslationOptionIds(
@@ -1891,7 +2175,9 @@ class _ChatViewState extends State<ChatView> {
   );
 
   // Both run once per bubble; build() already resolved themingEnabled into the
+
   // field, so re-subscribing to ThemeController per row is pure overhead.
+
   Color? _effectiveOutgoingColor() {
     if (!_themingEnabled) {
       return AppTheme.bubbleOutgoing;
@@ -1925,10 +2211,15 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// The link-routing target this transcript mounts below its subtree. Kept
+
   /// as a field so handlers running on the State's own context — which sits
+
   /// ABOVE the scope, so `InternalChatLinkScope.targetOf(context)` returns
+
   /// null there — can still open links as this chat, on this account (a
+
   /// multi-account shell otherwise drops the account-less request silently).
+
   late final InternalChatLinkTarget _internalLinkTarget =
       InternalChatLinkTarget(
         chatId: widget.chatId,
@@ -2054,25 +2345,27 @@ class _ChatViewState extends State<ChatView> {
                                           : _header()),
                                 body: showPeerRestrictionBlock
                                     ? _restrictedPeerBlockPage()
-                                    : _withTopicNavigation(
-                                        Column(
-                                          children: [
-                                            Expanded(
-                                              child: _transcriptLayer(
-                                                searchPane: searchPane,
+                                    : _topicTabStrip(
+                                        _withTopicNavigation(
+                                          Column(
+                                            children: [
+                                              Expanded(
+                                                child: _transcriptLayer(
+                                                  searchPane: searchPane,
+                                                ),
                                               ),
-                                            ),
-                                            _chatMusicPlayer(),
-                                            // A narrow chat trades the composer
-                                            // for the hit navigator; a wide one
-                                            // keeps composing beside the results.
-                                            if (searching && !searchPane)
-                                              _searchNavigator()
-                                            else if (_isSelecting)
-                                              _selectionActionBar()
-                                            else
-                                              _composerArea(),
-                                          ],
+                                              _chatMusicPlayer(),
+                                              // A narrow chat trades the composer
+                                              // for the hit navigator; a wide one
+                                              // keeps composing beside the results.
+                                              if (searching && !searchPane)
+                                                _searchNavigator()
+                                              else if (_isSelecting)
+                                                _selectionActionBar()
+                                              else
+                                                _composerArea(),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                 trailingPane: searchPane
@@ -2081,6 +2374,11 @@ class _ChatViewState extends State<ChatView> {
                                 trailingPaneWidth: searchPane
                                     ? chatSearchResultsPaneWidth
                                     : widget.trailingPaneWidth,
+                                // Search results own the trailing slot
+                                // while they are up; the tab returns after.
+                                onTrailingPaneToggle: searchPane
+                                    ? null
+                                    : widget.onTrailingPaneToggle,
                               );
                               _cachedShellLayout = shell;
                               _cachedShellLayoutGeneration =
@@ -2201,7 +2499,10 @@ class _ChatViewState extends State<ChatView> {
         (isDark ? AppColors.dark.card : AppColors.light.card);
     final textColor = _effectiveIncomingTextColor() ?? c.textPrimary;
     final text = _vm.peerRestrictionText.trim().isEmpty
-        ? AppStringKeys.chatRestrictedTelegramTosMessage.l10n(context)
+        ? (_vm.isChannel
+                  ? AppStringKeys.chatRestrictedTelegramTosMessageChannel
+                  : AppStringKeys.chatRestrictedTelegramTosMessage)
+              .l10n(context)
         : _vm.peerRestrictionText.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -2392,6 +2693,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// The floating suggestion or hint card, or null when neither applies.
+
   Widget? get _searchOverlay {
     if (!_search.isActive) return null;
     final showsSuggestions = _search.activeToken != null;
@@ -2520,7 +2822,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Small button (bottom-right of the transcript) to return to the newest
+
   /// message; shown only when the user has scrolled up.
+
   Widget _jumpToBottomButton() {
     final c = context.colors;
     return GestureDetector(
@@ -2559,7 +2863,9 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Unread/new-message pill. In latest-on-open mode it points up to the
+
   /// unread boundary; in unread-boundary mode it points down to the newest.
+
   Widget _newMessagesBanner({
     required bool pointsDown,
     required bool showsUnreadCount,
@@ -2700,6 +3006,7 @@ class _ChatViewState extends State<ChatView> {
             label: AppStrings.t(AppStringKeys.notificationMentions),
             opening: _openingUnreadMention,
             onTap: _openUnreadMention,
+            onLongPress: _showReadAllMentionsMenu,
           ),
         if (_vm.unreadMentionCount > 0 && _vm.unreadReactionCount > 0)
           const SizedBox(height: AppSpacing.md),
@@ -2711,6 +3018,12 @@ class _ChatViewState extends State<ChatView> {
             label: AppStrings.t(AppStringKeys.notificationReactions),
             opening: _openingUnreadReaction,
             onTap: _openUnreadReaction,
+            // the reference client clears reactions on the long press itself, without
+            // the read-all menu it shows for mentions.
+            onLongPress: (_) {
+              unawaited(HapticFeedback.mediumImpact());
+              unawaited(_markAllReactionsRead());
+            },
           ),
       ],
     );
@@ -2723,48 +3036,60 @@ class _ChatViewState extends State<ChatView> {
     required String label,
     required bool opening,
     required VoidCallback onTap,
+    required ValueChanged<Rect> onLongPress,
   }) {
     final countLabel = count > 999 ? '999+' : '$count';
     return Semantics(
       button: true,
       label: '$label: $countLabel',
-      child: GestureDetector(
-        key: key,
-        behavior: HitTestBehavior.opaque,
-        onTap: opening ? null : onTap,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 120),
-          opacity: opening ? 0.62 : 1,
-          child: Container(
-            height: 34,
-            constraints: const BoxConstraints(minWidth: 40),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppTheme.brand,
-              borderRadius: BorderRadius.circular(17),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AppIcon(icon, size: AppIconSize.lg, color: Colors.white),
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  countLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: AppTextSize.caption,
-                    fontWeight: AppTextWeight.semibold,
+      child: Builder(
+        builder: (pillContext) => GestureDetector(
+          key: key,
+          behavior: HitTestBehavior.opaque,
+          onTap: opening ? null : onTap,
+          // The menu hangs off the pill itself, so its anchor is this
+          // widget's own box — not the transcript or the press point.
+          onLongPress: opening
+              ? null
+              : () {
+                  final box = pillContext.findRenderObject() as RenderBox?;
+                  if (box == null || !box.hasSize) return;
+                  onLongPress(box.localToGlobal(Offset.zero) & box.size);
+                },
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 120),
+            opacity: opening ? 0.62 : 1,
+            child: Container(
+              height: 34,
+              constraints: const BoxConstraints(minWidth: 40),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppTheme.brand,
+                borderRadius: BorderRadius.circular(17),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AppIcon(icon, size: AppIconSize.lg, color: Colors.white),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    countLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: AppTextSize.caption,
+                      fontWeight: AppTextWeight.semibold,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2812,14 +3137,30 @@ class _ChatViewState extends State<ChatView> {
       );
     }
     if (!_vm.isMember && _vm.canJoin) return _joinBar();
-    // Subscribed to a channel you can't post in → mute/unmute (like official).
-    if (_vm.isChannel && _vm.isMember) return _channelMuteBar();
+    // Subscribed to a channel you can't post in → the channel bottom panel:
+    // stock mute/unmute, the discussion / direct-message actions, or nothing.
+    if (_vm.isChannel && _vm.isMember) {
+      return ChannelBottomPanel(
+        mode: context.watch<ThemeController>().channelBottomBarMode,
+        muted: _vm.isMuted,
+        hasDiscussion: _vm.hasLinkedDiscussion,
+        hasDirectMessages: _vm.hasDirectMessagesGroup,
+        onToggleMute: () => _vm.toggleMute(),
+        onOpenDiscussion: () =>
+            unawaited(_openChannelLinkedChat(_vm.linkedDiscussionChatId)),
+        onOpenDirectMessages: () =>
+            unawaited(_openChannelLinkedChat(_vm.directMessagesChatId)),
+      );
+    }
     return _disabledComposer(_vm.sendDisabledReason);
   }
 
   // ChatInputBar subscribes to the view model itself, so the parent's
+
   // notification-driven rebuilds only re-run its build for nothing. Every other
+
   // constructor argument is either the (final) view model or a method tear-off,
+
   // so these five flags are the whole input set.
   Widget? _composerBarCache;
 
@@ -2832,6 +3173,7 @@ class _ChatViewState extends State<ChatView> {
   bool _composerBarShowCallAction = false;
 
   bool _composerBarSimpleMode = false;
+  String? _composerBarMediaKind;
 
   Widget _chatInputBar() {
     final themeController = context.watch<ThemeController>();
@@ -2840,13 +3182,15 @@ class _ChatViewState extends State<ChatView> {
     final quickRepliesEnabled = themeController.quickRepliesEnabled;
     final showCallAction = !_usesWideGroupHeader;
     final simpleMode = themeController.simpleMode;
+    final mediaSegment = themeController.mediaPanelSegment;
     final cached = _composerBarCache;
     if (cached != null &&
         _composerBarRequestInitialFocus == requestInitialFocus &&
         _composerBarEnterToSend == enterToSend &&
         _composerBarQuickRepliesEnabled == quickRepliesEnabled &&
         _composerBarShowCallAction == showCallAction &&
-        _composerBarSimpleMode == simpleMode) {
+        _composerBarSimpleMode == simpleMode &&
+        _composerBarMediaKind == mediaSegment) {
       return cached;
     }
     _composerBarRequestInitialFocus = requestInitialFocus;
@@ -2854,6 +3198,7 @@ class _ChatViewState extends State<ChatView> {
     _composerBarQuickRepliesEnabled = quickRepliesEnabled;
     _composerBarShowCallAction = showCallAction;
     _composerBarSimpleMode = simpleMode;
+    _composerBarMediaKind = mediaSegment;
     return _composerBarCache = ChatInputBar(
       vm: _vm,
       requestInitialFocus: requestInitialFocus,
@@ -2861,12 +3206,17 @@ class _ChatViewState extends State<ChatView> {
       quickRepliesEnabled: quickRepliesEnabled,
       showCallAction: showCallAction,
       simpleMode: simpleMode,
+      initialMediaKind: mediaSegment,
+      onMediaKindChanged: (v) => themeController.mediaPanelSegment = v,
       onStartCall: _startCall,
       onMessageSent: _onComposerMessageSent,
       onPanelGeometryChanged: _onComposerPanelGeometryChanged,
       onInputHeightChanged: _onComposerInputHeightChanged,
       onMediaSendTapped: _onComposerMediaSendTapped,
       onBotTopicCreated: _openTopicTranscript,
+      onReplyOptionsRequested: _showComposerReplyOptions,
+      onForwardOptionsRequested: _showComposerForwardOptions,
+      onReplySourceJump: _jumpToReplySource,
     );
   }
 
@@ -2961,43 +3311,8 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _channelMuteBar() {
-    final c = context.colors;
-    final muted = _vm.isMuted;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _vm.toggleMute(),
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.fromLTRB(
-          16,
-          14,
-          16,
-          14 + MediaQuery.paddingOf(context).bottom,
-        ),
-        decoration: BoxDecoration(
-          color: c.navBar,
-          border: Border(top: BorderSide(color: c.divider, width: 0.5)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppIcon(HeroAppIcons.solidBell, size: 18, color: AppTheme.brand),
-            const SizedBox(width: 8),
-            Text(
-              (muted ? AppStringKeys.chatUnmute : AppStringKeys.callMute).l10n(
-                context,
-              ),
-              style: TextStyle(fontSize: 16, color: AppTheme.brand),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// Bottom bar with a 加入 / 申请加入 button for a joinable chat you can preview.
+
   Widget _joinBar() {
     final c = context.colors;
     final requested = _vm.joinRequested;
@@ -3005,7 +3320,9 @@ class _ChatViewState extends State<ChatView> {
         ? AppStringKeys.chatJoinRequestSent
         : (_vm.joinByRequest
               ? AppStringKeys.chatRequestToJoin
-              : AppStringKeys.chatJoinGroup);
+              : (_vm.isChannel
+                    ? AppStringKeys.chatJoinChannel
+                    : AppStringKeys.chatJoinGroup));
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -3041,6 +3358,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Static bar shown when sending is blocked (muted / channel / removed).
+
   Widget _disabledComposer(String reason) {
     final c = context.colors;
     return Container(
@@ -3066,6 +3384,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// custom join screen for a joinable chat with no previewable content.
+
   Widget _joinScreenBody() {
     final c = context.colors;
     final requested = _vm.joinRequested;
@@ -3073,11 +3392,14 @@ class _ChatViewState extends State<ChatView> {
         ? AppStringKeys.chatJoinRequestPending
         : (_vm.joinByRequest
               ? AppStringKeys.chatRequestToJoin
-              : AppStringKeys.chatJoinGroup);
+              : (_vm.isChannel
+                    ? AppStringKeys.chatJoinChannel
+                    : AppStringKeys.chatJoinGroup));
     return ChatHeaderTrailingPaneLayout(
       header: _header(),
       trailingPane: widget.trailingPane,
       trailingPaneWidth: widget.trailingPaneWidth,
+      onTrailingPaneToggle: widget.onTrailingPaneToggle,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -3226,6 +3548,7 @@ class _ChatViewState extends State<ChatView> {
                       onStartCall: (isVideo) => unawaited(_startCall(isVideo)),
                       showCallActions:
                           Theme.of(context).platform != TargetPlatform.macOS,
+                      isChannel: _vm.isChannel,
                       onToggleContext: widget.onInfoPressed == null
                           ? null
                           : _handleInfoPressed,
@@ -3265,7 +3588,6 @@ class _ChatViewState extends State<ChatView> {
               ),
             ),
           ),
-          if (_showsChatTranslationPanel) _chatTranslationPanel(),
           if (_showsBotApiAccessWarning)
             BotApiAccessWarning(
               showPrivacyWarning: _vm.showBotApiPrivacyWarning,
@@ -3283,18 +3605,26 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Topics keep their dedicated surface — header chevron, topic picker, and
+
   /// the # header action — whenever the chat is a topic chat. The picker
+
   /// switches between topic transcripts.
+
   bool get _showsTopicSurfaces => _topicsKnown;
 
   /// The join screen and a restricted peer both render the chat header over a
+
   /// page with no transcript behind it. Offering search there would open a
+
   /// field that can only ever report nothing.
+
   bool get _canSearchMessages =>
       !_vm.isPeerRestricted && (_vm.isMember || _vm.messages.isNotEmpty);
 
   /// A broadcast channel's posts also read as a Moments feed. The join screen
+
   /// and a restricted channel have no posts to show there.
+
   bool get _canViewAsMoments =>
       _vm.isChannel && _vm.forumTopicId == null && _canSearchMessages;
 
@@ -3392,14 +3722,41 @@ class _ChatViewState extends State<ChatView> {
     return content;
   }
 
-  Widget _forumTopicIcon(ForumTopicOption? topic, bool all, AppColors c) {
+  /// Opens a topic, or the whole chat for null, as the ordinary chat
+
+  /// transcript (topics-as-group setting). Replaces this transcript in place
+
+  /// so the navigation stack stays flat. An owning shell rebuilds the
+
+  /// transcript itself; a bare split detail pane swaps its own content.
+
+  // MARK: - Topic moderation (Telegram iOS parity)
+
+  /// Telegram iOS offers topic creation right from the topic list.
+
+  /// Clears every topic in the list at once: one scoped read per topic, with
+
+  /// the unread counters cleared optimistically and restored if a read fails.
+
+  /// The topic row's context menu (iOS swipe action / long press). Destructive
+
+  /// and management items only appear while the account holds the right;
+
+  Widget _forumTopicIcon(
+    ForumTopicOption? topic,
+    bool all,
+    AppColors c, {
+    bool current = false,
+  }) {
     if (all) {
       return AppIcon(HeroAppIcons.hashtag, color: AppTheme.brand, size: 24);
     }
     final iconId = topic?.iconCustomEmojiId ?? 0;
     if (iconId != 0) return CustomEmojiView(id: iconId, size: 24);
     final rawColor = topic?.iconColor ?? 0;
-    final color = rawColor == 0
+    final color = current
+        ? AppTheme.brand
+        : rawColor == 0
         ? c.textSecondary
         : Color(0xFF000000 | (rawColor & 0xFFFFFF));
     return AppIcon(HeroAppIcons.solidMessage, color: color, size: 24);
@@ -3548,7 +3905,7 @@ class _ChatViewState extends State<ChatView> {
             button(
               HeroAppIcons.forward.data,
               _forwardSelected,
-              actionEnabled: _vm.canForwardContent,
+              actionEnabled: _vm.canForwardContent || _protectedCopyEnabled,
             ),
             button(
               HeroAppIcons.star.data,
@@ -3672,9 +4029,38 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Scrolls the transcript to a message. If it is not loaded, ask TDLib for a
+
+  /// page centered around that id instead of fetching the whole middle history.
+
+  /// A hashtag is already a query over the open chat, so it opens in-chat
+
+  /// search rather than pushing a screen over the transcript it refers to.
+
+  // MARK: - In-chat search
+
+  /// The controller notifies per keystroke, per page and per resolved sender,
+
+  /// and every search surface already AnimatedBuilds on it. `isActive` is the
+
+  /// only value this build reads, so anything else would rebuild the whole
+
+  /// transcript for a repaint that happens elsewhere.
+
+  /// Moves the transcript to a hit and leaves it marked.
+
+  ///
+
+  /// The alignment sits the message just above centre so the messages around
+
+  /// it — the reason the user searched — are on screen too.
+
   /// [showSteppers] follows the results pane: a wide chat keeps the composer,
+
   /// so the up/down controls ride in the header beside the field, while a
+
   /// narrow one gets them in the navigator that replaces the composer.
+
   Widget _searchHeader({required bool showSteppers}) => ChatSearchHeaderBar(
     controller: _search,
     height: widget.headerHeight,
@@ -3684,6 +4070,14 @@ class _ChatViewState extends State<ChatView> {
     onClose: _closeSearch,
     onJumpToMessage: _jumpToDateMessage,
   );
+
+  /// Lands the transcript on the message a calendar date resolved to.
+
+  ///
+
+  /// Unlike a search hit nothing is marked — the jump reads as navigation, not
+
+  /// as a match — and the search session stays open for the next step.
 
   Widget _searchResultsPane() => ChatSearchResultsPane(
     controller: _search,
@@ -3702,6 +4096,26 @@ class _ChatViewState extends State<ChatView> {
       ),
     ),
   );
+
+  /// Repeats ordinary target alignment while rich content finishes laying out.
+
+  /// The first pass carries the visible motion; the two short correction passes
+
+  /// absorb thumbnail, preview, reaction, and text reflow during that motion.
+
+  /// Whether the row already rests where `Scrollable.ensureVisible` would put
+
+  /// it, using the viewport's own reveal math so pinned slivers and oversized
+
+  /// rows are accounted for exactly as the real call accounts for them.
+
+  /// Aligns a pinned target more than once because media rows can finish a
+
+  /// thumbnail decode while the first scroll animation is still laying out.
+
+  /// The old one-shot calculation consequently landed the containing album a
+
+  /// few pixels above or below the pinned banner, especially on Android.
 
   Widget _transcript() {
     final groupImages = context.watch<ThemeController>().groupImageMessages;
@@ -3781,6 +4195,7 @@ class _ChatViewState extends State<ChatView> {
           child: CustomScrollView(
             key: _transcriptViewportKey,
             controller: _scroll,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             center: _newerTranscriptSliverKey,
             physics: const ClampingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
@@ -4009,8 +4424,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Washes the row holding a search hit or a just-opened reply destination.
+
   /// A full-width tint makes an album or document run read as one destination;
+
   /// reply navigation holds the stronger tint for 650 ms, then fades it out.
+
   Widget _messageNavigationHighlight(_TranscriptEntry entry, Widget content) {
     final searchHighlighted =
         _searchHighlightId != null &&
@@ -4033,42 +4451,42 @@ class _ChatViewState extends State<ChatView> {
   }
 
   // The transcript is rebuilt on every view-model notification (send/read/
+
   // typing/file progress); grouping a few hundred messages each time is
+
   // avoidable garbage, so entries are memoized on their actual inputs.
   List<_TranscriptEntry>? _transcriptCache;
-
   List<ChatMessage>? _transcriptCacheMessages;
 
   bool _transcriptCacheGrouped = false;
 
   // The unread divider is the only unread-dependent part of grouping, and it
+
   // reads the state captured on entry — not the live counters, which move with
+
   // every message read while scrolling.
+
   int _transcriptCacheEntryUnreadCount = -1;
 
   int _transcriptCacheEntryLastReadInboxId = -1;
 
   int _transcriptCacheEntryLatestMessageId = -1;
-
   int? _transcriptCacheEntryFirstUnreadMessageId;
 
   // Downstream of the grouping memo: the pivot partition and the two sliver
+
   // key→index maps. Keyed on the entry-list identity plus everything
+
   // _partitionTranscript reads, so a cache hit leaves _transcriptPivot correct.
   List<_TranscriptEntry>? _sliverCacheEntries;
-
   TranscriptPivot? _sliverCachePivot;
 
   bool _sliverCacheInitialLoaded = false;
-
   List<_TranscriptEntry>? _sliverCacheOlderEntries;
-
   List<_TranscriptEntry>? _sliverCacheNewerEntries;
 
   int _sliverCacheLeadingItemCount = -1;
-
   Map<Key, int>? _sliverCacheOlderIndexByKey;
-
   Map<Key, int>? _sliverCacheNewerIndexByKey;
 
   Widget _selectionEntry(_TranscriptEntry entry, Widget child) {
@@ -4127,6 +4545,22 @@ class _ChatViewState extends State<ChatView> {
       ],
     );
   }
+
+  /// The link row appears only once the server confirms the message carries
+
+  /// one (`messageProperties.can_get_link`), and the reply row only once it
+
+  /// confirms a reply is accepted (`messageProperties.can_be_replied`). A
+
+  /// chat without a composer never gets one at all. While the offline
+
+  /// properties query is in flight both entries stay hidden, so the menu
+
+  /// never grows a row it would have to remove a moment later.
+
+  /// An album shows one set of reactions, those of its interaction owner, so
+
+  /// a reaction picked on any member goes to that owner.
 
   Widget _documentGroupBubble(
     _TranscriptEntry entry, {
@@ -4210,6 +4644,9 @@ class _ChatViewState extends State<ChatView> {
           isChannel: _vm.isChannel,
         ),
         channelHasLinkedDiscussion: _vm.hasLinkedDiscussion,
+        showChannelPostStats:
+            _vm.isChannel &&
+            context.read<ThemeController>().showChannelPostStats,
         selecting: _isSelecting,
         selectedMessageIds: _selectedMessageIds,
         outgoingBubbleColor: _effectiveOutgoingColor(),
@@ -4295,6 +4732,18 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Clears the live action state, handing the closing overlay its snapshot to
+
+  /// replay during the exit. A second dismiss while the exit is still running
+
+  /// finds no live target and leaves the running reverse alone.
+
+  /// The exit animation landed: drop the snapshot and unmount the overlay. A
+
+  /// late report for a menu that has since re-opened (or closed again) is
+
+  /// stale — only a snapshot from the reported close is released here.
+
   Widget _actionOverlayContent(ChatMessage target) {
     final overlayBox =
         _actionOverlayKey.currentContext?.findRenderObject() as RenderBox?;
@@ -4316,8 +4765,6 @@ class _ChatViewState extends State<ChatView> {
         context.watch<ThemeController>().mobileMessageActionMenuStyle ==
             MobileMessageActionMenuStyle.dropdown;
     final verticalMenu = desktopMenu || mobileDropdown;
-    final pointerAnchored =
-        verticalMenu && rect != null && rect.width == 0 && rect.height == 0;
     final reactionAvailability = _actionReactionAvailability;
     final showReactions = messageActionShowsReactionControls(
       isCall: target.isCall,
@@ -4327,6 +4774,7 @@ class _ChatViewState extends State<ChatView> {
       message: target,
       isPinned: _vm.pinnedMessage?.id == target.id,
       allowForwarding: _vm.canForwardContent,
+      allowProtectedCopyForward: _protectedCopyEnabled && !target.isService,
       allowTranslation:
           _hasAvailableTranslationOption &&
           _translationSourceText(target).trim().isNotEmpty,
@@ -4348,6 +4796,7 @@ class _ChatViewState extends State<ChatView> {
       allowHideSender: _canHideSender(target),
       allowCopyMessageLink:
           !target.isCall && _actionMessageLinkAvailable == true,
+      allowViewEdits: _actionTargetHasEdits(target),
       source: _actionSource,
       showingOriginalTranslation: _showOriginalTranslationMessageIds.contains(
         target.id,
@@ -4368,52 +4817,48 @@ class _ChatViewState extends State<ChatView> {
         !target.isCall &&
         (reactionAvailability == null || reactionAvailability.canAdd);
     final desktopStripH = desktopStrip
-        ? MenuReactionBar.height + _menuReactionGap
+        ? MenuReactionBar.heightFor(context) + _menuReactionGap
         : 0.0;
     final reactionH = !showReactions
         ? 0.0
         : _reactionExpanded
         ? _expandedPickerSize.height
-        : 48.0;
-    final menuH = showActionMenu
-        ? math.min(
-            actionMenu.preferredHeightFor(context),
-            math.max(0.0, bottomSafe - topSafe - desktopStripH),
-          )
-        : 0.0;
-    const gap = 8.0;
-    final menuGap = showActionMenu ? gap : 0.0;
-
-    double reactionTop, menuTop;
-    if (rect != null) {
-      // Reaction picker stays near the pressed message; the action menu is
-      // hidden while the picker is expanded.
-      reactionTop = (rect.top - reactionH - gap).clamp(
-        topSafe,
-        bottomSafe - reactionH,
-      );
-      menuTop = (verticalMenu ? rect.top : rect.bottom + gap).clamp(
-        topSafe,
-        bottomSafe - menuH,
-      );
+        : QuickReactionBar.heightFor(context);
+    final preferredMenuH = actionMenu.preferredHeightFor(context);
+    double reactionTop, menuTop, menuH;
+    if (desktopMenu) {
+      // The pair travels as one block, placed by desktopOrigin below: the
+      // strip is the menu's upper storey, so it never covers the menu.
+      menuH = showActionMenu
+          ? math.min(
+              preferredMenuH,
+              math.max(0.0, bottomSafe - topSafe - desktopStripH),
+            )
+          : 0.0;
+      reactionTop = 0;
+      menuTop = 0;
     } else {
-      reactionTop = (screenH - reactionH - menuH - menuGap) / 2;
-      menuTop = reactionTop + reactionH + menuGap;
+      // Phone overlay: the strip stays above the message and the menu never
+      // crosses it — a message near the bottom flips the menu above the strip
+      // instead of letting it climb over the reactions.
+      final placement = MessageActionMenu.placeMobileOverlay(
+        anchor: rect,
+        preferredMenuHeight: preferredMenuH,
+        stripHeight: reactionH,
+        topSafe: topSafe,
+        bottomSafe: bottomSafe,
+        viewportHeight: screenH,
+        menuStartsAtAnchorTop: verticalMenu,
+      );
+      reactionTop = placement.stripTop;
+      menuTop = placement.menuTop;
+      menuH = showActionMenu ? placement.menuHeight : 0.0;
     }
     final align = outgoing ? Alignment.centerRight : Alignment.centerLeft;
     final verticalMenuWidth = math.min(
-      MessageActionMenu.desktopPreferredWidth,
+      actionMenu.preferredWidthFor(context),
       math.max(0.0, screenW - 20),
     );
-    final pointerMenuOrigin = pointerAnchored
-        ? MessageActionMenu.verticalOriginForPointer(
-            pointer: rect.topLeft,
-            viewport: screenSize,
-            menuSize: Size(verticalMenuWidth, menuH),
-            topSafe: topSafe,
-            bottomSafe: bottomSafe,
-          )
-        : const Offset(10, 0);
     final boundedActionMenu = verticalMenu
         ? SizedBox(width: verticalMenuWidth, height: menuH, child: actionMenu)
         : actionMenu;
@@ -4471,18 +4916,10 @@ class _ChatViewState extends State<ChatView> {
           ),
         if (showActionMenu)
           Positioned(
-            top: desktopMenu
-                ? desktopOrigin.dy + desktopStripH
-                : pointerAnchored
-                ? pointerMenuOrigin.dy
-                : menuTop,
-            left: desktopMenu
-                ? desktopOrigin.dx
-                : pointerAnchored
-                ? pointerMenuOrigin.dx
-                : 10,
-            right: desktopMenu || pointerAnchored ? null : 10,
-            child: desktopMenu || pointerAnchored
+            top: desktopMenu ? desktopOrigin.dy + desktopStripH : menuTop,
+            left: desktopMenu ? desktopOrigin.dx : 10,
+            right: desktopMenu ? null : 10,
+            child: desktopMenu
                 ? boundedActionMenu
                 : Align(alignment: align, child: boundedActionMenu),
           ),
@@ -4491,13 +4928,16 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// The gap between the strip and the menu it rides on — tight enough that
+
   /// the pair reads as one stack, wide enough to keep both borders visible.
+
   static const _menuReactionGap = 4.0;
 
   static const _expandedPickerSize = Size(300, 268);
 
   Widget _expandedReactionPicker(MessageReactionAvailability availability) {
     final store = EmojiStore.shared;
+    final palette = MessageActionPalette.of(context);
     final packs = availability.allowArbitraryCustom
         ? store.customPacks
         : const <CustomEmojiPack>[];
@@ -4505,17 +4945,15 @@ class _ChatViewState extends State<ChatView> {
       width: _expandedPickerSize.width,
       height: _expandedPickerSize.height,
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
-        ],
+        boxShadow: [BoxShadow(color: palette.shadow, blurRadius: 12)],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Expanded(child: _reactionContent(packs, availability)),
-          _reactionTabStrip(packs),
+          Expanded(child: _reactionContent(packs, availability, palette)),
+          _reactionTabStrip(packs, palette),
         ],
       ),
     );
@@ -4524,6 +4962,7 @@ class _ChatViewState extends State<ChatView> {
   Widget _reactionContent(
     List<CustomEmojiPack> packs,
     MessageReactionAvailability availability,
+    MessageActionPalette palette,
   ) {
     const reactionEmojiSize = 26.0;
     if (_reactionTab != 'standard') {
@@ -4549,7 +4988,7 @@ class _ChatViewState extends State<ChatView> {
                     child: CustomEmojiView(
                       id: item.customEmojiId,
                       size: reactionEmojiSize,
-                      color: Colors.white,
+                      color: palette.foreground,
                     ),
                   ),
                 ),
@@ -4571,7 +5010,7 @@ class _ChatViewState extends State<ChatView> {
                   ? CustomEmojiView(
                       id: reaction.customEmojiId,
                       size: reactionEmojiSize,
-                      color: Colors.white,
+                      color: palette.foreground,
                     )
                   : Text(
                       reaction.emoji,
@@ -4583,11 +5022,11 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _reactionTabStrip(List packs) {
+  Widget _reactionTabStrip(List packs, MessageActionPalette palette) {
     return Container(
       height: 46,
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFF3A3A3C), width: 0.5)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: palette.divider, width: 0.5)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -4595,10 +5034,10 @@ class _ChatViewState extends State<ChatView> {
         children: [
           _reactionTab2(
             'standard',
-            const AppIcon(
+            AppIcon(
               HeroAppIcons.solidFaceSmile,
               size: 22,
-              color: Colors.white70,
+              color: palette.foreground.withValues(alpha: 0.7),
             ),
           ),
           for (final pack in packs)
@@ -4608,12 +5047,12 @@ class _ChatViewState extends State<ChatView> {
                   ? CustomEmojiView(
                       id: pack.emoji.first.customEmojiId,
                       size: 26,
-                      color: Colors.white,
+                      color: palette.foreground,
                     )
-                  : const AppIcon(
+                  : AppIcon(
                       HeroAppIcons.objectGroup,
                       size: 20,
-                      color: Colors.white70,
+                      color: palette.foreground.withValues(alpha: 0.7),
                     ),
             ),
           GestureDetector(
@@ -4632,14 +5071,14 @@ class _ChatViewState extends State<ChatView> {
                 ),
               );
             },
-            child: const SizedBox(
+            child: SizedBox(
               width: 40,
               height: 36,
               child: Center(
                 child: AppIcon(
                   HeroAppIcons.gear,
                   size: 21,
-                  color: Colors.white70,
+                  color: palette.foreground.withValues(alpha: 0.7),
                 ),
               ),
             ),

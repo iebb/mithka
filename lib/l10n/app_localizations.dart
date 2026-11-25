@@ -504,6 +504,9 @@ abstract final class AppStringKeys {
   static const aiServerModelHint = 'aiServerModelHint';
   static const aiServerPrivacy = 'aiServerPrivacy';
   static const aiSettingsTitle = 'aiSettingsTitle';
+  static const aiShowComposerButton = 'aiShowComposerButton';
+  static const aiShowComposerButtonDescription =
+      'aiShowComposerButtonDescription';
   static const aiSummaryActions = 'aiSummaryActions';
   static const aiSummaryAssembling = 'aiSummaryAssembling';
   static const aiSummaryButton = 'aiSummaryButton';
@@ -972,6 +975,8 @@ abstract final class AppStringKeys {
   static const chatButtonUnsupported = 'chatButtonUnsupported';
   static const chatCannotSendMessages = 'chatCannotSendMessages';
   static const chatContactCallsOnly = 'chatContactCallsOnly';
+  static const chatContextPaneHide = 'chatContextPaneHide';
+  static const chatContextPaneShow = 'chatContextPaneShow';
   static const chatFirstContactNotContact = 'chatFirstContactNotContact';
   static const chatFirstContactNotOfficial = 'chatFirstContactNotOfficial';
   static const chatFirstContactOfficial = 'chatFirstContactOfficial';
@@ -5305,6 +5310,190 @@ abstract final class AppStringKeys {
       'storyAuthoringAreaUpgradedGift';
   static const profilePhotoBadgeCurrent = 'profilePhotoBadgeCurrent';
   static const profilePhotoBadgePublic = 'profilePhotoBadgePublic';
+  static const advancedUnlimitedFavorites = 'advancedUnlimitedFavorites';
+  static const advancedUnlimitedFavoritesAbout =
+      'advancedUnlimitedFavoritesAbout';
+  static const channelBottomBar = 'channelBottomBar';
+  static const channelBottomBarHidden = 'channelBottomBarHidden';
+  static const channelBottomBarMute = 'channelBottomBarMute';
+  static const channelBottomBarNote = 'channelBottomBarNote';
+  static const channelDeleteTopic = 'channelDeleteTopic';
+  static const channelMarkAllReadFailed = 'channelMarkAllReadFailed';
+  static const channelPanelDirect = 'channelPanelDirect';
+  static const channelPanelDiscussion = 'channelPanelDiscussion';
+  static const channelPostForwards = 'channelPostForwards';
+  static const channelPostStats = 'channelPostStats';
+  static const channelPostViews = 'channelPostViews';
+  static const chatAdminManageChannel = 'chatAdminManageChannel';
+  static const chatAdminManageLiveStreams = 'chatAdminManageLiveStreams';
+  static const chatFolderManagementDeleteFolder =
+      'chatFolderManagementDeleteFolder';
+  static const chatForwardChangeRecipient = 'chatForwardChangeRecipient';
+  static const chatForwardOptionsTitle = 'chatForwardOptionsTitle';
+  static const chatForwardPending = 'chatForwardPending';
+  static const chatForwardPendingCount = 'chatForwardPendingCount';
+  static const chatForwardPendingMore = 'chatForwardPendingMore';
+  static const chatForwardShowCaption = 'chatForwardShowCaption';
+  static const chatForwardShowSender = 'chatForwardShowSender';
+  static const chatInfoChannelAlbum = 'chatInfoChannelAlbum';
+  static const chatInfoChannelAnnouncement = 'chatInfoChannelAnnouncement';
+  static const chatInfoChannelAnnouncementEmpty =
+      'chatInfoChannelAnnouncementEmpty';
+  static const chatInfoChannelApps = 'chatInfoChannelApps';
+  static const chatInfoChannelChat = 'chatInfoChannelChat';
+  static const chatInfoChannelFiles = 'chatInfoChannelFiles';
+  static const chatInfoChannelRemark = 'chatInfoChannelRemark';
+  static const chatInfoChannelVideos = 'chatInfoChannelVideos';
+  static const chatInfoKeepRecording = 'chatInfoKeepRecording';
+  static const chatInfoStopRecordingConfirmMessage =
+      'chatInfoStopRecordingConfirmMessage';
+  static const chatInfoStopRecordingConfirmTitle =
+      'chatInfoStopRecordingConfirmTitle';
+  static const chatJoinChannel = 'chatJoinChannel';
+  static const chatLeaveHistoryCleanupFailedChannel =
+      'chatLeaveHistoryCleanupFailedChannel';
+  static const chatListMarkAllRead = 'chatListMarkAllRead';
+  static const chatListSelectAll = 'chatListSelectAll';
+  static const chatListSelectedCountValue1 = 'chatListSelectedCountValue1';
+  static const chatMembersRemoveMemberConfirmationChannel =
+      'chatMembersRemoveMemberConfirmationChannel';
+  static const chatReplyInAnotherChatTitle = 'chatReplyInAnotherChatTitle';
+  static const chatRestrictedTelegramTosMessageChannel =
+      'chatRestrictedTelegramTosMessageChannel';
+  static const chatUserBoostedChannel = 'chatUserBoostedChannel';
+  static const chatUserLeftChannel = 'chatUserLeftChannel';
+  static const chatUsersJoinedChannel = 'chatUsersJoinedChannel';
+  static const chatYouWereRemovedFromChannel = 'chatYouWereRemovedFromChannel';
+  static const communityChatAddedByChannelService =
+      'communityChatAddedByChannelService';
+  static const communityChatRemovedByChannelService =
+      'communityChatRemovedByChannelService';
+  static const composerReplyOptionAnotherChat =
+      'composerReplyOptionAnotherChat';
+  static const composerReplyOptionApply = 'composerReplyOptionApply';
+  static const composerReplyOptionCancel = 'composerReplyOptionCancel';
+  static const composerReplyOptionClearQuote = 'composerReplyOptionClearQuote';
+  static const composerReplyOptionQuote = 'composerReplyOptionQuote';
+  static const composerReplyOptionsHint = 'composerReplyOptionsHint';
+  static const composerReplyOptionsSubtitle = 'composerReplyOptionsSubtitle';
+  static const composerReplyOptionsTitle = 'composerReplyOptionsTitle';
+  static const composerReplyOptionsUpdateSubtitle =
+      'composerReplyOptionsUpdateSubtitle';
+  static const composerReplyOptionsUpdateTitle =
+      'composerReplyOptionsUpdateTitle';
+  static const composerReplyTapHint = 'composerReplyTapHint';
+  static const composerReplyToExternalName = 'composerReplyToExternalName';
+  static const composerReplyToName = 'composerReplyToName';
+  static const composerReplyToQuoteName = 'composerReplyToQuoteName';
+  static const emojiFontDownloaded = 'emojiFontDownloaded';
+  static const emojiFontNotDownloaded = 'emojiFontNotDownloaded';
+  static const ghostModeShowSidebarEntry = 'ghostModeShowSidebarEntry';
+  static const ghostModeShowSidebarEntryDescription =
+      'ghostModeShowSidebarEntryDescription';
+  static const groupManagementJoinSectionChannel =
+      'groupManagementJoinSectionChannel';
+  static const groupManagementLoadFailedChannel =
+      'groupManagementLoadFailedChannel';
+  static const groupManagementLogApprovedJoinRequestChannel =
+      'groupManagementLogApprovedJoinRequestChannel';
+  static const groupManagementLogChangedChannelDescription =
+      'groupManagementLogChangedChannelDescription';
+  static const groupManagementLogChangedChannelName =
+      'groupManagementLogChangedChannelName';
+  static const groupManagementLogChangedChannelPhoto =
+      'groupManagementLogChangedChannelPhoto';
+  static const groupManagementLogEndedLiveStream =
+      'groupManagementLogEndedLiveStream';
+  static const groupManagementLogLeftChannel = 'groupManagementLogLeftChannel';
+  static const groupManagementLogNoPermissionChannel =
+      'groupManagementLogNoPermissionChannel';
+  static const groupManagementLogStartedLiveStream =
+      'groupManagementLogStartedLiveStream';
+  static const groupManagementLogTitleChannel =
+      'groupManagementLogTitleChannel';
+  static const groupManagementNoEditInfoPermissionChannel =
+      'groupManagementNoEditInfoPermissionChannel';
+  static const historyBadgeStyleBoth = 'historyBadgeStyleBoth';
+  static const historyBadgeStyleIcon = 'historyBadgeStyleIcon';
+  static const historyBadgeStyleText = 'historyBadgeStyleText';
+  static const historyBadgeStyleTitle = 'historyBadgeStyleTitle';
+  static const historyClearDatabase = 'historyClearDatabase';
+  static const historyClearDatabaseMessage = 'historyClearDatabaseMessage';
+  static const historyDatabaseClearedToast = 'historyDatabaseClearedToast';
+  static const historyEnableAll = 'historyEnableAll';
+  static const historyExportAction = 'historyExportAction';
+  static const historyExportSubtitle = 'historyExportSubtitle';
+  static const historyExportedToast = 'historyExportedToast';
+  static const historyImportAction = 'historyImportAction';
+  static const historyImportConfirmMessage = 'historyImportConfirmMessage';
+  static const historyImportConfirmTitle = 'historyImportConfirmTitle';
+  static const historyImportFailedToast = 'historyImportFailedToast';
+  static const historyImportSubtitle = 'historyImportSubtitle';
+  static const historyImportedToast = 'historyImportedToast';
+  static const historyRecordBots = 'historyRecordBots';
+  static const historyRecordChannels = 'historyRecordChannels';
+  static const historyRecordDeleted = 'historyRecordDeleted';
+  static const historyRecordEdits = 'historyRecordEdits';
+  static const historyRecordGroups = 'historyRecordGroups';
+  static const historyRecordNote = 'historyRecordNote';
+  static const historyRecordPrivate = 'historyRecordPrivate';
+  static const historyRecordSection = 'historyRecordSection';
+  static const historyRemoveFromMirrorAction = 'historyRemoveFromMirrorAction';
+  static const historyRemovedFromMirrorToast = 'historyRemovedFromMirrorToast';
+  static const historyRenderGhosts = 'historyRenderGhosts';
+  static const historyRenderGhostsNote = 'historyRenderGhostsNote';
+  static const historyRevisionsTitle = 'historyRevisionsTitle';
+  static const historySenderLabel = 'historySenderLabel';
+  static const historySnapshotChannels = 'historySnapshotChannels';
+  static const historySnapshotGroups = 'historySnapshotGroups';
+  static const historySnapshotNote = 'historySnapshotNote';
+  static const historySnapshotPrivate = 'historySnapshotPrivate';
+  static const historySnapshotSection = 'historySnapshotSection';
+  static const historyTransferNote = 'historyTransferNote';
+  static const historyTransferSection = 'historyTransferSection';
+  static const historyTransferTitle = 'historyTransferTitle';
+  static const keptForwardCopyPartToast = 'keptForwardCopyPartToast';
+  static const keptForwardProtected = 'keptForwardProtected';
+  static const keptForwardProtectedHint = 'keptForwardProtectedHint';
+  static const keptForwardSection = 'keptForwardSection';
+  static const keptGhostSection = 'keptGhostSection';
+  static const keptHistorySection = 'keptHistorySection';
+  static const keptPremiumSection = 'keptPremiumSection';
+  static const keptSettingsTitle = 'keptSettingsTitle';
+  static const localPremiumNote = 'localPremiumNote';
+  static const localPremiumTitle = 'localPremiumTitle';
+  static const mediaFavorites = 'mediaFavorites';
+  static const mediaTileAddToFavorites = 'mediaTileAddToFavorites';
+  static const mediaTileCopySticker = 'mediaTileCopySticker';
+  static const mediaTileDeleteFromRecent = 'mediaTileDeleteFromRecent';
+  static const mediaTileRemoveFromFavorites = 'mediaTileRemoveFromFavorites';
+  static const mediaTileSaveToFile = 'mediaTileSaveToFile';
+  static const mediaTileSaveToGallery = 'mediaTileSaveToGallery';
+  static const mediaTileSchedule = 'mediaTileSchedule';
+  static const mediaTileSend = 'mediaTileSend';
+  static const mediaTileSendWithoutSound = 'mediaTileSendWithoutSound';
+  static const mediaTileViewStickerSet = 'mediaTileViewStickerSet';
+  static const messageActionViewEdits = 'messageActionViewEdits';
+  static const channelBottomBarActions = 'channelBottomBarActions';
+  static const tdMessageBoostedChannel = 'tdMessageBoostedChannel';
+  static const tdMessageChannelCreated = 'tdMessageChannelCreated';
+  static const tdMessageChannelNameChanged = 'tdMessageChannelNameChanged';
+  static const tdMessageChannelPhotoDeleted = 'tdMessageChannelPhotoDeleted';
+  static const tdMessageChannelPhotoUpdated = 'tdMessageChannelPhotoUpdated';
+  static const tdMessageChannelVideoChatEnded =
+      'tdMessageChannelVideoChatEnded';
+  static const tdMessageChannelVideoChatStarted =
+      'tdMessageChannelVideoChatStarted';
+  static const tdMessageGroupUpgraded = 'tdMessageGroupUpgraded';
+  static const tdMessageJoinedChannel = 'tdMessageJoinedChannel';
+  static const tdMessageJoinedChannelByLink = 'tdMessageJoinedChannelByLink';
+  static const tdMessageMemberLeftChannel = 'tdMessageMemberLeftChannel';
+  static const tdMessageNewMemberJoinedChannel =
+      'tdMessageNewMemberJoinedChannel';
+  static const tdMessageProtectedContentDisabled =
+      'tdMessageProtectedContentDisabled';
+  static const tdMessageProtectedContentEnabled =
+      'tdMessageProtectedContentEnabled';
 }
 
 abstract final class AppStrings {

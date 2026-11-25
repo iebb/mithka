@@ -1,11 +1,21 @@
 //  scope_notification_settings.dart
 //  Cached scope-level notification settings (mute_for) used to compute effective mute state.
 
+import 'package:flutter/foundation.dart';
 import 'package:mithka/tdlib/json_helpers.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart' show ChatKind;
 
-class ScopeNotificationSettings {
+/// Cached scope-level notification settings (mute_for) used to compute
+/// effective mute state.
+///
+/// A chat that follows the default (`use_default_mute_for`) carries NO mute
+/// state of its own — TDLib zeroes its `mute_for` (DialogNotificationSettings
+/// ::fix_mute_until) — so the effective value lives only in the scope
+/// settings. Those load asynchronously (a server round trip on first sync),
+/// so consumers must treat a snapshot parsed before the cache filled as
+/// provisional and re-derive when this notifier fires.
+class ScopeNotificationSettings extends ChangeNotifier {
   ScopeNotificationSettings._();
   static final ScopeNotificationSettings shared = ScopeNotificationSettings._();
 
@@ -17,9 +27,12 @@ class ScopeNotificationSettings {
   final Map<String, bool> _showPreview = {};
   final Map<String, int> _soundId = {};
 
-  /// Loads mute_for values for all three scopes from TDLib.
+  /// Loads mute_for values for all three scopes from TDLib. Runs on every
+  /// `authorizationStateReady`, so an account switch re-reads the new account's
+  /// scopes instead of keeping the previous account's values.
   Future<void> load() async {
     final client = TdClient.shared;
+    var loadedAny = false;
     for (final scope in const [_private, _group, _channel]) {
       try {
         final s = await client.query({
@@ -29,25 +42,33 @@ class ScopeNotificationSettings {
         _muteFor[scope] = s.integer('mute_for') ?? 0;
         _showPreview[scope] = s.boolean('show_preview') ?? true;
         _soundId[scope] = s.int64('sound_id') ?? -1;
+        loadedAny = true;
       } catch (_) {
-        _muteFor[scope] = _muteFor[scope] ?? 0;
-        _showPreview[scope] = _showPreview[scope] ?? true;
-        _soundId[scope] = _soundId[scope] ?? -1;
+        // Keep whatever is cached. A failed load must not fabricate values:
+        // writing a zero here would flip chats that follow a muted scope to
+        // unmuted until the next scope update arrives.
       }
     }
+    if (loadedAny) notifyListeners();
   }
 
   /// Updates the cached mute_for for a scope (called after user changes settings).
   void update(String scope, int muteFor) {
+    if (_muteFor[scope] == muteFor) return;
     _muteFor[scope] = muteFor;
+    notifyListeners();
   }
 
   void updateShowPreview(String scope, bool showPreview) {
+    if (_showPreview[scope] == showPreview) return;
     _showPreview[scope] = showPreview;
+    notifyListeners();
   }
 
   void updateSoundId(String scope, int soundId) {
+    if (_soundId[scope] == soundId) return;
     _soundId[scope] = soundId;
+    notifyListeners();
   }
 
   /// Returns cached mute_for for a stored scope identifier.

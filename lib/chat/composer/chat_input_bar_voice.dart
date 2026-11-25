@@ -1,8 +1,6 @@
 part of 'chat_input_bar.dart';
 
 extension _ChatInputBarVoice on _ChatInputBarState {
-  // MARK: - Voice recording
-
   void _toggleVoice() {
     _focus.unfocus();
     final opening = _panel != _Panel.voice;
@@ -127,13 +125,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
     }
   }
 
-  /// Claims the capture audio session for this composer.
-  ///
-  /// Failures propagate: a session that cannot be claimed is exactly the state
-  /// that used to end in an unexplained "could not record" toast, so the caller
-  /// reports it instead of opening a recorder that captures nothing. The mobile
-  /// recorder and this session share one platform decision, so a composer
-  /// already using the desktop recorder never touches the session.
   Future<void> _prepareCaptureSession() async {
     if (_captureSession != null) return;
     if (_voiceUsesDesktopRecorder) return;
@@ -147,7 +138,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
     _captureSession = session;
   }
 
-  /// Hands the shared session back to playback, once per capture.
   Future<void> _releaseCaptureSession() async {
     final session = _captureSession;
     if (session == null) return;
@@ -287,8 +277,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
     }
   }
 
-  /// Shows [error] in the mobile panel's status line until the next press on
-  /// the record button, a panel switch, or the composer closing.
   void _setVoiceInlineError(_VoiceInlineError error) {
     if (!mounted || _voiceDisposed || !_showsMobileVoicePanel) return;
     // A live recording keeps its status line; the failed action (pause or
@@ -307,9 +295,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
     _updateState(() => _voiceInlineError = _VoiceInlineError.none);
   }
 
-  /// Re-shows the inline row for a failure that was already reported while the
-  /// panel opened, after a press cleared the row. `PermissionStatus` names map
-  /// to their settings/required variants; anything else is the generic failure.
   void _rearmReportedCaptureFailure(Object cause) {
     if (!mounted || _voiceDisposed || !_showsMobileVoicePanel) return;
     // The stored failure may be a bare status name or the wrapper
@@ -659,8 +644,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
     }
   }
 
-  /// Deletes the waiting phone recording: playback stops, its file goes and
-  /// the card collapses. The caption text stays.
   void _discardVoiceDraft({bool rebuild = true}) {
     final draft = _voiceDraft;
     if (draft == null) return;
@@ -680,10 +663,6 @@ extension _ChatInputBarVoice on _ChatInputBarState {
       identical(_voiceDraft, draft) &&
       identical(target, vm);
 
-  /// Sends the waiting recording as one voice message with the field's text
-  /// as its caption: the length and paid-message checks, the trim export,
-  /// then [ChatViewModel.sendVoice]. A failure keeps the recording for a
-  /// retry and says so under the card.
   Future<void> _sendVoiceDraft({
     MessageSendConfiguration sendConfiguration =
         const MessageSendConfiguration(),

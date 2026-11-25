@@ -19,6 +19,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/deep_link_service.dart';
 import '../app/ipad_window_chrome.dart';
+import '../app/scaled_app_view.dart';
+import '../app/top_corner_cluster.dart';
 import '../bot_api/bot_api_account.dart';
 import '../bot_api/bot_api_client.dart';
 import '../bot_api/bot_api_endpoint_config.dart';
@@ -127,8 +129,40 @@ abstract final class _DesktopLoginMetrics {
   static const double compactWindowHeight = 640;
 }
 
+/// Geometry of the login on a wide window beside a corner status cluster (an
+/// opened iPhone Duo): a full-height menu column flush with the left edge and
+/// the form centred in the rest. These lengths place the two regions on the
+/// screen itself, so they are window points at every interface size; the
+/// controls inside keep the interface size.
+abstract final class _DuoLoginMetrics {
+  static const double menuWidth = 280;
+  static const double formMaxWidth = 420;
+
+  /// Least space between the form and the status cluster's line above it.
+  static const double formTopGap = 24;
+
+  /// Least space beside the form and below it.
+  static const double formEdgeGap = 24;
+
+  /// Space between the menu's last row and the bottom safe inset.
+  static const double menuBottomGap = 16;
+}
+
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
+
+  /// The pure core of the login step identity: the step-family mapping that
+  /// keeps same-form states (the phone column, including the logout chain
+  /// AuthInitializing → AuthWaitPhoneNumber → AuthClosed hops) on one key so
+  /// the step's AnimatedSwitcher never cross-fades a form against itself.
+  /// The instance method layers the bot/phone-override identities on top,
+  /// and AuthReloading is handled BEFORE this mapping (it sticks to the
+  /// previous identity — see _LoginViewState._stepIdentity).
+  @visibleForTesting
+  static String debugStepIdentityForTesting(AuthStep step) => switch (step) {
+    AuthInitializing() || AuthWaitPhoneNumber() || AuthClosed() => 'phone',
+    _ => step.runtimeType.toString(),
+  };
 
   @override
   State<LoginView> createState() => _LoginViewState();
@@ -174,6 +208,16 @@ class _LoginViewState extends State<LoginView> {
   @override
   void initState() {
     super.initState();
+    final initialStep = context.read<AuthManager>().step;
+    // Mounting mid-reload (add-account rides the gate's splash→login
+    // hand-off through AuthReloading) must not seed the literal
+    // "AuthReloading" identity: a few hundred ms later the real phone form
+    // arrives, the key flips, and the switcher cross-fades the same form
+    // against itself — the add-account entry flicker. Seed the phone
+    // column; the sticky branch keeps later reloads on what's on screen.
+    _lastStepIdentity = initialStep is AuthReloading
+        ? 'phone'
+        : LoginView.debugStepIdentityForTesting(initialStep);
     ProxyStatusController.shared.ensureTracking();
     unawaited(_loadBotEndpoint());
     if (isMobilePlatform) {
@@ -308,7 +352,15 @@ class _LoginViewState extends State<LoginView> {
           );
         }
       },
-      child: _usesSidebar
+      child: _opensDuoSplit
+          ? _duoSplitLayout(
+              auth,
+              accounts,
+              canGoBack: showsBackButton,
+              backToPhoneOnly: backToPhoneOnly,
+              showingPhone: showingPhone,
+            )
+          : _usesSidebar
           ? _desktopLayout(
               auth,
               accounts,
@@ -331,6 +383,22 @@ class _LoginViewState extends State<LoginView> {
   bool get _usesSidebar {
     final size = MediaQuery.sizeOf(context);
     return _desktop || (size.width >= 740 && size.height >= 600);
+  }
+
+  /// Whether the window is wide beside a corner status cluster that frees the
+  /// rest of the top edge (an opened iPhone Duo), with room for the menu and
+  /// the form side by side in window points. The closed Duo reports the same
+  /// kind of cluster on a narrow window and keeps the single lane.
+  bool get _opensDuoSplit {
+    if (_desktop) return false;
+    final data = TopOcclusionGeometry.maybeOf(context);
+    if (data == null || data.compactTop == null) return false;
+    // The same rule TopClusterPane applies: only content still owning the
+    // window's top inset moves up into the band.
+    final top = MediaQuery.paddingOf(context).top;
+    if ((top - data.safeTop).abs() > data.tolerance) return false;
+    return data.windowWidth * data.scale >=
+        _DuoLoginMetrics.menuWidth + _DuoLoginMetrics.formMaxWidth;
   }
 
   TextAlign get _align => TextAlign.start;
@@ -469,30 +537,12 @@ class _LoginViewState extends State<LoginView> {
                         constraints: const BoxConstraints(
                           maxWidth: _DesktopLoginMetrics.pageMaxWidth,
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // QR and bot login step back through the sidebar;
-                            // the explicit back only remains where it offers
-                            // more (re-enter, previous account, switch).
-                            if (canGoBack && !backToPhoneOnly) ...[
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Transform.translate(
-                                  offset: const Offset(-AppSpacing.sm, 0),
-                                  child: _backButton(
-                                    auth,
-                                    accounts,
-                                    backToPhoneOnly: backToPhoneOnly,
-                                    showingPhone: showingPhone,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.xxl),
-                            ],
-                            ..._stepBody(auth, accounts),
-                          ],
+                        child: _sidebarPage(
+                          auth,
+                          accounts,
+                          canGoBack: canGoBack,
+                          backToPhoneOnly: backToPhoneOnly,
+                          showingPhone: showingPhone,
                         ),
                       ),
                     ),
@@ -506,6 +556,127 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
+  /// The current step beside the method sidebar, shared by the desktop and
+  /// opened-Duo compositions.
+  Widget _sidebarPage(
+    AuthManager auth,
+    AccountStore accounts, {
+    required bool canGoBack,
+    required bool backToPhoneOnly,
+    required bool showingPhone,
+  }) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // QR and bot login step back through the sidebar; the explicit back
+      // only remains where it offers more (re-enter, previous account,
+      // switch).
+      if (canGoBack && !backToPhoneOnly) ...[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Transform.translate(
+            offset: const Offset(-AppSpacing.sm, 0),
+            child: _backButton(
+              auth,
+              accounts,
+              backToPhoneOnly: backToPhoneOnly,
+              showingPhone: showingPhone,
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xxl),
+      ],
+      ..._stepBody(auth, accounts),
+    ],
+  );
+
+  /// Opened iPhone Duo composition: the menu fills a full-height column flush
+  /// with the left edge, its brand row on the status cluster's line as the
+  /// main screen's column headers are, and the form is centred in the rest,
+  /// clear of the cluster hanging over it.
+  Widget _duoSplitLayout(
+    AuthManager auth,
+    AccountStore accounts, {
+    required bool canGoBack,
+    required bool backToPhoneOnly,
+    required bool showingPhone,
+  }) {
+    final c = context.colors;
+    final scale = ScaledAppView.scaleOf(context);
+    return Scaffold(
+      backgroundColor: c.background,
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            key: const ValueKey('login-duo-menu'),
+            width: _DuoLoginMetrics.menuWidth / scale,
+            child: TopClusterPane(
+              child: ColoredBox(
+                color: c.textPrimary.withValues(alpha: 0.035),
+                child: _desktopSidebar(auth, duo: true),
+              ),
+            ),
+          ),
+          Expanded(
+            child: TopClusterPane(
+              child: Builder(
+                builder: (context) => _duoFormPane(
+                  context,
+                  _sidebarPage(
+                    auth,
+                    accounts,
+                    canGoBack: canGoBack,
+                    backToPhoneOnly: backToPhoneOnly,
+                    showingPhone: showingPhone,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Centres [page] in the pane's full height, never closer than
+  /// [_DuoLoginMetrics.formTopGap] below the status cluster's line; a page
+  /// taller than that leaves starts there and scrolls.
+  Widget _duoFormPane(BuildContext context, Widget page) {
+    final data = TopOcclusionGeometry.maybeOf(context);
+    final scale = data?.scale ?? ScaledAppView.scaleOf(context);
+    final media = MediaQuery.of(context);
+    // The cluster's region runs down to the window's full top inset.
+    final lineBottom = data?.safeTop ?? media.padding.top;
+    final top = lineBottom + _DuoLoginMetrics.formTopGap / scale;
+    final bottom = media.padding.bottom + _DuoLoginMetrics.formEdgeGap / scale;
+    // Equal space above and below keeps the page on the pane's centre line.
+    final vertical = math.max(top, bottom);
+    return LayoutBuilder(
+      builder: (context, viewport) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.symmetric(
+          horizontal: _DuoLoginMetrics.formEdgeGap / scale,
+          vertical: vertical,
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: math.max(0, viewport.maxHeight - vertical * 2),
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              key: const ValueKey('login-duo-form'),
+              constraints: BoxConstraints(
+                maxWidth: _DuoLoginMetrics.formMaxWidth / scale,
+              ),
+              child: page,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// The penguin on its own, with no tile or tint behind it.
   Widget _penguinMark(double size) => ExcludeSemantics(
     child: Image(
@@ -513,6 +684,7 @@ class _LoginViewState extends State<LoginView> {
       width: size,
       height: size,
       fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
     ),
   );
 
@@ -641,107 +813,146 @@ class _LoginViewState extends State<LoginView> {
   /// Desktop sidebar: a softly tinted inset panel with the app mark, the
   /// login methods as selectable rows, and the window-level utilities at its
   /// foot.
-  Widget _desktopSidebar(AuthManager auth) {
+  ///
+  /// On an opened iPhone Duo ([duo]) the caller paints the tint as a
+  /// full-height column instead; the brand row moves up onto the status
+  /// cluster's line, the last row ends a fixed distance above the bottom safe
+  /// inset, and labels wrap rather than truncate.
+  Widget _desktopSidebar(AuthManager auth, {bool duo = false}) {
     final c = context.colors;
     final active = _activeMethod(auth);
     // Telegram logins need API credentials; a bot token does not.
     final telegramReady = auth.step is! AuthMissingCredentials;
     final switchable = !auth.isWorking && !_botWorking;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: c.textPrimary.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: CustomScrollView(
-        key: const ValueKey('login-sidebar-scroll'),
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.xxl,
-                AppSpacing.md,
-                AppSpacing.md,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                    ),
-                    child: Row(
-                      children: [
-                        _penguinMark(_DesktopLoginMetrics.brandMark),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Text(
-                            'Mithka',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyle.body(
-                              c.textPrimary,
-                              weight: AppTextWeight.semibold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.section),
-                  for (final method in _LoginMethod.values)
-                    _sidebarRow(
-                      key: ValueKey('login-method-${method.name}'),
-                      icon: method.icon,
-                      label: AppStrings.t(method.label),
-                      selected: active == method,
-                      enabled:
-                          switchable &&
-                          (telegramReady || method == _LoginMethod.botToken),
-                      onTap: () => _selectMethod(auth, method),
-                    ),
-                  const Spacer(),
-                  if (!_desktop && (Platform.isIOS || Platform.isAndroid))
-                    _sidebarRow(
-                      icon: HeroAppIcons.key,
-                      label: AppStrings.t(
-                        AppStringKeys.accountBackupRestoreAccount,
-                      ),
-                      enabled: switchable,
-                      onTap: _openAccountRestore,
-                    ),
-                  _sidebarRow(
-                    key: const ValueKey('login-language'),
-                    icon: HeroAppIcons.globe,
-                    label: AppStrings.t(AppStringKeys.languageTitle),
-                    onTap: _openLanguageSettings,
-                  ),
-                  AnimatedBuilder(
-                    animation: ProxyStatusController.shared,
-                    builder: (context, _) {
-                      final snapshot = ProxyStatusController.shared.snapshot;
-                      return _sidebarRow(
-                        key: const ValueKey('login-proxy'),
-                        icon: HeroAppIcons.networkWired,
-                        label: proxyStatusLabel(snapshot.indicator),
-                        tint: snapshot.isEnabled ? AppTheme.brand : null,
-                        onTap: _openProxySettings,
-                        onSecondaryTap: _disableProxy,
-                      );
-                    },
-                  ),
-                  _sidebarRow(
-                    icon: HeroAppIcons.font,
-                    label: AppStrings.t(AppStringKeys.loginTermsButton),
-                    onTap: () => showTelegramTermsSheet(context),
-                  ),
-                ],
+    final brand = Padding(
+      key: const ValueKey('login-brand'),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      child: Row(
+        children: [
+          _penguinMark(_DesktopLoginMetrics.brandMark),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              'Mithka',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyle.body(
+                c.textPrimary,
+                weight: AppTextWeight.semibold,
               ),
             ),
           ),
         ],
       ),
+    );
+    final media = MediaQuery.of(context);
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (duo)
+          TopClusterRowBeside(
+            // Until the row is measured it keeps the pane's band above it.
+            builder: (context, slot) => slot == null
+                ? Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top,
+                    ),
+                    child: brand,
+                  )
+                : TopClusterRow(slot: slot, child: brand),
+          )
+        else
+          brand,
+        const SizedBox(height: AppSpacing.section),
+        for (final method in _LoginMethod.values)
+          _sidebarRow(
+            key: ValueKey('login-method-${method.name}'),
+            icon: method.icon,
+            label: AppStrings.t(method.label),
+            selected: active == method,
+            enabled:
+                switchable &&
+                (telegramReady || method == _LoginMethod.botToken),
+            onTap: () => _selectMethod(auth, method),
+            wrap: duo,
+          ),
+        const Spacer(),
+        if (!_desktop && isMobilePlatform && !isOhos)
+          _sidebarRow(
+            key: const ValueKey('login-restore'),
+            icon: HeroAppIcons.key,
+            label: AppStrings.t(AppStringKeys.accountBackupRestoreAccount),
+            enabled: switchable,
+            onTap: _openAccountRestore,
+            wrap: duo,
+          ),
+        _sidebarRow(
+          key: const ValueKey('login-language'),
+          icon: HeroAppIcons.globe,
+          label: AppStrings.t(AppStringKeys.languageTitle),
+          onTap: _openLanguageSettings,
+          wrap: duo,
+        ),
+        AnimatedBuilder(
+          animation: ProxyStatusController.shared,
+          builder: (context, _) {
+            final snapshot = ProxyStatusController.shared.snapshot;
+            return _sidebarRow(
+              key: const ValueKey('login-proxy'),
+              icon: HeroAppIcons.networkWired,
+              label: proxyStatusLabel(snapshot.indicator),
+              tint: snapshot.isEnabled ? AppTheme.brand : null,
+              onTap: _openProxySettings,
+              onSecondaryTap: _disableProxy,
+              wrap: duo,
+            );
+          },
+        ),
+        _sidebarRow(
+          key: const ValueKey('login-terms'),
+          icon: HeroAppIcons.font,
+          label: AppStrings.t(AppStringKeys.loginTermsButton),
+          onTap: () => showTelegramTermsSheet(context),
+          wrap: duo,
+        ),
+      ],
+    );
+    final scroll = CustomScrollView(
+      key: const ValueKey('login-sidebar-scroll'),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            // In the Duo band the brand row places itself from the window
+            // top, and the last row ends a fixed number of window points
+            // above the bottom safe inset at every interface size.
+            padding: duo
+                ? EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    0,
+                    AppSpacing.md,
+                    media.padding.bottom +
+                        _DuoLoginMetrics.menuBottomGap /
+                            ScaledAppView.scaleOf(context),
+                  )
+                : const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.xxl,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                  ),
+            child: column,
+          ),
+        ),
+      ],
+    );
+    if (duo) return scroll;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.textPrimary.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: scroll,
     );
   }
 
@@ -754,6 +965,7 @@ class _LoginViewState extends State<LoginView> {
     bool selected = false,
     bool enabled = true,
     Color? tint,
+    bool wrap = false,
   }) {
     final c = context.colors;
     final ink = enabled ? c.textPrimary : c.textTertiary;
@@ -777,7 +989,12 @@ class _LoginViewState extends State<LoginView> {
               ? _DesktopLoginMetrics.sidebarRowHeight
               : _TouchLoginMetrics.controlHeight,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2),
+        // A wrapped label keeps some air above and below its lines; a
+        // single line stays within the row's minimum height either way.
+        padding: EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm + 2,
+          vertical: wrap ? AppSpacing.sm : 0,
+        ),
         decoration: BoxDecoration(
           color: selected ? c.textPrimary.withValues(alpha: 0.07) : null,
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -789,8 +1006,8 @@ class _LoginViewState extends State<LoginView> {
             Expanded(
               child: Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: wrap ? null : 1,
+                overflow: wrap ? null : TextOverflow.ellipsis,
                 style: AppTextStyle.footnote(
                   tint ?? ink,
                   weight: selected
@@ -1203,12 +1420,33 @@ class _LoginViewState extends State<LoginView> {
   }
 
   /// Stable identity of the visible step, so [AnimatedSwitcher] cross-fades
-  /// only when the flow actually moves between steps.
+  /// only when the flow actually moves between FORMS. Several auth states
+  /// render the same phone form (AuthReloading and AuthInitializing both
+  /// hand the default branch to the phone step) — re-keying on the raw
+  /// runtime type mounted a second copy of the form and cross-faded it
+  /// against itself, the "renders twice" flicker on add-account.
+  /// AuthMissingCredentials renders its own notice, so it keeps a distinct
+  /// identity from the working phone form. AuthClosed maps to the phone
+  /// form too: the logout chain LoggingOut → Closed → Initializing →
+  /// WaitPhoneNumber bounces between the gate's splash and login surfaces
+  /// (each a deliberate crossfade there), and re-keying the phone form at
+  /// the last hop would fade the freshly mounted form against itself.
   String _stepIdentity(AuthManager auth) {
     if (_showBotLogin) return 'bot';
     if (_forcePhone) return 'phone';
-    return auth.step.runtimeType.toString();
+    // AuthReloading is a re-read of the SAME client, not a form change:
+    // cancel-add-account / logout run form → AuthReloading → (gate takes
+    // over: splash or another account's ready sidebar). Mapping it to the
+    // phone column swapped the code/2FA form for the phone form mid-flight —
+    // the outgoing form cross-faded against a different incoming form while
+    // both stacked in the switcher's centered overlap ("a displaced form
+    // that vanishes last"). Stick to the identity already on screen; the
+    // gate's own crossfade takes it from there.
+    if (auth.step is AuthReloading) return _lastStepIdentity;
+    return _lastStepIdentity = LoginView.debugStepIdentityForTesting(auth.step);
   }
+
+  late String _lastStepIdentity;
 
   // MARK: Steps
 

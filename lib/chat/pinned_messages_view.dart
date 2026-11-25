@@ -66,8 +66,13 @@ class _PinnedMessagesViewState extends State<PinnedMessagesView> {
         'filter': {'@type': 'searchMessagesFilterPinned'},
       }, _accountSlot);
       final list = res.objects('messages') ?? const <Map<String, dynamic>>[];
+      final chat = await _client.queryForSlot({
+        '@type': 'getChat',
+        'chat_id': widget.chatId,
+      }, _accountSlot);
+      final isChannel = TDParse.chatKind(chat) == ChatKind.channel;
       final parsed = list
-          .map(TDParse.message)
+          .map((raw) => TDParse.message(raw, isChannel: isChannel))
           .whereType<ChatMessage>()
           .toList();
       for (final message in parsed) {

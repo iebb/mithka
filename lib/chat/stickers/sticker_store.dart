@@ -7,6 +7,8 @@
 //  Port of the Swift `StickerStore`.
 //
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 
@@ -32,7 +34,19 @@ class StickerPack {
 }
 
 class StickerStore extends ChangeNotifier {
-  StickerStore._();
+  StickerStore._() {
+    // The installed sets are server state: a pack added from the set page,
+    // another device or a server-side cleanup must reach the composer strip
+    // without a restart (the pattern GifStore uses for saved animations).
+    _subscription = TdClient.shared
+        .updatesOfAny(const [
+          'updateInstalledStickerSets',
+          'updateRecentStickers',
+          'updateStickerSet',
+        ])
+        .listen(_handleUpdate);
+  }
+
   static final StickerStore shared = StickerStore._();
 
   static const int recentPackId = -1;
@@ -40,6 +54,46 @@ class StickerStore extends ChangeNotifier {
   List<StickerPack> packs = [];
   bool loading = false;
   bool _loaded = false;
+
+  /// Identifies the newest pack-list load (EmojiStore's generation pattern):
+  /// an in-flight load an [invalidate] or [reset] supersedes cannot publish.
+  int _loadGeneration = 0;
+
+  late final StreamSubscription<Map<String, dynamic>> _subscription;
+
+  void _handleUpdate(Map<String, dynamic> update) {
+    switch (update['@type']) {
+      case 'updateInstalledStickerSets':
+      case 'updateRecentStickers':
+        invalidate();
+      case 'updateStickerSet':
+        final setId = update.int64('set_id');
+        if (setId == null) return;
+        unawaited(_refreshPack(setId));
+    }
+  }
+
+  /// Re-queries one installed pack whose contents changed, so an open tab
+  /// shows the new stickers without a full reload. Packs not carried by the
+  /// store (or still lazy) wait for the next full load.
+  Future<void> _refreshPack(int setId) async {
+    final index = packs.indexWhere((pack) => pack.id == setId);
+    if (index < 0 || !packs[index].loaded) return;
+    try {
+      final set = await TdClient.shared.query({
+        '@type': 'getStickerSet',
+        'set_id': setId,
+      });
+      // A reload or reset may have replaced the list while the query was in
+      // flight; the pack it was issued against is gone.
+      if (packs.isEmpty || index >= packs.length || packs[index].id != setId) {
+        return;
+      }
+      packs[index].stickers = parseStickers(set.objects('stickers'));
+      packs[index].loaded = true;
+      notifyListeners();
+    } catch (_) {}
+  }
 
   /// The tab the panel opens on: the first installed set in the order TDLib
   /// returned, falling back to recents when no set is installed.
@@ -59,6 +113,9 @@ class StickerStore extends ChangeNotifier {
   }
 
   void reset() {
+    // Strand every in-flight load: its answer belongs to the account the
+    // user just left.
+    _loadGeneration++;
     packs = [];
     loading = false;
     _loaded = false;
@@ -80,6 +137,9 @@ class StickerStore extends ChangeNotifier {
   }
 
   Future<void> _load() async {
+    // Starting a load supersedes every older one, including one for this
+    // same account that is still in flight.
+    final generation = ++_loadGeneration;
     loading = true;
     notifyListeners();
     final result = <StickerPack>[];
@@ -89,6 +149,7 @@ class StickerStore extends ChangeNotifier {
         '@type': 'getRecentStickers',
         'is_attached': false,
       });
+      if (generation != _loadGeneration) return;
       final items = parseStickers(recent.objects('stickers'));
       result.add(
         StickerPack(
@@ -99,7 +160,9 @@ class StickerStore extends ChangeNotifier {
           loaded: true,
         ),
       );
-    } catch (_) {}
+    } catch (_) {
+      if (generation != _loadGeneration) return;
+    }
 
     if (result.isEmpty) {
       result.add(
@@ -116,6 +179,7 @@ class StickerStore extends ChangeNotifier {
         '@type': 'getInstalledStickerSets',
         'sticker_type': {'@type': 'stickerTypeRegular'},
       });
+      if (generation != _loadGeneration) return;
       for (final info
           in sets.objects('sets') ?? const <Map<String, dynamic>>[]) {
         final id = info.int64('id');
@@ -123,7 +187,9 @@ class StickerStore extends ChangeNotifier {
         if (id == null || title == null) continue;
         result.add(StickerPack(id: id, title: title, cover: _coverItem(info)));
       }
-    } catch (_) {}
+    } catch (_) {
+      if (generation != _loadGeneration) return;
+    }
 
     packs = result;
     loading = false;
@@ -173,5 +239,11 @@ class StickerStore extends ChangeNotifier {
       isVideo: fmt == 'thumbnailFormatWebm',
       thumb: file,
     );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_subscription.cancel());
+    super.dispose();
   }
 }

@@ -294,7 +294,12 @@ class AiSettingsController extends ChangeNotifier {
        _modelsApi = modelsApi ?? OpenAiCompatibleModelsApi(),
        _ownsModelsApi = modelsApi == null,
        _secureRead = secureRead ?? _defaultSecureRead,
-       _secureWrite = secureWrite ?? _defaultSecureWrite;
+       _secureWrite = secureWrite ?? _defaultSecureWrite,
+       // Read up front so the composer never flashes a button the user
+       // turned off while the rest of the AI settings initialize.
+       _showComposerAiButton =
+           _preferences.getBool(showComposerAiButtonPreferenceKey) ??
+           defaultShowComposerAiButton;
 
   static const enabledPreferenceKey = 'ai.unread_summary.enabled';
   static const defaultUnreadSummaryEnabled = false;
@@ -321,6 +326,9 @@ class AiSettingsController extends ChangeNotifier {
       'ai.feature.reply.model_candidate.v1';
   static const replyPromptPreferenceKey = 'ai.feature.reply.prompt.v1';
   static const replyPromptMaximumCharacters = 1000;
+  static const showComposerAiButtonPreferenceKey =
+      'ai.feature.reply.composer_button.v1';
+  static const defaultShowComposerAiButton = true;
   static const summaryPromptPreferenceKey = 'ai.feature.summary.prompt.v1';
   static const summaryPromptMaximumCharacters = 1000;
   static const applePccModelCandidateId = 'builtin:apple_pcc';
@@ -351,6 +359,7 @@ class AiSettingsController extends ChangeNotifier {
   String _summaryModelCandidateId = applePccModelCandidateId;
   String _replyModelCandidateId = telegramCocoonModelCandidateId;
   String _replyPrompt = defaultAiReplyPrompt.trim();
+  bool _showComposerAiButton;
   String _summaryPrompt = defaultAiSummaryPrompt.trim();
   final Map<String, String> _profileApiKeys = {};
   ApplePccCapabilities? _pccCapabilities;
@@ -405,6 +414,10 @@ class AiSettingsController extends ChangeNotifier {
   String get summaryModelCandidateId => _summaryModelCandidateId;
   String get replyModelCandidateId => _replyModelCandidateId;
   String get aiReplyPrompt => _replyPrompt;
+
+  /// Whether the message box shows the AI Reply (sparkle) button. When off
+  /// the composer leaves the button out entirely.
+  bool get showComposerAiButton => _showComposerAiButton;
   bool get hasCustomAiReplyPrompt =>
       _replyPrompt != defaultAiReplyPrompt.trim();
   String get aiSummaryPrompt => _summaryPrompt;
@@ -583,6 +596,9 @@ class AiSettingsController extends ChangeNotifier {
     _replyPrompt = _normalizeReplyPrompt(
       _preferences.getString(replyPromptPreferenceKey),
     );
+    _showComposerAiButton =
+        _preferences.getBool(showComposerAiButtonPreferenceKey) ??
+        defaultShowComposerAiButton;
     _summaryPrompt = _normalizeSummaryPrompt(
       _preferences.getString(summaryPromptPreferenceKey),
     );
@@ -771,6 +787,23 @@ class AiSettingsController extends ChangeNotifier {
   }
 
   Future<void> resetAiReplyPrompt() => setAiReplyPrompt(defaultAiReplyPrompt);
+
+  /// Refresh after the caller reloads shared preferences for a window update.
+  void refreshComposerButtonPreference() {
+    final value =
+        _preferences.getBool(showComposerAiButtonPreferenceKey) ??
+        defaultShowComposerAiButton;
+    if (_showComposerAiButton == value) return;
+    _showComposerAiButton = value;
+    notifyListeners();
+  }
+
+  Future<void> setShowComposerAiButton(bool value) async {
+    if (_showComposerAiButton == value) return;
+    await _preferences.setBool(showComposerAiButtonPreferenceKey, value);
+    _showComposerAiButton = value;
+    notifyListeners();
+  }
 
   Future<void> setAiSummaryPrompt(String value) async {
     final normalized = _normalizeSummaryPrompt(value);

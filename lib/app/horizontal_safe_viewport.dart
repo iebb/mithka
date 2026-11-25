@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'scaled_app_view.dart';
 import 'top_corner_cluster.dart';
 
 /// Reserves side-mounted system chrome for every route, sheet, and overlay.
@@ -115,6 +116,11 @@ class _HorizontalSafeViewportState extends State<HorizontalSafeViewport> {
   Widget _buildViewport(BuildContext context) {
     final media = MediaQuery.of(context);
     _refreshSideGeometry(media);
+    // The platform measures in window points; everything below lays out in
+    // the interface-size view's units, like the safe-area padding above.
+    final topOcclusion = widget.sideNavigation
+        ? _topOcclusion?.inViewScale(ScaledAppView.scaleOf(context))
+        : null;
     final left = media.padding.left;
     final right = media.padding.right;
     final safeMedia = media.removePadding(removeLeft: true, removeRight: true);
@@ -145,7 +151,7 @@ class _HorizontalSafeViewportState extends State<HorizontalSafeViewport> {
               enabled: widget.sideNavigation,
               sideTopFraction: _sideTopFraction,
               child: TopOcclusionGeometry(
-                data: widget.sideNavigation ? _topOcclusion : null,
+                data: topOcclusion,
                 child: widget.child,
               ),
             ),

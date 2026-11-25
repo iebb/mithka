@@ -97,12 +97,14 @@ class _SettingsViewState extends State<SettingsView> {
   void initState() {
     super.initState();
     final initialCategoryId = widget.initialCategoryId;
+    // Support Us sits first in the sidebar but is not a settings page, so the
+    // first real category opens by default.
     _selectedCategoryId =
         _settingsCategoryDefinitions.any(
           (category) => category.id == initialCategoryId,
         )
         ? initialCategoryId!
-        : 'general';
+        : 'notifications';
     _expandedCategoryIds.add(_selectedCategoryId);
     _searchController.addListener(_searchChanged);
     if (widget.focusSearch) {
@@ -296,21 +298,25 @@ class _SettingsViewState extends State<SettingsView> {
   /// One settings column: keeps the window's top inset, or the shared band
   /// beside a corner status cluster, and tells its header where that is.
   /// In that band the column's own top colour runs to the screen edge, as on
-  /// the main screen, instead of leaving a separate strip.
+  /// the main screen, instead of leaving a separate strip, and the band is
+  /// left to the column's header, which starts at the screen edge and can
+  /// move up onto the cluster's line.
   Widget _splitColumn({required Color topColor, required Widget child}) =>
       TopClusterPane(
         child: Builder(
-          builder: (context) => ColoredBox(
-            color: TopClusterInsets.bandActiveOf(context)
-                ? topColor
-                : Colors.transparent,
-            child: SafeArea(
-              left: false,
-              right: false,
-              bottom: false,
-              child: child,
-            ),
-          ),
+          builder: (context) {
+            final band = TopClusterInsets.bandActiveOf(context);
+            return ColoredBox(
+              color: band ? topColor : Colors.transparent,
+              child: SafeArea(
+                left: false,
+                top: !band,
+                right: false,
+                bottom: false,
+                child: child,
+              ),
+            );
+          },
         ),
       );
 
@@ -320,69 +326,93 @@ class _SettingsViewState extends State<SettingsView> {
     // Beside a corner status cluster the column starts on the main screen's
     // band, so the title shares the detail header's row and centre line.
     final band = !desktopDense && TopClusterInsets.bandActiveOf(context);
-    // The enclosing SafeArea only clears the system inset; iPadOS floating
+    // In the band the column leaves its top inset to this header; elsewhere
+    // the enclosing SafeArea clears the system inset. iPadOS floating
     // windows additionally need clearance for the traffic-light controls.
-    return Container(
-      constraints: BoxConstraints(
-        minHeight: band
-            ? AppMetric.navHeaderHeight
-            : desktopDense
-            ? 48
-            : 58,
-      ),
-      padding:
-          EdgeInsets.fromLTRB(
-            desktopDense ? 14 : AppSpacing.lg,
-            (band
-                    ? 0
-                    : desktopDense
-                    ? 8
-                    : AppSpacing.md) +
-                iPadWindowChromeInsetOf(context),
-            desktopDense ? 14 : AppSpacing.lg,
-            band
-                ? 0
-                : desktopDense
-                ? 4
-                : AppSpacing.xs,
-          ) +
-          TopClusterInsets.of(context),
-      alignment: Alignment.centerLeft,
-      child: Row(
-        children: [
-          if (widget.showBackButton && Navigator.of(context).canPop()) ...[
-            AppInteractiveSurface(
-              key: const ValueKey('settings-root-back'),
-              semanticLabel: AppStringKeys.navigationBack.l10n(context),
-              onTap: () => Navigator.of(context).pop(),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: AppIcon(
-                  HeroAppIcons.chevronLeft,
-                  size: AppIconSize.nav,
-                  color: c.textPrimary,
-                ),
+    final bandTop = band ? MediaQuery.paddingOf(context).top : 0.0;
+    final horizontal = desktopDense ? 14.0 : AppSpacing.lg;
+    final row = Row(
+      children: [
+        if (widget.showBackButton && Navigator.of(context).canPop()) ...[
+          AppInteractiveSurface(
+            key: const ValueKey('settings-root-back'),
+            semanticLabel: AppStringKeys.navigationBack.l10n(context),
+            onTap: () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: AppIcon(
+                HeroAppIcons.chevronLeft,
+                size: AppIconSize.nav,
+                color: c.textPrimary,
               ),
             ),
-            SizedBox(width: desktopDense ? 4 : AppSpacing.xs),
-          ],
-          Expanded(
-            child: Text(
-              AppStringKeys.profileSettings.l10n(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: desktopDense
-                  ? TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    )
-                  : AppTextStyle.title(c.textPrimary),
-            ),
           ),
+          SizedBox(width: desktopDense ? 4 : AppSpacing.xs),
         ],
-      ),
+        Expanded(
+          child: Text(
+            AppStringKeys.profileSettings.l10n(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: desktopDense
+                ? TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  )
+                : AppTextStyle.title(c.textPrimary),
+          ),
+        ),
+      ],
+    );
+    return TopClusterRowBeside(
+      builder: (context, slot) {
+        if (slot == null || !band) {
+          return Container(
+            constraints: BoxConstraints(
+              minHeight: band
+                  ? AppMetric.navHeaderHeight + bandTop
+                  : desktopDense
+                  ? 48
+                  : 58,
+            ),
+            padding:
+                EdgeInsets.fromLTRB(
+                  horizontal,
+                  (band
+                          ? bandTop
+                          : desktopDense
+                          ? 8
+                          : AppSpacing.md) +
+                      iPadWindowChromeInsetOf(context),
+                  horizontal,
+                  band
+                      ? 0
+                      : desktopDense
+                      ? 4
+                      : AppSpacing.xs,
+                ) +
+                TopClusterInsets.of(context),
+            alignment: Alignment.centerLeft,
+            child: row,
+          );
+        }
+        // Level with the detail header on the corner cluster's line.
+        return TopClusterRow(
+          slot: slot,
+          child: Container(
+            constraints: const BoxConstraints(
+              minHeight: AppMetric.navHeaderHeight,
+            ),
+            padding:
+                EdgeInsets.symmetric(horizontal: horizontal) +
+                TopClusterInsets.of(context),
+            alignment: Alignment.centerLeft,
+            child: row,
+          ),
+        );
+      },
     );
   }
 
@@ -408,11 +438,13 @@ class _SettingsViewState extends State<SettingsView> {
           key: ValueKey('settings-category-${category.id}'),
           label: category.titleKey.l10n(context),
           icon: category.icon,
-          // A leaf highlights only while its screen is the one on show.
+          // A leaf highlights only while its screen is the one on show,
+          // including when it opened by default before anything was picked.
           selected:
               isLeaf &&
               isSelectedCategory &&
-              _selectedDestinationId == category.destinations.single.id,
+              (_selectedDestinationId == null ||
+                  _selectedDestinationId == category.destinations.single.id),
           expanded: isLeaf ? null : expanded,
           onTap: () => isLeaf
               ? _selectDestination(category, category.destinations.single)
@@ -840,8 +872,6 @@ class _SettingsViewState extends State<SettingsView> {
           icon: HeroAppIcons.solidStar,
           color: const Color(0xFF7C5CFC),
           destination: () => const MithkaProView(),
-          trailingKey: pro.isPro ? AppStringKeys.mithkaProActive : null,
-          platformNeutralRoute: true,
           searchTerms: const ['pro', 'support', 'subscription'],
         ),
       _SettingsDestination(
@@ -868,6 +898,7 @@ class _SettingsViewState extends State<SettingsView> {
           'theme',
           'font',
           'icon',
+          'emoji',
           'wallpaper',
           'bubbles',
           'message bubbles',
@@ -995,7 +1026,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-features',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 0,
+        order: 10,
         titleKey: AppStringKeys.featureTitle,
         icon: HeroAppIcons.grip,
         color: const Color(0xFF3C8CF0),
@@ -1012,7 +1043,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-ai',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 10,
+        order: 20,
         titleKey: AppStringKeys.aiSettingsTitle,
         icon: HeroAppIcons.cpuChip,
         color: const Color(0xFF7467F0),
@@ -1030,7 +1061,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-proxy',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 20,
+        order: 30,
         titleKey: AppStringKeys.proxyTitle,
         icon: HeroAppIcons.globe,
         color: const Color(0xFF34A2DF),
@@ -1041,7 +1072,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-advanced',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 30,
+        order: 40,
         titleKey: AppStringKeys.advancedTitle,
         icon: HeroAppIcons.objectGroup,
         color: const Color(0xFF16B0A0),
@@ -1059,7 +1090,7 @@ class _SettingsViewState extends State<SettingsView> {
           id: 'mithka-developer',
           owner: _SettingsOwner.mithka,
           group: 5,
-          order: 40,
+          order: 50,
           titleKey: AppStringKeys.developerModeTitle,
           icon: HeroAppIcons.code,
           color: const Color(0xFFFF5A5F),
@@ -1075,7 +1106,7 @@ class _SettingsViewState extends State<SettingsView> {
         id: 'mithka-about',
         owner: _SettingsOwner.mithka,
         group: 5,
-        order: 50,
+        order: 60,
         titleKey: AppStringKeys.settingsAboutMithka,
         icon: HeroAppIcons.circleInfo,
         color: const Color(0xFF8E8E93),
@@ -1227,9 +1258,7 @@ class _SettingsViewState extends State<SettingsView> {
     Widget row(String? version) => SettingsRow(
       key: ValueKey('settings-destination-${destination.id}'),
       title: destination.titleKey,
-      value: showOwner
-          ? destination.owner?.titleKey ?? ''
-          : destination.trailingKey ?? version ?? '',
+      value: showOwner ? destination.owner?.titleKey ?? '' : version ?? '',
       leading: SettingsIconTile(
         icon: destination.icon,
         backgroundColor: destination.color,
@@ -1256,11 +1285,7 @@ class _SettingsViewState extends State<SettingsView> {
     BuildContext? context,
   }) {
     Navigator.of(context ?? this.context).push(
-      destination.platformNeutralRoute
-          ? AppPageRoute<void>(
-              pageBuilder: (_, _, _) => destination.destination(),
-            )
-          : MaterialPageRoute<void>(builder: (_) => destination.destination()),
+      AppPageRoute<void>(pageBuilder: (_, _, _) => destination.destination()),
     );
   }
 
@@ -1323,9 +1348,9 @@ List<_SettingsCategory> _settingsCategories(
 
 const _settingsCategoryDefinitions = <_SettingsCategoryDefinition>[
   _SettingsCategoryDefinition(
-    id: 'general',
-    titleKey: AppStringKeys.generalTitle,
-    icon: HeroAppIcons.gear,
+    id: 'support',
+    titleKey: AppStringKeys.mithkaProTitle,
+    icon: HeroAppIcons.heart,
     destinationIds: ['mithka-pro'],
   ),
   _SettingsCategoryDefinition(
@@ -1439,8 +1464,6 @@ class _SettingsDestination {
     required this.destination,
     this.splitDestination,
     this.owner,
-    this.trailingKey,
-    this.platformNeutralRoute = false,
     this.showsVersion = false,
     this.searchTerms = const [],
   });
@@ -1454,8 +1477,6 @@ class _SettingsDestination {
   final Color color;
   final Widget Function() destination;
   final Widget Function()? splitDestination;
-  final String? trailingKey;
-  final bool platformNeutralRoute;
   final bool showsVersion;
   final List<String> searchTerms;
 

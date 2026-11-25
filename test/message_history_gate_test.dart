@@ -15,6 +15,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
+import 'package:mithka/history/message_history_settings.dart';
 import 'package:mithka/history/message_history_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -108,7 +109,14 @@ void main() {
       store.accountUserIdResolver = _SingleAccountIdentity();
       store.activeClientIdProvider = () => 101;
       addTearDown(store.dispose);
-      store.initialize(await SharedPreferences.getInstance());
+      final prefs = await SharedPreferences.getInstance();
+      // Recording is off until the user turns it on.
+      MessageHistorySettings.shared
+        ..initialize(prefs)
+        ..setEnableAll(true)
+        ..setRecordDeleted(true)
+        ..setRecordPrivate(true);
+      store.initialize(prefs);
       await store.ensureLoaded();
       store.startObserving();
       await Future<void>.delayed(Duration.zero);

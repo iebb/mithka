@@ -323,8 +323,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
     final hits = <_DiscoveryHit>[];
     for (final raw in messages) {
       final chatId = raw.int64('chat_id') ?? 0;
-      final message = TDParse.message(raw);
-      if (chatId == 0 || message == null) continue;
+      if (chatId == 0) continue;
       var source = chatCache[chatId];
       if (source == null) {
         try {
@@ -335,6 +334,7 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
           source = _DiscoverySource(
             title: chat.str('title') ?? 'Public channel',
             photo: TDParse.smallPhoto(chat.obj('photo')),
+            isChannel: TDParse.chatKind(chat) == ChatKind.channel,
           );
         } catch (_) {
           source = _DiscoverySource(
@@ -344,6 +344,8 @@ class _PublicDiscoveryViewState extends State<PublicDiscoveryView> {
         }
         chatCache[chatId] = source;
       }
+      final message = TDParse.message(raw, isChannel: source.isChannel);
+      if (message == null) continue;
       hits.add(_DiscoveryHit(chatId: chatId, message: message, source: source));
     }
     return hits;
@@ -1059,9 +1061,14 @@ class _DiscoveryPeer {
 }
 
 class _DiscoverySource {
-  const _DiscoverySource({required this.title, required this.photo});
+  const _DiscoverySource({
+    required this.title,
+    required this.photo,
+    this.isChannel = false,
+  });
   final String title;
   final TdFileRef? photo;
+  final bool isChannel;
 }
 
 class _DiscoveryHit {

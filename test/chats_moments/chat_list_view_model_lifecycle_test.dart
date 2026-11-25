@@ -30,6 +30,52 @@ void main() {
     expect(model.selectedFilter.folderId, 7);
   });
 
+  test(
+    '"All chats" honours main_chat_list_position instead of pinning first',
+    () {
+      final model = ChatListViewModel();
+      addTearDown(model.dispose);
+
+      model.applyUpdateForTesting({
+        '@type': 'updateChatFolders',
+        'chat_folders': [
+          {'id': 7, 'title': 'Business'},
+          {'id': 8, 'title': 'Personal'},
+        ],
+        'main_chat_list_position': 2,
+      });
+
+      expect(model.filters.map((f) => f.folderId), [7, 8, null]);
+      expect(model.selectedFilter.isAll, isTrue);
+      // "All" is present, just not first: it is not hidden by the preference.
+      expect(model.selectionHiddenByFilterPreference, isFalse);
+
+      model.hideAllFilter = true;
+      expect(model.filters.map((f) => f.folderId), [7, 8]);
+      expect(model.selectionHiddenByFilterPreference, isTrue);
+      model.selectFirstVisibleFilterIfHidden();
+      expect(model.selectedFilter.folderId, 7);
+
+      model.hideAllFilter = false;
+      expect(model.filters.map((f) => f.folderId), [7, 8, null]);
+      expect(model.selectedFilter.folderId, 7);
+    },
+  );
+
+  test('an update without main_chat_list_position keeps "All" first', () {
+    final model = ChatListViewModel();
+    addTearDown(model.dispose);
+
+    model.applyUpdateForTesting({
+      '@type': 'updateChatFolders',
+      'chat_folders': [
+        {'id': 7, 'title': 'Business'},
+      ],
+    });
+
+    expect(model.filters.map((f) => f.folderId), [null, 7]);
+  });
+
   test('enabling the preference later is applied after the frame', () {
     final model = ChatListViewModel();
     addTearDown(model.dispose);
