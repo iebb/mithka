@@ -23,6 +23,9 @@ class VideoPlaybackPreferences {
     this.rightVerticalSwipeAction = VideoVerticalSwipeAction.volume,
     this.completionAction = VideoCompletionAction.prompt,
     this.androidVideoCompatibility = true,
+    this.defaultPlaybackSpeed = 1.0,
+    this.rememberedVolume = 1.0,
+    this.rememberedMuted = false,
   });
 
   static const androidVideoCompatibilityPreferenceKey =
@@ -35,6 +38,10 @@ class VideoPlaybackPreferences {
   static const rightVerticalSwipePreferenceKey =
       'videoPlayback.rightVerticalSwipeAction';
   static const completionPreferenceKey = 'videoPlayback.completionAction';
+  static const defaultPlaybackSpeedPreferenceKey =
+      'videoPlayback.defaultPlaybackSpeed';
+  static const rememberedVolumePreferenceKey = 'videoPlayback.rememberedVolume';
+  static const rememberedMutedPreferenceKey = 'videoPlayback.rememberedMuted';
 
   /// Emits after a playback preference has been durably written.
   ///
@@ -50,6 +57,9 @@ class VideoPlaybackPreferences {
   final VideoVerticalSwipeAction rightVerticalSwipeAction;
   final VideoCompletionAction completionAction;
   final bool androidVideoCompatibility;
+  final double defaultPlaybackSpeed;
+  final double rememberedVolume;
+  final bool rememberedMuted;
 
   VideoPlaybackPreferences copyWith({
     VideoHorizontalSwipeAction? horizontalSwipeAction,
@@ -57,6 +67,9 @@ class VideoPlaybackPreferences {
     VideoVerticalSwipeAction? rightVerticalSwipeAction,
     VideoCompletionAction? completionAction,
     bool? androidVideoCompatibility,
+    double? defaultPlaybackSpeed,
+    double? rememberedVolume,
+    bool? rememberedMuted,
   }) {
     return VideoPlaybackPreferences(
       horizontalSwipeAction:
@@ -68,6 +81,9 @@ class VideoPlaybackPreferences {
       completionAction: completionAction ?? this.completionAction,
       androidVideoCompatibility:
           androidVideoCompatibility ?? this.androidVideoCompatibility,
+      defaultPlaybackSpeed: defaultPlaybackSpeed ?? this.defaultPlaybackSpeed,
+      rememberedVolume: rememberedVolume ?? this.rememberedVolume,
+      rememberedMuted: rememberedMuted ?? this.rememberedMuted,
     );
   }
 
@@ -77,6 +93,8 @@ class VideoPlaybackPreferences {
   }
 
   static VideoPlaybackPreferences fromPreferences(SharedPreferences prefs) {
+    final rawSpeed = prefs.getDouble(defaultPlaybackSpeedPreferenceKey) ?? 1.0;
+    final rawVolume = prefs.getDouble(rememberedVolumePreferenceKey) ?? 1.0;
     return VideoPlaybackPreferences(
       androidVideoCompatibility:
           prefs.getBool(androidVideoCompatibilityPreferenceKey) ?? true,
@@ -100,6 +118,14 @@ class VideoPlaybackPreferences {
         prefs.getString(completionPreferenceKey),
         VideoCompletionAction.prompt,
       ),
+      defaultPlaybackSpeed:
+          rawSpeed.isFinite && rawSpeed >= 0.25 && rawSpeed <= 4.0
+          ? rawSpeed
+          : 1.0,
+      rememberedVolume: rawVolume.isFinite
+          ? rawVolume.clamp(0.0, 1.0).toDouble()
+          : 1.0,
+      rememberedMuted: prefs.getBool(rememberedMutedPreferenceKey) ?? false,
     );
   }
 
@@ -134,6 +160,26 @@ class VideoPlaybackPreferences {
     if (await prefs.setBool(androidVideoCompatibilityPreferenceKey, enabled)) {
       _changes.emit();
     }
+  }
+
+  static Future<void> saveDefaultPlaybackSpeed(double speed) async {
+    if (!speed.isFinite || speed < 0.25 || speed > 4.0) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (await prefs.setDouble(defaultPlaybackSpeedPreferenceKey, speed)) {
+      _changes.emit();
+    }
+  }
+
+  static Future<void> saveRememberedVolume({
+    required double volume,
+    required bool muted,
+  }) async {
+    if (!volume.isFinite) return;
+    final clamped = volume.clamp(0.0, 1.0).toDouble();
+    final prefs = await SharedPreferences.getInstance();
+    final a = await prefs.setDouble(rememberedVolumePreferenceKey, clamped);
+    final b = await prefs.setBool(rememberedMutedPreferenceKey, muted);
+    if (a || b) _changes.emit();
   }
 
   static Future<void> _save(String key, Enum value) async {

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:f_videoplayer/f_videoplayer.dart';
+import 'package:f_videoplayer_fvp/f_videoplayer_fvp.dart';
 import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
@@ -235,7 +236,9 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
       );
   FVideoPlaybackState? _playbackState;
   final HttpClient _progressClient = HttpClient();
+  final FVideoThumbnailCache _thumbnailCache = FVideoThumbnailCache();
   final List<String> _debugEvents = <String>[];
+  List<FVideoChapter> _chapters = const [];
   Timer? _progressTimer;
   TdFileProgress? _progress;
   DateTime? _progressSampleAt;
@@ -518,7 +521,38 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
       showScrubPreview: false,
       showPictureInPictureButton: false,
       showFullscreenButton: false,
-      onReady: _handleControllerReady,
+      chapters: _chapters,
+      frameStepDelegate: (frames) async {
+        final controller = _controller;
+        if (controller == null) return;
+        final stepped = await FvpControllerBridge.stepFrames(
+          controller,
+          frames,
+        );
+        if (!stepped) {
+          final target =
+              controller.value.position + Duration(milliseconds: 33 * frames);
+          await controller.seekTo(
+            target < Duration.zero ? Duration.zero : target,
+          );
+        }
+      },
+      snapshotDelegate: ({width, height}) {
+        final controller = _controller;
+        if (controller == null) return Future<Uint8List?>.value();
+        return FvpControllerBridge.captureFramePng(
+          controller,
+          width: width,
+          height: height,
+        );
+      },
+      onReady: (controller) {
+        _handleControllerReady(controller);
+        final chapters = FvpControllerBridge.chapters(controller);
+        if (mounted && chapters.isNotEmpty) {
+          setState(() => _chapters = chapters);
+        }
+      },
       onPlaybackStateChanged: (state) => _playbackState = state,
       onError: _handlePlaybackError,
       isFullscreen: fullscreen,
@@ -538,6 +572,21 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
         aspectRatio: aspectRatio,
         downloadedFraction: _progress?.prefixFraction ?? _progress?.fraction,
         thumbnailProvider: _provideScrubThumbnail,
+        pinButton: ValueListenableBuilder<bool>(
+          valueListenable: FVideoDesktopWindows.currentWindowAlwaysOnTop,
+          builder: (context, pinned, _) => MithkaVideoChromeAction(
+            icon: HeroAppIcons.pin,
+            label: pinned ? 'Unpin window' : 'Pin window on top',
+            onTap: () {
+              unawaited(FVideoDesktopWindows.toggleCurrentWindowAlwaysOnTop());
+              scope.actions.showControls();
+            },
+            cornerRadius: 22,
+            backgroundColor: pinned
+                ? const Color(0xD92C6565)
+                : const Color(0xB82C2C2E),
+          ),
+        ),
         modeButton: _pictureInPictureSupported
             ? MithkaVideoChromeAction(
                 icon: HeroAppIcons.pictureInPicture,
@@ -577,7 +626,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
 
   Future<Uint8List?> _provideScrubThumbnail(Duration position) {
     final maxWidth = _videoAspectRatio() >= 1 ? 320 : 240;
-    return FVideoThumbnail.generateRequest(
+    return _thumbnailCache.resolve(
       FVideoThumbnailRequest(
         source: FVideoSource.uri(arguments.uri),
         position: position,

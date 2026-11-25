@@ -114,11 +114,42 @@ extension _VideoPlayerOverlaysMenus on _VideoPlayerViewState {
     );
   }
 
+  List<FVideoChapter> _resolvedChapters(VideoPlayerController controller) {
+    final containerChapters = FvpControllerBridge.chapters(controller);
+    if (containerChapters.isNotEmpty) return containerChapters;
+    final duration = controller.value.duration;
+    return FVideoChapter.parseFromText(
+      widget.title,
+      maxDuration: duration > Duration.zero ? duration : null,
+    );
+  }
+
+  void _handleReusablePositionChanged(Duration position) {
+    if (_nextVideoPrewarmed) return;
+    if (_completionAction != VideoCompletionAction.autoplayNext) return;
+    final nextItem = widget.nextVideo;
+    final controller = _controller;
+    if (nextItem == null || controller == null) return;
+    final duration = controller.value.duration;
+    if (duration <= const Duration(seconds: 15)) return;
+    if (duration - position <= const Duration(seconds: 15)) {
+      _nextVideoPrewarmed = true;
+      unawaited(
+        _streamQuery({
+          '@type': 'downloadFile',
+          'file_id': nextItem.video.id,
+          'priority': 16,
+          'offset': 0,
+          'limit': 512 * 1024,
+          'synchronous': false,
+        }).catchError((_) => const <String, dynamic>{}),
+      );
+    }
+  }
+
   Future<Uint8List?> _generateScrubThumbnail(FVideoThumbnailRequest request) {
     final provider = widget.thumbnailProvider;
-    return provider == null
-        ? FVideoThumbnail.generateRequest(request)
-        : provider(request);
+    return _scrubThumbnailCache.resolve(request, provider: provider);
   }
 
   FVideoSource? _scrubThumbnailSource() {
