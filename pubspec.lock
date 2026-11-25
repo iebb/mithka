@@ -153,6 +153,33 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.4"
+  cineplay:
+    dependency: "direct main"
+    description:
+      path: "packages/cineplay"
+      ref: "v0.7.0"
+      resolved-ref: db9f3c85ecb4b085d5c7fa87151798e82862a369
+      url: "https://github.com/iebb/cineplay.git"
+    source: git
+    version: "0.7.0"
+  cineplay_fvp:
+    dependency: "direct main"
+    description:
+      path: "packages/cineplay_fvp"
+      ref: "v0.7.0"
+      resolved-ref: db9f3c85ecb4b085d5c7fa87151798e82862a369
+      url: "https://github.com/iebb/cineplay.git"
+    source: git
+    version: "0.7.0"
+  cineplay_pip:
+    dependency: "direct main"
+    description:
+      path: "packages/cineplay_pip"
+      ref: "v0.7.0"
+      resolved-ref: db9f3c85ecb4b085d5c7fa87151798e82862a369
+      url: "https://github.com/iebb/cineplay.git"
+    source: git
+    version: "0.7.0"
   cli_util:
     dependency: transitive
     description:
@@ -257,33 +284,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.1"
-  f_videoplayer:
-    dependency: "direct main"
-    description:
-      path: "packages/f_videoplayer"
-      ref: "v0.6.0"
-      resolved-ref: b193c4ff42b3f598a19487bc714b88254af48d32
-      url: "https://github.com/iebb/f-videoplayer.git"
-    source: git
-    version: "0.6.0"
-  f_videoplayer_fvp:
-    dependency: "direct main"
-    description:
-      path: "packages/f_videoplayer_fvp"
-      ref: "v0.6.0"
-      resolved-ref: b193c4ff42b3f598a19487bc714b88254af48d32
-      url: "https://github.com/iebb/f-videoplayer.git"
-    source: git
-    version: "0.6.0"
-  f_videoplayer_pip:
-    dependency: "direct main"
-    description:
-      path: "packages/f_videoplayer_pip"
-      ref: "v0.6.0"
-      resolved-ref: b193c4ff42b3f598a19487bc714b88254af48d32
-      url: "https://github.com/iebb/f-videoplayer.git"
-    source: git
-    version: "0.6.0"
   fake_async:
     dependency: transitive
     description:
@@ -296,9 +296,9 @@ packages:
     dependency: "direct overridden"
     description:
       path: "third_party/fc_native_video_thumbnail"
-      ref: "v0.6.0"
-      resolved-ref: b193c4ff42b3f598a19487bc714b88254af48d32
-      url: "https://github.com/iebb/f-videoplayer.git"
+      ref: "v0.7.0"
+      resolved-ref: db9f3c85ecb4b085d5c7fa87151798e82862a369
+      url: "https://github.com/iebb/cineplay.git"
     source: git
     version: "3.0.1"
   ffi:
@@ -607,9 +607,9 @@ packages:
     dependency: "direct main"
     description:
       path: "third_party/fvp"
-      ref: "v0.6.0"
-      resolved-ref: b193c4ff42b3f598a19487bc714b88254af48d32
-      url: "https://github.com/iebb/f-videoplayer.git"
+      ref: "v0.7.0"
+      resolved-ref: db9f3c85ecb4b085d5c7fa87151798e82862a369
+      url: "https://github.com/iebb/cineplay.git"
     source: git
     version: "0.37.3+fvideo.10"
   geoclue:

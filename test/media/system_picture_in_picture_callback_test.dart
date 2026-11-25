@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
+import 'package:cineplay_pip/cineplay_pip.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

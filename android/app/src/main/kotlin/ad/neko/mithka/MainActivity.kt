@@ -28,7 +28,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.iebb.f_videoplayer_pip.FVideoPictureInPicturePlugin
+import com.iebb.cineplay_pip.FVideoPictureInPicturePlugin
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.languageid.LanguageIdentifier
@@ -1235,7 +1235,7 @@ class MainActivity : FlutterFragmentActivity() {
             add("dev.fluttercommunity.plus.sensors.SensorsPlugin")
             add("io.sentry.flutter.SentryFlutterPlugin")
             add("io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin")
-            add("com.iebb.f_videoplayer_pip.FVideoPictureInPicturePlugin")
+            add("com.iebb.cineplay_pip.FVideoPictureInPicturePlugin")
             add("io.flutter.plugins.urllauncher.UrlLauncherPlugin")
             add("io.flutter.plugins.videoplayer.VideoPlayerPlugin")
             add("io.flutter.plugins.webviewflutter.WebViewFlutterPlugin")

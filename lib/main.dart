@@ -10,8 +10,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:f_videoplayer/f_videoplayer.dart';
-import 'package:f_videoplayer_fvp/f_videoplayer_fvp.dart';
+import 'package:cineplay/cineplay.dart';
+import 'package:cineplay_fvp/cineplay_fvp.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:f_videoplayer/f_videoplayer.dart';
+import 'package:cineplay/cineplay.dart';
 import 'package:flutter/material.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:video_player/video_player.dart';
