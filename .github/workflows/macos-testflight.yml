@@ -191,14 +191,30 @@ jobs:
           plutil -insert teamID -string "$DEVELOPMENT_TEAM" "$export_options"
           plutil -insert manageAppVersionAndBuildNumber -bool NO "$export_options"
           plutil -insert uploadSymbols -bool YES "$export_options"
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$export_path" \
-            -exportOptionsPlist "$export_options" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          max_attempts=3
+          attempt=1
+          while true; do
+            rm -rf "$export_path"
+            if xcodebuild -exportArchive \
+              -archivePath "$ARCHIVE_PATH" \
+              -exportPath "$export_path" \
+              -exportOptionsPlist "$export_options" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+              break
+            fi
+            status=$?
+            if (( attempt >= max_attempts )); then
+              echo "::error::xcodebuild -exportArchive failed after $max_attempts attempts (exit $status)"
+              exit "$status"
+            fi
+            delay=$((attempt * 15))
+            echo "::warning::xcodebuild -exportArchive failed on attempt $attempt/$max_attempts (exit $status); retrying in ${delay}s..."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
 
       - name: Distribute internally and submit external Beta App Review
         if: github.event_name != 'workflow_dispatch' || inputs.distribute_testflight
