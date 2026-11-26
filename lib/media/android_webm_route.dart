@@ -1,7 +1,7 @@
 //
 //  android_webm_route.dart
 //
-//  Byte-for-byte the routing of f_videoplayer_fvp's Android wrapper, except the
+//  Byte-for-byte the routing of cineplay_fvp's Android wrapper, except the
 //  decision is per file instead of per extension.
 //
 //  MDK (fvp) is registered for every `file://*.webm` there, because an alpha

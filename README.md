@@ -107,7 +107,8 @@ than the 5-gram penguin on an imaginary balance scale.
 ```text
 mithka/
 ├── lib/
-│   ├── app/              # App shell, split-pane layout, deep links, desktop windows
+│   ├── app/              # App shell, split-pane layout, deep links, tab chrome
+│   │   └── desktop/      # Detached desktop windows, title bars, hotkeys, and rail
 │   ├── auth/             # Login flow, multi-account store, QR & passkey sign-in
 │   ├── bot_api/          # Bot API account mode & local TD-compatible adapter
 │   ├── call/             # 1-to-1 and group call UI & native VoIP bridges
@@ -134,7 +135,14 @@ mithka/
 │   ├── platform/         # Native method-channel bridges across mobile & desktop
 │   ├── profile/          # User/chat profiles, QR cards, and collectible gifts
 │   ├── security/         # Biometric/passcode lock and auto-clearing clipboard
-│   ├── settings/         # Appearance, privacy, storage, proxy, AI, and blocking
+│   ├── settings/         # Settings shell, general, folders, notifications, developer
+│   │   ├── ai_translation/ # AI providers, prompts, and translation preferences
+│   │   ├── appearance/   # Theme, app icon, fonts, content size, and bubble style
+│   │   ├── business/     # Telegram Business tools and quick-reply settings
+│   │   ├── downloads_storage/ # Downloads, retention, auto-download, storage usage
+│   │   ├── network_proxy/ # Proxy, API credentials, relay, transfer boost, usage
+│   │   ├── privacy_security/ # Passkeys, blocking, filters, ghost/kept guards
+│   │   └── profile_account/ # Profile editing, backup, history transfer, QR login
 │   ├── tdlib/            # Dart FFI bindings, background receive isolate, models
 │   ├── theme/            # Design tokens, light/dark palettes, and cloud themes
 │   └── update/           # GitHub release feed and Windows/Linux self-updater

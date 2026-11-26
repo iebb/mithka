@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/safety_notice_controller.dart';
+import 'package:mithka/settings/privacy_security/safety_notice_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

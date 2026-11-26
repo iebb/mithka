@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/app_icon_controller.dart';
+import 'package:mithka/settings/appearance/app_icon_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

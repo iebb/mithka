@@ -46,11 +46,11 @@ void main() {
         'isPremium: me.boolean(\'is_premium\') ?? false,',
       ],
       // business tools entitlement
-      'lib/settings/business_service.dart': [
+      'lib/settings/business/business_service.dart': [
         'LocalPremium.shared.premiumForMe',
       ],
       // edit-profile surface
-      'lib/settings/edit_profile_view.dart': [
+      'lib/settings/profile_account/edit_profile_view.dart': [
         'LocalPremium.shared.premiumForMe',
       ],
       // the desktop profile card's status button reads the summary overlay
@@ -90,7 +90,7 @@ void main() {
 
   test('child desktop windows seed the §1.4 controllers', () async {
     final utility = File(
-      'lib/app/desktop_utility_window.dart',
+      'lib/app/desktop/desktop_utility_window.dart',
     ).readAsStringSync();
     expect(
       utility.contains('GhostModeController.shared.initialize(widget.prefs)'),

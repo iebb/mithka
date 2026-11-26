@@ -1,7 +1,5 @@
 part of 'chat_view.dart';
 
-// ignore: unused_element
-
 class ReactionUsersSheetFrame extends StatelessWidget {
   const ReactionUsersSheetFrame({super.key, required this.child});
 
@@ -117,8 +115,6 @@ bool selectionAreaContainsGlobalTextPosition({
   if (!contains) root.visitChildren(visit);
   return contains;
 }
-
-// ignore: unused_element
 
 class ChatActionOverlayGestureLayer extends StatelessWidget {
   const ChatActionOverlayGestureLayer({
@@ -615,12 +611,6 @@ class _ChatEditChoiceDialog<T> extends StatelessWidget {
   }
 }
 
-// ignore: unused_element
-
-// ignore: unused_element
-
-// ignore: unused_element
-
 class ChatViewExitController {
   VoidCallback? _prepareExit;
 
@@ -634,12 +624,6 @@ class ChatViewExitController {
 
   void prepareExit() => _prepareExit?.call();
 }
-
-// ignore: unused_element
-
-// ignore: unused_element
-
-// ignore: unused_element
 
 class _MessageTextSelectionDialog extends StatefulWidget {
   const _MessageTextSelectionDialog({

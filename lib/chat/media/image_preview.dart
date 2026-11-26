@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart' show Brightness, Theme;
 import 'package:flutter/widgets.dart';
 
-import '../../app/desktop_image_preview_window.dart';
+import '../../app/desktop/desktop_image_preview_window.dart';
 import '../../media/media_metadata.dart';
 import '../../tdlib/td_models.dart';
 import '../../theme/app_motion.dart';

@@ -19,7 +19,7 @@ import '../../components/toast.dart';
 import '../../components/ui_components.dart';
 import '../../platform/adaptive_platform.dart';
 import '../../profile/profile_detail_view.dart';
-import '../../settings/edit_field_view.dart';
+import '../../settings/profile_account/edit_field_view.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_models.dart';

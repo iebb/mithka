@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-import '../../settings/apple_pcc_api.dart';
+import '../../settings/ai_translation/apple_pcc_api.dart';
 import 'unread_chat_summary_service.dart';
 
 class ApplePccUnreadSummaryProvider implements UnreadChatSummaryProvider {

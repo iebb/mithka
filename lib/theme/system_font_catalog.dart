@@ -29,9 +29,10 @@ class SystemFontCatalog {
   }
 
   // These engine aliases must not be persisted as a native font's private
-  // family name (UIKit may resolve the old Apple alias to such a name).
+  // family name (UIKit/AppKit may resolve an Apple alias to such a name).
   static bool _isSystemAlias(String family) =>
-      defaultTargetPlatform == TargetPlatform.iOS &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS) &&
       const {
         '.AppleSystemUIFont',
         'CupertinoSystemText',

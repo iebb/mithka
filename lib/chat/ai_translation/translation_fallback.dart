@@ -1,5 +1,5 @@
-import '../../settings/ai_settings_controller.dart';
-import '../../settings/translation_controller.dart';
+import '../../settings/ai_translation/ai_settings_controller.dart';
+import '../../settings/ai_translation/translation_controller.dart';
 import '../../tdlib/td_client.dart';
 
 bool isTelegramTranslationRateLimit(Object error) {

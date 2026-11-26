@@ -546,7 +546,7 @@ void main() {
       // the source contract instead: the call site forwards `bytes:` and does
       // not write the returned path.
       final source = File(
-        'lib/settings/message_history_transfer_view.dart',
+        'lib/settings/profile_account/message_history_transfer_view.dart',
       ).readAsStringSync();
       expect(source, contains('bytes: encodedBytes'));
       expect(

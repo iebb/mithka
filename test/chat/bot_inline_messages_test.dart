@@ -10,7 +10,7 @@ import 'package:mithka/chat/links_search/internal_chat_link_router.dart';
 import 'package:mithka/chat/links_search/link_handler.dart'
     show openInternalLinkType;
 import 'package:mithka/l10n/app_localizations.dart';
-import 'package:mithka/settings/translation_controller.dart';
+import 'package:mithka/settings/ai_translation/translation_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
 import 'package:mithka/theme/app_theme.dart';

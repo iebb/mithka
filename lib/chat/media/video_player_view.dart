@@ -11,8 +11,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:f_videoplayer/f_videoplayer.dart';
-import 'package:f_videoplayer_pip/f_video_picture_in_picture.dart';
+import 'package:cineplay/cineplay.dart';
+import 'package:cineplay_fvp/cineplay_fvp.dart';
+import 'package:cineplay_pip/cineplay_pip.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -488,6 +489,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       widget.streamQuery ?? tdVideoStreamQueryForAccount(widget.accountSlot);
 
   VideoPlayerController? _controller;
+  final FVideoThumbnailCache _scrubThumbnailCache = FVideoThumbnailCache();
+  bool _nextVideoPrewarmed = false;
 
   late final _playbackDiagnostics = VideoPlaybackDiagnostics(
     location: VideoPlaybackLocation.player,
@@ -871,6 +874,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
       focusNode.dispose();
     }
     _progressSub?.cancel();
+    _scrubThumbnailCache.clear();
     unawaited(_storePlaybackPosition(force: true));
     final controller = _controller;
     controller?.removeListener(_onTick);
@@ -978,8 +982,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView>
           ? null
           : () => widget.onNavigate?.call(1),
       onEnded: _handleReusablePlayerEnded,
+      onPositionChanged: _handleReusablePositionChanged,
       onPlaybackStateChanged: _handleReusablePlaybackStateChanged,
       onVolumeChanged: _handleReusableVolumeChanged,
+      chapters: _resolvedChapters(controller),
+      frameStepDelegate: (frames) async {
+        final active = _controller;
+        if (active == null) return;
+        final stepped = await FvpControllerBridge.stepFrames(active, frames);
+        if (!stepped) {
+          final target =
+              active.value.position + Duration(milliseconds: 33 * frames);
+          await active.seekTo(target < Duration.zero ? Duration.zero : target);
+        }
+      },
+      snapshotDelegate: ({width, height}) {
+        final active = _controller;
+        if (active == null) return Future<Uint8List?>.value();
+        return FvpControllerBridge.captureFramePng(
+          active,
+          width: width,
+          height: height,
+        );
+      },
       lifecycleBehavior: FVideoLifecycleBehavior.delegateToController,
       controlsAutoHideDuration: const Duration(seconds: 5),
       positionUpdateInterval: const Duration(milliseconds: 200),

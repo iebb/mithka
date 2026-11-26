@@ -4,9 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mithka/chat/ai_translation/ai_chat_translation_service.dart';
-import 'package:mithka/settings/ai_settings_controller.dart';
-import 'package:mithka/settings/ai_stdout_logger.dart';
-import 'package:mithka/settings/translation_api.dart';
+import 'package:mithka/settings/ai_translation/ai_settings_controller.dart';
+import 'package:mithka/settings/ai_translation/ai_stdout_logger.dart';
+import 'package:mithka/settings/ai_translation/translation_api.dart';
 
 void main() {
   test(

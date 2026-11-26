@@ -16,6 +16,7 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
     required this.aspectRatio,
     required this.thumbnailProvider,
     this.downloadedFraction,
+    this.pinButton,
     this.modeButton,
     this.fullscreenButton,
     this.topInset = 0,
@@ -29,6 +30,7 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
   final double aspectRatio;
   final Future<Uint8List?> Function(Duration position) thumbnailProvider;
   final double? downloadedFraction;
+  final Widget? pinButton;
   final Widget? modeButton;
   final Widget? fullscreenButton;
   final double topInset;
@@ -151,6 +153,10 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 12),
+                            if (pinButton != null) ...[
+                              pinButton!,
+                              const SizedBox(width: 8),
+                            ],
                             MithkaVideoChromeAction(
                               icon: HeroAppIcons.code,
                               label: AppStrings.t(
@@ -274,6 +280,42 @@ class _SerializedVideoActions implements FVideoActions {
 
   @override
   Future<void> endScrub(double fraction) => _inner.endScrub(fraction);
+
+  @override
+  Future<void> setLooping(bool looping) => _inner.setLooping(looping);
+
+  @override
+  Future<void> toggleLooping() => _inner.toggleLooping();
+
+  @override
+  void setRotationQuarterTurns(int quarterTurns) =>
+      _inner.setRotationQuarterTurns(quarterTurns);
+
+  @override
+  void rotateClockwise() => _inner.rotateClockwise();
+
+  @override
+  void setFit(BoxFit fit) => _inner.setFit(fit);
+
+  @override
+  void toggleFit() => _inner.toggleFit();
+
+  @override
+  Future<void> stepFrames(int frames) => _inner.stepFrames(frames);
+
+  @override
+  Future<Uint8List?> captureFrame({int? width, int? height}) =>
+      _inner.captureFrame(width: width, height: height);
+
+  @override
+  Future<void> seekToChapter(FVideoChapter chapter) =>
+      _inner.seekToChapter(chapter);
+
+  @override
+  Future<void> nextChapter() => _inner.nextChapter();
+
+  @override
+  Future<void> previousChapter() => _inner.previousChapter();
 }
 
 class _LoadingVideoActions implements FVideoActions {
@@ -326,6 +368,39 @@ class _LoadingVideoActions implements FVideoActions {
 
   @override
   Future<void> endScrub(double fraction) async {}
+
+  @override
+  Future<void> setLooping(bool looping) async {}
+
+  @override
+  Future<void> toggleLooping() async {}
+
+  @override
+  void setRotationQuarterTurns(int quarterTurns) {}
+
+  @override
+  void rotateClockwise() {}
+
+  @override
+  void setFit(BoxFit fit) {}
+
+  @override
+  void toggleFit() {}
+
+  @override
+  Future<void> stepFrames(int frames) async {}
+
+  @override
+  Future<Uint8List?> captureFrame({int? width, int? height}) async => null;
+
+  @override
+  Future<void> seekToChapter(FVideoChapter chapter) async {}
+
+  @override
+  Future<void> nextChapter() async {}
+
+  @override
+  Future<void> previousChapter() async {}
 }
 
 /// Owned-icon action styling shared with detached-window chrome controls.
@@ -1650,6 +1725,13 @@ class _MithkaVideoTimelineState extends State<_MithkaVideoTimeline> {
                       activeColor: const Color(0xFF24DDD9),
                       bufferedColor: Colors.white.withValues(alpha: 0.32),
                       inactiveColor: Colors.white.withValues(alpha: 0.86),
+                      markerFractions: durationMs > 0
+                          ? [
+                              for (final chapter
+                                  in widget.scope.snapshot.chapters)
+                                chapter.position.inMilliseconds / durationMs,
+                            ]
+                          : const [],
                       semanticLabel: widget.scope.labels.position,
                       semanticValue:
                           '${formatVideoPlayerDuration(position)} / ${formatVideoPlayerDuration(duration)}',

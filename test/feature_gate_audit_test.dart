@@ -25,7 +25,7 @@ const _enabled = allowTelegramTosViolations;
 /// view's own build-time shrink — both require the symbol).
 const _entryFiles = <String, List<String>>{
   'lib/settings/advanced_settings_view.dart': ['KeptMessagesSettingsView'],
-  'lib/settings/privacy_security_view.dart': [
+  'lib/settings/privacy_security/privacy_security_view.dart': [
     'GhostModeSettingsView',
     'KeptMessagesSettingsView',
   ],
@@ -63,7 +63,7 @@ void main() {
     () {
       final root = Directory.current;
       final gates = <String, String>{
-        'lib/settings/ghost_mode_controller.dart':
+        'lib/settings/privacy_security/ghost_mode_controller.dart':
             'bool get globalEnabled => _globalEnabled && isAvailable;',
         'lib/history/message_history_settings.dart':
             'bool get enableAll => _enableAll && isAvailable;',

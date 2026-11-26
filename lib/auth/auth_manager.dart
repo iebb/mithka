@@ -14,7 +14,7 @@ import 'package:mithka/notifications/scope_notification_settings.dart';
 
 import '../chat/admin/chat_members_cache.dart';
 import '../config/secrets.dart';
-import '../settings/api_credentials_config.dart';
+import '../settings/network_proxy/api_credentials_config.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import 'account_backup_service.dart';

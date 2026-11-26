@@ -32,8 +32,8 @@ import '../../history/message_history_settings.dart';
 import '../../media/media_metadata.dart';
 import '../../platform/adaptive_platform.dart';
 import '../../profile/profile_detail_view.dart';
-import '../../settings/sensitive_content_controller.dart';
-import '../../settings/translation_controller.dart';
+import '../../settings/ai_translation/translation_controller.dart';
+import '../../settings/privacy_security/sensitive_content_controller.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../tdlib/td_client.dart';
 import '../../tdlib/td_models.dart';
@@ -77,10 +77,10 @@ import 'pangu_spacing.dart';
 import 'sensitive_content_reveal_prompt.dart';
 import 'stretchable_message_bubble_background.dart';
 
-part 'message_bubble_widgets.dart';
+part 'message_bubble_media_cards.dart';
 part 'message_bubble_rich_blocks.dart';
 part 'message_bubble_text_entities.dart';
-part 'message_bubble_media_cards.dart';
+part 'message_bubble_widgets.dart';
 
 typedef ImageGalleryOpenCallback =
     void Function({required List<TdFileRef> items, required int startIndex});

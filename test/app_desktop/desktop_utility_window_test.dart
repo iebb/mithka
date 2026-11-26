@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/chat_deep_link_controller.dart';
-import 'package:mithka/app/desktop_utility_window.dart';
-import 'package:mithka/app/desktop_utility_window_io.dart';
+import 'package:mithka/app/desktop/desktop_utility_window.dart';
+import 'package:mithka/app/desktop/desktop_utility_window_io.dart';
 
 void main() {
   DesktopUtilityWindowArguments arguments({

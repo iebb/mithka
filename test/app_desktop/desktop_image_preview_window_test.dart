@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_image_preview_window.dart';
+import 'package:mithka/app/desktop/desktop_image_preview_window.dart';
 import 'package:mithka/chat/media/image_preview.dart';
 import 'package:mithka/media/media_metadata.dart';
 import 'package:mithka/media/media_metadata_dialog.dart';

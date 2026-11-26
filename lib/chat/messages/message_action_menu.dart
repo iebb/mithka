@@ -16,7 +16,7 @@ import 'package:provider/provider.dart';
 import '../../components/app_icons.dart';
 import '../../components/app_press_ripple.dart';
 import '../../platform/adaptive_platform.dart';
-import '../../settings/translation_controller.dart';
+import '../../settings/ai_translation/translation_controller.dart';
 import '../../tdlib/td_models.dart';
 import '../../theme/app_motion.dart';
 import '../../theme/app_theme.dart';

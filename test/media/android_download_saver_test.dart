@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chat/media/media_download_service.dart';
-import 'package:mithka/settings/android_download_saver.dart';
-import 'package:mithka/settings/download_storage.dart';
+import 'package:mithka/settings/downloads_storage/android_download_saver.dart';
+import 'package:mithka/settings/downloads_storage/download_storage.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -4,9 +4,9 @@ import '../chat/chat_view.dart';
 import 'adaptive_split_layout.dart';
 import 'app_navigator.dart';
 import 'chat_deep_link_controller.dart';
-import 'desktop_chat_window.dart';
-import 'desktop_mini_app_window.dart';
-import 'desktop_utility_window.dart';
+import 'desktop/desktop_chat_window.dart';
+import 'desktop/desktop_mini_app_window.dart';
+import 'desktop/desktop_utility_window.dart';
 
 /// Opens a conversation in the primary app window when invoked from a
 /// registered desktop child. Mobile and primary-window callers keep the

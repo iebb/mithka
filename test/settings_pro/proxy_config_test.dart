@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/settings/proxy_config.dart';
+import 'package:mithka/settings/network_proxy/proxy_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

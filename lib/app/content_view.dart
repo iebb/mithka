@@ -24,7 +24,7 @@ import '../components/vip_badge.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/adaptive_platform.dart';
 import '../profile/emoji_status_picker.dart';
-import '../settings/app_icon_controller.dart';
+import '../settings/appearance/app_icon_controller.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -32,10 +32,10 @@ import '../theme/theme_controller.dart';
 import 'account_picker_sheet.dart';
 import 'active_conversation.dart';
 import 'app_navigator.dart';
-import 'desktop_chat_list_title_bar_anchors.dart';
-import 'desktop_utility_window.dart';
-import 'desktop_window_controls.dart';
-import 'macos_desktop_title_bar.dart';
+import 'desktop/desktop_chat_list_title_bar_anchors.dart';
+import 'desktop/desktop_utility_window.dart';
+import 'desktop/desktop_window_controls.dart';
+import 'desktop/macos_desktop_title_bar.dart';
 import 'main_tab_view.dart';
 
 Key desktopPrimaryWindowIdentityKey(int accountSlot, int? accountUserId) =>

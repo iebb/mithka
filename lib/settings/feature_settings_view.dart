@@ -12,7 +12,7 @@ import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
 import '../moments/short_video_availability.dart';
 import '../theme/theme_controller.dart';
-import 'safety_notice_controller.dart';
+import 'privacy_security/safety_notice_controller.dart';
 
 class FeatureSettingsView extends StatelessWidget {
   const FeatureSettingsView({super.key});

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mithka/app/desktop_media_window_registry.dart';
+import 'package:mithka/app/desktop/desktop_media_window_registry.dart';
 
 void main() {
   group('desktop media window registry', () {

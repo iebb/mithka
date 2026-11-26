@@ -9,7 +9,7 @@
 # frame over the last frame. The stamp is the binary's own build time, so no
 # pinned archive URL stays valid — the SDK has to be resolved per build.
 #
-# The fvp package (third_party/fvp in iebb/f-videoplayer) declares its Apple
+# The fvp package (third_party/fvp in iebb/cineplay) declares its Apple
 # binary target as a local path when it supports this; the refresh installs a
 # verified SDK there. Any other manifest shape is refused loudly: an old fvp
 # that still pins one archive would link an expired SDK and bring the QR frame

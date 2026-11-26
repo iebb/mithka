@@ -7,7 +7,7 @@ import Foundation
 
 import app_links
 import audio_session
-import f_videoplayer_pip
+import cineplay_pip
 import fc_native_video_thumbnail
 import file_picker
 import file_selector_macos

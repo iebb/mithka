@@ -11,7 +11,7 @@ import '../../components/ui_components.dart';
 import '../../l10n/app_localizations.dart';
 import '../../media/app_asset_picker.dart';
 import '../../profile/profile_icon_picker_view.dart';
-import '../../settings/edit_field_view.dart';
+import '../../settings/profile_account/edit_field_view.dart';
 import '../../tdlib/json_helpers.dart';
 import '../../theme/app_motion.dart';
 import '../../theme/app_theme.dart';

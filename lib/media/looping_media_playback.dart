@@ -60,6 +60,13 @@ void addLoopingMediaPlaybackContextListener(VoidCallback listener) {
 
 void removeLoopingMediaPlaybackContextListener(VoidCallback listener) {
   _playbackContextListeners.remove(listener);
+  if (_playbackContextListeners.isEmpty) {
+    final subscription = _activeSlotSubscription;
+    _activeSlotSubscription = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+  }
 }
 
 /// Whether a looping media surface is worth a native player right now.

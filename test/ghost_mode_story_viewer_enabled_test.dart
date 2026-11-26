@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/config/build_flags.dart';
 import 'package:mithka/moments/story_viewer_view.dart';
-import 'package:mithka/settings/ghost_mode_controller.dart';
+import 'package:mithka/settings/privacy_security/ghost_mode_controller.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -61,6 +61,9 @@ class MainFlutterWindow: NSWindow {
     ExternalLinksPlugin.register(
       with: flutterViewController.registrar(forPlugin: "ExternalLinksPlugin")
     )
+    DesktopSystemFontsPlugin.register(
+      with: flutterViewController.registrar(forPlugin: "DesktopSystemFontsPlugin")
+    )
     MultiWindowManagerPlugin.RegisterGeneratedPlugins = { registry in
       RegisterGeneratedPlugins(registry: registry)
       MacOSAppIconPlugin.register(
@@ -74,6 +77,9 @@ class MainFlutterWindow: NSWindow {
       )
       ExternalLinksPlugin.register(
         with: registry.registrar(forPlugin: "ExternalLinksPlugin")
+      )
+      DesktopSystemFontsPlugin.register(
+        with: registry.registrar(forPlugin: "DesktopSystemFontsPlugin")
       )
     }
 
@@ -331,6 +337,52 @@ final class DesktopMediaDropView: NSView {
       } catch {
         return nil
       }
+    }
+  }
+}
+
+final class DesktopSystemFontsPlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(
+      name: "mithka/fonts",
+      binaryMessenger: registrar.messenger
+    )
+    let instance = DesktopSystemFontsPlugin()
+    registrar.addMethodCallDelegate(instance, channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "listFonts":
+      result(Self.listFontFamilies())
+    case "normalizeFontFamilies":
+      let values = call.arguments as? [String] ?? []
+      result(Self.normalizeFontFamilies(values))
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  static func listFontFamilies() -> [String] {
+    let names = Set(
+      NSFontManager.shared.availableFontFamilies
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    )
+    return names.sorted {
+      $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+    }
+  }
+
+  static func normalizeFontFamilies(_ values: [String]) -> [String] {
+    values.map { value in
+      if let font = NSFont(name: value, size: NSFont.systemFontSize),
+        let familyName = font.familyName,
+        !familyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        return familyName
+      }
+      return value
     }
   }
 }
