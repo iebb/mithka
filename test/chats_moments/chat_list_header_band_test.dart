@@ -33,7 +33,28 @@ const _openedDuo = TopOcclusionData(
   regions: [Rect.fromLTWH(807, 0, 144, 82)],
 );
 
+/// A regular iPhone: a centred Dynamic Island under a full-width status bar.
+const _islandPhone = TopOcclusionData(
+  safeTop: 62,
+  statusBarBottom: 54,
+  windowWidth: 440,
+  regions: [Rect.fromLTWH(157, 11, 126, 37)],
+);
+
+/// The same island reported while the status bar is not: the geometry alone
+/// would free the top edge, but the island touches no side edge.
+const _islandNoStatusBar = TopOcclusionData(
+  safeTop: 62,
+  statusBarBottom: 0,
+  windowWidth: 440,
+  regions: [Rect.fromLTWH(157, 0, 126, 62)],
+);
+
 final _add = find.byKey(const ValueKey('chat-list-header-add-hit'));
+final _tabs = find.byWidgetPredicate(
+  (widget) => widget is ListView && widget.scrollDirection == Axis.horizontal,
+);
+final _search = find.byKey(const ValueKey('chat-list-inline-search'));
 final _avatar = find.byKey(const ValueKey('chat-list-header-avatar-hit'));
 
 void main() {
@@ -57,33 +78,123 @@ void main() {
     await updates.close();
   });
 
-  testWidgets(
-    'with folders the + sits at the end of the tab row',
-    (tester) async {
-      await _pumpChatList(tester, updates, folders: true);
-      final add = tester.getRect(_add);
-      final width = tester.view.physicalSize.width;
-      expect(add.size, const Size(44, 44));
-      expect(add.right, moreOrLessEquals(width - 16));
-      expect(
-        add.center.dy,
-        moreOrLessEquals(tester.getCenter(find.text('Work')).dy, epsilon: 1),
-      );
-      expect(add.top, greaterThan(tester.getRect(_avatar).bottom));
-      // The tabs fade out before they reach the +.
-      expect(find.byType(ShaderMask), findsOneWidget);
+  // Regular iPhones, iPads, Android and the rest keep the header exactly as
+  // it was before the Duo work: the + on the profile row, a full-width tab
+  // strip with no fade, and the menu at its old anchor.
+  for (final (name, occlusion) in const [
+    ('no cluster', null),
+    ('a Dynamic Island under a status bar', _islandPhone),
+    ('a Dynamic Island without a status bar', _islandNoStatusBar),
+  ]) {
+    testWidgets(
+      'off a Duo with $name the + stays on the profile row',
+      (tester) async {
+        final top = occlusion?.safeTop ?? 47.0;
+        await _pumpChatList(
+          tester,
+          updates,
+          folders: true,
+          size: const Size(440, 956),
+          topInset: top,
+          occlusion: occlusion,
+        );
+        final add = tester.getRect(_add);
+        final avatar = tester.getRect(_avatar);
+        expect(add.size, const Size(44, 44));
+        expect(add.right, moreOrLessEquals(440 - 16));
+        expect(add.center.dy, moreOrLessEquals(avatar.center.dy));
+        expect(avatar.top, greaterThanOrEqualTo(top));
+        // Full-width tabs right under the row, with no fade and no slot.
+        expect(find.byType(ShaderMask), findsNothing);
+        final tabs = tester.getRect(_tabs);
+        expect(tabs.left, 0);
+        expect(tabs.width, 440);
+        expect(tabs.top, moreOrLessEquals(avatar.bottom + 10));
+        expect(
+          tester.widget<ListView>(_tabs).padding,
+          const EdgeInsetsDirectional.only(start: 12, end: 12),
+        );
+        expect(
+          tester.getTopLeft(_search).dy,
+          greaterThanOrEqualTo(tabs.bottom),
+        );
 
-      await tester.tap(_add);
-      await tester.pumpAndSettle();
-      expect(find.text('Create group'), findsOneWidget);
+        await tester.tap(_add);
+        await tester.pumpAndSettle();
+        expect(find.text('Create group'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byType(PlusMenu)).dy,
+          moreOrLessEquals(top + 48),
+        );
+        await _dispose(tester);
+      },
+      variant: const TargetPlatformVariant({
+        TargetPlatform.iOS,
+        TargetPlatform.android,
+      }),
+    );
+  }
+
+  testWidgets(
+    'Duo geometry off iOS keeps the original header',
+    (tester) async {
+      await _pumpChatList(
+        tester,
+        updates,
+        folders: true,
+        size: const Size(466, 1000),
+        topInset: 82,
+        occlusion: _closedDuo,
+      );
+      expect(find.byType(ShaderMask), findsNothing);
       expect(
-        tester.getTopLeft(find.text('Create group')).dy,
-        greaterThan(add.center.dy),
+        tester.getCenter(_add).dy,
+        moreOrLessEquals(tester.getCenter(_avatar).dy, epsilon: 0.5),
       );
       await _dispose(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
+
+  for (final (name, occlusion) in const [
+    ('closed', _closedDuo),
+    ('opened', _openedDuo),
+  ]) {
+    testWidgets(
+      '$name Duo: the + sits at the end of the tab row',
+      (tester) async {
+        final width = occlusion.windowWidth;
+        await _pumpChatList(
+          tester,
+          updates,
+          folders: true,
+          size: Size(width, occlusion == _closedDuo ? 1000 : 669),
+          topInset: 82,
+          occlusion: occlusion,
+        );
+        final add = tester.getRect(_add);
+        expect(add.size, const Size(44, 44));
+        expect(add.right, moreOrLessEquals(width - 16));
+        expect(
+          add.center.dy,
+          moreOrLessEquals(tester.getCenter(find.text('Work')).dy, epsilon: 1),
+        );
+        expect(add.top, greaterThan(tester.getRect(_avatar).bottom));
+        // The tabs fade out before they reach the +.
+        expect(find.byType(ShaderMask), findsOneWidget);
+
+        await tester.tap(_add);
+        await tester.pumpAndSettle();
+        expect(find.text('Create group'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.text('Create group')).dy,
+          greaterThan(add.center.dy),
+        );
+        await _dispose(tester);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    );
+  }
 
   testWidgets(
     'without folders the + stays on the profile row',
@@ -96,7 +207,7 @@ void main() {
       );
       await _dispose(tester);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.android),
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
 
   for (final s in const [1.0, 0.9487, 1.483]) {
@@ -126,7 +237,7 @@ void main() {
         expect(tester.getRect(_add).top, greaterThan(66.3));
         await _dispose(tester);
       },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
   }
 
@@ -154,7 +265,7 @@ void main() {
         expect(tabsTop, greaterThanOrEqualTo(82 - 0.5));
         await _dispose(tester);
       },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
 
     testWidgets(
@@ -189,7 +300,7 @@ void main() {
         if (s < 1.2) expect(tabsTop, lessThan(82));
         await _dispose(tester);
       },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
 
     testWidgets(
@@ -226,7 +337,7 @@ void main() {
         );
         await _dispose(tester);
       },
-      variant: TargetPlatformVariant.only(TargetPlatform.android),
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
   }
 
@@ -243,7 +354,7 @@ void main() {
       expect(tester.getRect(_avatar).top, greaterThanOrEqualTo(82));
       await _dispose(tester);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.android),
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
 }
 

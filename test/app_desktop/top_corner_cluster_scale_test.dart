@@ -32,6 +32,7 @@ void main() {
         expect(data.scale, s);
         expect(data.safeTop * s, moreOrLessEquals(82));
         expect(data.compactTop, isNotNull);
+        expect(data.hasCornerStatusCluster, isTrue);
         expect(
           data.compactTop! * s,
           moreOrLessEquals(TopOcclusionData.paneTop),
@@ -59,6 +60,7 @@ void main() {
         final data = _closedDuo.inViewScale(s);
         final slot = data.rowSlotBeside(Rect.fromLTWH(0, 0, 466 / s, 200));
         expect(data.compactTop, isNotNull);
+        expect(data.hasCornerStatusCluster, isTrue);
         expect(slot, isNotNull);
         // On the clock and camera line, not the middle of the 82pt inset.
         expect(slot!.centerY * s, moreOrLessEquals(47.8));
@@ -97,6 +99,22 @@ void main() {
         final data = phone.inViewScale(s);
         expect(data.compactTop, isNull);
         expect(data.rowSlotBeside(Rect.fromLTWH(0, 0, 440 / s, 100)), isNull);
+        expect(data.hasCornerStatusCluster, isFalse);
+      }
+    });
+
+    test('a centred island cannot be a Duo cluster without a status bar', () {
+      const island = TopOcclusionData(
+        safeTop: 62,
+        statusBarBottom: 0,
+        windowWidth: 440,
+        regions: [Rect.fromLTWH(157, 0, 126, 62)],
+      );
+      for (final s in _scales) {
+        final data = island.inViewScale(s);
+        // The geometry alone frees the edge; the island touches no side.
+        expect(data.compactTop, isNotNull);
+        expect(data.hasCornerStatusCluster, isFalse);
       }
     });
 

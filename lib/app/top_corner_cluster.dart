@@ -95,6 +95,20 @@ class TopOcclusionData {
     return bandTop;
   }
 
+  /// Whether the system keeps its status items in a cluster hanging from a
+  /// top corner, as only an iPhone Duo does: [compactTop] holds and a region
+  /// touches both the top edge and a side edge. A regular iPhone's centred
+  /// island never touches a side edge, so it does not count even while its
+  /// full-width status bar is not reported.
+  bool get hasCornerStatusCluster =>
+      compactTop != null &&
+      regions.any(
+        (region) =>
+            region.top.abs() <= tolerance &&
+            (region.left.abs() <= tolerance ||
+                (region.right - windowWidth).abs() <= tolerance),
+      );
+
   double get _coveredWidth {
     final spans = [
       for (final r in regions)

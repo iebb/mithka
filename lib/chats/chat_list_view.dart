@@ -145,6 +145,10 @@ class _ChatListViewState extends State<ChatListView>
 
   /// Where the + menu hangs from, below whichever row holds the +.
   double? _plusMenuTop;
+
+  /// Whether the header follows an iPhone Duo's corner status cluster: the +
+  /// rides on the folder tabs and its menu hangs from wherever it is.
+  bool _duoHeader = false;
   bool _showFilterMenu = false;
   int? _pendingScrollToFirstUnreadRequest;
   bool _pendingScrollShouldToggle = false;
@@ -638,7 +642,7 @@ class _ChatListViewState extends State<ChatListView>
     _dismissDesktopPlusMenu();
     if (!widget.desktopSidebar) {
       setState(() {
-        _plusMenuTop = _plusMenuTopBelowButton();
+        _plusMenuTop = _duoHeader ? _plusMenuTopBelowButton() : null;
         _showPlusMenu = true;
         _showFilterMenu = false;
       });
@@ -1464,9 +1468,15 @@ class _ChatListViewState extends State<ChatListView>
         !sideFolders &&
         folderMode == ChatFolderDisplayMode.tabs &&
         _model.filters.length > 1;
-    // The + rides at the end of the folder tabs; without them (no folders,
-    // folders in the side rail or the menu) it stays on the profile row.
-    final addInFolderTabs = showFolderTabs && !widget.desktopSidebar;
+    // On an iPhone Duo the + rides at the end of the folder tabs; without
+    // them (no folders, folders in the side rail or the menu) it stays on the
+    // profile row. Every other device keeps it on the profile row above a
+    // full-width tab strip.
+    _duoHeader =
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        TopOcclusionGeometry.maybeOf(context)?.hasCornerStatusCluster == true;
+    final addInFolderTabs =
+        _duoHeader && showFolderTabs && !widget.desktopSidebar;
     // The system back button leaves edit mode before leaving the screen.
     final Widget contents = Stack(
       clipBehavior: Clip.none,
@@ -3831,8 +3841,8 @@ class _ChatListViewState extends State<ChatListView>
   // MARK: - "+" dropdown
 
   /// The menu's top just under the + artwork, in this view's coordinates:
-  /// the + moves between the profile row and the folder tabs, and the row
-  /// itself moves up beside a corner status cluster.
+  /// on an iPhone Duo the + moves between the profile row and the folder
+  /// tabs, and the row itself moves up beside the corner status cluster.
   double? _plusMenuTopBelowButton() {
     final button = _addButtonKey.currentContext?.findRenderObject();
     final view = context.findRenderObject();
