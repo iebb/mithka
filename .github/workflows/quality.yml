@@ -123,6 +123,10 @@ jobs:
         if: hashFiles('test/scripts/prune_desktop_bundle_test.py') != ''
         run: python3 -m unittest discover -s test/scripts -p 'prune_desktop_bundle_test.py' -v
 
+      - name: Test macOS small icon fallbacks
+        if: hashFiles('test/scripts/macos_small_icon_fallback_test.py') != ''
+        run: python3 -m unittest discover -s test/scripts -p 'macos_small_icon_fallback_test.py' -v
+
       - name: Verify Apple MDK preparation through the resolved dependency
         env:
           GITHUB_TOKEN: ${{ github.token }}

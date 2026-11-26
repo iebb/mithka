@@ -160,6 +160,53 @@ esac
         self.assertEqual(output["prerelease"], "true")
         self.assertEqual(output["short_sha"], CONTROLLER[:7])
 
+    def test_macos_hotfix_only_builds_the_affected_platform(self):
+        code, output, _calls = self.run_program(
+            "Read version from pubspec.yaml", {"MACOS_ONLY": "true"}
+        )
+        self.assertEqual(code, 0)
+        entries = json.loads(output["desktop_matrix"])["include"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["platform"], "macos")
+        self.assertEqual(entries[0]["os"], "macos-26")
+        code, output, _calls = self.run_program("Read version from pubspec.yaml")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(json.loads(output["desktop_matrix"])["include"]), 5)
+
+    def test_macos_hotfix_requires_an_exact_master_store_snapshot(self):
+        for override in (
+            {"STORE_SOURCE_COMMIT": ""},
+            {"GITHUB_REF": "refs/heads/nightly"},
+            {"DESKTOP_TEST_ONLY": "true"},
+            {"OHOS_TEST_ONLY": "true"},
+        ):
+            code, output, _calls = self.run_program(
+                "Read version from pubspec.yaml", {"MACOS_ONLY": "true", **override}
+            )
+            self.assertNotEqual(code, 0)
+            self.assertEqual(output, {})
+
+    def test_macos_hotfix_rejects_missing_or_unrelated_artifacts(self):
+        expected = ["mithka-1.13.11-20261127-macos-arm64.zip",
+                    "mithka-1.13.11-20261127-macos-x64.zip"]
+        for files, valid in ((expected, True), (expected[:1], False),
+                             (expected + ["tooling.zip"], False),
+                             ([expected[0], "unrelated.zip"], False)):
+            with self.subTest(files=files), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "release-assets").mkdir()
+                for name in files:
+                    (root / "release-assets" / name).touch()
+                result = subprocess.run(
+                    ["bash", "-c", program("Verify and list artifacts")],
+                    cwd=root,
+                    env=dict(os.environ, MACOS_ONLY="true",
+                             ARTIFACT_LABEL="1.13.11-20261127"),
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+
     def test_wrong_checkout_or_nonmaster_store_dispatch_cannot_name_a_release(self):
         for override in [
             {"FAKE_HEAD": CONTROLLER},

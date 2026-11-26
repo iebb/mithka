@@ -179,6 +179,11 @@ jobs:
           fi
           echo "Verified macOS marketing version $actual_version"
 
+      - name: Verify signed media capabilities and icon assets
+        run: |
+          python3 scripts/verify-macos-media-bundle.py \
+            "$ARCHIVE_PATH/Products/Applications/Mithka.app"
+
       - name: Upload archive to App Store Connect
         run: |
           set -euo pipefail

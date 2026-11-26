@@ -134,7 +134,7 @@ jobs:
         include:
           - {platform: linux, label: Linux x64, os: ubuntu-24.04, architecture: x64, library: libtdjson.so, flutter_source: archive}
           - {platform: linux, label: Linux arm64, os: ubuntu-24.04-arm, architecture: arm64, library: libtdjson.so, flutter_source: git}
-          - {platform: macos, label: macOS universal, os: macos-15, architecture: universal, library: libtdjson.dylib, flutter_source: archive}
+          - {platform: macos, label: macOS universal, os: macos-26, architecture: universal, library: libtdjson.dylib, flutter_source: archive}
           - {platform: windows, label: Windows x64, os: windows-2022, architecture: x64, library: tdjson.dll, flutter_source: archive}
           - {platform: windows, label: Windows arm64, os: windows-11-arm, architecture: arm64, library: tdjson.dll, flutter_source: git}
     steps:
@@ -171,6 +171,14 @@ jobs:
             libkeybinder-3.0-dev libsecret-1-dev libpulse0 \
             libgirepository1.0-dev librsvg2-dev patchelf \
             desktop-file-utils ninja-build pkg-config xvfb xdotool
+      - name: Select Xcode 26
+        # Pengram.icon is an Icon Composer asset; only Xcode 26+ compiles it.
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
+          test -n "$xcode_path"
+          echo "DEVELOPER_DIR=$xcode_path/Contents/Developer" >> "$GITHUB_ENV"
       - name: Prepare credential-free dependencies
         shell: bash
         env:
@@ -215,6 +223,8 @@ jobs:
         run: |
           flutter build macos --release --dart-define=I_DONT_FUCKING_CARE_ABOUT_TOS=false
           test -f build/macos/Build/Products/Release/Mithka.app/Contents/MacOS/Mithka
+          python3 scripts/verify-macos-media-bundle.py \
+            build/macos/Build/Products/Release/Mithka.app
           # Release packages ship one architecture per download; prove both thin.
           for arch in arm64 x86_64; do
             scripts/thin-macos-app.sh \
