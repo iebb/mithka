@@ -1,5 +1,10 @@
 part of 'video_player_view.dart';
 
+const List<Shadow> _videoChromeIconShadows = [
+  Shadow(color: Color(0xCC000000), blurRadius: 8, offset: Offset(0, 1)),
+  Shadow(color: Color(0x80000000), blurRadius: 2, offset: Offset(0, 1)),
+];
+
 /// The full Mithka player chrome used by detached desktop video windows.
 ///
 /// Detached windows run in their own Flutter engine, so they cannot reuse the
@@ -10,7 +15,8 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
     super.key,
     required this.scope,
     required this.title,
-    required this.onClose,
+    this.onClose,
+    this.showCloseButton = false,
     required this.inspectorVisible,
     required this.onToggleInspector,
     required this.aspectRatio,
@@ -24,7 +30,8 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
 
   final FVideoChromeScope scope;
   final String title;
-  final VoidCallback onClose;
+  final VoidCallback? onClose;
+  final bool showCloseButton;
   final bool inspectorVisible;
   final VoidCallback onToggleInspector;
   final double aspectRatio;
@@ -97,15 +104,16 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                         end: safePadding.right + 14,
                         child: Row(
                           children: [
-                            MithkaVideoChromeAction(
-                              icon: HeroAppIcons.xmark,
-                              label: scope.labels.close,
-                              onTap: onClose,
-                              size: 52,
-                              iconSize: 27,
-                              cornerRadius: 26,
-                            ),
-                            const SizedBox(width: 16),
+                            if (showCloseButton && onClose != null) ...[
+                              MithkaVideoChromeAction(
+                                icon: HeroAppIcons.xmark,
+                                label: scope.labels.close,
+                                onTap: onClose!,
+                                size: 48,
+                                iconSize: 26,
+                              ),
+                              const SizedBox(width: 12),
+                            ],
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,10 +174,9 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                                 onToggleInspector();
                                 scope.actions.showControls();
                               },
-                              cornerRadius: 22,
-                              backgroundColor: inspectorVisible
-                                  ? const Color(0xD92C6565)
-                                  : const Color(0xB82C2C2E),
+                              iconColor: inspectorVisible
+                                  ? const Color(0xFF24DDD9)
+                                  : Colors.white,
                             ),
                           ],
                         ),
@@ -413,8 +420,10 @@ class MithkaVideoChromeAction extends StatelessWidget {
     this.size = 44,
     this.iconSize = 21,
     this.cornerRadius = 10,
-    this.backgroundColor = const Color(0xB82C2C2E),
+    this.backgroundColor = Colors.transparent,
     this.borderColor,
+    this.iconColor = Colors.white,
+    this.shadows = _videoChromeIconShadows,
     this.enabled = true,
   });
 
@@ -426,6 +435,8 @@ class MithkaVideoChromeAction extends StatelessWidget {
   final double cornerRadius;
   final Color backgroundColor;
   final Color? borderColor;
+  final Color iconColor;
+  final List<Shadow>? shadows;
   final bool enabled;
 
   @override
@@ -438,8 +449,10 @@ class MithkaVideoChromeAction extends StatelessWidget {
     enabled: enabled,
     opacity: enabled ? 1 : 0.48,
     backgroundColor: backgroundColor,
-    borderColor: borderColor ?? Colors.white.withValues(alpha: 0.15),
+    borderColor: borderColor,
     cornerRadius: cornerRadius,
+    iconColor: iconColor,
+    shadows: shadows,
   );
 }
 
@@ -652,8 +665,6 @@ class _MithkaVideoOnDemandBottomChrome extends StatelessWidget {
                         onPressed: () => unawaited(scope.actions.toggleMute()),
                         size: const Size.square(44),
                         iconSize: 22,
-                        backgroundColor: const Color(0x8A1B1D1E),
-                        borderColor: Colors.white.withValues(alpha: 0.24),
                       ),
                       if (showVolumeSlider) ...[
                         const SizedBox(width: 4),
@@ -1125,10 +1136,7 @@ class _MithkaVideoPlayButton extends StatelessWidget {
       label: semanticLabel ?? (playing ? 'Pause' : 'Play'),
       onPressed: onTap,
       size: Size.square(size),
-      iconSize: size * 0.44,
-      backgroundColor: const Color(0xCC2C2C2E),
-      borderColor: Colors.white.withValues(alpha: 0.18),
-      cornerRadius: size / 2,
+      iconSize: size * 0.54,
     );
   }
 }
@@ -1152,28 +1160,15 @@ class _MithkaVideoSeekButton extends StatelessWidget {
     return AppInteractiveSurface(
       semanticLabel: label,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(size / 2),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xA92C2C2E),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x42000000),
-              blurRadius: 14,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: SizedBox.square(
-          dimension: size,
-          child: Center(
-            child: AppSeekTenIcon(
-              backwards: backwards,
-              color: Colors.white,
-              size: size * 0.64,
-            ),
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox.square(
+        dimension: size,
+        child: Center(
+          child: AppSeekTenIcon(
+            backwards: backwards,
+            color: Colors.white,
+            size: size * 0.68,
+            shadows: _videoChromeIconShadows,
           ),
         ),
       ),
@@ -1200,10 +1195,7 @@ class _MithkaVideoCompactNavButton extends StatelessWidget {
     label: label,
     onPressed: onTap,
     size: Size.square(size),
-    iconSize: size * 0.45,
-    backgroundColor: const Color(0xB82C2C2E),
-    borderColor: Colors.white.withValues(alpha: 0.18),
-    cornerRadius: size / 2,
+    iconSize: size * 0.52,
   );
 }
 
@@ -1223,11 +1215,8 @@ class _MithkaVideoSideButton extends StatelessWidget {
     icon: icon,
     label: label,
     onPressed: onTap,
-    size: const Size(52, 116),
-    iconSize: 25,
-    backgroundColor: const Color(0xA92C2C2E),
-    borderColor: Colors.white.withValues(alpha: 0.24),
-    cornerRadius: 26,
+    size: const Size(52, 88),
+    iconSize: 28,
   );
 }
 
@@ -1501,21 +1490,17 @@ class _MithkaVideoTextButton extends StatelessWidget {
     onTap: onTap,
     borderRadius: BorderRadius.circular(AppRadius.control),
     child: Container(
-      constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 44),
       padding: const EdgeInsets.symmetric(horizontal: 10),
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0x8A1B1D1E),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(AppRadius.control),
-      ),
       child: Text(
         text,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 13,
-          fontWeight: FontWeight.w400,
+          fontWeight: FontWeight.w500,
           fontFeatures: [FontFeature.tabularFigures()],
+          shadows: _videoChromeIconShadows,
         ),
       ),
     ),
@@ -2057,6 +2042,8 @@ class _FocusableVideoIconButton extends StatefulWidget {
     this.opacity = 1,
     this.backgroundColor = Colors.transparent,
     this.borderColor,
+    this.iconColor = Colors.white,
+    this.shadows = _videoChromeIconShadows,
     this.cornerRadius = 10,
     this.focusNode,
     this.semanticValue,
@@ -2072,6 +2059,8 @@ class _FocusableVideoIconButton extends StatefulWidget {
   final double opacity;
   final Color backgroundColor;
   final Color? borderColor;
+  final Color iconColor;
+  final List<Shadow>? shadows;
   final double cornerRadius;
   final FocusNode? focusNode;
   final String? semanticValue;
@@ -2156,8 +2145,9 @@ class _FocusableVideoIconButtonState extends State<_FocusableVideoIconButton> {
                 child: Center(
                   child: AppIcon(
                     widget.icon,
-                    color: Colors.white,
+                    color: widget.iconColor,
                     size: widget.iconSize,
+                    shadows: widget.shadows,
                   ),
                 ),
               ),

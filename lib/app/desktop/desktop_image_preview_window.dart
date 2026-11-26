@@ -1138,15 +1138,23 @@ class _GalleryArrow extends StatelessWidget {
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 120),
         opacity: enabled ? 1 : 0.28,
-        child: Container(
+        child: SizedBox(
           width: 36,
           height: 36,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: Color(0xB816171A),
-            shape: BoxShape.circle,
+          child: Center(
+            child: AppIcon(
+              icon,
+              size: 22,
+              color: const Color(0xFFFFFFFF),
+              shadows: const [
+                Shadow(
+                  color: Color(0xCC000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
           ),
-          child: AppIcon(icon, size: 18, color: const Color(0xFFFFFFFF)),
         ),
       ),
     ),

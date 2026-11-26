@@ -157,8 +157,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/cineplay"
-      ref: "v0.7.0"
-      resolved-ref: "89c572244d21ae9d55268c1bf8aa55979a4ad742"
+      ref: "5c9895bb245ee16a493f5d25360005ffa3d17a10"
+      resolved-ref: "5c9895bb245ee16a493f5d25360005ffa3d17a10"
       url: "https://github.com/iebb/cineplay.git"
     source: git
     version: "0.7.0"

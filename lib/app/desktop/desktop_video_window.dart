@@ -581,10 +581,7 @@ class _DesktopVideoWindowPlayerState extends State<_DesktopVideoWindowPlayer> {
               unawaited(FVideoDesktopWindows.toggleCurrentWindowAlwaysOnTop());
               scope.actions.showControls();
             },
-            cornerRadius: 22,
-            backgroundColor: pinned
-                ? const Color(0xD92C6565)
-                : const Color(0xB82C2C2E),
+            iconColor: pinned ? const Color(0xFF24DDD9) : Colors.white,
           ),
         ),
         modeButton: _pictureInPictureSupported
