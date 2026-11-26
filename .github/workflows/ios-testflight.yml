@@ -215,14 +215,30 @@ jobs:
           plutil -insert manageAppVersionAndBuildNumber -bool NO "$export_options"
           plutil -insert stripSwiftSymbols -bool YES "$export_options"
           plutil -insert uploadSymbols -bool YES "$export_options"
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$upload_path" \
-            -exportOptionsPlist "$export_options" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          max_attempts=3
+          attempt=1
+          while true; do
+            rm -rf "$upload_path"
+            if xcodebuild -exportArchive \
+              -archivePath "$ARCHIVE_PATH" \
+              -exportPath "$upload_path" \
+              -exportOptionsPlist "$export_options" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+              break
+            fi
+            status=$?
+            if (( attempt >= max_attempts )); then
+              echo "::error::xcodebuild -exportArchive failed after $max_attempts attempts (exit $status)"
+              exit "$status"
+            fi
+            delay=$((attempt * 15))
+            echo "::warning::xcodebuild -exportArchive failed on attempt $attempt/$max_attempts (exit $status); retrying in ${delay}s..."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
 
           ipa_count="$(find "$upload_path" -maxdepth 1 -type f -name '*.ipa' -print | wc -l | tr -d ' ')"
           test "$ipa_count" -eq 1
@@ -232,12 +248,26 @@ jobs:
             --provenance "$RUNNER_TEMP/shipping-sdk/selection.json" \
             --artifact "$ipa" \
             --report "$RUNNER_TEMP/shipping-sdk/ipa.json"
-          API_PRIVATE_KEYS_DIR="$(dirname "$ASC_KEY_PATH")" \
-            xcrun altool --upload-package "$ipa" \
-              --api-key "$ASC_KEY_ID" \
-              --api-issuer "$ASC_ISSUER_ID" \
-              --wait \
-              --output-format json
+          attempt=1
+          while true; do
+            if API_PRIVATE_KEYS_DIR="$(dirname "$ASC_KEY_PATH")" \
+              xcrun altool --upload-package "$ipa" \
+                --api-key "$ASC_KEY_ID" \
+                --api-issuer "$ASC_ISSUER_ID" \
+                --wait \
+                --output-format json; then
+              break
+            fi
+            status=$?
+            if (( attempt >= max_attempts )); then
+              echo "::error::xcrun altool --upload-package failed after $max_attempts attempts (exit $status)"
+              exit "$status"
+            fi
+            delay=$((attempt * 15))
+            echo "::warning::xcrun altool --upload-package failed on attempt $attempt/$max_attempts (exit $status); retrying in ${delay}s..."
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
 
       - name: Retain uploaded IPA for release verification
         uses: actions/upload-artifact@v7
