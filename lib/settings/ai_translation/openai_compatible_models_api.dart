@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'ai_endpoint_style.dart';
+import 'ai_http_client.dart';
 import 'ai_stdout_logger.dart';
 
 class OpenAiCompatibleModelInfo {
@@ -87,7 +88,7 @@ class OpenAiCompatibleModelsApi {
     http.Client? httpClient,
     AiStdoutLogger? aiLogger,
     this.requestTimeout = const Duration(seconds: 20),
-  }) : _httpClient = httpClient ?? http.Client(),
+  }) : _httpClient = httpClient ?? createAiHttpClient(),
        _aiLogger = aiLogger ?? aiStdoutLogger,
        _ownsHttpClient = httpClient == null;
 

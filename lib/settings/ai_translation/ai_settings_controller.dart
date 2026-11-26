@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ai_endpoint_style.dart';
+import 'ai_http_client.dart';
 import 'apple_pcc_api.dart';
 import 'openai_compatible_models_api.dart';
 
@@ -986,10 +987,15 @@ class AiSettingsController extends ChangeNotifier {
       ),
     );
     final normalizedKey = apiKey.trim();
-    await _secureWrite(
-      _profileKey(providerId),
-      normalizedKey.isEmpty ? null : normalizedKey,
-    );
+    if (normalizedKey.isNotEmpty ||
+        existing != null ||
+        _profileApiKeys.containsKey(providerId)) {
+      await _writeSecureValueSafely(
+        _profileKey(providerId),
+        normalizedKey.isEmpty ? null : normalizedKey,
+        ignoreFailure: normalizedKey.isEmpty,
+      );
+    }
     if (normalizedKey.isEmpty) {
       _profileApiKeys.remove(providerId);
     } else {
@@ -1066,7 +1072,11 @@ class AiSettingsController extends ChangeNotifier {
 
   Future<void> deleteServerProvider(String providerId) async {
     if (_providerById(providerId) == null) return;
-    await _secureWrite(_profileKey(providerId), null);
+    await _writeSecureValueSafely(
+      _profileKey(providerId),
+      null,
+      ignoreFailure: true,
+    );
     _profileApiKeys.remove(providerId);
     _serverProviders = List.unmodifiable(
       _serverProviders.where((provider) => provider.id != providerId),
@@ -1556,19 +1566,28 @@ class AiSettingsController extends ChangeNotifier {
     }
   }
 
-  static bool _isLoopbackHost(String host) {
-    final normalized = host.toLowerCase();
-    if (normalized == 'localhost' || normalized.endsWith('.localhost')) {
-      return true;
-    }
-    return InternetAddress.tryParse(normalized)?.isLoopback ?? false;
-  }
+  static const _secureStorageTimeout = Duration(seconds: 5);
+
+  static bool _isLoopbackHost(String host) => isAiLoopbackHost(host);
 
   Future<String> _readSecureValueSafely(String key) async {
     try {
-      return (await _secureRead(key))?.trim() ?? '';
+      return (await _secureRead(key).timeout(_secureStorageTimeout))?.trim() ??
+          '';
     } catch (_) {
       return '';
+    }
+  }
+
+  Future<void> _writeSecureValueSafely(
+    String key,
+    String? value, {
+    bool ignoreFailure = false,
+  }) async {
+    try {
+      await _secureWrite(key, value).timeout(_secureStorageTimeout);
+    } catch (_) {
+      if (!ignoreFailure) rethrow;
     }
   }
 
