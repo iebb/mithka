@@ -22,6 +22,7 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
     required this.aspectRatio,
     required this.thumbnailProvider,
     this.downloadedFraction,
+    this.shareButton,
     this.pinButton,
     this.modeButton,
     this.fullscreenButton,
@@ -37,6 +38,9 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
   final double aspectRatio;
   final Future<Uint8List?> Function(Duration position) thumbnailProvider;
   final double? downloadedFraction;
+
+  /// Save and share for the window's message, shown before [pinButton].
+  final Widget? shareButton;
   final Widget? pinButton;
   final Widget? modeButton;
   final Widget? fullscreenButton;
@@ -64,8 +68,6 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 600;
-                  final compactQueueNavigation =
-                      !wide && MediaQuery.sizeOf(context).width >= 320;
                   final duration = snapshot.value.duration;
                   final subtitle =
                       'Video  •  ${formatVideoPlayerDuration(duration)}';
@@ -161,6 +163,10 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 12),
+                            if (shareButton != null) ...[
+                              shareButton!,
+                              const SizedBox(width: 8),
+                            ],
                             if (pinButton != null) ...[
                               pinButton!,
                               const SizedBox(width: 8),
@@ -207,7 +213,9 @@ class MithkaDesktopVideoChrome extends StatelessWidget {
                           buffered: buffered,
                           aspectRatio: aspectRatio,
                           thumbnailProvider: thumbnailProvider,
-                          compactQueueNavigation: compactQueueNavigation,
+                          // A desktop window plays one video, so it has no
+                          // previous/next slots to reserve beside play.
+                          compactQueueNavigation: false,
                           previousButton: null,
                           nextButton: null,
                           modeButton: modeButton,
@@ -454,6 +462,184 @@ class MithkaVideoChromeAction extends StatelessWidget {
     iconColor: iconColor,
     shadows: shadows,
   );
+}
+
+/// One top-bar control that opens Save as… and Share for a detached video
+/// window, in the same panel style as the full-screen player's More menu.
+class MithkaVideoShareMenuButton extends StatefulWidget {
+  const MithkaVideoShareMenuButton({
+    super.key,
+    required this.controlsVisible,
+    this.onSave,
+    this.onShare,
+    this.onOpened,
+  }) : assert(onSave != null || onShare != null);
+
+  /// The menu closes when the player hides its controls.
+  final bool controlsVisible;
+  final VoidCallback? onSave;
+  final VoidCallback? onShare;
+  final VoidCallback? onOpened;
+
+  @override
+  State<MithkaVideoShareMenuButton> createState() =>
+      _MithkaVideoShareMenuButtonState();
+}
+
+class _MithkaVideoShareMenuButtonState
+    extends State<MithkaVideoShareMenuButton> {
+  final _portal = OverlayPortalController();
+  final _link = LayerLink();
+
+  @override
+  void didUpdateWidget(MithkaVideoShareMenuButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.controlsVisible && _portal.isShowing) _hide();
+  }
+
+  void _toggle() {
+    if (_portal.isShowing) {
+      _hide();
+      return;
+    }
+    setState(_portal.show);
+    widget.onOpened?.call();
+  }
+
+  void _hide() {
+    if (!_portal.isShowing) return;
+    setState(_portal.hide);
+  }
+
+  void _run(VoidCallback action) {
+    _hide();
+    action();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final open = _portal.isShowing;
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: _buildMenu,
+        child: MithkaVideoChromeAction(
+          key: const ValueKey('video-window-share-button'),
+          icon: HeroAppIcons.share,
+          label: AppStringKeys.topicChatShare.l10n(context),
+          onTap: _toggle,
+          backgroundColor: open
+              ? Colors.white.withValues(alpha: 0.16)
+              : Colors.transparent,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenu(BuildContext context) {
+    final onSave = widget.onSave;
+    final onShare = widget.onShare;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: _hide,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _link,
+          showWhenUnlinked: false,
+          targetAnchor: AlignmentDirectional.bottomEnd.resolve(
+            Directionality.of(context),
+          ),
+          followerAnchor: AlignmentDirectional.topEnd.resolve(
+            Directionality.of(context),
+          ),
+          offset: const Offset(0, 6),
+          child: CallbackShortcuts(
+            bindings: {const SingleActivator(LogicalKeyboardKey.escape): _hide},
+            child: SizedBox(
+              width: 200,
+              child: TweenAnimationBuilder<double>(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                tween: Tween(begin: 0, end: 1),
+                builder: (context, progress, child) => Opacity(
+                  opacity: progress,
+                  child: Transform.scale(
+                    alignment: AlignmentDirectional.topEnd,
+                    scale: 0.96 + progress * 0.04,
+                    child: child,
+                  ),
+                ),
+                child: DecoratedBox(
+                  key: const ValueKey('video-window-share-menu'),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.13),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x73000000),
+                        blurRadius: 28,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(1),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      child: ColoredBox(
+                        color: const Color(0xF21F1F21),
+                        child: Padding(
+                          padding: const EdgeInsets.all(5),
+                          child: FocusTraversalGroup(
+                            policy: OrderedTraversalPolicy(),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (onSave != null)
+                                  _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.download,
+                                    label: AppStringKeys.messageActionSaveAs
+                                        .l10n(context),
+                                    autofocus: true,
+                                    onPressed: () => _run(onSave),
+                                  ),
+                                if (onSave != null && onShare != null)
+                                  const _VideoMenuSeparator(),
+                                if (onShare != null)
+                                  _FocusableVideoMenuItem(
+                                    icon: HeroAppIcons.forward,
+                                    label: AppStringKeys.topicChatShare.l10n(
+                                      context,
+                                    ),
+                                    autofocus: onSave == null,
+                                    onPressed: () => _run(onShare),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _VideoOnDemandGeometry {

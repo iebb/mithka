@@ -564,7 +564,7 @@ extension _ChatViewActions on _ChatViewState {
     if (message.video == null) return;
     final session = _videoSession(message);
     if (supportsDesktopVideoWindows) {
-      unawaited(_openDesktopVideoWindow(session, muted: muted));
+      unawaited(_openDesktopVideoWindow(session, message, muted: muted));
       return;
     }
     if (VideoSplitController.instance.isOpen) {
@@ -585,12 +585,20 @@ extension _ChatViewActions on _ChatViewState {
   }
 
   Future<void> _openDesktopVideoWindow(
-    VideoSplitSession session, {
+    VideoSplitSession session,
+    ChatMessage message, {
     required bool muted,
   }) async {
     final opened = await DesktopVideoWindowService.instance.open(
       session,
       muted: muted,
+      // The window's Share forwards this message from this chat, which must
+      // still be open to show the picker.
+      onShare: () async {
+        if (!mounted) return false;
+        await _forwardMessage(message);
+        return true;
+      },
     );
     if (!opened && mounted) {
       showToast(context, AppStringKeys.videoPlayerLoadFailed);
