@@ -40,6 +40,10 @@ on:
         required: false
         type: boolean
         default: false
+      macos_only:
+        description: Publish only macOS packages for an exact store snapshot hotfix
+        type: boolean
+        default: false
 
 concurrency:
   group: release-packages-${{ github.ref }}
@@ -79,6 +83,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       make_latest: ${{ steps.version.outputs.make_latest }}
       short_sha: ${{ steps.version.outputs.short_sha }}
+      desktop_matrix: ${{ steps.version.outputs.desktop_matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -90,6 +95,7 @@ jobs:
           DESKTOP_TEST_ONLY: ${{ inputs.desktop_test_only }}
           OHOS_TEST_ONLY: ${{ inputs.ohos_test_only }}
           STORE_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          MACOS_ONLY: ${{ inputs.macos_only }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
@@ -107,6 +113,9 @@ jobs:
           )"
           short_sha="${SOURCE_COMMIT::7}"
           branch_name="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+          if [ "${MACOS_ONLY:-false}" = true ]; then
+            test -n "$STORE_SOURCE_COMMIT"
+          fi
           if [ -n "$STORE_SOURCE_COMMIT" ]; then
             test "$GITHUB_REPOSITORY" = 'iebb/mithka'
             test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
@@ -158,6 +167,20 @@ jobs:
               ;;
             esac
           fi
+          desktop_matrix="$(python3 - <<'PY'
+          import json, os
+          entries = [
+              dict(platform='linux', label='Linux x64', os='ubuntu-24.04', architecture='x64', library='libtdjson.so', archive_extension='tar.gz', flutter_source='archive'),
+              dict(platform='linux', label='Linux arm64', os='ubuntu-24.04-arm', architecture='arm64', library='libtdjson.so', archive_extension='tar.gz', flutter_source='git'),
+              dict(platform='macos', label='macOS universal', os='macos-26', architecture='universal', library='libtdjson.dylib', archive_extension='zip', flutter_source='archive'),
+              dict(platform='windows', label='Windows x64', os='windows-2022', architecture='x64', library='tdjson.dll', archive_extension='zip', flutter_source='archive'),
+              dict(platform='windows', label='Windows arm64', os='windows-11-arm', architecture='arm64', library='tdjson.dll', archive_extension='zip', flutter_source='git'),
+          ]
+          if os.environ.get('MACOS_ONLY') == 'true':
+              entries = [entry for entry in entries if entry['platform'] == 'macos']
+          print(json.dumps({'include': entries}, separators=(',', ':')))
+          PY
+          )"
           {
             echo "app_version=$app_version"
             echo "version_code=$version_code"
@@ -171,6 +194,7 @@ jobs:
             echo "prerelease=$prerelease"
             echo "make_latest=$make_latest"
             echo "short_sha=$short_sha"
+            echo "desktop_matrix=$desktop_matrix"
           } >> "$GITHUB_OUTPUT"
           echo "Release tag: $release_tag"
           echo "Release channel: $release_channel"
@@ -180,7 +204,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.abi }} APK
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only && !inputs.macos_only) }}
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
@@ -383,43 +407,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            label: Linux x64
-            os: ubuntu-24.04
-            architecture: x64
-            library: libtdjson.so
-            archive_extension: tar.gz
-            flutter_source: archive
-          - platform: linux
-            label: Linux arm64
-            os: ubuntu-24.04-arm
-            architecture: arm64
-            library: libtdjson.so
-            archive_extension: tar.gz
-            flutter_source: git
-          - platform: macos
-            label: macOS universal
-            os: macos-15
-            architecture: universal
-            library: libtdjson.dylib
-            archive_extension: zip
-            flutter_source: archive
-          - platform: windows
-            label: Windows x64
-            os: windows-2022
-            architecture: x64
-            library: tdjson.dll
-            archive_extension: zip
-            flutter_source: archive
-          - platform: windows
-            label: Windows arm64
-            os: windows-11-arm
-            architecture: arm64
-            library: tdjson.dll
-            archive_extension: zip
-            flutter_source: git
+      matrix: ${{ fromJSON(needs.prepare.outputs.desktop_matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -463,6 +451,15 @@ jobs:
             libkeybinder-3.0-dev libsecret-1-dev libpulse0 \
             libgirepository1.0-dev librsvg2-dev patchelf \
             desktop-file-utils ninja-build pkg-config xvfb xdotool
+
+      - name: Select Xcode 26
+        # Pengram.icon is an Icon Composer asset; only Xcode 26+ compiles it.
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' | sort -V | tail -1)"
+          test -n "$xcode_path"
+          echo "DEVELOPER_DIR=$xcode_path/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Cache desktop tdjson
         uses: actions/cache@v6
@@ -637,6 +634,7 @@ jobs:
           codesign --force --sign - \
             --entitlements macos/Runner/Release.entitlements "$app"
           codesign --verify --deep --strict "$app"
+          python3 scripts/verify-macos-media-bundle.py "$app"
           # The universal build stays the source of truth; each download is a
           # single-architecture copy, which is roughly half the size.
           mkdir -p dist thin
@@ -644,6 +642,7 @@ jobs:
             arch="${pair%%:*}"
             label="${pair##*:}"
             scripts/thin-macos-app.sh "$app" "$arch" "thin/$label/Mithka.app"
+            python3 scripts/verify-macos-media-bundle.py "thin/$label/Mithka.app"
             ditto -c -k --keepParent "thin/$label/Mithka.app" \
               "dist/mithka-${{ needs.prepare.outputs.artifact_label }}-macos-$label.zip"
           done
@@ -740,7 +739,7 @@ jobs:
 
   build-ohos:
     name: Build HarmonyOS hap
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.desktop_test_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.macos_only) }}
     needs: prepare
     runs-on: ubuntu-latest
     # Optional until its assembled path is validated: a failure here must not
@@ -1218,7 +1217,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only) }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build-desktop.result == 'success' && (needs.build.result == 'success' || (inputs.macos_only && needs.build.result == 'skipped')) && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_test_only && !inputs.ohos_test_only)) }}
     # build-ohos is deliberately NOT a hard dependency yet: its assembled
     # path is still being validated, and a failure there must not block the
     # established platforms' releases. The ohos hap artifact is simply absent
@@ -1237,11 +1236,21 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+          pattern: ${{ inputs.macos_only && 'desktop-macos-*' || '*' }}
 
       - name: Verify and list artifacts
         env:
           ARTIFACT_LABEL: ${{ needs.prepare.outputs.artifact_label }}
+          MACOS_ONLY: ${{ inputs.macos_only }}
         run: |
+          set -euo pipefail
+          if [ "${MACOS_ONLY:-false}" = true ]; then
+            test "$(find release-assets -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
+            test -f "release-assets/mithka-${ARTIFACT_LABEL}-macos-arm64.zip"
+            test -f "release-assets/mithka-${ARTIFACT_LABEL}-macos-x64.zip"
+            echo 'Verified exactly the two affected macOS packages'
+            exit 0
+          fi
           ls -lhR release-assets
           apk_count="$(
             find release-assets -maxdepth 1 -type f -name 'mithka-*.apk' \
